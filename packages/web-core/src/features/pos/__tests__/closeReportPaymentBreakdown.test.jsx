@@ -153,6 +153,47 @@ describe('close-report payment breakdown rendering', () => {
         expect(text).toContain('Generated: -');
     });
 
+    it('formats iMin reports to the selected paper width', () => {
+        const report = {
+            shift: {
+                business_date: '2026-09-25',
+                terminal_id: 'COUNTER-01',
+                pos_terminal_shift_id: 8
+            },
+            cash_summary: {
+                opening_float_amount: 1000,
+                cash_sales_amount: 123,
+                cash_in_total: 25,
+                cash_out_total: 10,
+                expected_cash_amount: 1138,
+                closing_cash_amount: 1138,
+                cash_variance_amount: 0
+            },
+            sales_summary: {
+                payment_breakdown: paymentBreakdown,
+                delivery_provider_breakdown: [
+                    { provider_type: 'foodpanda', transaction_count: 2, amount: 350 }
+                ]
+            }
+        };
+
+        const narrowText = formatIminShiftSummaryText({
+            shiftSummary: report,
+            businessSettings,
+            paperWidth: '57mm'
+        });
+        const wideText = formatIminShiftSummaryText({
+            shiftSummary: report,
+            businessSettings,
+            paperWidth: '80mm'
+        });
+
+        expect(narrowText.split('\n').every((row) => row.length <= 32)).toBe(true);
+        expect(wideText).toContain('-'.repeat(42));
+        expect(narrowText).toContain('-'.repeat(32));
+        expect(narrowText).toContain('DELIVERY PROVIDER BREAKDOWN');
+    });
+
     it('does not show zero closing cash or variance before an open shift is closed', () => {
         const markup = renderToStaticMarkup(
             <ShiftCloseSummaryPrintView

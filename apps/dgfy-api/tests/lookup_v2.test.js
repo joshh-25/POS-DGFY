@@ -47,6 +47,7 @@ const baseData = (label) => ({
     complianceMode: 'non_compliant',
     workflowMode: 'msme',
     accepted_company_terms: true,
+    accepted_marketplace_terms: true,
     company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
     marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
 });

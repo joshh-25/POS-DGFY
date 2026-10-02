@@ -1,7 +1,10 @@
 import { emitPosHardwareMessage } from './posHardwareMessageBus.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
-const RECEIPT_COLUMNS = 42;
+const PAPER_WIDTH_COLUMNS = Object.freeze({
+    '80mm': 42,
+    '57mm': 32
+});
 const IMIN_ASYNC_RESULT_EVENT = 'dgfy:imin-command-result';
 const IMIN_ASYNC_COMMAND_TIMEOUT_MS = 30_000;
 
@@ -20,6 +23,17 @@ const safeText = (value, fallback = '') => {
     return text || fallback;
 };
 
+const formatIminReceiptDateTime = (value, paperWidth = '80mm') => {
+    const date = value ? new Date(value) : new Date();
+    if (String(paperWidth || '').trim().toLowerCase() !== '57mm') {
+        return date.toLocaleString();
+    }
+    if (Number.isNaN(date.getTime())) return '-';
+    const datePart = date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const timePart = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${datePart} ${timePart}`;
+};
+
 const parsePaymentBreakdown = (value) => {
     if (Array.isArray(value)) return value;
     if (typeof value !== 'string') return [];
@@ -35,49 +49,96 @@ const formatPaymentLabel = (entry) => safeText(
     entry?.payment_label || entry?.payment_type,
     'Payment'
 ).replace(/_/g, ' ');
+const formatDeliveryProviderLabel = (entry) => {
+    const providerType = safeText(entry?.provider_type).toLowerCase();
+    if (providerType === 'other') return `${safeText(entry?.provider_name, 'Other')} (Other)`;
+    if (providerType === 'foodpanda') return 'Foodpanda';
+    if (providerType === 'grab') return 'Grab';
+    return safeText(entry?.display_label || providerType, 'Delivery provider');
+};
 
 const displayDiscountType = (value) => safeText(value).toLowerCase() === 'manual'
     ? 'OTHER'
     : safeText(value).replace(/_/g, ' ').toUpperCase();
 
-const line = (char = '-') => char.repeat(RECEIPT_COLUMNS);
-
-const center = (value) => {
+const truncateText = (value, maxWidth) => {
     const text = safeText(value);
-    if (text.length >= RECEIPT_COLUMNS) return text;
-    const left = Math.floor((RECEIPT_COLUMNS - text.length) / 2);
-    return `${' '.repeat(left)}${text}`;
+    const width = Math.max(1, Number(maxWidth) || 1);
+    if (text.length <= width) return text;
+    if (width <= 3) return text.slice(0, width);
+    return `${text.slice(0, width - 3)}...`;
 };
 
-const pair = (label, value) => {
-    const left = safeText(label);
-    const right = safeText(value);
-    const space = RECEIPT_COLUMNS - left.length - right.length;
-    if (space <= 1) return `${left} ${right}`;
-    return `${left}${' '.repeat(space)}${right}`;
-};
+const createTextLayout = (paperWidth = '80mm') => {
+    const columns = PAPER_WIDTH_COLUMNS[String(paperWidth || '').trim().toLowerCase()] || PAPER_WIDTH_COLUMNS['80mm'];
+    const isNarrow = columns === PAPER_WIDTH_COLUMNS['57mm'];
+    const line = (char = '-') => String(char || '-').slice(0, 1).repeat(columns);
 
-const wrapText = (value, width = RECEIPT_COLUMNS) => {
-    const words = safeText(value).split(' ').filter(Boolean);
-    const rows = [];
-    let current = '';
+    const center = (value) => {
+        const rawText = safeText(value);
+        if (!isNarrow && rawText.length >= columns) return rawText;
+        const text = isNarrow ? truncateText(rawText, columns) : rawText;
+        const left = Math.floor((columns - text.length) / 2);
+        return `${' '.repeat(left)}${text}`;
+    };
 
-    words.forEach((word) => {
-        if (!current) {
+    const pair = (label, value) => {
+        const left = safeText(label);
+        const right = safeText(value);
+        const space = columns - left.length - right.length;
+        if (space > 1) return `${left}${' '.repeat(space)}${right}`;
+        if (!isNarrow) return `${left} ${right}`;
+
+        const fittedRight = truncateText(right, Math.max(1, columns - 2));
+        const fittedLeft = truncateText(left, Math.max(1, columns - fittedRight.length - 1));
+        return `${fittedLeft} ${fittedRight}`.slice(0, columns);
+    };
+
+    const wrapText = (value, width = columns) => {
+        const safeWidth = Math.max(1, Number(width) || columns);
+        const words = safeText(value).split(' ').filter(Boolean);
+        const rows = [];
+        let current = '';
+
+        words.forEach((word) => {
+            if (isNarrow && word.length > safeWidth) {
+                if (current) {
+                    rows.push(current);
+                    current = '';
+                }
+                for (let index = 0; index < word.length; index += safeWidth) {
+                    rows.push(word.slice(index, index + safeWidth));
+                }
+                return;
+            }
+            if (!current) {
+                current = word;
+                return;
+            }
+            if (`${current} ${word}`.length <= safeWidth) {
+                current = `${current} ${word}`;
+                return;
+            }
+            rows.push(current);
             current = word;
-            return;
-        }
-        if (`${current} ${word}`.length <= width) {
-            current = `${current} ${word}`;
-            return;
-        }
-        rows.push(current);
-        current = word;
-    });
+        });
 
-    if (current) rows.push(current);
-    return rows.length ? rows : [''];
+        if (current) rows.push(current);
+        return rows.length ? rows : [''];
+    };
+
+    const pushCenteredWrapped = (rows, value) => {
+        wrapText(value).forEach((row) => rows.push(center(row)));
+    };
+    const fitRows = (rows) => isNarrow ? rows.flatMap((row) => {
+        const text = String(row ?? '');
+        return text.length <= columns ? [text] : wrapText(text, columns);
+    }) : rows;
+
+    return { columns, line, center, pair, wrapText, pushCenteredWrapped, fitRows };
 };
+
+const { line, center, pair } = createTextLayout('80mm');
 
 const parseBridgeResult = (value, fallbackMessage) => {
     if (value && typeof value === 'object') {
@@ -397,15 +458,18 @@ const parseArrayMetadata = (value) => {
     }
 };
 
-const pushCenteredWrapped = (rows, value) => {
-    wrapText(value).forEach((row) => rows.push(center(row)));
-};
-
-export const formatIminReceiptText = ({ transaction, businessSettings = {}, receiptContract = null }) => {
+export const formatIminReceiptText = ({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) => {
+    const {
+        columns,
+        line,
+        center,
+        pair,
+        wrapText,
+        pushCenteredWrapped,
+        fitRows
+    } = createTextLayout(paperWidth);
     const lines = Array.isArray(transaction?.lines) ? transaction.lines : [];
-    const printedAt = transaction?.created_at
-        ? new Date(transaction.created_at).toLocaleString()
-        : new Date().toLocaleString();
+    const printedAt = formatIminReceiptDateTime(transaction?.created_at, paperWidth);
     const documentType = resolveDocumentType(transaction, receiptContract);
     const isFiscal = documentType === 'fiscal_invoice';
     const restaurantServiceChargeAmount = Number(transaction?.restaurant_service_charge_amount || 0);
@@ -506,7 +570,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
             item?.fnb_special_instructions ? `Notes: ${item.fnb_special_instructions}` : ''
         ].filter(Boolean).join(' ');
         if (fnbDetails) {
-            wrapText(fnbDetails).forEach((row) => receiptRows.push(`  ${row}`.slice(0, RECEIPT_COLUMNS)));
+            wrapText(fnbDetails).forEach((row) => receiptRows.push(`  ${row}`.slice(0, columns)));
         }
     });
 
@@ -575,6 +639,14 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
             receiptRows.push(pair(formatPaymentLabel(entry), money(entry.amount)));
         });
     }
+    const deliveryProviderBreakdown = parsePaymentBreakdown(transaction?.delivery_provider_breakdown)
+        .filter((entry) => Number(entry?.amount || 0) > 0);
+    if (deliveryProviderBreakdown.length > 0) {
+        receiptRows.push('Delivery Provider Breakdown');
+        deliveryProviderBreakdown.forEach((entry) => {
+            receiptRows.push(pair(formatDeliveryProviderLabel(entry), money(entry.amount)));
+        });
+    }
     if (transaction?.payment_type === 'employee_credit') {
         receiptRows.push(
             `Employee: ${safeText(transaction?.employee_credit_employee_name_snapshot)}`,
@@ -615,10 +687,10 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     receiptRows.push(center('Thank you. Please come again.'));
     receiptRows.push(center('Powered by DGFY POS'));
 
-    return receiptRows.join('\n');
+    return fitRows(receiptRows).join('\n');
 };
 
-export const printReceiptWithIminBridge = ({ transaction, businessSettings = {}, receiptContract = null, openDrawerAfterPrint = true }) => {
+export const printReceiptWithIminBridge = ({ transaction, businessSettings = {}, receiptContract = null, openDrawerAfterPrint = true, paperWidth = '80mm' }) => {
     const bridge = getIminBridge();
     if (!bridge || ![
         'printReceiptWithLogoAsync',
@@ -629,7 +701,7 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
         return { handled: false };
     }
 
-    const receiptText = formatIminReceiptText({ transaction, businessSettings, receiptContract });
+    const receiptText = formatIminReceiptText({ transaction, businessSettings, receiptContract, paperWidth });
 
     // printReceiptWithLogo carries the tenant's company icon (see IminBridge.kt /
     // ReceiptLogoProvider) in the SAME print command as the receipt text -- unlike
@@ -741,8 +813,21 @@ const paymentBreakdownLabel = (entry) => safeText(
     entry?.payment_label || entry?.payment_type,
     'Other'
 );
+const deliveryProviderSummaryLabel = (entry) => {
+    const providerType = safeText(entry?.provider_type).toLowerCase();
+    if (providerType === 'other') return `${safeText(entry?.provider_name, 'Other')} (Other)`;
+    if (providerType === 'foodpanda') return 'Foodpanda';
+    if (providerType === 'grab') return 'Grab';
+    return safeText(entry?.display_label || providerType, 'Delivery provider');
+};
 
-export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings = {} } = {}) => {
+export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings = {}, paperWidth = '80mm' } = {}) => {
+    const {
+        line,
+        center,
+        pair,
+        fitRows
+    } = createTextLayout(paperWidth);
     const shift = shiftSummary?.shift || {};
     const cash = shiftSummary?.cash_summary || {};
     const sales = shiftSummary?.sales_summary || {};
@@ -758,6 +843,13 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
     (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : []).forEach((entry) => {
         lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatShiftSummaryValue(entry.amount)));
     });
+    const deliveryProviders = Array.isArray(sales.delivery_provider_breakdown) ? sales.delivery_provider_breakdown : [];
+    if (deliveryProviders.length > 0) {
+        lines.push(line(), center('DELIVERY PROVIDER BREAKDOWN'));
+        deliveryProviders.forEach((entry) => {
+            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${entry.transaction_count || 0})`, formatShiftSummaryValue(entry.amount)));
+        });
+    }
     lines.push(
         line(),
         center('CASH RECONCILIATION'),
@@ -771,10 +863,10 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         line(),
         center('Keep with cashier close evidence.')
     );
-    return lines.join('\n');
+    return fitRows(lines).join('\n');
 };
 
-export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings = {} }) => {
+export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings = {}, paperWidth = '80mm' }) => {
     const bridge = getIminBridge();
     if (!bridge || (
         typeof bridge.printReceiptAsync !== 'function'
@@ -785,7 +877,7 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
 
     const raw = sendIminTextPrint({
         bridge,
-        receiptText: formatIminShiftSummaryText({ shiftSummary, businessSettings }),
+        receiptText: formatIminShiftSummaryText({ shiftSummary, businessSettings, paperWidth }),
         fallbackMessage: 'Shift sales summary print command sent.'
     });
     return mapMaybePromise(raw, (value) => {
@@ -822,7 +914,13 @@ const formatOptionalZReadingValue = (value) => (
     value === null || value === undefined ? '-' : formatZReadingValue(value)
 );
 
-export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } = {}) => {
+export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, paperWidth = '80mm' } = {}) => {
+    const {
+        line,
+        center,
+        pair,
+        fitRows
+    } = createTextLayout(paperWidth);
     const reading = zReading?.z_reading || {};
     const summary = reading?.summary || {};
     const reconciliation = reading?.reconciliation || reading?.z_reading_reconciliation || null;
@@ -857,6 +955,13 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
     (Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : []).forEach((entry) => {
         lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatZReadingValue(entry.amount)));
     });
+    const deliveryProviders = Array.isArray(summary.delivery_provider_breakdown) ? summary.delivery_provider_breakdown : [];
+    if (deliveryProviders.length > 0) {
+        lines.push(line(), center('DELIVERY PROVIDER BREAKDOWN'));
+        deliveryProviders.forEach((entry) => {
+            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${entry.transaction_count || 0})`, formatZReadingValue(entry.amount)));
+        });
+    }
     lines.push(
         line(),
         center('FISCAL COUNTERS'),
@@ -866,10 +971,10 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         center('Provider refunds reconciled separately.'),
         center('Keep with day-end close evidence.')
     );
-    return lines.join('\n');
+    return fitRows(lines).join('\n');
 };
 
-export const printZReadingWithIminBridge = ({ zReading, businessSettings = {} }) => {
+export const printZReadingWithIminBridge = ({ zReading, businessSettings = {}, paperWidth = '80mm' }) => {
     const bridge = getIminBridge();
     if (!bridge || (
         typeof bridge.printReceiptAsync !== 'function'
@@ -880,7 +985,7 @@ export const printZReadingWithIminBridge = ({ zReading, businessSettings = {} })
 
     const raw = sendIminTextPrint({
         bridge,
-        receiptText: formatIminZReadingText({ zReading, businessSettings }),
+        receiptText: formatIminZReadingText({ zReading, businessSettings, paperWidth }),
         fallbackMessage: 'Z-reading print command sent.'
     });
     return mapMaybePromise(raw, (value) => {
@@ -902,8 +1007,17 @@ export const formatIminOrderTicketText = ({
     terminalId = '',
     orderMethod = '',
     fnbContext = null,
-    orderNotes = ''
+    orderNotes = '',
+    paperWidth = '80mm'
 }) => {
+    const {
+        columns,
+        line,
+        center,
+        wrapText,
+        pushCenteredWrapped,
+        fitRows
+    } = createTextLayout(paperWidth);
     const rows = [
         center('DGFY'),
         center('PRINT ORDER'),
@@ -942,11 +1056,11 @@ export const formatIminOrderTicketText = ({
     cart.forEach((cartLine, index) => {
         const quantity = Number(cartLine?.quantity || 0);
         const itemName = resolveOrderTicketItemName(cartLine, index);
-        rows.push(`${quantity.toFixed(quantity % 1 === 0 ? 0 : 2)} x ${itemName}`.slice(0, RECEIPT_COLUMNS));
+        rows.push(`${quantity.toFixed(quantity % 1 === 0 ? 0 : 2)} x ${itemName}`.slice(0, columns));
 
         const course = safeText(cartLine?.course || cartLine?.fnb_course_snapshot);
         if (course) {
-            wrapText(`Course: ${course}`).forEach((row) => rows.push(`  ${row}`.slice(0, RECEIPT_COLUMNS)));
+            wrapText(`Course: ${course}`).forEach((row) => rows.push(`  ${row}`.slice(0, columns)));
         }
 
         const modifiers = Array.isArray(cartLine?.line_modifiers)
@@ -957,21 +1071,21 @@ export const formatIminOrderTicketText = ({
                 .map((modifier) => modifier?.option_name || modifier?.name)
                 .filter(Boolean);
         if (modifiers.length) {
-            wrapText(`Modifiers: ${modifiers.join(', ')}`).forEach((row) => rows.push(`  ${row}`.slice(0, RECEIPT_COLUMNS)));
+            wrapText(`Modifiers: ${modifiers.join(', ')}`).forEach((row) => rows.push(`  ${row}`.slice(0, columns)));
         }
 
         const specialRequest = safeText(
             cartLine?.special_instructions || cartLine?.fnb_special_instructions || cartLine?.notes
         );
         if (specialRequest) {
-            wrapText(`Special request: ${specialRequest}`).forEach((row) => rows.push(`  ${row}`.slice(0, RECEIPT_COLUMNS)));
+            wrapText(`Special request: ${specialRequest}`).forEach((row) => rows.push(`  ${row}`.slice(0, columns)));
         }
 
         rows.push(line());
     });
 
     rows.push(center('Kitchen / Order Copy'));
-    return rows.join('\n');
+    return fitRows(rows).join('\n');
 };
 
 export const formatIminBillRequestText = ({
@@ -980,8 +1094,17 @@ export const formatIminBillRequestText = ({
     orderMethod = '',
     fnbContext = null,
     orderNotes = '',
-    billTotal = null
+    billTotal = null,
+    paperWidth = '80mm'
 }) => {
+    const {
+        line,
+        center,
+        pair,
+        wrapText,
+        pushCenteredWrapped,
+        fitRows
+    } = createTextLayout(paperWidth);
     const rows = [
         center('DGFY'),
         center('BILL REQUEST'),
@@ -1023,7 +1146,7 @@ export const formatIminBillRequestText = ({
     const total = Number.isFinite(Number(billTotal)) ? Number(billTotal) : calculatedTotal;
     rows.push(pair('Overall price', money(total)));
     rows.push(center('No payment recorded'));
-    return rows.join('\n');
+    return fitRows(rows).join('\n');
 };
 
 export const printOrderWithIminBridge = ({
@@ -1033,7 +1156,8 @@ export const printOrderWithIminBridge = ({
     fnbContext = null,
     orderNotes = '',
     billRequest = false,
-    billTotal = null
+    billTotal = null,
+    paperWidth = '80mm'
 }) => {
     const bridge = getIminBridge();
     if (!bridge || (
@@ -1049,8 +1173,8 @@ export const printOrderWithIminBridge = ({
     const raw = sendIminTextPrint({
         bridge,
         receiptText: billRequest
-            ? formatIminBillRequestText({ cart, terminalId, orderMethod, fnbContext, orderNotes, billTotal })
-            : formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext, orderNotes }),
+            ? formatIminBillRequestText({ cart, terminalId, orderMethod, fnbContext, orderNotes, billTotal, paperWidth })
+            : formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext, orderNotes, paperWidth }),
         fallbackMessage
     });
     return mapMaybePromise(raw, (value) => {

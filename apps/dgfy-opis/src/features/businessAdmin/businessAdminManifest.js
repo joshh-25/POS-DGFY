@@ -96,6 +96,7 @@ export const BACKOFFICE_MANIFEST = Object.freeze({
   approvals: module('Settings', 'approvals', 'Approvals', 'Review high-risk requests. Execution stays with the canonical POS command owner.', ShieldCheck),
   onboarding: module('Settings', 'onboarding', 'POS onboarding', 'Track the current business, branch, and workflow readiness contract.', CheckCircle2),
   storefront: module('Settings', 'storefront', 'Storefront', 'Review storefront-facing readiness while keeping public commerce ownership in Storefront.', Store),
+  company: module('Settings', 'company', 'Company', 'Review company registration, storefront readiness, location, hours, and private upload status.', Building2),
   settings: module('Settings', 'settings', 'Settings', 'Back Office owns business and branch configuration; terminal-only controls remain in POS.', Settings),
   'ai-chat': module('Settings', 'ai-chat', 'Business assistant', 'Use the assistant for this business from the POS Back Office.', Sparkles, AiChatPage)
 });

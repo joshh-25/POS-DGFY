@@ -989,10 +989,23 @@ export const buildListDgfyCustomerActivitiesUseCase = ({
 };
 
 export const buildListDgfyCustomerNotificationsUseCase = ({
-    repository = dgfyCustomerRepository
+    repository = dgfyCustomerRepository,
+    registrationApplicationReader = null,
+    ensureRejectedCompanyRegistrationNotifications = null
 } = {}) => async ({ account, query = {} }) => {
     try {
         const dgfyAccount = ensureAccount(account);
+        if (typeof registrationApplicationReader === 'function' && typeof ensureRejectedCompanyRegistrationNotifications === 'function') {
+            try {
+                const registrationApplications = await Promise.resolve(registrationApplicationReader(dgfyAccount.id)).catch(() => []);
+                await ensureRejectedCompanyRegistrationNotifications({
+                    accountId: dgfyAccount.id,
+                    applications: registrationApplications
+                });
+            } catch {
+                // Notification backfill is best-effort; it must never hide existing notifications.
+            }
+        }
         const result = await repository.listNotificationsForAccount(dgfyAccount.id, {
             limit: query.limit,
             unreadOnly: ['1', 'true', true].includes(query.unread_only ?? query.unreadOnly)

@@ -51,7 +51,17 @@ const signedDiscount = (value) => {
   return money(amount > 0 ? -amount : 0);
 };
 const formatQuantity = (value) => Number.isInteger(Number(value)) ? String(value) : Number(value || 0).toFixed(2);
-const dateTime = (value) => value ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+const dateTime = (value, paperWidth = '80mm') => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (normalizePaperWidth(paperWidth) === '57mm') {
+    if (Number.isNaN(date.getTime())) return '-';
+    const datePart = date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const timePart = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${datePart} ${timePart}`;
+  }
+  return date.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+};
 const documentInfo = (transaction, receiptContract) => {
   const type = String(receiptContract?.document_type || transaction?.document_type || 'non_fiscal_slip').toLowerCase();
   return { fiscal: type === 'fiscal_invoice' };
@@ -69,6 +79,18 @@ const parseArrayMetadata = (value) => {
 const paymentBreakdownRows = (transaction) => parsePaymentBreakdown(transaction?.payment_breakdown)
   .filter((entry) => Number(entry?.amount || 0) > 0)
   .map((entry) => `<p><span>${escapeHtml(text(entry?.payment_label || entry?.payment_type, 'Payment'))}</span><span>${money(entry.amount)}</span></p>`)
+  .join('');
+const deliveryProviderLabel = (entry) => {
+  const providerType = String(entry?.provider_type || '').trim().toLowerCase();
+  if (providerType === 'other') {
+    const providerName = text(entry?.provider_name, 'Other');
+    return `${providerName} (Other)`;
+  }
+  return providerType === 'foodpanda' ? 'Foodpanda' : providerType === 'grab' ? 'Grab' : text(entry?.display_label || providerType, 'Delivery provider');
+};
+const deliveryProviderBreakdownRows = (transaction) => parsePaymentBreakdown(transaction?.delivery_provider_breakdown)
+  .filter((entry) => Number(entry?.amount || 0) > 0)
+  .map((entry) => `<p><span>${escapeHtml(deliveryProviderLabel(entry))}</span><span>${money(entry.amount)}</span></p>`)
   .join('');
 
 export const normalizePaperWidth = (value) => value === '57mm' ? '57mm' : '80mm';
@@ -124,16 +146,21 @@ function renderPosReceiptHtmlBase({ transaction, businessSettings = {}, receiptC
     : '';
   return `<style>
   .dgfy-receipt{--receipt-width:${width};box-sizing:border-box;width:var(--receipt-width);max-width:100%;margin:auto;padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;color:#0f172a;font:11px/1.22 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 1px 3px #0f172a1a}.dgfy-receipt *{box-sizing:border-box}.dgfy-receipt .head,.dgfy-receipt .footer{border-bottom:1px dashed #cbd5e1;padding-bottom:8px;margin-bottom:8px;text-align:center}.dgfy-receipt .logo{max-width:80px;max-height:72px;object-fit:contain;margin:0 auto 6px;display:block}.dgfy-receipt h3{margin:6px 0 0;font-size:12px;letter-spacing:.05em}.dgfy-receipt p{display:flex;justify-content:space-between;gap:8px;margin:2px 0}.dgfy-receipt .notice{display:block;margin-top:5px;padding:3px 6px;border:1px solid #fcd34d;background:#fffbeb;color:#b45309;border-radius:5px;font-size:9px}.dgfy-receipt .notice.training{border-color:#fca5a5;background:#fef2f2;color:#b91c1c}.dgfy-receipt .meta{text-align:left;margin-top:8px;color:#334155}.dgfy-receipt .columns,.dgfy-receipt .grid{display:grid;grid-template-columns:minmax(0,1fr) 3.25rem 1.25rem 3.25rem;gap:4px}.dgfy-receipt .columns{padding-bottom:4px;border-bottom:1px dashed #cbd5e1;font-size:8px;color:#64748b;text-transform:uppercase}.dgfy-receipt .columns span:not(:first-child),.dgfy-receipt .grid span,.dgfy-receipt .grid strong:not(:first-child){text-align:right}.dgfy-receipt .line{padding:5px 0;border-bottom:1px dashed #e2e8f0}.dgfy-receipt .line small{display:block;color:#64748b;margin-top:2px;padding-left:2ch}.dgfy-receipt .line-adjustment{color:#b45309;font-size:10px;padding-top:2px}.dgfy-receipt .line-net-total{border-top:1px dotted #cbd5e1;margin-top:2px;padding-top:2px;color:#020617;font-weight:800}.dgfy-receipt .summary,.dgfy-receipt .payment{border-top:1px dashed #cbd5e1;margin-top:8px;padding-top:8px;color:#475569}.dgfy-receipt .summary .total{border-top:1px solid #cbd5e1;padding-top:4px;margin-top:4px;color:#020617;font-size:12px;font-weight:800}.dgfy-receipt .footer{border-bottom:0;border-top:1px dashed #cbd5e1;margin:8px 0 0;padding:8px 0 0;color:#64748b;display:block}.dgfy-receipt .footer p{display:block;margin:2px 0}.dgfy-receipt .buyer{border-top:1px dashed #cbd5e1;margin-top:8px;padding-top:8px;text-align:left;color:#334155}.dgfy-receipt[data-paper-width="57mm"]{font-size:10px}.dgfy-receipt[data-paper-width="57mm"] .columns,.dgfy-receipt[data-paper-width="57mm"] .grid{grid-template-columns:minmax(0,1fr) 2.45rem 1.05rem 2.45rem;gap:3px}.dgfy-receipt[data-paper-width="57mm"] .logo{max-width:64px}.dgfy-receipt .add-ons{font-weight:600}.dgfy-receipt .line-note{font-style:italic}@media print{.dgfy-receipt{border:0;border-radius:0;box-shadow:none;padding:0}}
-  </style><article class="dgfy-receipt" data-paper-width="${width}"><header class="head">${icon ? `<img class="logo" src="${escapeHtml(icon)}" alt="${escapeHtml(iconAlt)}">` : ''}${registered ? `<strong>${escapeHtml(registered.toUpperCase())}</strong>` : ''}${business && business.toLowerCase() !== 'dgfy' ? `<div>${escapeHtml(business.toUpperCase())}</div>` : ''}${businessSettings.pos_address ? `<div>${escapeHtml(businessSettings.pos_address)}</div>` : ''}${label ? `<h3>${label}</h3>` : ''}${fiscal ? fiscalHeaderRows : ''}${fiscal ? `<div class="buyer"><strong>SOLD TO:</strong><p>Customer/Registered Name: ${escapeHtml(text(transaction.customer_name || transaction.buyer_name, '________________'))}</p><p>TIN: ${escapeHtml(text(transaction.buyer_tin, '________________'))}</p><p>Business Address: ${escapeHtml(text(transaction.buyer_address, '____________________'))}</p>${transaction.buyer_business_style ? `<p>Business Style: ${escapeHtml(transaction.buyer_business_style)}</p>` : ''}</div>` : ''}<div class="meta"><p><span>Receipt No.</span><span>${escapeHtml(text(transaction.invoice_number))}</span></p><p><span>Date/Time</span><span>${escapeHtml(dateTime(transaction.created_at))}</span></p><p><span>Terminal</span><span>${escapeHtml(text(transaction.terminal_id))}</span></p><p><span>Cashier</span><span>${escapeHtml(text(transaction.cashier?.username || transaction.acceptedByUser?.username))}</span></p></div></header><section>${lines.length ? `<div class="columns"><span>Item</span><span>Unit Price</span><span>Qty</span><span>Total</span></div>${itemRows}` : ''}</section><section class="summary"><p><strong>TOTAL SALES</strong><span>${money(transaction.subtotal_amount)}</span></p>${governedRows}${fiscalRows}<p><span>${escapeHtml(discountRowLabel(transaction))}</span><span>${signedDiscount(transaction.discount_amount)}</span></p>${Number(transaction.restaurant_service_charge_amount || 0) ? `<p><span>${escapeHtml(transaction.restaurant_service_charge_label_snapshot || 'Restaurant service charge')}</span><span>${money(transaction.restaurant_service_charge_amount)}</span></p>` : ''}${Number(transaction.delivery_fee || 0) ? `<p><span>Delivery Fee</span><span>${money(transaction.delivery_fee)}</span></p>` : ''}<p class="total"><span>TOTAL AMOUNT DUE</span><span>${money(transaction.total_amount)}</span></p></section><section class="payment"><p><span>Payment Method:</span><span>${escapeHtml(upper(transaction.payment_type))}</span></p><p><span>Payment Status:</span><span>${escapeHtml(upper(transaction.payment_status))}</span></p>${transaction.payment_reference ? `<p><span>Payment Reference:</span><span>${escapeHtml(transaction.payment_reference)}</span></p>` : ''}${transaction.payment_type === 'cash' ? `<p><span>Cash Received:</span><span>${money(transaction.cash_received)}</span></p><p><span>Change:</span><span>${money(transaction.change_amount)}</span></p>` : ''}${statutoryReceiptFields}</section><footer class="footer">${fiscal ? '<p><strong>FISCAL RECEIPT</strong></p><p>Includes tax breakdown and fiscal identifiers.</p>' : '<p>This document is not an official receipt.</p>'}${businessSettings.pos_receipt_footer_message ? `<p>${escapeHtml(businessSettings.pos_receipt_footer_message)}</p>` : ''}<p>Thank you. Please come again.</p><p><strong>Powered by DGFY POS</strong></p></footer></article>`;
+  </style><article class="dgfy-receipt" data-paper-width="${width}"><header class="head">${icon ? `<img class="logo" src="${escapeHtml(icon)}" alt="${escapeHtml(iconAlt)}">` : ''}${registered ? `<strong>${escapeHtml(registered.toUpperCase())}</strong>` : ''}${business && business.toLowerCase() !== 'dgfy' ? `<div>${escapeHtml(business.toUpperCase())}</div>` : ''}${businessSettings.pos_address ? `<div>${escapeHtml(businessSettings.pos_address)}</div>` : ''}${label ? `<h3>${label}</h3>` : ''}${fiscal ? fiscalHeaderRows : ''}${fiscal ? `<div class="buyer"><strong>SOLD TO:</strong><p>Customer/Registered Name: ${escapeHtml(text(transaction.customer_name || transaction.buyer_name, '________________'))}</p><p>TIN: ${escapeHtml(text(transaction.buyer_tin, '________________'))}</p><p>Business Address: ${escapeHtml(text(transaction.buyer_address, '____________________'))}</p>${transaction.buyer_business_style ? `<p>Business Style: ${escapeHtml(transaction.buyer_business_style)}</p>` : ''}</div>` : ''}<div class="meta"><p><span>Receipt No.</span><span>${escapeHtml(text(transaction.invoice_number))}</span></p><p><span>Date/Time</span><span>${escapeHtml(dateTime(transaction.created_at, width))}</span></p><p><span>Terminal</span><span>${escapeHtml(text(transaction.terminal_id))}</span></p><p><span>Cashier</span><span>${escapeHtml(text(transaction.cashier?.username || transaction.acceptedByUser?.username))}</span></p></div></header><section>${lines.length ? `<div class="columns"><span>Item</span><span>Unit Price</span><span>Qty</span><span>Total</span></div>${itemRows}` : ''}</section><section class="summary"><p><strong>TOTAL SALES</strong><span>${money(transaction.subtotal_amount)}</span></p>${governedRows}${fiscalRows}<p><span>${escapeHtml(discountRowLabel(transaction))}</span><span>${signedDiscount(transaction.discount_amount)}</span></p>${Number(transaction.restaurant_service_charge_amount || 0) ? `<p><span>${escapeHtml(transaction.restaurant_service_charge_label_snapshot || 'Restaurant service charge')}</span><span>${money(transaction.restaurant_service_charge_amount)}</span></p>` : ''}${Number(transaction.delivery_fee || 0) ? `<p><span>Delivery Fee</span><span>${money(transaction.delivery_fee)}</span></p>` : ''}<p class="total"><span>TOTAL AMOUNT DUE</span><span>${money(transaction.total_amount)}</span></p></section><section class="payment"><p><span>Payment Method:</span><span>${escapeHtml(upper(transaction.payment_type))}</span></p><p><span>Payment Status:</span><span>${escapeHtml(upper(transaction.payment_status))}</span></p>${transaction.payment_reference ? `<p><span>Payment Reference:</span><span>${escapeHtml(transaction.payment_reference)}</span></p>` : ''}${transaction.payment_type === 'cash' ? `<p><span>Cash Received:</span><span>${money(transaction.cash_received)}</span></p><p><span>Change:</span><span>${money(transaction.change_amount)}</span></p>` : ''}${statutoryReceiptFields}</section><footer class="footer">${fiscal ? '<p><strong>FISCAL RECEIPT</strong></p><p>Includes tax breakdown and fiscal identifiers.</p>' : '<p>This document is not an official receipt.</p>'}${businessSettings.pos_receipt_footer_message ? `<p>${escapeHtml(businessSettings.pos_receipt_footer_message)}</p>` : ''}<p>Thank you. Please come again.</p><p><strong>Powered by DGFY POS</strong></p></footer></article>`;
 }
 
 export function renderPosReceiptHtml(input = {}) {
   const html = renderPosReceiptHtmlBase(input);
   const breakdown = paymentBreakdownRows(input?.transaction);
-  if (!breakdown || !html) return html;
+  const deliveryBreakdown = deliveryProviderBreakdownRows(input?.transaction);
+  if ((!breakdown && !deliveryBreakdown) || !html) return html;
+  const sections = [
+    breakdown ? `<p><strong>Payment Breakdown</strong><span></span></p>${breakdown}` : '',
+    deliveryBreakdown ? `<p><strong>Delivery Provider Breakdown</strong><span></span></p>${deliveryBreakdown}` : ''
+  ].join('');
   return html.replace(
     '</section><footer class="footer">',
-    `<p><strong>Payment Breakdown</strong><span></span></p>${breakdown}</section><footer class="footer">`
+    `${sections}</section><footer class="footer">`
   );
 }
 
@@ -175,17 +202,21 @@ function renderThermalReceiptTextBase(input = {}) {
     rule,
     'Thank you. Please come again.'
   ];
-  return [text(input.businessSettings?.pos_business_name, 'DGFY POS'), rule, pair('Receipt No.', text(transaction.invoice_number)), pair('Date/Time', dateTime(transaction.created_at)), ...lineRows, ...summaryRows].join('\n');
+  return [text(input.businessSettings?.pos_business_name, 'DGFY POS'), rule, pair('Receipt No.', text(transaction.invoice_number)), pair('Date/Time', dateTime(transaction.created_at, width)), ...lineRows, ...summaryRows].join('\n');
 }
 
 export function renderThermalReceiptText(input = {}) {
   const rendered = renderThermalReceiptTextBase(input);
   const transaction = input.transaction || {};
   const breakdown = parsePaymentBreakdown(transaction.payment_breakdown).filter((entry) => Number(entry?.amount || 0) > 0);
-  if (!breakdown.length) return rendered;
+  const deliveryBreakdown = parsePaymentBreakdown(transaction.delivery_provider_breakdown).filter((entry) => Number(entry?.amount || 0) > 0);
+  if (!breakdown.length && !deliveryBreakdown.length) return rendered;
   const columns = normalizePaperWidth(input.paperWidth) === '57mm' ? 32 : 42;
   const pair = (label, value) => `${label}`.slice(0, columns - String(value).length - 1).padEnd(columns - String(value).length, ' ') + String(value);
   const paymentLine = pair('Payment', upper(transaction.payment_type));
-  const rows = breakdown.map((entry) => `${entry.payment_label || upper(entry.payment_type)} ${money(entry.amount)}`).join('\n');
+  const rows = [
+    breakdown.length ? ['Payment Breakdown', ...breakdown.map((entry) => `${entry.payment_label || upper(entry.payment_type)} ${money(entry.amount)}`)] : [],
+    deliveryBreakdown.length ? ['Delivery Provider Breakdown', ...deliveryBreakdown.map((entry) => `${deliveryProviderLabel(entry)} ${money(entry.amount)}`)] : []
+  ].flat().join('\n');
   return rendered.replace(paymentLine, `${paymentLine}\n${rows}`);
 }

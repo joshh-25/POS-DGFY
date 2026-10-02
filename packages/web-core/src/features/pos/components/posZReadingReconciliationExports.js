@@ -1,3 +1,5 @@
+import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
+
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -116,23 +118,29 @@ const formatHistoryTimestamp = (value) => {
 };
 
 const getZReadingHistoryRows = (rows = [], { currencySymbol = '₱', formatMoney } = {}) => (
-  (Array.isArray(rows) ? rows : []).map((row) => ([
-    formatHistoryDate(row?.business_date),
-    row?.reading_identifier || '—',
-    row?.closed_from_terminal_id || '—',
-    row?.closed_by_display_name || (row?.closed_by_user_id ? `User #${row.closed_by_user_id}` : '—'),
-    row?.summary?.transaction_count ?? '—',
-    typeof formatMoney === 'function'
-      ? formatMoney(row?.summary?.total_amount, currencySymbol)
-      : `${currencySymbol}${Number(row?.summary?.total_amount || 0).toFixed(2)}`,
-    formatHistoryTimestamp(row?.generated_at)
-  ]))
+  (Array.isArray(rows) ? rows : []).map((row) => {
+    const providers = parseDeliveryProviderSummary(row?.summary?.delivery_provider_breakdown);
+    return [
+      formatHistoryDate(row?.business_date),
+      row?.reading_identifier || '—',
+      row?.closed_from_terminal_id || '—',
+      row?.closed_by_display_name || (row?.closed_by_user_id ? `User #${row.closed_by_user_id}` : '—'),
+      row?.summary?.transaction_count ?? '—',
+      typeof formatMoney === 'function'
+        ? formatMoney(row?.summary?.total_amount, currencySymbol)
+        : `${currencySymbol}${Number(row?.summary?.total_amount || 0).toFixed(2)}`,
+      providers.length > 0
+        ? providers.map((entry) => `${formatDeliveryProviderSummaryLabel(entry)}: ${typeof formatMoney === 'function' ? formatMoney(entry.amount, currencySymbol) : `${currencySymbol}${Number(entry.amount || 0).toFixed(2)}`}`).join(' + ')
+        : '—',
+      formatHistoryTimestamp(row?.generated_at)
+    ];
+  })
 );
 
 export const buildZReadingHistoryCsv = (rows, options = {}) => {
   const values = getZReadingHistoryRows(rows, options);
   if (!values.length) return '';
-  const headers = ['Business date', 'Z-reading reference', 'Terminal', 'Closed by', 'Transactions', 'Z-reading total', 'Generated at'];
+  const headers = ['Business date', 'Z-reading reference', 'Terminal', 'Closed by', 'Transactions', 'Z-reading total', 'Delivery providers', 'Generated at'];
   return `\uFEFF${[headers, ...values].map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')}`;
 };
 
@@ -145,7 +153,7 @@ export const buildZReadingHistoryPrintHtml = (rows, {
 } = {}) => {
   const values = getZReadingHistoryRows(rows, { currencySymbol, formatMoney });
   if (!values.length) return '';
-  const headers = ['Business date', 'Z-reading reference', 'Terminal', 'Closed by', 'Transactions', 'Z-reading total', 'Generated at'];
+  const headers = ['Business date', 'Z-reading reference', 'Terminal', 'Closed by', 'Transactions', 'Z-reading total', 'Delivery providers', 'Generated at'];
   const tableHead = headers.map((header) => `<th scope="col">${escapeHtml(header)}</th>`).join('');
   const tableRows = values.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('');
   const dateLabel = `${dateFrom || 'All dates'}${dateTo ? ` – ${dateTo}` : ''}`;

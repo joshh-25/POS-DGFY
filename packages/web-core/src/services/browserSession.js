@@ -145,7 +145,8 @@ export const ensureCsrfToken = async ({ force = false } = {}) => {
       method: 'GET',
       credentials: 'include',
       headers: {
-        Accept: 'application/json'
+        Accept: 'application/json',
+        ...(APP_SURFACE_HEADER_VALUE ? { 'x-dgfy-app-surface': APP_SURFACE_HEADER_VALUE } : {})
       }
     });
     if (!response.ok) {

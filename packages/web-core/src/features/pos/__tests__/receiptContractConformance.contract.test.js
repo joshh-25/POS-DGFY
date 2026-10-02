@@ -532,4 +532,73 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       });
     }
   });
+
+  it('uses a 32-column layout for 57 mm iMin receipts while preserving the 42-column 80 mm layout', () => {
+    const transaction = buildTransaction({
+      lines: [{
+        item_name_snapshot: 'A very long item name that must fit the narrow printer',
+        quantity: 1,
+        unit_of_measure: 'pc',
+        sale_price: 100,
+        line_subtotal: 100,
+        fnb_special_instructions: 'Extra-long kitchen instruction for the narrow receipt'
+      }],
+      payment_type: 'cash',
+      payment_status: 'paid',
+      cash_received: 100,
+      change_amount: 0,
+      total_amount: 100
+    });
+
+    const narrowText = formatIminReceiptText({
+      transaction,
+      businessSettings: { pos_business_name: 'Compatibility Test Store' },
+      paperWidth: '57mm'
+    });
+    const wideText = formatIminReceiptText({
+      transaction,
+      businessSettings: { pos_business_name: 'Compatibility Test Store' },
+      paperWidth: '80mm'
+    });
+
+    expect(narrowText.split('\n').every((row) => row.length <= 32)).toBe(true);
+    expect(narrowText).toContain('-'.repeat(32));
+    expect(wideText).toContain('-'.repeat(42));
+  });
+
+  it('uses MM/DD/YYYY with a short time for 57 mm preview and iMin receipts', () => {
+    const transaction = buildTransaction({
+      created_at: '2026-09-25T13:26:00',
+      invoice_number: 'INV-000083'
+    });
+    const businessSettings = { pos_business_name: 'Compatibility Test Store' };
+
+    renderReceipt({ transaction, businessSettings, paperWidth: '57mm' });
+
+    expect(screen.getByText('09/25/2026 1:26 PM')).toBeTruthy();
+
+    const narrowText = formatIminReceiptText({ transaction, businessSettings, paperWidth: '57mm' });
+    expect(narrowText).toContain('Date/Time: 09/25/2026 1:26 PM');
+
+    const printCalls = [];
+    window.iMinBridge = {
+      isIminWrapper: () => true,
+      printReceipt: (...args) => {
+        printCalls.push(args);
+        return { success: true, message: 'Receipt printed.' };
+      }
+    };
+    const printResult = printReceiptWithIminBridge({
+      transaction,
+      businessSettings,
+      paperWidth: '57mm',
+      openDrawerAfterPrint: false
+    });
+
+    expect(printResult.handled).toBe(true);
+    expect(printCalls[0][0]).toContain('Date/Time: 09/25/2026 1:26 PM');
+
+    const wideText = formatIminReceiptText({ transaction, businessSettings, paperWidth: '80mm' });
+    expect(wideText).not.toContain('Date/Time: 09/25/2026 1:26 PM');
+  });
 });

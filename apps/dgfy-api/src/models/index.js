@@ -226,6 +226,7 @@ import CompanyRegistrationApplicationFactory from './Landlord/CompanyRegistratio
 import CompanyRegistrationAttemptFactory from './Landlord/CompanyRegistrationAttempt.js';
 import CompanyRegistrationEventFactory from './Landlord/CompanyRegistrationEvent.js';
 import CompanyRegistrationEmailDeliveryFactory from './Landlord/CompanyRegistrationEmailDelivery.js';
+import CompanyRegistrationUploadFactory from './Landlord/CompanyRegistrationUpload.js';
 import PlatformInvoiceFactory from './Landlord/PlatformInvoice.js';
 import PlatformInvoicePaymentFactory from './Landlord/PlatformInvoicePayment.js';
 import PlatformInvoiceSequenceFactory from './Landlord/PlatformInvoiceSequence.js';
@@ -303,6 +304,7 @@ const CompanyRegistrationApplication = CompanyRegistrationApplicationFactory(seq
 const CompanyRegistrationAttempt = CompanyRegistrationAttemptFactory(sequelize);
 const CompanyRegistrationEvent = CompanyRegistrationEventFactory(sequelize);
 const CompanyRegistrationEmailDelivery = CompanyRegistrationEmailDeliveryFactory(sequelize);
+const CompanyRegistrationUpload = CompanyRegistrationUploadFactory(sequelize);
 const PlatformInvoice = PlatformInvoiceFactory(sequelize);
 const PlatformInvoicePayment = PlatformInvoicePaymentFactory(sequelize);
 const PlatformInvoiceSequence = PlatformInvoiceSequenceFactory(sequelize);
@@ -373,6 +375,10 @@ CompanyRegistrationApplication.hasMany(CompanyRegistrationAttempt, { foreignKey:
 CompanyRegistrationAttempt.belongsTo(CompanyRegistrationApplication, { foreignKey: 'application_id', as: 'application' });
 CompanyRegistrationApplication.hasMany(CompanyRegistrationEvent, { foreignKey: 'application_id', as: 'events' });
 CompanyRegistrationApplication.hasMany(CompanyRegistrationEmailDelivery, { foreignKey: 'application_id', as: 'emailDeliveries' });
+CompanyRegistrationApplication.hasMany(CompanyRegistrationUpload, { foreignKey: 'application_id', as: 'uploads' });
+CompanyRegistrationUpload.belongsTo(CompanyRegistrationApplication, { foreignKey: 'application_id', as: 'application' });
+CompanyRegistrationAttempt.hasMany(CompanyRegistrationUpload, { foreignKey: 'attempt_id', as: 'uploads' });
+CompanyRegistrationUpload.belongsTo(CompanyRegistrationAttempt, { foreignKey: 'attempt_id', as: 'attempt' });
 CompanyRegistrationApplication.hasMany(PlatformInvoice, { foreignKey: 'registration_application_id', as: 'platformInvoices' });
 PlatformInvoice.belongsTo(CompanyRegistrationApplication, { foreignKey: 'registration_application_id', as: 'registrationApplication' });
 PlatformInvoice.belongsTo(PlatformInvoice, { foreignKey: 'parent_invoice_id', as: 'parentInvoice' });
@@ -1424,6 +1430,7 @@ const db = {
   ,CompanyRegistrationAttempt
   ,CompanyRegistrationEvent
   ,CompanyRegistrationEmailDelivery
+  ,CompanyRegistrationUpload
   ,PlatformInvoice
   ,PlatformInvoicePayment
   ,PlatformInvoiceSequence
@@ -1653,6 +1660,7 @@ export {
   CompanyRegistrationAttempt,
   CompanyRegistrationEvent,
   CompanyRegistrationEmailDelivery,
+  CompanyRegistrationUpload,
   PlatformInvoice,
   PlatformInvoicePayment,
   PlatformInvoiceSequence,

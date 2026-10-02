@@ -238,6 +238,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historyPage,
         historyPageSize,
         historyPaymentType,
+        historyDeliveryProvider,
         historySearch,
         historyStatus,
         imagePreview,
@@ -331,6 +332,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setHistoryOrderMethod,
         setHistoryOrderSource,
         setHistoryPaymentType,
+        setHistoryDeliveryProvider,
         setHistorySearch,
         setHistoryStatus,
         setImagePreview,
@@ -442,6 +444,8 @@ return (
                         setHistoryStatus={setHistoryStatus}
                         historyPaymentType={historyPaymentType}
                         setHistoryPaymentType={setHistoryPaymentType}
+                        historyDeliveryProvider={historyDeliveryProvider}
+                        setHistoryDeliveryProvider={setHistoryDeliveryProvider}
                         historyOrderMethod={historyOrderMethod}
                         setHistoryOrderMethod={setHistoryOrderMethod}
                         historyOrderSource={historyOrderSource}
