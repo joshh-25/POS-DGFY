@@ -1,0 +1,9 @@
+title = "DGFY gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# Do not suppress the current baseline. The working-tree scan finds existing credentials and
+# secret-like values, including findings in the SQL backup tracked by #359. Keep scanning new PR
+# changes advisory until #239/#359 establish which values are safe to retain and the findings can
+# be addressed or narrowly allowlisted with evidence.
