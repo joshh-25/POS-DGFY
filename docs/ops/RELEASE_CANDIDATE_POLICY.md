@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-24
+last_reviewed: 2026-10-01
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1820,3 +1820,36 @@ scans promotion tags only (`-staging` and neutral production tags), never DEV. T
 workflow and steps are documented in `.agents/skills/promoter/references/promotion-runbook.md`.
 
 PR: (this PR). Closes #2071. Refs #2055, #982.
+
+### 2026-10-01: Independent backend artifact revisions, paired build/deploy (#2186)
+
+The API and migration-runner images retain independent immutable artifact revision streams,
+allocated and retried against their own image repositories and package floors. A shared
+`build_api` selection still keeps the backend operation paired, but dispatch inputs, skip-plan
+tags, manifest entries, production aliases, and parity checks use each app's own revision. A
+candidate's per-app map includes both backends or neither; modern maps omit unselected apps, while
+explicit legacy shared-revision inputs and v1 candidate manifests retain their compatibility path.
+
+Parity verifies per-app candidate source, package floor, revision, and recorded STAGING digest.
+Backend PROD reuses that neutral artifact digest. Frontend PROD digest may differ because its image
+contains environment-specific build configuration, so the manifest digest is checked against
+STAGING while PROD source, floor, revision, and alias checks remain in force. Paired PROD publish
+blocks on either backend's failure or cancellation; explicit safe skips are valid. Registry pushes
+are not transactional, and an already-published immutable image may remain after its sibling fails.
+
+Keep API `1.32.0` and migration-runner `1.21.0` package floors independently managed as they are
+today. Decision 6 already manages floors per app; this change corrects artifact revision routing,
+not semantic-version-floor policy. Any further package-floor policy split can be scheduled
+separately. Decision 7's immutable-tag guard remains unchanged.
+
+Full workflow and commands: `.agents/skills/promoter/references/promotion-runbook.md`'s
+"Deploy dispatch" section. PR: (this PR). Refs #2186.
+
+#### 2026-10-01 follow-up: OPIS production gating (#2186)
+
+`deploy-main.yml`'s `promote-aliases` and `publish` jobs depend on `frontend-opis-prod` and
+fail closed when it fails or is cancelled; `promote-aliases` also runs on an OPIS-only
+revision dispatch. Per-app revision inputs, skip planning, aliasing, and parity now cover all
+six app groups including `dgfy-opis`. Package floors stay independently managed and unchanged.
+
+PR: (this PR). Refs #2186.

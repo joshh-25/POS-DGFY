@@ -25,6 +25,7 @@ router.get('/activity', (req, res) => {
     return res.redirect(308, `${req.baseUrl}/audit${query}`);
 });
 router.get('/reports', businessAdminHandlers.getReports);
+router.get('/pos-activity-analytics', businessAdminHandlers.getPosActivityAnalytics);
 router.get('/reports/definitions', businessAdminHandlers.listReportDefinitions);
 router.get('/reports/datasets/:reportKey', businessAdminHandlers.getReportDataset);
 router.get('/reports/datasets/:reportKey/export', businessAdminHandlers.exportReportDataset);

@@ -73,13 +73,17 @@ on:
         default: ''
       release_revision_api:
         description: >-
-          Per-app artifact revision for dgfy-api AND dgfy-migration-runner (#2055, Phase 346 --
-          each app keeps its own allocated rN, e.g. "r16"; #1977's single candidate-wide value,
-          Phase 342). Covers both backends because build_api always rebuilds them as one paired
-          unit (a repair touching either always lists both in its manifest apps_touched, so the
-          promoter hands both the same value here -- their published tags still carry each
-          app's own floor). Required on a STAGING candidate dispatch (builders fail closed
-          without it); DEV ignores it (revisions are allocated in resolve-build-plan below).
+          Per-app artifact revision for dgfy-api (#2055, Phase 346). The migration runner has
+          its own input even though build_api remains the shared paired build checkbox. Required
+          when dgfy-api is selected for a STAGING candidate; DEV ignores it.
+        required: false
+        type: string
+        default: ''
+      release_revision_migration_runner:
+        description: >-
+          Independent per-app artifact revision for dgfy-migration-runner. It shares build_api
+          with dgfy-api but does not share the immutable image revision stream. Required when
+          selected for a STAGING candidate; DEV ignores it.
         required: false
         type: string
         default: ''
@@ -253,6 +257,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           REVISIONED_DEV_DISPATCH: ${{ inputs.revisioned_dev_dispatch }}
           RELEASE_REVISION_API: ${{ inputs.release_revision_api }}
+          RELEASE_REVISION_MIGRATION_RUNNER: ${{ inputs.release_revision_migration_runner }}
           RELEASE_REVISION_IMS: ${{ inputs.release_revision_frontend_ims }}
           RELEASE_REVISION_POS: ${{ inputs.release_revision_frontend_pos }}
           RELEASE_REVISION_STOREFRONT: ${{ inputs.release_revision_frontend_storefront }}
@@ -275,7 +280,15 @@ jobs:
             echo "revisions_json={}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_API);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);put('dgfy-opis',process.env.RELEASE_REVISION_OPIS);console.log(JSON.stringify(m))")"
+          API_SELECTED=false
+          MIGRATION_SELECTED=false
+          [ -z "${RELEASE_REVISION_API//[[:space:]]/}" ] || API_SELECTED=true
+          [ -z "${RELEASE_REVISION_MIGRATION_RUNNER//[[:space:]]/}" ] || MIGRATION_SELECTED=true
+          if [ "${API_SELECTED}" != "${MIGRATION_SELECTED}" ]; then
+            echo "::error::Candidate dispatch must select dgfy-api and dgfy-migration-runner artifact revisions together or omit both."
+            exit 1
+          fi
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_MIGRATION_RUNNER);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);put('dgfy-opis',process.env.RELEASE_REVISION_OPIS);console.log(JSON.stringify(m))")"
           echo "[revisions] STAGING dispatch -- per-app revisions from promotion inputs: ${REVISIONS_JSON}"
           echo "revisions_json=${REVISIONS_JSON}" >> "$GITHUB_OUTPUT"
 
@@ -421,7 +434,9 @@ jobs:
       inputs.publish && !cancelled() &&
       needs.resolve-build-plan.result == 'success' &&
       needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-api.result != 'cancelled' &&
       needs.dgfy-migration-runner.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'cancelled' &&
       needs.frontend-ims.result != 'failure' &&
       needs.frontend-pos.result != 'failure' &&
       needs.frontend-storefront.result != 'failure' &&

@@ -10,6 +10,7 @@ import { voucherRepository, reverseVoucherRedemptionUseCase } from '../vouchers/
 import { paymongoService } from '../../services/paymongoService.js';
 import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
+import { dgfyCustomerRepository } from '../dgfy/repositories/dgfyCustomerRepository.js';
 import {
     commercePaymentsEnabled,
     commerceQrphEnabled,
@@ -40,6 +41,7 @@ import {
     buildStoreCartQuoteUseCase,
     buildRequestStoreGuestCheckoutOtpUseCase,
     buildVerifyStoreGuestCheckoutOtpUseCase,
+    buildExchangeStoreGuestCheckoutGrantUseCase,
     buildStoreCheckoutPaymentSessionUseCase,
     buildGetStoreCheckoutPaymentSessionUseCase,
     buildReconcileStoreCheckoutPaymentSessionUseCase,
@@ -86,6 +88,7 @@ export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepositor
 const emailOtpService = { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp };
 export const requestStoreGuestCheckoutOtpUseCase = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
 export const verifyStoreGuestCheckoutOtpUseCase = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
+export const exchangeStoreGuestCheckoutGrantUseCase = buildExchangeStoreGuestCheckoutGrantUseCase({ dgfyCustomerRepository });
 export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessionUseCase({
     storeRepository,
     commercePaymentRepository,

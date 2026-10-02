@@ -1,4 +1,4 @@
-import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminCustomerUseCase, createBusinessAdminExpenseUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, exportBusinessAdminReportUseCase, getBusinessAdminAttendanceUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCompanyUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminExpensesUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase, voidBusinessAdminExpenseUseCase } from '../index.js';
+import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminCustomerUseCase, createBusinessAdminExpenseUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, exportBusinessAdminReportUseCase, getBusinessAdminAttendanceUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCompanyUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminPosActivityAnalyticsUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminExpensesUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase, voidBusinessAdminExpenseUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
 const timestamp = () => new Date().toISOString();
@@ -75,6 +75,17 @@ export const getMultiCompanyOverview = async (req, res, next) => {
 export const getReports = async (req, res, next) => {
     try {
         const result = await getBusinessAdminReportsUseCase({ query: req.query, user: req.user });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
+export const getPosActivityAnalytics = async (req, res, next) => {
+    try {
+        const result = await getBusinessAdminPosActivityAnalyticsUseCase({ query: req.query, user: req.user });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
@@ -428,6 +439,7 @@ export default {
     getOverview,
     getMultiCompanyOverview,
     getReports,
+    getPosActivityAnalytics,
     listReportDefinitions,
     getReportDataset,
     exportReportDataset,

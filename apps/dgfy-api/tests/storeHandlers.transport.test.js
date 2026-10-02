@@ -14,8 +14,10 @@ const mockDeleteStoreCustomerAddressUseCase = jest.fn();
 const mockStoreCartQuoteUseCase = jest.fn();
 const mockRequestStoreGuestCheckoutOtpUseCase = jest.fn();
 const mockVerifyStoreGuestCheckoutOtpUseCase = jest.fn();
+const mockExchangeStoreGuestCheckoutGrantUseCase = jest.fn();
 const mockStoreCheckoutPaymentSessionUseCase = jest.fn();
 const mockGetStoreCheckoutPaymentSessionUseCase = jest.fn();
+const mockReconcileStoreCheckoutPaymentSessionUseCase = jest.fn();
 const mockStoreCheckoutUseCase = jest.fn();
 const mockTrackStoreOrderUseCase = jest.fn();
 const mockClaimStoreOrderUseCase = jest.fn();
@@ -40,8 +42,10 @@ jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     storeCartQuoteUseCase: mockStoreCartQuoteUseCase,
     requestStoreGuestCheckoutOtpUseCase: mockRequestStoreGuestCheckoutOtpUseCase,
     verifyStoreGuestCheckoutOtpUseCase: mockVerifyStoreGuestCheckoutOtpUseCase,
+    exchangeStoreGuestCheckoutGrantUseCase: mockExchangeStoreGuestCheckoutGrantUseCase,
     storeCheckoutPaymentSessionUseCase: mockStoreCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase: mockGetStoreCheckoutPaymentSessionUseCase,
+    reconcileStoreCheckoutPaymentSessionUseCase: mockReconcileStoreCheckoutPaymentSessionUseCase,
     confirmStoreCheckoutSandboxPaymentUseCase: jest.fn(),
     storeCheckoutUseCase: mockStoreCheckoutUseCase,
     trackStoreOrderUseCase: mockTrackStoreOrderUseCase,
@@ -58,6 +62,7 @@ let listStoreCatalog;
 let listStoreLocations;
 let trackOrder;
 let createCheckoutPaymentSession;
+let exchangeGuestCheckoutVerificationGrant;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/store/controllers/storeHandlers.js');
@@ -66,6 +71,7 @@ beforeAll(async () => {
     listStoreLocations = mod.listStoreLocations;
     trackOrder = mod.trackOrder;
     createCheckoutPaymentSession = mod.createCheckoutPaymentSession;
+    exchangeGuestCheckoutVerificationGrant = mod.exchangeGuestCheckoutVerificationGrant;
 });
 
 const createRes = () => {
@@ -136,6 +142,32 @@ describe('storeHandlers transport contracts', () => {
             trustedReturnUrl: 'https://grandmatador.com/order'
         }));
         expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it('exchanges a guest verification grant using the stable success envelope', async () => {
+        const data = { email: 'guest@example.com', guest_checkout_proof: 'fresh-proof', expires_in: 900 };
+        mockExchangeStoreGuestCheckoutGrantUseCase.mockResolvedValue({ success: true, data });
+        const req = {
+            tenant: { id: 23 },
+            validatedData: { email: 'guest@example.com', verification_grant: 'signed-grant', idempotency_key: 'checkout-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await exchangeGuestCheckoutVerificationGrant(req, res, next);
+
+        expect(mockExchangeStoreGuestCheckoutGrantUseCase).toHaveBeenCalledWith({
+            tenantId: 23,
+            payload: req.validatedData
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data,
+            message: 'Guest checkout verification renewed',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
     });
 
     it('listStoreLocations returns stable success payload', async () => {

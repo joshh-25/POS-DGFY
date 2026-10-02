@@ -168,6 +168,26 @@ test('allocateArtifactRevision: end-to-end probe plus allocation with an injecte
   assert.deepEqual(retry, { revision: 1, reused: true, maxSeen: 1 });
 });
 
+test('backend allocation: API reuses r1 while migration runner advances independently past foreign r1-r4 and reuses r5 on retry', () => {
+  const candidateSha = 'a'.repeat(40);
+  const api = allocateRevision({
+    floor: '1.32.0', currentRevision: candidateSha,
+    sightings: [{ tag: '1.32.0-r1', revision: candidateSha }],
+  });
+  const migrationSightings = [1, 2, 3, 4].map((revision) => ({
+    tag: `1.21.0-r${revision}`,
+    revision: `${revision}`.repeat(40),
+  }));
+  const migration = allocateRevision({ floor: '1.21.0', currentRevision: candidateSha, sightings: migrationSightings });
+  const migrationRetry = allocateRevision({
+    floor: '1.21.0', currentRevision: candidateSha,
+    sightings: [...migrationSightings, { tag: '1.21.0-r5', revision: candidateSha }],
+  });
+  assert.deepEqual(api, { revision: 1, reused: true });
+  assert.deepEqual(migration, { revision: 5, reused: false });
+  assert.deepEqual(migrationRetry, { revision: 5, reused: true });
+});
+
 test('parseArgs: requires floor and revision; --tags-json is optional', () => {
   const options = parseArgs(['--image', 'ghcr.io/sieitzz/dgfy-pos', '--floor', '1.13.0', '--revision', 'a'.repeat(40)]);
   assert.equal(options.floor, '1.13.0');

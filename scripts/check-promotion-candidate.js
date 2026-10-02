@@ -345,8 +345,19 @@ function validatePromotionCandidateV3(manifest) {
   const result = validatePromotionCandidateV2(manifest, true);
   const apps = manifest.release_revision && manifest.release_revision.apps;
   if (apps) {
+    assert(
+      Object.hasOwn(apps, 'dgfy-api') === Object.hasOwn(apps, 'dgfy-migration-runner'),
+      'A v3 candidate must include dgfy-api and dgfy-migration-runner in release_revision.apps together or omit both (paired backend release)',
+      'ONE_SIDED_API_MIGRATION_RELEASE_PAIR'
+    );
+    const sourceShaByApp = resolveCandidateSourceShaByApp(manifest);
     for (const [app, entry] of Object.entries(apps)) {
       assert(entry.origin !== 'dev', `release_revision.apps["${app}"].origin must not be dev in a v3 candidate`, 'INVALID_RELEASE_APP_ORIGIN');
+      assert(
+        entry.source_sha === sourceShaByApp[app],
+        `release_revision.apps["${app}"].source_sha must match its candidate apps_touched lineage (${sourceShaByApp[app]})`,
+        'RELEASE_APP_SOURCE_MISMATCH'
+      );
     }
   }
   return result;

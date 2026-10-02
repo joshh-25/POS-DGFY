@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-09-24
+last_reviewed: 2026-10-01
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
 topic: per_app_container_semantic_versioning
@@ -793,3 +793,68 @@ already-created candidates. ADR 0081 Decisions 1, 3, 4, 6, and 8 are amended in 
 `[default]` tier. Decision 7's `[binding]` immutability rule is unchanged.
 
 PR: (this PR). Closes #2071. Refs #2055.
+
+### 2026-10-01 — Separate backend artifact revisions with paired build and deploy (#2186)
+
+The 2026-09-23 amendment's `release_revision_api` group incorrectly carried one revision into
+both backend images. Artifact revision numbers are scoped to an image repository and package
+floor, so `dgfy-api` and `dgfy-migration-runner` may have independent immutable histories even
+when their builds are coordinated. A candidate may therefore use (for example) API `r1` and
+migration-runner `r5`; allocation and same-source retry reuse are performed independently against
+each app's own repository and floor. No existing immutable tag may be overwritten.
+
+`build_api` remains one paired user selection. Candidate `apps_touched` and `release_revision.apps`
+include both backend apps or neither, while each map entry carries that app's own revision, source
+SHA, staging digest, and origin. Staging/PROD dispatches, build-skip planning, builder forwarding,
+alias creation, and parity use each app's own revision. A modern per-app map omitting both backends
+means they were not selected; a malformed or one-sided pair is rejected. Explicit legacy
+candidate-wide script inputs and v1 manifests retain their existing compatibility behavior.
+PROD publish requires neither backend job to fail or be cancelled; a verified content-equivalent
+skip remains valid. Registry pushes are not transactional, so a failed paired dispatch may leave
+one immutable artifact published; retries re-resolve each app independently and never overwrite it.
+
+Parity resolves each app's package floor at its candidate source SHA and checks the image's source
+label, floor label, revision, and staging digest against that app's manifest lineage. Backend PROD
+reuses the neutral revision digest. Frontend PROD builds contain environment-specific configuration,
+so the manifest digest check applies to STAGING; frontend PROD is still checked against its own
+source, floor, revision, and alias digest contract.
+
+**Package-floor policy conclusion.** Keep the existing per-app floor management unchanged: floors
+are already maintained independently by Decision 6, and the API `1.32.0` / migration-runner
+`1.21.0` floors demonstrate that they need not be numerically aligned. This repair changes artifact
+revision routing only. A further split or redesign of semantic-version-floor policy is outside this
+incident's compatibility scope and can be scheduled separately if a future product or release
+requirement justifies it.
+
+`[default]` tier — this amends the dispatch, manifest, build-skip, alias, and parity procedures
+recorded in Decisions 1 and 8 / the 2026-09-23 amendment. Decision 7's `[binding]` immutable-tag
+guard and the package-floor rules in Decision 6 are unchanged. Full detail: #2186,
+`scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`,
+`scripts/resolve-build-skip-plan.js`, `scripts/check-deploy-version-stamping-workflow.js`,
+`.github/workflows/deploy.yml`, `deployment-orchestrator.yml`, `deploy-main.yml`,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`, and `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #2186.
+
+### 2026-10-01 follow-up — OPIS production gating and six-app revision wiring (#2186)
+
+The amendment above split the backend revisions but predates OPIS joining the production
+path: `deploy-main.yml`'s `promote-aliases` and `publish` jobs now list `frontend-opis-prod`
+in `needs:` and fail closed on its `failure`/`cancelled` results, and `promote-aliases` runs
+whenever `release_revision_frontend_opis` is supplied (including an OPIS-only dispatch). The
+revision checker (`scripts/check-deploy-version-stamping-workflow.js`) now enforces all six app
+groups — the `release_revision_frontend_opis` declaration, `frontend-opis-prod` job forwarding,
+`frontend-opis` orchestrator wiring, and the `should_build_dgfy_opis` skip gate — the same
+contract the other five groups already carried.
+
+Package floors remain independently managed and unchanged by this follow-up (currently API
+`1.32.0`, migration-runner `1.21.1`); only revision routing and production gating change.
+
+`[default]` tier — amends the dispatch, alias, and gate procedures recorded in Decisions 1
+and 8 / the amendments above. Decision 7's `[binding]` immutable-tag guard and Decision 6's
+package-floor rules are unchanged. Full detail: #2186,
+`scripts/check-deploy-version-stamping-workflow.js`, `.github/workflows/deploy-main.yml`,
+`deployment-orchestrator.yml`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`, and
+`.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #2186.

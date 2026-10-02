@@ -2666,6 +2666,36 @@ reason. A request does not itself void a transaction or restore stock. A
 completed-sale void does not refund money; paid transactions continue through
 the existing tender-specific refund workflow.
 
+### Business Admin POS activity analytics (#2193)
+
+`GET /business-admin/pos-activity-analytics` is a read-only, tenant-scoped
+aggregate over operational POS transaction records for OPIS administrators.
+It follows the existing Business Admin authorization, Manila date validation
+(defaults to today in `Asia/Manila`, maximum 366 days), and server-derived
+location-grant contract.
+
+| Query | Type | Purpose |
+|-------|------|---------|
+| `date_from` | string (`YYYY-MM-DD`) | Range start in Manila time; defaults to today |
+| `date_to` | string (`YYYY-MM-DD`) | Range end in Manila time; defaults to `date_from` |
+| `branch_id` | number | Optional authorized branch filter |
+
+A qualifying sale is one completed POS transaction with `payment_status`
+`paid`: voided transactions, refund-related or otherwise unpaid payment
+states, and online orders without completed fulfillment are excluded, and
+split-tender allocations never multiply the sale — the persisted transaction
+`total_amount` is summed once per sale. The response carries the effective
+range, `Asia/Manila` timezone, applied scope, daily completed-paid-sale
+counts and amounts, distinct linked-customer count (`store_customer_id`
+only), unlinked transaction count, complete weekday/hour aggregates
+(including zero-activity slots), and ranked quiet-period guidance. No
+customer names, contact details, or other PII are returned, and no
+transaction-level customer data is included. Quiet periods are historical
+planning guidance only — branch operating schedules are unknown and low
+historical activity does not establish current deployment safety. PostHog
+browser events remain consent-gated exploratory signals and must never
+recompute these operational metrics.
+
 #### Temporary POS inline void approval surface
 
 While the dedicated Back Office UI is unavailable, the standalone POS surface

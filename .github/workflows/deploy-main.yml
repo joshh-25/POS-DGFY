@@ -96,10 +96,9 @@ on:
         default: ''
       release_revision_api:
         description: >-
-          Per-app artifact revision for dgfy-api and dgfy-migration-runner (#2055, Phase 346 --
-          each app's own allocated rN, e.g. "r16"; #1977's single candidate-wide value, Phase
-          342). Covers both backends because build_api always rebuilds them as one paired
-          unit. Required for a release/<candidate_id> -> main promotion dispatch AND for a
+          Per-app artifact revision for dgfy-api (#2055, Phase 346 -- its own allocated rN,
+          e.g. "r16"). Required when dgfy-api is selected for a release/<candidate_id> -> main
+          promotion dispatch AND for a
           direct production hotfix (which uses the same paired revision/canonical tags without
           a staging parity predecessor): every PROD builder resolves its revision tag from its
           app-group's value (frontend X.Y.Z-rN with production VITE_* values, backend the
@@ -107,6 +106,14 @@ on:
           rebuilt environment-specific) and fails closed without it. The promote-aliases job
           below then creates each app's bare X.Y.Z floor alias from the same digest via
           scripts/promote-image-alias.js. See .agents/skills/promoter/references/promotion-runbook.md.
+        required: false
+        type: string
+        default: ''
+      release_revision_migration_runner:
+        description: >-
+          Independent per-app artifact revision for dgfy-migration-runner. It shares the
+          build_api checkbox with dgfy-api but retains its own immutable image history. Required
+          when selected for a release/<candidate_id> -> main promotion or direct production hotfix.
         required: false
         type: string
         default: ''
@@ -413,21 +420,30 @@ jobs:
         run: |
           set -euo pipefail
           # #1977 (Phase 342); #2055 (Phase 346): --release-revisions-json makes the skip
-          # check hit each app's own revision-aware matrix tag (omitted entries fall back to
-          # the legacy tag -- e.g. an unchecked app-group on an ad-hoc dispatch).
+          # check hit each selected app's own revision-aware matrix tag. An omitted entry in a
+          # modern map is unselected; explicit --release-revision callers retain legacy fallback.
           # Backend PROD on a promotion dispatch is the mechanism that actually skips the
           # environment-specific rebuild: the revision tag already exists from the STAGING
           # candidate dispatch with byte-identical tracked inputs, so the plan resolves
           # content-equivalent/skip and the promote-aliases job below aliases the reused
           # staging digest instead of rebuilding it.
           SKIP_ARGS=(--revision "${{ github.sha }}" --environment PROD)
-          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.API_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);put('dgfy-opis',process.env.OPIS_R);console.log(JSON.stringify(m))")"
+          API_SELECTED=false
+          MIGRATION_SELECTED=false
+          [ -z "${API_R//[[:space:]]/}" ] || API_SELECTED=true
+          [ -z "${MIGRATION_R//[[:space:]]/}" ] || MIGRATION_SELECTED=true
+          if [ "${API_SELECTED}" != "${MIGRATION_SELECTED}" ]; then
+            echo "::error::PROD dispatch must select dgfy-api and dgfy-migration-runner artifact revisions together or omit both."
+            exit 1
+          fi
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.MIGRATION_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);put('dgfy-opis',process.env.OPIS_R);console.log(JSON.stringify(m))")"
           if [ "${REVISIONS_JSON}" != "{}" ]; then
             SKIP_ARGS+=(--release-revisions-json "${REVISIONS_JSON}")
           fi
           node scripts/resolve-build-skip-plan.js "${SKIP_ARGS[@]}"
         env:
           API_R: ${{ inputs.release_revision_api }}
+          MIGRATION_R: ${{ inputs.release_revision_migration_runner }}
           IMS_R: ${{ inputs.release_revision_frontend_ims }}
           POS_R: ${{ inputs.release_revision_frontend_pos }}
           STOREFRONT_R: ${{ inputs.release_revision_frontend_storefront }}
@@ -483,7 +499,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
-      release_revision: ${{ inputs.release_revision_api }}
+      release_revision: ${{ inputs.release_revision_migration_runner }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -655,17 +671,24 @@ jobs:
   # builders themselves fail closed on PROD without it, so any build actually attempted
   # already required it; a builds-unchecked dispatch keeps its historical no-alias behavior).
   promote-aliases:
-    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod ]
     if: >-
       !cancelled() &&
       needs.guard-branch.result == 'success' &&
       needs.resolve-build-plan.result == 'success' &&
       needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-api.result != 'cancelled' &&
       needs.dgfy-migration-runner.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'cancelled' &&
       needs.frontend-ims-prod.result != 'failure' &&
+      needs.frontend-ims-prod.result != 'cancelled' &&
       needs.frontend-pos-prod.result != 'failure' &&
+      needs.frontend-pos-prod.result != 'cancelled' &&
       needs.frontend-storefront-prod.result != 'failure' &&
-      (inputs.release_revision_api != '' || inputs.release_revision_frontend_ims != '' || inputs.release_revision_frontend_pos != '' || inputs.release_revision_frontend_storefront != '')
+      needs.frontend-storefront-prod.result != 'cancelled' &&
+      needs.frontend-opis-prod.result != 'failure' &&
+      needs.frontend-opis-prod.result != 'cancelled' &&
+      (inputs.release_revision_api != '' || inputs.release_revision_migration_runner != '' || inputs.release_revision_frontend_ims != '' || inputs.release_revision_frontend_pos != '' || inputs.release_revision_frontend_storefront != '' || inputs.release_revision_frontend_opis != '')
     # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 10
@@ -733,7 +756,8 @@ jobs:
             # #2055 (Phase 346): each app aliases its OWN allocated revision -- an unchecked
             # app-group (empty input, nothing built) is skipped, never aliased blind.
             case "${APP}" in
-              dgfy-api|dgfy-migration-runner) APP_REVISION="${{ inputs.release_revision_api }}" ;;
+              dgfy-api) APP_REVISION="${{ inputs.release_revision_api }}" ;;
+              dgfy-migration-runner) APP_REVISION="${{ inputs.release_revision_migration_runner }}" ;;
               dgfy-ims) APP_REVISION="${{ inputs.release_revision_frontend_ims }}" ;;
               dgfy-pos) APP_REVISION="${{ inputs.release_revision_frontend_pos }}" ;;
               dgfy-storefront) APP_REVISION="${{ inputs.release_revision_frontend_storefront }}" ;;
@@ -772,16 +796,23 @@ jobs:
           echo "[promote-aliases] floor aliases verified (${SKIPPED} unchecked app(s) skipped)."
 
   publish:
-    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, promote-aliases ]
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod, promote-aliases ]
     if: >-
       inputs.deploy && !cancelled() &&
       needs.guard-branch.result == 'success' &&
       needs.resolve-build-plan.result == 'success' &&
       needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-api.result != 'cancelled' &&
       needs.dgfy-migration-runner.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'cancelled' &&
       needs.frontend-ims-prod.result != 'failure' &&
+      needs.frontend-ims-prod.result != 'cancelled' &&
       needs.frontend-pos-prod.result != 'failure' &&
+      needs.frontend-pos-prod.result != 'cancelled' &&
       needs.frontend-storefront-prod.result != 'failure' &&
+      needs.frontend-storefront-prod.result != 'cancelled' &&
+      needs.frontend-opis-prod.result != 'failure' &&
+      needs.frontend-opis-prod.result != 'cancelled' &&
       needs.promote-aliases.result != 'failure' &&
       needs.promote-aliases.result != 'cancelled'
     uses: ./.github/workflows/publish-platform.yml

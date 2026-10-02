@@ -74,6 +74,7 @@ import {
     BackOfficeStatusPill as StatusPill
 } from '../../../../../packages/web-core/src/components/backOffice/BackOfficePrimitives.jsx';
 import MigratedBackOfficeModule from './MigratedBackOfficeModule.jsx';
+import PosActivityAnalyticsPage from './PosActivityAnalyticsPage.jsx';
 import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
 import BusinessAdminAccountActions from './BusinessAdminAccountActions.jsx';
 import {
@@ -2889,6 +2890,7 @@ export default function BusinessAdminPage() {
             else if (activeSection === 'approvals') payload = { approvals: (await businessAdminApi.approvals({ status: 'pending', limit: 100 })).approvals || [] };
             else if (activeSection === 'payments') payload = await businessAdminApi.payments(params);
             else if (activeSection === 'company') payload = await businessAdminApi.company();
+            else if (activeSection === 'pos-activity') payload = await businessAdminApi.posActivityAnalytics(params);
             else payload = { bootstrap };
             if (requestRef.current === requestId) {
                 setSectionData(payload);
@@ -3046,7 +3048,8 @@ export default function BusinessAdminPage() {
 
     const showDateFilters = [
         'overview', 'locations', 'orders', 'customers', 'team',
-        'attendance', 'shifts', 'expenses', 'inventory', 'recipes', 'fiscal', 'audit'
+        'attendance', 'shifts', 'expenses', 'inventory', 'recipes', 'fiscal', 'audit',
+        'pos-activity'
     ].includes(activeSection);
     const showHistoricalRangePreset = isHistoricalBusinessAdminSection(activeSection);
     const showBranchFilter = activeSection !== 'audit';
@@ -3196,6 +3199,7 @@ export default function BusinessAdminPage() {
         if (activeSection === 'audit') return <AuditWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} />;
         if (activeSection === 'payments') return <PaymentsWorkspace data={sectionData} />;
         if (activeSection === 'company') return <CompanyWorkspace data={sectionData} />;
+        if (activeSection === 'pos-activity') return <PosActivityAnalyticsPage data={sectionData} />;
         return <SimpleWorkspace section={activeSection} bootstrap={bootstrap} />;
     };
 
