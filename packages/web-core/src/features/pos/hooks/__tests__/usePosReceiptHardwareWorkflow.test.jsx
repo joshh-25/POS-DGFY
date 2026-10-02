@@ -73,11 +73,31 @@ describe('usePosReceiptHardwareWorkflow', () => {
             shiftId: 4,
             transactionId: 17,
             terminalId: 'COUNTER-01',
+            paperWidth: '80mm',
             reason: 'receipt_preview',
             openDrawerAfterPrint: false,
             idempotencyKey: expect.any(String)
         }));
         expect(result.current.receiptPrinting).toBe(false);
+    });
+
+    it('passes the selected 57 mm paper width to the physical receipt driver', async () => {
+        const transaction = { pos_transaction_id: 18, total_amount: 100 };
+        const { result, props } = renderWorkflow({
+            normalizedTerminalId: 'COUNTER-PAPER-57',
+            lastReceipt: transaction
+        });
+
+        act(() => {
+            result.current.setReceiptPaperWidth('57mm');
+        });
+        await act(async () => {
+            await result.current.handlePrintReceipt(transaction, 'receipt_preview');
+        });
+
+        expect(props.posHardware.printReceipt).toHaveBeenCalledWith(expect.objectContaining({
+            paperWidth: '57mm'
+        }));
     });
 
     it('creates a bill draft and preserves the F&B print context', async () => {

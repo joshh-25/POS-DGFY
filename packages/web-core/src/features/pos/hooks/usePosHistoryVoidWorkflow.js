@@ -67,6 +67,7 @@ export const usePosHistoryVoidWorkflow = ({
     const [historySearch, setHistorySearch] = useState('');
     const [historyStatus, setHistoryStatus] = useState('all');
     const [historyPaymentType, setHistoryPaymentType] = useState('all');
+    const [historyDeliveryProvider, setHistoryDeliveryProvider] = useState('all');
     const [historyOrderMethod, setHistoryOrderMethod] = useState('all');
     const [historyOrderSource, setHistoryOrderSource] = useState('all');
     const [historyCashierName, setHistoryCashierName] = useState('');
@@ -116,6 +117,7 @@ export const usePosHistoryVoidWorkflow = ({
                 historySearch,
                 historyStatus,
                 historyPaymentType,
+                historyDeliveryProvider,
                 historyOrderMethod,
                 historyOrderSource,
                 historyCashierName,
@@ -130,6 +132,7 @@ export const usePosHistoryVoidWorkflow = ({
         historyOrderMethod,
         historyOrderSource,
         historyPaymentType,
+        historyDeliveryProvider,
         historySearch,
         historyStatus,
         safeQueuedCheckouts
@@ -186,6 +189,7 @@ export const usePosHistoryVoidWorkflow = ({
                 limit,
                 search: historySearch || undefined,
                 paymentType: historyPaymentType === 'all' ? undefined : historyPaymentType,
+                deliveryProvider: historyDeliveryProvider === 'all' ? undefined : historyDeliveryProvider,
                 orderMethod: historyOrderMethod === 'all' ? undefined : historyOrderMethod,
                 orderSource: historyOrderSource === 'all' ? undefined : historyOrderSource,
                 cashierName: historyCashierName || undefined,
@@ -225,6 +229,7 @@ export const usePosHistoryVoidWorkflow = ({
         historyOrderMethod,
         historyOrderSource,
         historyPaymentType,
+        historyDeliveryProvider,
         historySearch,
         historyStatus,
         selectedLocationId,
@@ -586,6 +591,8 @@ export const usePosHistoryVoidWorkflow = ({
         setHistoryStatus,
         historyPaymentType,
         setHistoryPaymentType,
+        historyDeliveryProvider,
+        setHistoryDeliveryProvider,
         historyOrderMethod,
         setHistoryOrderMethod,
         historyOrderSource,

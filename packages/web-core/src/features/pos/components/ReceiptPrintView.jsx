@@ -36,6 +36,14 @@ const parsePaymentBreakdown = (value) => {
     }
 };
 
+const formatDeliveryProviderLabel = (entry) => {
+    const providerType = String(entry?.provider_type || '').trim().toLowerCase();
+    if (providerType === 'other') return `${String(entry?.provider_name || 'Other').trim() || 'Other'} (Other)`;
+    if (providerType === 'foodpanda') return 'Foodpanda';
+    if (providerType === 'grab') return 'Grab';
+    return String(entry?.display_label || providerType || 'Delivery provider');
+};
+
 const resolveReceiptLineQuantity = (line) => {
     const quantity = Number(line?.quantity ?? line?.qty ?? 0);
     return Number.isFinite(quantity) ? quantity : 0;
@@ -99,6 +107,8 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
         : '-';
     const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
     const paymentBreakdown = parsePaymentBreakdown(transaction.payment_breakdown)
+        .filter((entry) => Number(entry?.amount || 0) > 0);
+    const deliveryProviderBreakdown = parsePaymentBreakdown(transaction.delivery_provider_breakdown)
         .filter((entry) => Number(entry?.amount || 0) > 0);
     const documentType = resolveDocumentType({ transaction, receiptContract });
     const isFiscal = documentType === 'fiscal_invoice';
@@ -301,6 +311,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
             <div className="mt-2 border-t border-dashed border-slate-300 pt-2 text-[10px] leading-snug text-slate-700 print:mt-1.5 print:pt-1.5 print:text-[9px]">
                 <p className="flex justify-between gap-2"><span>Payment Method:</span><span>{String(transaction.payment_type || '').replace(/_/g, ' ').toUpperCase()}</span></p>
                 {paymentBreakdown.length > 0 && <div className="mt-1 border-t border-dashed border-slate-200 pt-1"><p className="font-semibold">Payment Breakdown</p>{paymentBreakdown.map((entry, index) => <p key={`${entry.payment_type}-${entry.amount}-${index}`} className="flex justify-between gap-2"><span>{entry.payment_label || String(entry.payment_type || '').replace(/_/g, ' ')}</span><span>{money(entry.amount)}</span></p>)}</div>}
+                {deliveryProviderBreakdown.length > 0 && <div className="mt-1 border-t border-dashed border-slate-200 pt-1"><p className="font-semibold">Delivery Provider Breakdown</p>{deliveryProviderBreakdown.map((entry, index) => <p key={`${entry.provider_type}-${entry.provider_name || ''}-${entry.amount}-${index}`} className="flex justify-between gap-2"><span>{formatDeliveryProviderLabel(entry)}</span><span>{money(entry.amount)}</span></p>)}</div>}
                 <p className="flex justify-between gap-2"><span>Payment Status:</span><span>{String(transaction.payment_status || '').replace(/_/g, ' ').toUpperCase()}</span></p>
                 {transaction.payment_reference && <p className="flex justify-between gap-2"><span>Payment Reference:</span><span className="text-right">{transaction.payment_reference}</span></p>}
                 {transaction.payment_type === 'cash' && <p className="flex justify-between gap-2"><span>Cash Received:</span><span>{money(transaction.cash_received)}</span></p>}

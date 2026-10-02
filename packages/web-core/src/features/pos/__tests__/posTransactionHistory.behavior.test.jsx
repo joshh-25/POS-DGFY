@@ -24,6 +24,8 @@ const buildPanelProps = (overrides = {}) => ({
     setHistorySearch: vi.fn(),
     historyStatus: 'all',
     historyPaymentType: 'all',
+    historyDeliveryProvider: 'all',
+    setHistoryDeliveryProvider: vi.fn(),
     historyOrderMethod: 'all',
     historyOrderSource: 'all',
     historyCashierName: '',
@@ -51,6 +53,7 @@ function HistoryHarness({ onLoadHistory }) {
     const [historySearch, setHistorySearch] = useState('');
     const [historyStatus, setHistoryStatus] = useState('all');
     const [historyPaymentType, setHistoryPaymentType] = useState('all');
+    const [historyDeliveryProvider, setHistoryDeliveryProvider] = useState('all');
     const [historyOrderMethod, setHistoryOrderMethod] = useState('all');
     const [historyOrderSource, setHistoryOrderSource] = useState('all');
     const [historyCashierName, setHistoryCashierName] = useState('');
@@ -66,6 +69,8 @@ function HistoryHarness({ onLoadHistory }) {
                 setHistoryStatus,
                 historyPaymentType,
                 setHistoryPaymentType,
+                historyDeliveryProvider,
+                setHistoryDeliveryProvider,
                 historyOrderMethod,
                 setHistoryOrderMethod,
                 historyOrderSource,
@@ -107,6 +112,7 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(screen.getByRole('dialog').className).toContain('shadow-[0_12px_30px_rgba(15,23,42,0.2)]');
         expect(screen.getByText('Sales View')).toBeTruthy();
         expect(screen.getByText('Payment Method')).toBeTruthy();
+        expect(screen.getByText('Delivery Provider')).toBeTruthy();
         expect(screen.getByText('Order Method')).toBeTruthy();
         expect(screen.getByRole('dialog').textContent).not.toContain('Source');
         expect(screen.getByPlaceholderText('Search Cashier')).toBeTruthy();
@@ -116,6 +122,7 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(resetFiltersButton.className).toContain('hover:bg-rose-50');
         expect(screen.getByTestId('pos-history-filter-status-all').getAttribute('aria-pressed')).toBe('true');
         expect(screen.getByTestId('pos-history-filter-payment-employee_credit')).toBeTruthy();
+        expect(screen.getByTestId('pos-history-filter-delivery-provider-grab')).toBeTruthy();
         const paymentOptions = screen.getByRole('group', { name: 'Payment Method options' });
         expect(paymentOptions.className).toContain('grid-cols-4');
         expect(paymentOptions.className).not.toContain('flex-wrap');
@@ -125,6 +132,20 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         fireEvent.click(screen.getByTestId('pos-history-cashier-dropdown-toggle'));
         expect(screen.getByTestId('pos-history-cashier-option-all')).toBeTruthy();
         expect(screen.getByTestId('pos-history-cashier-option-jane-doe')).toBeTruthy();
+    });
+
+    it('applies the selected delivery provider and exposes the active filter chip', async () => {
+        const loadHistory = vi.fn();
+        render(<HistoryHarness onLoadHistory={loadHistory} />);
+
+        fireEvent.click(screen.getByTestId('pos-history-filter-button'));
+        fireEvent.click(screen.getByTestId('pos-history-filter-delivery-provider-grab'));
+        fireEvent.click(screen.getByTestId('pos-history-apply-filters'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Delivery Provider: Grab')).toBeTruthy();
+            expect(loadHistory).toHaveBeenCalledWith(1);
+        });
     });
 
     it('shows only order methods allowed by the active storefront workflow', () => {

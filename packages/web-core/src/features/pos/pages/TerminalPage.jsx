@@ -156,6 +156,7 @@ import {
   readPosTextSizePreference,
   writePosTextSizePreference
 } from '../utils/posTextSizePreference.js';
+import { readPosPaperWidthPreference } from '../utils/posPaperWidthPreference.js';
 import {
   readStoredCashierResumeContext,
   safeLocalStorageGet,
@@ -2195,7 +2196,9 @@ export default function TerminalPage() {
         reason,
         idempotencyKey: createIdempotencyKey('pos-shift-summary-print'),
         copies: 1,
-        paperWidth: '80mm'
+        paperWidth: readPosPaperWidthPreference(
+          sanitizeTerminalId(activeTerminalId) || report?.shift?.terminal_id
+        )
       });
       if (outcome?.success) {
         toast.success('Cashier shift sales summary printed.');
@@ -2254,7 +2257,7 @@ export default function TerminalPage() {
         reason,
         idempotencyKey: createIdempotencyKey('pos-z-reading-print'),
         copies: 1,
-        paperWidth: '80mm'
+        paperWidth: readPosPaperWidthPreference(sanitizeTerminalId(activeTerminalId))
       });
       if (outcome?.success) {
         setZReadingPrintState('printed');
@@ -6158,6 +6161,7 @@ export default function TerminalPage() {
       openDrawerAfterPrint: false,
       transactionId: normalizedId,
       terminalId: terminalId || undefined,
+      paperWidth: readPosPaperWidthPreference(terminalId),
       reason: reason || (automatic ? 'online_order_payment_receipt' : 'online_order_receipt'),
       idempotencyKey: createIdempotencyKey('pos-online-receipt')
     });
@@ -6191,6 +6195,7 @@ export default function TerminalPage() {
           || ''
       })),
       terminalId: sanitizeTerminalId(activeTerminalId) || undefined,
+      paperWidth: readPosPaperWidthPreference(sanitizeTerminalId(activeTerminalId)),
       orderMethod: order?.order_method,
       orderNotes: order?.special_instructions || order?.customer_note || order?.order_notes || ''
     });
