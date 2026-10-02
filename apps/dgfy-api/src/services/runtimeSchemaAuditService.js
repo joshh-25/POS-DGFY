@@ -184,7 +184,8 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'employee_credit_balance_after',
         'employee_credit_outstanding_after',
         'employee_credit_authorization_reference',
-        'payment_breakdown'
+        'payment_breakdown',
+        'delivery_provider_breakdown'
     ],
     pos_payment_sessions: [
         'pos_payment_session_id',

@@ -399,6 +399,65 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(screen.getByRole('button', { name: 'GCash' }).getAttribute('aria-pressed')).toBe('true');
     });
 
+    it('allows exactly one delivery provider and only asks for a name when Other is selected', () => {
+        const setDeliveryProviderBreakdown = vi.fn();
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            cartSubtotal: 100,
+            cartTotal: 100,
+            deliveryProviderBreakdown: [],
+            orderMethod: 'delivery',
+            setDeliveryProviderBreakdown
+        })} />);
+
+        const providerSection = screen.getByTestId('pos-delivery-provider-breakdown');
+        expect(providerSection.textContent).toContain('Select one delivery provider.');
+        expect(providerSection.textContent).not.toContain('Provider amount');
+        expect(providerSection.textContent).not.toContain('Same as Total Payment');
+        expect(screen.queryByTestId('pos-delivery-provider-grab-amount')).toBeNull();
+        expect(screen.queryByTestId('pos-delivery-provider-other-field')).toBeNull();
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            cartSubtotal: 100,
+            cartTotal: 100,
+            deliveryProviderBreakdown: [{ provider_type: 'foodpanda', provider_name: '', amount: '' }],
+            orderMethod: 'delivery',
+            setDeliveryProviderBreakdown
+        })} />);
+        expect(screen.queryByTestId('pos-delivery-provider-other-field')).toBeNull();
+        expect(screen.queryByTestId('pos-delivery-provider-total-payment')).toBeNull();
+        expect(screen.queryByTestId('pos-delivery-provider-error')).toBeNull();
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            cartSubtotal: 100,
+            cartTotal: 100,
+            deliveryProviderBreakdown: [{ provider_type: 'other', provider_name: '', amount: '' }],
+            orderMethod: 'delivery',
+            setDeliveryProviderBreakdown
+        })} />);
+        expect(screen.getByTestId('pos-delivery-provider-other-field')).toBeTruthy();
+        expect(screen.getByLabelText('Other delivery provider name')).toBeTruthy();
+        expect(screen.queryByTestId('pos-delivery-provider-total-payment')).toBeNull();
+        const providerPromptRow = screen.getByTestId('pos-delivery-provider-prompt-row');
+        expect(providerPromptRow.textContent).toContain('Select one delivery provider.');
+        expect(providerPromptRow.textContent).not.toContain('Enter the provider name for Other.');
+        const otherField = screen.getByTestId('pos-delivery-provider-other-field');
+        expect(otherField.textContent).toContain('Enter the provider name for Other.');
+        expect(screen.getByTestId('pos-delivery-provider-error').parentElement).toBe(screen.getByTestId('pos-delivery-provider-other-label-row'));
+
+        fireEvent.click(screen.getByTestId('pos-delivery-provider-grab'));
+
+        expect(setDeliveryProviderBreakdown).toHaveBeenCalledOnce();
+        const selectProvider = setDeliveryProviderBreakdown.mock.calls[0][0];
+        expect(selectProvider([])).toEqual([
+            { provider_type: 'grab', provider_name: '', amount: '' }
+        ]);
+        expect(selectProvider([
+            { provider_type: 'foodpanda', provider_name: '', amount: '' }
+        ])).toEqual([
+            { provider_type: 'grab', provider_name: '', amount: '' }
+        ]);
+    });
+
     it('clears the selected discount when its type button is clicked again', () => {
         const clearAppliedDiscount = vi.fn();
         const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel({

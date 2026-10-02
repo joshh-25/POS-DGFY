@@ -30,6 +30,8 @@ describe('OPIS routes (issue #2052)', () => {
     expect(canonicalizeOpisPath('/backoffice/orders')).toBe('/orders');
     expect(canonicalizeOpisPath('/business-admin/sales')).toBe('/sales');
     expect(canonicalizeOpisPath('/backoffice/settings/team')).toBe('/settings/team');
+    expect(canonicalizeOpisPath('/backoffice/company')).toBe('/company');
+    expect(canonicalizeOpisPath('/business-admin/company')).toBe('/company');
     expect(canonicalizeOpisPath('/backoffice/overview')).toBe('/');
     expect(canonicalizeOpisPath('/business-admin/overview')).toBe('/');
     expect(canonicalizeOpisPath('/business-admin')).toBe('/');
@@ -84,6 +86,8 @@ describe('OPIS Back Office manifest', () => {
     const ids = Object.keys(BACKOFFICE_MANIFEST);
     expect(ids).toContain('overview');
     expect(ids).toContain('catalog');
+    expect(ids.filter((id) => id === 'company')).toHaveLength(1);
+    expect(BACKOFFICE_MANIFEST.company).toMatchObject({ key: 'company', label: 'Company', group: 'Settings', route: '/company' });
     expect(ids).toContain('settings');
     for (const definition of Object.values(BACKOFFICE_MANIFEST)) {
       expect(definition.route).toMatch(/^\//);

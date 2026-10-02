@@ -9,6 +9,7 @@ const PAYMENT_TYPE_FILTERS = [...PAYMENT_TYPES, 'other'];
 const PAYMENT_STATUSES = ['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
+const DELIVERY_PROVIDER_FILTERS = ['foodpanda', 'grab', 'other'];
 const REPORT_BREAKDOWNS = ['hourly', 'items', 'categories'];
 const REPORT_BREAKDOWN_SORT_FIELDS = [
     'bucket_start_local',
@@ -210,6 +211,11 @@ const checkoutPosSchema = Joi.object({
         account_code: Joi.string().trim().uppercase().min(4).max(40).required()
     }).optional(),
     payment_handoff_mode: Joi.string().valid(...PAYMENT_HANDOFF_MODES).optional(),
+    delivery_provider_breakdown: Joi.array().items(Joi.object({
+        provider_type: Joi.string().valid('foodpanda', 'grab', 'other').required(),
+        provider_name: Joi.string().trim().max(120).allow('', null).optional(),
+        amount: Joi.number().greater(0).precision(4).required()
+    }).unknown(false)).max(1).allow(null).optional(),
     cash_received: Joi.number().min(0).precision(4).allow(null).optional(),
     change_amount: Joi.number().min(0).precision(4).allow(null).optional(),
     service_fee_amount: Joi.number().min(0).precision(4).allow(null).optional().messages({
@@ -276,6 +282,43 @@ const checkoutPosSchema = Joi.object({
         });
     }
 
+    const deliveryProviderRows = Array.isArray(value.delivery_provider_breakdown)
+        ? value.delivery_provider_breakdown
+        : [];
+    const deliveryProviderTypes = new Set();
+    deliveryProviderRows.forEach((row) => deliveryProviderTypes.add(row.provider_type));
+    if (value.order_method === 'delivery' && deliveryProviderRows.length === 0) {
+        return helpers.error('any.invalid', {
+            message: 'Delivery requires exactly one delivery provider.'
+        });
+    }
+    if (value.order_method === 'delivery' && deliveryProviderRows.length !== 1) {
+        return helpers.error('any.invalid', {
+            message: 'Delivery requires exactly one delivery provider.'
+        });
+    }
+    if (value.order_method !== 'delivery' && deliveryProviderRows.length > 0) {
+        return helpers.error('any.invalid', {
+            message: 'Delivery provider data is allowed only for Delivery orders.'
+        });
+    }
+    if (deliveryProviderTypes.size !== deliveryProviderRows.length) {
+        return helpers.error('any.invalid', {
+            message: 'A delivery transaction can contain only one row per provider type.'
+        });
+    }
+    const otherProvider = deliveryProviderRows.find((row) => row.provider_type === 'other');
+    if (otherProvider && !String(otherProvider.provider_name || '').trim()) {
+        return helpers.error('any.invalid', {
+            message: 'Other delivery providers require a provider name.'
+        });
+    }
+    if (deliveryProviderRows.some((row) => row.provider_type !== 'other' && String(row.provider_name || '').trim())) {
+        return helpers.error('any.invalid', {
+            message: 'Foodpanda and Grab must use their canonical provider names.'
+        });
+    }
+
     if (discountMode === 'none' && (hasProfile || hasDiscountRate || globalDiscountAmount > 0)) {
         return helpers.error('any.invalid', {
             message: 'discount_mode none cannot include discount values'
@@ -329,7 +372,8 @@ const listTransactionsQuerySchema = Joi.object({
     payment_type: Joi.string().valid(...PAYMENT_TYPE_FILTERS).optional(),
     payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
     order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional(),
-    order_source: Joi.string().valid(...ORDER_SOURCES).optional()
+    order_source: Joi.string().valid(...ORDER_SOURCES).optional(),
+    delivery_provider: Joi.string().valid(...DELIVERY_PROVIDER_FILTERS).optional()
 });
 
 const parkedSaleLineSchema = Joi.object({
@@ -772,6 +816,7 @@ const posReportsQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPE_FILTERS).optional(),
     source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
+    delivery_provider: Joi.string().valid(...DELIVERY_PROVIDER_FILTERS).optional(),
     category_id: Joi.number().integer().positive().optional(),
     category: Joi.string().trim().max(120).allow('', null).optional(),
     page: Joi.number().integer().min(1).default(1),

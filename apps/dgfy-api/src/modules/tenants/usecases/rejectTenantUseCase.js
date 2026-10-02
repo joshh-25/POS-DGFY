@@ -2,7 +2,13 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
 
-export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistrationRepository, emailService, logger }) => {
+export const buildRejectTenantUseCase = ({
+    tenantAdminRepository,
+    companyRegistrationRepository,
+    emailService,
+    notifyCompanyRegistrationRejected,
+    logger
+}) => {
     return async ({ id, reason, actor }) => {
         try {
             const safeReason = String(reason || '').trim().slice(0, 500);
@@ -48,6 +54,24 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistr
                 ));
             }
 
+            let notificationCreated = false;
+            if (typeof notifyCompanyRegistrationRejected === 'function') {
+                try {
+                    const notificationResult = await notifyCompanyRegistrationRejected({
+                        dgfyAccountId: application.dgfy_account_id,
+                        tenantId: tenant.id,
+                        applicationId: application.id,
+                        companyName: tenant.name,
+                        rejectionReason: safeReason
+                    });
+                    notificationCreated = Boolean(notificationResult?.created);
+                } catch (notificationError) {
+                    logger?.warn?.(
+                        `[TenantRejection] Failed to create in-app rejection notification for ${tenant.id}: ${notificationError.message}`
+                    );
+                }
+            }
+
             let emailSent = false;
             if (emailService?.isEmailConfigured?.()) {
                 try {
@@ -71,7 +95,12 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistr
                 payload: {
                     success: true,
                     message: 'Tenant registration rejected',
-                    data: { id: tenant.id, status: 'rejected', email_sent: emailSent }
+                    data: {
+                        id: tenant.id,
+                        status: 'rejected',
+                        email_sent: emailSent,
+                        notification_created: notificationCreated
+                    }
                 }
             });
         } catch (error) {

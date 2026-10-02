@@ -307,6 +307,13 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.JSON,
         allowNull: true
     },
+    // Immutable delivery-provider classification captured at completed sale time.
+    // This is deliberately separate from payment_breakdown, which represents
+    // settlement tenders such as cash, GCash, or card.
+    delivery_provider_breakdown: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     employee_credit_account_id: { type: DataTypes.INTEGER, allowNull: true },
     employee_credit_user_id: { type: DataTypes.INTEGER, allowNull: true },
     employee_credit_employee_id: { type: DataTypes.INTEGER, allowNull: true },

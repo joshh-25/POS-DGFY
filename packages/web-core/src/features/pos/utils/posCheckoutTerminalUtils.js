@@ -2,6 +2,7 @@ import { resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js
 import { matchesPosHistorySearch } from './posHistorySearch.js';
 import { getDiscountLineRef } from './posDiscountSelection.js';
 import { matchesPosTransactionPaymentMethod } from './posPaymentMethods.js';
+import { parseDeliveryProviderBreakdown } from './posDeliveryProviders.js';
 
 export const money = (value) => Number(value || 0).toLocaleString('en-US', {
     useGrouping: true,
@@ -446,6 +447,7 @@ export const buildOfflineCheckoutHistoryRow = ({
         order_source: 'in_store',
         payment_type: String(payload?.payment_type || '').trim() || 'cash',
         payment_breakdown: payload?.payment_breakdown || null,
+        delivery_provider_breakdown: payload?.delivery_provider_breakdown || null,
         order_method: String(payload?.order_method || '').trim() || 'takeout',
         total_amount: Number(cartTotal || 0),
         subtotal_amount: Number(cartSubtotal || 0),
@@ -483,6 +485,14 @@ export const rowMatchesHistoryFilters = (row, filters) => {
     const orderSource = String(filters?.historyOrderSource || 'all').trim();
     if (orderSource !== 'all' && String(row?.order_source || '').trim() !== orderSource) {
         return false;
+    }
+
+    const deliveryProvider = String(filters?.historyDeliveryProvider || 'all').trim().toLowerCase();
+    if (deliveryProvider !== 'all') {
+        const deliveryProviders = parseDeliveryProviderBreakdown(row?.delivery_provider_breakdown);
+        if (!deliveryProviders.some((entry) => String(entry?.provider_type || '').trim().toLowerCase() === deliveryProvider)) {
+            return false;
+        }
     }
 
     const cashierNameFilter = String(filters?.historyCashierName || '').trim().toLowerCase();

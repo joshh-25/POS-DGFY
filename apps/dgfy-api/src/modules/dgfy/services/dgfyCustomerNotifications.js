@@ -18,6 +18,36 @@ const STATUS_COPY = {
 const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
 const normalizeReference = (value) => String(value || '').trim().toUpperCase();
 
+export const buildCompanyRegistrationRejectionNotificationPayload = ({
+    dgfyAccountId,
+    tenantId = null,
+    applicationId,
+    companyName,
+    rejectionReason
+} = {}) => {
+    const accountId = String(dgfyAccountId || '').trim();
+    const registrationId = String(applicationId || '').trim();
+    if (!accountId || !registrationId) return null;
+
+    const safeCompanyName = String(companyName || '').trim() || 'Your company';
+    const safeReason = String(rejectionReason || '').trim().slice(0, 400);
+    const body = safeReason
+        ? `${safeCompanyName} registration was rejected. Reason: ${safeReason}`
+        : `${safeCompanyName} registration was rejected.`;
+
+    return {
+        dgfy_account_id: accountId,
+        tenant_id: tenantId || null,
+        activity_id: null,
+        reference: null,
+        event_key: `company-registration:${registrationId}:rejected`,
+        type: 'company_registration',
+        title: 'Company registration rejected',
+        body: body.slice(0, 500),
+        status: 'rejected'
+    };
+};
+
 export const buildOrderStatusNotificationPayload = (activity = {}) => {
     const dgfyAccountId = String(activity.dgfy_account_id || '').trim();
     const reference = normalizeReference(activity.reference);
@@ -70,7 +100,52 @@ export const dispatchDgfyCustomerActivityUpdate = async (activity = {}) => {
     }
 };
 
+export const dispatchDgfyCompanyRegistrationRejectionNotification = async (input = {}) => {
+    const payload = buildCompanyRegistrationRejectionNotificationPayload(input);
+    if (!payload) return { notification: null, created: false, published: false };
+
+    try {
+        const result = await dgfyCustomerRepository.createNotificationIfMissing(payload);
+        if (result?.created && result.notification) {
+            publishDgfyCustomerEvent(payload.dgfy_account_id, 'notification.created', {
+                notification: result.notification
+            });
+        }
+        return {
+            notification: result?.notification || null,
+            created: Boolean(result?.created),
+            published: true
+        };
+    } catch (error) {
+        logger.warn('[DGFY] Company registration rejection notification dispatch failed', {
+            error: error?.message,
+            application_id: input.applicationId || null,
+            dgfy_account_id: input.dgfyAccountId || null
+        });
+        return { notification: null, created: false, published: true };
+    }
+};
+
+export const ensureDgfyCompanyRegistrationRejectionNotifications = async ({
+    accountId,
+    applications = []
+} = {}) => {
+    const rejectedApplications = (Array.isArray(applications) ? applications : [])
+        .filter((application) => String(application?.review_status || '').trim().toLowerCase() === 'rejected');
+
+    return Promise.all(rejectedApplications.map((application) => dispatchDgfyCompanyRegistrationRejectionNotification({
+        dgfyAccountId: accountId || application?.dgfy_account_id,
+        tenantId: application?.tenant_id || application?.tenant?.id || null,
+        applicationId: application?.id,
+        companyName: application?.tenant?.name,
+        rejectionReason: application?.tenant?.rejection_reason
+    })));
+};
+
 export default {
     buildOrderStatusNotificationPayload,
-    dispatchDgfyCustomerActivityUpdate
+    dispatchDgfyCustomerActivityUpdate,
+    buildCompanyRegistrationRejectionNotificationPayload,
+    dispatchDgfyCompanyRegistrationRejectionNotification,
+    ensureDgfyCompanyRegistrationRejectionNotifications
 };

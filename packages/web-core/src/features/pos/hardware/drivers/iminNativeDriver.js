@@ -118,7 +118,8 @@ export const iminNativeDriver = {
         shiftId,
         terminalId,
         reason,
-        idempotencyKey
+        idempotencyKey,
+        paperWidth
     } = {}) {
         let outcome;
         try {
@@ -126,7 +127,8 @@ export const iminNativeDriver = {
                 transaction,
                 businessSettings,
                 receiptContract,
-                openDrawerAfterPrint: Boolean(openDrawerAfterPrint && shiftId)
+                openDrawerAfterPrint: Boolean(openDrawerAfterPrint && shiftId),
+                paperWidth
             });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
@@ -193,9 +195,9 @@ export const iminNativeDriver = {
             });
         }
     },
-    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal } = {}) {
+    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal, paperWidth } = {}) {
         try {
-            const result = await printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal });
+            const result = await printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal, paperWidth });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             return normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -213,10 +215,10 @@ export const iminNativeDriver = {
             });
         }
     },
-    async printShiftSummary({ shiftSummary, businessSettings, shiftId, terminalId, reason, idempotencyKey } = {}) {
+    async printShiftSummary({ shiftSummary, businessSettings, shiftId, terminalId, reason, idempotencyKey, paperWidth } = {}) {
         let outcome;
         try {
-            const result = await printShiftSummaryWithIminBridge({ shiftSummary, businessSettings });
+            const result = await printShiftSummaryWithIminBridge({ shiftSummary, businessSettings, paperWidth });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -247,10 +249,10 @@ export const iminNativeDriver = {
             }]
         });
     },
-    async printZReading({ zReading, businessSettings, businessDate, locationId, terminalId, reason, idempotencyKey } = {}) {
+    async printZReading({ zReading, businessSettings, businessDate, locationId, terminalId, reason, idempotencyKey, paperWidth } = {}) {
         let outcome;
         try {
-            const result = await printZReadingWithIminBridge({ zReading, businessSettings });
+            const result = await printZReadingWithIminBridge({ zReading, businessSettings, paperWidth });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
                 success: result.result?.success !== false,

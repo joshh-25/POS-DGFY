@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import { formatDeliveryProviderBreakdown } from '../utils/posDeliveryProviders.js';
 import { getPosReportSignedValueTone, getPosReportValueToneClass } from './posReportValueTones.js';
 
 const ORDER_METHOD_LABELS = Object.freeze({
@@ -43,7 +44,8 @@ const getGrossSales = (row) => Number(row?.gross_sales || 0);
 const getNetSales = (row) => Number(row?.net_sales || 0);
 const getProfitLoss = (row) => Number(row?.pos_profit_loss || 0);
 const getProfitMargin = (row) => getNetSales(row) > 0 ? (getProfitLoss(row) / getNetSales(row)) * 100 : 0;
-const getSearchValue = (row) => [formatDateTime(row?.created_at).date, formatDateTime(row?.created_at).time, getInvoice(row), getCashier(row), formatPosTransactionPaymentMethods(row), formatOrderMethod(row?.order_method), getDiscount(row), getGrossSales(row), getNetSales(row), getProfitLoss(row), getProfitMargin(row)].join(' ').toLowerCase();
+const getDeliveryProviders = (row, currencySymbol = '₱') => formatDeliveryProviderBreakdown(row?.delivery_provider_breakdown, { currencySymbol }) || '—';
+const getSearchValue = (row) => [formatDateTime(row?.created_at).date, formatDateTime(row?.created_at).time, getInvoice(row), getCashier(row), formatPosTransactionPaymentMethods(row), getDeliveryProviders(row), formatOrderMethod(row?.order_method), getDiscount(row), getGrossSales(row), getNetSales(row), getProfitLoss(row), getProfitMargin(row)].join(' ').toLowerCase();
 const renderSalesDetailsSections = (row, { columns, renderCell }) => {
   const fields = (keys) => keys.map((key) => {
     const column = columns.find((entry) => entry.key === key);
@@ -54,7 +56,7 @@ const renderSalesDetailsSections = (row, { columns, renderCell }) => {
     {
       key: 'transaction-information',
       title: 'Transaction Information',
-      fields: fields(['created_at', 'invoice_number', 'cashier_name', 'order_method', 'payment_methods'])
+      fields: fields(['created_at', 'invoice_number', 'cashier_name', 'order_method', 'payment_methods', 'delivery_provider_breakdown'])
     },
     {
       key: 'sales-summary',
@@ -71,6 +73,7 @@ export default function PosReportsSalesTable({ rows = [], currencySymbol = '₱'
     { key: 'invoice_number', label: 'Transaction/Invoice', valueTone: 'primary', mobileLabelNoWrap: true, widthClass: 'w-[116px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getInvoice },
     { key: 'cashier_name', label: 'Cashier', widthClass: 'w-[100px]', required: true, visibility: { mobile: false, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getCashier },
     { key: 'payment_methods', label: 'Payment Method', widthClass: 'w-[120px]', required: true, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true }, getValue: formatPosTransactionPaymentMethods, render: renderPaymentMethods },
+    { key: 'delivery_provider_breakdown', label: 'Delivery Provider', widthClass: 'w-[150px]', visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true }, getValue: (row) => getDeliveryProviders(row, currencySymbol), render: (row) => <span className="font-semibold">{getDeliveryProviders(row, currencySymbol)}</span> },
     { key: 'order_method', label: 'Order Method', widthClass: 'w-[105px]', visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, getValue: (row) => formatOrderMethod(row?.order_method), render: renderOrderMethod },
     { key: 'discount_amount', label: `Discount (${symbol})`, valueTone: (row) => getPosReportSignedValueTone(getDiscount(row)), widthClass: 'w-[96px]', defaultVisible: false, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, align: 'left', numeric: true, getValue: getDiscount, render: (row) => money(getDiscount(row), currencySymbol) },
     { key: 'gross_sales', label: `Gross Sales (${symbol})`, valueTone: (row) => getPosReportSignedValueTone(getGrossSales(row)), widthClass: 'w-[112px]', defaultVisible: false, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, align: 'left', numeric: true, getValue: getGrossSales, render: (row) => money(getGrossSales(row), currencySymbol) },

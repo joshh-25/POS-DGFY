@@ -24,6 +24,7 @@ import { ORDER_METHOD_LABELS, resolveAppliedVouchers } from './orderFulfillmentU
 import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
 import POSInlineVoidApprovalDialog from './POSInlineVoidApprovalDialog.jsx';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import { DELIVERY_PROVIDER_OPTIONS } from '../utils/posDeliveryProviders.js';
 import PosTableSurface, { POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
@@ -130,6 +131,10 @@ const FILTER_OPTIONS = {
         { value: 'all', label: 'All' },
         { value: 'in_store', label: 'In-Store' },
         { value: 'online_store', label: 'Online Store' }
+    ],
+    deliveryProvider: [
+        { value: 'all', label: 'All' },
+        ...DELIVERY_PROVIDER_OPTIONS
     ]
 };
 
@@ -171,6 +176,7 @@ const getActiveFilterChips = ({
     historySearch,
     historyStatus,
     historyPaymentType,
+    historyDeliveryProvider,
     historyOrderMethod,
     historyCashierName,
     historyDateFrom,
@@ -179,6 +185,7 @@ const getActiveFilterChips = ({
 }) => [
     historyStatus !== 'all' ? { key: 'status', label: `Sales: ${getFilterOptionLabel('status', historyStatus)}` } : null,
     historyPaymentType !== 'all' ? { key: 'payment', label: `Payment: ${getFilterOptionLabel('paymentType', historyPaymentType)}` } : null,
+    historyDeliveryProvider !== 'all' ? { key: 'delivery_provider', label: `Delivery Provider: ${getFilterOptionLabel('deliveryProvider', historyDeliveryProvider)}` } : null,
     historyOrderMethod !== 'all' ? { key: 'method', label: `Method: ${getFilterOptionLabel('orderMethod', historyOrderMethod, orderMethodOptions)}` } : null,
     String(historyCashierName || '').trim() ? { key: 'cashier', label: `Cashier: ${String(historyCashierName).trim()}` } : null,
     historyDateFrom || historyDateTo
@@ -436,6 +443,8 @@ export default function POSTransactionHistoryPanel({
     setHistoryStatus,
     historyPaymentType,
     setHistoryPaymentType,
+    historyDeliveryProvider,
+    setHistoryDeliveryProvider,
     historyOrderMethod,
     setHistoryOrderMethod,
     historyOrderSource,
@@ -542,6 +551,7 @@ export default function POSTransactionHistoryPanel({
     const currentFilterValues = {
         historyStatus,
         historyPaymentType,
+        historyDeliveryProvider,
         historyOrderMethod,
         historyOrderSource,
         historyCashierName,
@@ -685,6 +695,7 @@ export default function POSTransactionHistoryPanel({
             ...(current || currentFilterValues),
             historyStatus: 'all',
             historyPaymentType: 'all',
+            historyDeliveryProvider: 'all',
             historyOrderMethod: 'all',
             historyOrderSource: 'all',
             historyCashierName: '',
@@ -706,6 +717,7 @@ export default function POSTransactionHistoryPanel({
 
         if (filterKey === 'status') setHistoryStatus('all');
         if (filterKey === 'payment') setHistoryPaymentType('all');
+        if (filterKey === 'delivery_provider') setHistoryDeliveryProvider('all');
         if (filterKey === 'method') setHistoryOrderMethod('all');
         if (filterKey === 'cashier') setHistoryCashierName('');
         if (filterKey === 'date') {
@@ -720,6 +732,7 @@ export default function POSTransactionHistoryPanel({
         setHistorySearch('');
         setHistoryStatus('all');
         setHistoryPaymentType('all');
+        setHistoryDeliveryProvider('all');
         setHistoryOrderMethod('all');
         setHistoryOrderSource('all');
         setHistoryCashierName('');
@@ -744,6 +757,7 @@ export default function POSTransactionHistoryPanel({
         filterApplyPendingRef.current = true;
         setHistoryStatus(next.historyStatus);
         setHistoryPaymentType(next.historyPaymentType);
+        setHistoryDeliveryProvider(next.historyDeliveryProvider);
         setHistoryOrderMethod(next.historyOrderMethod);
         setHistoryOrderSource(next.historyOrderSource);
         setHistoryCashierName(next.historyCashierName);
@@ -785,6 +799,7 @@ export default function POSTransactionHistoryPanel({
         historyOrderMethod,
         historyOrderSource,
         historyPaymentType,
+        historyDeliveryProvider,
         historyStatus,
         loadHistory
     ]);
@@ -1089,6 +1104,15 @@ export default function POSTransactionHistoryPanel({
                                         options={FILTER_OPTIONS.paymentType}
                                         onChange={(value) => updateFilterDraft('historyPaymentType', value)}
                                         testId="pos-history-filter-payment"
+                                        compact={isDesktopFilterDialog}
+                                        mobile={isMobileViewport}
+                                    />
+                                    <PosFilterChoiceGroup
+                                        label="Delivery Provider"
+                                        value={filterDraft?.historyDeliveryProvider || historyDeliveryProvider}
+                                        options={FILTER_OPTIONS.deliveryProvider}
+                                        onChange={(value) => updateFilterDraft('historyDeliveryProvider', value)}
+                                        testId="pos-history-filter-delivery-provider"
                                         compact={isDesktopFilterDialog}
                                         mobile={isMobileViewport}
                                     />

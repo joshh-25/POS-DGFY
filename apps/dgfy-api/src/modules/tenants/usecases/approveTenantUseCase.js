@@ -44,6 +44,7 @@ export const buildApproveTenantUseCase = ({
     createPayMongoChildAccountForTenant = null,
     shouldAutoCreatePayMongoChildAccounts = () => false,
     emailService,
+    materializeApprovedCompanyRegistration = async () => null,
     logger
 }) => {
     // Issue #1825: this is the ~88-second body that used to run inline in the request handler.
@@ -66,6 +67,13 @@ export const buildApproveTenantUseCase = ({
                 adminPasswordHash: tenant.admin_password_hash,
                 workflowMode: extractWorkflowModeFromTenant(tenant),
                 templateKey: extractStoreTemplateKeyFromTenant(tenant)
+            });
+            const registrationReview = typeof companyRegistrationRepository.findAdminReview === 'function'
+                ? await companyRegistrationRepository.findAdminReview(tenant.id)
+                : application;
+            await materializeApprovedCompanyRegistration({
+                tenant,
+                application: registrationReview || application
             });
             await dgfyAccountRepository.upsertFounderMembership({
                 dgfyAccountId: tenant.owner_dgfy_account_id,

@@ -1255,7 +1255,7 @@ export const dgfyAccountRepository = {
             include: [{
                 model: Tenant,
                 as: 'tenant',
-                attributes: ['name', 'status']
+                attributes: ['id', 'name', 'status', 'rejection_reason']
             }],
             order: [['updated_at', 'DESC']]
         });

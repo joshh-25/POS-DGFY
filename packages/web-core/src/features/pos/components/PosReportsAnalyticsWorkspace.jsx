@@ -75,6 +75,11 @@ import { POS_MOBILE_STICKY_TAB_ROW_CLASS, POS_PAGE_CONTENT_STACK_CLASS } from '.
 import { buildPosReportsActiveFilters } from './posReportsActiveFilters.js';
 import { getPosReportRefundsVoidsDisplayValue } from './posReportFormatting.js';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import {
+  DELIVERY_PROVIDER_OPTIONS,
+  formatDeliveryProviderSummaryLabel,
+  parseDeliveryProviderSummary
+} from '../utils/posDeliveryProviders.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import {
   BackOfficeReportDataTable as DataTable,
@@ -131,6 +136,11 @@ const SOURCE_OPTIONS = [
   { value: 'online_store', label: 'Online Store' },
   { value: 'delivery', label: 'Delivery' },
   { value: 'pickup', label: 'Pickup' }
+];
+
+const DELIVERY_PROVIDER_FILTER_OPTIONS = [
+  { value: '', label: 'All delivery providers' },
+  ...DELIVERY_PROVIDER_OPTIONS
 ];
 
 const CHART_COLORS = ['#2563EB', '#14B8A6', '#F97316', '#0EA5E9', '#8B5CF6'];
@@ -427,6 +437,7 @@ function PosReportsAnalyticsWorkspace({
   const [cashierId, setCashierId] = useState('');
   const [paymentType, setPaymentType] = useState('');
   const [source, setSource] = useState('');
+  const [deliveryProvider, setDeliveryProvider] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [overviewSearchQuery, setOverviewSearchQuery] = useState('');
   const [reportFiltersOpen, setReportFiltersOpen] = useState(false);
@@ -534,6 +545,7 @@ function PosReportsAnalyticsWorkspace({
     cashierId,
     paymentType,
     source,
+    deliveryProvider,
     categoryId
   }), [
     categoryId,
@@ -544,6 +556,7 @@ function PosReportsAnalyticsWorkspace({
     normalizedDateRange.dateTo,
     paymentType,
     source,
+    deliveryProvider,
     activeBreakdown,
     activeTab
   ]);
@@ -596,6 +609,7 @@ function PosReportsAnalyticsWorkspace({
     setCashierId('');
     setPaymentType('');
     setSource('');
+    setDeliveryProvider('');
     setCategoryId('');
     setOverviewSearchQuery('');
     setZReadingHistoryPage(1);
@@ -613,6 +627,8 @@ function PosReportsAnalyticsWorkspace({
       setPaymentType('');
     } else if (filterKey === 'source') {
       setSource('');
+    } else if (filterKey === 'delivery_provider') {
+      setDeliveryProvider('');
     } else if (filterKey === 'category') {
       setCategoryId('');
     } else if (filterKey === 'granularity' && activeTab === 'comparison') {
@@ -626,6 +642,7 @@ function PosReportsAnalyticsWorkspace({
     setCashierId(nextFilters.cashierId);
     setPaymentType(nextFilters.paymentType);
     setSource(nextFilters.source);
+    setDeliveryProvider(nextFilters.deliveryProvider);
     setCategoryId(nextFilters.categoryId);
     setReportFiltersOpen(false);
   };
@@ -659,7 +676,7 @@ function PosReportsAnalyticsWorkspace({
   useEffect(() => {
     setBreakdownPage(1);
     setBreakdownSort(getDefaultBreakdownSort(activeBreakdown));
-  }, [activeBreakdown, cashierId, categoryId, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, operatingLocationId, paymentType, source]);
+  }, [activeBreakdown, cashierId, categoryId, deliveryProvider, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, operatingLocationId, paymentType, source]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -703,6 +720,7 @@ function PosReportsAnalyticsWorkspace({
             cashier_id: cashierId || undefined,
             payment_type: paymentType || undefined,
             source: source || undefined,
+            delivery_provider: deliveryProvider || undefined,
             category_id: categoryId || undefined,
             location_id: operatingLocationId || undefined,
             page: breakdownPage,
@@ -746,6 +764,7 @@ function PosReportsAnalyticsWorkspace({
           cashier_id: cashierId || undefined,
           payment_type: paymentType || undefined,
           source: source || undefined,
+          delivery_provider: deliveryProvider || undefined,
           category_id: categoryId || undefined,
           location_id: operatingLocationId || undefined
         });
@@ -788,6 +807,7 @@ function PosReportsAnalyticsWorkspace({
     paymentType,
     reportRefreshKey,
     source,
+    deliveryProvider,
     activeTab
   ]);
 
@@ -937,6 +957,7 @@ function PosReportsAnalyticsWorkspace({
     ...entry,
     fill: CHART_COLORS[index % CHART_COLORS.length]
   }));
+  const deliveryProviderRows = parseDeliveryProviderSummary(dailyReport.delivery_provider_breakdown);
   const activeReportData = isBreakdownTab ? breakdownData : reportData;
   const activeLoading = isBreakdownTab ? breakdownLoading : loading;
   const activeError = isBreakdownTab ? breakdownError : error;
@@ -980,6 +1001,9 @@ function PosReportsAnalyticsWorkspace({
   const selectedSourceLabel = source
     ? SOURCE_OPTIONS.find((option) => option.value === source)?.label || source
     : '';
+  const selectedDeliveryProviderLabel = deliveryProvider
+    ? DELIVERY_PROVIDER_FILTER_OPTIONS.find((option) => option.value === deliveryProvider)?.label || deliveryProvider
+    : '';
   const selectedCategory = categories.find((entry) => String(entry.folder_id) === String(categoryId));
   const activeReportFilterChips = useMemo(() => buildPosReportsActiveFilters({
     dateFilterApplied: reportDateFilterApplied,
@@ -989,6 +1013,7 @@ function PosReportsAnalyticsWorkspace({
     cashierLabel: cashierId ? reportCashierLabel : '',
     paymentLabel: selectedPaymentLabel,
     sourceLabel: selectedSourceLabel,
+    deliveryProviderLabel: selectedDeliveryProviderLabel,
     categoryLabel: categoryId ? (selectedCategory?.name || `Category #${categoryId}`) : '',
     searchQuery: overviewSearchQuery
   }), [
@@ -1002,7 +1027,8 @@ function PosReportsAnalyticsWorkspace({
     selectedCategory?.name,
     selectedPaymentLabel,
     selectedReportTab.granularity,
-    selectedSourceLabel
+    selectedSourceLabel,
+    selectedDeliveryProviderLabel
   ]);
 
   const handleExportCsv = async () => {
@@ -1015,6 +1041,7 @@ function PosReportsAnalyticsWorkspace({
       cashier_id: cashierId || undefined,
       payment_type: paymentType || undefined,
       source: source || undefined,
+      delivery_provider: deliveryProvider || undefined,
       category_id: categoryId || undefined
     };
     if (selectedTab.breakdown) {
@@ -1335,9 +1362,17 @@ function PosReportsAnalyticsWorkspace({
         <td>${escapeHtml(printDateTime(entry.created_at))}</td>
         <td>${escapeHtml(entry.cashier_name || '-')}</td>
         <td>${escapeHtml(formatPosTransactionPaymentMethods(entry))}</td>
+        <td>${escapeHtml(Array.isArray(entry.delivery_provider_breakdown) ? entry.delivery_provider_breakdown.map((provider) => `${provider.display_label || provider.provider_name || provider.provider_type}: ${money(provider.amount, currencySymbol)}`).join(' + ') : '-')}</td>
         <td>${escapeHtml(entry.status || '-')}</td>
         <td style="text-align:right">${escapeHtml(money(entry.total_amount, currencySymbol))}</td>
         <td style="text-align:right">${escapeHtml(money(entry.net_sales, currencySymbol))}</td>
+      </tr>
+    `).join('');
+    const deliveryProviderPrintRows = deliveryProviderRows.map((entry) => `
+      <tr>
+        <td>${escapeHtml(formatDeliveryProviderSummaryLabel(entry))}</td>
+        <td style="text-align:right">${Number(entry.transaction_count || 0)}</td>
+        <td style="text-align:right">${escapeHtml(money(entry.amount, currencySymbol))}</td>
       </tr>
     `).join('');
     const zReadingPrint = zReadingReconciliation ? `
@@ -1395,8 +1430,15 @@ function PosReportsAnalyticsWorkspace({
           <div class="section">
             <h2>Filtered Transactions</h2>
             <table>
-              <thead><tr><th>Invoice</th><th>Datetime</th><th>Cashier</th><th>Payment</th><th>Status</th><th>Total</th><th>Reported Net Sales</th></tr></thead>
-              <tbody>${filteredTransactions || '<tr><td colspan="7">No transactions found.</td></tr>'}</tbody>
+              <thead><tr><th>Invoice</th><th>Datetime</th><th>Cashier</th><th>Payment</th><th>Delivery Provider</th><th>Status</th><th>Total</th><th>Reported Net Sales</th></tr></thead>
+              <tbody>${filteredTransactions || '<tr><td colspan="8">No transactions found.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="section">
+            <h2>Delivery Provider Breakdown</h2>
+            <table>
+              <thead><tr><th>Provider</th><th>Transactions</th><th>Amount</th></tr></thead>
+              <tbody>${deliveryProviderPrintRows || '<tr><td colspan="3">No delivery provider sales found.</td></tr>'}</tbody>
             </table>
           </div>
           <div class="section">
@@ -1426,9 +1468,11 @@ function PosReportsAnalyticsWorkspace({
       paymentOptions={PAYMENT_OPTIONS}
       source={source}
       sourceOptions={SOURCE_OPTIONS}
-        categoryId={categoryId}
-        categories={categories}
-        anchorRef={reportFilterButtonRef}
+      deliveryProvider={deliveryProvider}
+      deliveryProviderOptions={DELIVERY_PROVIDER_FILTER_OPTIONS}
+      categoryId={categoryId}
+      categories={categories}
+      anchorRef={reportFilterButtonRef}
       />
   );
 
@@ -1548,44 +1592,67 @@ function PosReportsAnalyticsWorkspace({
     </>
   );
 
-  const renderTrendAndPaymentBreakdown = () => (
-    <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-      <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : displayGranularity === 'yearly' ? 'Yearly Breakdown' : displayGranularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
-        <div className="h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={trendSeries}>
-              <defs>
-                <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563EB" stopOpacity={0.28} />
-                  <stop offset="95%" stopColor="#2563EB" stopOpacity={0.03} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-              <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
-              <YAxis stroke="#64748B" fontSize={11} />
-              <Tooltip formatter={(value) => money(value, currencySymbol)} />
-              <Area type="monotone" dataKey="net_sales" stroke="#2563EB" fill="url(#reportTrendFill)" strokeWidth={2.5} />
-            </AreaChart>
-          </ResponsiveContainer>
+  const renderDeliveryProviderBreakdown = () => (
+    <SectionCard title="Delivery Provider Breakdown">
+      {deliveryProviderRows.length === 0 ? (
+        <p className="text-sm font-semibold text-slate-500">No delivery provider sales were recorded for the selected filters.</p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {deliveryProviderRows.map((entry) => (
+            <div key={`${entry.provider_type}-${entry.provider_name || ''}`} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+              <div>
+                <p className="text-sm font-black text-slate-900">{formatDeliveryProviderSummaryLabel(entry)}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{Number(entry.transaction_count || 0).toLocaleString('en-US')} transactions</p>
+              </div>
+              <p className="text-sm font-black tabular-nums text-[#1A4E8D]">{money(entry.amount, currencySymbol)}</p>
+            </div>
+          ))}
         </div>
-      </SectionCard>
+      )}
+    </SectionCard>
+  );
 
-      <SectionCard title="Payment Breakdown">
-        <div className="h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={paymentChartRows}>
-              <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-              <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
-              <YAxis stroke="#64748B" fontSize={11} />
-              <Tooltip formatter={(value) => money(value, currencySymbol)} />
-              <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
-                {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </SectionCard>
-    </div>
+  const renderTrendAndPaymentBreakdown = () => (
+    <>
+      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
+        <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : displayGranularity === 'yearly' ? 'Yearly Breakdown' : displayGranularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendSeries}>
+                <defs>
+                  <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0.03} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
+                <YAxis stroke="#64748B" fontSize={11} />
+                <Tooltip formatter={(value) => money(value, currencySymbol)} />
+                <Area type="monotone" dataKey="net_sales" stroke="#2563EB" fill="url(#reportTrendFill)" strokeWidth={2.5} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Payment Breakdown">
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={paymentChartRows}>
+                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
+                <YAxis stroke="#64748B" fontSize={11} />
+                <Tooltip formatter={(value) => money(value, currencySymbol)} />
+                <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
+                  {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+      </div>
+      {renderDeliveryProviderBreakdown()}
+    </>
   );
 
   return (
@@ -1721,7 +1788,7 @@ function PosReportsAnalyticsWorkspace({
                 currencySymbol={currencySymbol}
                 searchQuery={overviewSearchQuery}
               />
-
+              {renderDeliveryProviderBreakdown()}
             </div>
           ) : null}
 

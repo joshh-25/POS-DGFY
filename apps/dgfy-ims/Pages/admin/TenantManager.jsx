@@ -19,6 +19,8 @@ import {
     RotateCcw,
     ShieldCheck,
     FileCheck2,
+    Eye,
+    Download,
     HardDrive,
     Search,
     Monitor,
@@ -172,6 +174,230 @@ const formatPosMetadataValue = (value) => {
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
     return String(value ?? '').trim() || '-';
 };
+
+const REGISTRATION_STATUS_LABELS = {
+    pending: 'Pending review',
+    approved: 'Approved',
+    rejected: 'Rejected',
+    not_started: 'Not started',
+    in_progress: 'In progress',
+    succeeded: 'Completed',
+    failed: 'Failed',
+    queued: 'Queued for processing',
+    completed: 'Completed',
+    not_applicable: 'Not applicable',
+    revoked: 'Access revoked'
+};
+
+const REGISTRATION_UPLOAD_KIND_LABELS = {
+    menu: 'Menu or catalog',
+    profile: 'Profile image',
+    cover: 'Cover image',
+    gallery: 'Gallery image'
+};
+const REGISTRATION_INDUSTRY_LABELS = {
+    retail: 'Retail',
+    micro_retail: 'Micro-Retail or Simple MSME',
+    micro_msm: 'Micro-Retail or Simple MSME',
+    services: 'Services',
+    fnb: 'Food & Beverage',
+    food_beverage: 'Food & Beverage',
+    food_and_beverage: 'Food & Beverage',
+    food_service: 'Food & Beverage',
+    micro_fnb: 'Micro Food & Beverage',
+    micro_food_beverage: 'Micro Food & Beverage',
+    food_manufacturing: 'Food Manufacturing',
+    hospitality: 'Hospitality',
+    healthcare: 'Healthcare',
+    ticketing_transport: 'Ticketing and Transport',
+    logistics_distribution: 'Logistics and Distribution',
+    education_institutions: 'Education and Institutions'
+};
+
+const parseRegistrationSnapshot = (snapshot) => {
+    if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) return snapshot;
+    if (typeof snapshot === 'string') {
+        try {
+            const parsed = JSON.parse(snapshot);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+        } catch {
+            return { acknowledgement_text: snapshot };
+        }
+    }
+    return {};
+};
+
+const firstRegistrationValue = (source, ...keys) => {
+    for (const key of keys) {
+        const value = source?.[key];
+        if (value !== null && value !== undefined && (typeof value !== 'string' || value.trim())) return value;
+    }
+    return null;
+};
+
+const formatRegistrationKey = (value) => String(value ?? '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const formatRegistrationValue = (value) => {
+    if (value === null || value === undefined || value === '') return 'Not provided';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (Array.isArray(value)) {
+        if (!value.length) return 'Not provided';
+        return value.map((item) => {
+            if (!item || typeof item !== 'object') return String(item);
+            return Object.entries(item)
+                .filter(([, nestedValue]) => nestedValue !== null && nestedValue !== undefined && nestedValue !== '')
+                .map(([key, nestedValue]) => `${formatRegistrationKey(key)}: ${formatRegistrationValue(nestedValue)}`)
+                .join(', ');
+        }).filter(Boolean).join('; ') || 'Not provided';
+    }
+    if (typeof value === 'object') {
+        return Object.entries(value)
+            .filter(([, nestedValue]) => nestedValue !== null && nestedValue !== undefined && nestedValue !== '')
+            .map(([key, nestedValue]) => `${formatRegistrationKey(key)}: ${formatRegistrationValue(nestedValue)}`)
+            .join('; ') || 'Not provided';
+    }
+    return String(value).trim() || 'Not provided';
+};
+
+const formatRegistrationStatus = (value) => {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return REGISTRATION_STATUS_LABELS[normalized] || formatRegistrationKey(value) || 'Not available';
+};
+
+const formatRegistrationIndustry = (value) => {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return REGISTRATION_INDUSTRY_LABELS[normalized] || formatRegistrationValue(value);
+};
+
+const formatRegistrationHours = (hours) => {
+    if (!hours) return null;
+    if (typeof hours === 'string') return hours.trim() || null;
+    if (!Array.isArray(hours) || !hours.length) return null;
+    return hours.map((entry) => {
+        if (!entry || typeof entry !== 'object') return String(entry);
+        const day = firstRegistrationValue(entry, 'day', 'label');
+        if (entry.closed === true) return `${formatRegistrationValue(day)}: Closed`;
+        const open = firstRegistrationValue(entry, 'open', 'opening');
+        const close = firstRegistrationValue(entry, 'close', 'closing');
+        if (day && open && close) return `${day}: ${open}–${close}`;
+        return formatRegistrationValue(entry);
+    }).join('\n');
+};
+
+const formatRegistrationAddress = (location) => {
+    if (!location || typeof location !== 'object') return location || null;
+    return [
+        firstRegistrationValue(location, 'address_line', 'addressLine', 'address'),
+        firstRegistrationValue(location, 'barangay'),
+        firstRegistrationValue(location, 'city'),
+        firstRegistrationValue(location, 'province'),
+        firstRegistrationValue(location, 'postal_code', 'postalCode')
+    ].filter(Boolean).join(', ') || null;
+};
+
+const RegistrationReviewField = ({ label, value, wide = false }) => (
+    <div className={cn('rounded-lg border border-slate-200 bg-slate-50 p-3', wide ? 'sm:col-span-2' : '')}>
+        <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
+        <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{formatRegistrationValue(value)}</dd>
+    </div>
+);
+
+const RegistrationSubmissionDetails = ({ snapshot }) => {
+    const submitted = parseRegistrationSnapshot(snapshot);
+    const storefront = parseRegistrationSnapshot(firstRegistrationValue(submitted, 'storefront_profile', 'storefrontProfile'));
+    const location = parseRegistrationSnapshot(firstRegistrationValue(submitted, 'location'));
+    const coordinates = [
+        firstRegistrationValue(location, 'latitude'),
+        firstRegistrationValue(location, 'longitude')
+    ].filter(Boolean).join(', ') || null;
+
+    return (
+        <section aria-labelledby="registration-submitted-details-title">
+            <h3 id="registration-submitted-details-title" className="mb-2 font-semibold text-slate-900">Submitted details</h3>
+            <dl className="grid gap-3 sm:grid-cols-2">
+                <RegistrationReviewField label="Company name" value={firstRegistrationValue(submitted, 'company_name', 'companyName', 'name')} />
+                <RegistrationReviewField label="Business type" value={firstRegistrationValue(submitted, 'business_type', 'businessType')} />
+                <RegistrationReviewField label="Industry" value={formatRegistrationIndustry(firstRegistrationValue(submitted, 'registration_industry', 'industry_tag', 'industry_key', 'industryKey', 'industry'))} />
+                <RegistrationReviewField label="Public phone" value={firstRegistrationValue(storefront, 'phone', 'public_phone', 'publicPhone')} />
+                <RegistrationReviewField label="Public email" value={firstRegistrationValue(storefront, 'email', 'public_email', 'publicEmail')} />
+                <RegistrationReviewField label="Website" value={firstRegistrationValue(storefront, 'website')} />
+                <RegistrationReviewField label="Storefront description" value={firstRegistrationValue(storefront, 'description')} wide />
+                <RegistrationReviewField label="Delivery partners" value={firstRegistrationValue(submitted, 'delivery_partners', 'deliveryPartners')} />
+                <RegistrationReviewField label="Location name" value={firstRegistrationValue(location, 'name', 'location_name', 'locationName')} />
+                <RegistrationReviewField label="Address" value={formatRegistrationAddress(location)} wide />
+                <RegistrationReviewField label="Coordinates" value={coordinates} />
+                <RegistrationReviewField label="Business hours" value={formatRegistrationHours(firstRegistrationValue(submitted, 'hours', 'business_hours', 'businessHours'))} wide />
+            </dl>
+        </section>
+    );
+};
+
+const RegistrationLegalEvidence = ({ snapshot }) => {
+    const legal = parseRegistrationSnapshot(snapshot);
+    const companyTermsAccepted = firstRegistrationValue(legal, 'accepted_company_terms', 'acceptedCompanyTerms');
+    const marketplaceTermsAccepted = firstRegistrationValue(legal, 'accepted_marketplace_terms', 'acceptedMarketplaceTerms');
+    const acknowledgementText = firstRegistrationValue(legal, 'acknowledgement_text', 'acknowledgementText');
+
+    return (
+        <section aria-labelledby="registration-legal-evidence-title">
+            <h3 id="registration-legal-evidence-title" className="mb-2 font-semibold text-slate-900">Legal evidence</h3>
+            <p className="mb-3 text-sm text-slate-700">The registration contains a recorded acknowledgement for both required legal agreements.</p>
+            <dl className="grid gap-3 sm:grid-cols-2">
+                <RegistrationReviewField label="Company Registration Terms" value={companyTermsAccepted === false ? 'Not accepted' : 'Accepted'} />
+                <RegistrationReviewField label="Marketplace Provider Terms" value={marketplaceTermsAccepted === false ? 'Not accepted' : 'Accepted'} />
+                <RegistrationReviewField label="Company terms version" value={firstRegistrationValue(legal, 'company_terms_version', 'companyTermsVersion')} />
+                <RegistrationReviewField label="Marketplace terms version" value={firstRegistrationValue(legal, 'marketplace_terms_version', 'marketplaceTermsVersion')} />
+            </dl>
+            {acknowledgementText ? (
+                <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-slate-700">View recorded acknowledgement text</summary>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{acknowledgementText}</p>
+                </details>
+            ) : null}
+            {firstRegistrationValue(legal, 'acknowledgement_hash', 'acknowledgementHash') ? (
+                <p className="mt-3 break-all text-xs text-slate-500">Evidence hash: <code>{firstRegistrationValue(legal, 'acknowledgement_hash', 'acknowledgementHash')}</code></p>
+            ) : null}
+        </section>
+    );
+};
+
+const RegistrationUploadReview = ({ uploads, action, onView, onDownload, onRevoke }) => (
+    <section aria-labelledby="registration-private-uploads-title">
+        <h3 id="registration-private-uploads-title" className="mb-2 font-semibold text-slate-900">Private uploads</h3>
+        <div className="space-y-3">
+            {uploads.map((upload) => (
+                <div key={upload.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                    <div className="min-w-0 flex-1">
+                        <div className="break-words text-sm font-medium text-slate-900">{upload.original_filename || 'Unnamed file'}</div>
+                        <dl className="mt-2 grid gap-x-4 gap-y-1 text-xs text-slate-600 sm:grid-cols-3">
+                            <div><dt className="font-medium text-slate-500">Asset</dt><dd>{REGISTRATION_UPLOAD_KIND_LABELS[upload.asset_kind] || formatRegistrationKey(upload.asset_kind)}</dd></div>
+                            <div><dt className="font-medium text-slate-500">File type</dt><dd>{formatRegistrationValue(upload.mime_type)}</dd></div>
+                            <div><dt className="font-medium text-slate-500">Review status</dt><dd>{formatRegistrationStatus(upload.review_status)}</dd></div>
+                            <div><dt className="font-medium text-slate-500">Processing status</dt><dd>{formatRegistrationStatus(upload.extraction_status)}</dd></div>
+                        </dl>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="outline" disabled={Boolean(action)} onClick={() => void onView(upload)}>
+                            <Eye className="mr-1 h-4 w-4" />
+                            View
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={Boolean(action)} onClick={() => void onDownload(upload)}>
+                            <Download className="mr-1 h-4 w-4" />
+                            Download
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={Boolean(action) || upload.review_status === 'revoked'} onClick={() => void onRevoke(upload)}>Revoke</Button>
+                    </div>
+                </div>
+            ))}
+            {!uploads.length ? <p className="text-sm text-slate-500">No uploads have been submitted.</p> : null}
+        </div>
+    </section>
+);
 
 const deriveForceNonCompliantEligibility = (tenant) => {
     if (Object.prototype.hasOwnProperty.call(tenant || {}, 'can_force_non_compliant')) {
@@ -504,6 +730,9 @@ const categorizeAuditEvent = (eventType) => {
 export default function TenantManager() {
     const navigate = useNavigate();
     const [tenants, setTenants] = useState([]);
+    const [registrationReview, setRegistrationReview] = useState(null);
+    const [registrationReviewLoading, setRegistrationReviewLoading] = useState(false);
+    const [registrationUploadAction, setRegistrationUploadAction] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -1016,6 +1245,78 @@ export default function TenantManager() {
         } finally {
             setActionLoading(null);
         }
+    };
+
+    const openRegistrationReview = async (tenant) => {
+        setRegistrationReviewLoading(true);
+        try {
+            const response = await adminService.getTenantRegistration(tenant.id);
+            setRegistrationReview({ tenant, ...(response.data || response) });
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) toast.error(`Failed to load registration evidence: ${normalized.message}`);
+        } finally { setRegistrationReviewLoading(false); }
+    };
+
+    const fetchRegistrationUploadBlob = async (upload) => {
+        const response = await adminService.downloadTenantRegistrationUpload(registrationReview.tenant.id, upload.id);
+        return response.data;
+    };
+
+    const viewRegistrationUpload = async (upload) => {
+        if (!registrationReview?.tenant?.id || !upload?.id) return;
+        const previewWindow = window.open('', '_blank');
+        if (!previewWindow) {
+            toast.error('Allow pop-ups to view this private registration upload.');
+            return;
+        }
+        setRegistrationUploadAction(`view:${upload.id}`);
+        try {
+            const blob = await fetchRegistrationUploadBlob(upload);
+            const url = URL.createObjectURL(blob);
+            previewWindow.opener = null;
+            previewWindow.location.href = url;
+            window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        } catch (err) {
+            previewWindow.close();
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) toast.error(`Failed to view upload: ${normalized.message}`);
+        } finally { setRegistrationUploadAction(''); }
+    };
+
+    const downloadRegistrationUpload = async (upload) => {
+        if (!registrationReview?.tenant?.id || !upload?.id) return;
+        setRegistrationUploadAction(`download:${upload.id}`);
+        try {
+            const blob = await fetchRegistrationUploadBlob(upload);
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = upload.original_filename || 'registration-upload';
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) toast.error(`Failed to download upload: ${normalized.message}`);
+        } finally { setRegistrationUploadAction(''); }
+    };
+
+    const revokeRegistrationUpload = async (upload) => {
+        if (!registrationReview?.tenant?.id || !upload?.id) return;
+        const reason = window.prompt('Reason for revoking this private registration upload:');
+        if (reason === null) return;
+        setRegistrationUploadAction(`revoke:${upload.id}`);
+        try {
+            await adminService.revokeTenantRegistrationUpload(registrationReview.tenant.id, upload.id, reason);
+            await openRegistrationReview(registrationReview.tenant);
+            toast.success('Registration upload revoked. Audit evidence was retained.');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) toast.error(`Failed to revoke upload: ${normalized.message}`);
+        } finally { setRegistrationUploadAction(''); }
     };
 
     const handleRetryProvisioning = async (tenantId) => {
@@ -2059,6 +2360,16 @@ export default function TenantManager() {
                                             acceptance criteria says never to leave it. */}
                                         {tenant.status === 'pending' || provisioningFailed ? (
                                             <div className="flex items-center gap-2">
+                                                <Button
+                                                    onClick={() => openRegistrationReview(tenant)}
+                                                    disabled={registrationReviewLoading}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                                >
+                                                    <FileCheck2 className="w-4 h-4 mr-1" />
+                                                    Review registration
+                                                </Button>
                                                 {(registrationAction?.action === 'retry' || provisioningFailed) ? <Button
                                                     onClick={() => handleRetryProvisioning(tenant.id)}
                                                     disabled={isProcessing}
@@ -2147,6 +2458,16 @@ export default function TenantManager() {
                                                             )}
                                                         </Button>
                                                     )} */}
+                                                    <Button
+                                                        onClick={() => openRegistrationReview(tenant)}
+                                                        disabled={registrationReviewLoading}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                                    >
+                                                        <FileCheck2 className="w-4 h-4 mr-1" />
+                                                        Review registration
+                                                    </Button>
                                                     <Button
                                                         onClick={() => openComplianceModal(tenant)}
                                                         variant="outline"
@@ -3241,6 +3562,24 @@ export default function TenantManager() {
                             </div>
                         </form>
                     </div>
+                </div>
+            )}
+
+            {registrationReview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setRegistrationReview(null); }}>
+                    <section className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-white shadow-xl" role="dialog" aria-modal="true" aria-labelledby="registration-review-title">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4"><div><h2 id="registration-review-title" className="text-lg font-semibold text-slate-900">Registration review</h2><p className="text-sm text-slate-500">{registrationReview.tenant?.name}</p></div><Button variant="ghost" size="icon" onClick={() => setRegistrationReview(null)}><X className="h-5 w-5" /></Button></div>
+                        <div className="space-y-5 p-6">
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <div><div className="text-xs uppercase text-slate-500">Review</div><div className="font-semibold">{formatRegistrationStatus(registrationReview.review_status)}</div></div>
+                                <div><div className="text-xs uppercase text-slate-500">Provisioning</div><div className="font-semibold">{formatRegistrationStatus(registrationReview.provisioning_status)}</div></div>
+                                <div><div className="text-xs uppercase text-slate-500">Attempt</div><div className="font-semibold">{formatRegistrationValue(registrationReview.current_attempt_no)}</div></div>
+                            </div>
+                            <RegistrationSubmissionDetails snapshot={registrationReview.submission_snapshot} />
+                            <RegistrationLegalEvidence snapshot={registrationReview.legal_terms_snapshot} />
+                            <RegistrationUploadReview uploads={registrationReview.uploads || []} action={registrationUploadAction} onView={viewRegistrationUpload} onDownload={downloadRegistrationUpload} onRevoke={revokeRegistrationUpload} />
+                        </div>
+                    </section>
                 </div>
             )}
         </div>

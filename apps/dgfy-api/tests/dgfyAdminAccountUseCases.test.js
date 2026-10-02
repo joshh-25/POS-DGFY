@@ -149,6 +149,57 @@ describe('dgfyAdminAccountUseCases', () => {
         }));
     });
 
+    it('serializes Sequelize camelCase timestamps for account, membership, and audit details', async () => {
+        const createdAt = new Date('2026-08-19T05:15:53.000Z');
+        const updatedAt = new Date('2026-08-19T05:16:03.000Z');
+        const membershipCreatedAt = new Date('2026-08-19T05:15:54.000Z');
+        const membershipUpdatedAt = new Date('2026-08-19T05:15:54.000Z');
+        const auditCreatedAt = new Date('2026-08-19T05:16:04.000Z');
+        const account = createAccount({
+            created_at: undefined,
+            updated_at: undefined,
+            createdAt,
+            updatedAt,
+            tenantMemberships: [{
+                id: 49,
+                tenant_id: 'tenant-1',
+                tenant_user_id: 26,
+                role: 'cashier',
+                status: 'accepted',
+                source: 'admin_provisioned',
+                created_at: undefined,
+                updated_at: undefined,
+                createdAt: membershipCreatedAt,
+                updatedAt: membershipUpdatedAt,
+                tenant: { id: 'tenant-1', name: 'Masu Cafe', company_token: 'token-masu', status: 'active', plan: 'premium' }
+            }]
+        });
+        const repository = createRepository(account);
+        repository.listAdminAuditLogs.mockResolvedValue([{
+            audit_log_id: 49,
+            action: 'admin_create_dgfy_account',
+            actor_username: 'platform-admin',
+            created_at: undefined,
+            createdAt: auditCreatedAt
+        }]);
+        const useCase = buildGetAdminDgfyAccountUseCase({ repository });
+
+        const result = await useCase({ accountId: account.id });
+        const serialized = result.data.payload.data;
+
+        expect(serialized.account).toEqual(expect.objectContaining({
+            created_at: createdAt,
+            updated_at: updatedAt
+        }));
+        expect(serialized.account.memberships[0]).toEqual(expect.objectContaining({
+            created_at: membershipCreatedAt,
+            updated_at: membershipUpdatedAt
+        }));
+        expect(serialized.audit_logs[0]).toEqual(expect.objectContaining({
+            created_at: auditCreatedAt
+        }));
+    });
+
     it('updates name and phone, clears phone verification, and writes a profile audit log', async () => {
         const account = createAccount();
         const repository = createRepository(account);

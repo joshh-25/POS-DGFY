@@ -17,6 +17,7 @@ const salesTableSource = fs.readFileSync(path.resolve(__dirname, '../components/
 const responsiveTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsResponsiveTable.jsx'), 'utf8');
 const filterPartsSource = fs.readFileSync(path.resolve(__dirname, '../components/PosFilterDialogParts.jsx'), 'utf8');
 const cashierFilterSource = fs.readFileSync(path.resolve(__dirname, '../components/PosCashierFilterControl.jsx'), 'utf8');
+const floatingScrollbarSource = fs.readFileSync(path.resolve(__dirname, '../components/PosFloatingScrollbar.jsx'), 'utf8');
 const dialogShellSource = fs.readFileSync(path.resolve(__dirname, '../components/PosFilterDialogShell.jsx'), 'utf8');
 const datePickerSource = fs.readFileSync(path.resolve(__dirname, '../components/PosDateRangePicker.jsx'), 'utf8');
 const tableSurfaceSource = fs.readFileSync(path.resolve(__dirname, '../components/PosTableSurface.jsx'), 'utf8');
@@ -206,6 +207,8 @@ describe('POS report category filter contract', () => {
 
   it('uses active folder IDs rather than date-dependent category names', () => {
     expect(workspaceSource).toContain("const [categoryId, setCategoryId] = useState('');");
+    expect(workspaceSource).toContain("const [deliveryProvider, setDeliveryProvider] = useState('');");
+    expect(workspaceSource).toContain('delivery_provider: deliveryProvider || undefined');
     expect(workspaceSource).toContain('category_id: categoryId || undefined');
     expect(filterPanelSource).toContain("value: entry.folder_id || ''");
     expect(filterPanelSource).toContain('label: entry.name');
@@ -247,6 +250,8 @@ describe('POS report category filter contract', () => {
     expect(dialogShellSource).toContain('<Dialog');
     expect(dialogShellSource).toContain('<DialogContent');
     expect(dialogShellSource).toContain('mobileSheet={isMobileDialog}');
+    expect(dialogShellSource).toContain('h-[min(90vh,48rem)] max-h-[min(90vh,48rem)]');
+    expect(dialogShellSource).toContain('h-[min(90vh,40rem)] max-h-[min(90vh,40rem)]');
     expect(dialogShellSource).toContain('dgfy-pos-history-filter-dialog w-auto max-w-none rounded-xl');
     expect(dialogShellSource).toContain('dgfy-pos-history-calendar-dialog max-w-none rounded-xl');
     expect(filterPanelSource).toContain('compact={!isMobileDialog}');
@@ -255,8 +260,13 @@ describe('POS report category filter contract', () => {
     expect(filterPanelSource).not.toContain('showSelectedIcon');
     expect(dateFilterSource).toContain('mobile={isMobileDialog}');
     expect(filterPanelSource).toContain('Payment Type');
+    expect(filterPanelSource).toContain('Delivery Provider');
     expect(filterPanelSource).toContain('Sources');
     expect(filterPanelSource).toContain('Categories');
+    expect(filterPanelSource).toContain('<PosFloatingScrollbar');
+    expect(filterPanelSource).toContain('dgfy-pos-filter-dialog-scroll-body');
+    expect(floatingScrollbarSource).toContain('role="scrollbar"');
+    expect(floatingScrollbarSource).toContain('aria-controls={targetId}');
     expect(filterPanelSource).toContain('<PosCashierFilterControl');
     expect(cashierFilterSource).toContain('Search Cashier');
     expect(cashierFilterSource).toContain('Cashier options');

@@ -89,7 +89,8 @@ import {
     setDefaultAffiliatePayoutMethod,
     updateAffiliatePayoutMethod
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
-import { getCompanyRegistrationStatus, resubmitCompanyRegistration } from '../modules/tenants/controllers/companyRegistrationHandlers.js';
+import { getCompanyRegistrationStatus, resubmitCompanyRegistration, uploadCompanyRegistrationFile } from '../modules/tenants/controllers/companyRegistrationHandlers.js';
+import { companyRegistrationUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import { validateDgfyCustomerActivityQuery } from '../validators/dgfyCustomerValidator.js';
 import { issueDgfyPosDeviceChallenge } from '../modules/pos/controllers/dgfyPosDeviceHandlers.js';
 import { validatePosTerminalDeviceChallenge } from '../validators/posValidator.js';
@@ -113,6 +114,7 @@ router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
 router.post('/auth/tenant-session', authenticateDgfyAccount, dgfyTenantSessionLimiter, startDgfyTenantSession);
 router.get('/company-registration/:applicationId', authenticateDgfyAccount, getCompanyRegistrationStatus);
 router.post('/company-registration/:applicationId/resubmit', authenticateDgfyAccount, resubmitCompanyRegistration);
+router.post('/company-registration/:applicationId/uploads/:kind', authenticateDgfyAccount, preserveTenantContext(companyRegistrationUpload.single('file')), uploadCompanyRegistrationFile);
 router.get('/account/companies', authenticateDgfyAccountOrTenantMembership, listDgfyAccountCompanies);
 router.post('/account/business-step-up/request', authLimiter, authenticateDgfyAccountOrTenantMembership, requestDgfyBusinessStepUp);
 router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgfyAccountOrTenantMembership, switchDgfyCompany);

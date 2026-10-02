@@ -161,3 +161,39 @@ describe('standalone POS browser session bootstrap', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('OPIS browser session bootstrap', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv('VITE_APP_SURFACE', 'opis');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: {} })
+    }));
+    vi.stubGlobal('window', {
+      location: { hash: '' },
+      dispatchEvent: vi.fn()
+    });
+    vi.stubGlobal('document', { cookie: 'opis_csrf_token=csrf-opis' });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('selects the OPIS cookie namespace during CSRF bootstrap', async () => {
+    const session = await import('../browserSession.js');
+
+    await expect(session.ensureCsrfToken({ force: true })).resolves.toBe('csrf-opis');
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/csrf-token'),
+      expect.objectContaining({
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'x-dgfy-app-surface': 'opis'
+        })
+      })
+    );
+  });
+});

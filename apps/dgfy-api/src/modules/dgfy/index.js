@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { dgfyAffiliateRepository } from './repositories/dgfyAffiliateRepository.js';
+import { ensureDgfyCompanyRegistrationRejectionNotifications } from './services/dgfyCustomerNotifications.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,
@@ -222,7 +223,8 @@ export const issueDgfyPosDeviceChallengeUseCase = buildIssueDgfyPosDeviceChallen
 });
 
 export const listDgfyAccountCompaniesUseCase = buildListDgfyAccountCompaniesUseCase({
-    repository: dgfyAccountRepository
+    repository: dgfyAccountRepository,
+    ensureRejectedCompanyRegistrationNotifications: ensureDgfyCompanyRegistrationRejectionNotifications
 });
 
 export const searchDgfyBusinessAccountsUseCase = buildSearchDgfyBusinessAccountsUseCase({
@@ -296,7 +298,10 @@ export const getDgfyCustomerOrderDetailsUseCase = buildGetDgfyCustomerOrderDetai
 export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
 export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'booking' });
-export const listDgfyCustomerNotificationsUseCase = buildListDgfyCustomerNotificationsUseCase();
+export const listDgfyCustomerNotificationsUseCase = buildListDgfyCustomerNotificationsUseCase({
+    registrationApplicationReader: dgfyAccountRepository.listRegistrationApplications.bind(dgfyAccountRepository),
+    ensureRejectedCompanyRegistrationNotifications: ensureDgfyCompanyRegistrationRejectionNotifications
+});
 export const markDgfyCustomerNotificationReadUseCase = buildMarkDgfyCustomerNotificationReadUseCase();
 export const markAllDgfyCustomerNotificationsReadUseCase = buildMarkAllDgfyCustomerNotificationsReadUseCase();
 export const trackDgfyCustomerReferenceUseCase = buildTrackDgfyCustomerReferenceUseCase();

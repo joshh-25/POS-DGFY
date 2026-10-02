@@ -31,6 +31,11 @@ import {
     getDiscountRuleSelectionKey,
     POS_DISCOUNT_FALLBACK_OPTIONS
 } from '../utils/posDiscountOptions.js';
+import {
+    DELIVERY_PROVIDER_OPTIONS,
+    getDeliveryProviderValidationMessage,
+    normalizeDeliveryProviderName
+} from '../utils/posDeliveryProviders.js';
 
 const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const PosCheckoutDetailsSlot = lazyWithChunkRetry(() => import('./PosCheckoutDetailsSlot.jsx').then(({ PosCheckoutDetailsSlot: Component }) => ({ default: Component })));
@@ -80,6 +85,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         customerPaymentAmountAutoFilled,
         customerPaymentAmountInput,
         customerPaymentFieldLabel,
+        deliveryProviderBreakdown = [],
         discountDraft = {},
         discountModalOpen,
         discountPreviewTotals = {},
@@ -132,6 +138,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         setCheckoutConfirmModalOpen,
         setCustomerPaymentAmountAutoFilled,
         setCustomerPaymentAmountInput,
+        setDeliveryProviderBreakdown = () => {},
         setKitchenNotes,
         setOrderMethod,
         setPaymentType,
@@ -284,6 +291,13 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
     const effectiveCheckoutSubtotal = hasCheckoutSubtotalOverride
         ? round4(normalizedCheckoutSubtotalOverride)
         : cartSubtotal;
+    const deliveryProviderRows = Array.isArray(deliveryProviderBreakdown) ? deliveryProviderBreakdown : [];
+    const selectedDeliveryProvider = deliveryProviderRows[0] || null;
+    const deliveryProviderValidationMessage = getDeliveryProviderValidationMessage({
+        orderMethod,
+        entries: deliveryProviderRows,
+        totalAmount: effectiveCheckoutTotal
+    });
     const paymentAmountAutoFilled = paymentAmountDraft?.autoFilled ?? Boolean(customerPaymentAmountAutoFilled);
     const paymentAmountInput = paymentAmountAutoFilled
         ? money(effectiveCheckoutTotal)
@@ -336,6 +350,31 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         setCustomerPaymentAmountInput(money(effectiveCheckoutTotal));
         setCustomerPaymentAmountAutoFilled(true);
         selectPaymentAmount('', true);
+    };
+
+    const selectDeliveryProvider = (providerType) => {
+        setDeliveryProviderBreakdown((current) => {
+            const rows = Array.isArray(current) ? current : [];
+            const existingEntry = rows.find((entry) => entry?.provider_type === providerType);
+            return [{
+                provider_type: providerType,
+                provider_name: providerType === 'other'
+                    ? normalizeDeliveryProviderName(existingEntry?.provider_name)
+                    : '',
+                amount: ''
+            }];
+        });
+    };
+
+    const updateDeliveryProviderName = (value) => {
+        setDeliveryProviderBreakdown((current) => {
+            const rows = Array.isArray(current) ? current : [];
+            if (rows.length === 0) return rows;
+            return [{
+                ...rows[0],
+                provider_name: normalizeDeliveryProviderName(value)
+            }];
+        });
     };
 
     const checkoutPaymentSnapshot = {
@@ -503,7 +542,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                         <div className="w-full min-w-0 max-w-full space-y-0 py-[25px] lg:col-span-2" data-testid="pos-checkout-payment-group">
                             {!hasSplitPaymentSummary && (
                                 <fieldset className="w-full min-w-0 max-w-full space-y-1 py-[5px]" aria-label="Payment Type">
-                                    <legend className="text-[11px] font-bold text-slate-600">Payment Type</legend>
+                                    <legend className="text-[11px] font-bold text-slate-600">{orderMethod === 'delivery' ? 'Settlement Payment Type' : 'Payment Type'}</legend>
                                     <div className={`${isTabletViewport ? 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain p-1 touch-pan-x' : 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x'} pos-checkout-payment-method-scroll`}>
                                         <div className="grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5" data-testid="pos-checkout-payment-method-buttons">
                                             {PAYMENT_METHOD_OPTIONS.map((option) => {
@@ -620,6 +659,54 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                         </div>
                     )}
                         </div>
+                    )}
+                    {orderMethod === 'delivery' && (
+                        <fieldset className="w-full min-w-0 max-w-full space-y-2 rounded-xl border border-blue-200 bg-blue-50/40 p-3 lg:col-span-2" aria-label="Delivery Provider" data-testid="pos-delivery-provider-breakdown">
+                            <legend className="px-1 text-[11px] font-black uppercase tracking-wide text-[#1A4E8D]">Delivery Provider <span className="text-rose-600">*</span></legend>
+                            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1" data-testid="pos-delivery-provider-prompt-row">
+                                <p className="min-w-0 flex-1 text-[11px] font-medium text-slate-600">Select one delivery provider.</p>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5" data-testid="pos-delivery-provider-options">
+                                {DELIVERY_PROVIDER_OPTIONS.map((option) => {
+                                    const active = selectedDeliveryProvider?.provider_type === option.value;
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            aria-pressed={active}
+                                            onClick={() => selectDeliveryProvider(option.value)}
+                                            disabled={posActionsBlocked || checkoutLoading}
+                                            className={`h-9 rounded-lg border px-2 text-[11px] font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 ${active ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm' : 'border-slate-300 bg-white text-[#0F172A] hover:border-[#1A4E8D] hover:bg-white'} disabled:cursor-not-allowed disabled:opacity-50`}
+                                            data-testid={`pos-delivery-provider-${option.value}`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {selectedDeliveryProvider?.provider_type === 'other' && (
+                                <label className="block rounded-lg border border-blue-100 bg-white p-2 text-[10px] font-bold text-slate-600" data-testid="pos-delivery-provider-other-field">
+                                    <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1" data-testid="pos-delivery-provider-other-label-row">
+                                        <span>Other provider name <span className="text-rose-600">*</span></span>
+                                        {deliveryProviderValidationMessage && (
+                                            <span className="ml-auto max-w-full rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-right text-[11px] font-bold text-rose-700" role="alert" data-testid="pos-delivery-provider-error">
+                                                {deliveryProviderValidationMessage}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <Input
+                                        type="text"
+                                        value={selectedDeliveryProvider.provider_name || ''}
+                                        onChange={(event) => updateDeliveryProviderName(event.target.value)}
+                                        disabled={checkoutLoading}
+                                        placeholder="e.g. Maxim"
+                                        aria-label="Other delivery provider name"
+                                        className="mt-1 h-8 rounded-lg border-slate-200 text-[12px] font-semibold"
+                                        data-testid="pos-delivery-provider-other-name"
+                                    />
+                                </label>
+                            )}
+                        </fieldset>
                     )}
                     {existingNonCashPayment && isEmployeeCreditPayment && (
                         <label className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-[#1A4E8D] lg:col-span-2" data-testid="pos-checkout-payment-confirmation">
@@ -786,7 +873,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     <Button
                         type="button"
                         onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : confirmCheckout}
-                        disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}
+                        disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || Boolean(deliveryProviderValidationMessage) || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}
                         title={discountModalOpen ? 'Apply or cancel the discount draft before confirming checkout.' : undefined}
                         className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
                     >

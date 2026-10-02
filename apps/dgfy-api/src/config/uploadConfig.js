@@ -174,6 +174,25 @@ export const menuImportBatchUpload = multer({
     }
 });
 
+// Company-registration uploads are landlord-scoped private evidence. Keep them
+// in memory until the use case has validated magic bytes, ownership, and the
+// generated private storage key; never use the public temp/static storage here.
+export const companyRegistrationUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    fileFilter: (req, file, cb) => {
+        const kind = String(req.params?.kind || '').toLowerCase();
+        const allowed = kind === 'menu'
+            ? ['text/csv', 'text/plain', 'application/vnd.ms-excel', 'application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
+            : ['image/jpeg', 'image/jpg', 'image/png'];
+        if (allowed.includes(String(file?.mimetype || '').toLowerCase())) {
+            cb(null, true);
+            return;
+        }
+        cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file?.fieldname || 'file'), false);
+    }
+});
+
 // Phase 204 (#965): proof-of-payment image on a balance settlement. 15MB headroom for an
 // unedited phone-camera JPEG of a GCash/cheque screen -- generous relative to the other
 // single-image uploads above because this file is normalized (single WebP variant) rather than
