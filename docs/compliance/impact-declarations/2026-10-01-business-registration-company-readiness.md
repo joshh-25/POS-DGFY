@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-10-01
 declaration_id: 2026-10-01-business-registration-company-readiness
 classification: regulatory
-surfaces: settings,compliance
+surfaces: settings,compliance,pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.01
 verification_evidence: npm run check:compliance,npm run check:architecture,targeted landlord registration and materialization tests,affected frontend builds,migration upgrade and fresh-schema rehearsal
@@ -26,6 +26,7 @@ Regulatory. The change touches tenant registration, platform-admin review, and s
 - Landlord-scoped company registration legal acknowledgements, snapshots, and private upload metadata.
 - IMS platform-admin review, private download, revoke, and audit actions.
 - OPIS/POS Company readiness access and canonical settings links.
+- POS delivery-provider payment breakdown across checkout, transaction history, reporting, Z-reading, and receipts.
 - Approved tenant setup materialization for business profile, location, hours, and Storefront settings.
 
 ## Compliance Preconditions
