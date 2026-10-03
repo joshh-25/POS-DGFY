@@ -116,7 +116,14 @@ export function usePosTerminalViewModel({
 
     const isFnbWorkflow = posWorkflow.mode === 'fnb';
     const isDineInCashCheckoutRequested = Boolean(dineInCashCheckout);
-    const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
+    const [orderMethod, setOrderMethodState] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
+    const [deliveryProviderBreakdown, setDeliveryProviderBreakdown] = useState([]);
+    const setOrderMethod = useCallback((nextOrderMethod) => {
+        setOrderMethodState(nextOrderMethod);
+        if (String(nextOrderMethod || '').trim().toLowerCase() !== 'delivery') {
+            setDeliveryProviderBreakdown([]);
+        }
+    }, []);
     const [tableNumber, setTableNumber] = useState('');
     const [kitchenNotes, setKitchenNotes] = useState('');
     const [servicesClientName, setServicesClientName] = useState('');
@@ -711,6 +718,8 @@ export function usePosTerminalViewModel({
         setHistoryStatus,
         historyPaymentType,
         setHistoryPaymentType,
+        historyDeliveryProvider,
+        setHistoryDeliveryProvider,
         historyOrderMethod,
         setHistoryOrderMethod,
         historyOrderSource,
@@ -800,6 +809,7 @@ export function usePosTerminalViewModel({
         isFnbWorkflow: checkoutUsesFnbContract,
         normalizedFnbContext,
         orderMethod,
+        deliveryProviderBreakdown,
         tableNumber,
         kitchenNotes,
         servicesClientName,
@@ -844,6 +854,7 @@ export function usePosTerminalViewModel({
         discountApprovalRef,
         resetEmployeeCredit,
         setOrderMethod,
+        setDeliveryProviderBreakdown,
         setTableNumber,
         setKitchenNotes,
         setServicesClientName,
@@ -1561,6 +1572,7 @@ export function usePosTerminalViewModel({
         customerPaymentChange,
         customerPaymentFieldLabel,
         customerPaymentShortfall,
+        deliveryProviderBreakdown,
         discountApplying,
         discountApproversLoading,
         discountEmployeesLoading,
@@ -1649,6 +1661,7 @@ export function usePosTerminalViewModel({
         historyPage,
         historyPageSize,
         historyPaymentType,
+        historyDeliveryProvider,
         historySearch,
         historyStatus,
         imagePreview,
@@ -1751,6 +1764,7 @@ export function usePosTerminalViewModel({
         setCurrentViewMode,
         ...customerPaymentAmountState,
         setDiscountDraft,
+        setDeliveryProviderBreakdown,
         setDiscountModalOpen,
         setDrawerAuthorizationModalOpen,
         setDrawerAuthorizationPin,
@@ -1763,6 +1777,7 @@ export function usePosTerminalViewModel({
         setHistoryOrderMethod,
         setHistoryOrderSource,
         setHistoryPaymentType,
+        setHistoryDeliveryProvider,
         setHistorySearch,
         setHistoryStatus,
         setImagePreview,

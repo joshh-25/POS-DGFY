@@ -1,12 +1,13 @@
 import React from 'react';
 import { Check, ClipboardCheck, LayoutDashboard, Mail } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   buildBusinessRegistrationSubmissionPath,
   buildCustomerDashboardOverviewPath
 } from '../model/businessRegistrationSubmission.js';
 
 export function BusinessRegistrationSubmissionPage() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const applicationId = String(searchParams.get('application_id') || '').trim();
   const statusUrl = applicationId
@@ -33,6 +34,11 @@ export function BusinessRegistrationSubmissionPage() {
           <p className="mt-2 text-sm leading-6 text-[#667085] sm:text-base">
             We&apos;ll email you when your business is approved.
           </p>
+          {location.state?.uploadWarning ? (
+            <div role="status" className="mx-auto mt-5 max-w-lg rounded-2xl border border-[#f5d6a1] bg-[#fff8e8] p-4 text-left text-sm leading-6 text-[#8a5a00]">
+              {location.state.uploadWarning}
+            </div>
+          ) : null}
 
           <div className="mx-auto mt-7 max-w-lg rounded-2xl border border-[#cfe7f2] bg-[#f1faff] p-4 text-left sm:mt-8 sm:p-5">
             <div className="flex items-start gap-3">

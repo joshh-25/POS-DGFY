@@ -89,6 +89,12 @@ import {
     buildCommercialPromoUsageUpdate
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import {
+    assertDeliveryProviderBreakdown,
+    DeliveryProviderBreakdownError,
+    normalizeDeliveryProviderBreakdown,
+    normalizeDeliveryProviderSummary
+} from '../utils/deliveryProviderBreakdown.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -1294,6 +1300,7 @@ const normalizeZReadingSummary = (summary = {}) => ({
         }))
         : [],
     payment_breakdown: normalizePosPaymentBreakdown(summary?.payment_breakdown),
+    delivery_provider_breakdown: normalizeDeliveryProviderSummary(summary?.delivery_provider_breakdown),
     order_method_breakdown: Array.isArray(summary?.order_method_breakdown)
         ? summary.order_method_breakdown.map((entry) => ({
             order_method: entry?.order_method || null,
@@ -3754,6 +3761,21 @@ export const buildCheckoutPosUseCase = ({
                 { statusCode: 422 }
             ));
         }
+        let normalizedDeliveryProviderDraft = null;
+        if (payload.delivery_provider_breakdown !== undefined && payload.delivery_provider_breakdown !== null) {
+            try {
+                normalizedDeliveryProviderDraft = normalizeDeliveryProviderBreakdown(payload.delivery_provider_breakdown);
+            } catch (error) {
+                if (error instanceof DeliveryProviderBreakdownError) {
+                    return fail(new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        error.message,
+                        { statusCode: 422, details: { reason_code: error.code } }
+                    ));
+                }
+                throw error;
+            }
+        }
         const requestedLocationId = payload.location_id == null
             ? null
             : parsePositiveInt(payload.location_id);
@@ -3808,6 +3830,9 @@ export const buildCheckoutPosUseCase = ({
             ...(parkedSaleId ? { parked_sale_id: parkedSaleId } : {}),
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
+            ...(payload.delivery_provider_breakdown !== undefined && payload.delivery_provider_breakdown !== null
+                ? { delivery_provider_breakdown: normalizedDeliveryProviderDraft }
+                : {}),
             ...(String(payload.employee_credit?.account_code || '').trim()
                 ? {
                     employee_credit: {
@@ -5295,6 +5320,23 @@ export const buildCheckoutPosUseCase = ({
             });
             const restaurantServiceChargeAmount = round4(restaurantServiceChargeResolution.restaurantServiceChargeAmount);
             const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
+            let deliveryProviderBreakdown = [];
+            try {
+                deliveryProviderBreakdown = assertDeliveryProviderBreakdown({
+                    orderMethod: normalizedOrderMethod,
+                    entries: normalizedDeliveryProviderDraft,
+                    totalAmount
+                });
+            } catch (error) {
+                if (error instanceof DeliveryProviderBreakdownError) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        error.message,
+                        { statusCode: 422, details: { reason_code: error.code, total_amount: totalAmount } }
+                    );
+                }
+                throw error;
+            }
 
             if (inventoryEffectsOnly) {
                 if (validateInventoryAvailability) {
@@ -5541,6 +5583,9 @@ export const buildCheckoutPosUseCase = ({
                     payment_provider: String(payload.payment_provider || '').trim() || null,
                     payment_session_reference: String(payload.payment_session_reference || '').trim() || null,
                     payment_breakdown: paymentBreakdown,
+                    delivery_provider_breakdown: deliveryProviderBreakdown.length > 0
+                        ? deliveryProviderBreakdown
+                        : null,
                     cash_received: getPosCashPaymentAmount(paymentBreakdown) > 0 && payload.cash_received != null
                         ? round4(payload.cash_received)
                         : null,
@@ -7745,6 +7790,7 @@ export const buildCloseDayZReadingUseCase = ({
                 },
                 receipt_ranges: detailSource?.receipt_ranges || null,
                 refunds: detailSource?.refunds || null,
+                delivery_provider_breakdown: detailSource?.delivery_provider_breakdown || summary.delivery_provider_breakdown || [],
                 shifts: Array.isArray(detailSource?.shifts) ? detailSource.shifts : []
             };
 

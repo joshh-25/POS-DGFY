@@ -703,6 +703,11 @@ export const storeGuestCheckoutOtpVerifyLimiter = createStoreGuestCheckoutOtpLim
   message: 'Too many verification attempts, please try again later.'
 });
 
+export const storeGuestCheckoutGrantExchangeLimiter = createStoreGuestCheckoutOtpLimiter({
+  operation: 'exchange',
+  message: 'Too many guest checkout attempts, please try again later.'
+});
+
 // Strict admin auth limiter. Uses ip + username keying to reduce brute-force risk.
 export const adminAuthLimiter = rateLimit({
   windowMs: adminAuthWindowMs,

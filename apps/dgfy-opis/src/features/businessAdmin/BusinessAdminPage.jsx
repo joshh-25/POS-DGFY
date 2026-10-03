@@ -2461,6 +2461,27 @@ function SimpleWorkspace({ section, bootstrap }) {
     return <><div className="business-admin-alert info"><CheckCircle2 size={17} /><div><strong>Read-model boundary.</strong><div>This business Back Office keeps POS, Storefront, catalog, inventory, identity, and fiscal ownership boundaries intact.</div></div></div><div className="business-admin-feature-grid">{cards}</div><div className="mt-5 flex flex-wrap gap-3"><a href={buildPosTerminalUrl()} className="business-admin-button primary"><ExternalLink size={14} /> Open POS terminal</a>{section === 'fnb' ? <a href={buildPosTerminalUrl()} className="business-admin-button"><ChefHat size={14} /> Open F&B operations</a> : null}</div></>;
 }
 
+function CompanyWorkspace({ data }) {
+    const readiness = data?.readiness || {};
+    const checks = [
+        ['company_profile', 'Company profile'],
+        ['storefront', 'Storefront settings'],
+        ['location', 'Primary location'],
+        ['hours', 'Business hours'],
+        ['uploads_reviewed', 'Registration uploads reviewed'],
+        ['menu_extraction', 'Menu extraction reviewed']
+    ];
+    return <div className="space-y-5" data-testid="company-workspace">
+        <SectionCard title="Company readiness" subtitle="Company registration and setup status for this tenant.">
+            <div className="grid gap-4 sm:grid-cols-3"><Metric label="Company" value={data?.identity?.name || '—'} /><Metric label="Registration" value={humanize(data?.registration?.review_status || 'not submitted')} /><Metric label="Provisioning" value={humanize(data?.registration?.provisioning_status || 'not started')} /></div>
+            <div className="mt-5 rounded-xl border border-[#d8e8e3] bg-[#f7fbfa] p-4"><div className="business-admin-kicker">Next authorized action</div><p className="mt-1 font-semibold text-[#173e58]">{data?.next_action || 'Review company setup.'}</p></div>
+        </SectionCard>
+        <SectionCard title="Readiness checks" subtitle="These checks read canonical settings and location data; this page does not duplicate their editors."><div className="grid gap-3 sm:grid-cols-2">{checks.map(([key, label]) => <div key={key} className="flex items-center justify-between rounded-xl border p-3"><span className="text-sm font-medium">{label}</span><StatusPill value={readiness[key] ? 'ready' : 'needs attention'} /></div>)}</div></SectionCard>
+        <SectionCard title="Registration uploads" subtitle="Original files remain private and auditable. Menu extraction never publishes catalog rows automatically."><DataTable rows={data?.storefront?.uploads || []} rowKey={(row) => row.id} emptyMessage="No registration uploads." columns={[{ key: 'original_filename', label: 'File', render: (row) => <strong>{row.original_filename}</strong> }, { key: 'asset_kind', label: 'Kind', render: (row) => humanize(row.asset_kind) }, { key: 'extraction_status', label: 'Extraction', render: (row) => <StatusPill value={row.extraction_status} /> }, { key: 'review_status', label: 'Review', render: (row) => <StatusPill value={row.review_status} /> }]} /></SectionCard>
+        <SectionCard title="Canonical editors" subtitle="Use the existing settings and location owners for changes."><div className="flex flex-wrap gap-3"><a className="business-admin-button primary" href={data?.authorized_actions?.settings_profile || '/settings/profile'}>Open business settings</a><a className="business-admin-button" href={data?.authorized_actions?.storefront_settings || '/settings/storefront'}>Open Storefront settings</a><a className="business-admin-button" href={data?.authorized_actions?.locations || '/settings/branches'}>Open locations</a></div></SectionCard>
+    </div>;
+}
+
 export default function BusinessAdminPage() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -2868,6 +2889,7 @@ export default function BusinessAdminPage() {
             else if (activeSection === 'audit') payload = await businessAdminApi.audit({ ...params, limit: 100, page: 1 });
             else if (activeSection === 'approvals') payload = { approvals: (await businessAdminApi.approvals({ status: 'pending', limit: 100 })).approvals || [] };
             else if (activeSection === 'payments') payload = await businessAdminApi.payments(params);
+            else if (activeSection === 'company') payload = await businessAdminApi.company();
             else if (activeSection === 'pos-activity') payload = await businessAdminApi.posActivityAnalytics(params);
             else payload = { bootstrap };
             if (requestRef.current === requestId) {
@@ -3176,6 +3198,7 @@ export default function BusinessAdminPage() {
         if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} onDecision={handleApprovalDecision} actionLoading={actionLoading} />;
         if (activeSection === 'audit') return <AuditWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} />;
         if (activeSection === 'payments') return <PaymentsWorkspace data={sectionData} />;
+        if (activeSection === 'company') return <CompanyWorkspace data={sectionData} />;
         if (activeSection === 'pos-activity') return <PosActivityAnalyticsPage data={sectionData} />;
         return <SimpleWorkspace section={activeSection} bootstrap={bootstrap} />;
     };

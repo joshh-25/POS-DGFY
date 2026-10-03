@@ -142,6 +142,7 @@ describe('DGFY auth and business registration routes', () => {
       writable: true,
       value: mockLocation
     });
+    window.sessionStorage.clear();
 
     apiMock.post.mockReset();
     apiMock.get.mockReset();
@@ -423,44 +424,66 @@ describe('DGFY auth and business registration routes', () => {
   });
 
   it('shows business-only registration fields after a valid DGFY session and creates the company', async () => {
-    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValue({
       token: 'dgfy-token',
       account: dgfyAccount
     });
-    apiMock.post.mockResolvedValueOnce({
-      data: {
-        success: true,
-        message: 'Company registration submitted for approval.',
+    apiMock.post
+      .mockResolvedValueOnce({
         data: {
-          application_id: 'application-autofoods'
+          success: true,
+          message: 'Company registration submitted for approval.',
+          data: {
+            application_id: 'application-autofoods'
+          }
         }
-      }
-    });
+      })
+      .mockResolvedValueOnce({ data: { success: true, data: { asset_kind: 'menu' } } });
 
     renderRoutes(['/register-company#business-registration']);
 
-    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
+    expect(await screen.findByLabelText('Company Name')).toBeTruthy();
     expect(screen.queryByLabelText('Last Name')).toBeNull();
-    expect(screen.getByLabelText('Company Name')).toBeTruthy();
     expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
 
     fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'micro_fnb' } });
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
-    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(await screen.findByRole('heading', { name: 'Storefront Content Setup' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(await screen.findByRole('heading', { name: /Location, Business Hours and Menu/i })).toBeTruthy();
+    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
+    const menuImage = new File(['valid image bytes'], 'auto-foods-menu.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByLabelText(/Menu image \(optional\)/i), { target: { files: [menuImage] } });
+    expect(screen.getByText('Selected: auto-foods-menu.jpg')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(/I agree to the current DGFY Company Registration Terms/i));
+    fireEvent.click(screen.getByLabelText(/I agree to the current DGFY Marketplace Provider Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /submit details and create company/i }));
 
-    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/admin/tenants/register', {
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/admin/tenants/register', expect.objectContaining({
       name: 'Auto Foods',
       industryKey: 'micro_fnb',
-      industryTag: '',
+      business_type: 'micro_fnb',
       accepted_company_terms: true,
+      accepted_marketplace_terms: true,
       company_terms_version: 'dgfy-company-terms-2026-06-08',
-      marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
-    }, expect.objectContaining({
+      marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08',
+      location: expect.any(Object),
+      hours: expect.any(Array)
+    }), expect.objectContaining({
       headers: { Authorization: 'Bearer dgfy-token' },
       skipTenantAuthHeaders: true,
       withCredentials: true
     })));
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledTimes(2));
+    const [uploadPath, formData, uploadConfig] = apiMock.post.mock.calls[1];
+    expect(uploadPath).toBe('/dgfy/company-registration/application-autofoods/uploads/menu');
+    expect(formData.get('file').name).toBe('auto-foods-menu.jpg');
+    expect(uploadConfig).toMatchObject({
+      headers: { Authorization: 'Bearer dgfy-token' },
+      skipTenantAuthHeaders: true,
+      withCredentials: true
+    });
     expect(await screen.findByText('Registration status route')).toBeTruthy();
     expect(dgfyAuthMock.startDgfyTenantSession).not.toHaveBeenCalled();
     expect(mockLocation.assign).not.toHaveBeenCalled();
@@ -476,10 +499,9 @@ describe('DGFY auth and business registration routes', () => {
 
     expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
-    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
-    expect(await screen.findByText(/choose what kind of business this is before registering/i)).toBeTruthy();
+    expect(await screen.findByText(/enter a company name and choose a business industry before continuing/i)).toBeTruthy();
     expect(apiMock.post).not.toHaveBeenCalledWith('/admin/tenants/register', expect.anything(), expect.anything());
   });
 

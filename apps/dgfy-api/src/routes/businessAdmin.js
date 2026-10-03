@@ -11,6 +11,7 @@ router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
 router.use(requireBusinessAdminDashboardEnabled);
 
 router.get('/bootstrap', businessAdminHandlers.getBootstrap);
+router.get('/company', businessAdminHandlers.getCompany);
 router.get('/overview', businessAdminHandlers.getOverview);
 router.get('/multi-company/overview', businessAdminHandlers.getMultiCompanyOverview);
 router.get('/notifications', businessAdminHandlers.listNotifications);

@@ -27,6 +27,9 @@ const requireReason = (reason) => {
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizePassword = (value) => String(value || '');
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''));
+const readTimestamp = (record, snakeCaseKey, camelCaseKey) => (
+    record?.[snakeCaseKey] ?? record?.[camelCaseKey] ?? null
+);
 
 export const generateTemporaryPassword = () => `Dgfy-${randomBytes(9).toString('base64url')}1!`;
 
@@ -79,8 +82,8 @@ const serializeTenantMembership = (membership) => ({
     status: membership.status,
     source: membership.source,
     accepted_at: membership.accepted_at || null,
-    created_at: membership.created_at || null,
-    updated_at: membership.updated_at || null,
+    created_at: readTimestamp(membership, 'created_at', 'createdAt'),
+    updated_at: readTimestamp(membership, 'updated_at', 'updatedAt'),
     company: membership.tenant ? {
         id: membership.tenant.id,
         name: membership.tenant.name,
@@ -115,8 +118,8 @@ export const sanitizeAdminDgfyAccount = (account) => {
         is_email_verified: Boolean(account.email_verified_at),
         is_phone_verified: Boolean(account.phone_verified_at),
         last_login_at: account.last_login_at || null,
-        created_at: account.created_at || null,
-        updated_at: account.updated_at || null,
+        created_at: readTimestamp(account, 'created_at', 'createdAt'),
+        updated_at: readTimestamp(account, 'updated_at', 'updatedAt'),
         membership_count: memberships.length,
         memberships: memberships.map(serializeTenantMembership)
     };
@@ -132,7 +135,7 @@ const serializeAdminAuditLog = (log) => ({
     user_agent: log.user_agent || null,
     before_snapshot: log.before_snapshot || null,
     after_snapshot: log.after_snapshot || null,
-    created_at: log.created_at || null
+    created_at: readTimestamp(log, 'created_at', 'createdAt')
 });
 
 const buildSafeSnapshot = (account) => {

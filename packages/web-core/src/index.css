@@ -2805,6 +2805,25 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   font-size: 0.6875rem !important;
 }
 
+/* Reports filters use a floating scrollbar so the scroll affordance is
+ * visible before the Cashier picker opens and never changes the content width
+ * when it appears. The body remains the real scroll surface for wheel, touch,
+ * keyboard, and assistive-technology scrolling. */
+.dgfy-pos-filter-dialog-scroll-body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scrollbar-gutter: auto;
+  touch-action: pan-y;
+}
+
+.dgfy-pos-filter-dialog-scroll-body::-webkit-scrollbar {
+  display: none;
+}
+
+.dgfy-pos-floating-scrollbar {
+  pointer-events: auto;
+}
+
 .dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] {
   gap: 0.5rem !important;
 }

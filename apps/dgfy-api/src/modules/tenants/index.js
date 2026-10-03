@@ -14,6 +14,7 @@ import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrati
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
 import { companyRegistrationRepository } from './repositories/companyRegistrationRepository.js';
 import { dgfyAccountRepository, dgfyAffiliateRepository } from '../dgfy/index.js';
+import { dispatchDgfyCompanyRegistrationRejectionNotification } from '../dgfy/services/dgfyCustomerNotifications.js';
 import { registrationIndustryRepository } from '../registration/index.js';
 import { createTenantPayMongoChildAccountUseCase } from '../commercePayments/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
@@ -31,6 +32,8 @@ import { buildUpdatePricingSettingsUseCase } from './usecases/updatePricingSetti
 import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
 import { buildGetCompanyRegistrationStatusUseCase, buildResubmitCompanyRegistrationUseCase } from './usecases/companyRegistrationStatusUseCase.js';
+import { buildUploadCompanyRegistrationFileUseCase, buildListAdminCompanyRegistrationUseCase, buildDownloadAdminCompanyRegistrationUploadUseCase, buildRevokeAdminCompanyRegistrationUploadUseCase } from './usecases/companyRegistrationUploadUseCases.js';
+import { materializeApprovedCompanyRegistration } from './usecases/materializeApprovedCompanyRegistration.js';
 import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCapabilitiesUseCase.js';
 import { buildApplyTemplateToTenantUseCase } from './usecases/applyTemplateToTenantUseCase.js';
 import {
@@ -80,6 +83,7 @@ export const approveTenantUseCase = buildApproveTenantUseCase({
     provisionTenant,
     createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
     shouldAutoCreatePayMongoChildAccounts,
+    materializeApprovedCompanyRegistration,
     emailService,
     logger
 });
@@ -88,6 +92,7 @@ export const rejectTenantUseCase = buildRejectTenantUseCase({
     tenantAdminRepository,
     companyRegistrationRepository,
     emailService,
+    notifyCompanyRegistrationRejected: dispatchDgfyCompanyRegistrationRejectionNotification,
     logger
 });
 
@@ -204,6 +209,13 @@ export const resubmitCompanyRegistrationUseCase = buildResubmitCompanyRegistrati
     emailService,
     logger
 });
+export const uploadCompanyRegistrationFileUseCase = buildUploadCompanyRegistrationFileUseCase({
+    repository: companyRegistrationRepository,
+    transaction: tenantAdminRepository.transaction
+});
+export const listAdminCompanyRegistrationUseCase = buildListAdminCompanyRegistrationUseCase({ repository: companyRegistrationRepository });
+export const downloadAdminCompanyRegistrationUploadUseCase = buildDownloadAdminCompanyRegistrationUploadUseCase({ repository: companyRegistrationRepository });
+export const revokeAdminCompanyRegistrationUploadUseCase = buildRevokeAdminCompanyRegistrationUploadUseCase({ repository: companyRegistrationRepository, transaction: tenantAdminRepository.transaction });
 
 export * from './contracts/tenantRepository.contract.js';
 export * from './contracts/tenantAdminRepository.contract.js';

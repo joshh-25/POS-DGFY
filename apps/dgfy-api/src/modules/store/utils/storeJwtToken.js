@@ -9,6 +9,8 @@ const STORE_CLAIM_TOKEN_SECRET = process.env.STORE_CLAIM_TOKEN_SECRET || `${base
 const STORE_CLAIM_TOKEN_EXPIRY = process.env.STORE_CLAIM_TOKEN_EXPIRY || '30m';
 const STORE_GUEST_CHECKOUT_PROOF_SECRET = process.env.STORE_GUEST_CHECKOUT_PROOF_SECRET || `${baseSecret}:store:guest-checkout-proof`;
 const STORE_GUEST_CHECKOUT_PROOF_EXPIRY = process.env.STORE_GUEST_CHECKOUT_PROOF_EXPIRY || '15m';
+const STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_SECRET = process.env.STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_SECRET || `${baseSecret}:store:guest-checkout-verification-grant`;
+const STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_EXPIRY = '24h';
 const TENANT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const parsePositiveInt = (value) => {
@@ -125,9 +127,27 @@ export const generateStoreGuestCheckoutProof = ({ tenantId, email, idempotencyKe
 
 export const verifyStoreGuestCheckoutProof = (token, options) => jwt.verify(token, STORE_GUEST_CHECKOUT_PROOF_SECRET, options);
 
+export const generateStoreGuestCheckoutVerificationGrant = ({ tenantId, email }) => {
+    const normalizedTenantId = normalizeTenantIdentifier(tenantId);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedTenantId || !normalizedEmail) {
+        throw new Error('generateStoreGuestCheckoutVerificationGrant requires tenantId and email');
+    }
+    return jwt.sign({
+        type: 'store_guest_checkout_verification_grant',
+        tenant_id: normalizedTenantId,
+        email: normalizedEmail
+    }, STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_SECRET, { expiresIn: STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_EXPIRY });
+};
+
+export const verifyStoreGuestCheckoutVerificationGrant = (token, options) => (
+    jwt.verify(token, STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_SECRET, options)
+);
+
 export const getStoreTokenConfig = () => ({
     expiresIn: STORE_JWT_EXPIRY,
     cancelProofExpiresIn: STORE_CANCEL_PROOF_EXPIRY,
     claimTokenExpiresIn: STORE_CLAIM_TOKEN_EXPIRY,
-    guestCheckoutProofExpiresIn: STORE_GUEST_CHECKOUT_PROOF_EXPIRY
+    guestCheckoutProofExpiresIn: STORE_GUEST_CHECKOUT_PROOF_EXPIRY,
+    guestCheckoutVerificationGrantExpiresIn: STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_EXPIRY
 });

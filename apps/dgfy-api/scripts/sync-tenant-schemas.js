@@ -238,6 +238,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         payment_breakdown: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_breakdown` JSON NULL COMMENT 'Immutable successful tender allocation snapshot for receipts and reports'"
         }),
+        delivery_provider_breakdown: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_provider_breakdown` JSON NULL COMMENT 'Immutable delivery provider classification snapshot for completed POS sales'"
+        }),
         operator_session_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `operator_session_id` INTEGER NULL AFTER `shift_id`, ADD CONSTRAINT `pos_transactions_fk_operator_session` FOREIGN KEY (`operator_session_id`) REFERENCES `pos_terminal_operator_sessions` (`pos_terminal_operator_session_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
         }),

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Eye, History, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
+import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
 
 const CASHIER_HISTORY_PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -194,6 +195,7 @@ export default function CashierHistoryPanel({
                         const cash = record?.cash_summary || {};
                         const sales = record?.sales_summary || {};
                         const payments = Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : [];
+                        const deliveryProviders = parseDeliveryProviderSummary(sales.delivery_provider_breakdown);
                         const postCloseAdjustments = Array.isArray(sales.post_close_adjustments) ? sales.post_close_adjustments : [];
                         const shiftId = shift.pos_terminal_shift_id || shift.shift_id;
                         const branchName = String(
@@ -299,6 +301,20 @@ export default function CashierHistoryPanel({
                                         </div>
                                     )}
                                 </div>
+                                {deliveryProviders.length > 0 ? (
+                                    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+                                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#1A4E8D]">Delivery providers</p>
+                                        <div className="grid gap-x-5 gap-y-1 sm:grid-cols-2">
+                                            {deliveryProviders.map((entry) => (
+                                                <SummaryMetric
+                                                    key={`${entry.provider_type}-${entry.provider_name || ''}`}
+                                                    label={`${formatDeliveryProviderSummaryLabel(entry)} (${entry.transaction_count || 0})`}
+                                                    value={money(entry.amount, currency)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
                             </article>
                         );
                     })}

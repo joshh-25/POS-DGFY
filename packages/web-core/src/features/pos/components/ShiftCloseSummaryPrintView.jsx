@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
 
 const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
@@ -41,6 +42,7 @@ export default function ShiftCloseSummaryPrintView({
     const cash = report.cash_summary || {};
     const sales = report.sales_summary || {};
     const payments = Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : [];
+    const deliveryProviders = parseDeliveryProviderSummary(sales.delivery_provider_breakdown);
     const reportBusiness = report.business || {};
     const businessName = String(
         businessSettings.pos_business_name || reportBusiness.name || 'DGFY'
@@ -72,6 +74,17 @@ export default function ShiftCloseSummaryPrintView({
                         <Row
                             key={`${entry.payment_type}-${entry.count}`}
                             name={`${paymentLabel(entry)} (${entry.count || 0})`}
+                            value={`${currencyLabel(currency)}${money(entry.amount)}`}
+                        />
+                    ))}
+                </section>
+
+                <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
+                    <p className="font-black uppercase">Delivery provider breakdown</p>
+                    {deliveryProviders.length === 0 ? <Row name="No delivery provider sales" value="0" /> : deliveryProviders.map((entry) => (
+                        <Row
+                            key={`${entry.provider_type}-${entry.provider_name || ''}`}
+                            name={`${formatDeliveryProviderSummaryLabel(entry)} (${Number(entry.transaction_count || 0).toLocaleString('en-US')})`}
                             value={`${currencyLabel(currency)}${money(entry.amount)}`}
                         />
                     ))}

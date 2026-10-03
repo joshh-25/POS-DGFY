@@ -225,6 +225,7 @@ describe('POS checkout terminal pure utilities', () => {
             payload: {
                 idempotency_key: 'abc123',
                 payment_type: 'cash',
+                delivery_provider_breakdown: [{ provider_type: 'grab', amount: 90 }],
                 offline_line_items_snapshot: [{ item_id: 9, item_name: 'Coffee', quantity: 2, sale_price: 45 }]
             },
             queuedAt: '2026-08-18T10:00:00.000Z',
@@ -237,6 +238,7 @@ describe('POS checkout terminal pure utilities', () => {
             manualDiscountRate: 0,
             manualDiscountMode: 'percentage'
         });
+        expect(row.delivery_provider_breakdown).toEqual([{ provider_type: 'grab', amount: 90 }]);
 
         expect(row).toMatchObject({
             pos_transaction_id: 'offline-checkout-abc123',
@@ -263,6 +265,8 @@ describe('POS checkout terminal pure utilities', () => {
         expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'gcash' })).toBe(true);
         expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'cash' })).toBe(true);
         expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'card' })).toBe(false);
+        expect(rowMatchesHistoryFilters(row, { historyDeliveryProvider: 'grab' })).toBe(true);
+        expect(rowMatchesHistoryFilters(row, { historyDeliveryProvider: 'foodpanda' })).toBe(false);
         expect(rowMatchesHistoryFilters(row, { historyStatus: 'completed' })).toBe(false);
         expect(buildOfflineCheckoutHistoryRow({ payload: {} })).toBeNull();
     });

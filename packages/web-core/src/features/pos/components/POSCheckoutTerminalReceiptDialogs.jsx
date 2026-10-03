@@ -233,7 +233,10 @@ export function POSCheckoutTerminalReceiptDialogs({
                                     <RefundAdjustmentAudit transaction={lastReceipt} />
                                     <div className="flex justify-center space-y-3 print:space-y-0">
                                         <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
-                                            <div className="pos-receipt-print-paper w-full max-w-[80mm] border border-slate-200 bg-white p-4 shadow-sm">
+                                            <div
+                                                className="pos-receipt-print-paper w-full border border-slate-200 bg-white p-4 shadow-sm"
+                                                style={{ maxWidth: receiptPaperWidth }}
+                                            >
                                                 <ReceiptPrintView
                                                     transaction={lastReceipt}
                                                     businessSettings={receiptSettings}

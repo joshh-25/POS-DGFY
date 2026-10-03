@@ -838,6 +838,47 @@ describe('dgfyAuthUseCases', () => {
         expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-company-2');
     });
 
+    it('backfills an idempotent rejection notification for historical rejected registrations', async () => {
+        const account = createAccount({ id: 'dgfy-rejected-owner' });
+        const ensureRejectedCompanyRegistrationNotifications = jest.fn().mockResolvedValue([]);
+        const repository = {
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
+            listMemberships: jest.fn().mockResolvedValue([]),
+            listRegistrationApplications: jest.fn().mockResolvedValue([{
+                id: 'application-rejected',
+                dgfy_account_id: account.id,
+                review_status: 'rejected',
+                provisioning_status: 'not_started',
+                tenant_id: 'tenant-rejected',
+                tenant: {
+                    id: 'tenant-rejected',
+                    name: 'Rejected Foods',
+                    rejection_reason: 'Missing business documents'
+                }
+            }])
+        };
+        const useCase = buildListDgfyAccountCompaniesUseCase({
+            repository,
+            ensureRejectedCompanyRegistrationNotifications
+        });
+
+        const result = await useCase({ account });
+
+        expect(result.success).toBe(true);
+        expect(ensureRejectedCompanyRegistrationNotifications).toHaveBeenCalledWith({
+            accountId: account.id,
+            applications: expect.arrayContaining([
+                expect.objectContaining({ id: 'application-rejected', review_status: 'rejected' })
+            ])
+        });
+        expect(result.data.payload.data.registration_applications[0]).toEqual(expect.objectContaining({
+            application_id: 'application-rejected',
+            company_name: 'Rejected Foods',
+            status: 'rejected'
+        }));
+    });
+
     it('requests a DGFY business step-up code for the account email', async () => {
         const requestEmailOtp = jest.fn().mockResolvedValue({
             otp_id: 'otp-step-up',

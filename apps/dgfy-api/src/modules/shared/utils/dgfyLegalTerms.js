@@ -128,6 +128,7 @@ export const getDgfyLegalTermsPayload = () => ({
         company_registration: {
             flow: DGFY_LEGAL_TERM_FLOWS.COMPANY_REGISTRATION,
             acknowledgement_field: 'accepted_company_terms',
+            acknowledgement_fields: ['accepted_company_terms', 'accepted_marketplace_terms'],
             version_fields: ['company_terms_version', 'marketplace_terms_version'],
             documents: [
                 DGFY_LEGAL_DOCUMENTS.companyTerms,
@@ -173,6 +174,11 @@ export const assertDgfyLegalAcknowledgement = ({ flow, body = {} }) => {
                 field: 'accepted_company_terms'
             });
         }
+        if (!isTrue(body.accepted_marketplace_terms ?? body.acceptedMarketplaceTerms)) {
+            throw buildError('Accept the DGFY marketplace provider terms before registering a company.', {
+                field: 'accepted_marketplace_terms'
+            });
+        }
 
         requireVersion({
             provided: body.company_terms_version ?? body.companyTermsVersion,
@@ -185,7 +191,11 @@ export const assertDgfyLegalAcknowledgement = ({ flow, body = {} }) => {
             field: 'marketplace_terms_version'
         });
 
-        return snapshot;
+        return {
+            ...snapshot,
+            accepted_company_terms: true,
+            accepted_marketplace_terms: true
+        };
     }
 
     throw buildError('DGFY terms acknowledgement is required.', { field: 'flow' });

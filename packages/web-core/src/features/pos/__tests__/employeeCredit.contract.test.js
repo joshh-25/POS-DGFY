@@ -60,7 +60,7 @@ describe('Employee Credit POS contract', () => {
     expect(checkoutContent).not.toContain('employeeCreditBalance >= cartTotal');
     // The confirm gate grew an existing-order non-cash confirmation clause;
     // employee-credit tender behavior is unchanged.
-    expect(checkoutRenderContent).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}');
+    expect(checkoutDialogContent).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || Boolean(deliveryProviderValidationMessage) || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}');
     expect(checkoutContent).not.toContain('employeeCreditPin');
     expect(employeeCreditPaymentContent).not.toMatch(/\bPIN\b/i);
     expect(employeeCreditPaymentContent).toContain('Select Employee');

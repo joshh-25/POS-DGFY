@@ -27,6 +27,13 @@ const baseProps = {
     { value: 'in_store', label: 'In-Store' },
     { value: 'delivery', label: 'Delivery' }
   ],
+  deliveryProvider: '',
+  deliveryProviderOptions: [
+    { value: '', label: 'All delivery providers' },
+    { value: 'foodpanda', label: 'Foodpanda' },
+    { value: 'grab', label: 'Grab' },
+    { value: 'other', label: 'Other' }
+  ],
   categoryId: '',
   categories: [
     { folder_id: 101, name: 'Beverages' },
@@ -34,12 +41,14 @@ const baseProps = {
   ],
   onClose: vi.fn()
 };
+const defaultViewportWidth = window.innerWidth;
 const defaultViewportHeight = window.innerHeight;
 const defaultMatchMedia = window.matchMedia;
 
 describe('POS reports filter modal', () => {
   afterEach(() => {
     cleanup();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: defaultViewportWidth });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: defaultViewportHeight });
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: defaultMatchMedia });
   });
@@ -57,8 +66,11 @@ describe('POS reports filter modal', () => {
     expect(paymentGroup.className).toContain('grid-cols-4');
     expect(paymentGroup.querySelector('button')?.className).toContain('h-8');
     expect(paymentGroup.querySelector('button')?.className).toContain('min-w-0');
+    const deliveryProviderGroup = within(screen.getByRole('group', { name: 'Delivery Provider' }));
+    expect(deliveryProviderGroup.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: 'Cash' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Grab' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delivery' }));
     fireEvent.click(screen.getByRole('button', { name: 'Meals' }));
     const cashierSearch = screen.getByTestId('pos-reports-filter-cashier-search');
@@ -75,6 +87,7 @@ describe('POS reports filter modal', () => {
 
     expect(onApplyFilters).toHaveBeenCalledWith(expect.objectContaining({
       paymentType: 'cash',
+      deliveryProvider: 'grab',
       source: 'delivery',
       categoryId: 102,
       cashierId: '12'
@@ -91,6 +104,8 @@ describe('POS reports filter modal', () => {
     const paymentGroup = within(paymentSection);
     expect(paymentGroup.getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed')).toBe('true');
     expect(paymentGroup.getByRole('button', { name: 'Cash' }).getAttribute('aria-pressed')).toBe('false');
+    const deliveryProviderSection = screen.getByText('Delivery Provider', { exact: true }).closest('section');
+    expect(within(deliveryProviderSection).getByRole('button', { name: 'All', exact: true }).getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: 'Close filters' }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -121,8 +136,34 @@ describe('POS reports filter modal', () => {
     expect(panel.style.maxHeight).toBe('');
     expect(panel.className).toContain('dgfy-pos-history-mobile-sheet');
     expect(content.className).toContain('min-h-0');
-    expect(content.className).toContain('overflow-y-auto');
+    expect(screen.getByTestId('pos-reports-filter-scroll-body').className).toContain('overflow-y-auto');
     expect(panel.querySelector('header').className).toContain('shrink-0');
     expect(panel.querySelector('footer').className).toContain('shrink-0');
+  });
+
+  it('gives a constrained desktop dialog a definite height so the body can scroll', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 900 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 480 });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false })
+    });
+
+    render(<PosReportsFilterPanel {...baseProps} />);
+
+    const panel = screen.getByRole('dialog', { name: 'Filter' });
+    expect(panel.style.maxHeight).toBe('384px');
+    expect(panel.style.height).toBe('384px');
+    expect(panel.querySelector('.dgfy-pos-history-dialog-body').className).toContain('overflow-y-auto');
+  });
+
+  it('shows a floating scrollbar before the Cashier picker is opened', () => {
+    render(<PosReportsFilterPanel {...baseProps} />);
+
+    const scrollbar = screen.getByRole('scrollbar', { name: 'Filter dialog scroll' });
+    expect(scrollbar).toBeTruthy();
+    expect(scrollbar.getAttribute('aria-controls')).toBe('pos-reports-filter-scroll-body');
+    expect(screen.getByTestId('pos-reports-filter-scroll-body').className).toContain('dgfy-pos-filter-dialog-scroll-body');
+    expect(screen.getByTestId('pos-reports-filter-cashier-dropdown-toggle').getAttribute('aria-expanded')).toBe('false');
   });
 });

@@ -21,6 +21,10 @@ import { Label } from "@/components/ui/label";
 import { AlertTriangle, Building2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import IndustrySelect from '../src/features/registration/IndustrySelect.jsx';
+import {
+    getCompanyRegistrationMenuImageValidationError,
+    uploadCompanyRegistrationMenuImage
+} from '../src/features/registration/companyRegistrationUploads.js';
 import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,6 +40,19 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
     snapshot.company_terms_version
     && snapshot.marketplace_terms_version
 );
+
+const COMPANY_REGISTRATION_DRAFT_KEY = 'dgfy.company-registration.draft.v1';
+const readCompanyRegistrationDraft = () => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(window.sessionStorage.getItem(COMPANY_REGISTRATION_DRAFT_KEY) || '{}'); } catch { return {}; }
+};
+const initialCompanyRegistrationForm = () => ({
+    companyName: '', industryKey: '', industryTag: '', businessType: '',
+    description: '', storefrontPhone: '', storefrontEmail: '', website: '', facebook: '', instagram: '', deliveryPartnersText: '',
+    locationName: '', addressLine: '', barangay: '', city: '', province: '', postalCode: '', latitude: '', longitude: '', hoursText: '',
+    acceptedCompanyTerms: false, acceptedMarketplaceTerms: false,
+    ...readCompanyRegistrationDraft()
+});
 
 const PasswordInput = ({
     id,
@@ -202,17 +219,20 @@ export default function RegisterCompany() {
     const [loginForm, setLoginForm] = useState({ email: '', password: '' });
     const [resetForm, setResetForm] = useState({ email: '', code: '', password: '', confirmPassword: '' });
     const [resetStep, setResetStep] = useState('request');
-    const [companyForm, setCompanyForm] = useState({
-        companyName: '',
-        industryKey: '',
-        industryTag: '',
-        acceptedCompanyTerms: false
-    });
+    const [companyForm, setCompanyForm] = useState(initialCompanyRegistrationForm);
+    const [companyStep, setCompanyStep] = useState(1);
+    const [companyMenuImage, setCompanyMenuImage] = useState(null);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const handoffExchangeStartedRef = useRef(false);
     const dgfySessionGenerationRef = useRef(0);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const { acceptedCompanyTerms, acceptedMarketplaceTerms, ...draft } = companyForm;
+        window.sessionStorage.setItem(COMPANY_REGISTRATION_DRAFT_KEY, JSON.stringify(draft));
+    }, [companyForm]);
 
     const clearHandoffTokenFromUrl = useCallback(() => {
         const nextParams = new URLSearchParams(searchParams);
@@ -477,8 +497,8 @@ export default function RegisterCompany() {
             setError('Choose what kind of business this is before registering.');
             return;
         }
-        if (!companyForm.acceptedCompanyTerms) {
-            setError('Accept the DGFY company terms before registering a company.');
+        if (!companyForm.acceptedCompanyTerms || !companyForm.acceptedMarketplaceTerms) {
+            setError('Accept both the DGFY company terms and marketplace provider terms before registering a company.');
             return;
         }
         if (companyLegalTermsUnavailable) {
@@ -492,7 +512,34 @@ export default function RegisterCompany() {
                 name: companyForm.companyName,
                 industryKey: companyForm.industryKey,
                 industryTag: companyForm.industryTag,
+                business_type: companyForm.businessType || companyForm.industryTag || companyForm.industryKey,
+                storefront_profile: {
+                    description: companyForm.description,
+                    phone: companyForm.storefrontPhone,
+                    email: companyForm.storefrontEmail,
+                    website: companyForm.website,
+                    facebook: companyForm.facebook,
+                    instagram: companyForm.instagram
+                },
+                delivery_partners: companyForm.deliveryPartnersText.split(',').map((value) => value.trim()).filter(Boolean).slice(0, 3),
+                location: {
+                    name: companyForm.locationName,
+                    address_line: companyForm.addressLine,
+                    barangay: companyForm.barangay,
+                    city: companyForm.city,
+                    province: companyForm.province,
+                    postal_code: companyForm.postalCode,
+                    latitude: companyForm.latitude || null,
+                    longitude: companyForm.longitude || null
+                },
+                hours: companyForm.hoursText ? companyForm.hoursText.split('\n').map((line) => {
+                    const match = line.match(/^(.+?)\s+(\S+)\s*-\s*(\S+)$/);
+                    return match
+                        ? { day: match[1].trim(), open: match[2], close: match[3], closed: false }
+                        : null;
+                }).filter(Boolean) : [],
                 accepted_company_terms: true,
+                accepted_marketplace_terms: true,
                 company_terms_version: companyLegalSnapshot.company_terms_version,
                 marketplace_terms_version: companyLegalSnapshot.marketplace_terms_version
             }, {
@@ -506,8 +553,22 @@ export default function RegisterCompany() {
             }
 
             const registrationSuccess = { message: response.data.message, data: response.data.data || {} };
-            setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
-            if (registrationSuccess.data?.application_id) { navigate(`/register-company/status/${registrationSuccess.data.application_id}`); return; }
+            const applicationId = registrationSuccess.data?.application_id;
+            let menuUploadWarning = '';
+            if (applicationId && companyMenuImage) {
+                try {
+                    await uploadCompanyRegistrationMenuImage(applicationId, companyMenuImage);
+                } catch {
+                    menuUploadWarning = 'Company registration was submitted, but the optional menu image could not be uploaded. You can retry it from the registration status page.';
+                }
+            }
+            setCompanyForm(initialCompanyRegistrationForm());
+            setCompanyMenuImage(null);
+            if (typeof window !== 'undefined') window.sessionStorage.removeItem(COMPANY_REGISTRATION_DRAFT_KEY);
+            if (applicationId) {
+                navigate(`/register-company/status/${applicationId}`, menuUploadWarning ? { state: { uploadWarning: menuUploadWarning } } : undefined);
+                return;
+            }
             setError('Registration submitted without an application reference. Please contact support.');
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
@@ -515,6 +576,30 @@ export default function RegisterCompany() {
             setIsLoading(false);
         }
     };
+
+    const updateCompanyForm = (patch) => setCompanyForm((current) => ({ ...current, ...patch }));
+    const handleMenuImageChange = (event) => {
+        const file = event.target.files?.[0] || null;
+        event.target.value = '';
+        if (!file) return;
+        const validationError = getCompanyRegistrationMenuImageValidationError(file);
+        if (validationError) {
+            setCompanyMenuImage(null);
+            setError(validationError);
+            return;
+        }
+        setCompanyMenuImage(file);
+        setError('');
+    };
+    const advanceCompanyStep = () => {
+        setError('');
+        if (companyStep === 1 && (!companyForm.companyName.trim() || !companyForm.industryKey)) {
+            setError('Enter a company name and choose a business industry before continuing.');
+            return;
+        }
+        setCompanyStep((step) => Math.min(3, step + 1));
+    };
+    const retreatCompanyStep = () => { setError(''); setCompanyStep((step) => Math.max(1, step - 1)); };
 
     const handleSignOutDgfy = async () => {
         dgfySessionGenerationRef.current += 1;
@@ -595,64 +680,51 @@ export default function RegisterCompany() {
                         </button>
                     </div>
 
-                    <form onSubmit={handleSubmitCompany} className="space-y-5">
-                        <IndustrySelect
-                            idPrefix="register-company-industry"
-                            value={companyForm.industryKey}
-                            disabled={isLoading}
-                            onSelect={(entry) => setCompanyForm({ ...companyForm, industryKey: entry.key })}
-                        />
+                    <form onSubmit={handleSubmitCompany} className="space-y-5" aria-label="Company registration">
+                        <nav aria-label="Company registration steps" className="grid grid-cols-3 gap-2">
+                            {['Business Information', 'Storefront Content Setup', 'Location, Business Hours and Menu'].map((label, index) => {
+                                const step = index + 1;
+                                return <button key={label} type="button" aria-current={companyStep === step ? 'step' : undefined} onClick={() => step < companyStep && setCompanyStep(step)} disabled={isLoading || step > companyStep} className={`rounded-xl border px-2 py-2 text-left text-xs font-semibold ${companyStep === step ? 'border-[#1f5f9f] bg-[#e8f4ff] text-[#1f5f9f]' : 'border-slate-200 text-slate-500'}`}><span className="block text-[10px] uppercase tracking-wide">Step {step}</span>{label}</button>;
+                            })}
+                        </nav>
 
-                        <div>
-                            <Label htmlFor="companyName">Company Name</Label>
-                            <Input
-                                id="companyName"
-                                placeholder="Enter your company name"
-                                value={companyForm.companyName}
-                                onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })}
-                                required
-                                minLength={3}
-                                maxLength={100}
-                                disabled={isLoading}
-                                className="mt-1"
-                            />
-                        </div>
+                        {companyStep === 1 ? (
+                            <section aria-labelledby="business-information-title" className="space-y-4">
+                                <div><h2 id="business-information-title" className="text-lg font-semibold text-[#132033]">Business Information</h2><p className="mt-1 text-sm text-slate-600">Tell us the business identity and operating industry.</p></div>
+                                <IndustrySelect idPrefix="register-company-industry" value={companyForm.industryKey} disabled={isLoading} onSelect={(entry) => updateCompanyForm({ industryKey: entry.key })} />
+                                <div><Label htmlFor="companyName">Company Name</Label><Input id="companyName" placeholder="Enter your company name" value={companyForm.companyName} onChange={(e) => updateCompanyForm({ companyName: e.target.value })} required minLength={3} maxLength={100} disabled={isLoading} className="mt-1" /></div>
+                                <div><Label htmlFor="businessType">Business type</Label><Input id="businessType" placeholder="e.g. cafe, salon, retail shop" value={companyForm.businessType} onChange={(e) => updateCompanyForm({ businessType: e.target.value })} maxLength={120} disabled={isLoading} className="mt-1" /></div>
+                                <div><Label htmlFor="industryTag">Industry detail (optional)</Label><Input id="industryTag" placeholder="How you describe your business" value={companyForm.industryTag} onChange={(e) => updateCompanyForm({ industryTag: e.target.value })} maxLength={120} disabled={isLoading} className="mt-1" /></div>
+                            </section>
+                        ) : null}
 
-                        <div>
-                            <Label htmlFor="industryTag">Industry (optional)</Label>
-                            <Input
-                                id="industryTag"
-                                placeholder="e.g. coffee shop, hardware store, freelance repair"
-                                value={companyForm.industryTag}
-                                onChange={(e) => setCompanyForm({ ...companyForm, industryTag: e.target.value })}
-                                maxLength={120}
-                                disabled={isLoading}
-                                className="mt-1"
-                            />
-                            <p className="mt-1 text-xs text-slate-500">How you&apos;d describe your business, for your profile only — it doesn&apos;t change how DGFY works for you.</p>
-                        </div>
+                        {companyStep === 2 ? (
+                            <section aria-labelledby="storefront-content-title" className="space-y-4">
+                                <div><h2 id="storefront-content-title" className="text-lg font-semibold text-[#132033]">Storefront Content Setup</h2><p className="mt-1 text-sm text-slate-600">These fields are optional and can be refined later in Settings.</p></div>
+                                <div><Label htmlFor="storefrontDescription">Storefront description</Label><textarea id="storefrontDescription" value={companyForm.description} onChange={(e) => updateCompanyForm({ description: e.target.value })} maxLength={2000} disabled={isLoading} className="mt-1 min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
+                                <div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="storefrontPhone">Public phone</Label><Input id="storefrontPhone" value={companyForm.storefrontPhone} onChange={(e) => updateCompanyForm({ storefrontPhone: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="storefrontEmail">Public email</Label><Input id="storefrontEmail" type="email" value={companyForm.storefrontEmail} onChange={(e) => updateCompanyForm({ storefrontEmail: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="website">Website</Label><Input id="website" value={companyForm.website} onChange={(e) => updateCompanyForm({ website: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="deliveryPartners">Delivery partners (up to 3)</Label><Input id="deliveryPartners" placeholder="Grab, foodpanda" value={companyForm.deliveryPartnersText} onChange={(e) => updateCompanyForm({ deliveryPartnersText: e.target.value })} disabled={isLoading} /></div></div>
+                                <div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="facebook">Facebook (optional)</Label><Input id="facebook" value={companyForm.facebook} onChange={(e) => updateCompanyForm({ facebook: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="instagram">Instagram (optional)</Label><Input id="instagram" value={companyForm.instagram} onChange={(e) => updateCompanyForm({ instagram: e.target.value })} disabled={isLoading} /></div></div>
+                            </section>
+                        ) : null}
 
-                        <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
-                            <p className="text-sm font-semibold text-[#132033]">DGFY account connected</p>
-                            <p className="mt-2 text-xs text-slate-600">
-                                Company registration will use your DGFY account email, {dgfyAccount.email}, and phone. No additional DGFY email code is required for this registration.
-                            </p>
-                        </div>
-                        <LegalAcknowledgementBox
-                            id="acceptedCompanyTerms"
-                            checked={companyForm.acceptedCompanyTerms}
-                            onChange={(e) => setCompanyForm({ ...companyForm, acceptedCompanyTerms: e.target.checked })}
-                            disabled={isLoading || companyLegalTermsUnavailable}
-                            disabledReason={companyLegalTermsUnavailable ? companyLegalDisabledReason : ''}
-                            label="I have reviewed and agree to the current DGFY Company Registration Terms and Marketplace Provider Terms."
-                            documents={companyLegalDocuments}
-                            snapshotText={companyLegalSnapshot.acknowledgement_text}
-                            versionLabel={companyLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${companyLegalSnapshot.marketplace_terms_version}` : ''}
-                        />
+                        {companyStep === 3 ? (
+                            <section aria-labelledby="location-hours-menu-title" className="space-y-4">
+                                <div><h2 id="location-hours-menu-title" className="text-lg font-semibold text-[#132033]">Location, Business Hours and Menu</h2><p className="mt-1 text-sm text-slate-600">Add the primary storefront location and hours. The menu image is optional and remains private until reviewed.</p></div>
+                                <div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="locationName">Location name</Label><Input id="locationName" value={companyForm.locationName} onChange={(e) => updateCompanyForm({ locationName: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="addressLine">Address</Label><Input id="addressLine" value={companyForm.addressLine} onChange={(e) => updateCompanyForm({ addressLine: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="barangay">Barangay (optional)</Label><Input id="barangay" value={companyForm.barangay} onChange={(e) => updateCompanyForm({ barangay: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="city">City</Label><Input id="city" value={companyForm.city} onChange={(e) => updateCompanyForm({ city: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="province">Province</Label><Input id="province" value={companyForm.province} onChange={(e) => updateCompanyForm({ province: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="postalCode">Postal code</Label><Input id="postalCode" value={companyForm.postalCode} onChange={(e) => updateCompanyForm({ postalCode: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="latitude">Latitude</Label><Input id="latitude" inputMode="decimal" value={companyForm.latitude} onChange={(e) => updateCompanyForm({ latitude: e.target.value })} disabled={isLoading} /></div><div><Label htmlFor="longitude">Longitude</Label><Input id="longitude" inputMode="decimal" value={companyForm.longitude} onChange={(e) => updateCompanyForm({ longitude: e.target.value })} disabled={isLoading} /></div></div>
+                                <div><Label htmlFor="hoursText">Business hours</Label><textarea id="hoursText" placeholder={'One per line, for example:\nMonday 09:00-18:00'} value={companyForm.hoursText} onChange={(e) => updateCompanyForm({ hoursText: e.target.value })} disabled={isLoading} className="mt-1 min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
+                                <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4"><p className="text-sm font-semibold text-[#132033]">DGFY account connected</p><p className="mt-2 text-xs text-slate-600">Registration uses {dgfyAccount.email}.</p></div>
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <Label htmlFor="menuImage">Menu image (optional)</Label>
+                                    <p className="mt-1 text-xs text-slate-500">Upload a JPG, JPEG, or PNG menu image. You can also upload it later from the registration status page.</p>
+                                    <input id="menuImage" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" onChange={handleMenuImageChange} disabled={isLoading} className="mt-3 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#e8f4ff] file:px-3 file:py-2 file:font-semibold file:text-[#1f5f9f] hover:file:bg-[#d9edff]" />
+                                    {companyMenuImage ? <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><span className="truncate">Selected: {companyMenuImage.name}</span><button type="button" onClick={() => setCompanyMenuImage(null)} disabled={isLoading} className="shrink-0 font-semibold text-[#1f5f9f] hover:underline">Remove</button></div> : null}
+                                </div>
+                                <LegalAcknowledgementBox id="acceptedCompanyTerms" checked={companyForm.acceptedCompanyTerms} onChange={(e) => updateCompanyForm({ acceptedCompanyTerms: e.target.checked })} disabled={isLoading || companyLegalTermsUnavailable} disabledReason={companyLegalTermsUnavailable ? companyLegalDisabledReason : ''} label="I agree to the current DGFY Company Registration Terms." documents={companyLegalDocuments} snapshotText={companyLegalSnapshot.acknowledgement_text} versionLabel={companyLegalSnapshot.company_terms_version ? `Company terms version ${companyLegalSnapshot.company_terms_version}` : ''} />
+                                <LegalAcknowledgementBox id="acceptedMarketplaceTerms" checked={companyForm.acceptedMarketplaceTerms} onChange={(e) => updateCompanyForm({ acceptedMarketplaceTerms: e.target.checked })} disabled={isLoading || companyLegalTermsUnavailable} disabledReason={companyLegalTermsUnavailable ? companyLegalDisabledReason : ''} label="I agree to the current DGFY Marketplace Provider Terms." documents={companyLegalDocuments} snapshotText={companyLegalSnapshot.acknowledgement_text} versionLabel={companyLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${companyLegalSnapshot.marketplace_terms_version}` : ''} />
+                            </section>
+                        ) : null}
 
-                        <Button type="submit" disabled={isLoading || !companyForm.acceptedCompanyTerms || companyLegalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
-                            {isLoading ? 'Creating Company...' : 'Create Company'}
-                        </Button>
+                        <div className="flex gap-3"><Button type="button" variant="outline" onClick={retreatCompanyStep} disabled={isLoading || companyStep === 1}>Back</Button>{companyStep < 3 ? <Button type="button" onClick={advanceCompanyStep} disabled={isLoading} className="flex-1 bg-[#1f5f9f] hover:bg-[#174f86]">Continue</Button> : <Button type="submit" disabled={isLoading || !companyForm.acceptedCompanyTerms || !companyForm.acceptedMarketplaceTerms || companyLegalTermsUnavailable} className="flex-1 bg-[#1f5f9f] hover:bg-[#174f86]">{isLoading ? 'Creating Company...' : 'Submit Details and Create Company'}</Button>}</div>
                     </form>
                 </div>
 
