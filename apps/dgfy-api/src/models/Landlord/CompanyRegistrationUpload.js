@@ -22,4 +22,3 @@ export default (sequelize) => {
   }, { sequelize, modelName: 'CompanyRegistrationUpload', tableName: 'company_registration_uploads', underscored: true, timestamps: true });
   return CompanyRegistrationUpload;
 };
-

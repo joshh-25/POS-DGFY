@@ -121,4 +121,3 @@ export const assertCompanyRegistrationSnapshot = (snapshot) => {
     if (!snapshot?.workflow_mode) throw validationError('Business industry is required.', { field: 'workflowMode' });
     return snapshot;
 };
-

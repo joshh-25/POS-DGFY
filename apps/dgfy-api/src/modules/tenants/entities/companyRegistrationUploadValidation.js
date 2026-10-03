@@ -54,4 +54,3 @@ export const validateCompanyRegistrationUpload = ({ file, kind }) => {
         sha256: crypto.createHash('sha256').update(file.buffer).digest('hex')
     };
 };
-

@@ -80,4 +80,3 @@ export const buildGetBusinessAdminCompanyUseCase = ({ businessAdminOverviewRepos
         authorized_actions: { settings_profile: '/settings/profile', storefront_settings: '/settings/storefront', locations: '/settings/branches', registration_status: application?.id ? `/company-registration/${application.id}` : null }
     });
 };
-
