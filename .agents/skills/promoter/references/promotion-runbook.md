@@ -158,6 +158,36 @@ alternative to the `fix/staging/*` repair route above whenever a Worker is alrea
 declaration — the `fix/staging/*` path is still correct for a pre-existing finding with no in-flight
 fix behind it.
 
+## Optional promotion quality suite
+
+The operator chooses whether and when to run `.github/workflows/promotion-quality-gate.yml`; the
+workflow is manual-only and every check is advisory. For a normal promotion, run it against the
+frozen `develop` candidate before cutting `to-staging/<candidate_id>`. For a rushed promotion, skip
+that run and optionally dispatch against the final `release/<candidate_id>` branch before `main`.
+The operator may also skip the suite entirely.
+
+```bash
+gh workflow run promotion-quality-gate.yml --ref "$CANDIDATE_BRANCH"
+gh run list --workflow=promotion-quality-gate.yml -L1 --json databaseId,status,headSha
+# After the run completes, save its evidence locally if no PR was open at dispatch time.
+RUN_ID=123 # replace with the completed run's databaseId
+PR_NUMBER=456 # replace with the associated open PR number
+GITHUB_TOKEN="$(gh auth token)" GITHUB_REPOSITORY=Sieitzz/dgfy-platform \
+  node scripts/post-quality-suite-evidence.js --run-id "$RUN_ID" --pr "$PR_NUMBER" --candidate "$CANDIDATE_ID"
+```
+
+Omit `--pr "$PR_NUMBER"` to let the script find the open PR for the dispatched branch. The workflow
+reporter posts automatically when that PR exists at dispatch time.
+
+The reporter posts each job's real conclusion to the associated PR with the checked SHA and a
+current/stale indication. The optional `quality_check` manifest entry also binds the result to that
+SHA. Compare it with the active candidate SHA; any candidate change makes the record stale. A run
+at the same SHA is reusable across the later promotion leg, so do not rerun it solely because the
+promotion branch changed. Failure, cancellation, and no run do not affect merge eligibility.
+
+`pr-checks.yml` build checks, merge safety, compliance preflight, the production tenant-schema
+report, the release head-cut rule, and never-`--squash` remain mandatory.
+
 ## #1007-gated exception: direct `develop` → `main`
 
 **Ran `gate:release:local` locally at any point earlier in this session? `git status` before
@@ -221,9 +251,9 @@ Promotes \`develop\` to \`main\` at $(git rev-parse --short "$TARGET_SHA").
 
 ## Testing Evidence
 
-\`promotion-quality-gate\` check-run: <link> (14 blocking gates + 3 deliberately advisory as of
-#1278 PR 2 / Phase 298 -- gate:release:local no longer runs as part of this procedure, see
-docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md). Tenant-schema sync checked against production: <result>.
+Optional promotion quality suite: <not run | result, run URL, and exact SHA>. This suite is
+operator-selected evidence and does not gate promotion. Tenant-schema sync checked against
+production: <result>.
 Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the compliance exemption."
 
 # Merging this PR is Pat's action, always — see ../SKILL.md's checkpoint table.
@@ -238,10 +268,9 @@ gh run list --workflow=tenant-schema-report.yml -L1 --json databaseId,status
 gh run view <id> --json conclusion   # expect "success" and failed_tenant_count: 0 in the step summary
 ```
 
-**Only the merge into `main` waits on both** — the compliance sweep (already confirmed clear above)
-and the tenant-schema report — **plus** the promotion PR's own `promotion-quality-gate` check-run
-(`gh pr checks <N>` or per-job conclusions, NEVER the workflow run's rollup conclusion — see
-`GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Current state" section). Do not merge past a failing gate.
+**Only the merge into `main` waits on the mandatory controls** — the compliance sweep (already
+confirmed clear above), the tenant-schema report, and the ordinary PR checks. The optional quality
+suite does not gate the merge, even when it reports advisory failures.
 
 ## Default: `develop` → `staging` → `main`
 
@@ -251,16 +280,10 @@ section.
 **Do NOT run `npm run gate:release:local` on this leg.** It is reserved for the `develop → main`
 (and `staging → main`) leg only — see the "#1007-gated exception" section above, where it's the
 first thing run.
-This isn't an omission to infer from silence: this leg's own CI-side check
-(`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so the `to-staging/<label>`
-PR's own CI is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks — that's
-unchanged by #1648's compliance-preflight addition below, which is a promoter-run precondition on
-cutting the branch in the first place, not a CI check on the PR once opened. Filed as #1097 after
-a live promotion attempt ran the local gate here anyway and stopped a `develop → staging` promotion
-on failures (a real dependency advisory plus false negatives from an uninstalled isolated checkout)
-that were never this leg's gate to fail on. (Briefly untrue 2026-08-29→2026-08-31 — #1124/#1165
-made this leg's quality jobs advisory-only instead of skipped, then #1253 reverted that; expect the
-plain skip described above, not a ~15-20min advisory run.)
+The promotion quality suite has no automatic PR trigger. The operator may run it against the frozen
+develop candidate before cutting the branch, then reuse that evidence on `staging → main` if the
+candidate SHA is unchanged. Running it is optional; the ordinary `pr-checks.yml` build checks and
+the compliance-preflight step below remain in force.
 
 ```bash
 git fetch origin

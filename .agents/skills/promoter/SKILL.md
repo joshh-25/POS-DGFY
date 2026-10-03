@@ -229,17 +229,12 @@ off `develop` (the #1007-gated exception, which skips the `staging` soak entirel
 for the full ladder the #1007 exception collapses from three stages into two — the default flow
 itself keeps all three.
 
-**Stated the other direction, explicitly, since #1097 found this gets over-applied in practice:
-`gate:release:local` (and the CI-side `promotion-quality-gate.yml`, which this leg's own PR never
-triggers) still do not run on the `develop → staging` leg** (the `to-staging/<label>` PR, the
-default flow's first leg since #1404) — that stays unchanged by #1648. **The one exception, as of
-#1648 (2026-09-06): the compliance-preflight execute-and-resolve step now also runs on this leg**,
-before the branch is even cut — see "Frozen candidate and repair loop" above. Everything else in
-this "Pre-`main` gates" section stays exactly what it says — a `main`-leg gate only; the
-`develop → staging` leg's own procedure is in `references/promotion-runbook.md`'s
-`## Default: develop → staging → main` section and stops at `pr-checks.yml`'s build checks plus the
-compliance-preflight step above; don't reach for `gate:release:local` or this section's other gates
-there.
+`gate:release:local` remains a local debugging runbook and is not a promotion prerequisite. The
+quality suite is optional and operator-dispatched; it may run on the frozen develop candidate
+before `develop → staging`, on the final release candidate before `main`, or not at all. The
+`develop → staging` leg still performs the compliance-preflight step before the branch is cut; its
+other mandatory checks are the `pr-checks.yml` build checks. See
+`references/promotion-runbook.md`'s `## Optional promotion quality suite` for the operator steps.
 
 **Ordering — historical context, one real dependency remains (#1359).** This paragraph originally
 described three gates (`gate:release:local`, the compliance preflight sweep, the production
@@ -252,16 +247,29 @@ real precondition on cutting the branch — no `NOT-EXECUTED-*` declaration may 
 confirm it's clear first. Once it is, **cut `release/<label>` and open its PR into `main`
 immediately** — do not wait on the production tenant-schema report first; it has no dependency on
 the compliance sweep or on the branch cut/PR-open step, so dispatch it **concurrently** with cutting
-the branch and opening the PR, not serially before it. The PR's own remote checks
-(`promotion-quality-gate.yml`, `pr-checks.yml`) run regardless of this timing.
-**Only the merge into `main` waits on all of this** — see `AGENTS.md`'s Merge Safety section and the
+the branch and opening the PR, not serially before it. The PR's ordinary `pr-checks.yml` checks
+run regardless of this timing; the optional quality suite has no PR trigger. **Only the merge into
+`main` waits on the mandatory controls** — see `AGENTS.md`'s Merge Safety section and the
 checkpoint table below; this reordering changes nothing about what gates the merge itself, only when
 the branch/PR mechanics happen relative to the other gate. `references/promotion-runbook.md`
 shows the concurrent command sequence.
 
-Since 2026-09-02 (#1431 Phase 1, PR-A), a red `promotion-quality-gate.yml` check on the promotion PR
-is a real failure to read and address before the Merge Safety poll below, not noise to skim past —
-7 of its steps now drive the check-run conclusion directly, no `continue-on-error` absorbing them.
+### Optional promotion quality suite (#2236)
+
+Run `.github/workflows/promotion-quality-gate.yml` only when the operator chooses. Dispatch it
+against the exact candidate branch/SHA with `gh workflow run promotion-quality-gate.yml --ref
+<candidate-branch>`. Its check steps are advisory and its reporter posts per-job results to an open
+PR associated with the dispatched branch. Use
+`node scripts/post-quality-suite-evidence.js --run-id <id> --pr <number> --candidate <candidate_id>`
+when the PR is opened after the run; the optional manifest entry records the checked SHA and run.
+Compare `quality_check.sha` with the current candidate SHA before relying on it; any candidate
+change invalidates the evidence. A clean check at the same SHA needs no duplicate run on the later
+promotion leg. A rushed release may skip the develop run and choose a final pre-production run, or
+skip the suite entirely.
+
+Failure, cancellation, or absence of the optional suite never blocks promotion. Continue to enforce
+the ordinary `pr-checks.yml` build checks, the Merge Safety hard stop, compliance preflight, the
+production tenant-schema report, the release head-cut rule, and never-`--squash`.
 
 **Compliance preflight sweep — kept here too, on purpose, as of #1648 (2026-09-06).** The primary
 execute-and-resolve run now happens earlier, at the `develop → staging` leg, before
@@ -322,26 +330,11 @@ unchanged — and #1007's expedited override (below) remains the one case a `NOT
 declaration may legitimately still reach `main`, logged and authorized, not silent.
 
 **`gate:release:local` is no longer a step in this procedure (since 2026-09-03, #1431 Phase C/D).**
-Every gate it used to run locally is now delegated to `promotion-quality-gate.yml`
-(`CI_ENFORCED_GATES`, 17 entries as of #1278 PR 2 / Phase 298 — `required_gate_count: 0` on a
-default run); 14 of the 17 are blocking on this leg, and 3 (`dependencies.audit.full`,
-permanently; `backend.test_matrix`, temporarily, tracked by #1469; `release.notes`, temporarily by
-deliberate ADR 0082 Decision 8 rollout design, tracked by ADR 0082 Follow-up 1) are deliberately
-advisory. **Do not run this script as part of a
-promotion** — there is nothing left in its required set to invoke it for. Read the promotion PR's
-own `promotion-quality-gate` check instead (`gh pr checks <N>`, or per-job conclusions — see the
-run-rollup trap below, never the workflow-run rollup) as the evidence for the release go/no-go
-decision. `docs/testing/release-go-no-go-checklist.md` and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`
-carry the full gate-by-gate closeout; the script itself still exists for `--only`/
-`--include-ci-enforced` local debugging of one specific gate, just not as a promotion gate.
-
-**The run-rollup reading trap** (full detail: `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
-"Current state" section). `gh run view <id> --json conclusion` reports the *workflow run's* rollup
-conclusion, which stays `success` even when a quality job inside it failed — the pre-existing
-job-level `continue-on-error: true` spares the run rollup, not the job. The **job's** check-run is
-what actually carries `failure` and what GitHub computes `mergeStateStatus` from. Read per-job
-conclusions (`gh run view <id> --json jobs --jq '.jobs[]|"\(.name) \(.conclusion)"'`) or
-`gh pr checks <N>` — never the run rollup — or a blocking gate will look inert when it is not.
+Those names describe checks available for optional operator evidence and local debugging; none is
+a promotion merge gate through `promotion-quality-gate.yml`. Use the optional suite only when
+chosen, and interpret its PR comment as SHA-bound evidence, not an independent merge requirement.
+`docs/testing/release-go-no-go-checklist.md` and
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` retain the gate-by-gate command mapping.
 
 **Production tenant-schema report — never skippable, under any circumstance including #1007's
 override.** Run this concurrently with cutting `release/<label>` and opening its PR too (see

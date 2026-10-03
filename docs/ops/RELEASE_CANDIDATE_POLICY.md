@@ -1854,6 +1854,8 @@ six app groups including `dgfy-opis`. Package floors stay independently managed 
 
 PR: (this PR). Refs #2186.
 
+
+
 ### 2026-10-03: Require release artifacts for every touched candidate app (#2227)
 
 For v3 candidates, the union of `apps_touched` across the initial promotion and every STAGING
@@ -1875,3 +1877,31 @@ not send a separate app-only deploy for this recovery. Keep the tracking issue o
 combined production release is verified.
 
 PR: (this PR). Closes #2227.
+
+### 2026-10-03: Promotion quality suite is operator-selected evidence (#2236)
+
+`promotion-quality-gate.yml` is dispatched manually only. It has no `pull_request` or
+`workflow_call` trigger, no promotion-leg classifier, and no blocking quality step. Every workflow
+step uses `continue-on-error: true`; the workflow's reporter posts the dispatched run's per-job
+conclusions to the open PR associated with its branch. If no open PR is associated yet, the operator
+can post the evidence later with `node scripts/post-quality-suite-evidence.js --run-id <id>
+--pr <number> --candidate <candidate_id>`. The script records optional `quality_check` metadata
+in the local v3 candidate manifest, bound to the exact checked SHA; any candidate change makes that
+record stale by SHA comparison.
+
+For the normal three-stage flow, the operator may run the suite on the frozen `develop` candidate
+before cutting `to-staging/<label>`. If that candidate SHA remains unchanged through the release
+cut, no duplicate run is needed. For a rushed flow, the operator may skip the develop run and may
+run the suite on the final release candidate before production. The operator may also skip the suite
+for a release entirely. Quality-suite failures, cancellations, and missing results are informational
+and do not affect promotion eligibility.
+
+The ordinary `pr-checks.yml` build checks, merge-safety hard stop, compliance preflight, production
+tenant-schema report, never-`--squash` rule, and release head-cut rule remain independently
+mandatory. This decision supersedes the #1124 quality-gate trust epic's earlier requirement to
+restore automatic blocking; its Definition of Done must no longer require that outcome.
+
+Validation: `node scripts/check-pr-quality-workflow.js`, `node scripts/check-promotion-candidate.js
+--manifest <path>` (with and without `quality_check`), and `npm run lint:docs`.
+
+PR: (this PR). Closes #2236. Refs #1063, #1254.

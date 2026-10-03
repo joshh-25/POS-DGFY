@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-09-05
+last_reviewed: 2026-10-03
 applies_to: promotion_quality_gates
 topic: gate_release_local_ci_mapping
 ---
@@ -36,40 +36,30 @@ Each gate maps to exactly one of:
   auto-skip or a `structurally_cannot_fail` flag is *not* a closed resolution, it is an open
   question with a green badge.
 
-## Current state (2026-09-03, #1431 Phase C/D) — the short version
+## Current state (2026-10-03, #2236)
 
-Every "(a) Covered" row is now **delegated** to `promotion-quality-gate.yml` via
-`scripts/gate-release-local.js`'s `CI_ENFORCED_GATES` map (17 entries as of #1278 PR 2 / Phase 298
-— 16 from the original 19-gate mapping, plus `release.notes`, the first gate added after this
-umbrella closed; see "A new gate after the mapping closed" below), cross-checked by
-`scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` so a future edit cannot
-silently regain `continue-on-error` on a supposedly-blocking step without failing that checker. Of
-those 17:
+The gate-by-gate rows, phase narratives, and former CI blocking classifications below preserve the
+historical mapping of local `gate:release:local` commands to the quality workflow. They no longer
+describe current policy.
+`promotion-quality-gate.yml` is operator-dispatched only, and every workflow step is advisory. The
+suite provides optional evidence on a selected candidate; it is not a promotion requirement and no
+failure, cancellation, or missing run blocks a promotion PR.
 
-- **14 are genuinely blocking** on the `release/*→main` leg (and `staging→main`, and any
-  `workflow_dispatch`/`workflow_call` run) — a real failure reds out the job's check-run and trips
-  `AGENTS.md`'s Merge Safety hard stop, same as any other required check.
-- **3 are deliberately advisory**, named in `check-pr-quality-workflow.js`'s
-  `ADVISORY_CI_ENFORCED_GATES` allowlist so `checkCiEnforcedGatesAreBlocking()` doesn't demand
-  blocking coverage that will never (yet) exist for them:
-  - `dependencies.audit.full` (row 3) — **permanently** advisory (Pat's call, settled this phase,
-    superseding the "not yet decided" flag the Phase 2 version of this doc carried). Its verdict
-    depends on the npm registry, not the repo; a fresh dev-only advisory can flip it red with zero
-    code change here, and its findings never ship.
-  - `backend.test_matrix` (row 10) — **temporarily** advisory, tracked by #1469, gated on #1015
-    (fast/DB tier split) and #925 (hanging `beforeAll`). Confirmed still genuinely failing (not
-    just slow) on every #1431 Phase A/C evidence run.
-  - `release.notes` — **temporarily** advisory by deliberate rollout design (ADR 0082 Decision 8),
-    not a prerequisite or flake exception like the two above: it ships advisory on first landing and
-    flips blocking only once a later, dedicated phase finds clean-run evidence (ADR 0082 Follow-up
-    1), mirroring `check:app-versions`' own advisory-to-blocking rollout (ADR 0081 Decision 9). See
-    "A new gate after the mapping closed" below.
+The 17 `CI_ENFORCED_GATES` entries still identify which commands the workflow can run. The name
+`CI_ENFORCED_GATES` is retained for compatibility with the local gate data model; it means
+"available in CI" here, not "required or blocking." `required_gate_count: 0` remains the default for
+`gate:release:local`.
 
-`gate:release:local`'s required-locally count is **0** — every gate that isn't one of the 3 retired
-rows below is now delegated. `docs/testing/release-go-no-go-checklist.md` and
-`.agents/skills/promoter/SKILL.md` have been updated to stop citing `gate:release:local` as a
-pre-`main` step; `promotion-quality-gate.yml`'s own quality jobs are the sole remaining enforcement
-mechanism.
+Operators may run the suite against the frozen `develop` candidate before the staging cut, reuse
+that SHA-bound evidence if the candidate is unchanged, optionally run it against the final release
+candidate for a rushed flow, or skip it. The workflow's evidence reporter posts job conclusions to
+an associated open PR and can optionally record `quality_check` in a local v3 candidate manifest.
+See `.agents/skills/promoter/references/promotion-runbook.md` for the commands and flow.
+
+The ordinary `pr-checks.yml` build checks, merge-safety hard stop, compliance preflight,
+production tenant-schema report, release head-cut rule, and never-`--squash` remain independently
+mandatory. This policy supersedes the blocking/advisory distribution described in the historical
+table below.
 
 ## A new gate after the mapping closed (#1278 PR 2, Phase 298)
 

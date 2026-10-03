@@ -2,49 +2,32 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-22
+last_reviewed: 2026-10-03
 applies_to: pre_promotion_quality_gate
 topic: pre_promotion_local_gate
 ---
 
 # Release Go/No-Go Checklist
 
-## This is no longer a pre-`main` step (updated 2026-09-03, #1431 Phase C/D)
+## Optional promotion quality suite (updated 2026-10-03, #2236)
 
-`npm run gate:release:local` (`scripts/gate-release-local.js`) was the pre-promotion quality gate
-for this repository through 2026-09-02. As of #1431 Phase C/D (2026-09-03), every one of its 16
-remaining gates is delegated to `promotion-quality-gate.yml`'s own quality jobs. A 17th gate,
-`release.notes` (ADR 0082 Decision 8), was added by #1278 PR 2 / Phase 298 — see the table below.
-`CI_ENFORCED_GATES` now carries **17** entries, `required_gate_count: 0` on a default run. **A
-promoter no longer runs this script before a `develop -> main` (or `staging -> main`) promotion** —
-the workflow's own blocking check-runs (14 of the 17 gates) plus its three deliberately advisory
-ones (`dependencies.audit.full`, permanently; `backend.test_matrix`, temporarily, tracked by #1469;
-`release.notes`, temporarily by deliberate rollout design, tracked by ADR 0082 Follow-up 1) are the
-enforcement mechanism now. `docs/ops/RELEASE_CANDIDATE_POLICY.md` and
-`.agents/skills/promoter/SKILL.md` no longer list this script as a promotion gate.
+`promotion-quality-gate.yml` is an operator-dispatched evidence suite with no automatic PR trigger.
+The operator may run it on the frozen `develop` candidate before the staging cut, reuse the result
+if that SHA is unchanged, optionally run it against a final release candidate in a rushed flow, or
+skip it. All workflow steps are advisory; a failure, cancellation, or absent run does not gate a
+promotion. The workflow posts job results to an associated open PR and may record the checked SHA,
+run ID, URL, timestamp, and outcome in a local v3 candidate manifest's optional `quality_check`
+field.
 
-This document stays as **a runbook for what the 17 gates mean and how to run one manually** — via
-`--only <name>`/`--include-ci-enforced` (see "How to run it" below) — for local debugging of a
-specific check, not as a mandatory promotion step. #372 (a testing agent/skill), if built, should
-still prefer invoking a gate's own command over reimplementing it.
+`npm run gate:release:local` is a local debugging tool only. Its default `required_gate_count` is
+zero; `--only`/`--include-ci-enforced` still let an operator run a specific check locally. The
+historical per-gate CI status notes below describe the earlier enforcement rollout and do not imply
+that any quality check remains a promotion prerequisite. The evidence suite does not replace the
+ordinary `pr-checks.yml` build checks, compliance preflight, merge safety, or the production tenant-
+schema report.
 
-The reusable wrapper for this Docker/scratch-copy procedure is the canonical
-`.agents/skills/testing-agent/SKILL.md` (`node scripts/run-testing-agent.js`). Its default full run
-uses `--include-ci-enforced`, preserves the underlying exit status, and copies SHA-bound evidence
-back before cleanup. Focused runs remain partial/advisory. The checklist below remains the manual
-debugging reference and source of truth for the gate meanings and service shape.
-
-This gate is one rung of a larger verification ladder — the compliance preflight sweep and the
-live-credential-dependent payment checks are separate rungs with their own placement and are not
-folded into this gate. See `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment,
-"Compliance verification ladder," for the full picture and why nothing on this ladder is a
-production precondition.
-
-This document is a runbook: how to run the gate and what its 16 checks mean. It is not a release
-ledger — dated pass/fail evidence for individual releases belongs in
-`.tmp/release-gates/<sha>/local_readiness.json` and, if worth keeping past that SHA's lifetime, a
-dated file under `docs/archive/testing/`. The prior 100-entry evidence log that used to live in this
-file was archived on 2026-08-12; see `docs/archive/testing/2026-08/`.
+The wrapper for the Docker/scratch-copy local procedure remains
+`.agents/skills/testing-agent/SKILL.md` (`node scripts/run-testing-agent.js`).
 
 ## How to run it
 
@@ -118,29 +101,17 @@ Three gates (`release.target_sha`, `observability.evidence.report`, `release.ver
 in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, "Retired gates — closed resolutions."
 
 **Delegation, completed 2026-09-03 (#1431 Phase 1 PR-B through Phase C/D) for the original 16, and
-extended 2026-09-06 (#1278 PR 2 / Phase 298) with a 17th: none of the gates below "run" here by
-default.** Every one runs an identical command as a step in `promotion-quality-gate.yml`; 14 are
-blocking on the `release/*→main` leg, and 3 (`dependencies.audit.full`, `backend.test_matrix`,
-`release.notes`) are deliberately advisory (see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
-"Current state" and "A new gate after the mapping closed" sections for exactly which and why).
-Each is recorded `status: "delegated_to_ci"`, `ok: true`, `duration_ms: 0`, and logged as
-`[CI] <gate> :: enforced by promotion-quality-gate.yml / <job> / <step(s)>`. This does **not** flip
-`run_mode` to `"partial"` — a default run that delegates all 17 is still `"full"`; `run_mode` tracks
-whether the caller passed `--only`/`--skip`, not whether a gate ran locally or in CI. Two escape
-hatches: `--include-ci-enforced` runs every gate locally anyway; naming a delegated gate explicitly
-via `--only` also runs it (an explicit `--only` is an explicit request, never silently delegated).
-A delegated gate's `ok: true` must not be over-read as "this ran and passed" — see the artifact's
-`required_gate_count`/`delegated_gate_count`/`ci_enforced_gates` fields below, which exist
-specifically so a reader doesn't have to infer delegation from an unusually-fast `duration_ms: 0`.
-`scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` is the compensating
-control that keeps `CI_ENFORCED_GATES` and `promotion-quality-gate.yml`'s actual blocking-step ids
-in sync (via a three-name `ADVISORY_CI_ENFORCED_GATES` allowlist for the 3 deliberately-advisory
-gates) — a future edit that silently regains `continue-on-error` on one of the other 14 steps fails
-that check rather than silently reopening a coverage hole on both sides at once. Combined with the
-3 gates retired by Phase 3 above, the **original** 19-gate mapping's own required set is **0**
-(19 − 3 retired − 16 delegated) — see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` for the full
-gate-by-gate closeout. `release.notes` (gate 17 below) sits outside that original count entirely —
-it was added after the mapping closed, not one of the 19.
+extended 2026-09-06 (#1278 PR 2 / Phase 298) with a 17th, describes the former CI arrangement.**
+Under #2236, the operator may dispatch `promotion-quality-gate.yml` to collect this evidence, and
+every step is advisory. No result is required for promotion. The local gate runner still defaults
+to zero required checks; an explicit `--only` or `--include-ci-enforced` runs selected checks
+locally. The per-gate mapping below and in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` records the
+historical rollout. A default local run's `required_gate_count` remains `0` and a local result
+doesn't imply the optional workflow was dispatched.
+
+The `[CI, delegated + blocking]` and `[CI, delegated, advisory]` labels in this table are retained as
+historical rollout evidence from 2026-09. Under #2236, every mapped quality step is optional and
+advisory when operator-dispatched.
 
 | # | Gate name | Command | Notes |
 |---|---|---|---|
@@ -162,14 +133,14 @@ it was added after the mapping closed, not one of the 19.
 | 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
 | 17 | `release.notes` | `npm run check:release-notes` | ADR 0082 Decision 8 (#1278 PR 2, Phase 298): validates a `release/<candidate_id>-rN` head carries a matching `docs/releases/notes/<candidate_id>.md` (schema, candidate_id, production_date, production_commit — `pending` or a real 40-hex SHA — the app version table, and required `## Included`/`## Operational notes` sections). Resolves "not applicable" (exit 0) on any other head, including a `main` hotfix's `fix/*` branch. Added after the original 19-gate mapping closed — not one of that count. **[CI, delegated, TEMPORARILY advisory 2026-09-06 by deliberate rollout design — flips blocking once a later phase finds clean-run evidence, ADR 0082 Follow-up 1]** |
 
-One gate is structurally incapable of failing on a clean promotion checkout —
+Historically, one gate was structurally incapable of failing on a clean promotion checkout —
 `compliance.contracts` (no compliance-relevant diff to flag) — and the artifact marks it
 `structurally_cannot_fail: true` (#1016) so a green result on it is never cited as evidence.
 `release.notes` (gate 17) carries the same flag for a different reason: outside a real
 `release/<candidate_id>-rN` head it resolves "not applicable," so a local run never exercises its
-actual validation logic. Neither flag prevents genuine blocking coverage in CI where it applies —
-`compliance.contracts` is confirmed blocking by PR #1458's fault-probe run; `release.notes` stays
-advisory regardless (see the table row above). The other two gates that used to carry that flag
+actual validation logic. These flags describe the former CI rollout and do not make an optional
+suite result a promotion requirement. `compliance.contracts` was confirmed blocking by PR #1458's
+fault-probe run; `release.notes` stayed advisory (see the table row above). The other two gates that used to carry that flag
 (`observability.evidence.report`, `release.verdict.contract`) were retired outright by #1431
 Phase 3 rather than left green and un-citable.
 
@@ -248,21 +219,12 @@ separate approval step beyond dispatch access. Treat every PR into `main` as "th
 `deploy-main.yml` dispatch will ship this," and run this checklist before that dispatch, not before
 the merge.
 
-`.github/workflows/pr-checks.yml`'s `quality-checks` job — the blocking API/frontend test coverage —
-was removed entirely 2026-08-14 (#416, after sitting paused over #345's ~14min unfiltered run). An
-ordinary `develop`-bound PR is still gated only by path-filtered Docker build checks. **Since #1018
-(2026-08-25)**, the full test matrix also runs automatically in CI — `promotion-quality-gate.yml`
-(renamed from `pr-quality-checks.yml`) triggers itself on `release/*` promotion PRs into `main`
-(the default path since ADR 0074), and still also on `to-staging/*` PRs into `staging` for anyone
-using the optional soak (skipped entirely on that leg, per #1253 — see
-`GATE_RELEASE_LOCAL_CI_MAPPING.md`'s confirmation section). **As of 2026-09-03 (#1431 Phase C/D),
-this workflow is the sole enforcement mechanism** — `gate:release:local` is no longer run as part of
-a promotion; its `required_gate_count` is 0 by design. A promoter's evidence for the release
-go/no-go decision is `gh pr checks <N>` / `gh pr view <N> --json mergeStateStatus,mergeable` against
-the promotion PR (per `AGENTS.md`'s Merge Safety hard stop), not a locally-generated
-`local_readiness.json`. The #1007 phrase-gated expedited override, which used to name
-`gate:release:local` as one of the things it could skip, is unaffected by this change in substance
-(there is nothing local left to skip) — see `AGENTS.md`'s own amendment on this.
+The promotion quality workflow is now an optional operator-dispatched evidence suite (#2236). It
+has no automatic promotion-PR trigger, and none of its jobs is a merge requirement. The operator may
+run it against a frozen candidate SHA and reuse the result while that SHA remains current. The
+ordinary `pr-checks.yml` build checks, merge safety, compliance preflight, and production
+tenant-schema report remain independently enforced. `gate:release:local` has a default
+`required_gate_count` of zero and remains available for focused local debugging.
 
 ### Authorization boundary
 
@@ -359,8 +321,8 @@ builders don't actually publish.
 
 - `.github/workflows/deploy-production.yml`, which targeted a `master` branch that never existed in
   this repository (#339), was deleted 2026-08-14 (#417) — no longer applicable.
-- `docs/ops/RELEASE_CANDIDATE_POLICY.md` still describes `quality-checks` as blocking (it isn't,
-  currently — see above); worth a follow-up correction there.
+- Historical release-policy amendments describe the former blocking quality suite; the
+  2026-10-03 #2236 amendment records its current operator-selected, advisory status.
 - **Resolved 2026-08-25 (#1019):** `docs/ops/NO_STAGING_RELEASE_STANDARD.md` is now formally
   `status: superseded` (previously had no frontmatter at all), pointing at
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`, so it no longer contradicts the actual override mechanisms
