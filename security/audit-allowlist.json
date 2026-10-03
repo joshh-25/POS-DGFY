@@ -143,13 +143,6 @@
       "reviewBy": "2026-09-24"
     },
     {
-      "tree": "apps/dgfy-admin",
-      "package": "maplibre-gl",
-      "severity": "critical",
-      "reason": "Same finding as apps/dgfy-ims; see that entry. dgfy-admin uses the current frontend dependency baseline while the standalone package is extracted. Tracked in #1787.",
-      "reviewBy": "2026-10-15"
-    },
-    {
       "tree": "tests/frontend-cross-app",
       "package": "express",
       "severity": "moderate",

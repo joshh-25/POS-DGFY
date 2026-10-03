@@ -107,10 +107,7 @@ export default defineConfig({
     alias: sharedAliases
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router', 'react-router-dom'],
-    // MapLibre resolves its worker relative to the package module. Keep it out of
-    // Vite's dependency optimizer so the explicit worker asset URL remains served.
-    exclude: ['maplibre-gl']
+    include: ['react', 'react-dom', 'react-router', 'react-router-dom']
   },
   server: {
     host: true,
@@ -143,7 +140,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
-          if (id.includes('maplibre-gl')) return 'vendor-maplibre';
           if (id.includes('qrcode')) return 'vendor-qrcode';
           if (id.includes('lucide-react')) return 'vendor-icons';
           return undefined;

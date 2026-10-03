@@ -21,7 +21,7 @@ issue #350): extract the landlord Platform Admin console into its own app and se
 `/admin` on `dgfy.ph`, `pos.dgfy.ph`, `opis.dgfy.ph`, and `skupervisor.dgfy.ph` during the
 legacy-host compatibility window, with **independent per-host login** — explicitly not a shared
 cross-host session — so no `SESSION_COOKIE_DOMAIN` broadening is required by this decision. The
-implementation is tracked under issue #350; no implementation PR exists yet.
+implementation is tracked under issue #350.
 
 ## Context
 
