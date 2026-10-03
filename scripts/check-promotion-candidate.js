@@ -336,7 +336,8 @@ function validatePromotionCandidateV2(manifest, versionlessDev = false) {
 
 /**
  * #2071 versionless DEV candidate shape: the frozen develop SHA is built directly on STAGING.
- * Initial apps_touched records which app floors were advanced at promotion start; no DEV image
+ * Initial apps_touched records the deployable app set for this candidate: apps changed at promotion
+ * start plus any explicitly carried forward from an earlier partial PROD release. No DEV image
  * selection or deployment participates in the candidate. Repair and per-app release lineage
  * retain the v2 structure, with `promotion` replacing the old DEV artifact origin.
  */
@@ -345,6 +346,17 @@ function validatePromotionCandidateV3(manifest) {
   const result = validatePromotionCandidateV2(manifest, true);
   const apps = manifest.release_revision && manifest.release_revision.apps;
   if (apps) {
+    const touchedApps = new Set(
+      manifest.revisions.flatMap((revision) => revision.apps_touched || [])
+    );
+    const missingTouchedApps = [...touchedApps].filter((app) => !Object.hasOwn(apps, app));
+    const missingAppNames = missingTouchedApps.join(', ') || '<none>';
+    assert(
+      missingTouchedApps.length === 0,
+      'A v3 release candidate must include a revisioned STAGING artifact for every app in its ' +
+        `apps_touched history; missing: ${missingAppNames}`,
+      'MISSING_TOUCHED_RELEASE_APP'
+    );
     assert(
       Object.hasOwn(apps, 'dgfy-api') === Object.hasOwn(apps, 'dgfy-migration-runner'),
       'A v3 candidate must include dgfy-api and dgfy-migration-runner in release_revision.apps together or omit both (paired backend release)',
