@@ -206,10 +206,19 @@ backport batch, PRs #1668-1674). `scripts/check-promotion-divergence.js`'s prove
 (see "Pre-cut divergence check" above) checks exactly these four patterns and flags anything else.
 
 Only after staging observation passes may the promoter cut `release/<candidate_id>` from the
-current staging SHA. A pre-main failure returns to the staging repair loop; discard the stale
-release head and recut it after staging changes. A post-main failure uses the incident/hotfix path
-on `main`, then backports the resolved main commit to `develop` once production is stable. Do not
-create a separate staging backport for a main hotfix.
+current staging SHA. If a pre-main CI or quality-gate failure is found after that qualification,
+keep the same release branch and promotion PR. Repair from the current release head through a
+reviewed `fix/release/<candidate_id>-<repair_seq>` PR into `release/<candidate_id>`; append its
+exact SHA, parent, PR, issue, and `apps_touched` to `release_revision.repairs`; allocate a fresh
+immutable per-app artifact revision for each touched app and update its source SHA/origin in
+`release_revision.apps`, then validate the manifest. Do not recut, redeploy, or re-observe staging.
+The existing promotion PR reruns its required checks on the updated release head. The final head is not described as staging-qualified;
+PROD parity for a `release_repair` app uses that app's exact source SHA and PROD artifact evidence.
+All main-promotion controls, including the production tenant-schema report, Merge Safety, and
+never-`--squash`, remain mandatory. After production is stable, backport each release-only repair
+to `develop` through an ordinary PR; do not create a separate staging backport. A post-main failure
+continues to use the incident/hotfix path on `main`, then backports the resolved main commit to
+`develop` once production is stable.
 
 ## Pre-flight — run before touching any branch
 
@@ -494,6 +503,7 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Publishing the GitHub Release (`gh release create release-<candidate_id> ...`) after the promotion parity gate confirms the deploy (#1278, ADR 0082) | Unattended — this is a post-deploy **record** of a deploy Pat already authorized at the PROD dispatch ask, not a mutation of a deployed environment and not a second deploy dispatch. Do not confuse it with the `deploy-main.yml` dispatch row below, which stays an every-time ask |
 | Advancing release-note issues from `For Prod` to `Done` and closing them after the parity gate and GitHub Release publication (#1681) | Unattended — the release note scopes the inventory, the candidate has already passed production deployment/parity, and this is the final board/issue record of that authorized deploy; read back Status and issue state for every item and report any mismatch |
 | Running `node scripts/sync-app-version-baselines.js` after the promotion parity gate / GitHub Release publication (#1807), and opening/merging the resulting sync PR into `develop` if any app is below `main`'s baseline | Unattended — read-only check; the sync PR is an ordinary `develop`-base PR, same tier as the pre-cut floor bump PR above. Never touches an app `develop` already matches or leads on |
+| Opening and merging a reviewed `fix/release/<candidate_id>-<repair_seq>` PR into its `release/<candidate_id>` promotion branch after staging qualification (#1542 follow-up) | Unattended — preserve the frozen staging evidence and run the promotion PR's required checks on the updated release head. Still subject to `AGENTS.md`'s Merge Safety hard stop, and never `--squash` |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
 | Running the compliance-preflight execute-and-resolve check (full-scan + stuck-handoff check) before cutting `to-staging/<candidate_id>` **or** `release/<label>` (#1648, 2026-09-06) | Unattended — read-only until it needs to resolve something; see "Frozen candidate and repair loop" and "Compliance preflight sweep" above |
 | Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Frozen candidate and repair loop" / "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
