@@ -4,7 +4,7 @@
  * deploy-migration-runner.yml, and deploy-frontend.yml each compute and emit the ADR 0081
  * `X.Y.Z[-channel]` version tag, stamp the `org.opencontainers.image.version` label, bake
  * `APP_VERSION` as a build-arg, and run the tag-immutability guard (Decision 7) -- plus that all
- * five Dockerfiles accept and expose `APP_VERSION`. Regex/text assertions against the real files,
+ * all seven Dockerfiles accept and expose `APP_VERSION`. Regex/text assertions against the real files,
  * same "no live GHCR push, no live docker build" bar `check-pr-quality-workflow.js` already sets
  * for this class of check (no compiler exists for `.github/workflows/*.yml` or a Dockerfile).
  *
@@ -32,6 +32,7 @@ const DOCKERFILES = Object.freeze([
   'infrastructure/docker/dgfy-pos/Dockerfile',
   'infrastructure/docker/dgfy-storefront/Dockerfile',
   'infrastructure/docker/dgfy-opis/Dockerfile',
+  'infrastructure/docker/dgfy-admin/Dockerfile',
 ]);
 
 const ORCHESTRATOR_FILE = '.github/workflows/deployment-orchestrator.yml';
@@ -47,6 +48,7 @@ const ORCHESTRATOR_VERSION_TAG_OUTPUTS = Object.freeze([
   ['frontend_pos_version_tag', 'frontend-pos'],
   ['frontend_storefront_version_tag', 'frontend-storefront'],
   ['frontend_opis_version_tag', 'frontend-opis'],
+  ['frontend_admin_version_tag', 'frontend-admin'],
   ['dgfy_api_version_tag', 'dgfy-api'],
   ['migration_runner_version_tag', 'dgfy-migration-runner'],
 ]);
@@ -204,12 +206,12 @@ function checkOrchestratorVersionTagMapping(orchestratorText) {
   return problems;
 }
 
-// #1588 (epic #1548 Wave 4, Phase 279): the six builder jobs deployment-orchestrator.yml calls,
+// #1588 (epic #1548 Wave 4, Phase 279): the builder jobs deployment-orchestrator.yml calls,
 // each must forward candidate_source_sha straight through -- the `publish` job (calling
 // publish-platform.yml, which has no such input) is deliberately excluded here.
 const ORCHESTRATOR_BUILDER_JOBS = Object.freeze([
   'dgfy-api', 'dgfy-migration-runner', 'frontend-ims', 'frontend-pos', 'frontend-storefront',
-  'frontend-opis',
+  'frontend-opis', 'frontend-admin',
 ]);
 
 /**
@@ -253,6 +255,7 @@ const ORCHESTRATOR_RELEASE_REVISION_INPUTS = Object.freeze([
   'release_revision_frontend_pos',
   'release_revision_frontend_storefront',
   'release_revision_frontend_opis',
+  'release_revision_frontend_admin',
 ]);
 
 const ORCHESTRATOR_JOB_REVISION_KEYS = Object.freeze([
@@ -262,6 +265,7 @@ const ORCHESTRATOR_JOB_REVISION_KEYS = Object.freeze([
   ['frontend-pos', 'dgfy-pos'],
   ['frontend-storefront', 'dgfy-storefront'],
   ['frontend-opis', 'dgfy-opis'],
+  ['frontend-admin', 'dgfy-admin'],
 ]);
 
 function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
@@ -323,6 +327,7 @@ const DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS = Object.freeze([
   'candidate_source_sha_frontend_pos',
   'candidate_source_sha_frontend_storefront',
   'candidate_source_sha_frontend_opis',
+  'candidate_source_sha_frontend_admin',
 ]);
 
 const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
@@ -332,6 +337,7 @@ const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
   ['frontend-pos-prod', 'candidate_source_sha_frontend_pos'],
   ['frontend-storefront-prod', 'candidate_source_sha_frontend_storefront'],
   ['frontend-opis-prod', 'candidate_source_sha_frontend_opis'],
+  ['frontend-admin-prod', 'candidate_source_sha_frontend_admin'],
 ]);
 
 /**
@@ -378,6 +384,7 @@ const DEPLOY_MAIN_RELEASE_REVISION_INPUTS = Object.freeze([
   'release_revision_frontend_pos',
   'release_revision_frontend_storefront',
   'release_revision_frontend_opis',
+  'release_revision_frontend_admin',
 ]);
 
 const DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES = Object.freeze([
@@ -387,6 +394,7 @@ const DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES = Object.freeze([
   ['frontend-pos-prod', 'release_revision_frontend_pos'],
   ['frontend-storefront-prod', 'release_revision_frontend_storefront'],
   ['frontend-opis-prod', 'release_revision_frontend_opis'],
+  ['frontend-admin-prod', 'release_revision_frontend_admin'],
 ]);
 
 function checkDeployMainReleaseRevisionWiring(deployMainText) {
@@ -516,6 +524,7 @@ const DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES = Object.freeze([
   ['frontend-pos-prod', 'should_build_dgfy_pos'],
   ['frontend-storefront-prod', 'should_build_dgfy_storefront'],
   ['frontend-opis-prod', 'should_build_dgfy_opis'],
+  ['frontend-admin-prod', 'should_build_dgfy_admin'],
 ]);
 
 /**
@@ -603,26 +612,28 @@ function checkDeployMainPublishGate(deployMainText) {
   return problems;
 }
 
-/** OPIS must participate in both production gates: aliases must wait for its image and
- * refuse failures/cancellations, and publish must do the same before updating the server. */
+/** OPIS and Platform Admin must participate in both production gates: aliases must wait for
+ * each image and refuse failures/cancellations, and publish must do the same before updating. */
 function checkDeployMainOpisPublishGates(deployMainText) {
   const problems = [];
   const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
 
-  for (const jobName of ['promote-aliases', 'publish']) {
-    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
-    if (!block) {
-      problems.push(`deploy-main.yml: no "${jobName}" job found for OPIS production gating.`);
-      continue;
-    }
+  for (const [surface, job] of [['OPIS', 'frontend-opis-prod'], ['Platform Admin', 'frontend-admin-prod']]) {
+    for (const jobName of ['promote-aliases', 'publish']) {
+      const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+      if (!block) {
+        problems.push(`deploy-main.yml: no "${jobName}" job found for ${surface} production gating.`);
+        continue;
+      }
 
-    const needs = /needs:\s*\[([^\]]*)\]/.exec(block)?.[1] ?? '';
-    if (!/(^|,)\s*frontend-opis-prod\s*(,|$)/.test(needs)) {
-      problems.push(`deploy-main.yml: "${jobName}" job must list "frontend-opis-prod" in needs: so OPIS build results gate production.`);
-    }
-    for (const result of ['failure', 'cancelled']) {
-      if (!new RegExp(`needs\\.frontend-opis-prod\\.result != '${result}'`).test(block)) {
-        problems.push(`deploy-main.yml: "${jobName}" job must require "needs.frontend-opis-prod.result != '${result}'" to fail closed.`);
+      const needs = /needs:\s*\[([^\]]*)\]/.exec(block)?.[1] ?? '';
+      if (!new RegExp(`(^|,)\\s*${job}\\s*(,|$)`).test(needs)) {
+        problems.push(`deploy-main.yml: "${jobName}" job must list "${job}" in needs: so ${surface} build results gate production.`);
+      }
+      for (const result of ['failure', 'cancelled']) {
+        if (!new RegExp(`needs\\.${job}\\.result != '${result}'`).test(block)) {
+          problems.push(`deploy-main.yml: "${jobName}" job must require "needs.${job}.result != '${result}'" to fail closed.`);
+        }
       }
     }
   }
@@ -630,6 +641,9 @@ function checkDeployMainOpisPublishGates(deployMainText) {
   const aliasBlock = jobBlocks.find((chunk) => chunk.startsWith('promote-aliases:\n'));
   if (aliasBlock && !/inputs\.release_revision_frontend_opis\s*!=\s*''/.test(aliasBlock)) {
     problems.push('deploy-main.yml: promote-aliases must run when "inputs.release_revision_frontend_opis" is supplied, including an OPIS-only revision dispatch.');
+  }
+  if (aliasBlock && !/inputs\.release_revision_frontend_admin\s*!=\s*''/.test(aliasBlock)) {
+    problems.push('deploy-main.yml: promote-aliases must run when "inputs.release_revision_frontend_admin" is supplied, including an Admin-only revision dispatch.');
   }
 
   return problems;
@@ -798,7 +812,7 @@ function main() {
     for (const problem of problems) console.error(`  - ${problem}`);
     process.exit(1);
   }
-  console.log('[check-deploy-version-stamping-workflow] PASS -- all three builder workflows and five Dockerfiles carry the ADR 0081 version-stamping shape (incl. the #1977 release-floor/revision contract).');
+  console.log(`[check-deploy-version-stamping-workflow] PASS -- all three builder workflows and ${DOCKERFILES.length} Dockerfiles carry the ADR 0081 version-stamping shape (incl. the #1977 release-floor/revision contract).`);
 }
 
 if (require.main === module) {

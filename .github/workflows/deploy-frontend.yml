@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       app:
-        description: One of dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis
+        description: One of dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, dgfy-admin
         required: true
         type: string
       environment:
@@ -228,6 +228,7 @@ jobs:
           VITE_SENTRY_DSN_POS: ${{ vars.VITE_SENTRY_DSN_POS }}
           VITE_SENTRY_DSN_STORE: ${{ vars.VITE_SENTRY_DSN_STORE }}
           VITE_SENTRY_DSN_OPIS: ${{ vars.VITE_SENTRY_DSN_OPIS }}
+          VITE_SENTRY_DSN_ADMIN: ${{ vars.VITE_SENTRY_DSN_ADMIN }}
           VITE_SENTRY_ENVIRONMENT: ${{ vars.VITE_SENTRY_ENVIRONMENT }}
           VITE_SENTRY_RELEASE: ${{ github.sha }}
           VITE_SENTRY_TRACES_SAMPLE_RATE: ${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}
@@ -247,6 +248,7 @@ jobs:
           SENTRY_PROJECT_POS: ${{ vars.SENTRY_PROJECT_POS }}
           SENTRY_PROJECT_STORE: ${{ vars.SENTRY_PROJECT_STORE }}
           SENTRY_PROJECT_OPIS: ${{ vars.SENTRY_PROJECT_OPIS }}
+          SENTRY_PROJECT_ADMIN: ${{ vars.SENTRY_PROJECT_ADMIN }}
           SENTRY_URL: ${{ vars.SENTRY_URL }}
         run: |
           set -euo pipefail
@@ -306,8 +308,12 @@ jobs:
           VITE_SENTRY_DSN_OPIS=${VITE_SENTRY_DSN_OPIS}
           SENTRY_PROJECT_OPIS=${SENTRY_PROJECT_OPIS}"
               ;;
+            dgfy-admin)
+              PER_APP="VITE_SENTRY_DSN_ADMIN=${VITE_SENTRY_DSN_ADMIN}
+          SENTRY_PROJECT_ADMIN=${SENTRY_PROJECT_ADMIN}"
+              ;;
             *)
-              echo "::error::unknown app '${APP}' -- expected dgfy-ims, dgfy-pos, dgfy-storefront, or dgfy-opis"
+              echo "::error::unknown app '${APP}' -- expected dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, or dgfy-admin"
               exit 1
               ;;
           esac

@@ -15,6 +15,7 @@ const REQUIRED_PR_CHECKS_MARKERS = [
   'frontend-pos-lint-check',
   'frontend-storefront-lint-check',
   'frontend-opis-lint-check',
+  'frontend-admin-lint-check',
 ];
 
 const REQUIRED_QUALITY_MARKERS = [
@@ -25,6 +26,7 @@ const REQUIRED_QUALITY_MARKERS = [
   'frontend-pos-quality:',
   'frontend-storefront-quality:',
   'frontend-opis-quality:',
+  'frontend-admin-quality:',
   'repository-dependency-quality:',
   'repository-ci-contracts-quality:',
   'repository-docs-quality:',
@@ -55,6 +57,7 @@ const DEVELOP_PR_LINT_JOB_BY_APP = Object.freeze({
   'dgfy-pos': { job: 'frontend-pos-lint-check', changedOutput: 'frontend_pos' },
   'dgfy-storefront': { job: 'frontend-storefront-lint-check', changedOutput: 'frontend_storefront' },
   'dgfy-opis': { job: 'frontend-opis-lint-check', changedOutput: 'frontend_opis' },
+  'dgfy-admin': { job: 'frontend-admin-lint-check', changedOutput: 'frontend_admin' },
 });
 const QUALITY_JOBS = [
   'dgfy-api-quality',
@@ -63,6 +66,7 @@ const QUALITY_JOBS = [
   'frontend-pos-quality',
   'frontend-storefront-quality',
   'frontend-opis-quality',
+  'frontend-admin-quality',
   'repository-dependency-quality',
   'repository-ci-contracts-quality',
   'repository-docs-quality',
