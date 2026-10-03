@@ -3,9 +3,9 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-04
 review_by: 2027-03-23
-applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
+applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, release_process
 topic: per_app_container_semantic_versioning
 ---
 
@@ -728,6 +728,39 @@ untouched. Full detail: issue #2055, `.tmp/plan-2055.md` (planner handoff),
   human-asserted change history (Decision 6) rather than a mechanical diff heuristic. Cited for
   pattern reuse only (the promotion-inherits / hotfix-bumps shape, per-channel tag suffixes), not
   adopted wholesale — #1548's own Related section makes this distinction explicit.
+
+### 2026-10-04 — Preserve candidate identity for release-only repairs (#1542 follow-up, Phase 472)
+
+After a candidate has passed staging qualification, a pre-main failure may be fixed on its existing
+`release/<candidate_id>` branch through a reviewed repair PR. In `sku-release-candidate/v3`, the
+optional `release_revision.repairs` array records the sequential repair number, resulting release
+head SHA, previous release head SHA, repair branch, PR, issue, and non-empty `apps_touched`. The
+first repair's parent is `release_revision.source_staging_sha`; each later repair parents the prior
+repair SHA. `release_revision.apps[app].source_sha` resolves to the latest release repair SHA that
+lists that app, and its origin is `release_repair`. Unchanged apps retain their prior per-app source
+identity. Allocate a fresh immutable per-app `rN` from GHCR for every app a release repair rebuilds;
+the candidate's earlier STAGING revision tag may already occupy its existing `rN`. Use the new
+revision in the updated per-app map so PROD builds a new tag without weakening Decision 7.
+
+Decision 8's parity gate remains strict about the app's production source label, release floor,
+revision label, and production alias agreement. For `release_repair`, it does not require a STAGING
+predecessor or compare the original STAGING digest with the rebuilt PROD digest: the repaired source
+was intentionally never deployed or observed on STAGING. It reads the PROD revision digest and
+requires the bare PROD alias to reference that same digest. The recorded staging-qualified SHA and
+each release repair SHA remain distinct, so parity evidence cannot say the final release head passed
+staging. Other origins retain the existing STAGING-to-PROD checks.
+
+Once production is stable, release-only repair commits are backported to `develop` by ordinary PRs;
+they are never separately backported to `staging`. This is a new obligation for commits that do not
+land on staging and does not alter #1696's staging-commit backport rule.
+
+`[default]` tier — amends Decision 8's per-app candidate-source resolution and parity procedure.
+Decision 7's `[binding]` immutable-tag guard and all production controls remain unchanged. Full
+detail: `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`,
+`.agents/skills/promoter/references/promotion-runbook.md`, and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+PR: (this PR). Refs #1542.
 
 ## Related
 

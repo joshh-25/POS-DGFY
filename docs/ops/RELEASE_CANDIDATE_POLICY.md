@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-04
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1895,3 +1895,38 @@ Validation: `node scripts/check-pr-quality-workflow.js`, `node scripts/check-pro
 --manifest <path>` (with and without `quality_check`), and `npm run lint:docs`.
 
 PR: (this PR). Closes #2236. Refs #1063, #1254.
+
+### 2026-10-04: Release-only repair after staging qualification (#1542 follow-up, Phase 472)
+
+The 2026-09-04 frozen-candidate repair entry says a pre-main release failure returns to staging,
+invalidates the release head, and recuts after staging changes. **That routing is superseded after
+staging qualification:** keep the existing `release/<candidate_id>` branch and promotion PR, and
+repair through a reviewed `fix/release/<candidate_id>-<repair_seq>` PR targeting that release
+branch. Record the resulting release-head SHA, its previous release-head parent, PR, issue, and
+exact `apps_touched` in `release_revision.repairs`; set each touched app's resolved candidate-source
+SHA and origin to `release_repair`. Allocate a fresh per-app immutable `rN` from GHCR for each app
+rebuilt by the release repair and update its map entry; the earlier STAGING revision tag may already
+occupy its prior `rN`, and Decision 7 still forbids overwriting it.
+
+Do not recut the release branch, merge the repair into `staging`, redeploy staging, or repeat staging
+observation. The original staging-qualified SHA and each release-only repair SHA stay separate in
+the manifest. The final release head must never be described as having passed staging. The existing
+promotion PR reruns its required checks against its updated release head.
+
+For `release_repair` apps, promotion parity requires the PROD candidate-source label to match the
+resolved repair SHA, validates floor and revision labels, reads the PROD revision digest, and
+requires the bare PROD alias to reference that same digest. It does not require a STAGING
+predecessor or compare the pre-repair STAGING digest to the rebuilt PROD digest. All other origins
+keep the existing STAGING-to-PROD evidence requirements. Production tenant-schema reporting,
+Merge Safety, and no-`--squash` remain mandatory.
+
+After production is stable, backport every release-only repair to `develop` through an ordinary PR.
+Do not create a separate backport to `staging`; this path never changes that branch and is distinct
+from #1696's obligation for commits that land there. Failures found after production deployment
+remain on the main-hotfix path.
+
+`[default]` tier per ADR 0039. This supersedes only the prior pre-main recut routing; staging repairs,
+post-deployment hotfix routing, and production controls are unchanged. See ADRs 0074 and 0081,
+`.agents/skills/promoter/SKILL.md`, and `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #1542.

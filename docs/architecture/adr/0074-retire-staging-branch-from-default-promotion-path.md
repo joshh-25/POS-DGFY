@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-09-06
+last_reviewed: 2026-10-04
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -605,6 +605,30 @@ resolve, not just verify (#1648)
   target-ref scan" section. Policy-level record: `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
   2026-09-06 #1648 amendment.
 - PR: #1672 (resolve-scoping wording fixed per RF-9, PR #1672 review, round 3). Refs #1648, #1618.
+
+### 2026-10-04 — Repair a staging-qualified candidate on its existing release branch (#1542 follow-up, Phase 472)
+
+The 2026-09-04 frozen-candidate amendment says a pre-main release failure returns to staging,
+invalidates the release head, and recuts after staging repair. That procedure is superseded for a
+failure discovered after the candidate has passed staging qualification. Keep the existing
+`release/<candidate_id>` branch and promotion PR, and repair through a reviewed
+`fix/release/<candidate_id>-<repair_seq>` PR into that release branch. Record each merged repair's
+exact release-head SHA and parent in the candidate manifest. Rerun the promotion PR's required
+checks on its updated head; do not recut, redeploy, or re-observe staging. The updated release head
+must never be described as staging-qualified.
+
+All existing controls on the main promotion remain in force, including the production tenant-schema
+report, the `AGENTS.md` Merge Safety hard stop, and the no-`--squash` rule. After production is
+stable, backport each release-only repair to `develop` through an ordinary PR. Do not create a
+separate `staging` backport because this repair path never changes `staging`. Failures discovered
+after production deployment continue through the main-hotfix path.
+
+`[default]` tier under ADR 0039; this amendment supersedes only the pre-main recut routing above.
+It does not change the `[binding]` production controls or staging-repair procedure. Full operational
+detail: `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`, and Phase 472 in the implementation ledger.
+
+PR: (this PR). Refs #1542.
 
 ## Related
 
