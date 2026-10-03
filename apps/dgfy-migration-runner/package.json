@@ -22,7 +22,7 @@
     "@sieitzz/tenant-bootstrap": "file:../../packages/tenant-bootstrap",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
-    "mysql2": "^3.6.5",
+    "mysql2": "^3.24.4",
     "sequelize": "^6.37.8",
     "sequelize-cli": "^6.6.2"
   },
