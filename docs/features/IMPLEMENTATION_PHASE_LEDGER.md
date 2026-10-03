@@ -26206,3 +26206,82 @@ execution-evidence gates pass.
 
 Phase 472 only after Phase 471 is completed under its acceptance gates; it is
 not eligible while the staging and release blockers above remain.
+
+**Overridden 2026-10-04:** Pat explicitly authorized Phase 472 to proceed independently of this
+phase's own staging/release blockers, for the unrelated #1542 release-only-repair follow-up (see
+Phase 472). This does not mark Phase 471 complete or waive its own acceptance gates above — those
+remain open and unaffected.
+
+## Phase 472 - Release-only repair after staging qualification (#1542 follow-up)
+
+### Initiative and release
+
+Frozen promotion-candidate repair lifecycle, current release.
+
+### Objective and scope
+
+After a frozen candidate passes staging qualification, allow a pre-main failure to be repaired on
+its existing `release/<candidate_id>` branch through a reviewed PR. Record every repair SHA and
+parent separately from the staging-qualified SHA, skip staging redeployment/re-observation, and
+allow PROD-only parity for apps with origin `release_repair` while preserving production controls.
+After production is stable, backport each release-only repair to `develop` by ordinary PR; do not
+create a separate `staging` backport. Existing staging repair and post-deployment main-hotfix paths
+remain unchanged. This is the #1542 follow-up only; Phase 271 remains completed history.
+
+### Status
+
+`in_progress` — local implementation, focused tests, architecture checks, and documentation checks
+are complete; PR review, merge, and deployed QA remain. Pat explicitly authorized this follow-up to
+proceed while Phase 471 remains in progress; that authorization does not change Phase 471's status
+or acceptance gates.
+
+### Dependencies
+
+Issue #1542's 2026-10-01 update; completed Phase 271 candidate-repair foundation; ADR 0074 and ADR
+0081's amendments in this phase. Phase 471 remains independently open under its acceptance gates.
+
+### Acceptance and validation evidence
+
+- [ ] A pre-main failure after staging qualification is repaired through a reviewed PR into the
+      existing release branch, and the promotion PR reruns required checks on its updated head.
+- [ ] The manifest preserves the staging-qualified SHA and each sequential release repair with
+      exact parent linkage; each touched app gets a fresh immutable per-app `rN`; final release
+      evidence never says a repair SHA passed staging.
+- [ ] Release-repair parity validates PROD source SHA, floor, revision, readable digest, and alias
+      agreement without requiring or claiming a STAGING predecessor.
+- [ ] Production tenant-schema reporting, Merge Safety, and no-`--squash` remain mandatory.
+- [ ] Each release-only repair is backported to `develop` after production is stable; no separate
+      `staging` backport is created. Existing staging repairs and main hotfixes are unchanged.
+- [x] `npm run test:promotion-candidate` (39 tests), `node --test
+      scripts/check-image-version-parity.test.js`, `npm run check:adr -- --write-index`, and
+      `npm run lint:docs` pass; the parity suite passed 59 tests. `node --check` passed for both
+      changed JavaScript files; `node scripts/check-app-version-bump.js` and
+      `npm run check:architecture` passed.
+- [x] CLI validation passed for a hand-built v3 manifest containing `release_revision.repairs`.
+- [x] `deploy-main.yml` already builds when the new PROD revision tag is absent; the
+      `build-release-candidate-evidence.js` script has no live workflow/skill caller; branch
+      cleanup already accepts `fix/`; compliance classification keys promotion exemptions only to
+      literal `staging`/`main` bases. No change was needed in these areas.
+- [ ] PR review, merge, and deployed QA are complete; this phase does not merge or deploy.
+
+### Links
+
+- Issue: #1542; planner handoff: `.tmp/plan-1542.md` (planning head
+  `e10e363a11f2db00e3d6be20c4c17e5e3fface45`).
+- ADRs: `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md` and
+  `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`.
+- Policy/runbook: `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+  `.agents/skills/promoter/SKILL.md`, and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+- Implementation/tests: `scripts/check-promotion-candidate.js`,
+  `scripts/check-promotion-candidate.test.js`, `scripts/check-image-version-parity.js`, and
+  `scripts/check-image-version-parity.test.js`.
+
+### Completion date
+
+Not complete; set only after all acceptance gates pass.
+
+### Next eligible phase
+
+Phase 473 only after Phase 472's acceptance gates complete and then-current ledger eligibility is
+reconciled; Phase 471 remains independently open unless its own gates pass.
