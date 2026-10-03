@@ -628,8 +628,114 @@ missing from `release_revision.apps`. Do not qualify the candidate or dispatch p
 every app in that inventory has a recorded STAGING artifact and validation passes.
 
 Include `--candidate-manifest .tmp/release-candidates/$CANDIDATE_ID.json` when building release
-evidence. A pre-main failure returns to this staging loop and invalidates the old release head; it
-does not restart from `develop`.
+evidence.
+
+## Release-only repair after staging qualification
+
+Once the candidate passed staging observation and `release/$CANDIDATE_ID` exists, a pre-main CI or
+quality-gate failure is repaired on that existing release branch. Keep the promotion PR open so
+its required checks rerun against the updated release head. Do not recut the release branch, merge
+the repair into `staging`, dispatch a STAGING deployment, or repeat staging observation.
+
+Open one reviewed repair PR per repair sequence, based on the current release head and targeting
+that same release branch:
+
+```bash
+REPAIR_SEQ=1
+REPAIR_BRANCH="fix/release/$CANDIDATE_ID-$REPAIR_SEQ"
+REPAIR_ISSUE=2344 # replace with the PM-created repair issue number
+git fetch origin "release/$CANDIDATE_ID"
+git switch -c "$REPAIR_BRANCH" "origin/release/$CANDIDATE_ID"
+# implement only the pre-main repair
+git push -u origin "$REPAIR_BRANCH"
+BODY_FILE="$(mktemp)"
+cat > "$BODY_FILE" <<EOF
+## Summary
+
+Repairs frozen release candidate $CANDIDATE_ID after staging qualification.
+Refs #$REPAIR_ISSUE
+
+## Testing Evidence
+
+Pre-main failure evidence: <link>. Candidate manifest: .tmp/release-candidates/$CANDIDATE_ID.json.
+EOF
+gh pr create --base "release/$CANDIDATE_ID" --head "$REPAIR_BRANCH" \
+  --title "fix(release): repair candidate $CANDIDATE_ID (repair $REPAIR_SEQ)" \
+  --body-file "$BODY_FILE"
+```
+
+The repair PR follows ordinary per-file compliance validation (there is no promotion-bundle
+exemption for a `release/<candidate_id>` base). Merge it with a merge commit after review and green
+checks, with `mergeStateStatus: CLEAN`; never use `--squash`. `AGENTS.md`'s Merge Safety hard stop
+still applies.
+
+After the repair PR merges, fetch the updated release ref and record its exact head in the candidate
+manifest:
+
+```bash
+git fetch origin "release/$CANDIDATE_ID"
+RELEASE_REPAIR_SHA="$(git rev-parse "origin/release/$CANDIDATE_ID")"
+```
+
+Append one
+`release_revision.repairs` entry per merged repair; `sha` is the resulting `origin/release/$CANDIDATE_ID`
+head and `parent_sha` is the release head immediately before that repair. `apps_touched` lists
+exactly the deployable apps selected for the repair (API and migration-runner together):
+
+```json
+{
+  "repair_seq": 1,
+  "sha": "<new release branch head>",
+  "parent_sha": "<previous release branch head>",
+  "branch": "fix/release/$CANDIDATE_ID-1",
+  "pr": 2345,
+  "issue": 2344,
+  "apps_touched": ["dgfy-ims"]
+}
+```
+
+Advance `release_revision.apps[app].source_sha` to the latest release repair SHA for each touched
+app and set its `origin` to `release_repair`. Allocate a fresh per-app artifact revision for every
+app the repair rebuilds. The existing revision tag may already belong to the original STAGING
+artifact, and Decision 7 forbids overwriting it. Authenticate Docker to GHCR first, then allocate
+against the release-repair SHA (API and migration-runner are allocated independently):
+
+```bash
+APP=dgfy-ims # repeat for each app in apps_touched; allocate API and runner separately
+FLOOR="$(git show "$RELEASE_REPAIR_SHA:apps/$APP/package.json" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version")"
+REVISION="$(node scripts/allocate-artifact-revision.js \
+  --image "ghcr.io/sieitzz/$APP" --floor "$FLOOR" --revision "$RELEASE_REPAIR_SHA" \
+  | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
+```
+
+Store that new numeric revision in `release_revision.apps[app].revision`, along with the exact
+repair SHA and `release_repair` origin. The new revision tag is absent, so `deploy-main.yml`'s
+existing build-skip planner selects BUILD; no workflow change is needed. Preserve the original
+STAGING `digest` as staging provenance; it is not a digest claim for the release-only repair. For
+this origin, the parity gate
+does not require a STAGING predecessor or compare that old digest with PROD. It verifies the PROD
+source label against the resolved release repair SHA, reads the PROD digest, and requires the bare
+PROD alias to resolve to that same digest. Floor and revision labels remain mandatory.
+
+Amend `docs/releases/notes/$CANDIDATE_ID.md` in the same repair PR: add an `## Included` line and
+update the touched app's version-table row. Do not create another note for this candidate. Validate
+the edited manifest before continuing:
+
+```bash
+node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
+```
+
+The existing `release/$CANDIDATE_ID` promotion PR then reruns its required checks. Proceed through
+the existing production tenant-schema report, Merge Safety, and no-`--squash` controls. The final
+release head is not reported as having passed staging; evidence keeps the staging-qualified SHA and
+every release-only repair SHA as separate identities.
+
+After the promotion is merged and production is stable, backport every release-only repair to
+`develop` through an ordinary PR. Hand off to `pm` for a fresh issue, cherry-pick each repair with
+`git cherry-pick -x` onto a branch cut from fresh `origin/develop`, and open the PR into `develop`.
+Do not create a separate `staging` backport: these repairs never land on `staging`, so the #1696
+backport rule for commits that land there does not apply. This obligation is timed after production
+stability, like the main-hotfix backport.
 
 After a main deploy failure, use the incident/hotfix procedure on `main`, then backport the resolved
 main commit to `develop` after stabilization. No separate staging backport is needed because the
