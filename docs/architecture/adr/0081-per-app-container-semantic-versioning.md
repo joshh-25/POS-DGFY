@@ -861,17 +861,20 @@ PR: (this PR). Refs #2186.
 
 ### 2026-10-03 — Require release artifacts for every touched candidate app (#2227)
 
-A v3 candidate's `apps_touched` history is the authoritative set of deployable apps changed by
-the frozen promotion and its STAGING repairs. When the candidate has a `release_revision`, its
-per-app map must include an immutable STAGING artifact for every app in that history. An app may
-be omitted only when it was never listed as touched by any candidate revision. This keeps sparse
-maps valid for unchanged apps while preventing production dispatch from interpreting a missing
-changed-app artifact as an intentional skip.
+A v3 candidate's `apps_touched` history is the authoritative set of deployable apps selected for
+the frozen promotion and its STAGING repairs. That set includes apps changed by the candidate and
+apps carried forward from an earlier partial PROD release. When the candidate has a
+`release_revision`, its per-app map must include an immutable STAGING artifact for every app in
+that history. An app may be omitted only when it was never selected by any candidate revision.
+This keeps sparse maps valid for apps outside the candidate while preventing production dispatch
+from interpreting a missing selected-app artifact as an intentional skip.
 
 The candidate validator rejects incomplete maps before release qualification. The release runbook
-requires recording the artifact for each touched app and validating the completed manifest before
-cutting or dispatching the release. Existing API/migration-runner pairing and per-app source-lineage
-checks remain in force.
+requires carrying apps omitted by an earlier partial PROD dispatch into the next normal candidate,
+building their STAGING artifacts alongside that candidate's other apps, and validating the completed
+manifest before release qualification. Existing API/migration-runner pairing and per-app
+source-lineage checks remain in force. For candidate `2026-10-03-01`, IMS, POS, and OPIS remain
+pending for the next combined PROD release; this PR does not authorize or dispatch that release.
 
 `[default]` tier — amends Decision 8's per-app candidate-map and parity procedure. Decision 7's
 `[binding]` immutable-tag guard is unchanged. Full detail: #2227,

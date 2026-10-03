@@ -1857,11 +1857,21 @@ PR: (this PR). Refs #2186.
 ### 2026-10-03: Require release artifacts for every touched candidate app (#2227)
 
 For v3 candidates, the union of `apps_touched` across the initial promotion and every STAGING
-repair is the complete changed-app inventory. Once `release_revision` is populated, its per-app
-map must include a revisioned STAGING artifact for every app in that inventory. Sparse maps remain
-valid for apps absent from the full `apps_touched` history. `check-promotion-candidate.js` rejects
-an incomplete map before release qualification, so a missing changed-app revision cannot be
-interpreted by the deploy path as an intentional app skip. Existing backend pairing and per-app
+repair is the complete selected-app inventory. This includes apps changed by the candidate and
+apps carried forward from an earlier partial PROD release. Once `release_revision` is populated,
+its per-app map must include a revisioned STAGING artifact for every app in that inventory. Sparse
+maps remain valid for apps absent from the full `apps_touched` history. `check-promotion-candidate.js`
+rejects an incomplete map before release qualification, so a missing selected-app revision cannot
+be interpreted by the deploy path as an intentional app skip. Existing backend pairing and per-app
 source-lineage validation also remain required.
+
+**Carry-forward obligation from PROD run #37100411642.** Candidate `2026-10-03-01` declared all
+six deployable apps, but its PROD dispatch included only API, migration-runner, and Storefront.
+IMS, POS, and OPIS therefore remain outstanding even though their code is already merged to
+`main`. Track them in issue #2227 and include them in the initial `apps_touched` set of the next
+normal candidate. Build their STAGING artifacts and record their revisions in that candidate's
+release map alongside any new app changes. Ship the combined map in one later PROD dispatch; do
+not send a separate app-only deploy for this recovery. Keep the tracking issue open until the
+combined production release is verified.
 
 PR: (this PR). Closes #2227.
