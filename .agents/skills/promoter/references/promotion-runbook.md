@@ -423,7 +423,9 @@ CANDIDATE_SHA="$TARGET_SHA"
 
 **Candidate manifest (ADR 0081 Decision 8, #1588; v3 versionless-DEV shape since #2071)** — promotion is based on the frozen `develop` SHA and builds directly on STAGING. DEV is a shared experimental target and is never read or required here. The manifest records the initial changed-app set, staging repairs, and (at release-cut time) each touched app's revisioned STAGING artifact. Written locally, never committed; pass its path to every candidate/parity/observation check below.
 
-**Determine changed apps and prepare floors at promotion start.** Run the existing minor-floor check against the pinned candidate source before cutting the `to-staging` branch; only affected apps advance their package floor. Deploy jobs are selected from the resulting app changes and build from `$CANDIDATE_SHA` on STAGING. No DEV dispatch, DEV tag inspection, or DEV artifact selection is part of promotion. Allocate the immutable per-app `rN` only when building the release artifact; the allocator scans STAGING/PROD revision tags.
+**Determine candidate apps and prepare floors at promotion start.** Run the existing minor-floor check against the pinned candidate source before cutting the `to-staging` branch; only affected apps advance their package floor. Build the candidate's initial `apps_touched` inventory from both (a) apps changed between `staging` and the frozen `develop` SHA and (b) apps still owed from an earlier partial PROD release. Carry-forward apps must remain listed even when their source files are unchanged between `staging` and `develop`; they receive no extra floor bump unless the floor check independently requires one. Deploy jobs must select the union and build from `$CANDIDATE_SHA` on STAGING. No DEV dispatch, DEV tag inspection, or DEV artifact selection is part of promotion. Allocate the immutable per-app `rN` only when building the release artifact; the allocator scans STAGING/PROD revision tags.
+
+**Carry forward apps omitted by an earlier PROD dispatch.** Compare every prior candidate's full `apps_touched` inventory with its production dispatch inputs and completed per-app jobs. Any touched app omitted from the dispatch or not successfully published/deployed remains outstanding. Keep that inventory in the linked release issue and do not close it. At the next normal promotion, include those apps in the new candidate's initial `apps_touched`, build their STAGING artifacts from the new frozen candidate SHA, and record their per-app revision, source SHA, and digest alongside the apps changed for that release. The candidate completeness validator then requires all of them in `release_revision.apps`. A single later PROD dispatch can ship the carry-forward apps together with the new release's other apps; do not create an app-only production dispatch for this recovery. For the 2026-10-03 candidate `2026-10-03-01`, the pending apps are `dgfy-ims`, `dgfy-pos`, and `dgfy-opis` (issue #2227; PROD run #37100411642).
 
 ```bash
 cat > .tmp/release-candidates/$CANDIDATE_ID.json <<JSON
@@ -564,8 +566,12 @@ git push -u origin release/$CANDIDATE_ID
 
 Set `release_revision.source_staging_sha` to the recorded `staging_head_sha` (the exact SHA from
 which the release branch was cut). Then populate the manifest's per-app `release_revision.apps`
-map from GHCR — each touched app's latest allocated revision, read off that app's STAGING
-revision tag (the registry is the source of truth, not the manifest). For each touched app:
+map from GHCR — each app in the union of `apps_touched` across the initial promotion and all
+STAGING repairs must have its latest allocated revision recorded, read off that app's STAGING
+revision tag (the registry is the source of truth, not the manifest). An app that was never listed
+as touched may remain absent; do not omit a touched app because its revision input was not selected
+or its artifact was not found. Resolve/build that app on STAGING first, then record its artifact.
+For each touched app:
 
 ```bash
 APP=dgfy-pos; N=<allocated-rN-for-this-app>; FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
@@ -593,6 +599,10 @@ Update the manifest's `release_revision` field (`source_staging_sha`, `branch` =
 ```bash
 node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
 ```
+
+For v3, this validation fails with `MISSING_TOUCHED_RELEASE_APP` and lists any candidate app
+missing from `release_revision.apps`. Do not qualify the candidate or dispatch production until
+every app in that inventory has a recorded STAGING artifact and validation passes.
 
 Include `--candidate-manifest .tmp/release-candidates/$CANDIDATE_ID.json` when building release
 evidence. A pre-main failure returns to this staging loop and invalidates the old release head; it

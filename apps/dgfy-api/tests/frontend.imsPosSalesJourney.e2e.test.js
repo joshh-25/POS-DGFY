@@ -70,6 +70,7 @@ let actorUserId = null;
 let seededInvoiceReference = '';
 let authToken = null;
 let authRefreshToken = null;
+let posCategoryFixtureId = null;
 
 const READY_PROFILE_PATCH = Object.freeze({
   bir: {
@@ -1028,6 +1029,33 @@ const seedJourneyPrerequisites = async () => {
   await seedComplianceReadiness();
   await setPosTinBranchSetting(READY_SETTINGS.pos_tin_branch);
 
+  const foldersResponse = await callTenantApi('/items/folders');
+  const folderRows = Array.isArray(foldersResponse)
+    ? foldersResponse
+    : Array.isArray(foldersResponse?.folders)
+      ? foldersResponse.folders
+      : Array.isArray(foldersResponse?.data)
+        ? foldersResponse.data
+        : [];
+  const hasPosCategory = folderRows.some((folder) => (
+    folder?.is_active !== false
+    && folder?.show_in_pos_filter !== false
+    && String(folder?.name || '').trim()
+  ));
+  if (!hasPosCategory) {
+    const createdFolder = await callTenantApi('/items/folders', {
+      method: 'POST',
+      body: {
+        name: `Browser E2E POS Category ${TEST_USER_SUFFIX}`,
+        description: 'Temporary fixture for the disposable browser E2E database'
+      }
+    });
+    posCategoryFixtureId = Number(createdFolder?.folder_id) || null;
+    if (!posCategoryFixtureId) {
+      throw new Error('Failed to create the temporary POS category fixture for the browser E2E suite');
+    }
+  }
+
   await withTenantDb(COMPANY_TOKEN, async (tenantDb) => {
     await tenantDb.query(
       `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
@@ -1099,44 +1127,60 @@ const setComplianceProfileField = async (fieldPath, value) => {
 };
 
 const loginViaUi = async (page) => {
-  const response = await fetch(`${BACKEND_BASE}/api/v1/auth/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-company-token': FRONTEND_LOGIN.companyToken
-    },
-    body: JSON.stringify({
-      email: FRONTEND_LOGIN.email,
-      password: FRONTEND_LOGIN.password
-    })
-  });
-
-  if (!response.ok) {
-    const payload = await response.text().catch(() => '');
-    throw new Error(`Failed API login bootstrap for browser E2E: HTTP ${response.status} ${payload}`);
-  }
-
-  const payload = await response.json().catch(() => ({}));
-  const token = String(payload?.data?.token || '').trim();
-  const refreshToken = String(payload?.data?.refreshToken || '').trim();
-  if (!token) {
-    throw new Error('API login bootstrap returned empty auth token');
-  }
-
-  await page.goto(`${FRONTEND_BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(({ token: nextToken, refreshToken: nextRefreshToken, companyToken }) => {
-    window.localStorage.setItem('authToken', nextToken);
-    if (nextRefreshToken) {
-      window.localStorage.setItem('refreshToken', nextRefreshToken);
+  const authResponses = [];
+  const onResponse = (response) => {
+    const url = response.url();
+    if (url.includes('/auth/login') || url.includes('/auth/lookup')) {
+      authResponses.push({ url, status: response.status() });
     }
-    window.localStorage.setItem('companyToken', companyToken);
-  }, {
-    token,
-    refreshToken,
-    companyToken: FRONTEND_LOGIN.companyToken
-  });
-  await page.goto(`${FRONTEND_BASE}/`, { waitUntil: 'domcontentloaded' });
-  await page.waitForURL((url) => new URL(url).pathname === '/', { timeout: 30000 });
+  };
+  page.on('response', onResponse);
+
+  try {
+    await page.goto(`${FRONTEND_BASE}/login`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#email', { timeout: 60000 });
+    const emailInput = page.locator('#email');
+    const passwordInput = page.locator('#password');
+    const companyTokenInput = page.locator('#companyToken');
+    const signInButton = page.getByRole('button', { name: /Sign In/i });
+
+    await emailInput.fill(FRONTEND_LOGIN.email);
+    await emailInput.press('Tab');
+    await passwordInput.fill(FRONTEND_LOGIN.password);
+    if (await companyTokenInput.isVisible().catch(() => false)) {
+      await companyTokenInput.fill(FRONTEND_LOGIN.companyToken);
+    }
+
+    await signInButton.click();
+    try {
+      await page.waitForURL((url) => new URL(url).pathname === '/', { timeout: 15000 });
+      return;
+    } catch {
+      const manualTokenToggle = page.getByRole('button', { name: /Enter company token manually|Change/i });
+      if ((await manualTokenToggle.count()) > 0) {
+        await manualTokenToggle.first().click({ timeout: 5000 }).catch(() => {});
+      }
+      if (await companyTokenInput.isVisible().catch(() => false)) {
+        await companyTokenInput.fill(FRONTEND_LOGIN.companyToken);
+      }
+      await signInButton.click();
+      try {
+        await page.waitForURL((url) => new URL(url).pathname === '/', { timeout: 30000 });
+      } catch (error) {
+        const currentPath = new URL(page.url()).pathname;
+        const visibleError = await page.locator('.bg-red-50').first().textContent().catch(() => null);
+        const lookupWarning = await page.locator('.text-amber-600').first().textContent().catch(() => null);
+        throw new Error(
+          `Login did not reach dashboard. path=${currentPath}; ` +
+          `visibleError=${visibleError || 'none'}; lookupWarning=${lookupWarning || 'none'}; ` +
+          `authResponses=${JSON.stringify(authResponses)}; ` +
+          `cause=${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+  } finally {
+    page.off('response', onResponse);
+  }
 };
 
 const resolveFirstDataRow = async (tableLocator, emptyRowPattern) => {
@@ -2093,6 +2137,21 @@ afterAll(async () => {
   if (!RUN_BROWSER_E2E) return;
 
   try {
+    if (posCategoryFixtureId) {
+      await withTenantDb(COMPANY_TOKEN, async (tenantDb) => {
+        await tenantDb.query('DELETE FROM item_folder_memberships WHERE folder_id = ?', [posCategoryFixtureId]);
+        await tenantDb.query(
+          'UPDATE items SET folder_id = NULL, product_folder = NULL WHERE folder_id = ?',
+          [posCategoryFixtureId]
+        );
+      }).catch((error) => {
+        console.warn(`[frontend.imsPosSalesJourney.e2e] Temporary category reference cleanup failed: ${error.message}`);
+      });
+      await callTenantApi(`/items/folders/${posCategoryFixtureId}`, { method: 'DELETE' }).catch((error) => {
+        console.warn(`[frontend.imsPosSalesJourney.e2e] Temporary category cleanup failed: ${error.message}`);
+      });
+      posCategoryFixtureId = null;
+    }
     if (browser) await browser.close();
   } finally {
     await cleanupStartedProcesses();
@@ -2673,8 +2732,7 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
       sources: true
     });
     try {
-      // Resolve an active existing POS category from the live fixture. Fail loudly when the
-      // fixture has none -- never silently create permanent category data to make this pass.
+      // Resolve an active POS category from the seeded tenant fixture.
       const folderResponse = await callTenantApi('/items/folders');
       const folderRows = Array.isArray(folderResponse)
         ? folderResponse
