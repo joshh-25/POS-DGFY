@@ -336,7 +336,8 @@ function validatePromotionCandidateV2(manifest, versionlessDev = false) {
 
 /**
  * #2071 versionless DEV candidate shape: the frozen develop SHA is built directly on STAGING.
- * Initial apps_touched records which app floors were advanced at promotion start; no DEV image
+ * Initial apps_touched records the deployable app set for this candidate: apps changed at promotion
+ * start plus any explicitly carried forward from an earlier partial PROD release. No DEV image
  * selection or deployment participates in the candidate. Repair and per-app release lineage
  * retain the v2 structure, with `promotion` replacing the old DEV artifact origin.
  */
