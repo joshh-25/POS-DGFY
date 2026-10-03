@@ -388,7 +388,7 @@ jobs:
         continue-on-error: true
         id: upload_test_matrix_evidence
         if: always() && steps.run_test_matrix.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dgfy-api-test-matrix-${{ github.sha }}
           path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}/**
@@ -1016,7 +1016,7 @@ jobs:
         continue-on-error: true
         id: upload_fnb_browser_evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fnb-playwright-contract-${{ github.sha }}
           path: |
@@ -1436,7 +1436,7 @@ jobs:
         continue-on-error: true
         id: upload_ims_pos_sales_e2e_evidence
         if: always() && steps.run_ims_pos_sales_e2e.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ims-pos-sales-e2e-${{ github.sha }}
           path: apps/dgfy-api/tests/artifacts/ims-pos-sales-journey/**
@@ -1627,7 +1627,7 @@ jobs:
         continue-on-error: true
         id: upload_frontend_budgets_report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-budgets-report-${{ github.sha }}
           path: .tmp/frontend-budgets-report.json
@@ -2375,7 +2375,7 @@ jobs:
         continue-on-error: true
         id: upload_salvaged_evidence
         if: runner.environment == 'self-hosted' && steps.check_api_quality_envelope.outputs.needs_salvage == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dgfy-api-test-matrix-salvaged-${{ github.sha }}
           path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}/**
