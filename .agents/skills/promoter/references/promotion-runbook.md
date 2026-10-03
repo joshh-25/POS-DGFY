@@ -564,8 +564,12 @@ git push -u origin release/$CANDIDATE_ID
 
 Set `release_revision.source_staging_sha` to the recorded `staging_head_sha` (the exact SHA from
 which the release branch was cut). Then populate the manifest's per-app `release_revision.apps`
-map from GHCR — each touched app's latest allocated revision, read off that app's STAGING
-revision tag (the registry is the source of truth, not the manifest). For each touched app:
+map from GHCR — each app in the union of `apps_touched` across the initial promotion and all
+STAGING repairs must have its latest allocated revision recorded, read off that app's STAGING
+revision tag (the registry is the source of truth, not the manifest). An app that was never listed
+as touched may remain absent; do not omit a touched app because its revision input was not selected
+or its artifact was not found. Resolve/build that app on STAGING first, then record its artifact.
+For each touched app:
 
 ```bash
 APP=dgfy-pos; N=<allocated-rN-for-this-app>; FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
@@ -593,6 +597,10 @@ Update the manifest's `release_revision` field (`source_staging_sha`, `branch` =
 ```bash
 node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
 ```
+
+For v3, this validation fails with `MISSING_TOUCHED_RELEASE_APP` and lists any candidate app
+missing from `release_revision.apps`. Do not qualify the candidate or dispatch production until
+every app in that inventory has a recorded STAGING artifact and validation passes.
 
 Include `--candidate-manifest .tmp/release-candidates/$CANDIDATE_ID.json` when building release
 evidence. A pre-main failure returns to this staging loop and invalidates the old release head; it

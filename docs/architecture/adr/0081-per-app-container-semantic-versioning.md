@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-10-01
+last_reviewed: 2026-10-03
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
 topic: per_app_container_semantic_versioning
@@ -858,3 +858,24 @@ package-floor rules are unchanged. Full detail: #2186,
 `.agents/skills/promoter/references/promotion-runbook.md`.
 
 PR: (this PR). Refs #2186.
+
+### 2026-10-03 — Require release artifacts for every touched candidate app (#2227)
+
+A v3 candidate's `apps_touched` history is the authoritative set of deployable apps changed by
+the frozen promotion and its STAGING repairs. When the candidate has a `release_revision`, its
+per-app map must include an immutable STAGING artifact for every app in that history. An app may
+be omitted only when it was never listed as touched by any candidate revision. This keeps sparse
+maps valid for unchanged apps while preventing production dispatch from interpreting a missing
+changed-app artifact as an intentional skip.
+
+The candidate validator rejects incomplete maps before release qualification. The release runbook
+requires recording the artifact for each touched app and validating the completed manifest before
+cutting or dispatching the release. Existing API/migration-runner pairing and per-app source-lineage
+checks remain in force.
+
+`[default]` tier — amends Decision 8's per-app candidate-map and parity procedure. Decision 7's
+`[binding]` immutable-tag guard is unchanged. Full detail: #2227,
+`scripts/check-promotion-candidate.js`, `.agents/skills/promoter/references/promotion-runbook.md`,
+and `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+PR: (this PR). Closes #2227.

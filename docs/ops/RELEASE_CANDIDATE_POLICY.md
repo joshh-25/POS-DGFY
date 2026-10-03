@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-10-01
+last_reviewed: 2026-10-03
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1853,3 +1853,15 @@ revision dispatch. Per-app revision inputs, skip planning, aliasing, and parity 
 six app groups including `dgfy-opis`. Package floors stay independently managed and unchanged.
 
 PR: (this PR). Refs #2186.
+
+### 2026-10-03: Require release artifacts for every touched candidate app (#2227)
+
+For v3 candidates, the union of `apps_touched` across the initial promotion and every STAGING
+repair is the complete changed-app inventory. Once `release_revision` is populated, its per-app
+map must include a revisioned STAGING artifact for every app in that inventory. Sparse maps remain
+valid for apps absent from the full `apps_touched` history. `check-promotion-candidate.js` rejects
+an incomplete map before release qualification, so a missing changed-app revision cannot be
+interpreted by the deploy path as an intentional app skip. Existing backend pairing and per-app
+source-lineage validation also remain required.
+
+PR: (this PR). Closes #2227.
