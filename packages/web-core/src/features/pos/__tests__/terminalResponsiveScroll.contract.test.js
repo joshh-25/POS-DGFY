@@ -28,6 +28,7 @@ describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
   let terminalOperationsWorkspaceContent = '';
   let posCheckoutContent = '';
+  let posCheckoutDialogContent = '';
   let workflowPanelContent = '';
   let posTerminalLayoutContent = '';
   let posCatalogWorkflowContent = '';
@@ -44,6 +45,7 @@ describe('POS terminal responsive scroll contracts', () => {
     posCheckoutContent = [posCheckoutPath, posCheckoutHookPath, posCheckoutViewPath, posCheckoutDialogPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
+    posCheckoutDialogContent = fs.readFileSync(posCheckoutDialogPath, 'utf8');
     workflowPanelContent = [fnbWorkflowPanelPath, counterWorkflowPanelPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
@@ -273,7 +275,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5');
     expect(posCheckoutContent).toContain('h-9 whitespace-nowrap rounded-lg border px-2 text-[11px] font-extrabold');
     expect(posCheckoutContent).toContain('className="block text-[11px] font-bold text-slate-600">');
-    expect(posCheckoutContent).toContain('<legend className="text-[11px] font-bold text-slate-600">Payment Type</legend>');
+    expect(posCheckoutDialogContent).toContain('<legend className="text-[11px] font-bold text-slate-600">{orderMethod === \'delivery\' ? \'Settlement Payment Type\' : \'Payment Type\'}</legend>');
     expect(posCheckoutContent).toContain('className="w-full min-w-0 max-w-full space-y-1 py-[5px]" aria-label="Payment Type"');
     expect(posCheckoutContent).toContain('grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5');
     expect(posCheckoutContent).toContain("isStatutoryDiscountSelected ? 'grid-cols-6 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'");
@@ -340,7 +342,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(checkoutDialogSection).toContain('onClick={() => handlePrintOrder()}');
     expect(checkoutDialogSection).toContain('Print Order');
     expect(checkoutDialogSection).toContain('grid grid-cols-3 gap-2');
-    expect(posCheckoutContent).toContain('!isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)');
+    expect(posCheckoutDialogContent).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || Boolean(deliveryProviderValidationMessage) || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}');
   });
 
   it('keeps the compact desktop summary separate with the governed totals typography', () => {
