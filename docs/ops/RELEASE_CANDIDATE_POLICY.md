@@ -135,19 +135,19 @@ legs.
   build cleanly, gated by `shared-changed-paths.yml` so an unrelated change
   doesn't force both.
 
-**Plus, since #1018 (2026-08-25), `promotion-quality-gate.yml`** — the renamed
-former `pr-quality-checks.yml` — triggers automatically on its own, on any PR
-whose base/head matches a known promotion shape (`staging` ← `to-staging/*`,
-`main` ← `release/*`; its own `gate` job decides this, see the workflow's
-header comment). It is **not** a job inside `pr-checks.yml` and does not run
-on an ordinary feature PR into `develop` — see the "Amendments" entry below
-for why once per promotion, not per PR, is what makes this affordable at all.
-It carries the blocking API matrix/open-handle diagnostics, migration smoke,
-required-index audit, frontend lint/F&B contract tests/builds, the
-deterministic Storefront F&B Playwright contract, architecture guardrails,
-governed-doc lint, compatibility seams, and diff hygiene that used to be dead
-wiring here. `workflow_dispatch`/`workflow_call` remain for a manual full run
-against an arbitrary branch.
+**Optional quality evidence (#2236):** `promotion-quality-gate.yml` is
+operator-dispatched only, has no automatic PR trigger, and every step is
+advisory. It may run against the frozen `develop` candidate before a staging
+cut, against a final release candidate in a rushed flow, or not run at all.
+The reporter attaches per-job outcomes and the checked SHA to an associated
+open PR. Failure, cancellation, missing results, or skipping the suite does
+not affect promotion eligibility.
+
+The merge and promotion controls remain `pr-checks.yml`'s ordinary build
+checks, the compliance preflight, and the production tenant-schema report.
+Merge safety, the release head-cut rule, and never-`--squash` also remain in
+force. The 2026-10-03 #2236 amendment below supersedes earlier amendments that
+describe the quality suite as an automatic blocking check.
 
 The former `code-quality` job was removed because it was advisory. Phases 24
 and 25 restore the required API, frontend, and deterministic browser coverage
@@ -176,25 +176,14 @@ on `release/* -> main` is a real process decision (what evidence is
 mandatory, who reviews it, whether it blocks merge) and is deliberately left
 as a follow-up, not assumed here.
 
-## The pre-promotion local gate
+## Former local gate and current optional quality suite
 
-`quality-checks` (described above as blocking) was removed from
-`pr-checks.yml` entirely on 2026-08-14 (#416) after sitting disabled
-(`if: false`, since 2026-08-11 over #345's ~14min unfiltered run). **The path
-back in has since been decided and built** (#1018, 2026-08-25) —
-`promotion-quality-gate.yml` (renamed from `pr-quality-checks.yml`) triggers
-itself automatically on `to-staging/*`/`release/*` promotion PRs specifically,
-never on an ordinary `develop` PR; see "What actually gates a release into
-`main` today" above and the "Promotion-time CI quality gate" amendment below.
-It is **complementary**, not a replacement: `npm run gate:release:local`, run
-by hand before a `main` promotion (`develop → main`, or `staging → main` when the optional soak is
-used), stays required regardless. **It does not run on the optional `develop → staging` soak leg
-itself** — stated explicitly here (#1097) rather than left implicit, matching the ladder table
-below and `.agents/skills/promoter/references/promotion-runbook.md`'s "Optional: a `staging` soak
-first" section. It is
-documented in `docs/testing/release-go-no-go-checklist.md`, which is the
-authoritative runbook for that gate — see #375. Do not propose rebuilding it
-(#345, #330); invoke it.
+`npm run gate:release:local` remains available for local debugging, and its
+default `required_gate_count` is zero. It is not a promotion prerequisite.
+`promotion-quality-gate.yml` is an optional operator-dispatched evidence suite;
+its run and its outcome are not merge gates. See
+`.agents/skills/promoter/references/promotion-runbook.md` for the operator
+procedure and the 2026-10-03 #2236 amendment below for the current policy.
 
 ## Known gaps (tracked, not solved by this document)
 
@@ -202,11 +191,12 @@ authoritative runbook for that gate — see #375. Do not propose rebuilding it
   `staging-qualification` / `exact-master-sha-qualification` as required
   checks for a controller that was never installed. Reconciling or removing
   it is a separate decision.
-- **Resolved 2026-08-25 (#1018):** `quality-checks` now runs automatically at
-  promotion time via `promotion-quality-gate.yml` — see "The pre-promotion
-  local gate" above. Its `dgfy-api-quality` job's AVX-dependent tests
-  (`menuPdfRasterService.test.js`) are gated on a real probe of the runner's
-  own capability (#1035, same PR) rather than assuming every runner has AVX
+- **Historical resolution, superseded 2026-10-03 (#2236):** #1018 originally restored
+  automatic promotion-time quality checks via `promotion-quality-gate.yml`. The workflow
+  is now operator-dispatched and optional; see "What actually gates a release into `main`
+  today" above. Its `dgfy-api-quality` job's AVX-dependent tests
+  (`menuPdfRasterService.test.js`) are gated on a real probe of the runner's own capability
+  (#1035, same PR), so they show as Jest `skipped` on `sieitz-lg` when AVX is unavailable.
   — on `sieitz-lg` they show as Jest `skipped`, not a false red.
 - `develop` and `staging` have drifted before without a backport in the
   other direction — the compliance bypass this document depends on
@@ -268,8 +258,8 @@ Retire staging..." amendment below for history**:
 | Stage | Gate type | What runs | Environment needed |
 |---|---|---|---|
 | `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
-| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `npm run gate:release:local` (`run_mode: "full"`, per `docs/testing/release-go-no-go-checklist.md`) against the exact target SHA; the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018) — **temporarily `continue-on-error` as of 2026-08-26, see the amendment below (#1063): it runs and records real failures as a comment on #1063, but does not block, and (since the #1066 correction below) does not show red in the Checks tab either**; a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut (a **supervised handoff, not an auto-merge**, #1295/#1374, 2026-09-02: the workflow pushes and attempts the PR, but `github-actions[bot]` is org-blocked from creating/approving it, so a human or credentialed AI session opens/merges it in the ordinary case — `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section owns the fast-signal check for a stuck handoff); **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** (A `NOT-APPLICABLE-*` ref is a reconciled state, not an outstanding one — `scripts/is-preflight-outstanding.js` already treats it as reconciled; see #1396.) All four run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which of these may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
-| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too) — **skipped entirely as of 2026-08-26, see the amendment below (#1063)**. **`npm run gate:release:local` does NOT run on this leg** — stated explicitly here (#1097) rather than left implicit by its absence from this row, after a live promotion attempt ran it here anyway and stopped a `develop → staging` promotion on findings that were never this leg's gate to fail on. Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | STAGING |
+| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `pr-checks.yml` build checks; optional operator-dispatched `promotion-quality-gate.yml` evidence against the frozen candidate (may be skipped); a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut (a **supervised handoff, not an auto-merge**, #1295/#1374, 2026-09-02: the workflow pushes and attempts the PR, but `github-actions[bot]` is org-blocked from creating/approving it, so a human or credentialed AI session opens/merges it in the ordinary case — `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section owns the fast-signal check for a stuck handoff); **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** (A `NOT-APPLICABLE-*` ref is a reconciled state, not an outstanding one — `scripts/is-preflight-outstanding.js` already treats it as reconciled; see #1396.) These mandatory controls run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which controls may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
+| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | `pr-checks.yml` build checks and the pre-branch compliance-preflight step; the operator may dispatch the optional quality suite against the frozen develop candidate before the cut. The suite is not triggered by the PR and may be skipped. The production preflight sweep and tenant-schema report still run for the later `develop → main` promotion regardless of whether this optional soak happened | STAGING |
 | post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (PROD infra health — BETA dropped from its environment list 2026-08-23, #329/#895, once beta.dgfy.ph was retired), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
 
 This resolves the apparent circularity for the compliance preflight specifically: the endpoint
