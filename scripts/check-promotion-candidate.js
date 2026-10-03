@@ -345,6 +345,17 @@ function validatePromotionCandidateV3(manifest) {
   const result = validatePromotionCandidateV2(manifest, true);
   const apps = manifest.release_revision && manifest.release_revision.apps;
   if (apps) {
+    const touchedApps = new Set(
+      manifest.revisions.flatMap((revision) => revision.apps_touched || [])
+    );
+    const missingTouchedApps = [...touchedApps].filter((app) => !Object.hasOwn(apps, app));
+    const missingAppNames = missingTouchedApps.join(', ') || '<none>';
+    assert(
+      missingTouchedApps.length === 0,
+      'A v3 release candidate must include a revisioned STAGING artifact for every app in its ' +
+        `apps_touched history; missing: ${missingAppNames}`,
+      'MISSING_TOUCHED_RELEASE_APP'
+    );
     assert(
       Object.hasOwn(apps, 'dgfy-api') === Object.hasOwn(apps, 'dgfy-migration-runner'),
       'A v3 candidate must include dgfy-api and dgfy-migration-runner in release_revision.apps together or omit both (paired backend release)',
