@@ -180,7 +180,11 @@ permissions:
 #                         is about the `environment:` input, a separate thing
 #                         from the tag.
 #
-# `image_tags: "latest"` (#913, 2026-08-25): the shared backend was tagged
+# The PROD call sites leave `image_tags` empty so builds do not move `latest`
+# before the immutable floor alias is approved. `promote-aliases` advances each
+# app's `latest` pointer only after that app's floor alias succeeds or is reused.
+#
+# Historical context for the `latest` tag (#913, 2026-08-25): the shared backend was tagged
 # `beta` from the retired beta/prod split, a name that outlived its own
 # meaning once #329/#895/#896 retired beta.dgfy.ph. Renamed here alongside
 # the frontend-split cutover's own coordinated server restart (docs/
@@ -189,7 +193,7 @@ permissions:
 # edit lands in that same `docker compose up -d`, not on its own (that server
 # edit + restart is #913's remaining, human-only scope as of this comment).
 #
-# After all five images are pushed, a SINGLE publish job SSH-deploys once
+# After all selected images have floor aliases and moving `latest` pointers, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
 # refreshes all four frontend containers and backend:latest in one go. The
 # deploy is resolved from the PROD Environment's SSH secrets (validated in
@@ -350,6 +354,12 @@ jobs:
       should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
       should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
       should_build_dgfy_opis: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
+      build_code_dgfy_api: ${{ steps.resolve.outputs.build_code_dgfy_api }}
+      build_code_dgfy_migration_runner: ${{ steps.resolve.outputs.build_code_dgfy_migration_runner }}
+      build_code_dgfy_ims: ${{ steps.resolve.outputs.build_code_dgfy_ims }}
+      build_code_dgfy_pos: ${{ steps.resolve.outputs.build_code_dgfy_pos }}
+      build_code_dgfy_storefront: ${{ steps.resolve.outputs.build_code_dgfy_storefront }}
+      build_code_dgfy_opis: ${{ steps.resolve.outputs.build_code_dgfy_opis }}
     steps:
       - name: Clear stale sparse-checkout state (workspace-hygiene v1)
         shell: bash
@@ -472,7 +482,7 @@ jobs:
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       release_revision: ${{ inputs.release_revision_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -497,7 +507,7 @@ jobs:
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       release_revision: ${{ inputs.release_revision_migration_runner }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -550,7 +560,7 @@ jobs:
     with:
       app: dgfy-ims
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_ims }}
       release_revision: ${{ inputs.release_revision_frontend_ims }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -574,7 +584,7 @@ jobs:
     with:
       app: dgfy-pos
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_pos }}
       release_revision: ${{ inputs.release_revision_frontend_pos }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -598,7 +608,7 @@ jobs:
     with:
       app: dgfy-storefront
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_storefront }}
       release_revision: ${{ inputs.release_revision_frontend_storefront }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -622,7 +632,7 @@ jobs:
     with:
       app: dgfy-opis
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_opis }}
       release_revision: ${{ inputs.release_revision_frontend_opis }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -763,6 +773,14 @@ jobs:
               dgfy-storefront) APP_REVISION="${{ inputs.release_revision_frontend_storefront }}" ;;
               dgfy-opis) APP_REVISION="${{ inputs.release_revision_frontend_opis }}" ;;
             esac
+            case "${APP}" in
+              dgfy-api) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_api }}" ;;
+              dgfy-migration-runner) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_migration_runner }}" ;;
+              dgfy-ims) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_ims }}" ;;
+              dgfy-pos) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_pos }}" ;;
+              dgfy-storefront) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_storefront }}" ;;
+              dgfy-opis) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_opis }}" ;;
+            esac
             if [ -z "${APP_REVISION:-}" ]; then
               echo "[promote-aliases] ${APP}: no revision input for this app-group (unchecked build) -- skipping, not aliasing."
               SKIPPED=$((SKIPPED + 1))
@@ -774,16 +792,28 @@ jobs:
             ALIAS_TAG="$(node -p "JSON.parse(process.argv[1]).canonicalAlias" "${RESOLVED}")"
             IMAGE="ghcr.io/sieitzz/${APP}"
             echo "[promote-aliases] ${APP}: ${SOURCE_TAG} -> ${ALIAS_TAG}"
-            if ! node scripts/promote-image-alias.js --source "${IMAGE}:${SOURCE_TAG}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${APP_REVISION}"; then
-              echo "::error::floor-alias promotion failed for ${APP} -- refusing to deploy PROD with an unaliased revision tag."
-              FAILURES=$((FAILURES + 1))
+            ALIAS_PROMOTION_SUCCEEDED=false
+            if [ "${BUILD_CODE:-}" = "floor-alias-content-equivalent" ]; then
+              # The preflight proved the existing floor alias has identical tracked build inputs;
+              # the candidate's per-revision PROD tag may not exist because its build was skipped.
+              # Reuse the existing floor image directly and leave the immutable alias untouched.
+              SOURCE_REF="${IMAGE}:${ALIAS_TAG}"
+              echo "[promote-aliases] ${APP}: reusing content-equivalent existing floor alias."
+              ALIAS_PROMOTION_SUCCEEDED=true
+            else
+              SOURCE_REF="${IMAGE}:${SOURCE_TAG}"
+              if node scripts/promote-image-alias.js --source "${SOURCE_REF}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${APP_REVISION}"; then
+                ALIAS_PROMOTION_SUCCEEDED=true
+              else
+                echo "::error::floor-alias promotion failed for ${APP} -- refusing to deploy PROD with an unaliased revision tag."
+                FAILURES=$((FAILURES + 1))
+              fi
             fi
-            # When backend images are skipped (content-equivalent), deploy-api.yml / deploy-migration-runner.yml
-            # do not run and therefore the latest tag is not updated. Alias latest here so PROD compose
-            # (${IMAGE_TAG:-latest}) pulls the current release:
-            if [ "${APP}" = "dgfy-api" ] || [ "${APP}" = "dgfy-migration-runner" ]; then
-              echo "[promote-aliases] ${APP}: ${SOURCE_TAG} -> latest"
-              if ! docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${SOURCE_TAG}"; then
+            # `latest` is the server's moving compose pointer. Move it only after this app's
+            # immutable floor alias is verified or safely reused, for every app (not at build time).
+            if [ "${ALIAS_PROMOTION_SUCCEEDED}" = "true" ]; then
+              echo "[promote-aliases] ${APP}: ${SOURCE_REF} -> latest"
+              if ! docker buildx imagetools create --tag "${IMAGE}:latest" "${SOURCE_REF}"; then
                 echo "::error::latest-alias promotion failed for ${APP}"
                 FAILURES=$((FAILURES + 1))
               fi

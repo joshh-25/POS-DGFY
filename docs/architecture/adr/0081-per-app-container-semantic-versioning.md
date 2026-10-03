@@ -882,3 +882,27 @@ pending for the next combined PROD release; this PR does not authorize or dispat
 and `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
 
 PR: (this PR). Closes #2227.
+
+### 2026-10-03 — Preflight occupied PROD floors and gate moving aliases (#2238)
+
+The 2026-10-03 Storefront PROD collision showed that a candidate can pass source-side promotion
+checks while its immutable floor alias is already claimed by another artifact. `resolve-build-plan`
+now inspects each selected app's canonical PROD floor alias before any image build begins. When the
+alias exists under a different source revision, it compares the app's tracked build inputs with
+the current source: identical inputs reuse the existing alias; changed inputs fail the whole plan
+before any build or alias mutation, with the app and required floor bump reported. Indeterminate
+registry reads or diffs preserve the existing fail-closed-to-build behavior.
+
+The PROD builder call sites no longer move `latest` while building. After an app's immutable floor
+alias has been verified or safely reused, `promote-aliases` advances that app's `latest` pointer.
+This keeps an app whose floor promotion failed from publishing its unpromoted digest as the server's
+moving image pointer. The incident's partial mutations to five other apps' floor aliases were
+verified as valid and reused by the successful retry; the failed Storefront build's unconditional
+`latest` push was the registry inconsistency this tightening removes.
+
+`[default]` tier — adds preflight and moving-alias enforcement around the existing Decision 7
+invariant. Decision 7's `[binding]` immutable-tag rule and Decision 6's floor policy are unchanged.
+Full detail: #2238, `scripts/resolve-build-skip-plan.js`, `.github/workflows/deploy-main.yml`, and
+`docs/ops/STOREFRONT_PROD_FLOOR_ALIAS_COLLISION_INCIDENT_2026-10-03.md`.
+
+PR: (this PR). Refs #2238.
