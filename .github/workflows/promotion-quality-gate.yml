@@ -128,7 +128,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
         with:
           fetch-depth: 0
@@ -527,7 +527,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
 
       - name: Assert complete working tree (workspace-hygiene v1)
@@ -663,7 +663,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
 
       - name: Assert complete working tree (workspace-hygiene v1)
@@ -829,7 +829,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
 
       - name: Assert complete working tree (workspace-hygiene v1)
@@ -937,7 +937,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
 
       - name: Assert complete working tree (workspace-hygiene v1)
@@ -1094,7 +1094,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
 
       - name: Assert complete working tree (workspace-hygiene v1)
@@ -1279,7 +1279,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
 
       - name: Assert complete working tree (workspace-hygiene v1)
@@ -1536,7 +1536,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
 
       - name: Assert complete working tree (workspace-hygiene v1)
@@ -1719,7 +1719,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
         with:
           fetch-depth: 0
@@ -1891,7 +1891,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
         with:
           fetch-depth: 0
@@ -2062,7 +2062,7 @@ jobs:
 
       - id: checkout
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         timeout-minutes: 5
         with:
           fetch-depth: 0
@@ -2239,7 +2239,7 @@ jobs:
       - name: Check out the workflow revision
         id: checkout_reporter
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Assert complete working tree (workspace-hygiene v1)
         continue-on-error: true
         id: workspace_hygiene_assert

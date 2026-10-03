@@ -93,7 +93,7 @@ jobs:
           fi
           echo "[workspace-hygiene] OK"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Assert complete working tree (workspace-hygiene v1)
         shell: bash

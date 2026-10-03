@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out candidate ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Validate candidate lineage
         run: node scripts/check-promotion-candidate.js --manifest "${{ inputs.candidate_manifest }}"
       - name: Validate observation report

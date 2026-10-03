@@ -43,7 +43,7 @@ jobs:
           echo "[workspace-hygiene] OK"
 
       - id: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         continue-on-error: true
         timeout-minutes: 5
         with:
