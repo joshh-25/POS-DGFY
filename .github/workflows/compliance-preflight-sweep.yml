@@ -559,7 +559,7 @@ jobs:
         id: upload_results
         if: steps.discover.outputs.count != '0'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: compliance-preflight-sweep-results
           path: /tmp/results.json
@@ -918,7 +918,7 @@ jobs:
         id: upload_handoff
         if: always() && steps.discover.outputs.count != '0'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: compliance-preflight-sweep-handoff
           path: /tmp/compliance-preflight-sweep-handoff.json
