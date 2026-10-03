@@ -70,6 +70,7 @@ const buildCheckoutUseCase = (repository, dependencies = {}) => {
   const useCase = buildStoreCheckoutUseCase({
     storeRepository: repository,
     revenueSharingEnabled: false,
+    recordOrderActivity: jest.fn().mockResolvedValue(null),
     ...dependencies
   });
 
