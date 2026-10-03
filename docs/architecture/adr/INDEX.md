@@ -111,7 +111,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0086 | [POS Parked-Sale Stock and High-Risk Approval Lifecycle](0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md) | `accepted` | pos_parked_sale_stock_and_high_risk_approval_lifecycle | 2027-03-24 | 7 |
 | 0087 | [Dedicated DGFY Back Office as a Fourth Frontend App (`apps/dgfy-opis`)](0087-dedicated-back-office-fourth-frontend-app-opis.md) | `accepted` | opis_fourth_frontend_app | 2027-03-29 | 5 |
 | 0088 | [POS Has No Back Office Routes or OPIS Handoff](0088-pos-has-no-back-office-routes-or-opis-handoff.md) | `proposed` | opis_fourth_frontend_app | 2027-03-30 | 4 |
-| 0089 | [Platform Admin as a Fifth Frontend App (`apps/dgfy-admin`) with Cross-Host `/admin` Routing](0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md) | `proposed` | dgfy_admin_fifth_frontend_app | 2027-04-03 | 4 |
+| 0089 | [Platform Admin as a Fifth Frontend App (`apps/dgfy-admin`) with Cross-Host `/admin` Routing](0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md) | `accepted` | dgfy_admin_fifth_frontend_app | 2027-04-03 | 4 |
 
 ## Renumbered (collision stubs)
 

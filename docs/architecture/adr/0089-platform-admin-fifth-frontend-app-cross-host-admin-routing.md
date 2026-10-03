@@ -1,9 +1,9 @@
 ---
-status: proposed
+status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-10-03
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-04
 review_by: 2027-04-03
 applies_to: apps/dgfy-admin, apps/dgfy-ims, apps/dgfy-pos, apps/dgfy-storefront, apps/dgfy-opis, infrastructure/docker/nginx, infrastructure/nginx-host
 topic: dgfy_admin_fifth_frontend_app
@@ -14,12 +14,14 @@ supersedes_in_part: docs/architecture/adr/0087-dedicated-back-office-fourth-fron
 
 ## Status
 
-Proposed. Tech-lead approval is required before merge because this decision supersedes binding
-clauses in ADR 0087 (Decisions 1, 2, and 4). Pat's product direction (2026-10-03, issue #350):
-extract the landlord Platform Admin console into its own app and serve it at `/admin` on
-`dgfy.ph`, `pos.dgfy.ph`, `opis.dgfy.ph`, and `skupervisor.dgfy.ph` during the legacy-host
-compatibility window, with **independent per-host login** — explicitly not a shared cross-host
-session — so no `SESSION_COOKIE_DOMAIN` broadening is required by this decision.
+Accepted (2026-10-04) — Pat approved the architecture decision, superseding ADR 0087's binding
+Decisions 1, 2, and 4 in part. Proposed and merged via PR #2240 (issue #350); accepted the
+following session once Pat confirmed the decision stands. Pat's product direction (2026-10-03,
+issue #350): extract the landlord Platform Admin console into its own app and serve it at
+`/admin` on `dgfy.ph`, `pos.dgfy.ph`, `opis.dgfy.ph`, and `skupervisor.dgfy.ph` during the
+legacy-host compatibility window, with **independent per-host login** — explicitly not a shared
+cross-host session — so no `SESSION_COOKIE_DOMAIN` broadening is required by this decision. The
+implementation is tracked under issue #350; no implementation PR exists yet.
 
 ## Context
 
