@@ -344,10 +344,25 @@ function validatePromotionCandidateV2(manifest, versionlessDev = false) {
 function validatePromotionCandidateV3(manifest) {
   assert(manifest.schema === 'sku-release-candidate/v3', 'Candidate manifest schema must be sku-release-candidate/v3', 'INVALID_SCHEMA');
   const result = validatePromotionCandidateV2(manifest, true);
+  if (Object.hasOwn(manifest, 'quality_check')) {
+    const qualityCheck = manifest.quality_check;
+    assert(qualityCheck && typeof qualityCheck === 'object' && !Array.isArray(qualityCheck), 'quality_check must be an object when present', 'INVALID_QUALITY_CHECK');
+    assertSha(qualityCheck.sha, 'quality_check.sha');
+    assert(Number.isInteger(qualityCheck.run_id) && qualityCheck.run_id > 0, 'quality_check.run_id must be a positive integer', 'INVALID_QUALITY_CHECK_RUN_ID');
+    assert(typeof qualityCheck.run_url === 'string' && /^https:\/\//.test(qualityCheck.run_url), 'quality_check.run_url must be an HTTPS URL', 'INVALID_QUALITY_CHECK_URL');
+    assert(typeof qualityCheck.dispatched_at === 'string' && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(qualityCheck.dispatched_at) && !Number.isNaN(Date.parse(qualityCheck.dispatched_at)), 'quality_check.dispatched_at must be an ISO-8601 date-time', 'INVALID_QUALITY_CHECK_TIME');
+    assert(['clean', 'had-advisory-failures'].includes(qualityCheck.result), 'quality_check.result must be clean or had-advisory-failures', 'INVALID_QUALITY_CHECK_RESULT');
+    result.quality_check_current = qualityCheck.sha === getActiveCandidateSha(manifest);
+  }
   const apps = manifest.release_revision && manifest.release_revision.apps;
   if (apps) {
     const touchedApps = new Set(
       manifest.revisions.flatMap((revision) => revision.apps_touched || [])
+    );
+    assert(
+      Object.hasOwn(apps, 'dgfy-api') === Object.hasOwn(apps, 'dgfy-migration-runner'),
+      'A v3 candidate must include dgfy-api and dgfy-migration-runner in release_revision.apps together or omit both (paired backend release)',
+      'ONE_SIDED_API_MIGRATION_RELEASE_PAIR'
     );
     const missingTouchedApps = [...touchedApps].filter((app) => !Object.hasOwn(apps, app));
     const missingAppNames = missingTouchedApps.join(', ') || '<none>';
@@ -356,11 +371,6 @@ function validatePromotionCandidateV3(manifest) {
       'A v3 release candidate must include a revisioned STAGING artifact for every app in its ' +
         `apps_touched history; missing: ${missingAppNames}`,
       'MISSING_TOUCHED_RELEASE_APP'
-    );
-    assert(
-      Object.hasOwn(apps, 'dgfy-api') === Object.hasOwn(apps, 'dgfy-migration-runner'),
-      'A v3 candidate must include dgfy-api and dgfy-migration-runner in release_revision.apps together or omit both (paired backend release)',
-      'ONE_SIDED_API_MIGRATION_RELEASE_PAIR'
     );
     const sourceShaByApp = resolveCandidateSourceShaByApp(manifest);
     for (const [app, entry] of Object.entries(apps)) {
@@ -373,6 +383,13 @@ function validatePromotionCandidateV3(manifest) {
     }
   }
   return result;
+}
+
+function getActiveCandidateSha(manifest) {
+  return manifest.release_revision?.source_staging_sha ||
+    manifest.staging_head_sha ||
+    manifest.current_staging_sha ||
+    manifest.source_develop_sha;
 }
 
 /**
@@ -476,6 +493,7 @@ module.exports = {
   validatePromotionCandidateV1,
   validatePromotionCandidateV2,
   validatePromotionCandidateV3,
+  getActiveCandidateSha,
   getAppRevision,
   resolveCandidateSourceShaByApp,
 };

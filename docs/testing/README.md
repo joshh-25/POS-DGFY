@@ -362,9 +362,14 @@ For the end-to-end cashier/admin continuity path (create item -> POS-ready -> ch
    - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e:release`
 
 CI execution and advisory status:
-1. The journey runs as `frontend-ims-pos-sales-e2e-quality` in `.github/workflows/promotion-quality-gate.yml` on the `release/*` -> `main` promotion leg (plus manual `workflow_dispatch` / `workflow_call` runs). The `to-staging/*` -> `staging` leg is skipped entirely -- it runs zero quality jobs.
-2. The job is advisory (`continue-on-error` at job and step level, with real per-step outcomes reported via `record_outcomes`); a red run does not block promotion. The advisory-to-blocking transition is deferred by Pat's call on #1749.
-3. Failure artifacts (trace/video/screenshot, plus the downloaded sales CSV persisted by the export assertion) upload as `ims-pos-sales-e2e-<sha>` and are retained for 30 days. There is no nightly E2E workflow; drift detection comes from promotion-leg and manual-dispatch runs.
+1. The journey runs as `frontend-ims-pos-sales-e2e-quality` when an operator dispatches
+   `.github/workflows/promotion-quality-gate.yml`; no promotion PR triggers it automatically.
+2. All steps are advisory. A failure, cancellation, or missing run does not block promotion; the
+   reporter posts SHA-bound per-job evidence to an associated open PR when one exists.
+3. Failure artifacts (trace/video/screenshot, plus the downloaded sales CSV persisted by the export
+   assertion) upload as `ims-pos-sales-e2e-<sha>` and are retained for 30 days. There is no nightly
+   E2E workflow; drift detection comes from optional operator dispatches.
+
 4. **New/expanded E2E coverage here is lower priority than POS/Storefront**, per `AGENTS.md`'s
    "Engineering-investment priority" note (#1739) — this existing required journey gate is
    unaffected; the priority note only weighs *additional* investment, not what already runs.

@@ -231,6 +231,39 @@ test('v3: accepts frozen develop source without selecting or requiring DEV artif
   assert.equal(getAppRevision(manifest, 'dgfy-ims').origin, 'promotion');
 });
 
+test('v3: accepts optional SHA-bound quality evidence and leaves it optional', () => {
+  const withoutEvidence = candidateV3();
+  assert.equal(validatePromotionCandidate(withoutEvidence).candidate_id, '2026-09-04-01');
+
+  const withEvidence = candidateV3({
+    quality_check: {
+      sha: SHA('c'),
+      run_id: 37100411642,
+      run_url: 'https://github.com/Sieitzz/dgfy-platform/actions/runs/37100411642',
+      dispatched_at: '2026-10-03T12:00:00Z',
+      result: 'had-advisory-failures',
+    },
+  });
+  assert.equal(validatePromotionCandidate(withEvidence).quality_check_current, true);
+  withEvidence.staging_head_sha = SHA('d');
+  withEvidence.release_revision.source_staging_sha = SHA('d');
+  assert.equal(validatePromotionCandidate(withEvidence).quality_check_current, false);
+});
+
+test('v3: rejects malformed optional quality evidence', () => {
+  const manifest = candidateV3({ quality_check: { sha: 'not-a-sha' } });
+  assert.throws(() => validatePromotionCandidate(manifest), /quality_check.sha must be a lowercase 40-character Git SHA/);
+});
+
+test('v3: rejects unsupported quality evidence outcomes', () => {
+  const manifest = candidateV3({ quality_check: {
+    sha: SHA('a'), run_id: 1,
+    run_url: 'https://github.com/Sieitzz/dgfy-platform/actions/runs/1',
+    dispatched_at: '2026-10-03T12:00:00Z', result: 'failure',
+  } });
+  assert.throws(() => validatePromotionCandidate(manifest), /quality_check.result must be clean or had-advisory-failures/);
+});
+
 test('v3: requires initial apps_touched and rejects DEV-origin artifacts', () => {
   const missing = candidateV3();
   delete missing.revisions[0].apps_touched;

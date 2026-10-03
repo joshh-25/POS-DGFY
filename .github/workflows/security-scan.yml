@@ -19,9 +19,9 @@ jobs:
       # duplicated: a composite action or repo script cannot run before checkout populates the
       # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
       - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        continue-on-error: true
         id: workspace_hygiene_clear
         shell: bash
-        continue-on-error: true
         run: |
           set -uo pipefail
           WS="${GITHUB_WORKSPACE:-}"
@@ -50,9 +50,9 @@ jobs:
           fetch-depth: 0
 
       - name: Assert complete working tree (workspace-hygiene v1)
+        continue-on-error: true
         id: workspace_hygiene_assert
         shell: bash
-        continue-on-error: true
         run: |
           set -euo pipefail
           SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
