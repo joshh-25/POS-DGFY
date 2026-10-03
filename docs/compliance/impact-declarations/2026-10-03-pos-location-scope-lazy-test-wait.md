@@ -11,8 +11,8 @@ verification_evidence: npm run test:frontend:contracts (140 files, 810 tests pas
 rollback_note: Revert the focused lazy-render wait adjustment and this declaration; no POS runtime behavior, API, authorization, schema, or tenant data changes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-03T09:00:20.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-03-POS-LOCATION-SCOPE-LAZY-TEST-WAIT
+preflight_run_at: 2026-10-03T09:13:00.839Z
+preflight_request_ref: PREFLIGHT-37111834633-2026-10-03-POS-LOCATION-SCOPE-LAZY-TEST-WAIT
 ---
 
 # POS location-scope lazy-render test wait
