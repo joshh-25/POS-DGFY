@@ -2138,6 +2138,15 @@ afterAll(async () => {
 
   try {
     if (posCategoryFixtureId) {
+      await withTenantDb(COMPANY_TOKEN, async (tenantDb) => {
+        await tenantDb.query('DELETE FROM item_folder_memberships WHERE folder_id = ?', [posCategoryFixtureId]);
+        await tenantDb.query(
+          'UPDATE items SET folder_id = NULL, product_folder = NULL WHERE folder_id = ?',
+          [posCategoryFixtureId]
+        );
+      }).catch((error) => {
+        console.warn(`[frontend.imsPosSalesJourney.e2e] Temporary category reference cleanup failed: ${error.message}`);
+      });
       await callTenantApi(`/items/folders/${posCategoryFixtureId}`, { method: 'DELETE' }).catch((error) => {
         console.warn(`[frontend.imsPosSalesJourney.e2e] Temporary category cleanup failed: ${error.message}`);
       });
