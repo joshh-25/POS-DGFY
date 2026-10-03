@@ -1,9 +1,9 @@
 # Business Registration and Store Setup — Execution Manifest
 
-Captured: 2026-10-01 (Asia/Shanghai)  
-Repository: `C:\xampp\htdocs\POS-DGFY`  
-Worktree: `C:\xampp\htdocs\POS-DGFY\.worktrees\StagingPOS`  
-Branch: `StagingPOS`  
+Captured: 2026-10-01 (Asia/Shanghai)
+Repository: `C:\xampp\htdocs\POS-DGFY`
+Worktree: `C:\xampp\htdocs\POS-DGFY\.worktrees\StagingPOS`
+Branch: `StagingPOS`
 Baseline commit: `9065425cc` (`docs(compliance): cover inventory report surfaces`)
 
 ## Scope and ownership

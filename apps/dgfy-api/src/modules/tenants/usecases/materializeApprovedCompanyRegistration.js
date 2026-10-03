@@ -106,4 +106,3 @@ export const buildMaterializeApprovedCompanyRegistration = ({ connector = tenant
 };
 
 export const materializeApprovedCompanyRegistration = buildMaterializeApprovedCompanyRegistration();
-
