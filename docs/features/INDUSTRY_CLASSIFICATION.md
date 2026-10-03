@@ -327,7 +327,7 @@ panel:
   table retired once every consumer cut over; see
   `docs/development/STORE_TEMPLATES_HANDOFF.md` §5.)
 - Admin surface: the "Registration industries" panel on the Store Template
-  Manager page (`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`), and the
+  Manager page (`apps/dgfy-admin/Pages/StoreTemplateManager.jsx`), and the
   `GET/POST/PATCH /api/v1/admin/registration-industries*` endpoints
   behind it.
 - Merchant contract: `GET /api/v1/registration/industries` always returns

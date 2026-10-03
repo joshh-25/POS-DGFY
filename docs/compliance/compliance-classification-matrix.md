@@ -69,7 +69,7 @@ listing `backend/**`/`frontend/**` paths from before the `apps/*` relocation (AD
 | `packages/web-core/src/services/paymentService.js` | `payments` | `major` |
 | `packages/web-core/src/services/complianceService.js` | `compliance` | `regulatory` |
 | `packages/web-core/src/services/adminService.js` | `settings`, `compliance` | `regulatory` |
-| `apps/dgfy-ims/Pages/admin/TenantManager.jsx` | `settings`, `compliance` | `regulatory` |
+| `apps/dgfy-admin/Pages/TenantManager.jsx` | `settings`, `compliance` | `regulatory` |
 
 Note the frontend-split asymmetry: the shared `src/features/`, `src/pages/`, and `src/services/`
 paths above moved to `packages/web-core` (issue #322), but root `Pages/` (capital-P, the legacy
