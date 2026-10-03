@@ -1445,6 +1445,18 @@ const completePosReadyAndPreviewTerminal = async (page, itemName) => {
 };
 
 const unlockTerminalFromDrawer = async (page, terminalId = DEFAULT_E2E_TERMINAL_ID) => {
+  const authResponses = [];
+  const captureAuthResponse = (response) => {
+    const pathname = new URL(response.url()).pathname;
+    if (/^\/api\/v1\/dgfy\/auth\//.test(pathname)) {
+      authResponses.push(`${response.status()} ${pathname}`);
+    }
+  };
+  page.on('response', captureAuthResponse);
+  const diagnostics = async (step) => {
+    const visibleError = await page.locator('.dgfy-pos-terminal-lock-drawer').innerText().catch(() => 'drawer unavailable');
+    return `POS DGFY ${step} failed. Auth responses: ${authResponses.slice(-12).join(' | ') || 'none'}. Drawer: ${visibleError.slice(-1200)}`;
+  };
   const unlockTerminalButton = page.getByRole('button', { name: /^Unlock Terminal$/ }).first();
   if (await unlockTerminalButton.isVisible().catch(() => false)) {
     await unlockTerminalButton.click();
@@ -1470,24 +1482,60 @@ const unlockTerminalFromDrawer = async (page, terminalId = DEFAULT_E2E_TERMINAL_
     }
   }
   const drawerHeading = drawer.getByRole('heading', { name: /Terminal Login Required/i });
-  await drawerHeading.waitFor({ state: 'visible', timeout: 15000 });
+  try {
+    await drawerHeading.waitFor({ state: 'visible', timeout: 15000 });
+  } catch {
+    throw new Error(await diagnostics('drawer open'));
+  }
   const form = drawer.locator('form').first();
   const emailInput = form.getByLabel('DGFY or Cashier Email');
-  if (await emailInput.isVisible().catch(() => false)) {
-    await drawer.getByText('Legacy access until June 17, 2027').click();
+  const passwordInput = form.locator('input[type="password"]').first();
+  const submit = form.getByRole('button', { name: /^Sign in$/i });
+  const company = form.getByRole('button', { name: 'Company' });
+  const companySelect = async () => {
+    const selectedValue = await company.getAttribute('data-company-value').catch(() => '');
+    if (selectedValue) return;
+    await company.click();
+    const options = form.getByRole('option');
+    await options.first().waitFor({ state: 'visible', timeout: 15000 });
+    const accessible = options.filter({ hasNotText: 'Select accessible company' });
+    const optionCount = await accessible.count();
+    if (optionCount !== 1) throw new Error(`Expected one seeded accessible company, found ${optionCount}`);
+    await accessible.first().click();
+  };
+
+  try {
     await emailInput.fill(FRONTEND_LOGIN.email);
-    await form.locator('input[type="password"]').first().fill(FRONTEND_LOGIN.password);
-    const legacyLogin = drawer.getByRole('button', { name: 'Use Legacy Grace Login' });
-    await legacyLogin.click();
+    await passwordInput.fill(FRONTEND_LOGIN.password);
+    await submit.click();
+    await company.waitFor({ state: 'visible', timeout: 20000 });
+    await companySelect();
+    const tenantSession = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/v1/dgfy/auth/tenant-session',
+      { timeout: 20000 }
+    );
+    await form.getByRole('button', { name: /^Continue to POS$/i }).click();
+    const sessionResponse = await tenantSession;
+    if (!sessionResponse.ok()) {
+      throw new Error(`tenant-session returned HTTP ${sessionResponse.status()}`);
+    }
+  } catch (error) {
+    throw new Error(`${await diagnostics(error.message)}`);
   }
 
-  await drawerHeading.waitFor({ state: 'hidden', timeout: 60000 });
-  await page.waitForFunction(
-    (id) => document.body?.innerText?.includes(`Terminal identity: ${id}`),
-    terminalId,
-    { timeout: 60000 }
-  );
-  await page.getByRole('button', { name: /Lock Terminal/i }).first().waitFor({ timeout: 60000 });
+  try {
+    await drawerHeading.waitFor({ state: 'hidden', timeout: 60000 });
+    await page.waitForFunction(
+      (id) => document.body?.innerText?.includes(`Terminal identity: ${id}`),
+      terminalId,
+      { timeout: 60000 }
+    );
+    await page.getByRole('button', { name: /Lock Terminal/i }).first().waitFor({ timeout: 60000 });
+  } catch {
+    throw new Error(await diagnostics('terminal unlock'));
+  } finally {
+    page.off('response', captureAuthResponse);
+  }
 };
 
 const ensureShiftOpenForCheckout = async (page) => {
