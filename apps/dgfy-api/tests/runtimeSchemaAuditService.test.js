@@ -236,6 +236,7 @@ const buildHealthySequelizeMock = () => ({
                     location_id: {},
                     tracking_pin: {},
                     delivery_fee: {},
+                    delivery_provider_breakdown: {},
                     store_customer_id: {},
                     accepted_by: {},
                     accepted_at: {},

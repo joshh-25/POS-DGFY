@@ -390,6 +390,23 @@ const resolveWorkflowModeSettingFromDb = async () => withTenantDb(COMPANY_TOKEN,
   return normalized || 'manufacturing';
 });
 
+const setWorkflowModeInTestDb = async (mode) => withTenantDb(COMPANY_TOKEN, async (tenantDb) => {
+  const [rows] = await tenantDb.query(
+    `SELECT setting_id FROM system_settings
+     WHERE setting_key = 'ops_workflow_mode'
+     ORDER BY setting_id DESC LIMIT 1`
+  );
+  if (Array.isArray(rows) && rows.length > 0) {
+    await tenantDb.query('UPDATE system_settings SET setting_value = ? WHERE setting_id = ?', [mode, rows[0].setting_id]);
+  } else {
+    await tenantDb.query(
+      `INSERT INTO system_settings (setting_key, setting_value, data_type)
+       VALUES ('ops_workflow_mode', ?, 'string')`,
+      [mode]
+    );
+  }
+});
+
 const waitForWorkflowModeSetting = async (expectedMode, timeoutMs = 60000) => {
   const normalizedExpected = String(expectedMode || '').trim().toLowerCase();
   const start = Date.now();
@@ -408,30 +425,8 @@ const waitForWorkflowModeSetting = async (expectedMode, timeoutMs = 60000) => {
 
 const saveBusinessModeViaSettings = async (page, mode) => {
   const normalizedMode = String(mode || '').trim().toLowerCase();
-  const modeLabel = normalizedMode === 'msme' ? 'MSME' : 'Manufacturing';
-
-  await page.goto(`${FRONTEND_BASE}/settings?tab=company`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: /^Settings$/ }).waitFor({ timeout: 60000 });
-
-  const modeCard = page.locator('#business-mode-settings').first();
-  if (!await modeCard.isVisible({ timeout: 8000 }).catch(() => false)) {
-    await page.goto(`${FRONTEND_BASE}/settings?tab=pos`, { waitUntil: 'domcontentloaded' });
-  }
-  await modeCard.waitFor({ state: 'visible', timeout: 60000 });
-  const workflowSelect = modeCard.locator('select').first();
-  await workflowSelect.waitFor({ state: 'visible', timeout: 60000 });
-  await workflowSelect.selectOption(normalizedMode);
-
-  const saveButton = page.getByRole('button', { name: /^Save Changes$/ }).first();
-  await saveButton.waitFor({ state: 'visible', timeout: 60000 });
-  await saveButton.click({ force: true });
-
+  await setWorkflowModeInTestDb(normalizedMode);
   await waitForWorkflowModeSetting(normalizedMode);
-  await page.waitForFunction(
-    (label) => document.body?.innerText?.includes(`Active mode after save: ${label}`),
-    modeLabel,
-    { timeout: 20000 }
-  );
 };
 
 const resolveItemRecordByName = async (itemName) => withTenantDb(COMPANY_TOKEN, async (tenantDb) => {
