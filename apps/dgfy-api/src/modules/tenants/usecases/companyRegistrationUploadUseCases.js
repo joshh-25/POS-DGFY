@@ -104,4 +104,3 @@ export const buildRevokeAdminCompanyRegistrationUploadUseCase = ({ repository, s
     if (result?.success && storageKey) await storage.remove(storageKey).catch(() => {});
     return result;
 };
-

@@ -3975,6 +3975,7 @@ export const buildExchangeStoreGuestCheckoutGrantUseCase = ({ dgfyCustomerReposi
 
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
+    recordOrderActivity = recordDgfyOrderActivity,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -4090,7 +4091,7 @@ export const buildStoreCheckoutUseCase = ({
                 });
 
                 await transaction.commit();
-                await recordDgfyOrderActivity({
+                await recordOrderActivity({
                     tenantId: normalizedTenantId,
                     order: existing,
                     storeCustomer: normalizedStoreCustomer
@@ -4481,7 +4482,7 @@ export const buildStoreCheckoutUseCase = ({
                 options: { transaction }
             });
             await transaction.commit();
-            await recordDgfyOrderActivity({
+            await recordOrderActivity({
                 tenantId: normalizedTenantId,
                 order: created,
                 storeCustomer: normalizedStoreCustomer

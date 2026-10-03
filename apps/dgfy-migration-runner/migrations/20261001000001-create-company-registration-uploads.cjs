@@ -40,4 +40,3 @@ module.exports = {
     await queryInterface.dropTable('company_registration_uploads').catch(() => {});
   }
 };
-
