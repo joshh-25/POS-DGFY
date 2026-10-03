@@ -103,7 +103,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `amended` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `proposed` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 | 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `amended` | item_multi_category_membership | 2027-03-03 | 6 |
-| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 8 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 9 |
 | 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `amended` | production_release_record_and_release_notes | 2027-03-23 | 3 |
 | 0083 | [Courier Cash Custody and Remittance for COD Deliveries](0083-courier-cash-custody-and-remittance.md) | `accepted` | courier_cash_custody_remittance | 2027-03-13 | 9 |
 | 0084 | [POS Business Admin Operational Expense Ledger](0084-pos-business-admin-operational-expense-ledger.md) | `accepted` | pos_business_admin_operational_expense_ledger | 2027-03-17 | 5 |
