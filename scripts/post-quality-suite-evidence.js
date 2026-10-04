@@ -77,7 +77,9 @@ async function listPages(token, repository, route) {
   const results = [];
   for (let page = 1; page <= 10; page += 1) {
     const separator = route.includes('?') ? '&' : '?';
-    const entries = await githubRequest(token, repository, `${route}${separator}per_page=100&page=${page}`);
+    const response = await githubRequest(token, repository, `${route}${separator}per_page=100&page=${page}`);
+    const entries = Array.isArray(response) ? response : response?.jobs;
+    if (!Array.isArray(entries)) throw new Error(`GitHub API returned an unexpected paginated response for ${route}`);
     results.push(...entries);
     if (entries.length < 100) return results;
   }
@@ -208,4 +210,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, resultForJob, buildComment, recordCandidateQualityCheck };
+module.exports = { parseArgs, resultForJob, buildComment, recordCandidateQualityCheck, main };
