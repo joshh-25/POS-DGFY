@@ -60,13 +60,12 @@ const CI_ENFORCED_GATES = new Map([
   ['backend.lint',                   { job: 'dgfy-api-quality',            steps: ['run_api_lint'] }],
   // Long-running backend matrix, available as advisory evidence.
   ['backend.test_matrix',            { job: 'dgfy-api-quality',            steps: ['run_test_matrix'] }],
-  ['frontend.ims.lint',              { job: 'frontend-ims-quality',        steps: ['run_ims_lint'] }],
   ['frontend.pos.lint',              { job: 'frontend-pos-quality',        steps: ['run_pos_lint'] }],
   ['frontend.storefront.lint',       { job: 'frontend-storefront-quality', steps: ['run_storefront_lint'] }],
-  ['frontend.contracts',             { job: 'frontend-ims-quality',        steps: ['run_shared_fnb_contract_tests'] }],
+  ['frontend.contracts',             { job: 'web-core-quality',             steps: ['run_shared_fnb_contract_tests'] }],
   ['frontend.storefront.contracts',  { job: 'frontend-storefront-quality', steps: ['run_storefront_vitest'] }], // CI superset: unfiltered `npx vitest run`
   ['frontend.budgets',               { job: 'frontend-budgets-quality',    steps: ['check_frontend_budgets'] }],
-  ['scroll.contracts',               { job: 'frontend-ims-quality',        steps: ['run_scroll_contracts'] }],
+  ['scroll.contracts',               { job: 'web-core-quality',             steps: ['run_scroll_contracts'] }],
   // ADR 0082 release-notes validation, available as advisory evidence.
   ['release.notes',                  { job: 'repository-docs-quality',       steps: ['run_release_notes'] }],
 ]);

@@ -10,7 +10,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const QUALITY_JOB_PREFIXES = [
   'dgfy-api-quality',
   'migration-runner-quality',
-  'frontend-ims-quality',
+  'web-core-quality',
   'frontend-pos-quality',
   'frontend-storefront-quality',
   'frontend-opis-quality',
@@ -18,12 +18,12 @@ const QUALITY_JOB_PREFIXES = [
   'repository-ci-contracts-quality',
   'repository-docs-quality',
   'frontend-budgets-quality',
-  'frontend-ims-pos-sales-e2e-quality',
+  'pos-sales-e2e-quality',
 ];
 const QUALITY_JOB_FAILURE_ENV = {
   'dgfy-api-quality': 'DGFY_API_FAILURES',
   'migration-runner-quality': 'MIGRATION_RUNNER_FAILURES',
-  'frontend-ims-quality': 'IMS_FAILURES',
+  'web-core-quality': 'WEB_CORE_FAILURES',
   'frontend-pos-quality': 'POS_FAILURES',
   'frontend-storefront-quality': 'STOREFRONT_FAILURES',
   'frontend-opis-quality': 'OPIS_FAILURES',
@@ -31,7 +31,7 @@ const QUALITY_JOB_FAILURE_ENV = {
   'repository-ci-contracts-quality': 'REPOSITORY_CI_CONTRACTS_FAILURES',
   'repository-docs-quality': 'REPOSITORY_DOCS_FAILURES',
   'frontend-budgets-quality': 'FRONTEND_BUDGETS_FAILURES',
-  'frontend-ims-pos-sales-e2e-quality': 'IMS_POS_SALES_E2E_FAILURES',
+  'pos-sales-e2e-quality': 'POS_SALES_E2E_FAILURES',
 };
 
 function parseArgs(argv) {
