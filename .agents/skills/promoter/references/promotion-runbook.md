@@ -166,6 +166,14 @@ frozen `develop` candidate before cutting `to-staging/<candidate_id>`. For a rus
 that run and optionally dispatch against the final `release/<candidate_id>` branch before `main`.
 The operator may also skip the suite entirely.
 
+The dispatch inputs route `dgfy-api-quality`, `migration-runner-quality`,
+`frontend-storefront-quality`, and `salvage-api-evidence` through `heavy_runner_labels_json`
+(default `['sieitz-lg']`). The remaining quality jobs, including `pos-sales-e2e-quality`, use
+`general_runner_labels_json` (default `['sieitz-runner']`). If the large runner is unavailable,
+explicitly dispatch with `heavy_runner_labels_json='["sieitz-runner"]'`; `salvage-api-evidence`
+shares the API job's selector to preserve workspace co-location. The shared general label makes
+both hosts eligible but does not guarantee how GitHub distributes jobs.
+
 ```bash
 gh workflow run promotion-quality-gate.yml --ref "$CANDIDATE_BRANCH"
 gh run list --workflow=promotion-quality-gate.yml -L1 --json databaseId,status,headSha
