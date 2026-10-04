@@ -26319,21 +26319,27 @@ unrelated phase by Pat's 2026-10-04 authorization above.
 
 ### Acceptance and validation evidence
 
-- [ ] POS-only browser journey proves API item seeding, UI checkout, stock decrement, POS history to
-      receipt detail continuity, and a readable downloaded POS sales CSV.
+- [x] POS-only browser journey proves API item seeding, UI checkout, stock decrement, POS history to
+      receipt detail continuity, and a readable downloaded POS sales CSV. `workflow_dispatch` run
+      `37208644721` completed the Playwright step successfully on `vm-openproject` via the
+      `sieitz-runner` label.
 - [x] Promotion workflow uses `pos-sales-e2e-quality` and `web-core-quality`; the former installs
       POS dependencies, starts no IMS frontend, and both jobs remain advisory.
 - [x] The workflow checker, advisory evidence reporter, local-gate mapping, and docs agree on the
       renamed jobs and the removed IMS-own-lint gate.
 - [x] POS build, lint, app-version policy, workflow-shape check, documentation, architecture, and
       compliance checks pass.
-- [ ] A successful `workflow_dispatch` against the PR branch records job total, Chromium install,
-      and Playwright journey timing for comparison with run 37092548319 and the former IMS quality
-      job. Run `37203799433` on implementation SHA
-      `122c06095e73ee5669e68df96b74c7667aa0bd39` completed all jobs successfully, but its advisory
-      reporter correctly surfaced that the POS browser journey failed: the API rejected the
-      dynamically selected Vite origin with `CORS_NOT_ALLOWED`. The origin is now added to the
-      isolated E2E API's explicit allowlist; this acceptance remains open pending a passing rerun.
+- [ ] The full `workflow_dispatch` and evidence report complete, recording timing comparisons with
+      run `37092548319` and the former IMS quality job. In run `37208644721` on implementation SHA
+      `4f9d372e0a8242a56f1d57b9638b8b3a2c569fde`, the POS job took 5m23s, Chromium installation
+      took 6s, and the passing Playwright journey took 1m14s. Compared with run `37092548319`
+      (22m16s / ~10m12s / ~5m42s), the POS job is 16m53s shorter, Chromium setup is 10m6s shorter,
+      and the journey is 4m28s shorter; it is also 24s faster than the former IMS job's 1m38s
+      journey. The POS job and its evidence artifact completed, while other advisory jobs in this
+      dispatch were still queued or running at ledger update time. Run `37203799433` on SHA
+      `122c06095e73ee5669e68df96b74c7667aa0bd39` had failed the browser journey because the API
+      rejected the dynamic Vite origin with `CORS_NOT_ALLOWED`; the explicit isolated-origin
+      allowlist is now in place.
 
 ### Links
 
