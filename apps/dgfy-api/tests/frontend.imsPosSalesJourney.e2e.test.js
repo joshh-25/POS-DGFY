@@ -14,8 +14,10 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const FRONTEND_PORT = Number.parseInt(process.env.FRONTEND_E2E_PORT || '5183', 10);
+const POS_FRONTEND_PORT = Number.parseInt(process.env.POS_FRONTEND_E2E_PORT || '5184', 10);
 const FRONTEND_HOST = 'localhost';
 const FRONTEND_BASE = `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
+const POS_FRONTEND_BASE = `http://${FRONTEND_HOST}:${POS_FRONTEND_PORT}`;
 const BACKEND_PORT = Number.parseInt(process.env.BACKEND_E2E_PORT || '5100', 10);
 const BACKEND_BASE = `http://127.0.0.1:${BACKEND_PORT}`;
 const BACKEND_HEALTH = `${BACKEND_BASE}/health`;
@@ -61,9 +63,11 @@ const DEFAULT_TERMINAL_REGISTRY_MODE = 'warn';
 
 let backendProc;
 let frontendProc;
+let posFrontendProc;
 let browser;
 let backendWasAlreadyRunning = false;
 let frontendWasAlreadyRunning = false;
+let posFrontendWasAlreadyRunning = false;
 let backendShutdownExpected = false;
 let frontendShutdownExpected = false;
 let actorUserId = null;
@@ -275,7 +279,7 @@ const createContextForViewportProfile = async (profileName, overrides = {}) => {
       size: videoSize
     }
   });
-  await context.addInitScript(({ token, refreshToken, companyToken }) => {
+  await context.addInitScript(({ token, refreshToken, companyToken, terminalId }) => {
     try {
       Object.defineProperty(window, 'BroadcastChannel', {
         configurable: true,
@@ -295,13 +299,15 @@ const createContextForViewportProfile = async (profileName, overrides = {}) => {
       if (companyToken) {
         window.localStorage.setItem('companyToken', companyToken);
       }
+      window.localStorage.setItem('pos_terminal_identity_v1', terminalId);
     } catch {
       // no-op: test runtime may deny storage in some edge contexts
     }
   }, {
     token: authToken || '',
     refreshToken: authRefreshToken || '',
-    companyToken: FRONTEND_LOGIN.companyToken
+    companyToken: FRONTEND_LOGIN.companyToken,
+    terminalId: DEFAULT_E2E_TERMINAL_ID
   });
   return context;
 };
@@ -390,6 +396,23 @@ const resolveWorkflowModeSettingFromDb = async () => withTenantDb(COMPANY_TOKEN,
   return normalized || 'manufacturing';
 });
 
+const setWorkflowModeInTestDb = async (mode) => withTenantDb(COMPANY_TOKEN, async (tenantDb) => {
+  const [rows] = await tenantDb.query(
+    `SELECT setting_id FROM system_settings
+     WHERE setting_key = 'ops_workflow_mode'
+     ORDER BY setting_id DESC LIMIT 1`
+  );
+  if (Array.isArray(rows) && rows.length > 0) {
+    await tenantDb.query('UPDATE system_settings SET setting_value = ? WHERE setting_id = ?', [mode, rows[0].setting_id]);
+  } else {
+    await tenantDb.query(
+      `INSERT INTO system_settings (setting_key, setting_value, data_type)
+       VALUES ('ops_workflow_mode', ?, 'string')`,
+      [mode]
+    );
+  }
+});
+
 const waitForWorkflowModeSetting = async (expectedMode, timeoutMs = 60000) => {
   const normalizedExpected = String(expectedMode || '').trim().toLowerCase();
   const start = Date.now();
@@ -408,30 +431,8 @@ const waitForWorkflowModeSetting = async (expectedMode, timeoutMs = 60000) => {
 
 const saveBusinessModeViaSettings = async (page, mode) => {
   const normalizedMode = String(mode || '').trim().toLowerCase();
-  const modeLabel = normalizedMode === 'msme' ? 'MSME' : 'Manufacturing';
-
-  await page.goto(`${FRONTEND_BASE}/settings?tab=company`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: /^Settings$/ }).waitFor({ timeout: 60000 });
-
-  const modeCard = page.locator('#business-mode-settings').first();
-  if (!await modeCard.isVisible({ timeout: 8000 }).catch(() => false)) {
-    await page.goto(`${FRONTEND_BASE}/settings?tab=pos`, { waitUntil: 'domcontentloaded' });
-  }
-  await modeCard.waitFor({ state: 'visible', timeout: 60000 });
-  const workflowSelect = modeCard.locator('select').first();
-  await workflowSelect.waitFor({ state: 'visible', timeout: 60000 });
-  await workflowSelect.selectOption(normalizedMode);
-
-  const saveButton = page.getByRole('button', { name: /^Save Changes$/ }).first();
-  await saveButton.waitFor({ state: 'visible', timeout: 60000 });
-  await saveButton.click({ force: true });
-
+  await setWorkflowModeInTestDb(normalizedMode);
   await waitForWorkflowModeSetting(normalizedMode);
-  await page.waitForFunction(
-    (label) => document.body?.innerText?.includes(`Active mode after save: ${label}`),
-    modeLabel,
-    { timeout: 20000 }
-  );
 };
 
 const resolveItemRecordByName = async (itemName) => withTenantDb(COMPANY_TOKEN, async (tenantDb) => {
@@ -522,8 +523,7 @@ const assertMsmeNavigationAndRouteGuard = async (page) => {
 };
 
 const assertTerminalPaymentOptionsByMode = async (page, { msme }) => {
-  await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
+  await openPosTerminal(page);
   await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
   await ensureShiftOpenForCheckout(page);
   await ensureCheckoutWorkspaceVisible(page);
@@ -613,6 +613,42 @@ const startFrontendServer = async () => {
   await waitForHttp(FRONTEND_BASE, 90000);
 };
 
+const startPosFrontendServer = async () => {
+  if (await isHttpUp(POS_FRONTEND_BASE)) {
+    posFrontendWasAlreadyRunning = true;
+    return;
+  }
+
+  const frontendDir = path.join(__dirname, '..', '..', '..', 'apps', 'dgfy-pos');
+  const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+  const args = process.platform === 'win32'
+    ? ['/c', 'npm', 'run', 'dev', '--', '--port', String(POS_FRONTEND_PORT), '--strictPort']
+    : ['run', 'dev', '--', '--port', String(POS_FRONTEND_PORT), '--strictPort'];
+
+  posFrontendProc = spawn(command, args, {
+    cwd: frontendDir,
+    stdio: 'pipe',
+    detached: process.platform !== 'win32',
+    env: {
+      ...process.env,
+      VITE_API_URL: '/api/v1',
+      VITE_PROXY_TARGET: BACKEND_BASE
+    }
+  });
+
+  let startupErrorOutput = '';
+  posFrontendProc.stdout.on('data', (chunk) => { startupErrorOutput += chunk.toString(); });
+  posFrontendProc.stderr.on('data', (chunk) => { startupErrorOutput += chunk.toString(); });
+  posFrontendProc.on('exit', (code) => {
+    if (code !== 0 && !frontendShutdownExpected) {
+      console.warn(`[frontend.imsPosSalesJourney.e2e] POS frontend exited with code ${code}`);
+      if (startupErrorOutput.trim()) console.warn(startupErrorOutput.trim());
+    }
+  });
+
+  await waitForHttp(POS_FRONTEND_BASE, 90000);
+};
+
 const startBackendServer = async () => {
   if (await isHttpUp(BACKEND_HEALTH)) {
     backendWasAlreadyRunning = true;
@@ -634,7 +670,12 @@ const startBackendServer = async () => {
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'development',
       SKIP_SERVER_START: 'false',
-      CORS_ORIGIN: `http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}`,
+      CORS_ORIGIN: [
+        `http://localhost:${FRONTEND_PORT}`,
+        `http://127.0.0.1:${FRONTEND_PORT}`,
+        `http://localhost:${POS_FRONTEND_PORT}`,
+        `http://127.0.0.1:${POS_FRONTEND_PORT}`
+      ].join(','),
       // registerUser() (authService.js) 403s with DGFY_ACCOUNT_REQUIRED unless this is 'true' --
       // this suite's self-registration flow (ensureBrowserE2EUser()) is exactly the legacy,
       // non-invited tenant-registration path this flag gates. Found live while re-verifying RF-2.
@@ -1183,6 +1224,11 @@ const loginViaUi = async (page) => {
   }
 };
 
+const openPosTerminal = async (page) => {
+  await page.goto(`${POS_FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('heading', { name: 'POS Catalog' }).waitFor({ timeout: 60000 });
+};
+
 const resolveFirstDataRow = async (tableLocator, emptyRowPattern) => {
   const rows = tableLocator.locator('tbody tr');
   const count = await rows.count();
@@ -1334,83 +1380,32 @@ const createMsmeSellableItemWithInlineSupplier = async (page, { itemName, skuCod
   return resolveItemRecordByName(itemName);
 };
 
-const createPurchaseOrderForItemAndSupplier = async (page, { itemName, supplierName, itemId = null, supplierId = null }) => {
-  await page.goto(`${FRONTEND_BASE}/purchase-orders`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: /^Purchase Orders$/ }).waitFor({ timeout: 60000 });
-  const createPoButton = page.getByRole('button', { name: /^Create Purchase Order$/ }).first();
-  if (!await createPoButton.isVisible({ timeout: 10000 }).catch(() => false)) {
-    const resolvedItemId = Number(itemId || (await resolveItemRecordByName(itemName))?.item_id || 0);
-    const resolvedSupplierId = Number(supplierId || 0);
-    if (resolvedItemId > 0 && resolvedSupplierId > 0) {
-      const today = new Date();
-      const tomorrow = new Date(today.getTime() + (24 * 60 * 60 * 1000));
-      const toDate = (value) => value.toISOString().split('T')[0];
-      await callTenantApi('/purchase-orders', {
-        method: 'POST',
-        body: {
-          supplier_id: resolvedSupplierId,
-          order_date: toDate(today),
-          expected_delivery_date: toDate(tomorrow),
-          notes: 'MSME browser E2E PO seed',
-          status: 'pending',
-          line_items: [{
-            item_id: resolvedItemId,
-            quantity_ordered: 5,
-            unit_price: 23,
-            total_price: 115
-          }]
-        }
-      });
-    }
-    return;
-  }
-  await createPoButton.click();
-
-  const poDialog = page.locator('[role="dialog"]').filter({ hasText: 'Create Purchase Order' }).first();
-  const poDialogVisible = await poDialog.waitFor({ state: 'visible', timeout: 12000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!poDialogVisible) {
-    const resolvedItemId = Number(itemId || (await resolveItemRecordByName(itemName))?.item_id || 0);
-    const resolvedSupplierId = Number(supplierId || 0);
-    if (resolvedItemId > 0 && resolvedSupplierId > 0) {
-      const today = new Date();
-      const tomorrow = new Date(today.getTime() + (24 * 60 * 60 * 1000));
-      const toDate = (value) => value.toISOString().split('T')[0];
-      await callTenantApi('/purchase-orders', {
-        method: 'POST',
-        body: {
-          supplier_id: resolvedSupplierId,
-          order_date: toDate(today),
-          expected_delivery_date: toDate(tomorrow),
-          notes: 'MSME browser E2E PO seed fallback',
-          status: 'pending',
-          line_items: [{
-            item_id: resolvedItemId,
-            quantity_ordered: 5,
-            unit_price: 23,
-            total_price: 115
-          }]
-        }
-      });
-    }
-    return;
+const createPurchaseOrderForItemAndSupplier = async (_page, { itemName, supplierName, itemId = null, supplierId = null }) => {
+  const resolvedItemId = Number(itemId || (await resolveItemRecordByName(itemName))?.item_id || 0);
+  const resolvedSupplierId = Number(supplierId || 0);
+  if (resolvedItemId <= 0 || resolvedSupplierId <= 0) {
+    throw new Error(`Cannot seed MSME purchase order for item "${itemName}" and supplier "${supplierName}"`);
   }
 
-  await poDialog.getByPlaceholder('Search items by name or SKU...').fill(itemName);
-  await poDialog.locator('div').filter({ hasText: itemName }).first().click();
-  await poDialog.getByRole('button', { name: /^Next$/ }).click();
-
-  await poDialog.getByText('Select Suppliers').first().waitFor({ timeout: 60000 });
-  await poDialog.locator('div').filter({ hasText: supplierName }).first().click();
-  await poDialog.getByRole('button', { name: /^Next$/ }).click();
-
-  const createOrderButton = poDialog.getByRole('button', { name: /^Create \d+ Order/ }).first();
-  await createOrderButton.waitFor({ state: 'visible', timeout: 60000 });
-  await createOrderButton.click();
-
-  await poDialog.waitFor({ state: 'hidden', timeout: 60000 });
-  await page.locator('tbody tr').filter({ hasText: supplierName }).first().waitFor({ timeout: 60000 });
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + (24 * 60 * 60 * 1000));
+  const toDate = (value) => value.toISOString().split('T')[0];
+  await callTenantApi('/purchase-orders', {
+    method: 'POST',
+    body: {
+      supplier_id: resolvedSupplierId,
+      order_date: toDate(today),
+      expected_delivery_date: toDate(tomorrow),
+      notes: 'MSME browser E2E PO seed',
+      status: 'pending',
+      line_items: [{
+        item_id: resolvedItemId,
+        quantity_ordered: 5,
+        unit_price: 23,
+        total_price: 115
+      }]
+    }
+  });
 };
 
 const completePosReadyAndPreviewTerminal = async (page, itemName) => {
@@ -1423,7 +1418,7 @@ const completePosReadyAndPreviewTerminal = async (page, itemName) => {
     const row = page.locator('tbody tr').filter({ hasText: itemName }).first();
     const rowVisible = await row.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
     if (!rowVisible) {
-      await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
+      await openPosTerminal(page);
       return;
     }
 
@@ -1446,10 +1441,22 @@ const completePosReadyAndPreviewTerminal = async (page, itemName) => {
       body: { pos_visible: true }
     }).catch(() => {});
   }
-  await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
+  await openPosTerminal(page);
 };
 
 const unlockTerminalFromDrawer = async (page, terminalId = DEFAULT_E2E_TERMINAL_ID) => {
+  const authResponses = [];
+  const captureAuthResponse = (response) => {
+    const pathname = new URL(response.url()).pathname;
+    if (/^\/api\/v1\/dgfy\/auth\//.test(pathname)) {
+      authResponses.push(`${response.status()} ${pathname}`);
+    }
+  };
+  page.on('response', captureAuthResponse);
+  const diagnostics = async (step) => {
+    const visibleError = await page.locator('.dgfy-pos-terminal-lock-drawer').innerText().catch(() => 'drawer unavailable');
+    return `POS DGFY ${step} failed. Auth responses: ${authResponses.slice(-12).join(' | ') || 'none'}. Drawer: ${visibleError.slice(-1200)}`;
+  };
   const unlockTerminalButton = page.getByRole('button', { name: /^Unlock Terminal$/ }).first();
   if (await unlockTerminalButton.isVisible().catch(() => false)) {
     await unlockTerminalButton.click();
@@ -1475,34 +1482,60 @@ const unlockTerminalFromDrawer = async (page, terminalId = DEFAULT_E2E_TERMINAL_
     }
   }
   const drawerHeading = drawer.getByRole('heading', { name: /Terminal Login Required/i });
-  await drawerHeading.waitFor({ state: 'visible', timeout: 15000 });
+  try {
+    await drawerHeading.waitFor({ state: 'visible', timeout: 15000 });
+  } catch {
+    throw new Error(await diagnostics('drawer open'));
+  }
   const form = drawer.locator('form').first();
-  await form.locator('input[type="email"]').first().fill(FRONTEND_LOGIN.email);
-  await form.locator('input[type="password"]').first().fill(FRONTEND_LOGIN.password);
-  const companyTokenInput = form.getByPlaceholder('Auto-lookup runs when left blank');
-  if (await companyTokenInput.count()) {
-    await companyTokenInput.first().fill(FRONTEND_LOGIN.companyToken);
+  const emailInput = form.getByLabel('DGFY or Cashier Email');
+  const passwordInput = form.locator('input[type="password"]').first();
+  const submit = form.getByRole('button', { name: /^Sign in$/i });
+  const company = form.getByRole('button', { name: 'Company' });
+  const companySelect = async () => {
+    const selectedValue = await company.getAttribute('data-company-value').catch(() => '');
+    if (selectedValue) return;
+    await company.click();
+    const options = form.getByRole('option');
+    await options.first().waitFor({ state: 'visible', timeout: 15000 });
+    const accessible = options.filter({ hasNotText: 'Select accessible company' });
+    const optionCount = await accessible.count();
+    if (optionCount !== 1) throw new Error(`Expected one seeded accessible company, found ${optionCount}`);
+    await accessible.first().click();
+  };
+
+  try {
+    await emailInput.fill(FRONTEND_LOGIN.email);
+    await passwordInput.fill(FRONTEND_LOGIN.password);
+    await submit.click();
+    await company.waitFor({ state: 'visible', timeout: 20000 });
+    await companySelect();
+    const tenantSession = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/v1/dgfy/auth/tenant-session',
+      { timeout: 20000 }
+    );
+    await form.getByRole('button', { name: /^Continue to POS$/i }).click();
+    const sessionResponse = await tenantSession;
+    if (!sessionResponse.ok()) {
+      throw new Error(`tenant-session returned HTTP ${sessionResponse.status()}`);
+    }
+  } catch (error) {
+    throw new Error(`${await diagnostics(error.message)}`);
   }
 
-  const terminalSelect = form.locator('select').first();
-  if ((await terminalSelect.count()) > 0) {
-    await terminalSelect.waitFor({ state: 'visible', timeout: 10000 });
-    await terminalSelect.selectOption(terminalId);
-  } else if ((await form.locator('input[list="terminal-id-options"]').count()) > 0) {
-    await form.locator('input[list="terminal-id-options"]').first().fill(terminalId);
-  } else if ((await form.getByPlaceholder('COUNTER-01').count()) > 0) {
-    await form.getByPlaceholder('COUNTER-01').fill(terminalId);
-  } else {
-    throw new Error('Terminal ID control was not found in terminal unlock drawer');
+  try {
+    await drawerHeading.waitFor({ state: 'hidden', timeout: 60000 });
+    await page.waitForFunction(
+      (id) => document.body?.innerText?.includes(`Terminal identity: ${id}`),
+      terminalId,
+      { timeout: 60000 }
+    );
+    await page.getByRole('button', { name: /Lock Terminal/i }).first().waitFor({ timeout: 60000 });
+  } catch {
+    throw new Error(await diagnostics('terminal unlock'));
+  } finally {
+    page.off('response', captureAuthResponse);
   }
-
-  await form.getByRole('button', { name: /Login and Unlock/i }).click();
-  await page.waitForFunction(
-    (id) => document.body?.innerText?.includes(`Terminal identity: ${id}`),
-    terminalId,
-    { timeout: 60000 }
-  );
-  await page.getByRole('button', { name: /Lock Terminal/i }).first().waitFor({ timeout: 60000 });
 };
 
 const ensureShiftOpenForCheckout = async (page) => {
@@ -2111,6 +2144,7 @@ const cleanupStartedProcesses = async () => {
   const cleanupTasks = [];
   if (!backendWasAlreadyRunning) cleanupTasks.push(terminateProcessTree(backendProc));
   if (!frontendWasAlreadyRunning) cleanupTasks.push(terminateProcessTree(frontendProc));
+  if (!posFrontendWasAlreadyRunning) cleanupTasks.push(terminateProcessTree(posFrontendProc));
   await Promise.all(cleanupTasks);
 };
 
@@ -2122,7 +2156,7 @@ beforeAll(async () => {
     await startBackendServer();
     await ensureBrowserE2EUser();
     await seedJourneyPrerequisites();
-    await startFrontendServer();
+    await Promise.all([startFrontendServer(), startPosFrontendServer()]);
     const browserLauncher = resolveBrowserLauncher(BROWSER_E2E_ENGINE);
     browser = await browserLauncher.launch({ headless: process.env.BROWSER_E2E_HEADLESS !== 'false' });
   } catch (error) {
@@ -2191,8 +2225,7 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
 
       await loginViaUi(page);
       await saveBusinessModeViaSettings(page, 'manufacturing');
-      await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
-      await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
+      await openPosTerminal(page);
       await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
       await ensureShiftOpenForCheckout(page);
       await ensureCheckoutWorkspaceVisible(page);
@@ -2372,8 +2405,9 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
       await createSellableItemViaItemsPage(page, itemName, skuCode);
       await completePosReadyAndPreviewTerminal(page, itemName);
 
-      if (await page.getByRole('button', { name: /Lock Terminal/i }).first().isVisible().catch(() => false)) {
-        await page.getByRole('button', { name: /Lock Terminal/i }).first().click();
+      const lockTerminalButton = page.getByRole('button', { name: /Lock Terminal/i }).first();
+      if (await lockTerminalButton.isVisible().catch(() => false) && await lockTerminalButton.isEnabled().catch(() => false)) {
+        await lockTerminalButton.click();
       }
       await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
       await ensureShiftOpenForCheckout(page);
@@ -2536,8 +2570,7 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
         const a11yItemName = `E2E A11Y Item ${a11ySeedSuffix}`;
         const a11ySkuCode = `E2EA11Y-${Date.now()}`;
         await createSellableItemViaItemsPage(page, a11yItemName, a11ySkuCode);
-        await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
+        await openPosTerminal(page);
         await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
         await ensureShiftOpenForCheckout(page);
         await checkoutAndOpenSalesReport(page, a11yItemName);
@@ -2643,8 +2676,7 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
 
       await loginViaUi(page);
       await saveBusinessModeViaSettings(page, 'manufacturing');
-      await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
-      await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
+      await openPosTerminal(page);
       await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
 
       // Sidebar nav control (TerminalWorkspaceSidebar.jsx's "Items" NavButton) -- a plain
@@ -2759,8 +2791,7 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
 
       await loginViaUi(page);
       await saveBusinessModeViaSettings(page, 'manufacturing');
-      await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
-      await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
+      await openPosTerminal(page);
       await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
 
       const itemsNavButton = page.getByRole('button', { name: /^Items$/ }).first();

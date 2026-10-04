@@ -130,6 +130,7 @@
     },
     "@xmldom/xmldom": "0.8.15",
     "ajv": "6.14.0",
+    "brace-expansion@^5.0.2": "5.0.12",
     "dottie": "2.0.7",
     "eslint": {
       "minimatch": "10.2.5"
@@ -143,6 +144,9 @@
     "minimatch@10.2.6": {
       "brace-expansion": "5.0.12"
     },
+    "minimatch@9.0.7": {
+      "brace-expansion": "5.0.12"
+    },
     "moment": "2.31.0",
     "nodemon": {
       "minimatch": "3.1.5"
@@ -153,7 +157,7 @@
       "uuid": "11.1.1"
     },
     "underscore": "1.13.8",
-    "js-yaml": "4.3.1"
+    "js-yaml": "4.3.2"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",

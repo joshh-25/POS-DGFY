@@ -36,6 +36,16 @@ test('all-step guard catches a new step without continue-on-error', () => {
 
 test('reporter posts evidence after advisory jobs and has narrow API permissions', () => {
   assert.deepEqual(checkQualityReporterShape(realWorkflow), []);
+  const reporterJob = realWorkflow.split('\n  report-quality-evidence:\n')[1].split('\n  salvage-api-evidence:\n')[0];
+  assert.ok(reporterJob, 'report-quality-evidence job must exist');
+  const installIndex = reporterJob.indexOf('run: npm ci --ignore-scripts');
+  const reportIndex = reporterJob.indexOf('run: node scripts/post-quality-suite-evidence.js');
+  assert.notEqual(installIndex, -1, 'reporter must install root locked dependencies');
+  assert.notEqual(reportIndex, -1, 'reporter must invoke the evidence script');
+  assert.ok(
+    installIndex < reportIndex,
+    'reporter must install root locked dependencies before invoking the evidence script'
+  );
   const missingPermissions = realWorkflow.replace('      pull-requests: write\n', '');
   assert.match(checkQualityReporterShape(missingPermissions).join('\n'), /PR comment and Actions read permissions/);
 });

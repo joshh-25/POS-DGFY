@@ -293,7 +293,7 @@ describe('POS checkout discount policy validator', () => {
         const req = {
             body: {
                 idempotency_key: 'idem-12345678',
-                order_method: 'delivery',
+                order_method: 'dine_in',
                 payment_type: 'cash',
                 service_fee_amount: 50,
                 lines: [{ item_id: 1, quantity: 1, sale_price: 100 }]
@@ -313,7 +313,7 @@ describe('POS checkout discount policy validator', () => {
         const req = {
             body: {
                 idempotency_key: 'idem-12345678',
-                order_method: 'delivery',
+                order_method: 'dine_in',
                 payment_type: 'cash',
                 service_fee_amount: -1,
                 lines: [{ item_id: 1, quantity: 1, sale_price: 100 }]
