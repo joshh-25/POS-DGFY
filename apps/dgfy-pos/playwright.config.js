@@ -63,11 +63,12 @@ export default defineConfig({
   ],
   webServer: isLocalRun ? [
     {
-      command: 'npm run dev',
+      command: 'node --import ./src/instrument.js src/server.js',
       cwd: path.resolve(__dirname, '../dgfy-api'),
       url: `${apiURL}/api/v1/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      env: { DGFY_LEGACY_TENANT_REGISTRATION_ENABLED: 'true' },
     },
     {
       command: 'npm run dev',

@@ -42,12 +42,24 @@ export async function signIn(page, credentials, options = {}) {
   if (await companySelect.isVisible().catch(() => false)) {
     await expect(companySelect).toBeEnabled();
     const requestedCompany = options.companyName?.trim() || process.env.E2E_TEST_COMPANY_NAME?.trim();
-    if (requestedCompany) {
-      await companySelect.selectOption({ label: requestedCompany });
-    } else {
-      await companySelect.selectOption({ index: 1 });
+    const tagName = await companySelect.evaluate((element) => element.tagName.toLowerCase());
+    if (tagName === 'select') {
+      if (requestedCompany) {
+        await companySelect.selectOption({ label: requestedCompany });
+      } else {
+        await companySelect.selectOption({ index: 1 });
+      }
+    } else if (!await companySelect.getAttribute('data-company-value')) {
+      await companySelect.click();
+      const companies = page.getByRole('option').filter({ hasNotText: 'Select accessible company' });
+      if (requestedCompany) {
+        await companies.filter({ hasText: requestedCompany }).first().click();
+      } else {
+        await companies.first().click();
+      }
     }
-    await expect(companySelect).toHaveValue(/.+/);
+    if (tagName === 'select') await expect(companySelect).toHaveValue(/.+/);
+    else await expect(companySelect).toHaveAttribute('data-company-value', /.+/);
     const tenantSessionResponse = page.waitForResponse(
       (response) => /\/api\/v1\/dgfy\/auth\/tenant-session$/.test(new URL(response.url()).pathname),
       { timeout: 20_000 }
