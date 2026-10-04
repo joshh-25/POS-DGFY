@@ -90,7 +90,7 @@ which is exactly why that stays self-hosted).
 | `pr-*-build-checks.yml` (api/frontend/migration-runner) | `sieitz-runner`/`sieitz-lg` (per `RUNNER_LIGHT_JSON`/`RUNNER_HEAVY_JSON`); **`ubuntu-latest`** when the PR's head is `release/*`/`hotfix/*`/`fix/*` and base is `main` (`pr-checks.yml`'s `route-build-checks` job, #1529, #1701) | Docker buildx (present on `ubuntu-latest` by default — no setup gap on the hosted path); `frontend-build-check` is the one self-hosted-path job with a measured size signal (OOM risk on the small box) | #923 measured split governs the self-hosted default; #1529 adds the promotion/hotfix-to-`main` exception, #1701 extends its head-shape match to `fix/*`. `BUILD_CACHE_FROM` stays disabled (empty) even on the hosted path for now — #726's cache-backend flip isn't yet wired to this narrower condition, a follow-up, not a defect |
 | `pr-android-build-checks.yml` / `build-android-manual.yml` | `ubuntu-latest` (hardcoded, not via the label indirection) | Android SDK + Gradle | Stays hosted regardless of policy — neither self-hosted box has the Android SDK installed (explicit comment in the workflow file) |
 | `pr-migration-runner-build-checks.yml` | `sieitz-runner`/`sieitz-lg` | `docker/setup-qemu-action` for `linux/amd64,linux/arm64` — needs privileged Docker to register binfmt handlers | Flagged "not yet verified" in the migration handoff doc; re-confirm before relying on it |
-| `promotion-quality-gate.yml` (`dgfy-api-quality`, `migration-runner-quality`, `frontend-storefront-quality`, `salvage-api-evidence`) | `sieitz-lg` by default via `heavy_runner_labels_json`; operator can override to `['sieitz-runner']` | DB-backed API/migration jobs, storefront browser build, API evidence salvage (co-located with API tests) | Heavy work stays on the large runner by default; the explicit override keeps the advisory suite runnable if it is unavailable |
+| `promotion-quality-gate.yml` (`dgfy-api-quality`, `migration-runner-quality`, `frontend-storefront-quality`, `salvage-api-evidence`) | `sieitz-runner` by default via `heavy_runner_labels_json`; operator can pin to `['sieitz-lg']` | DB-backed API/migration jobs, storefront browser build, API evidence salvage (same runner class as API tests) | Capacity trial on PR #2246: the shared label allows either host. The API evidence salvage job uses the same selector, but GitHub does not guarantee that separate jobs land on the same physical host; the API job's artifact upload remains the normal evidence path |
 | `promotion-quality-gate.yml` (remaining lint/build/docs/audit jobs, including `pos-sales-e2e-quality`) | `sieitz-runner` by default via `general_runner_labels_json`; operator may select another runner-label array | POS E2E is intentionally general-class after the trimmed post-#2251 run completed on both runner classes in about 5m; both machines carry `sieitz-runner` | The shared label permits either host; GitHub's scheduler controls actual distribution. `report-quality-evidence` remains pinned to `sieitz-runner` |
 | `deploy.yml` / `deploy-main.yml` (SSH publish) | `sieitz-runner` (generic) | SSH key material, network reach to DEV/STAGING/BETA/PROD, credential cleanup step (`if: always()`, since this box is persistent, not ephemeral) | `vpn_required: false` everywhere — both self-hosted boxes reach the DEV/STAGING LAN directly; VPN only matters from a hosted runner with no LAN path (see "VPN" below) |
 | `verify-deployment.yml` | `sieitz-runner` | Read-only `docker compose ps`/`docker inspect`/in-container `curl`; `vpn_required` input, default `false` | No runner affinity needed post-#599 |
@@ -191,6 +191,20 @@ separate, gated, not-yet-run work — this doc's matrix and fallback-switch mech
 otherwise unchanged by the flip.
 
 ## Amendments
+
+### 2026-10-05: Manual quality-gate heavy jobs use the shared self-hosted pool on PR #2246
+
+The `heavy_runner_labels_json` default and its job fallbacks now use `sieitz-runner`, matching the
+general quality jobs. This is a manual-only capacity trial so DB-backed/API-heavy checks can be
+scheduled on either self-hosted host. Operators can set `heavy_runner_labels_json` to
+`["sieitz-lg"]` to pin those jobs to `vm-sieitzstaging` if the shared-pool run shows resource
+pressure on `vm-openproject`.
+
+`salvage-api-evidence` shares the API job's selector. The shared label does not guarantee physical
+host affinity between separate jobs; the API job's own artifact upload remains the normal evidence
+path, while salvage only covers the exceptional case where the API job ends before uploading its
+artifacts. Revert the dedicated `ci` runner-default commit on PR #2246 to restore the
+`sieitz-lg` default.
 
 ### 2026-09-03: `pr-checks.yml` build-check jobs route to GitHub-hosted runners for a release/*|hotfix/* PR into main (#1529)
 
