@@ -147,6 +147,24 @@ function checkQualityReporterShape(qualityWorkflowText) {
   if (!block.includes('if: always()')) problems.push('promotion-quality-gate.yml: report-quality-evidence must run after failed advisory jobs');
   if (!block.includes('scripts/post-quality-suite-evidence.js')) problems.push('promotion-quality-gate.yml: report-quality-evidence must call the evidence reporter');
   if (!block.includes('pull-requests: write') || !block.includes('actions: read')) problems.push('promotion-quality-gate.yml: reporter needs PR comment and Actions read permissions');
+
+  const setupIndex = block.indexOf('id: setup_reporter_node');
+  const installIndex = block.indexOf('id: install_reporter_dependencies');
+  const reportIndex = block.indexOf('id: post_quality_evidence');
+  const setupStep = setupIndex < 0 ? '' : block.slice(block.lastIndexOf('      - ', setupIndex), block.indexOf('\n      - ', setupIndex));
+  if (setupIndex < 0) {
+    problems.push('promotion-quality-gate.yml: reporter must configure Node before installing root dependencies');
+  } else {
+    if (!setupStep.includes('uses: actions/setup-node@v4')) problems.push('promotion-quality-gate.yml: reporter Node setup must use actions/setup-node@v4');
+    if (!/^ {10}node-version: ['"]?24['"]?\s*$/m.test(setupStep)) problems.push('promotion-quality-gate.yml: reporter Node setup must use Node 24');
+    if (!/^ {10}cache: npm\s*$/m.test(setupStep)) problems.push('promotion-quality-gate.yml: reporter Node setup must cache npm');
+    if (!/^ {10}cache-dependency-path: package-lock\.json\s*$/m.test(setupStep)) problems.push('promotion-quality-gate.yml: reporter npm cache must use the root package-lock.json');
+  }
+  if (installIndex < 0 || reportIndex < 0 || !(setupIndex < installIndex && installIndex < reportIndex)) {
+    problems.push('promotion-quality-gate.yml: reporter must configure Node, install root locked dependencies, then invoke the evidence reporter');
+  }
+  if (!block.includes('run: npm ci --ignore-scripts')) problems.push('promotion-quality-gate.yml: reporter must retain npm ci --ignore-scripts for root dependencies');
+
   for (const job of QUALITY_JOBS) {
     if (!block.includes(`needs.${job}.outputs.real_failures`)) {
       problems.push(`promotion-quality-gate.yml: reporter must preserve step failures from ${job}`);
