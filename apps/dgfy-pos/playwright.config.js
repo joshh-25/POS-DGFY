@@ -13,6 +13,7 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
+const webServerPort = process.env.E2E_WEB_PORT || '5174';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
 
 export default defineConfig({
@@ -71,7 +72,7 @@ export default defineConfig({
       env: { DGFY_LEGACY_TENANT_REGISTRATION_ENABLED: 'true' },
     },
     {
-      command: 'npm run dev',
+      command: `npm run dev -- --port ${webServerPort} --strictPort`,
       cwd: __dirname,
       url: `${baseURL}/login`,
       reuseExistingServer: !process.env.CI,

@@ -1397,6 +1397,7 @@ jobs:
             echo "PORT=${api_port}"
             echo "E2E_API_URL=http://127.0.0.1:${api_port}"
             echo "E2E_BASE_URL=http://127.0.0.1:${web_port}"
+            echo "E2E_WEB_PORT=${web_port}"
             echo "VITE_API_URL=http://127.0.0.1:${api_port}/api/v1"
           } >> "$GITHUB_ENV"
           echo "Selected POS E2E API port ${api_port} and web port ${web_port}."
