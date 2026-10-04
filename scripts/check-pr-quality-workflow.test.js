@@ -38,16 +38,36 @@ test('reporter posts evidence after advisory jobs and has narrow API permissions
   assert.deepEqual(checkQualityReporterShape(realWorkflow), []);
   const reporterJob = realWorkflow.split('\n  report-quality-evidence:\n')[1].split('\n  salvage-api-evidence:\n')[0];
   assert.ok(reporterJob, 'report-quality-evidence job must exist');
+  const setupIndex = reporterJob.indexOf('id: setup_reporter_node');
   const installIndex = reporterJob.indexOf('run: npm ci --ignore-scripts');
   const reportIndex = reporterJob.indexOf('run: node scripts/post-quality-suite-evidence.js');
+  assert.notEqual(setupIndex, -1, 'reporter must configure Node.js');
   assert.notEqual(installIndex, -1, 'reporter must install root locked dependencies');
   assert.notEqual(reportIndex, -1, 'reporter must invoke the evidence script');
   assert.ok(
-    installIndex < reportIndex,
-    'reporter must install root locked dependencies before invoking the evidence script'
+    setupIndex < installIndex && installIndex < reportIndex,
+    'reporter must configure Node, install root dependencies, then invoke the evidence script'
   );
+  assert.match(reporterJob, /uses: actions\/setup-node@v4[\s\S]*?node-version: '24'[\s\S]*?cache: npm[\s\S]*?cache-dependency-path: package-lock\.json/);
   const missingPermissions = realWorkflow.replace('      pull-requests: write\n', '');
   assert.match(checkQualityReporterShape(missingPermissions).join('\n'), /PR comment and Actions read permissions/);
+});
+
+test('reporter contract rejects missing or misordered Node setup and a non-root npm cache key', () => {
+  const withoutSetup = realWorkflow.replace(/      - name: Setup Node\.js\n        continue-on-error: true\n        id: setup_reporter_node[\s\S]*?cache-dependency-path: package-lock\.json\n/, '');
+  assert.match(checkQualityReporterShape(withoutSetup).join('\n'), /configure Node before installing root dependencies/);
+
+  const setupAfterInstall = realWorkflow.replace(
+    /      - name: Setup Node\.js\n        continue-on-error: true\n        id: setup_reporter_node[\s\S]*?cache-dependency-path: package-lock\.json\n/,
+    ''
+  ).replace('      - name: Post advisory quality evidence to the associated PR', "      - name: Setup Node.js\n        continue-on-error: true\n        id: setup_reporter_node\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: npm\n          cache-dependency-path: package-lock.json\n      - name: Post advisory quality evidence to the associated PR");
+  assert.match(checkQualityReporterShape(setupAfterInstall).join('\n'), /configure Node, install root locked dependencies, then invoke/);
+
+  const wrongCachePath = realWorkflow.replace(
+    'id: setup_reporter_node\n        uses: actions/setup-node@v4\n        timeout-minutes: 5\n        with:\n          node-version: \'24\'\n          cache: npm\n          cache-dependency-path: package-lock.json',
+    'id: setup_reporter_node\n        uses: actions/setup-node@v4\n        timeout-minutes: 5\n        with:\n          node-version: \'24\'\n          cache: npm\n          cache-dependency-path: apps/dgfy-api/package-lock.json'
+  );
+  assert.match(checkQualityReporterShape(wrongCachePath).join('\n'), /root package-lock\.json/);
 });
 
 test('quality evidence keeps advisory step failures visible even when the job conclusion is success', () => {
