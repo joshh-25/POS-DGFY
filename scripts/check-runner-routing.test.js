@@ -178,7 +178,7 @@ test('checkInputDefaultSite: valid paired default reports no problems', () => {
         required: false
         type: string
         # default: '["ubuntu-latest"]'
-        default: '["sieitz-runner"]'
+        default: '["sieitz-lg"]'
 `;
   assert.deepEqual(checkInputDefaultSite('promotion-quality-gate.yml', text), []);
 });
@@ -191,7 +191,7 @@ test('checkInputDefaultSite: missing commented alternate is a problem', () => {
         description: test
         required: false
         type: string
-        default: '["sieitz-runner"]'
+        default: '["sieitz-lg"]'
 `;
   const problems = checkInputDefaultSite('promotion-quality-gate.yml', text);
   assert.equal(problems.length, 1);
@@ -254,13 +254,13 @@ test('promotion quality workflow routes its heavy and general jobs to the matchi
   };
 
   for (const jobName of ['dgfy-api-quality', 'migration-runner-quality', 'frontend-storefront-quality', 'salvage-api-evidence']) {
-    assertUsesSelector(jobName, 'heavy_runner_labels_json', 'sieitz-runner');
+    assertUsesSelector(jobName, 'heavy_runner_labels_json', 'sieitz-lg');
   }
   for (const jobName of ['web-core-quality', 'frontend-pos-quality', 'frontend-opis-quality', 'frontend-budgets-quality', 'repository-dependency-quality', 'repository-ci-contracts-quality', 'repository-docs-quality', 'pos-sales-e2e-quality']) {
     assertUsesSelector(jobName, 'general_runner_labels_json', 'sieitz-runner');
   }
 
-  assert.match(extractInputDefaultSite(text, 'heavy_runner_labels_json').activeLine, /\["sieitz-runner"\]/);
+  assert.match(extractInputDefaultSite(text, 'heavy_runner_labels_json').activeLine, /\["sieitz-lg"\]/);
   assert.match(extractInputDefaultSite(text, 'general_runner_labels_json').activeLine, /\["sieitz-runner"\]/);
   assert.match(jobs.get('report-quality-evidence').block, /runs-on: \['sieitz-runner'\]/);
 });
