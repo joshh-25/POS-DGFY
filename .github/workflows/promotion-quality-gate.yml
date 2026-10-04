@@ -2372,6 +2372,15 @@ jobs:
             exit 1
           fi
           echo "[workspace-hygiene] tree complete."
+      - name: Setup Node.js
+        continue-on-error: true
+        id: setup_reporter_node
+        uses: actions/setup-node@v4
+        timeout-minutes: 5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install root locked dependencies
         continue-on-error: true
         id: install_reporter_dependencies
