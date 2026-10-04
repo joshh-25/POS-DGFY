@@ -458,9 +458,12 @@ jobs:
     # waited-on as an ordinary step rather than the runner's own `services:` mechanism, so it's
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     continue-on-error: true
-    # Use the shared local CI runner pool so this browser job can spread across the available
-    # workers. POS API and Vite ports are selected per run below to avoid host-service collisions.
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-runner"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1163,7 +1166,7 @@ jobs:
     continue-on-error: true
     # Use the shared local CI runner pool so this browser job can spread across the available
     # workers. POS API and Vite ports are selected per run below to avoid host-service collisions.
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-runner"]') }}
+    runs-on: ['sieitz-runner']
     # #1844/#1856: the original 20m job / 15m step budgets cancelled the first live run before its
     # evidence chain completed, while the temporary 200m/150m measurement window let a 3-second
     # browser-launch failure hang for 2h15m. Keep enough margin for the known ~22m healthy run, but
