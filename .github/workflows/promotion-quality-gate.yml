@@ -1362,12 +1362,51 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
+      # Self-hosted runners may already serve an unrelated app on POS's historical local port 5000.
+      # Select free loopback ports so Playwright starts the API and Vite server for this run itself.
+      - name: Select isolated POS E2E ports
+        continue-on-error: true
+        id: select_pos_e2e_ports
+        if: steps.wait_services.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r api_port web_port < <(node --input-type=module <<'NODE'
+          import net from 'node:net';
+
+          const findPort = async (start) => {
+            for (let port = start; port < start + 1000; port += 1) {
+              const available = await new Promise((resolve) => {
+                const server = net.createServer();
+                server.once('error', () => resolve(false));
+                server.listen({ host: '127.0.0.1', port, exclusive: true }, () => {
+                  server.close(() => resolve(true));
+                });
+              });
+              if (available) return port;
+            }
+            throw new Error(`No free loopback port found starting at ${start}`);
+          };
+
+          const apiPort = await findPort(5100);
+          const webPort = await findPort(apiPort + 1);
+          process.stdout.write(`${apiPort} ${webPort}\n`);
+          NODE
+          )
+          {
+            echo "PORT=${api_port}"
+            echo "E2E_API_URL=http://127.0.0.1:${api_port}"
+            echo "E2E_BASE_URL=http://127.0.0.1:${web_port}"
+            echo "VITE_API_URL=http://127.0.0.1:${api_port}/api/v1"
+          } >> "$GITHUB_ENV"
+          echo "Selected POS E2E API port ${api_port} and web port ${web_port}."
+
       # Advisory-only by deliberate rollout posture (Pat's call, #1749). Capture elapsed Playwright
       # time separately from the Chromium installation step for the acceptance comparison.
       - name: Run POS sales journey e2e
         continue-on-error: true
         id: run_pos_sales_e2e
-        if: steps.wait_services.outcome == 'success'
+        if: steps.wait_services.outcome == 'success' && steps.select_pos_e2e_ports.outcome == 'success'
         working-directory: apps/dgfy-pos
         run: |
           started=$SECONDS
@@ -1444,6 +1483,7 @@ jobs:
             Verify Playwright Chromium installation|${{ steps.verify_playwright_install.outcome }}
             Prepare test schema|${{ steps.prepare_test_schema.outcome }}
             Register original legacy tenant fixture|${{ steps.register_original_tenant.outcome }}
+            Select isolated POS E2E ports|${{ steps.select_pos_e2e_ports.outcome }}
             Run POS sales journey e2e|${{ steps.run_pos_sales_e2e.outcome }}
             Upload POS sales e2e evidence|${{ steps.upload_pos_sales_e2e_evidence.outcome }}
         run: |
