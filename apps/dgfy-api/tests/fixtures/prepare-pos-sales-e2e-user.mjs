@@ -15,6 +15,7 @@ const username = email.replace(/[^a-z0-9]/gi, '_');
 const password = `PosSales-${Date.now()}-E2e!`;
 const phone = `+1555${String(Date.now()).slice(-7)}`;
 const terminalId = 'E2E-TERMINAL-01';
+let locationId;
 
 const requestJson = async (route, body) => {
   const response = await fetch(`${apiBaseUrl}/api/v1${route}`, {
@@ -58,9 +59,18 @@ const database = await mysql.createConnection({
 try {
   const [[user]] = await database.execute('SELECT user_id FROM users WHERE email = ? LIMIT 1', [email]);
   if (!user) throw new Error('Registered POS sales E2E user was not found in the tenant database.');
+  const testPermissions = JSON.stringify([
+    'items:view',
+    'items:create',
+    'items:edit',
+    'pos:view',
+    'pos:transact',
+    'reports:view',
+    'settings:view',
+  ]);
   await database.execute(
-    'UPDATE users SET role = ?, is_master_admin = 1, is_active = 1, updated_at = NOW() WHERE user_id = ?',
-    ['admin', user.user_id],
+    'UPDATE users SET role = ?, permissions = ?, is_master_admin = 0, is_active = 1, updated_at = NOW() WHERE user_id = ?',
+    ['manager', testPermissions, user.user_id],
   );
 
   const [[tenant]] = await database.execute(
@@ -86,14 +96,23 @@ try {
     [accountId, tenant.id, user.user_id],
   );
 
-  const [locationResult] = await database.execute(
-    `INSERT INTO tenant_locations (
-       name, address_line, latitude, longitude, is_open, is_active, is_primary_storefront,
-       supports_delivery, supports_pickup, supports_dine_in, allow_dine_in_pay_at_store
-     ) VALUES (?, 'POS sales journey E2E location', 14.5995, 120.9842, 1, 1, 1, 1, 1, 0, 0)`,
-    [`POS Sales E2E ${Date.now()}`],
+  const [[existingLocation]] = await database.execute(
+    `SELECT location_id FROM tenant_locations
+     WHERE is_active = 1
+     ORDER BY is_primary_storefront DESC, location_id ASC
+     LIMIT 1`,
   );
-  const locationId = Number(locationResult.insertId);
+  locationId = Number(existingLocation?.location_id || 0);
+  if (!locationId) {
+    const [locationResult] = await database.execute(
+      `INSERT INTO tenant_locations (
+         name, address_line, latitude, longitude, is_open, is_active, is_primary_storefront,
+         supports_delivery, supports_pickup, supports_dine_in, allow_dine_in_pay_at_store
+       ) VALUES (?, 'POS sales journey E2E location', 14.5995, 120.9842, 1, 1, 1, 1, 1, 0, 0)`,
+      [`POS Sales E2E ${Date.now()}`],
+    );
+    locationId = Number(locationResult.insertId);
+  }
   if (!locationId) throw new Error('POS sales E2E location could not be created.');
 
   const terminalRegistry = JSON.stringify([
@@ -118,4 +137,4 @@ try {
   await database.end();
 }
 
-process.stdout.write(JSON.stringify({ email, password, companyToken, terminalId }));
+process.stdout.write(JSON.stringify({ email, password, companyToken, terminalId, locationId }));

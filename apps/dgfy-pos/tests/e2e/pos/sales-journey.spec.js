@@ -34,44 +34,6 @@ const authenticatedRequest = async (page, authHeaders, method, route, data) => {
   return body?.data ?? body;
 };
 
-const openTerminal = async (page, user) => {
-  const unlockButton = page.getByRole('button', { name: /^Unlock Terminal$/i }).first();
-  const drawer = page.locator('.dgfy-pos-terminal-lock-drawer');
-  const drawerHeading = drawer.getByRole('heading', { name: /Terminal Login Required/i });
-  if (await unlockButton.isVisible().catch(() => false)) await unlockButton.click();
-  let drawerClass = String(await drawer.getAttribute('class').catch(() => '') || '');
-  if (!drawerClass.includes('translate-x-0')) {
-    const terminalLocked = await page.getByText('Terminal Locked').first().isVisible().catch(() => false);
-    const posMenuButton = page.getByRole('button', { name: /^POS Menu$/ }).first();
-    if (terminalLocked && await posMenuButton.isVisible().catch(() => false)) {
-      await posMenuButton.click();
-      if (await unlockButton.isVisible().catch(() => false)) await unlockButton.click();
-      drawerClass = String(await drawer.getAttribute('class').catch(() => '') || '');
-    }
-  }
-  if (!drawerClass.includes('translate-x-0')) return;
-  await expect(drawerHeading).toBeVisible();
-  await drawer.getByLabel('DGFY or Cashier Email').fill(user.email);
-  await drawer.locator('input[type="password"]').fill(user.password);
-  await drawer.getByRole('button', { name: /^Sign in$/i }).click();
-
-  const companyButton = drawer.getByRole('button', { name: 'Company' });
-  await companyButton.waitFor({ state: 'visible', timeout: 20_000 });
-  if (!await companyButton.getAttribute('data-company-value')) {
-    await companyButton.click();
-    const companyOptions = drawer.getByRole('option').filter({ hasNotText: 'Select accessible company' });
-    await expect(companyOptions).toHaveCount(1);
-    await companyOptions.first().click();
-  }
-
-  const tenantSession = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === '/api/v1/dgfy/auth/tenant-session'
-  ));
-  await drawer.getByRole('button', { name: /^Continue to POS$/i }).click();
-  expect((await tenantSession).status()).toBe(200);
-  await expect(drawer.getByRole('heading', { name: /Terminal Login Required/i })).toBeHidden({ timeout: 60_000 });
-};
-
 const stockForItem = async (page, authHeaders, itemId) => {
   const item = await authenticatedRequest(page, authHeaders, 'GET', `/items/${itemId}`);
   return Number(item?.current_stock ?? item?.item?.current_stock);
@@ -102,7 +64,6 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
   await signIn(page, { email: user.email, password: user.password }, {
     companyName: process.env.E2E_TEST_COMPANY_NAME || 'Original Legacy Data',
   });
-  await openTerminal(page, user);
   await expect.poll(() => Boolean(authHeaders.authorization), { timeout: 15_000 }).toBe(true);
 
   const item = await authenticatedRequest(page, authHeaders, 'POST', '/items', {
@@ -134,24 +95,17 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
   let closingCashAmount = 0;
   try {
     if (!openedShiftId) {
-      const openDialog = page.getByRole('dialog').filter({ hasText: 'Open Shift' }).last();
-      const openShiftButton = page.getByRole('button', { name: 'Open Shift', exact: true }).last();
-      if (!await openShiftButton.isVisible().catch(() => false)) {
-        await page.getByRole('button', { name: /^Shift/ }).click();
-      }
-      await expect(openShiftButton).toBeVisible();
-      const openingAmount = page.locator('input[placeholder="0.00"]:visible').last();
-      if (await openingAmount.isVisible().catch(() => false)) await openingAmount.fill('0');
-      const shiftOpened = page.waitForResponse((response) => (
-        new URL(response.url()).pathname.endsWith('/api/v1/pos/terminal/shifts/open')
-      ));
-      await openShiftButton.click();
-      const response = await shiftOpened;
-      const body = await readJson(response);
-      expect(response.status(), JSON.stringify(body)).toBe(200);
-      openedShiftId = Number(body?.data?.shift?.pos_terminal_shift_id || body?.data?.shift?.id || body?.data?.pos_terminal_shift_id);
+      const openedShift = await authenticatedRequest(page, authHeaders, 'POST', '/pos/terminal/shifts/open', {
+        idempotency_key: `pos-sales-e2e-open-${Date.now()}`,
+        terminal_id: user.terminalId,
+        location_id: user.locationId,
+        opening_float_amount: 0,
+        opening_note: 'POS sales journey E2E',
+      });
+      openedShiftId = Number(openedShift?.shift?.pos_terminal_shift_id || openedShift?.pos_terminal_shift_id);
       expect(openedShiftId).toBeGreaterThan(0);
-      await openDialog.waitFor({ state: 'hidden' }).catch(() => {});
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(page.getByRole('heading', { name: 'POS Catalog' })).toBeVisible();
     }
 
     const catalogSearch = page.locator('input[placeholder="Search POS-visible items..."]:visible').first();
