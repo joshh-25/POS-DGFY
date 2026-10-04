@@ -26285,3 +26285,68 @@ Not complete; set only after all acceptance gates pass.
 
 Phase 473 only after Phase 472's acceptance gates complete and then-current ledger eligibility is
 reconciled; Phase 471 remains independently open unless its own gates pass.
+
+**Overridden 2026-10-04:** Pat explicitly authorized unrelated #1749 Phase 473 to proceed
+independently of Phase 472's open acceptance gates. This does not mark Phase 472 complete or waive
+its remaining criteria.
+
+## Phase 473 - POS-owned advisory sales journey and shared-code quality scope (#1749)
+
+### Initiative and release
+
+Promotion quality evidence and POS terminal sales verification, current release.
+
+### Objective and scope
+
+Replace the IMS-coupled promotion sales journey with a POS-owned browser flow that seeds a
+POS-visible item through the tenant API, completes checkout in the POS terminal, verifies stock
+decrement, opens the transaction from POS history into receipt detail, and downloads readable POS
+sales CSV. Remove the old combined IMS/POS journey and its API scripts. Rename the sales and shared
+web-core quality jobs, remove the IMS-own-lint step, retain web-core lint/contracts/scroll checks in
+the IMS-installed test toolchain, and keep all promotion-quality steps advisory.
+
+### Status
+
+`in_progress` — implementation and local validation pass; the required promotion-quality dispatch
+and PR review remain outstanding. Pat explicitly authorized this phase to proceed while Phase 472
+remains in progress.
+
+### Dependencies
+
+Issue #1749's 2026-10-03 scope update; ADR 0071 and ADR 0087 shared web-core test-runner constraint;
+promotion-quality evidence reporter contract. Phase 472 remains incomplete but is not blocking this
+unrelated phase by Pat's 2026-10-04 authorization above.
+
+### Acceptance and validation evidence
+
+- [x] POS-only browser journey proves API item seeding, UI checkout, stock decrement, POS history to
+      receipt detail continuity, and a readable downloaded POS sales CSV.
+- [x] Promotion workflow uses `pos-sales-e2e-quality` and `web-core-quality`; the former installs
+      POS dependencies, starts no IMS frontend, and both jobs remain advisory.
+- [x] The workflow checker, advisory evidence reporter, local-gate mapping, and docs agree on the
+      renamed jobs and the removed IMS-own-lint gate.
+- [x] POS build, lint, app-version policy, workflow-shape check, documentation, architecture, and
+      compliance checks pass; the focused POS sales journey passes locally.
+- [ ] A successful `workflow_dispatch` against the PR branch records job total, Chromium install,
+      and Playwright journey timing for comparison with run 37092548319 and the former IMS quality
+      job.
+
+### Links
+
+- Issue: #1749; planner handoff: `.tmp/plan-1749.md` (planning head
+  `b38e0f687ee45d43de27ef4a94a8577999a5a9dc`).
+- Architecture: ADR 0071 and ADR 0087.
+- Implementation: `.github/workflows/promotion-quality-gate.yml`,
+  `apps/dgfy-pos/tests/e2e/pos/sales-journey.spec.js`, and the matching API test fixture.
+- Contracts: `scripts/check-pr-quality-workflow.js`, `scripts/post-quality-suite-evidence.js`,
+  `scripts/gate-release-local.js`, `docs/testing/README.md`, and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+
+### Completion date
+
+Not complete; set only after the acceptance evidence above, including the real promotion-quality
+dispatch, is recorded.
+
+### Next eligible phase
+
+Phase 474 only after Phase 473's acceptance gates complete and the ledger is rechecked.

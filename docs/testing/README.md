@@ -350,25 +350,24 @@ Operational note:
 
 Use `RUN_BROWSER_E2E=true` only for browser-driven suites. Default backend test runs stay fast and deterministic, while release/main and nightly workflows execute enforced browser journey gates.
 
-## IMS -> POS -> Sales Journey E2E
+## POS Sales Journey E2E
 
-For the end-to-end cashier/admin continuity path (create item -> POS-ready -> checkout -> POS history -> Sales export), use:
+The POS-owned browser journey seeds one POS-visible item through the tenant API, completes checkout
+in the POS terminal, verifies stock decrement, opens the sale from POS history into receipt detail,
+and downloads/reads the POS sales CSV:
 
-1. Browser E2E (Chromium, desktop profile):
-   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e`
-2. Browser E2E matrix with keyboard/screen-reader accessibility pass (desktop + mobile):
-   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e:matrix`
-3. Release-profile core journey only (the promotion-leg shape: create item -> POS-ready -> checkout -> history -> sales export, with the required export-download assertion):
-   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e:release`
+```sh
+npm --prefix apps/dgfy-pos run test:pos-sales-e2e
+```
 
 CI execution and advisory status:
-1. The journey runs as `frontend-ims-pos-sales-e2e-quality` when an operator dispatches
+1. The journey runs as `pos-sales-e2e-quality` when an operator dispatches
    `.github/workflows/promotion-quality-gate.yml`; no promotion PR triggers it automatically.
 2. All steps are advisory. A failure, cancellation, or missing run does not block promotion; the
    reporter posts SHA-bound per-job evidence to an associated open PR when one exists.
-3. Failure artifacts (trace/video/screenshot, plus the downloaded sales CSV persisted by the export
-   assertion) upload as `ims-pos-sales-e2e-<sha>` and are retained for 30 days. There is no nightly
-   E2E workflow; drift detection comes from optional operator dispatches.
+3. Failure artifacts (trace/video/screenshot and the downloaded CSV) upload as
+   `pos-sales-e2e-<sha>` and are retained for 30 days. There is no nightly E2E workflow; drift
+   detection comes from optional operator dispatches.
 
 4. **New/expanded E2E coverage here is lower priority than POS/Storefront**, per `AGENTS.md`'s
    "Engineering-investment priority" note (#1739) — this existing required journey gate is
