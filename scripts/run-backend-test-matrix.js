@@ -12,6 +12,12 @@ const JEST_BIN = path.join(APP_DIR, 'node_modules', 'jest', 'bin', 'jest.js');
 const JEST_CONFIG = path.join(APP_DIR, 'jest.config.cjs');
 const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
+// Landlord test databases accepted by the API defaults and repository's test workflow.
+// Keep this an exact list: a substring like "contest" must never authorize migrations.
+const SUPPORTED_LANDLORD_TEST_DATABASE_NAMES = new Set([
+  'sku_test',
+  'sku_inventory_manager_test',
+]);
 // #986/#1124: the early-stop-on-first-failure default was a cost optimization from when the full
 // matrix took ~19.6min (#345); #1015/#1016 cut that to ~2-4min, so the premise that "stopping early
 // saves meaningful time" no longer holds, while the cost of stopping early -- every later group's
@@ -314,11 +320,11 @@ function runSchemaPreflight(evidenceDir) {
 // columns on migrated tables and intentionally fails closed when that contract is
 // not met. Keep the DB-name guard here as well as in runSchemaPreflight so a
 // misconfigured local invocation cannot migrate a non-test database.
-function prepareLandlordTestDatabase(evidenceDir) {
+function prepareLandlordTestDatabase(evidenceDir, { spawn = spawnSync } = {}) {
   const databaseName = process.env.DB_NAME_TEST
     || (process.env.CI ? process.env.DB_NAME : null)
     || 'sku_test';
-  if (!/test/i.test(String(databaseName || ''))) {
+  if (!SUPPORTED_LANDLORD_TEST_DATABASE_NAMES.has(String(databaseName || ''))) {
     throw new Error(`Refusing backend test database migration on non-test database: ${databaseName}`);
   }
 
@@ -327,7 +333,7 @@ function prepareLandlordTestDatabase(evidenceDir) {
   if (!fs.existsSync(sequelizeCli)) {
     throw new Error(`Migration runner sequelize-cli not found at ${sequelizeCli}`);
   }
-  const result = spawnSync(process.execPath, [sequelizeCli, 'db:migrate', '--config', 'src/config/sequelize.config.cjs'], {
+  const result = spawn(process.execPath, [sequelizeCli, 'db:migrate', '--config', 'src/config/sequelize.config.cjs'], {
     cwd: migrationRunnerDir,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
@@ -820,4 +826,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { prepareLandlordTestDatabase };
+module.exports = { prepareLandlordTestDatabase, SUPPORTED_LANDLORD_TEST_DATABASE_NAMES };
