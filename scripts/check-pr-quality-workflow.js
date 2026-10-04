@@ -21,14 +21,14 @@ const REQUIRED_QUALITY_MARKERS = [
   'workflow_dispatch:',
   'dgfy-api-quality:',
   'migration-runner-quality:',
-  'frontend-ims-quality:',
+  'web-core-quality:',
   'frontend-pos-quality:',
   'frontend-storefront-quality:',
   'frontend-opis-quality:',
   'repository-dependency-quality:',
   'repository-ci-contracts-quality:',
   'repository-docs-quality:',
-  'frontend-ims-pos-sales-e2e-quality:',
+  'pos-sales-e2e-quality:',
   'report-quality-evidence:',
   'node scripts/post-quality-suite-evidence.js --run-id',
   'npm run test:quality-evidence',
@@ -59,7 +59,7 @@ const DEVELOP_PR_LINT_JOB_BY_APP = Object.freeze({
 const QUALITY_JOBS = [
   'dgfy-api-quality',
   'migration-runner-quality',
-  'frontend-ims-quality',
+  'web-core-quality',
   'frontend-pos-quality',
   'frontend-storefront-quality',
   'frontend-opis-quality',
@@ -67,7 +67,7 @@ const QUALITY_JOBS = [
   'repository-ci-contracts-quality',
   'repository-docs-quality',
   'frontend-budgets-quality',
-  'frontend-ims-pos-sales-e2e-quality',
+  'pos-sales-e2e-quality',
 ];
 
 function findJobBlock(workflowText, jobName) {

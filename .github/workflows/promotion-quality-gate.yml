@@ -618,7 +618,7 @@ jobs:
   # dgfy-ims/vite.config.js's test.include -- to keep web-core dependency-
   # and node_modules-free); the 7th, storefrontErrorMessages.test.js, is
   # storefront's own local test.
-  frontend-ims-quality:
+  web-core-quality:
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
@@ -698,14 +698,6 @@ jobs:
         run: npm ci
         timeout-minutes: 10
 
-      - name: Run dgfy-ims lint
-        continue-on-error: true
-        id: run_ims_lint
-        working-directory: apps/dgfy-ims
-        run: npm run lint
-        # included as optional advisory evidence since #2236
-        timeout-minutes: 5
-
       # packages/web-core has no lint script/devDependencies of its own (ADR 0071 Decision 4
       # [binding] -- it must never get its own node_modules or test runner), so coverage runs from
       # dgfy-ims's already-installed ESLint via --resolve-plugins-relative-to, the same pattern the
@@ -772,7 +764,6 @@ jobs:
             Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
-            Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
             Run web-core lint|${{ steps.run_web_core_lint.outcome }}
             Run frontend contract tests|${{ steps.run_shared_fnb_contract_tests.outcome }}
             Run scroll contracts|${{ steps.run_scroll_contracts.outcome }}
@@ -1168,31 +1159,10 @@ jobs:
             echo "GHA_EOF_1066"
           } >> "$GITHUB_OUTPUT"
 
-  # #1712: advisory-only job -- the second half of this issue's "no functional check runs
-  # pre-staging/main" gap, distinct from Decision 1's lint coverage above. Runs
-  # apps/dgfy-api/tests/frontend.imsPosSalesJourney.e2e.test.js (its own frontendDir path was stale
-  # since the apps/dgfy-api absorption, 50ec10d9f, 2026-07-20 -- fixed in the #1712 PR) plus one new
-  # assertion (added in that PR) that actually drives TerminalOperationsWorkspace's admin "Items"
-  # tab -- the code path #1698 broke, never exercised by this file's pre-existing checkout/history/
-  # receipt-only scenarios.
-  #
-  # Ships as optional advisory evidence, like every other job in this file -- deliberately,
-  # while reliability work continues (Pat's call, #1749; the advisory-to-blocking transition in that
-  # issue's original Definition of Done is deferred, not part of the #1749 non-blocking slice).
-  # The two setup blockers the #1712 PR named as the reasons this stays advisory are now resolved:
-  #   1. The suite's `ensureBrowserE2EUser()` registers its browser E2E user against the
-  #      "Original Legacy Data" tenant (`COMPANY_TOKEN = 'token-original'`), which does not exist
-  #      on a freshly migrated DB (no seeder creates it) -- this job provisions it via the
-  #      already-documented, already-existing `scripts/register_original_tenant.js`
-  #      (docs/guides/SCRIPTS_GUIDE.md #9) below, run once per job before the suite itself.
-  #   2. `ensureBrowserE2EUser()`'s registration payload now sends `phone_number`, which
-  #      `apps/dgfy-api/src/validators/authValidator.js` requires unconditionally (previously
-  #      confirmed live as HTTP 422 "Phone number is required").
-  # Five recent runs completed successfully including the E2E step (run IDs 35881140769,
-  # 35769529780, 35681287827, 35642102406, 35388351166), so execution evidence exists -- but those
-  # greens predate the required export-download assertion (#1749), which is what makes future
-  # green evidence proof of this journey rather than a vacuous pass.
-  frontend-ims-pos-sales-e2e-quality:
+  # #1749 keeps this optional evidence job advisory and POS-owned. Its browser test bootstraps a
+  # disposable tenant admin and terminal fixture, seeds a sellable item through the API, then
+  # exercises checkout, stock, history/detail, and CSV export entirely in POS.
+  pos-sales-e2e-quality:
     continue-on-error: true
     # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
     # (ubuntu-latest) is the intended class for this job too. See gate/
@@ -1307,8 +1277,8 @@ jobs:
           cache: npm
           cache-dependency-path: |
             apps/dgfy-api/package-lock.json
-            apps/dgfy-ims/package-lock.json
             apps/dgfy-migration-runner/package-lock.json
+            apps/dgfy-pos/package-lock.json
 
       - name: Install API dependencies
         continue-on-error: true
@@ -1324,18 +1294,24 @@ jobs:
         run: npm ci
         timeout-minutes: 10
 
-      - name: Install dgfy-ims dependencies
+      - name: Install dgfy-pos dependencies
         continue-on-error: true
-        id: install_ims_deps
-        working-directory: apps/dgfy-ims
+        id: install_pos_deps
+        working-directory: apps/dgfy-pos
         run: npm ci
         timeout-minutes: 10
 
       - name: Install Playwright Chromium
         continue-on-error: true
         id: install_playwright
-        working-directory: apps/dgfy-api
-        run: npx playwright install --with-deps chromium
+        working-directory: apps/dgfy-pos
+        run: |
+          started=$SECONDS
+          set +e
+          npx playwright install --with-deps chromium
+          status=$?
+          echo "Chromium install duration: $((SECONDS - started)) seconds" | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
         timeout-minutes: 10
 
       # #1856: the install step remains advisory so its raw installer output is preserved, but this
@@ -1345,7 +1321,7 @@ jobs:
       - name: Verify Playwright Chromium installation
         continue-on-error: true
         id: verify_playwright_install
-        working-directory: apps/dgfy-api
+        working-directory: apps/dgfy-pos
         shell: bash
         run: |
           set -euo pipefail
@@ -1371,12 +1347,7 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
-      # Verified live during this PR's own investigation (not in the local sandbox that could not
-      # run MySQL/Redis at plan time): `ensureBrowserE2EUser()` registers its browser E2E user
-      # against the "Original Legacy Data" tenant (COMPANY_TOKEN = 'token-original'), which does
-      # not exist on a freshly migrated DB -- no seeder creates it. This script is the already-
-      # documented, already-existing tool for exactly that (docs/guides/SCRIPTS_GUIDE.md #9), not
-      # new tooling invented for this job.
+      # Provide the tenant used by the POS test's runtime-created admin account.
       - name: Register original legacy tenant fixture
         continue-on-error: true
         id: register_original_tenant
@@ -1391,23 +1362,23 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
-      # Advisory-only by deliberate rollout posture (Pat's call, #1749 -- the blocking flip is
-      # deferred), not by unresolved setup: the tenant fixture above and the suite's own
-      # `phone_number` payload fix are both in place. Real per-step failures still surface
-      # through record_outcomes below.
-      - name: Run frontend IMS/POS sales journey e2e
+      # Advisory-only by deliberate rollout posture (Pat's call, #1749). Capture elapsed Playwright
+      # time separately from the Chromium installation step for the acceptance comparison.
+      - name: Run POS sales journey e2e
         continue-on-error: true
-        id: run_ims_pos_sales_e2e
+        id: run_pos_sales_e2e
         if: steps.wait_services.outcome == 'success'
-        working-directory: apps/dgfy-api
+        working-directory: apps/dgfy-pos
         run: |
+          started=$SECONDS
           set +e
-          timeout --signal=TERM --kill-after=60s 1500s npm run test:frontend-ims-pos-sales-e2e
+          timeout --signal=TERM --kill-after=60s 1500s npm run test:pos-sales-e2e
           status=$?
+          echo "POS sales Playwright duration: $((SECONDS - started)) seconds" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -eq 124 ] || [ "$status" -eq 137 ] || [ "$status" -eq 143 ]; then
-            echo "::warning::IMS/POS sales E2E exceeded the controlled 25-minute timeout; salvaging artifacts and outcome reporting."
+            echo "::warning::POS sales E2E exceeded the controlled 25-minute timeout; salvaging artifacts and outcome reporting."
             {
-              echo "## IMS/POS sales E2E timeout salvage"
+              echo "## POS sales E2E timeout salvage"
               echo
               echo "The E2E process exceeded the controlled 25-minute timeout and was terminated."
               echo "The step remains advisory; downstream artifact upload, cleanup, and outcome reporting will continue."
@@ -1415,8 +1386,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit "$status"
-        # #1856: retain ~25m for the known ~22m healthy run, with the command-level timeout firing
-        # first so cleanup and evidence steps still have time inside the 30m step ceiling.
+        # Keep the command-level timeout below this step ceiling so cleanup and evidence steps run.
         timeout-minutes: 30
         env:
           NODE_ENV: development
@@ -1433,14 +1403,14 @@ jobs:
       # Mirrors the API test-matrix / F&B browser evidence uploads elsewhere in this file --
       # if-no-files-found: error (a missing artifact is real signal, not something to swallow),
       # retention-days: 30 (promotion evidence, not routine per-push scratch).
-      - name: Upload IMS/POS sales e2e evidence
+      - name: Upload POS sales e2e evidence
         continue-on-error: true
-        id: upload_ims_pos_sales_e2e_evidence
-        if: always() && steps.run_ims_pos_sales_e2e.outcome != 'skipped'
+        id: upload_pos_sales_e2e_evidence
+        if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
         uses: actions/upload-artifact@v7
         with:
-          name: ims-pos-sales-e2e-${{ github.sha }}
-          path: apps/dgfy-api/tests/artifacts/ims-pos-sales-journey/**
+          name: pos-sales-e2e-${{ github.sha }}
+          path: apps/dgfy-pos/test-results/**
           if-no-files-found: error
           retention-days: 30
 
@@ -1469,13 +1439,13 @@ jobs:
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install API dependencies|${{ steps.install_api_deps.outcome }}
             Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
-            Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
+            Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
             Install Playwright Chromium|${{ steps.install_playwright.outcome }}
             Verify Playwright Chromium installation|${{ steps.verify_playwright_install.outcome }}
             Prepare test schema|${{ steps.prepare_test_schema.outcome }}
             Register original legacy tenant fixture|${{ steps.register_original_tenant.outcome }}
-            Run frontend IMS/POS sales journey e2e|${{ steps.run_ims_pos_sales_e2e.outcome }}
-            Upload IMS/POS sales e2e evidence|${{ steps.upload_ims_pos_sales_e2e_evidence.outcome }}
+            Run POS sales journey e2e|${{ steps.run_pos_sales_e2e.outcome }}
+            Upload POS sales e2e evidence|${{ steps.upload_pos_sales_e2e_evidence.outcome }}
         run: |
           FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure" || $2=="cancelled"{print $1}' | paste -sd, - 2>/dev/null || true)
           {
@@ -1485,7 +1455,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # #1431 Phase 2 (gate 16, frontend.budgets): the mapping doc's original recommendation ("add
-  # builds to frontend-ims-quality/frontend-pos-quality first") does not work -- check-frontend-
+  # builds to web-core-quality/frontend-pos-quality first") does not work -- check-frontend-
   # budgets.js needs all three dist/assets dirs in ONE job's workspace, and a build step added to
   # a different job is invisible here. This job owns all three builds itself, SEQUENTIALLY (not
   # check:frontend-budgets's own default concurrent build) -- pr-checks.yml's own comment records
@@ -2191,7 +2161,7 @@ jobs:
     needs:
       - dgfy-api-quality
       - migration-runner-quality
-      - frontend-ims-quality
+      - web-core-quality
       - frontend-pos-quality
       - frontend-storefront-quality
       - frontend-opis-quality
@@ -2199,7 +2169,7 @@ jobs:
       - repository-ci-contracts-quality
       - repository-docs-quality
       - frontend-budgets-quality
-      - frontend-ims-pos-sales-e2e-quality
+      - pos-sales-e2e-quality
     if: always()
     # runs-on: ['ubuntu-latest']
     runs-on: ['sieitz-runner']
@@ -2277,7 +2247,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           DGFY_API_FAILURES: ${{ needs.dgfy-api-quality.outputs.real_failures }}
           MIGRATION_RUNNER_FAILURES: ${{ needs.migration-runner-quality.outputs.real_failures }}
-          IMS_FAILURES: ${{ needs.frontend-ims-quality.outputs.real_failures }}
+          WEB_CORE_FAILURES: ${{ needs.web-core-quality.outputs.real_failures }}
           POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
           STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
           OPIS_FAILURES: ${{ needs.frontend-opis-quality.outputs.real_failures }}
@@ -2285,7 +2255,7 @@ jobs:
           REPOSITORY_CI_CONTRACTS_FAILURES: ${{ needs.repository-ci-contracts-quality.outputs.real_failures }}
           REPOSITORY_DOCS_FAILURES: ${{ needs.repository-docs-quality.outputs.real_failures }}
           FRONTEND_BUDGETS_FAILURES: ${{ needs.frontend-budgets-quality.outputs.real_failures }}
-          IMS_POS_SALES_E2E_FAILURES: ${{ needs.frontend-ims-pos-sales-e2e-quality.outputs.real_failures }}
+          POS_SALES_E2E_FAILURES: ${{ needs.pos-sales-e2e-quality.outputs.real_failures }}
         run: node scripts/post-quality-suite-evidence.js --run-id "$RUN_ID"
 
   salvage-api-evidence:
