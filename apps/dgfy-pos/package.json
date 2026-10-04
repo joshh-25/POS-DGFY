@@ -13,7 +13,7 @@
     "lint": "eslint src vitePosOfflinePrecachePlugin.js --ext .js,.jsx",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:pos-sales-e2e": "playwright test tests/e2e/pos/sales-journey.spec.js",
+    "test:pos-sales-e2e": "playwright test tests/e2e/pos/sales-journey.spec.js --project=pos-sales-chromium",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",

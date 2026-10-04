@@ -1166,6 +1166,7 @@ jobs:
     continue-on-error: true
     # Use the shared local CI runner pool so this browser job can spread across the available
     # workers. POS API and Vite ports are selected per run below to avoid host-service collisions.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ['sieitz-runner']
     # #1844/#1856: the original 20m job / 15m step budgets cancelled the first live run before its
     # evidence chain completed, while the temporary 200m/150m measurement window let a 3-second

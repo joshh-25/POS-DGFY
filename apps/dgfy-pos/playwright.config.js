@@ -40,11 +40,16 @@ export default defineConfig({
   projects: [
     {
       name: 'google-chrome',
-      testIgnore: [/.*\.setup\.js/, /.*\.authenticated\.spec\.js/],
+      testIgnore: [/.*\.setup\.js/, /.*\.authenticated\.spec\.js/, /.*sales-journey\.spec\.js/],
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chrome',
       },
+    },
+    {
+      name: 'pos-sales-chromium',
+      testMatch: /.*sales-journey\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'setup',
