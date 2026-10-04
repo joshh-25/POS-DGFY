@@ -26327,9 +26327,14 @@ unrelated phase by Pat's 2026-10-04 authorization above.
       renamed jobs and the removed IMS-own-lint gate.
 - [x] POS build, lint, app-version policy, workflow-shape check, documentation, architecture, and
       compliance checks pass; the focused POS sales journey passes locally.
-- [ ] A successful `workflow_dispatch` against the PR branch records job total, Chromium install,
-      and Playwright journey timing for comparison with run 37092548319 and the former IMS quality
-      job.
+- [x] `workflow_dispatch` run `37203799433` on implementation SHA
+      `122c06095e73ee5669e68df96b74c7667aa0bd39` completed `pos-sales-e2e-quality` successfully on
+      runner `vm-openproject` via the `sieitz-runner` label. Job total: 7m32s; Playwright Chromium
+      install: 16s; browser journey: 1m57s. Compared with run `37092548319` (22m16s / ~10m12s /
+      ~5m42s) and the former IMS quality job (1m38s), the new job is 14m44s shorter overall and
+      Chromium setup is 9m56s shorter; the browser journey is 19s longer. At ledger update time,
+      unrelated advisory jobs in the same dispatch were still running or queued; their outcomes do
+      not change the POS journey job result.
 
 ### Links
 
