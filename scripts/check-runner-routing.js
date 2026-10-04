@@ -178,20 +178,20 @@ function findActiveSites(block) {
 }
 
 /**
- * Locates the single special site outside any job block: the `default:` value on a
- * `runner_labels_json` workflow input. In promotion-quality-gate.yml this is shared by the
- * `workflow_call:`/`workflow_dispatch:` triggers via the `&runner_labels_input` YAML anchor (one
- * physical site, both triggers); in deploy-main.yml (Phase 234 Wave 3, F-5) it's a plain
- * `workflow_dispatch:` input with no anchor. Same shape either way -- an 8-space-indented
- * `default:` line following a `runner_labels_json:` key line -- so one extractor covers both
+ * Locates the `default:` value on a named workflow input. Inputs may use the `&runner_labels_input`
+ * YAML anchor or be plain `workflow_dispatch:` inputs. The shape is the same either way -- an
+ * 8-space-indented `default:` line following the named input key -- so one extractor covers both
  * rather than forcing findActiveSites/extractJobBlocks to understand YAML anchors and non-job
  * top-level keys.
  *
  * @param {string} text workflow file contents
+ * @param {string} [inputName='runner_labels_json'] workflow input name
  * @returns {{activeLine: string, precedingLine: string} | null} the site, or null if not found
  */
-function extractInputDefaultSite(text) {
-  const anchorMatch = text.match(/runner_labels_json:\n(?:[^\n]*\n)*?( {8}default: .*)\n/);
+function extractInputDefaultSite(text, inputName = 'runner_labels_json') {
+  const escapedInputName = inputName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const inputRegex = new RegExp(`${escapedInputName}:\\n(?:[^\\n]*\\n)*?( {8}default: .*)\\n`);
+  const anchorMatch = text.match(inputRegex);
   if (!anchorMatch) return null;
   const activeLine = anchorMatch[1];
   const beforeIndex = anchorMatch.index + anchorMatch[0].indexOf(activeLine);
@@ -200,25 +200,26 @@ function extractInputDefaultSite(text) {
 }
 
 /**
- * Checks one file's `runner_labels_json` input `default:` site -- must be correctly paired with a
- * commented, opposite-class alternate directly above it, same convention as every job-level site.
+ * Checks one file's runner input `default:` site -- must be correctly paired with a commented,
+ * opposite-class alternate directly above it, same convention as every job-level site.
  *
  * @param {string} file which file, for message prefixing
  * @param {string} text workflow file contents
+ * @param {string} [inputName='runner_labels_json'] workflow input name
  * @returns {string[]} problems found; empty when the site is correctly paired
  */
-function checkInputDefaultSite(file, text) {
+function checkInputDefaultSite(file, text, inputName = 'runner_labels_json') {
   const problems = [];
-  const site = extractInputDefaultSite(text);
+  const site = extractInputDefaultSite(text, inputName);
   if (!site) {
     problems.push(
-      `${file}: could not find the runner_labels_json input's \`default:\` line -- did the ` +
+      `${file}: could not find the ${inputName} input's \`default:\` line -- did the ` +
       'workflow_call/workflow_dispatch input block get renamed or restructured? ' +
       'checkInputDefaultSite needs updating to match.'
     );
     return problems;
   }
-  problems.push(...checkPair(file, 'runner_labels_json input default', site.activeLine, site.precedingLine, 'default:'));
+  problems.push(...checkPair(file, `${inputName} input default`, site.activeLine, site.precedingLine, 'default:'));
   return problems;
 }
 
@@ -466,7 +467,8 @@ function checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesTex
     jobClassesByFile.set(file, jobClasses);
   }
 
-  problems.push(...checkInputDefaultSite('promotion-quality-gate.yml', qualityGateText));
+  problems.push(...checkInputDefaultSite('promotion-quality-gate.yml', qualityGateText, 'heavy_runner_labels_json'));
+  problems.push(...checkInputDefaultSite('promotion-quality-gate.yml', qualityGateText, 'general_runner_labels_json'));
   problems.push(...checkInputDefaultSite('deploy-main.yml', deployMainText));
   problems.push(...checkCoLocation(jobClassesByFile));
   problems.push(...checkActiveClassMatchesExpected(jobClassesByFile));

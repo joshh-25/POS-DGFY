@@ -8,12 +8,23 @@ name: Promotion Quality Gate
 on:
   workflow_dispatch:
     inputs:
-      runner_labels_json:
-        description: JSON array passed to runs-on for quality jobs.
+      heavy_runner_labels_json:
+        description: >-
+          JSON array passed to runs-on for DB-backed/heaviest quality jobs (dgfy-api-quality,
+          migration-runner-quality, frontend-storefront-quality, salvage-api-evidence). Override to
+          '["sieitz-runner"]' if sieitz-lg is unavailable.
         required: false
         type: string
         # default: '["ubuntu-latest"]'
         default: '["sieitz-lg"]'
+      general_runner_labels_json:
+        description: >-
+          JSON array passed to runs-on for the remaining quality jobs (lint/build/docs/audit jobs
+          plus pos-sales-e2e-quality). Spreads across either self-hosted box.
+        required: false
+        type: string
+        # default: '["ubuntu-latest"]'
+        default: '["sieitz-runner"]'
 
 concurrency:
   # Each operator dispatch has its own group; a later dispatch does not cancel an earlier run.
@@ -29,15 +40,11 @@ jobs:
     # waited-on as ordinary steps rather than the runner's own `services:` mechanism, so they're
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. The `|| '["sieitz-lg"]'`
-    # fallback literal is reached only on the release/* -> main leg (see the
-    # workflow_dispatch input above) -- flipping it routes
-    # exactly the prod promotion leg, by construction, no if:/matrix conditional
-    # needed or wanted. salvage-api-evidence below MUST always carry this job's same
-    # active class -- see that job's own comment for why.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # This DB-backed job uses heavy_runner_labels_json (default sieitz-lg).
+    # salvage-api-evidence below shares this selector to preserve workspace co-location.
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 45
     outputs:
       # #1066 RF-1: the *real* per-step outcome, read from steps.<id>.outcome (survives
@@ -458,12 +465,10 @@ jobs:
     # waited-on as an ordinary step rather than the runner's own `services:` mechanism, so it's
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -624,12 +629,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -781,12 +784,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -889,12 +890,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1046,12 +1045,10 @@ jobs:
   # fourth frontend app. Included in the optional operator-dispatched evidence suite.
   frontend-opis-quality:
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1164,10 +1161,12 @@ jobs:
   # exercises checkout, stock, history/detail, and CSV export entirely in POS.
   pos-sales-e2e-quality:
     continue-on-error: true
-    # Use the shared local CI runner pool so this browser job can spread across the available
-    # workers. POS API and Vite ports are selected per run below to avoid host-service collisions.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ['sieitz-runner']
+    # Keep this trimmed POS E2E job in the general pool: its latest post-#2251 run completed on
+    # vm-openproject in 323s, matching the pre-rename IMS+POS run on vm-sieitzstaging in 315s.
+    # The shared sieitz-runner label avoids competing with live DEV/STAGING on vm-sieitzstaging,
+    # while the dispatch input preserves an explicit operator override if the general pool is down.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     # #1844/#1856: the original 20m job / 15m step budgets cancelled the first live run before its
     # evidence chain completed, while the temporary 200m/150m measurement window let a 3-second
     # browser-launch failure hang for 2h15m. Keep enough margin for the known ~22m healthy run, but
@@ -1507,12 +1506,10 @@ jobs:
   # as artifacts; extraction resets mtimes and the freshness check becomes meaningless.
   frontend-budgets-quality:
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 30
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1690,12 +1687,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1862,12 +1857,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -2033,12 +2026,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -2330,8 +2321,8 @@ jobs:
     # the first step below, which fires only when this job lands on a hosted runner
     # and says so explicitly, rather than degrading silently the way the old
     # if-no-files-found: warn path did.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 5
     permissions:
       contents: read
