@@ -40,11 +40,7 @@ function readActiveRouting({ deployMainText, qualityGateText }) {
   const seenClasses = new Set();
 
   for (const [file, text] of Object.entries(filesText)) {
-    // Reuses checkFile's own jobClasses resolution (not a re-derivation) so a job that delegates
-    // to the file's runner_labels_json workflow_dispatch input (Phase 234 Wave 3, F-5) resolves to
-    // that input's own default class here too, instead of being misread as self-hosted just
-    // because its own `runner_labels_json: ${{ inputs.runner_labels_json }}` line carries no
-    // hosted-image literal of its own.
+    // Reuse checkFile's jobClasses resolution rather than deriving job classes a second time.
     const { jobClasses } = checkFile(file, text);
     const allowlist = ANCHOR_ALLOWLIST[file] || new Set();
     for (const [jobName, isJobHosted] of jobClasses) {
@@ -53,12 +49,16 @@ function readActiveRouting({ deployMainText, qualityGateText }) {
     }
   }
 
-  // Each file's own runner_labels_json input `default:` site sits outside any job block, so the
-  // per-job scan above cannot see it -- matched directly here, mirroring check-runner-routing.js's
-  // own checkInputDefaultSite (both files now carry this site as of Phase 234 Wave 3).
-  for (const text of [deployMainText, qualityGateText]) {
-    const site = extractInputDefaultSite(text);
-    if (site) seenClasses.add(isHosted(site.activeLine) ? 'hosted' : 'self-hosted');
+  // Input defaults sit outside job blocks, so the per-job scan above cannot see them. Include all
+  // routing inputs so a future default-class change is reflected in the live routing state.
+  for (const [text, inputNames] of [
+    [deployMainText, ['runner_labels_json']],
+    [qualityGateText, ['heavy_runner_labels_json', 'general_runner_labels_json']]
+  ]) {
+    for (const inputName of inputNames) {
+      const site = extractInputDefaultSite(text, inputName);
+      if (site) seenClasses.add(isHosted(site.activeLine) ? 'hosted' : 'self-hosted');
+    }
   }
 
   if (seenClasses.size === 0) return EXPECTED_ACTIVE_CLASS;
