@@ -11,12 +11,12 @@ on:
       heavy_runner_labels_json:
         description: >-
           JSON array passed to runs-on for DB-backed/heaviest quality jobs (dgfy-api-quality,
-          migration-runner-quality, frontend-storefront-quality, salvage-api-evidence). Override to
-          '["sieitz-runner"]' if sieitz-lg is unavailable.
+          migration-runner-quality, frontend-storefront-quality, salvage-api-evidence). Uses the
+          shared self-hosted pool; set '["sieitz-lg"]' to pin these jobs to the large box.
         required: false
         type: string
         # default: '["ubuntu-latest"]'
-        default: '["sieitz-lg"]'
+        default: '["sieitz-runner"]'
       general_runner_labels_json:
         description: >-
           JSON array passed to runs-on for the remaining quality jobs (lint/build/docs/audit jobs
@@ -41,10 +41,10 @@ jobs:
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     continue-on-error: true
     # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
-    # This DB-backed job uses heavy_runner_labels_json (default sieitz-lg).
-    # salvage-api-evidence below shares this selector to preserve workspace co-location.
+    # This DB-backed job uses heavy_runner_labels_json (default sieitz-runner shared pool).
+    # salvage-api-evidence below shares this selector; generic labels allow either host.
     # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 45
     outputs:
       # #1066 RF-1: the *real* per-step outcome, read from steps.<id>.outcome (survives
@@ -59,11 +59,9 @@ jobs:
       # a container failing its own health check still left this job's check-run red regardless of
       # every other fix in this file. Replaced with explicit steps so container start/wait is itself
       # a step continue-on-error can absorb and record_outcomes can report. Same images/env/ports/
-      # health commands as the services: blocks they replace. Only one runner in this repo carries
-      # the sieitz-lg label and a self-hosted runner runs one job at a time (confirmed live via
-      # `gh api repos/.../actions/runners`), so dgfy-api-quality and migration-runner-quality can
-      # never contend for the fixed 3306/6379 ports -- ephemeral ports would be unneeded complexity
-      # here. The one real hazard `services:` had no defence against: `concurrency:
+      # health commands as the services: blocks they replace. Each self-hosted runner processes
+      # one job at a time, so jobs on the same host cannot contend for the fixed 3306/6379 ports.
+      # The one real hazard `services:` had no defence against: `concurrency:
       # cancel-in-progress: true` (see top of file) can kill a running job mid-container-lifetime,
       # leaking a container that still holds the port for the next run -- start_services below
       # sweeps by label before starting anything, which is strictly more robust than what it
@@ -468,7 +466,7 @@ jobs:
     # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
     # The class-specific dispatch input above supplies this job's runner selector.
     # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -893,7 +891,7 @@ jobs:
     # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
     # The class-specific dispatch input above supplies this job's runner selector.
     # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -2437,7 +2435,7 @@ jobs:
     # and says so explicitly, rather than degrading silently the way the old
     # if-no-files-found: warn path did.
     # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 5
     permissions:
       contents: read
