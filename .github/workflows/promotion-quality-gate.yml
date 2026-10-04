@@ -12,6 +12,7 @@ on:
         description: JSON array passed to runs-on for quality jobs.
         required: false
         type: string
+        # default: '["ubuntu-latest"]'
         default: '["sieitz-lg"]'
 
 concurrency:
@@ -2200,6 +2201,7 @@ jobs:
       - frontend-budgets-quality
       - frontend-ims-pos-sales-e2e-quality
     if: always()
+    # runs-on: ['ubuntu-latest']
     runs-on: ['sieitz-runner']
     timeout-minutes: 3
     permissions:
@@ -2253,6 +2255,10 @@ jobs:
             exit 1
           fi
           echo "[workspace-hygiene] tree complete."
+      - name: Install root locked dependencies
+        continue-on-error: true
+        id: install_reporter_dependencies
+        run: npm ci --ignore-scripts
       - name: Post advisory quality evidence to the associated PR
         id: post_quality_evidence
         continue-on-error: true

@@ -977,7 +977,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: idempotencyKey,
                 payment_type: 'cash',
-                order_method: 'delivery',
+                order_method: 'dine_in',
                 service_fee_amount: 60,
                 lines: [
                     {
