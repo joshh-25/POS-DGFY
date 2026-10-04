@@ -12,13 +12,14 @@ const {
   checkNoDevStagingTarget,
   checkActiveClassMatchesExpected,
   checkNoHostedLiteral,
+  extractInputDefaultSite,
   extractJobBlocks,
   findActiveSites,
   isHosted,
   NON_HOSTED_FILES,
   VERIFY_DEPLOYMENT_FILE
 } = require('./check-runner-routing');
-const { EXPECTED_ACTIVE_CLASS } = require('./lib/runner-routing-state');
+const { EXPECTED_ACTIVE_CLASS, readActiveRouting } = require('./lib/runner-routing-state');
 
 function readRealFile(relativePath) {
   return fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
@@ -197,6 +198,27 @@ test('checkInputDefaultSite: missing commented alternate is a problem', () => {
   assert.match(problems[0], /no commented alternate/);
 });
 
+test('checkInputDefaultSite: named runner inputs are checked independently', () => {
+  const text = `
+  workflow_dispatch:
+    inputs:
+      heavy_runner_labels_json:
+        description: heavy
+        required: false
+        type: string
+        # default: '["ubuntu-latest"]'
+        default: '["sieitz-lg"]'
+      general_runner_labels_json:
+        description: general
+        required: false
+        type: string
+        # default: '["ubuntu-latest"]'
+        default: '["sieitz-runner"]'
+`;
+  assert.deepEqual(checkInputDefaultSite('promotion-quality-gate.yml', text, 'heavy_runner_labels_json'), []);
+  assert.deepEqual(checkInputDefaultSite('promotion-quality-gate.yml', text, 'general_runner_labels_json'), []);
+});
+
 test('extractJobBlocks/findActiveSites: locate exactly one active site per job in a small multi-job fixture', () => {
   const text = `
 jobs:
@@ -219,6 +241,40 @@ jobs:
 test('checkRunnerRouting: the real workflow files pass with zero problems (EXPECTED_ACTIVE_CLASS === self-hosted)', () => {
   const problems = checkRunnerRouting(readRealWorkflowInputs());
   assert.deepEqual(problems, []);
+});
+
+test('promotion quality workflow routes its heavy and general jobs to the matching dispatch inputs', () => {
+  const text = readRealFile('.github/workflows/promotion-quality-gate.yml');
+  const jobs = extractJobBlocks(text);
+  const assertUsesSelector = (jobName, inputName, defaultClass) => {
+    const sites = findActiveSites(jobs.get(jobName).block);
+    assert.equal(sites.length, 1, `${jobName} should have one active runner selector`);
+    assert.match(sites[0].line, new RegExp(`inputs\\.${inputName}`));
+    assert.match(sites[0].line, new RegExp(`\\["${defaultClass}"\\]`));
+  };
+
+  for (const jobName of ['dgfy-api-quality', 'migration-runner-quality', 'frontend-storefront-quality', 'salvage-api-evidence']) {
+    assertUsesSelector(jobName, 'heavy_runner_labels_json', 'sieitz-lg');
+  }
+  for (const jobName of ['web-core-quality', 'frontend-pos-quality', 'frontend-opis-quality', 'frontend-budgets-quality', 'repository-dependency-quality', 'repository-ci-contracts-quality', 'repository-docs-quality', 'pos-sales-e2e-quality']) {
+    assertUsesSelector(jobName, 'general_runner_labels_json', 'sieitz-runner');
+  }
+
+  assert.match(extractInputDefaultSite(text, 'heavy_runner_labels_json').activeLine, /\["sieitz-lg"\]/);
+  assert.match(extractInputDefaultSite(text, 'general_runner_labels_json').activeLine, /\["sieitz-runner"\]/);
+  assert.match(jobs.get('report-quality-evidence').block, /runs-on: \['sieitz-runner'\]/);
+});
+
+test('readActiveRouting includes both promotion quality input defaults', () => {
+  const deployMainText = readRealFile('.github/workflows/deploy-main.yml');
+  const qualityGateText = readRealFile('.github/workflows/promotion-quality-gate.yml');
+  assert.equal(readActiveRouting({ deployMainText, qualityGateText }), 'self-hosted');
+
+  const hostedGeneralDefault = qualityGateText.replace(
+    /(general_runner_labels_json:[\s\S]*?default: )'\["sieitz-runner"\]'/,
+    (match, prefix) => `${prefix}'["ubuntu-latest"]'`
+  );
+  assert.equal(readActiveRouting({ deployMainText, qualityGateText: hostedGeneralDefault }), 'mixed');
 });
 
 // --- Phase 234 (#1365) Wave 1: Assertion 6 (F-1, AC-6) -- active class must equal EXPECTED_ACTIVE_CLASS ---
@@ -278,12 +334,12 @@ const GATE_BLOCK = `
     runs-on: ['sieitz-runner']
 `;
 
-function inputDefaultBlock(hosted) {
+function inputDefaultBlock(hosted, inputName = 'runner_labels_json') {
   return hosted
     ? `
   workflow_call:
     inputs: &runner_labels_input
-      runner_labels_json:
+      ${inputName}:
         description: test
         required: false
         type: string
@@ -293,7 +349,7 @@ function inputDefaultBlock(hosted) {
     : `
   workflow_call:
     inputs: &runner_labels_input
-      runner_labels_json:
+      ${inputName}:
         description: test
         required: false
         type: string
@@ -309,7 +365,7 @@ function buildFixture({ jobAHosted, jobBHosted, apiQualityHosted, salvageHosted,
   // pair (not the delegated-to-input shape) -- these fixtures are about Assertion 6/pairing, not
   // about the delegation pattern, which has its own dedicated tests below.
   const deployMainText = `jobs:${inputDefaultBlock(inputDefaultHosted)}${GUARD_BRANCH_BLOCK}${pairJobBlock('job-a', jobAHosted)}${pairJobBlock('job-b', jobBHosted)}`;
-  const qualityGateText = `jobs:${inputDefaultBlock(inputDefaultHosted)}${GATE_BLOCK}${pairJobBlock('dgfy-api-quality', apiQualityHosted)}${pairJobBlock('salvage-api-evidence', salvageHosted)}`;
+  const qualityGateText = `jobs:${inputDefaultBlock(inputDefaultHosted, 'heavy_runner_labels_json')}${inputDefaultBlock(inputDefaultHosted, 'general_runner_labels_json')}${GATE_BLOCK}${pairJobBlock('dgfy-api-quality', apiQualityHosted)}${pairJobBlock('salvage-api-evidence', salvageHosted)}`;
   return { deployMainText, qualityGateText };
 }
 

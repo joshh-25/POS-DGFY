@@ -8,12 +8,23 @@ name: Promotion Quality Gate
 on:
   workflow_dispatch:
     inputs:
-      runner_labels_json:
-        description: JSON array passed to runs-on for quality jobs.
+      heavy_runner_labels_json:
+        description: >-
+          JSON array passed to runs-on for DB-backed/heaviest quality jobs (dgfy-api-quality,
+          migration-runner-quality, frontend-storefront-quality, salvage-api-evidence). Override to
+          '["sieitz-runner"]' if sieitz-lg is unavailable.
         required: false
         type: string
         # default: '["ubuntu-latest"]'
         default: '["sieitz-lg"]'
+      general_runner_labels_json:
+        description: >-
+          JSON array passed to runs-on for the remaining quality jobs (lint/build/docs/audit jobs
+          plus pos-sales-e2e-quality). Spreads across either self-hosted box.
+        required: false
+        type: string
+        # default: '["ubuntu-latest"]'
+        default: '["sieitz-runner"]'
 
 concurrency:
   # Each operator dispatch has its own group; a later dispatch does not cancel an earlier run.
@@ -29,15 +40,11 @@ jobs:
     # waited-on as ordinary steps rather than the runner's own `services:` mechanism, so they're
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. The `|| '["sieitz-lg"]'`
-    # fallback literal is reached only on the release/* -> main leg (see the
-    # workflow_dispatch input above) -- flipping it routes
-    # exactly the prod promotion leg, by construction, no if:/matrix conditional
-    # needed or wanted. salvage-api-evidence below MUST always carry this job's same
-    # active class -- see that job's own comment for why.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # This DB-backed job uses heavy_runner_labels_json (default sieitz-lg).
+    # salvage-api-evidence below shares this selector to preserve workspace co-location.
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 45
     outputs:
       # #1066 RF-1: the *real* per-step outcome, read from steps.<id>.outcome (survives
@@ -458,12 +465,10 @@ jobs:
     # waited-on as an ordinary step rather than the runner's own `services:` mechanism, so it's
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -618,18 +623,16 @@ jobs:
   # dgfy-ims/vite.config.js's test.include -- to keep web-core dependency-
   # and node_modules-free); the 7th, storefrontErrorMessages.test.js, is
   # storefront's own local test.
-  frontend-ims-quality:
+  web-core-quality:
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -698,14 +701,6 @@ jobs:
         run: npm ci
         timeout-minutes: 10
 
-      - name: Run dgfy-ims lint
-        continue-on-error: true
-        id: run_ims_lint
-        working-directory: apps/dgfy-ims
-        run: npm run lint
-        # included as optional advisory evidence since #2236
-        timeout-minutes: 5
-
       # packages/web-core has no lint script/devDependencies of its own (ADR 0071 Decision 4
       # [binding] -- it must never get its own node_modules or test runner), so coverage runs from
       # dgfy-ims's already-installed ESLint via --resolve-plugins-relative-to, the same pattern the
@@ -772,7 +767,6 @@ jobs:
             Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
-            Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
             Run web-core lint|${{ steps.run_web_core_lint.outcome }}
             Run frontend contract tests|${{ steps.run_shared_fnb_contract_tests.outcome }}
             Run scroll contracts|${{ steps.run_scroll_contracts.outcome }}
@@ -790,12 +784,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -898,12 +890,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1055,12 +1045,10 @@ jobs:
   # fourth frontend app. Included in the optional operator-dispatched evidence suite.
   frontend-opis-quality:
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1171,12 +1159,9 @@ jobs:
   # Issue #350: Platform Admin quality coverage -- its own lint/build evidence.
   frontend-admin-quality:
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Route Platform Admin lint/build with the general frontend quality jobs.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1284,38 +1269,17 @@ jobs:
             echo "GHA_EOF_1066"
           } >> "$GITHUB_OUTPUT"
 
-  # #1712: advisory-only job -- the second half of this issue's "no functional check runs
-  # pre-staging/main" gap, distinct from Decision 1's lint coverage above. Runs
-  # apps/dgfy-api/tests/frontend.imsPosSalesJourney.e2e.test.js (its own frontendDir path was stale
-  # since the apps/dgfy-api absorption, 50ec10d9f, 2026-07-20 -- fixed in the #1712 PR) plus one new
-  # assertion (added in that PR) that actually drives TerminalOperationsWorkspace's admin "Items"
-  # tab -- the code path #1698 broke, never exercised by this file's pre-existing checkout/history/
-  # receipt-only scenarios.
-  #
-  # Ships as optional advisory evidence, like every other job in this file -- deliberately,
-  # while reliability work continues (Pat's call, #1749; the advisory-to-blocking transition in that
-  # issue's original Definition of Done is deferred, not part of the #1749 non-blocking slice).
-  # The two setup blockers the #1712 PR named as the reasons this stays advisory are now resolved:
-  #   1. The suite's `ensureBrowserE2EUser()` registers its browser E2E user against the
-  #      "Original Legacy Data" tenant (`COMPANY_TOKEN = 'token-original'`), which does not exist
-  #      on a freshly migrated DB (no seeder creates it) -- this job provisions it via the
-  #      already-documented, already-existing `scripts/register_original_tenant.js`
-  #      (docs/guides/SCRIPTS_GUIDE.md #9) below, run once per job before the suite itself.
-  #   2. `ensureBrowserE2EUser()`'s registration payload now sends `phone_number`, which
-  #      `apps/dgfy-api/src/validators/authValidator.js` requires unconditionally (previously
-  #      confirmed live as HTTP 422 "Phone number is required").
-  # Five recent runs completed successfully including the E2E step (run IDs 35881140769,
-  # 35769529780, 35681287827, 35642102406, 35388351166), so execution evidence exists -- but those
-  # greens predate the required export-download assertion (#1749), which is what makes future
-  # green evidence proof of this journey rather than a vacuous pass.
-  frontend-ims-pos-sales-e2e-quality:
+  # #1749 keeps this optional evidence job advisory and POS-owned. Its browser test bootstraps a
+  # disposable tenant admin and terminal fixture, seeds a sellable item through the API, then
+  # exercises checkout, stock, history/detail, and CSV export entirely in POS.
+  pos-sales-e2e-quality:
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Keep this trimmed POS E2E job in the general pool: its latest post-#2251 run completed on
+    # vm-openproject in 323s, matching the pre-rename IMS+POS run on vm-sieitzstaging in 315s.
+    # The shared sieitz-runner label avoids competing with live DEV/STAGING on vm-sieitzstaging,
+    # while the dispatch input preserves an explicit operator override if the general pool is down.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     # #1844/#1856: the original 20m job / 15m step budgets cancelled the first live run before its
     # evidence chain completed, while the temporary 200m/150m measurement window let a 3-second
     # browser-launch failure hang for 2h15m. Keep enough margin for the known ~22m healthy run, but
@@ -1324,10 +1288,9 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
-      # Same start/wait/stop-as-ordinary-steps pattern as dgfy-api-quality above (#1066 RF-2) --
-      # only one runner in this repo carries the sieitz-lg label and a self-hosted runner runs one
-      # job at a time, so this job never contends with dgfy-api-quality/migration-runner-quality
-      # for the fixed 3306/6379 ports.
+      # Same start/wait/stop-as-ordinary-steps pattern as dgfy-api-quality above (#1066 RF-2).
+      # Containers are scoped to this job and removed in the cleanup step; the API and Vite use
+      # free loopback ports selected for this run to avoid host-service collisions.
       - name: Start service containers
         continue-on-error: true
         id: start_services
@@ -1423,8 +1386,8 @@ jobs:
           cache: npm
           cache-dependency-path: |
             apps/dgfy-api/package-lock.json
-            apps/dgfy-ims/package-lock.json
             apps/dgfy-migration-runner/package-lock.json
+            apps/dgfy-pos/package-lock.json
 
       - name: Install API dependencies
         continue-on-error: true
@@ -1440,18 +1403,24 @@ jobs:
         run: npm ci
         timeout-minutes: 10
 
-      - name: Install dgfy-ims dependencies
+      - name: Install dgfy-pos dependencies
         continue-on-error: true
-        id: install_ims_deps
-        working-directory: apps/dgfy-ims
+        id: install_pos_deps
+        working-directory: apps/dgfy-pos
         run: npm ci
         timeout-minutes: 10
 
       - name: Install Playwright Chromium
         continue-on-error: true
         id: install_playwright
-        working-directory: apps/dgfy-api
-        run: npx playwright install --with-deps chromium
+        working-directory: apps/dgfy-pos
+        run: |
+          started=$SECONDS
+          set +e
+          npx playwright install --with-deps chromium
+          status=$?
+          echo "Chromium install duration: $((SECONDS - started)) seconds" | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
         timeout-minutes: 10
 
       # #1856: the install step remains advisory so its raw installer output is preserved, but this
@@ -1461,7 +1430,7 @@ jobs:
       - name: Verify Playwright Chromium installation
         continue-on-error: true
         id: verify_playwright_install
-        working-directory: apps/dgfy-api
+        working-directory: apps/dgfy-pos
         shell: bash
         run: |
           set -euo pipefail
@@ -1487,12 +1456,7 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
-      # Verified live during this PR's own investigation (not in the local sandbox that could not
-      # run MySQL/Redis at plan time): `ensureBrowserE2EUser()` registers its browser E2E user
-      # against the "Original Legacy Data" tenant (COMPANY_TOKEN = 'token-original'), which does
-      # not exist on a freshly migrated DB -- no seeder creates it. This script is the already-
-      # documented, already-existing tool for exactly that (docs/guides/SCRIPTS_GUIDE.md #9), not
-      # new tooling invented for this job.
+      # Provide the tenant used by the POS test's runtime-created admin account.
       - name: Register original legacy tenant fixture
         continue-on-error: true
         id: register_original_tenant
@@ -1507,23 +1471,65 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
-      # Advisory-only by deliberate rollout posture (Pat's call, #1749 -- the blocking flip is
-      # deferred), not by unresolved setup: the tenant fixture above and the suite's own
-      # `phone_number` payload fix are both in place. Real per-step failures still surface
-      # through record_outcomes below.
-      - name: Run frontend IMS/POS sales journey e2e
+      # Self-hosted runners may already serve an unrelated app on POS's historical local port 5000.
+      # Select free loopback ports so Playwright starts the API and Vite server for this run itself.
+      - name: Select isolated POS E2E ports
         continue-on-error: true
-        id: run_ims_pos_sales_e2e
+        id: select_pos_e2e_ports
         if: steps.wait_services.outcome == 'success'
-        working-directory: apps/dgfy-api
+        shell: bash
         run: |
+          set -euo pipefail
+          read -r api_port web_port < <(node --input-type=module <<'NODE'
+          import net from 'node:net';
+
+          const findPort = async (start) => {
+            for (let port = start; port < start + 1000; port += 1) {
+              const available = await new Promise((resolve) => {
+                const server = net.createServer();
+                server.once('error', () => resolve(false));
+                server.listen({ host: '127.0.0.1', port, exclusive: true }, () => {
+                  server.close(() => resolve(true));
+                });
+              });
+              if (available) return port;
+            }
+            throw new Error(`No free loopback port found starting at ${start}`);
+          };
+
+          const apiPort = await findPort(5100);
+          const webPort = await findPort(apiPort + 1);
+          process.stdout.write(`${apiPort} ${webPort}\n`);
+          NODE
+          )
+          {
+            echo "PORT=${api_port}"
+            echo "E2E_API_URL=http://127.0.0.1:${api_port}"
+            echo "E2E_BASE_URL=http://127.0.0.1:${web_port}"
+            echo "E2E_WEB_PORT=${web_port}"
+            echo "VITE_API_URL=/api/v1"
+            echo "VITE_PROXY_TARGET=http://127.0.0.1:${api_port}"
+            echo "CORS_ORIGIN=http://127.0.0.1:${web_port}"
+          } >> "$GITHUB_ENV"
+          echo "Selected POS E2E API port ${api_port}, web port ${web_port}, and allowed the web origin for this isolated API process."
+
+      # Advisory-only by deliberate rollout posture (Pat's call, #1749). Capture elapsed Playwright
+      # time separately from the Chromium installation step for the acceptance comparison.
+      - name: Run POS sales journey e2e
+        continue-on-error: true
+        id: run_pos_sales_e2e
+        if: steps.wait_services.outcome == 'success' && steps.select_pos_e2e_ports.outcome == 'success'
+        working-directory: apps/dgfy-pos
+        run: |
+          started=$SECONDS
           set +e
-          timeout --signal=TERM --kill-after=60s 1500s npm run test:frontend-ims-pos-sales-e2e
+          timeout --signal=TERM --kill-after=60s 1500s npm run test:pos-sales-e2e
           status=$?
+          echo "POS sales Playwright duration: $((SECONDS - started)) seconds" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -eq 124 ] || [ "$status" -eq 137 ] || [ "$status" -eq 143 ]; then
-            echo "::warning::IMS/POS sales E2E exceeded the controlled 25-minute timeout; salvaging artifacts and outcome reporting."
+            echo "::warning::POS sales E2E exceeded the controlled 25-minute timeout; salvaging artifacts and outcome reporting."
             {
-              echo "## IMS/POS sales E2E timeout salvage"
+              echo "## POS sales E2E timeout salvage"
               echo
               echo "The E2E process exceeded the controlled 25-minute timeout and was terminated."
               echo "The step remains advisory; downstream artifact upload, cleanup, and outcome reporting will continue."
@@ -1531,8 +1537,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit "$status"
-        # #1856: retain ~25m for the known ~22m healthy run, with the command-level timeout firing
-        # first so cleanup and evidence steps still have time inside the 30m step ceiling.
+        # Keep the command-level timeout below this step ceiling so cleanup and evidence steps run.
         timeout-minutes: 30
         env:
           NODE_ENV: development
@@ -1549,14 +1554,14 @@ jobs:
       # Mirrors the API test-matrix / F&B browser evidence uploads elsewhere in this file --
       # if-no-files-found: error (a missing artifact is real signal, not something to swallow),
       # retention-days: 30 (promotion evidence, not routine per-push scratch).
-      - name: Upload IMS/POS sales e2e evidence
+      - name: Upload POS sales e2e evidence
         continue-on-error: true
-        id: upload_ims_pos_sales_e2e_evidence
-        if: always() && steps.run_ims_pos_sales_e2e.outcome != 'skipped'
+        id: upload_pos_sales_e2e_evidence
+        if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
         uses: actions/upload-artifact@v7
         with:
-          name: ims-pos-sales-e2e-${{ github.sha }}
-          path: apps/dgfy-api/tests/artifacts/ims-pos-sales-journey/**
+          name: pos-sales-e2e-${{ github.sha }}
+          path: apps/dgfy-pos/test-results/**
           if-no-files-found: error
           retention-days: 30
 
@@ -1585,13 +1590,14 @@ jobs:
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install API dependencies|${{ steps.install_api_deps.outcome }}
             Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
-            Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
+            Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
             Install Playwright Chromium|${{ steps.install_playwright.outcome }}
             Verify Playwright Chromium installation|${{ steps.verify_playwright_install.outcome }}
             Prepare test schema|${{ steps.prepare_test_schema.outcome }}
             Register original legacy tenant fixture|${{ steps.register_original_tenant.outcome }}
-            Run frontend IMS/POS sales journey e2e|${{ steps.run_ims_pos_sales_e2e.outcome }}
-            Upload IMS/POS sales e2e evidence|${{ steps.upload_ims_pos_sales_e2e_evidence.outcome }}
+            Select isolated POS E2E ports|${{ steps.select_pos_e2e_ports.outcome }}
+            Run POS sales journey e2e|${{ steps.run_pos_sales_e2e.outcome }}
+            Upload POS sales e2e evidence|${{ steps.upload_pos_sales_e2e_evidence.outcome }}
         run: |
           FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure" || $2=="cancelled"{print $1}' | paste -sd, - 2>/dev/null || true)
           {
@@ -1601,7 +1607,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # #1431 Phase 2 (gate 16, frontend.budgets): the mapping doc's original recommendation ("add
-  # builds to frontend-ims-quality/frontend-pos-quality first") does not work -- check-frontend-
+  # builds to web-core-quality/frontend-pos-quality first") does not work -- check-frontend-
   # budgets.js needs all three dist/assets dirs in ONE job's workspace, and a build step added to
   # a different job is invisible here. This job owns all three builds itself, SEQUENTIALLY (not
   # check:frontend-budgets's own default concurrent build) -- pr-checks.yml's own comment records
@@ -1613,12 +1619,10 @@ jobs:
   # as artifacts; extraction resets mtimes and the freshness check becomes meaningless.
   frontend-budgets-quality:
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 30
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1796,12 +1800,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1968,12 +1970,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -2139,12 +2139,10 @@ jobs:
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
     # job-level alone wasn't enough).
     continue-on-error: true
-    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
-    # (ubuntu-latest) is the intended class for this job too. See gate/
-    # dgfy-api-quality's comments above for the release/* -> main-leg-only
-    # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
+    # The class-specific dispatch input above supplies this job's runner selector.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -2307,7 +2305,7 @@ jobs:
     needs:
       - dgfy-api-quality
       - migration-runner-quality
-      - frontend-ims-quality
+      - web-core-quality
       - frontend-pos-quality
       - frontend-storefront-quality
       - frontend-opis-quality
@@ -2316,7 +2314,7 @@ jobs:
       - repository-ci-contracts-quality
       - repository-docs-quality
       - frontend-budgets-quality
-      - frontend-ims-pos-sales-e2e-quality
+      - pos-sales-e2e-quality
     if: always()
     # runs-on: ['ubuntu-latest']
     runs-on: ['sieitz-runner']
@@ -2394,7 +2392,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           DGFY_API_FAILURES: ${{ needs.dgfy-api-quality.outputs.real_failures }}
           MIGRATION_RUNNER_FAILURES: ${{ needs.migration-runner-quality.outputs.real_failures }}
-          IMS_FAILURES: ${{ needs.frontend-ims-quality.outputs.real_failures }}
+          WEB_CORE_FAILURES: ${{ needs.web-core-quality.outputs.real_failures }}
           POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
           STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
           OPIS_FAILURES: ${{ needs.frontend-opis-quality.outputs.real_failures }}
@@ -2403,7 +2401,7 @@ jobs:
           REPOSITORY_CI_CONTRACTS_FAILURES: ${{ needs.repository-ci-contracts-quality.outputs.real_failures }}
           REPOSITORY_DOCS_FAILURES: ${{ needs.repository-docs-quality.outputs.real_failures }}
           FRONTEND_BUDGETS_FAILURES: ${{ needs.frontend-budgets-quality.outputs.real_failures }}
-          IMS_POS_SALES_E2E_FAILURES: ${{ needs.frontend-ims-pos-sales-e2e-quality.outputs.real_failures }}
+          POS_SALES_E2E_FAILURES: ${{ needs.pos-sales-e2e-quality.outputs.real_failures }}
         run: node scripts/post-quality-suite-evidence.js --run-id "$RUN_ID"
 
   salvage-api-evidence:
@@ -2438,8 +2436,8 @@ jobs:
     # the first step below, which fires only when this job lands on a hosted runner
     # and says so explicitly, rather than degrading silently the way the old
     # if-no-files-found: warn path did.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.heavy_runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 5
     permissions:
       contents: read

@@ -5,6 +5,16 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Update 2026-10-05 — Promotion Quality Gate class routing (#2250)
+
+`.github/workflows/promotion-quality-gate.yml` now exposes independent
+`heavy_runner_labels_json` (`['sieitz-lg']`) and `general_runner_labels_json` (`['sieitz-runner']`)
+dispatch inputs. DB-backed API/migration checks, storefront quality, and co-located API evidence
+salvage use the heavy selector. Other quality jobs, including the trimmed POS sales E2E job, use
+the general selector. Operators can set the heavy selector to `['sieitz-runner']` when the large
+runner is unavailable. The general shared label permits either runner host but does not guarantee
+scheduler distribution; `report-quality-evidence` remains pinned to `sieitz-runner`.
+
 ## Status as of 2026-09-10 — reverted to self-hosted again (GHA billing exhausted, #1810)
 
 GitHub Actions billing/spending-limit failed again — same signature as the 2026-08-13 entry below:
