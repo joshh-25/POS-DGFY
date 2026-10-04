@@ -26307,9 +26307,9 @@ the IMS-installed test toolchain, and keep all promotion-quality steps advisory.
 
 ### Status
 
-`in_progress` — implementation and local validation pass; the required promotion-quality dispatch
-and PR review remain outstanding. Pat explicitly authorized this phase to proceed while Phase 472
-remains in progress.
+`in_progress` — implementation is underway; the focused POS browser journey and required
+promotion-quality dispatch remain unverified, and PR review is outstanding. Pat explicitly
+authorized this phase to proceed while Phase 472 remains in progress.
 
 ### Dependencies
 
@@ -26319,22 +26319,21 @@ unrelated phase by Pat's 2026-10-04 authorization above.
 
 ### Acceptance and validation evidence
 
-- [x] POS-only browser journey proves API item seeding, UI checkout, stock decrement, POS history to
+- [ ] POS-only browser journey proves API item seeding, UI checkout, stock decrement, POS history to
       receipt detail continuity, and a readable downloaded POS sales CSV.
 - [x] Promotion workflow uses `pos-sales-e2e-quality` and `web-core-quality`; the former installs
       POS dependencies, starts no IMS frontend, and both jobs remain advisory.
 - [x] The workflow checker, advisory evidence reporter, local-gate mapping, and docs agree on the
       renamed jobs and the removed IMS-own-lint gate.
 - [x] POS build, lint, app-version policy, workflow-shape check, documentation, architecture, and
-      compliance checks pass; the focused POS sales journey passes locally.
-- [x] `workflow_dispatch` run `37203799433` on implementation SHA
-      `122c06095e73ee5669e68df96b74c7667aa0bd39` completed `pos-sales-e2e-quality` successfully on
-      runner `vm-openproject` via the `sieitz-runner` label. Job total: 7m32s; Playwright Chromium
-      install: 16s; browser journey: 1m57s. Compared with run `37092548319` (22m16s / ~10m12s /
-      ~5m42s) and the former IMS quality job (1m38s), the new job is 14m44s shorter overall and
-      Chromium setup is 9m56s shorter; the browser journey is 19s longer. At ledger update time,
-      unrelated advisory jobs in the same dispatch were still running or queued; their outcomes do
-      not change the POS journey job result.
+      compliance checks pass.
+- [ ] A successful `workflow_dispatch` against the PR branch records job total, Chromium install,
+      and Playwright journey timing for comparison with run 37092548319 and the former IMS quality
+      job. Run `37203799433` on implementation SHA
+      `122c06095e73ee5669e68df96b74c7667aa0bd39` completed all jobs successfully, but its advisory
+      reporter correctly surfaced that the POS browser journey failed: the API rejected the
+      dynamically selected Vite origin with `CORS_NOT_ALLOWED`. The origin is now added to the
+      isolated E2E API's explicit allowlist; this acceptance remains open pending a passing rerun.
 
 ### Links
 
