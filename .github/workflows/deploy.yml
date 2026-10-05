@@ -80,6 +80,10 @@ on:
         description: Build/push the dgfy-opis image. Uncheck to skip.
         type: boolean
         default: true
+      build_frontend_admin:
+        description: Build/push the dgfy-admin image. Uncheck to skip.
+        type: boolean
+        default: true
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -134,6 +138,10 @@ on:
         default: ''
       release_revision_frontend_opis:
         description: Same per-app revision contract for dgfy-opis (frontend X.Y.Z-rN-staging).
+        type: string
+        default: ''
+      release_revision_frontend_admin:
+        description: Same per-app revision contract for dgfy-admin (frontend X.Y.Z-rN-staging).
         type: string
         default: ''
       environment_override:
@@ -233,6 +241,7 @@ jobs:
       build_frontend_pos: ${{ inputs.build_frontend_pos }}
       build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
       build_frontend_opis: ${{ inputs.build_frontend_opis }}
+      build_frontend_admin: ${{ inputs.build_frontend_admin }}
       runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision_api: ${{ inputs.release_revision_api }}
@@ -241,6 +250,7 @@ jobs:
       release_revision_frontend_pos: ${{ inputs.release_revision_frontend_pos }}
       release_revision_frontend_storefront: ${{ inputs.release_revision_frontend_storefront }}
       release_revision_frontend_opis: ${{ inputs.release_revision_frontend_opis }}
+      release_revision_frontend_admin: ${{ inputs.release_revision_frontend_admin }}
     secrets: inherit
     permissions:
       contents: read

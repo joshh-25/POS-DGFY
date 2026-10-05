@@ -70,6 +70,7 @@ const PATH_FILTERS = {
   frontend_pos: /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
   frontend_storefront: /^(apps\/dgfy-storefront\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
   frontend_opis: /^(apps\/dgfy-opis\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-opis\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+  frontend_admin: /^(apps\/dgfy-admin\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-admin\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
   dgfy_api: /^(apps\/dgfy-api\/|packages\/shared-constants\/|packages\/tenant-bootstrap\/|infrastructure\/docker\/dgfy-api\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)/,
   migration_runner: /^(apps\/dgfy-migration-runner\/|packages\/tenant-bootstrap\/|infrastructure\/docker\/dgfy-migration-runner\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)/,
 };
@@ -190,6 +191,7 @@ function detectComponents(changedFiles) {
     frontend_pos: changedFiles.some((file) => PATH_FILTERS.frontend_pos.test(file)),
     frontend_storefront: changedFiles.some((file) => PATH_FILTERS.frontend_storefront.test(file)),
     frontend_opis: changedFiles.some((file) => PATH_FILTERS.frontend_opis.test(file)),
+    frontend_admin: changedFiles.some((file) => PATH_FILTERS.frontend_admin.test(file)),
     dgfy_api: changedFiles.some((file) => PATH_FILTERS.dgfy_api.test(file)),
     migration_runner: changedFiles.some((file) => PATH_FILTERS.migration_runner.test(file)),
   };
@@ -437,6 +439,7 @@ function runChecks(options, changedFiles, components) {
     { key: 'frontend_pos', name: 'frontend-pos-build-check', dir: 'apps/dgfy-pos' },
     { key: 'frontend_storefront', name: 'frontend-storefront-build-check', dir: 'apps/dgfy-storefront' },
     { key: 'frontend_opis', name: 'frontend-opis-build-check', dir: 'apps/dgfy-opis' },
+    { key: 'frontend_admin', name: 'frontend-admin-build-check', dir: 'apps/dgfy-admin' },
   ];
   for (const app of frontendApps) {
     if (!components[app.key]) continue;
@@ -471,6 +474,7 @@ function runFullTierDockerChecks(checks, components) {
     { key: 'frontend_pos', name: 'frontend-pos-build-check (docker)', file: 'infrastructure/docker/dgfy-pos/Dockerfile' },
     { key: 'frontend_storefront', name: 'frontend-storefront-build-check (docker)', file: 'infrastructure/docker/dgfy-storefront/Dockerfile' },
     { key: 'frontend_opis', name: 'frontend-opis-build-check (docker)', file: 'infrastructure/docker/dgfy-opis/Dockerfile' },
+    { key: 'frontend_admin', name: 'frontend-admin-build-check (docker)', file: 'infrastructure/docker/dgfy-admin/Dockerfile' },
   ];
   for (const build of builds) {
     if (!components[build.key]) continue;

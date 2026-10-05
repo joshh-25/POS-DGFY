@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -78,7 +78,7 @@ jobs:
           bash scripts/build-android-release.sh "${ARGS[@]}"
 
       - name: Upload release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-${{ inputs.flavor }}-release-${{ github.run_number }}
           path: releases/android/**

@@ -19,6 +19,7 @@ MIGRATION_RUNNER_DIR="$PROJECT_ROOT/apps/dgfy-migration-runner"
 FRONTEND_IMS_DIR="$PROJECT_ROOT/apps/dgfy-ims"
 FRONTEND_POS_DIR="$PROJECT_ROOT/apps/dgfy-pos"
 FRONTEND_STOREFRONT_DIR="$PROJECT_ROOT/apps/dgfy-storefront"
+FRONTEND_ADMIN_DIR="$PROJECT_ROOT/apps/dgfy-admin"
 DEPLOY_LOG_DIR="$PROJECT_ROOT/logs/deploy"
 DEPLOY_STATE_DIR="$PROJECT_ROOT/.deploy-state"
 LOCK_FILE="/tmp/skupervisor_deploy.lock"
@@ -332,6 +333,13 @@ run_frontend_builds() {
         ran_any="1"
     else
         warn "Store build surface not found (no apps/dgfy-storefront/package.json)."
+    fi
+
+    if [[ -f "$FRONTEND_ADMIN_DIR/package.json" ]]; then
+        (cd "$FRONTEND_ADMIN_DIR" && NODE_ENV=production npm run build)
+        ran_any="1"
+    else
+        warn "Platform Admin build surface not found (no apps/dgfy-admin/package.json)."
     fi
 
     if [[ "$ran_any" != "1" ]]; then
@@ -959,7 +967,7 @@ SCRIPTS_CHANGED_FILES="0"
 if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
     TOTAL_CHANGED_FILES="$(wc -l < "$MANIFEST_FILE" | tr -d '[:space:]')"
     BACKEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^apps/dgfy-api/' | wc -l | tr -d '[:space:]')"
-    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^(apps/dgfy-ims/|apps/dgfy-pos/|apps/dgfy-storefront/|apps/dgfy-opis/|packages/web-core/)' | wc -l | tr -d '[:space:]')"
+    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^(apps/dgfy-ims/|apps/dgfy-pos/|apps/dgfy-storefront/|apps/dgfy-opis/|apps/dgfy-admin/|packages/web-core/)' | wc -l | tr -d '[:space:]')"
     DOCS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^docs/' | wc -l | tr -d '[:space:]')"
     SCRIPTS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^scripts/' | wc -l | tr -d '[:space:]')"
 fi
@@ -1018,12 +1026,13 @@ run_ci_if_lockfile_exists "$MIGRATION_RUNNER_DIR"
 run_ci_if_lockfile_exists "$FRONTEND_IMS_DIR"
 run_ci_if_lockfile_exists "$FRONTEND_POS_DIR"
 run_ci_if_lockfile_exists "$FRONTEND_STOREFRONT_DIR"
+run_ci_if_lockfile_exists "$FRONTEND_ADMIN_DIR"
 
 run_step "Running documentation governance lint..." npm run lint:docs
 
 run_step "Running architecture gate checks..." npm run check:architecture
 
-run_step "Building frontend production artifacts (IMS, POS, Store)..." run_frontend_builds
+run_step "Building frontend production artifacts (IMS, POS, Store, Admin)..." run_frontend_builds
 run_step "Recording frontend build manifest..." node "$PROJECT_ROOT/scripts/record-frontend-build-manifest.js" \
     --project-root "$PROJECT_ROOT" \
     --target-sha "$POST_PULL_COMMIT" \
@@ -1159,15 +1168,18 @@ FRONTEND_ASSET_PARITY_STATUS="not_checked"
 IMS_HEALTH_OVERRIDE="${DEPLOY_IMS_HEALTH_URL:-${DEPLOY_FRONTEND_HEALTH_URL:-}}"
 POS_HEALTH_OVERRIDE="${DEPLOY_POS_HEALTH_URL:-}"
 STORE_HEALTH_OVERRIDE="${DEPLOY_STORE_HEALTH_URL:-}"
+ADMIN_HEALTH_OVERRIDE="${DEPLOY_ADMIN_HEALTH_URL:-}"
 
 IMS_PUBLIC_URL="${DEPLOY_IMS_URL:-https://skupervisor.dgfy.ph}"
 POS_PUBLIC_URL="${DEPLOY_POS_URL:-https://pos.dgfy.ph}"
 STOREFRONT_PUBLIC_URL="${DEPLOY_STOREFRONT_URL:-https://dgfy.ph}"
+ADMIN_PUBLIC_URL="${DEPLOY_ADMIN_URL:-https://dgfy.ph/admin/}"
 TENANT_STORE_PUBLIC_URL="${DEPLOY_TENANT_STORE_URL:-https://dgfy.ph${STORE_BASE_PATH%/}}"
 
 mapfile -t IMS_HEALTH_CANDIDATES < <(build_surface_health_candidates "$IMS_HEALTH_OVERRIDE" "http://127.0.0.1:5173/")
 mapfile -t POS_HEALTH_CANDIDATES < <(build_surface_health_candidates "$POS_HEALTH_OVERRIDE" "http://127.0.0.1:5174/")
 mapfile -t STORE_HEALTH_CANDIDATES < <(build_surface_health_candidates "$STORE_HEALTH_OVERRIDE" "http://127.0.0.1:5175${STORE_BASE_PATH}" "http://127.0.0.1:5175/")
+mapfile -t ADMIN_HEALTH_CANDIDATES < <(build_surface_health_candidates "$ADMIN_HEALTH_OVERRIDE" "http://127.0.0.1:5177/admin/")
 
 log "Waiting for services to stabilize..."
 sleep 12
@@ -1221,16 +1233,19 @@ log "Backend health check passed: $BACKEND_HEALTH_URL"
 probe_url_candidates "IMS runtime" IMS_HEALTH_URL 12 2 "${IMS_HEALTH_CANDIDATES[@]}" || fatal "IMS runtime health check failed."
 probe_url_candidates "POS runtime" POS_HEALTH_URL 12 2 "${POS_HEALTH_CANDIDATES[@]}" || fatal "POS runtime health check failed."
 probe_url_candidates "Store runtime" STORE_HEALTH_URL 12 2 "${STORE_HEALTH_CANDIDATES[@]}" || fatal "Store runtime health check failed."
+probe_url_candidates "Platform Admin runtime" ADMIN_HEALTH_URL 12 2 "${ADMIN_HEALTH_CANDIDATES[@]}" || fatal "Platform Admin runtime health check failed."
 
 if [[ "$VERIFY_PUBLIC_ENDPOINTS" == "1" ]]; then
     mapfile -t IMS_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$IMS_PUBLIC_URL")
     mapfile -t POS_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$POS_PUBLIC_URL")
     mapfile -t STOREFRONT_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$STOREFRONT_PUBLIC_URL")
+    mapfile -t ADMIN_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$ADMIN_PUBLIC_URL")
     mapfile -t TENANT_STORE_PUBLIC_CANDIDATES < <(build_surface_health_candidates "$TENANT_STORE_PUBLIC_URL" "${TENANT_STORE_PUBLIC_URL%/}/")
 
     probe_url_candidates "Public endpoint IMS" IMS_PUBLIC_VERIFIED_URL 8 3 "${IMS_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for IMS ($IMS_PUBLIC_URL)."
     probe_url_candidates "Public endpoint POS" POS_PUBLIC_VERIFIED_URL 8 3 "${POS_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for POS ($POS_PUBLIC_URL)."
     probe_url_candidates "Public endpoint Storefront" STOREFRONT_PUBLIC_VERIFIED_URL 8 3 "${STOREFRONT_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Storefront ($STOREFRONT_PUBLIC_URL)."
+    probe_url_candidates "Public endpoint Platform Admin" ADMIN_PUBLIC_VERIFIED_URL 8 3 "${ADMIN_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Platform Admin ($ADMIN_PUBLIC_URL)."
     probe_url_candidates "Public endpoint Tenant Store" TENANT_STORE_PUBLIC_VERIFIED_URL 8 3 "${TENANT_STORE_PUBLIC_CANDIDATES[@]}" || fatal "Public endpoint check failed for Tenant Store ($TENANT_STORE_PUBLIC_URL)."
     verify_tenant_store_asset_integrity "$TENANT_STORE_PUBLIC_VERIFIED_URL" || fatal "Tenant Store asset-integrity validation failed."
 

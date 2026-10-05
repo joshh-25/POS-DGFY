@@ -13,6 +13,7 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
+const webServerPort = process.env.E2E_WEB_PORT || '5174';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
 
 export default defineConfig({
@@ -39,11 +40,16 @@ export default defineConfig({
   projects: [
     {
       name: 'google-chrome',
-      testIgnore: [/.*\.setup\.js/, /.*\.authenticated\.spec\.js/],
+      testIgnore: [/.*\.setup\.js/, /.*\.authenticated\.spec\.js/, /.*sales-journey\.spec\.js/],
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chrome',
       },
+    },
+    {
+      name: 'pos-sales-chromium',
+      testMatch: /.*sales-journey\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'setup',
@@ -63,14 +69,15 @@ export default defineConfig({
   ],
   webServer: isLocalRun ? [
     {
-      command: 'npm run dev',
+      command: 'node --import ./src/instrument.js src/server.js',
       cwd: path.resolve(__dirname, '../dgfy-api'),
       url: `${apiURL}/api/v1/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      env: { DGFY_LEGACY_TENANT_REGISTRATION_ENABLED: 'true' },
     },
     {
-      command: 'npm run dev',
+      command: `npm run dev -- --port ${webServerPort} --strictPort`,
       cwd: __dirname,
       url: `${baseURL}/login`,
       reuseExistingServer: !process.env.CI,

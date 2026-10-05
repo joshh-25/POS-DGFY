@@ -12,6 +12,12 @@ const JEST_BIN = path.join(APP_DIR, 'node_modules', 'jest', 'bin', 'jest.js');
 const JEST_CONFIG = path.join(APP_DIR, 'jest.config.cjs');
 const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
+// Landlord test databases accepted by the API defaults and repository's test workflow.
+// Keep this an exact list: a substring like "contest" must never authorize migrations.
+const SUPPORTED_LANDLORD_TEST_DATABASE_NAMES = new Set([
+  'sku_test',
+  'sku_inventory_manager_test',
+]);
 // #986/#1124: the early-stop-on-first-failure default was a cost optimization from when the full
 // matrix took ~19.6min (#345); #1015/#1016 cut that to ~2-4min, so the premise that "stopping early
 // saves meaningful time" no longer holds, while the cost of stopping early -- every later group's
@@ -307,6 +313,43 @@ function runSchemaPreflight(evidenceDir) {
     stdout: result.stdout || '',
     landlord_ready: true,
   };
+}
+
+// The migration-runner owns the landlord schema. Run its migrations against the
+// exact DB_NAME_TEST selected by the API before any tier starts; preflight repairs
+// columns on migrated tables and intentionally fails closed when that contract is
+// not met. Keep the DB-name guard here as well as in runSchemaPreflight so a
+// misconfigured local invocation cannot migrate a non-test database.
+function prepareLandlordTestDatabase(evidenceDir, { spawn = spawnSync } = {}) {
+  const databaseName = process.env.DB_NAME_TEST
+    || (process.env.CI ? process.env.DB_NAME : null)
+    || 'sku_test';
+  if (!SUPPORTED_LANDLORD_TEST_DATABASE_NAMES.has(String(databaseName || ''))) {
+    throw new Error(`Refusing backend test database migration on non-test database: ${databaseName}`);
+  }
+
+  const migrationRunnerDir = path.join(ROOT, 'apps/dgfy-migration-runner');
+  const sequelizeCli = path.join(migrationRunnerDir, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
+  if (!fs.existsSync(sequelizeCli)) {
+    throw new Error(`Migration runner sequelize-cli not found at ${sequelizeCli}`);
+  }
+  const result = spawn(process.execPath, [sequelizeCli, 'db:migrate', '--config', 'src/config/sequelize.config.cjs'], {
+    cwd: migrationRunnerDir,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, NODE_ENV: 'test', DB_NAME_TEST: databaseName },
+    shell: false,
+  });
+  const logFile = path.join(evidenceDir, 'landlord-test-db-migrate.log');
+  writeLog(logFile, result);
+  const relativeLog = path.relative(ROOT, logFile).replace(/\\/g, '/');
+  if (result.status !== 0) {
+    process.stdout.write(result.stdout || '');
+    process.stderr.write(result.stderr || '');
+    throw new Error(`Backend landlord test database migration failed. See ${relativeLog}`);
+  }
+  console.log(`[backend-test-matrix] landlord_test_db=pass database=${databaseName} log=${relativeLog}`);
+  return { status: 'pass', database: databaseName, log_file: relativeLog };
 }
 
 // #1015: builds the shared template tenant database ONCE per matrix invocation -- the ~235s
@@ -665,6 +708,7 @@ function main() {
   let schemaPreflight = { status: 'not_run', reason: `tier=${TIER}` };
   let templateTenantDb = { status: 'not_run', db_name: null };
   let dbGroups = [];
+  let landlordTestDb = { status: 'not_run', database: null };
 
   // #1124: builds the payload from current mutable state -- called after every unit of work
   // completes (not only once at the very end) so a job killed mid-run leaves a partial-but-valid
@@ -697,12 +741,20 @@ function main() {
     // construction, 'skipped' when --skip-schema-preflight was passed, 'pass' with the shared
     // template DB name otherwise.
     template_tenant_db: templateTenantDb,
+    landlord_test_db: landlordTestDb,
     groups: dbGroups,
     chunks,
   });
   const persist = (partial) => persistMatrixState(evidenceRoot, buildPayload(), { partial });
 
   console.log(`[backend-test-matrix] tier=${TIER} active_tests=${activeTests.length} fast_tests=${fastTests.length} db_tests=${dbTests.length} (manifest=${manifestCount})`);
+
+  // For `all`, migrate before the fast tier too so no concurrent Jest cleanup can
+  // race schema preparation. A `fast`-only invocation remains DB-independent.
+  if (TIER === 'all' || TIER === 'db') {
+    landlordTestDb = prepareLandlordTestDatabase(evidenceRoot);
+    persist(true);
+  }
 
   if (TIER === 'fast' || TIER === 'all') {
     const fastResult = runFastTier(fastTests, evidenceRoot);
@@ -765,9 +817,13 @@ function main() {
   if (failed) process.exit(2);
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`[backend-test-matrix] ${error.message}`);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`[backend-test-matrix] ${error.message}`);
+    process.exit(1);
+  }
 }
+
+module.exports = { prepareLandlordTestDatabase, SUPPORTED_LANDLORD_TEST_DATABASE_NAMES };

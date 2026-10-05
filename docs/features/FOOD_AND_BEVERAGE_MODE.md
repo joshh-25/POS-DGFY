@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-09-29
+last_reviewed: 2026-10-03
 applies_to: fnb_mode
 topic: food_and_beverage
 ---
@@ -137,7 +137,7 @@ Assigned-scope operational presets require at least one active location when the
 
 ## Validation
 
-Use `npm run qa:fnb-readiness` before final F&B readiness ratings. The gate runs backend operational QA, POS/Storefront recipe checkout contracts, modifier migration and validator contracts, frontend F&B route/API/receipt contracts, production builds, architecture checks, docs lint, and diff hygiene. `to-staging/*`/`release/*` promotion PRs specifically — not every pull request — also run the blocking `promotion-quality-gate.yml` workflow (formerly `pr-quality-checks.yml`, #1018), which adds the complete backend test matrix, open-handle diagnostics, fresh migration-runner smoke coverage, frontend lint/tests/builds, index auditing, and compatibility-seam validation. If the gate is not run, ratings are preliminary; if it fails, production readiness cannot be claimed above controlled-pilot confidence.
+Use `npm run qa:fnb-readiness` before final F&B readiness ratings. The gate runs backend operational QA, POS/Storefront recipe checkout contracts, modifier migration and validator contracts, frontend F&B route/API/receipt contracts, production builds, architecture checks, docs lint, and diff hygiene. The operator may also dispatch `.github/workflows/promotion-quality-gate.yml` for optional evidence. It adds the complete backend test matrix, open-handle diagnostics, fresh migration-runner smoke coverage, frontend lint/tests/builds, index auditing, and compatibility-seam validation. The suite is advisory: its absence or failure does not change readiness ratings, which remain based on this document’s required validation and evidence.
 
 For Storefront order scheduling or tracking UI changes, run the focused fulfillment-choice, date/time-picker, time-input, shared tracking-summary, and affected completed-view tests; run the Storefront build; and inspect the checkout route at desktop and mobile sizes. Include the calendar popup at a short mobile height, and verify that the rendered viewport has no horizontal overflow. Tracking-completion visuals need a seeded completed-order fixture or component test when no completed order is available in the local environment.
 

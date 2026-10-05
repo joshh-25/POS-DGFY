@@ -16,7 +16,6 @@ const {
   summarizeGates,
 } = require('./gate-release-local');
 
-const { ADVISORY_CI_ENFORCED_GATES } = require('./check-pr-quality-workflow');
 
 // #1021 review, RF-1: an unknown --only gate name previously resolved to an empty selection,
 // which meant every gate was skipped, the run exited 0, and the artifact still said
@@ -128,14 +127,9 @@ test('--only still works as an escape hatch for a single delegated gate', () => 
   assert.equal(ranCommand.called, true);
 });
 
-// #1431 Phase D (2026-09-03) shipped a two-name advisory-exemption allowlist (defined in
-// check-pr-quality-workflow.js, since that's where checkCiEnforcedGatesAreBlocking consumes it);
-// #1278 PR 2 (Phase 298) added a third, 'release.notes' (ADR 0082 Decision 8) -- pinned here too
-// since it's the direct answer to "which of the 17 delegated gates stay advisory."
-test('the advisory-exemption set contains exactly dependencies.audit.full, backend.test_matrix, and release.notes', () => {
-  assert.deepEqual(new Set(ADVISORY_CI_ENFORCED_GATES), new Set(['dependencies.audit.full', 'backend.test_matrix', 'release.notes']));
-  for (const name of ADVISORY_CI_ENFORCED_GATES) {
-    assert.equal(CI_ENFORCED_GATES.has(name), true, `${name} must still be delegated (CI_ENFORCED_GATES), just not blocking`);
+test('CI-delegated gate registry remains available for optional operator runs', () => {
+  for (const name of ['dependencies.audit.full', 'backend.test_matrix', 'release.notes']) {
+    assert.equal(CI_ENFORCED_GATES.has(name), true, `${name} must remain available to the optional CI suite`);
   }
 });
 

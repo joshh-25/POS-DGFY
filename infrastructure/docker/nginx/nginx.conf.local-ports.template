@@ -1,7 +1,7 @@
 # Opt-in local dev config: NOT part of the committed dev/prod compose chain
 # (that one is domain+TLS based, see nginx.conf.template). This is a
-# plain-HTTP, port-based variant so the four frontend surfaces are directly
-# reachable at http://localhost:5173/5174/5175/5176, matching the ports used by
+# plain-HTTP, port-based variant so the five frontend surfaces are directly
+# reachable at http://localhost:5173/5174/5175/5176/5177, matching the ports used by
 # the removed refactor-do-not-commit/local-test rehearsal stack. All /api
 # and /uploads traffic on all four ports goes to dgfy-api -- there is no
 # backend routing here at all. See docker-compose.local-ports.yml.
@@ -225,5 +225,55 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# Platform Admin: this port forwards /admin to the standalone app while its
+# API calls stay same-origin through the shared backend.
+server {
+    listen 5177;
+
+    location /api {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location /uploads {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /admin {
+        set $admin_upstream dgfy-admin:8085;
+        proxy_pass http://$admin_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ^~ /admin/ {
+        set $admin_upstream dgfy-admin:8085;
+        proxy_pass http://$admin_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        return 302 /admin/;
     }
 }

@@ -5,7 +5,6 @@ import '../../../packages/web-core/src/compat/chrome80Runtime.js';
 import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
-import AdminLayout from '../../../packages/web-core/Components/admin/AdminLayout.jsx'
 import ProtectedRoute from '../../../packages/web-core/src/components/ProtectedRoute.jsx'
 import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx'
 import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx'
@@ -116,15 +115,6 @@ const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
-const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
-const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
-const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.jsx'))
-const PaymentOperations = lazy(() => import('../Pages/admin/PaymentOperations.jsx'))
-const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
-const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
-const InvoiceManager = lazy(() => import('../Pages/admin/InvoiceManager.jsx'))
-const PlatformAdminManager = lazy(() => import('../Pages/admin/PlatformAdminManager.jsx'))
-const StoreTemplateManager = lazy(() => import('../Pages/admin/StoreTemplateManager.jsx'))
 
 const LegacyMerchantRoute = ({ target = '/backoffice/overview', title }) => (
   <ProtectedRoute>
@@ -192,22 +182,6 @@ function App() {
         <Route path="/settings" element={<LegacyMerchantRoute target="/backoffice/settings" title="Settings workspace moved" />} />
         <Route path="/receive/:token" element={<LegacyReceiveRoute />} />
 
-        {/* Admin Portal - nested routes with AdminLayout */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<Navigate to="/admin/tenants" replace />} />
-          <Route path="feedback" element={<FeedbackDashboard />} />
-          <Route path="tenants" element={<TenantManager />} />
-          <Route path="dgfy-accounts" element={<DgfyAccountManager />} />
-          <Route path="payments" element={<PaymentOperations />} />
-          <Route path="pricing" element={<AdminPricing />} />
-          <Route path="hosting" element={<HostingStatus />} />
-          <Route path="invoices" element={<InvoiceManager />} />
-          <Route path="platform-admins" element={<PlatformAdminManager />} />
-          <Route path="store-templates" element={<StoreTemplateManager />} />
-        </Route>
-
-         {/* Legacy route - redirect to new admin portal */}
-         <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
          <Route path="*" element={<NotFoundPage />} />
        </Routes>
     </Suspense>

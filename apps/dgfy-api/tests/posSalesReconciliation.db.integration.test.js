@@ -893,7 +893,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       payload: await checkoutPayloadWithOpenShift(cashier.user_id, {
         idempotency_key: `fee-agg-${crypto.randomUUID()}`,
         payment_type: 'cash',
-        order_method: 'delivery',
+        order_method: 'dine_in',
         lines: [{ item_id: product.item_id, quantity: 1, sale_price: 56 }]
       })
     }));

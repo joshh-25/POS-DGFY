@@ -4,7 +4,7 @@ import * as adminService from '../adminService.js';
 
 Object.defineProperty(globalThis, 'document', {
   value: {
-    cookie: 'sku_csrf_token=csrf-admin-contract'
+    cookie: 'admin_csrf_token=csrf-admin-contract'
   },
   writable: true
 });

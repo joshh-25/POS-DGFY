@@ -11,9 +11,9 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 // Manifest schemas: v1 is the Phase 342 candidate-wide shape (frozen legacy -- still accepted
 // so in-flight/older manifests validate, but never written anymore); v2 is the #2055
-// per-app shape (per-app `release_revision` map, cosmetic `repair_seq` ordinals).
+// per-app shape; v3 adds versionless DEV lineage and release-only repairs additively.
 const CANDIDATE_SCHEMAS = Object.freeze(['sku-release-candidate/v1', 'sku-release-candidate/v2', 'sku-release-candidate/v3']);
-const RELEASE_ORIGINS = Object.freeze(['dev', 'promotion', 'staging_repair']);
+const RELEASE_ORIGINS = Object.freeze(['dev', 'promotion', 'staging_repair', 'release_repair']);
 const STATUS_VALUES = new Set([
   'created',
   'staging_soak',
@@ -62,10 +62,9 @@ function assertDigest(value, label) {
   assert(typeof value === 'string' && DIGEST_PATTERN.test(value), `${label} must be a sha256:<64-hex> image digest`, 'INVALID_DIGEST');
 }
 
-// #1610 (ADR 0081 Decision 8 amendment): every staging_repair revision must declare which apps it
-// actually rebuilt/relabeled on STAGING -- the same apps whose build_* flag was true on that
-// repair's STAGING redeploy. dgfy-api and dgfy-migration-runner are always rebuilt as one paired
-// unit (a single build_api flag covers both -- see deploy.yml's/deploy-main.yml's own pairing
+// #1610 / #1542 (ADR 0081 Decision 8 amendments): each staging or release repair declares which
+// apps it actually rebuilt/relabeled. dgfy-api and dgfy-migration-runner are always rebuilt as one
+// paired unit (a single build_api flag covers both -- see deploy.yml's/deploy-main.yml's pairing
 // comment), so a repair that touches either always lists both. This is what
 // resolveCandidateSourceShaByApp below walks to answer "which SHA is THIS app's candidate source
 // identity" per app, instead of assuming every app advanced to the same current_staging_sha.
@@ -103,6 +102,31 @@ function assertReleaseCutBranch(branch, candidateId) {
   assert(branch === `release/${candidateId}`, `Release cut must use release/${candidateId}`, 'INVALID_RELEASE_BRANCH');
 }
 
+function validateReleaseRepairs(repairs, candidateId, initialParentSha, seenShas) {
+  if (repairs === undefined) return [];
+  assert(Array.isArray(repairs), 'release_revision.repairs must be an array when present', 'INVALID_RELEASE_REPAIRS');
+  let parentSha = initialParentSha;
+  const validated = [];
+  repairs.forEach((repair, index) => {
+    const repairSeq = index + 1;
+    assert(repair && typeof repair === 'object' && !Array.isArray(repair), `Release repair ${repairSeq} must be an object`, 'INVALID_RELEASE_REPAIR');
+    assert(repair.repair_seq === repairSeq, `Release repair sequences must be sequential; expected ${repairSeq}`, 'INVALID_RELEASE_REPAIR_SEQ');
+    assertSha(repair.sha, `release repair ${repairSeq} sha`);
+    assertSha(repair.parent_sha, `release repair ${repairSeq} parent_sha`);
+    assert(repair.parent_sha === parentSha, `Release repair ${repairSeq} must point to the previous release SHA`, 'RELEASE_REPAIR_PARENT_MISMATCH');
+    assert(repair.sha !== parentSha, `Release repair ${repairSeq} must advance the release head`, 'DUPLICATE_RELEASE_REPAIR_SHA');
+    assert(!seenShas.has(repair.sha), `Release repair ${repairSeq} reuses an earlier candidate SHA`, 'DUPLICATE_RELEASE_REPAIR_SHA');
+    assert(repair.branch === `fix/release/${candidateId}-${repairSeq}`, `Release repair ${repairSeq} must use fix/release/${candidateId}-${repairSeq}`, 'INVALID_RELEASE_REPAIR_BRANCH');
+    assert(Number.isInteger(repair.pr) && repair.pr > 0, `Release repair ${repairSeq} must identify its PR`, 'MISSING_RELEASE_REPAIR_PR');
+    assert(Number.isInteger(repair.issue) && repair.issue > 0, `Release repair ${repairSeq} must identify its issue`, 'MISSING_RELEASE_REPAIR_ISSUE');
+    assertAppsTouched(repair.apps_touched, `release repair ${repairSeq}`);
+    parentSha = repair.sha;
+    seenShas.add(repair.sha);
+    validated.push(repair);
+  });
+  return validated;
+}
+
 /**
  * #2055 (Phase 346): validates one v2 `dev_artifacts` entry -- the already-published DEV
  * artifact a candidate selects per app as its starting point (`{ app, revision, sha,
@@ -132,8 +156,10 @@ function assertDevArtifacts(value) {
  * #2055 (Phase 346): validates one v2 `release_revision.apps` entry -- each touched app's
  * latest allocated revision at release-cut time, read off that app's STAGING revision tag
  * (GHCR is the source of truth, not the manifest). `origin` records where the revision
- * was allocated: the selected DEV artifact (`dev`) or a later staging repair
- * (`staging_repair`). Apps the candidate never rebuilds are absent -- they keep their
+ * was allocated: the selected DEV artifact (`dev`), a staging repair (`staging_repair`), or a
+ * release-only repair (`release_repair`). For the latter, digest remains the original STAGING
+ * provenance and is not compared with the rebuilt PROD artifact. Apps never rebuilt are absent --
+ * they keep their
  * last-published artifact/revision unchanged and no new tag is cut for them.
  */
 function assertReleaseAppEntry(app, entry, allowedOrigins = RELEASE_ORIGINS) {
@@ -321,7 +347,13 @@ function validatePromotionCandidateV2(manifest, versionlessDev = false) {
   assert(release.source_staging_sha === manifest.staging_head_sha, 'Release branch must be cut from the recorded staging head', 'RELEASE_SOURCE_MISMATCH');
   assertReleaseCutBranch(release.branch, candidateId);
   assert(Number.isInteger(release.pr) && release.pr > 0, 'Release cut must identify its PR', 'MISSING_RELEASE_PR');
-  assertReleaseApps(release.apps, versionlessDev ? ['promotion', 'staging_repair'] : ['dev', 'staging_repair']);
+  if (!versionlessDev) {
+    assert(!Object.hasOwn(release, 'repairs'), 'release_revision.repairs is supported only by sku-release-candidate/v3', 'FORBIDDEN_RELEASE_REPAIRS');
+  }
+  assertReleaseApps(release.apps, versionlessDev ? ['promotion', 'staging_repair', 'release_repair'] : ['dev', 'staging_repair']);
+  if (versionlessDev) {
+    validateReleaseRepairs(release.repairs, candidateId, release.source_staging_sha, new Set([...seenShas, release.source_staging_sha]));
+  }
 
   return {
     candidate_id: candidateId,
@@ -344,23 +376,36 @@ function validatePromotionCandidateV2(manifest, versionlessDev = false) {
 function validatePromotionCandidateV3(manifest) {
   assert(manifest.schema === 'sku-release-candidate/v3', 'Candidate manifest schema must be sku-release-candidate/v3', 'INVALID_SCHEMA');
   const result = validatePromotionCandidateV2(manifest, true);
+  if (Object.hasOwn(manifest, 'quality_check')) {
+    const qualityCheck = manifest.quality_check;
+    assert(qualityCheck && typeof qualityCheck === 'object' && !Array.isArray(qualityCheck), 'quality_check must be an object when present', 'INVALID_QUALITY_CHECK');
+    assertSha(qualityCheck.sha, 'quality_check.sha');
+    assert(Number.isInteger(qualityCheck.run_id) && qualityCheck.run_id > 0, 'quality_check.run_id must be a positive integer', 'INVALID_QUALITY_CHECK_RUN_ID');
+    assert(typeof qualityCheck.run_url === 'string' && /^https:\/\//.test(qualityCheck.run_url), 'quality_check.run_url must be an HTTPS URL', 'INVALID_QUALITY_CHECK_URL');
+    assert(typeof qualityCheck.dispatched_at === 'string' && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(qualityCheck.dispatched_at) && !Number.isNaN(Date.parse(qualityCheck.dispatched_at)), 'quality_check.dispatched_at must be an ISO-8601 date-time', 'INVALID_QUALITY_CHECK_TIME');
+    assert(['clean', 'had-advisory-failures'].includes(qualityCheck.result), 'quality_check.result must be clean or had-advisory-failures', 'INVALID_QUALITY_CHECK_RESULT');
+    result.quality_check_current = qualityCheck.sha === getActiveCandidateSha(manifest);
+  }
   const apps = manifest.release_revision && manifest.release_revision.apps;
   if (apps) {
     const touchedApps = new Set(
-      manifest.revisions.flatMap((revision) => revision.apps_touched || [])
-    );
-    const missingTouchedApps = [...touchedApps].filter((app) => !Object.hasOwn(apps, app));
-    const missingAppNames = missingTouchedApps.join(', ') || '<none>';
-    assert(
-      missingTouchedApps.length === 0,
-      'A v3 release candidate must include a revisioned STAGING artifact for every app in its ' +
-        `apps_touched history; missing: ${missingAppNames}`,
-      'MISSING_TOUCHED_RELEASE_APP'
+      [
+        ...manifest.revisions.flatMap((revision) => revision.apps_touched || []),
+        ...(manifest.release_revision?.repairs || []).flatMap((repair) => repair.apps_touched || []),
+      ]
     );
     assert(
       Object.hasOwn(apps, 'dgfy-api') === Object.hasOwn(apps, 'dgfy-migration-runner'),
       'A v3 candidate must include dgfy-api and dgfy-migration-runner in release_revision.apps together or omit both (paired backend release)',
       'ONE_SIDED_API_MIGRATION_RELEASE_PAIR'
+    );
+    const missingTouchedApps = [...touchedApps].filter((app) => !Object.hasOwn(apps, app));
+    const missingAppNames = missingTouchedApps.join(', ') || '<none>';
+    assert(
+      missingTouchedApps.length === 0,
+      'A v3 release candidate must include a per-app release_revision entry for every app selected ' +
+        `by its candidate or release-repair history; missing: ${missingAppNames}`,
+      'MISSING_TOUCHED_RELEASE_APP'
     );
     const sourceShaByApp = resolveCandidateSourceShaByApp(manifest);
     for (const [app, entry] of Object.entries(apps)) {
@@ -373,6 +418,13 @@ function validatePromotionCandidateV3(manifest) {
     }
   }
   return result;
+}
+
+function getActiveCandidateSha(manifest) {
+  return manifest.release_revision?.source_staging_sha ||
+    manifest.staging_head_sha ||
+    manifest.current_staging_sha ||
+    manifest.source_develop_sha;
 }
 
 /**
@@ -398,7 +450,7 @@ function getAppRevision(manifest, app) {
  * untouched apps' PROD build claim a candidate identity their STAGING image never actually carried.
  *
  * Expects an already-validated manifest (call validatePromotionCandidate first) -- this function
- * does not re-validate, it just walks revisions.apps_touched.
+ * does not re-validate, it just walks candidate and release repair apps_touched.
  */
 function resolveCandidateSourceShaByApp(manifest, apps = APPS) {
   const initialSha = manifest.revisions[0].sha;
@@ -408,6 +460,11 @@ function resolveCandidateSourceShaByApp(manifest, apps = APPS) {
     for (const revision of manifest.revisions.slice(1)) {
       if (Array.isArray(revision.apps_touched) && revision.apps_touched.includes(app)) {
         sha = revision.sha;
+      }
+    }
+    for (const repair of manifest.release_revision?.repairs || []) {
+      if (Array.isArray(repair.apps_touched) && repair.apps_touched.includes(app)) {
+        sha = repair.sha;
       }
     }
     byApp[app] = sha;
@@ -476,6 +533,7 @@ module.exports = {
   validatePromotionCandidateV1,
   validatePromotionCandidateV2,
   validatePromotionCandidateV3,
+  getActiveCandidateSha,
   getAppRevision,
   resolveCandidateSourceShaByApp,
 };

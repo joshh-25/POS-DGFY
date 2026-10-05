@@ -1,6 +1,6 @@
 {
   "name": "sku-inventory-manager-backend",
-  "version": "1.35.0",
+  "version": "1.36.0",
   "description": "Backend API for SKU Inventory Manager",
   "type": "module",
   "main": "src/server.js",
@@ -17,9 +17,6 @@
     "test:frontend-session-e2e": "cross-env RUN_BROWSER_E2E=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.sessionIsolation.e2e.test.js",
     "test:frontend-compliance-e2e": "cross-env RUN_BROWSER_E2E=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.complianceActivationReadiness.e2e.test.js",
     "test:frontend-compliance-e2e:matrix": "cross-env RUN_BROWSER_E2E=true BROWSER_E2E_VIEWPORTS=desktop,mobile node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.complianceActivationReadiness.e2e.test.js",
-    "test:frontend-ims-pos-sales-e2e": "cross-env RUN_BROWSER_E2E=true RUN_A11Y_MATRIX=false BROWSER_E2E_VIEWPORTS=desktop node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.imsPosSalesJourney.e2e.test.js",
-    "test:frontend-ims-pos-sales-e2e:release": "cross-env RUN_BROWSER_E2E=true RUN_A11Y_MATRIX=false BROWSER_E2E_PROFILE=release BROWSER_E2E_VIEWPORTS=desktop node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.imsPosSalesJourney.e2e.test.js",
-    "test:frontend-ims-pos-sales-e2e:matrix": "cross-env RUN_BROWSER_E2E=true RUN_A11Y_MATRIX=true BROWSER_E2E_VIEWPORTS=desktop,mobile node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.imsPosSalesJourney.e2e.test.js",
     "test:hosting:shared": "cross-env HOSTING_PROFILE=shared REDIS_URL= AUTH_BLACKLIST_FAILURE_MODE=fail_open TEMP_FILE_STORAGE=local STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=false node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/rateLimiterStoreMode.test.js",
     "test:hosting:vps": "cross-env HOSTING_PROFILE=vps REDIS_URL=redis://127.0.0.1:6379 AUTH_BLACKLIST_FAILURE_MODE=fail_closed TEMP_FILE_STORAGE=auto STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/hostingProfilePreflight.test.js tests/healthService.test.js tests/rateLimiterStoreMode.test.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --watch",
@@ -95,8 +92,8 @@
     "archiver": "^8.0.0",
     "axios": "^1.20.0",
     "bcryptjs": "^2.4.3",
-    "compression": "^1.8.1",
-    "cors": "^2.8.5",
+    "compression": "^1.8.2",
+    "cors": "^2.8.6",
     "csv-parse": "^6.1.0",
     "dotenv": "^16.6.1",
     "express": "^4.22.2",
@@ -104,21 +101,21 @@
     "helmet": "^7.1.0",
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
-    "mammoth": "^1.12.0",
+    "mammoth": "^1.13.0",
     "morgan": "^1.12.1",
     "multer": "^2.4.0",
-    "mysql2": "^3.22.0",
-    "node-cron": "^4.2.1",
+    "mysql2": "^3.24.4",
+    "node-cron": "^4.6.0",
     "nodemailer": "^10.0.12",
     "openai": "^6.17.0",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.296",
-    "pdfkit": "^0.19.1",
-    "playwright": "^1.58.0",
+    "pdfkit": "^0.20.2",
+    "playwright": "^1.63.0",
     "rate-limit-redis": "^4.3.1",
     "redis": "^4.6.13",
     "sequelize": "^6.37.8",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.5",
     "uuid": "^11.1.1",
     "winston": "^3.11.0",
     "yauzl": "^3.2.0"
@@ -130,6 +127,7 @@
     },
     "@xmldom/xmldom": "0.8.15",
     "ajv": "6.14.0",
+    "brace-expansion@^5.0.2": "5.0.12",
     "dottie": "2.0.7",
     "eslint": {
       "minimatch": "10.2.5"
@@ -143,6 +141,9 @@
     "minimatch@10.2.6": {
       "brace-expansion": "5.0.12"
     },
+    "minimatch@9.0.7": {
+      "brace-expansion": "5.0.12"
+    },
     "moment": "2.31.0",
     "nodemon": {
       "minimatch": "3.1.5"
@@ -153,20 +154,20 @@
       "uuid": "11.1.1"
     },
     "underscore": "1.13.8",
-    "js-yaml": "4.3.1"
+    "js-yaml": "4.3.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/preset-env": "^7.23.7",
+    "@babel/core": "^8.0.6",
+    "@babel/preset-env": "^8.0.6",
     "@eslint/js": "^10.0.1",
     "@faker-js/faker": "^10.2.0",
-    "babel-jest": "^30.5.1",
-    "babel-plugin-transform-import-meta": "^2.3.3",
+    "babel-jest": "^30.5.2",
+    "babel-plugin-transform-import-meta": "^3.0.0",
     "cross-env": "^10.1.0",
-    "eslint": "^10.0.0",
-    "globals": "^17.3.0",
-    "jest": "^30.5.1",
-    "nodemon": "^3.0.2",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "jest": "^30.5.2",
+    "nodemon": "^3.1.14",
     "sequelize-cli": "^6.6.5",
     "supertest": "^6.3.4"
   },

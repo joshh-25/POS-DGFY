@@ -9,7 +9,7 @@ function parseArgs(argv) {
     projectRoot: process.cwd(),
     targetSha: process.env.RELEASE_TARGET_SHA || process.env.DEPLOY_TARGET_SHA || '',
     output: process.env.FRONTEND_BUILD_MANIFEST_FILE || '',
-    surfaces: ['skupervisor', 'pos', 'store'],
+    surfaces: ['skupervisor', 'pos', 'store', 'admin'],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -66,6 +66,7 @@ const SURFACE_APP_DIR = {
   pos: 'apps/dgfy-pos',
   store: 'apps/dgfy-storefront',
   opis: 'apps/dgfy-opis',
+  admin: 'apps/dgfy-admin',
 };
 
 function surfaceManifest(projectRoot, surface) {
