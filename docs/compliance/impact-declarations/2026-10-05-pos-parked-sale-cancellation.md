@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api focused parked-sale tests (25 passed), shar
 rollback_note: Revert the parked-sale cancellation workflow, UI reconciliation changes, version bumps, and this declaration; no schema migration or tenant data repair is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-05T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-05-POS-PARKED-SALE-CANCELLATION
+preflight_run_at: 2026-10-05T09:14:11.227Z
+preflight_request_ref: PREFLIGHT-LOCAL-1791190695944-2026-10-05-POS-PARKED-SALE-CANCELLATION
 ---
 
 # POS parked-sale cancellation hotfix
