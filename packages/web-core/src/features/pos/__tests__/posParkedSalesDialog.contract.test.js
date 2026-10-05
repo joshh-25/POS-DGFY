@@ -26,7 +26,7 @@ const actionSource = fs.readFileSync(
     'utf8'
 );
 describe('POS parked-sales pay/resume contract', () => {
-    it('loads only while the dialog is open and exposes Pay/Resume actions without Refresh', () => {
+    it('loads while the dialog is open and refreshes approved cancellations without a manual Refresh button', () => {
         expect(terminalRenderSource).toContain('posPresentationBundle.currentSaleActions.showParkedSaleControls');
         expect(terminalRenderSource).toContain('data-testid="pos-header-parked-sales-history-button"');
         expect(actionSource).toContain('data-testid="pos-park-sale-button"');
@@ -36,7 +36,9 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('shrink-0 border-t border-slate-200 px-5 py-3');
         expect(dialogSource).toContain('fetchPosParkedSales');
         expect(dialogSource).toContain('if (!open) return undefined;');
-        expect(dialogSource).toContain('Pay a parked sale now or resume it to add more items.');
+        expect(dialogSource).toContain('Pay or resume a parked sale, or request cancellation with a reason.');
+        expect(dialogSource).toContain('window.setInterval(refreshVisibleParkedSales, 3000)');
+        expect(dialogSource).toContain("window.addEventListener('focus', refreshVisibleParkedSales)");
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-view-${parkedSaleId}`}');
         expect(dialogSource).toContain('>\n                                                    View\n');
         expect(dialogSource).toContain('data-testid="pos-parked-sale-view-dialog"');
@@ -86,15 +88,15 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(terminalHydration).toBeGreaterThan(-1);
     });
 
-    it('requires a reason and waits for independent Back Office cancellation approval', () => {
+    it('requires a reason, releases the stuck checkout on request, and waits for Back Office approval', () => {
         expect(dialogSource).toContain('cancelPosParkedSale');
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-cancel-${parkedSaleId}`}');
         expect(dialogSource).toContain("if (cancelReason.trim().length < 3)");
-        expect(dialogSource).toContain('Request cancellation approval');
-        expect(dialogSource).toContain('Stock remains deducted until approved.');
+        expect(dialogSource).toContain('Stock was deducted when this sale was parked. It will be restored only after Back Office approves the request.');
+        expect(dialogSource).toContain('Request approval');
         expect(dialogSource).toContain("const cancellationPending = status === 'cancel_pending';");
         expect(dialogSource).toContain("status === 'cancel_pending'");
-        expect(terminalViewSource).toContain("if (cancelledSale?.status !== 'cancelled') return;");
+        expect(terminalViewSource).toContain("['cancel_pending', 'cancelled'].includes(String(cancelledSale?.status || '').toLowerCase())");
         expect(dialogSource).not.toContain("const PARKED_SALE_AUTO_CANCEL_REASON");
         expect(workflowSource).toContain("operation: 'parked_sale'");
         expect(terminalRenderSource).toContain('data-testid="pos-pending-sync-banner"');
