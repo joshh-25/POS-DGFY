@@ -1825,7 +1825,7 @@ return (
                         onClaimed={handleParkedSaleClaimed}
                         onCancelled={(cancelledSale) => {
                             if (Number(cancelledSale?.pos_parked_sale_id) !== Number(activeParkedSale?.pos_parked_sale_id)) return;
-                            if (cancelledSale?.status !== 'cancelled') return;
+                            if (!['cancel_pending', 'cancelled'].includes(String(cancelledSale?.status || '').toLowerCase())) return;
                             clearPosCartDraft(offlineSnapshotScope, activeShiftId);
                             setActiveParkedSale(null);
                             resetCurrentSaleForNewSale();

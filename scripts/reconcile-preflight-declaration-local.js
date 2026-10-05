@@ -81,6 +81,20 @@ const HEALTH_POLL_INTERVAL_MS = 5000;
 const CONTAINER_POLL_ATTEMPTS = 12;
 const CONTAINER_POLL_INTERVAL_MS = 5000;
 
+function resolveNpmInvocation({
+  platform = process.platform,
+  npmExecPath = process.env.npm_execpath,
+  nodeExecPath = process.execPath
+} = {}) {
+  if (platform === 'win32' && npmExecPath && /\.(?:c?js|mjs)$/i.test(npmExecPath)) {
+    return { command: nodeExecPath, argsPrefix: [npmExecPath], shell: false };
+  }
+  if (platform === 'win32') {
+    return { command: 'npm.cmd', argsPrefix: [], shell: true };
+  }
+  return { command: 'npm', argsPrefix: [], shell: false };
+}
+
 class ReconcileLocalError extends Error {
   constructor(code, message) {
     super(message);
@@ -424,9 +438,11 @@ async function waitForServiceContainers() {
 }
 
 function runMigrations() {
-  const result = runCapture('npm', ['run', 'migrate'], {
+  const npmInvocation = resolveNpmInvocation();
+  const result = runCapture(npmInvocation.command, [...npmInvocation.argsPrefix, 'run', 'migrate'], {
     cwd: path.join(REPO_ROOT, 'apps/dgfy-migration-runner'),
-    env: { ...process.env, ...dbEnv() }
+    env: { ...process.env, ...dbEnv() },
+    shell: npmInvocation.shell
   });
   if (result.status !== 0) {
     throw new ReconcileLocalError('MIGRATE_FAILED', `apps/dgfy-migration-runner "npm run migrate" failed:\n${result.stderr}`);
@@ -683,5 +699,6 @@ module.exports = {
   parseFixtureOutput,
   sweepOneDeclaration,
   reconcileOrFailClosed,
-  DECLARATIONS_DIR
+  DECLARATIONS_DIR,
+  resolveNpmInvocation
 };

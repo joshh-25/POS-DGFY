@@ -8,8 +8,37 @@ const {
   parseFixtureOutput,
   sweepOneDeclaration,
   reconcileOrFailClosed,
-  DECLARATIONS_DIR
+  DECLARATIONS_DIR,
+  resolveNpmInvocation
 } = require('./reconcile-preflight-declaration-local');
+
+test('resolveNpmInvocation uses the npm JavaScript entrypoint on Windows when available', () => {
+  assert.deepEqual(resolveNpmInvocation({
+    platform: 'win32',
+    npmExecPath: 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+    nodeExecPath: 'C:\\nodejs\\node.exe'
+  }), {
+    command: 'C:\\nodejs\\node.exe',
+    argsPrefix: ['C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js'],
+    shell: false
+  });
+});
+
+test('resolveNpmInvocation uses npm.cmd through a shell as the Windows fallback', () => {
+  assert.deepEqual(resolveNpmInvocation({ platform: 'win32', npmExecPath: '' }), {
+    command: 'npm.cmd',
+    argsPrefix: [],
+    shell: true
+  });
+});
+
+test('resolveNpmInvocation uses npm directly on non-Windows platforms', () => {
+  assert.deepEqual(resolveNpmInvocation({ platform: 'linux' }), {
+    command: 'npm',
+    argsPrefix: [],
+    shell: false
+  });
+});
 
 // ---- normalizeDeclarationArgs ------------------------------------------------------------------
 
