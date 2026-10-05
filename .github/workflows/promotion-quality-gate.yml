@@ -1156,6 +1156,119 @@ jobs:
             echo "GHA_EOF_1066"
           } >> "$GITHUB_OUTPUT"
 
+  # Issue #350: Platform Admin quality coverage -- its own lint/build evidence.
+  frontend-admin-quality:
+    continue-on-error: true
+    # Route Platform Admin lint/build with the general frontend quality jobs.
+    # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["sieitz-runner"]') }}
+    timeout-minutes: 15
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
+    steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        continue-on-error: true
+        id: workspace_hygiene_clear
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - id: checkout
+        continue-on-error: true
+        uses: actions/checkout@v7
+        timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        continue-on-error: true
+        id: workspace_hygiene_assert
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Setup Node.js
+        continue-on-error: true
+        id: setup_node
+        uses: actions/setup-node@v4
+        timeout-minutes: 5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/dgfy-admin/package-lock.json
+
+      - name: Install dgfy-admin dependencies
+        continue-on-error: true
+        id: install_admin_deps
+        working-directory: apps/dgfy-admin
+        run: npm ci
+        timeout-minutes: 10
+
+      - name: Run dgfy-admin lint
+        continue-on-error: true
+        id: run_admin_lint
+        working-directory: apps/dgfy-admin
+        run: npm run lint
+        # Advisory on first landing (issue #350) -- pending real-promotion evidence before any
+        # blocking flip, same as #1712's job below. Contrast run_pos_lint above (blocking
+        # since #1431 Phase 1).
+        timeout-minutes: 5
+
+      - name: Build dgfy-admin
+        continue-on-error: true
+        id: build_admin
+        working-directory: apps/dgfy-admin
+        run: npm run build
+        # Advisory on first landing (issue #350) -- see run_admin_lint above.
+        timeout-minutes: 10
+
+      - name: Record real per-step outcomes for advisory-failure reporting
+        continue-on-error: true
+        id: record_outcomes
+        if: always()
+        env:
+          STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
+            Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install dgfy-admin dependencies|${{ steps.install_admin_deps.outcome }}
+            Run dgfy-admin lint|${{ steps.run_admin_lint.outcome }}
+            Build dgfy-admin|${{ steps.build_admin.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure" || $2=="cancelled"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+
   # #1749 keeps this optional evidence job advisory and POS-owned. Its browser test bootstraps a
   # disposable tenant admin and terminal fixture, seeds a sellable item through the API, then
   # exercises checkout, stock, history/detail, and CSV export entirely in POS.
@@ -2196,6 +2309,7 @@ jobs:
       - frontend-pos-quality
       - frontend-storefront-quality
       - frontend-opis-quality
+      - frontend-admin-quality
       - repository-dependency-quality
       - repository-ci-contracts-quality
       - repository-docs-quality
@@ -2282,6 +2396,7 @@ jobs:
           POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
           STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
           OPIS_FAILURES: ${{ needs.frontend-opis-quality.outputs.real_failures }}
+          ADMIN_FAILURES: ${{ needs.frontend-admin-quality.outputs.real_failures }}
           REPOSITORY_DEPENDENCY_FAILURES: ${{ needs.repository-dependency-quality.outputs.real_failures }}
           REPOSITORY_CI_CONTRACTS_FAILURES: ${{ needs.repository-ci-contracts-quality.outputs.real_failures }}
           REPOSITORY_DOCS_FAILURES: ${{ needs.repository-docs-quality.outputs.real_failures }}

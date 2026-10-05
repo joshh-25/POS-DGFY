@@ -16,7 +16,7 @@ services:
       # the local nginx ports explicitly instead of relying on that
       # allowlist, so the real CORS_ORIGIN production values stay untouched
       # for prod. Opt-in overlay; not auto-loaded by plain compose.
-      CORS_ORIGIN: "https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph,https://opis.dgfy.ph,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176"
+      CORS_ORIGIN: "https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph,https://opis.dgfy.ph,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
 
   nginx:
     volumes:
@@ -27,6 +27,7 @@ services:
       - "5174:5174"
       - "5175:5175"
       - "5176:5176"
+      - "5177:5177"
     depends_on:
       dgfy-api:
         condition: service_healthy
@@ -37,4 +38,6 @@ services:
       dgfy-storefront:
         condition: service_healthy
       dgfy-opis:
+        condition: service_healthy
+      dgfy-admin:
         condition: service_healthy

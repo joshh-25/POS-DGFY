@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { emitGlobalApiError } from '../utils/errorHandler.js';
-import { resolveApiBaseUrl } from '../utils/runtimeConfig.js';
-import { getCsrfToken } from './browserSession.js';
+import { emitGlobalApiError } from '@/src/utils/errorHandler.js';
+import { resolveApiBaseUrl } from '@/src/utils/runtimeConfig.js';
+import { getCsrfToken } from '@/src/services/browserSession.js';
 
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const COOKIE_SESSION_MARKER = 'cookie-session';
@@ -25,6 +25,7 @@ export const setAuthFailureCallback = (callback) => {
 
 adminApi.interceptors.request.use((config) => {
     config.headers = config.headers || {};
+    config.headers['x-dgfy-app-surface'] = 'admin';
     const method = String(config.method || 'get').toLowerCase();
     if (!['get', 'head', 'options'].includes(method) && !config.headers['x-csrf-token']) {
         const csrfToken = getCsrfToken();

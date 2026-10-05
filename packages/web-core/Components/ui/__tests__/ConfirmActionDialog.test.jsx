@@ -11,6 +11,7 @@ const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 // Pages/ (other than the 4 DGFY pages) did not move into this package -- see
 // docs/architecture/frontend-split-sync.md.
 const appRoot = path.resolve(frontendRoot, '../../apps/dgfy-ims');
+const adminRoot = path.resolve(frontendRoot, '../../apps/dgfy-admin');
 
 afterEach(cleanup);
 
@@ -85,7 +86,7 @@ describe('ConfirmActionDialog', () => {
   it('removes browser-native confirms from the governed flows', () => {
     [
       [appRoot, 'Pages/Settings.jsx'],
-      [appRoot, 'Pages/admin/PaymentOperations.jsx'],
+      [adminRoot, 'Pages/PaymentOperations.jsx'],
       [frontendRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx']
     ].forEach(([root, relativePath]) => {
       const source = fs.readFileSync(path.join(root, relativePath), 'utf8');

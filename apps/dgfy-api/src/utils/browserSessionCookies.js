@@ -6,7 +6,7 @@ export const SESSION_COOKIE_NAMES = Object.freeze({
   csrf: 'sku_csrf_token',
   dgfy: 'sku_dgfy_session',
   storefront: 'sku_store_session',
-  admin: 'sku_admin_session',
+  admin: 'admin_session',
   posTerminalPairing: 'sku_pos_terminal_pairing',
   posOperatorAuthority: 'sku_pos_operator_authority',
   affiliateAttribution: 'sku_aff_attr'
@@ -24,17 +24,34 @@ export const OPIS_SESSION_COOKIE_NAMES = Object.freeze({
   csrf: 'opis_csrf_token'
 });
 
+// Platform Admin is served under /admin on several product origins, but each
+// origin keeps its own host-only session. The surface header selects only the
+// cookie namespace; it never grants authorization.
+export const ADMIN_SESSION_COOKIE_NAMES = Object.freeze({
+  session: 'admin_session',
+  csrf: 'admin_csrf_token'
+});
+
 export const APP_SURFACE_HEADER = 'x-dgfy-app-surface';
 
-export const resolveSessionNamespace = (req) => (
-  String(req?.headers?.[APP_SURFACE_HEADER] || '').trim().toLowerCase() === 'opis'
-    ? 'opis'
-    : 'sku'
-);
+export const resolveSessionNamespace = (req) => {
+  const surface = String(req?.headers?.[APP_SURFACE_HEADER] || '').trim().toLowerCase();
+  if (surface === 'opis') return 'opis';
+  if (surface === 'admin') return 'admin';
+  return 'sku';
+};
 
-const cookieNamesForRequest = (req) => (
-  resolveSessionNamespace(req) === 'opis' ? OPIS_SESSION_COOKIE_NAMES : SESSION_COOKIE_NAMES
-);
+const tenantCookieNamesForRequest = (req) => {
+  const namespace = resolveSessionNamespace(req);
+  if (namespace === 'admin') return null;
+  return namespace === 'opis' ? OPIS_SESSION_COOKIE_NAMES : SESSION_COOKIE_NAMES;
+};
+
+const csrfCookieNameForRequest = (req) => {
+  const namespace = resolveSessionNamespace(req);
+  if (namespace === 'admin') return ADMIN_SESSION_COOKIE_NAMES.csrf;
+  return namespace === 'opis' ? OPIS_SESSION_COOKIE_NAMES.csrf : SESSION_COOKIE_NAMES.csrf;
+};
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_REFRESH_MAX_AGE_MS = 7 * ONE_DAY_MS;
@@ -113,7 +130,7 @@ const appendSetCookie = (res, cookie) => {
 
 export const issueCsrfToken = (res, { maxAgeMs = DEFAULT_REFRESH_MAX_AGE_MS } = {}, req = null) => {
   const token = crypto.randomBytes(32).toString('base64url');
-  appendSetCookie(res, serializeCookie(cookieNamesForRequest(req).csrf, token, {
+  appendSetCookie(res, serializeCookie(csrfCookieNameForRequest(req), token, {
     httpOnly: false,
     maxAgeMs
   }));
@@ -121,7 +138,9 @@ export const issueCsrfToken = (res, { maxAgeMs = DEFAULT_REFRESH_MAX_AGE_MS } = 
 };
 
 export const setTenantSessionCookies = (res, { refreshToken, tenantToken }, req = null) => {
-  const names = cookieNamesForRequest(req);
+  const names = tenantCookieNamesForRequest(req);
+  // Platform Admin has no tenant-context session. Never fall through and issue sku_* cookies.
+  if (!names) return;
   if (refreshToken) {
     appendSetCookie(res, serializeCookie(names.tenantRefresh, refreshToken));
   }
@@ -131,10 +150,10 @@ export const setTenantSessionCookies = (res, { refreshToken, tenantToken }, req 
   issueCsrfToken(res, {}, req);
 };
 
-export const setBearerSessionCookie = (res, name, token, { maxAgeMs = DEFAULT_ACCESS_MAX_AGE_MS } = {}) => {
+export const setBearerSessionCookie = (res, name, token, { maxAgeMs = DEFAULT_ACCESS_MAX_AGE_MS } = {}, req = null) => {
   if (!token) return;
   appendSetCookie(res, serializeCookie(name, token, { maxAgeMs }));
-  issueCsrfToken(res, { maxAgeMs });
+  issueCsrfToken(res, { maxAgeMs }, req);
 };
 
 export const clearSessionCookie = (res, name, { httpOnly = true } = {}) => {
@@ -142,16 +161,25 @@ export const clearSessionCookie = (res, name, { httpOnly = true } = {}) => {
 };
 
 export const clearTenantSessionCookies = (res, req = null) => {
-  const names = cookieNamesForRequest(req);
+  const names = tenantCookieNamesForRequest(req);
+  if (!names) {
+    clearSessionCookie(res, ADMIN_SESSION_COOKIE_NAMES.csrf, { httpOnly: false });
+    return;
+  }
   clearSessionCookie(res, names.tenantRefresh);
   clearSessionCookie(res, names.tenantContext);
-  clearSessionCookie(res, names.csrf, { httpOnly: false });
+  clearSessionCookie(res, csrfCookieNameForRequest(req), { httpOnly: false });
 };
 
 export const clearAllBrowserSessionCookies = (res, req = null) => {
   // OPIS logout clears only the opis_* namespace: it must never clear the sku_* POS
   // cookies that keep an active terminal signed in (issue #2052). The default sku
   // namespace keeps its existing full-clear behavior for backward compatibility.
+  if (resolveSessionNamespace(req) === 'admin') {
+    clearSessionCookie(res, ADMIN_SESSION_COOKIE_NAMES.session);
+    clearSessionCookie(res, ADMIN_SESSION_COOKIE_NAMES.csrf, { httpOnly: false });
+    return;
+  }
   if (resolveSessionNamespace(req) === 'opis') {
     clearTenantSessionCookies(res, req);
     return;
@@ -161,9 +189,15 @@ export const clearAllBrowserSessionCookies = (res, req = null) => {
   });
 };
 
-export const getTenantRefreshToken = (req) => getCookie(req, cookieNamesForRequest(req).tenantRefresh);
-export const getTenantContextToken = (req) => getCookie(req, cookieNamesForRequest(req).tenantContext);
-export const getCsrfCookie = (req) => getCookie(req, cookieNamesForRequest(req).csrf);
+export const getTenantRefreshToken = (req) => {
+  const names = tenantCookieNamesForRequest(req);
+  return names ? getCookie(req, names.tenantRefresh) : '';
+};
+export const getTenantContextToken = (req) => {
+  const names = tenantCookieNamesForRequest(req);
+  return names ? getCookie(req, names.tenantContext) : '';
+};
+export const getCsrfCookie = (req) => getCookie(req, csrfCookieNameForRequest(req));
 
 // Affiliate attribution: a store-scoped, HttpOnly cookie holding a JSON map of
 // tenant_id -> enrollment_id. A visitor can carry attribution for more than one

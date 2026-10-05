@@ -223,7 +223,7 @@ the test will fail loudly if you try.
 ## 5. Admin how-to
 
 **Curating templates** — `/admin/store-templates`
-(`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`), Platform Master Admin
+(`apps/dgfy-admin/Pages/StoreTemplateManager.jsx`), Platform Master Admin
 only (`masterOnly` in `middleware/auth.js`, not a delegable permission —
 a published template shapes every future tenant, platform-wide):
 
@@ -256,7 +256,7 @@ a published template shapes every future tenant, platform-wide):
   platform-preset or canonical provenance.
 
 **Applying a template to an existing tenant** — the per-tenant picker on
-`apps/dgfy-ims/Pages/admin/TenantManager.jsx` (published templates only,
+`apps/dgfy-admin/Pages/TenantManager.jsx` (published templates only,
 active tenants only), or `POST /admin/tenants/:id/apply-template`
 directly. Requires `templateKey` and a reason (≥3 characters). One
 transaction: seeds the three overlay settings from the materialized
@@ -306,7 +306,7 @@ assisted-provisioning panel).
 1. If the industry needs a template that doesn't exist yet, create and
    publish one first (§5 above, "Curating templates").
 2. Open the "Registration industries" panel on the Store Template Manager
-   page (`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`) and use the "New
+   page (`apps/dgfy-admin/Pages/StoreTemplateManager.jsx`) and use the "New
    industry" form: key, label, summary, niches, workflow mode, and (for
    any non-`external`-engine mode) the published template to pair it with
    — the panel only offers templates whose `base_mode` matches the chosen
@@ -348,7 +348,7 @@ entry for the new mode.
 
 An admin curates the entire catalog — hide/show, create, and edit — through
 the "Registration industries" panel on the Store Template Manager page
-(`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`), backed by
+(`apps/dgfy-admin/Pages/StoreTemplateManager.jsx`), backed by
 `GET/POST/PATCH /api/v1/admin/registration-industries*`.
 
 Mechanics:
@@ -611,7 +611,7 @@ If you're an AI assistant picking up work in this area:
   declaration (`docs/compliance/impact-declarations/`,
   `npm run check:compliance`). `apps/dgfy-api/src/routes/adminTenants.js`,
   `packages/web-core/src/services/adminService.js`, and
-  `apps/dgfy-ims/Pages/admin/TenantManager.jsx` carry a `regulatory` floor
+  `apps/dgfy-admin/Pages/TenantManager.jsx` carry a `regulatory` floor
   specifically — see `scripts/check-compliance-impact.js`'s sensitivity
   matrix before assuming a `major` classification is enough. A clean
   local git tree makes `npm run check:compliance` report "no

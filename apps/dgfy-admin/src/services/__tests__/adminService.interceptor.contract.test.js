@@ -40,7 +40,7 @@ const sessionStorageMock = (() => {
 Object.defineProperty(globalThis, 'sessionStorage', { value: sessionStorageMock, writable: true });
 Object.defineProperty(globalThis, 'document', {
   value: {
-    cookie: 'sku_csrf_token=csrf-admin-interceptor'
+    cookie: 'admin_csrf_token=csrf-admin-interceptor'
   },
   writable: true
 });

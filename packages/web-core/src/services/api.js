@@ -73,9 +73,10 @@ const formatApiValidationError = (data) => {
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const RUNTIME_CONFIG = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const IS_POS_SURFACE = RUNTIME_CONFIG.appSurface === 'pos';
-// OPIS (issue #2052) carries x-dgfy-app-surface: opis as a cookie-namespace selector only;
-// it grants no authorization. Every other surface sends no surface header (unchanged shape).
+// OPIS and Platform Admin carry x-dgfy-app-surface as cookie-namespace selectors only;
+// neither grants authorization. Other surfaces send no surface header (unchanged shape).
 const IS_OPIS_SURFACE = RUNTIME_CONFIG.appSurface === 'opis';
+const IS_ADMIN_SURFACE = RUNTIME_CONFIG.appSurface === 'admin';
 // Matches TerminalPage.jsx/posService.js's TERMINAL_ID_STORAGE_KEY. Not a
 // shared export -- like those two, this is a plain localStorage key string
 // contract, not a module dependency (api.js must not import the POS feature).
@@ -450,6 +451,8 @@ api.interceptors.request.use(
     // OPIS cookie-namespace selector (issue #2052): namespace only, never authorization.
     if (IS_OPIS_SURFACE) {
       setRequestHeader(config.headers, 'x-dgfy-app-surface', 'opis');
+    } else if (IS_ADMIN_SURFACE) {
+      setRequestHeader(config.headers, 'x-dgfy-app-surface', 'admin');
     }
     config._outcomeStartedAt = Date.now();
 

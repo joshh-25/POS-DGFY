@@ -10,7 +10,7 @@ import { resolveWhatYoullGet } from './whatYoullGet.js';
  * detail shown in modals) instead - it drops the engine badges/notes below,
  * which are appropriate for an admin operating the assisted-provisioning
  * panel but not for a merchant. This component's only remaining consumer is
- * `frontend/Pages/admin/TenantManager.jsx`. Selecting an entry derives both
+ * `apps/dgfy-admin/Pages/TenantManager.jsx`. Selecting an entry derives both
  * `workflow_mode` and the store template server-side - the caller only ever
  * needs `entry.key` (industryKey) for submission.
  *
