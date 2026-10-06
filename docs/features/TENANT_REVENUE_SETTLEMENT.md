@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product_engineering
-last_reviewed: 2026-08-21
+last_reviewed: 2026-10-06
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_settlement
 ---
@@ -122,6 +122,20 @@ Authenticated tenant:
 
 Tenant IDs on tenant routes are always derived on the server from the authenticated
 tenant context; query-supplied tenant IDs are overwritten.
+
+Public Storefront checkout:
+
+- `POST /api/v1/store/checkout/payment-sessions/:payment_session_id/cancel` cancels an
+  unpaid session using its stored PayMongo Payment Intent or Hosted Checkout session ID.
+  The server accepts only `created` and `awaiting_payment` sessions; paid/order-finalized
+  sessions are returned unchanged and never trigger a refund from this endpoint.
+- The response keeps the existing `payment_session` serialization and adds
+  `cancellation.outcome`: `cancelled` only after provider confirmation (or for a `created`
+  session with no provider object), `not_cancellable` for a terminal session, and `unresolved`
+  when provider state cannot be confirmed. An unresolved session remains non-terminal and
+  carries its failure code/reason for later reconciliation.
+- The provider request runs outside the database transaction. A locked re-read before writing
+  preserves a concurrent paid state; cancellation never creates an order or captured charge.
 
 ## Environment
 

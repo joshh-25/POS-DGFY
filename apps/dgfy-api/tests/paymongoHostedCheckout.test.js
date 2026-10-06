@@ -127,3 +127,49 @@ describe('PayMongo hosted storefront checkout', () => {
     );
   });
 });
+
+describe('PayMongo storefront payment-session cancellation', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    process.env = { ...ORIGINAL_ENV };
+    jest.resetModules();
+  });
+
+  it('calls the documented v1 cancellation and expiry endpoints with explicit timeouts', async () => {
+    const { PayMongoService, post } = await importService();
+    const service = new PayMongoService();
+
+    await service.cancelPaymentIntent('pi_test_cancel');
+    await service.expireCheckoutSession('cs_test_expire');
+
+    expect(post).toHaveBeenNthCalledWith(1,
+      'https://api.paymongo.com/v1/payment_intents/pi_test_cancel/cancel',
+      {},
+      expect.objectContaining({ timeout: 15000 })
+    );
+    expect(post).toHaveBeenNthCalledWith(2,
+      'https://api.paymongo.com/v1/checkout_sessions/cs_test_expire/expire',
+      {},
+      expect.objectContaining({ timeout: 15000 })
+    );
+  });
+
+  it('classifies a provider 400 as not cancellable and a timeout as transient', async () => {
+    const { PayMongoService, post } = await importService();
+    post.mockRejectedValueOnce({
+      response: { status: 400, data: { errors: [{ code: 'payment_ongoing', detail: 'Payment is ongoing.' }] } }
+    });
+    post.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 15000ms exceeded' });
+    const service = new PayMongoService();
+
+    await expect(service.cancelPaymentIntent('pi_test_cancel')).resolves.toMatchObject({
+      outcome: 'not_cancellable',
+      reason_code: 'payment_ongoing',
+      reason: 'Payment is ongoing.'
+    });
+    await expect(service.expireCheckoutSession('cs_test_expire')).resolves.toMatchObject({
+      outcome: 'transient',
+      reason_code: 'PAYMONGO_NETWORK_ERROR'
+    });
+  });
+});
