@@ -110,6 +110,8 @@ export function RetailOrderPage({
   voucherDiscountSummaryRow = null,
   pinLocationError = '',
   pinLocationLoading = false,
+  resolvingPinnedDeliveryAddress = false,
+  addressSearchBias = null,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
@@ -189,6 +191,19 @@ export function RetailOrderPage({
     gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr',
     gap: 14,
     alignItems: 'start'
+  };
+  // #759: choosing an address-search suggestion drops the pin there. The suggestion's own address
+  // line rides on the pin so useDeliveryPinResolution uses it as-is instead of reverse-geocoding
+  // the point back into a (usually coarser) address.
+  const handleSelectSearchResult = (result) => {
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setCustomerPin({
+      latitude: Number(Number(result.latitude).toFixed(6)),
+      longitude: Number(Number(result.longitude).toFixed(6)),
+      address_line: result.addressLine
+    });
   };
   const handleStartMapPin = () => {
     setDeliveryLocationAction('map');
@@ -310,6 +325,9 @@ export function RetailOrderPage({
               onScheduleModeChange={onScheduleModeChange}
               onScheduledForChange={onScheduledForChange}
               onSelectAddress={onSelectAddress}
+              onSelectSearchResult={handleSelectSearchResult}
+              resolvingPinnedDeliveryAddress={resolvingPinnedDeliveryAddress}
+              searchBias={addressSearchBias}
               onSpecialInstructionsChange={setSpecialInstructions}
               onStartMapPin={handleStartMapPin}
               orderMethod={orderMethod}

@@ -1,3 +1,5 @@
+import { reverseGeocodeDeliveryCoordinates } from '../../../services/geocodingService.js';
+
 export function buildPinnedDeliveryAddress(pin) {
   const latitude = Number(pin?.latitude);
   const longitude = Number(pin?.longitude);
@@ -50,33 +52,24 @@ export function extractSavedLocationLabel(address = '') {
   return segments.slice(0, 2).join(', ') || normalized;
 }
 
-export function formatReverseGeocodedAddress(payload = {}) {
-  const address = payload?.address || {};
-  const localParts = [
-    address.house_number && address.road ? `${address.house_number} ${address.road}` : '',
-    address.road && !address.house_number ? address.road : '',
-    address.neighbourhood,
-    address.suburb,
-    address.city_district,
-    address.city || address.town || address.village || address.municipality,
-    address.state
-  ].filter(Boolean);
-  if (localParts.length > 0) {
-    return localParts.join(', ');
-  }
-  const displayName = String(payload?.display_name || '').trim();
-  if (!displayName) return '';
-  const segments = displayName.split(',').map((segment) => segment.trim()).filter(Boolean);
-  return segments.slice(0, 5).join(', ');
+/**
+ * #759: a pin placed by choosing an address-search suggestion carries the chosen address line,
+ * so the pin's address is already known and needs no reverse-geocode round trip. Map taps, drags
+ * and "Use Current Location" produce bare coordinates and return ''.
+ */
+export function getSearchSelectedPinAddress(pin) {
+  return String(pin?.address_line || '').trim();
 }
 
+/** #506: reverse-geocodes through dgfy-api; never throws except for an aborted request. */
 export async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
   const normalized = normalizeCoordinatePair(pin);
   if (!normalized) return '';
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(normalized.latitude)}&lon=${encodeURIComponent(normalized.longitude)}`,
-    { signal, headers: { Accept: 'application/json' } }
-  );
-  if (!response.ok) return buildPinnedDeliveryAddress(normalized);
-  return formatReverseGeocodedAddress(await response.json()) || buildPinnedDeliveryAddress(normalized);
+  try {
+    const addressLine = await reverseGeocodeDeliveryCoordinates({ ...normalized, signal });
+    return addressLine || buildPinnedDeliveryAddress(normalized);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    return buildPinnedDeliveryAddress(normalized);
+  }
 }

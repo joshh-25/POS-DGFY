@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { buildPinnedDeliveryAddress, formatReverseGeocodedAddress, resolveDeliveryAddress } from '../../features/locations/utils/pinnedDeliveryAddress.js';
+import { buildPinnedDeliveryAddress, getSearchSelectedPinAddress, resolveDeliveryAddress } from '../../features/locations/utils/pinnedDeliveryAddress.js';
+import { reverseGeocodeDeliveryCoordinates } from '../../services/geocodingService.js';
 import { trimAddressCountrySuffix } from '../model/storefrontCatalogModel.js';
 
 /**
@@ -78,34 +79,38 @@ export function useDeliveryPinResolution({
       }
       return;
     }
+    const searchSelectedAddress = getSearchSelectedPinAddress(customerPin);
+    if (searchSelectedAddress) {
+      setResolvingPinnedDeliveryAddress(false);
+      setPinLocationError('');
+      setResolvedDeliveryAddress(searchSelectedAddress);
+      setCustomerAddress(searchSelectedAddress);
+      return;
+    }
     const controller = new AbortController();
-    const latitude = Number(customerPin.latitude);
-    const longitude = Number(customerPin.longitude);
     const fallbackAddress = buildPinnedDeliveryAddress(customerPin);
     const resolveAddress = async () => {
       setResolvingPinnedDeliveryAddress(true);
       setPinLocationError('');
       try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&format=jsonv2&addressdetails=1`, {
-          method: 'GET',
-          signal: controller.signal,
-          headers: {
-            Accept: 'application/json'
-          }
+        const addressLine = await reverseGeocodeDeliveryCoordinates({
+          latitude: customerPin.latitude,
+          longitude: customerPin.longitude,
+          signal: controller.signal
         });
-        if (!response.ok) {
-          throw new Error(`Reverse geocoding failed: ${response.status}`);
+        if (addressLine) {
+          setResolvedDeliveryAddress(addressLine);
+          setCustomerAddress(addressLine);
+        } else {
+          setResolvedDeliveryAddress('');
+          setCustomerAddress(fallbackAddress);
         }
-        const payload = await response.json();
-        const formattedAddress = formatReverseGeocodedAddress(payload) || fallbackAddress;
-        setResolvedDeliveryAddress(formattedAddress);
-        setCustomerAddress(formattedAddress);
       } catch (error) {
-        if (error?.name === 'AbortError') return;
+        if (error?.name === 'AbortError' || controller.signal.aborted) return;
         setResolvedDeliveryAddress('');
         setCustomerAddress(fallbackAddress);
       } finally {
-        setResolvingPinnedDeliveryAddress(false);
+        if (!controller.signal.aborted) setResolvingPinnedDeliveryAddress(false);
       }
     };
     resolveAddress();
