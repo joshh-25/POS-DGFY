@@ -175,7 +175,6 @@ import { DeliveryPinMap } from './features/locations/components/DeliveryPinMapLa
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
   buildPinnedDeliveryAddress,
-  formatReverseGeocodedAddress,
   normalizeCoordinatePair,
   resolveDeliveryAddress,
   reverseGeocodeDeliveryPin
@@ -3102,6 +3101,7 @@ export default function StorefrontApp() {
     voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
+    resolvingPinnedDeliveryAddress,
     setCustomerAddress,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
