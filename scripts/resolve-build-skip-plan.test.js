@@ -441,7 +441,7 @@ test('resolveBuildSkipPlan: explicit legacy shared revision still applies when a
     diffFn: neverCalled('diffFn'),
   });
   assert.equal(plan['dgfy-api'].code, 'not-published');
-  assert.match(inspectedRefs.find((ref) => ref.endsWith('-r16')), /1\.35\.0-r16$/);
+  assert.match(inspectedRefs.find((ref) => ref.endsWith('-r16')), /1\.36\.0-r16$/);
 });
 
 test('resolveBuildSkipPlan: an app whose version cannot be read fails closed instead of throwing', async () => {

@@ -38,3 +38,13 @@ test('rejects failed checks and operational mutation', () => {
   mutated.operational_mutation = true;
   assert.throws(() => validateStagingObservation(mutated, candidate), /must not perform operational mutations/);
 });
+
+test('rejects staging observation while a v4 refresh is in progress', () => {
+  const refreshing = structuredClone(candidate);
+  refreshing.schema = 'sku-release-candidate/v4';
+  refreshing.promotion_base_sha = sha('f');
+  refreshing.status = 'refresh_in_progress';
+  refreshing.refresh_in_progress = { refresh_seq: 1, reason: 'deferred production' };
+  refreshing.revisions[0].apps_touched = ['dgfy-pos'];
+  assert.throws(() => validateStagingObservation(passing(), refreshing), (error) => error instanceof StagingObservationError && error.code === 'REFRESH_IN_PROGRESS');
+});

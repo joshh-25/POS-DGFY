@@ -44,6 +44,7 @@ const path = require('path');
 
 const { resolveAppReachabilityVerdict } = require('./resolve-web-core-reachability');
 const { resolveNarrowingEnabled } = require('./lib/web-core-reachability-gate-toggle');
+const { parseFlatFrontmatter } = require('./lib/flat-frontmatter');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -65,6 +66,7 @@ const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
     staging: /^to-staging\//,
     main: /^release\//,
 });
+const REFRESH_HEAD_PATTERN = /^to-staging\/(\d{4}-\d{2}-\d{2}-\d{2})-refresh-\d+$/;
 
 const runCommand = (command, { allowFail = false, cwd = REPO_ROOT } = {}) => {
     try {
@@ -432,7 +434,26 @@ async function runCheck(options = {}) {
  * (e.g. dgfy-storefront on a POS-only packages/web-core change) from being force-bumped ahead of a
  * promotion cut, the exact incident #1809 cites as motivation (its plan doc §1.3).
  */
-async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedFiles: changedFilesOverride }) {
+async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedFiles: changedFilesOverride, candidateId = null }) {
+    let refreshBaselineRef = null;
+    let refreshError = null;
+    if (candidateId) {
+        const notePath = `docs/releases/notes/${candidateId}.md`;
+        const stagingNote = runCommand(`git show ${baseGitRef}:${notePath}`, { cwd: repoRoot, allowFail: true });
+        const incomingNote = runCommand(`git show ${headGitRef}:${notePath}`, { cwd: repoRoot, allowFail: true });
+        const stagingMetadata = parseFlatFrontmatter(stagingNote);
+        const incomingMetadata = parseFlatFrontmatter(incomingNote);
+        const baseline = stagingMetadata?.promotion_base_sha;
+        if (!stagingMetadata || !incomingMetadata || !/^[0-9a-f]{40}$/.test(String(baseline || ''))) {
+            refreshError = `candidate ${candidateId} needs a valid promotion_base_sha in its current STAGING release note`;
+        } else if (incomingMetadata.promotion_base_sha !== baseline) {
+            refreshError = `incoming develop release note must preserve STAGING promotion_base_sha ${baseline}`;
+        } else if (!fileExistsAtRef(repoRoot, baseline, 'apps/dgfy-api/package.json')) {
+            refreshError = `promotion baseline ${baseline} cannot be resolved to a commit containing the app inventory`;
+        } else {
+            refreshBaselineRef = baseline;
+        }
+    }
     let changedFiles;
     let diffError = null;
     if (changedFilesOverride !== undefined) {
@@ -473,12 +494,26 @@ async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedF
             };
         }
 
-        const floorTarget = `${base.major}.${base.minor + 1}.0`;
-        const meetsFloor = head.major > base.major || (head.major === base.major && head.minor > base.minor);
+        const obligationBaseRaw = candidateId && refreshBaselineRef ? readVersionAt(repoRoot, refreshBaselineRef, appDir) : baseVersionRaw;
+        const obligationBase = parseVersion(obligationBaseRaw);
+        const isNewAtBaseline = candidateId && refreshBaselineRef && !fileExistsAtRef(repoRoot, refreshBaselineRef, `${appDir}/package.json`);
+        if (isNewAtBaseline && head) {
+            const regressed = base ? compareVersionTuples(head, base) < 0 : false;
+            return {
+                app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
+                floorTarget: null, belowFloor: regressed, unparseable: false, newApp: true,
+                regressed, currentStagingVersion: baseVersionRaw, promotionBaselineVersion: null,
+            };
+        }
+        const floorTarget = obligationBase ? `${obligationBase.major}.${obligationBase.minor + 1}.0` : null;
+        const floorBase = candidateId && refreshBaselineRef ? obligationBase : base;
+        const meetsFloor = !floorBase || head.major > floorBase.major || (head.major === floorBase.major && head.minor > floorBase.minor);
+        const notRegressed = compareVersionTuples(head, base) >= 0;
 
         return {
             app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
-            floorTarget, belowFloor: !meetsFloor, unparseable: false, newApp: false,
+            floorTarget, belowFloor: !meetsFloor || !notRegressed, unparseable: candidateId && refreshBaselineRef && !obligationBase, newApp: false,
+            regressed: !notRegressed, currentStagingVersion: baseVersionRaw, promotionBaselineVersion: obligationBaseRaw,
         };
     });
 
@@ -502,6 +537,8 @@ async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedF
         unchanged: diffError ? [] : APPS.filter((app) => !changedApps.some((entry) => entry.app === app)),
         changedFiles,
         diffError,
+        refreshError,
+        refreshBaselineRef,
         narrowedEntries,
     };
 }
@@ -544,6 +581,10 @@ function printFloorResult(result) {
     // pass -- printed and returned before any of the (now-empty) scoping output below.
     if (result.diffError) {
         console.error(`[check:app-versions --floor] Could not compute the changed-file diff between the given refs -- treat as FAILED, not a clean floor pass: ${result.diffError}`);
+        return;
+    }
+    if (result.refreshError) {
+        console.error(`[check:app-versions --floor] Refresh context invalid: ${result.refreshError}`);
         return;
     }
 
@@ -601,6 +642,13 @@ async function main() {
         const headIdx = argv.indexOf('--head');
         const baseGitRef = baseIdx !== -1 ? argv[baseIdx + 1] : null;
         const headGitRef = headIdx !== -1 ? argv[headIdx + 1] : null;
+        const candidateIdx = argv.indexOf('--candidate-id');
+        const candidateId = candidateIdx !== -1 ? argv[candidateIdx + 1] : null;
+        if (candidateIdx !== -1 && !/^\d{4}-\d{2}-\d{2}-\d{2}$/.test(String(candidateId || ''))) {
+            console.error('[check:app-versions] --candidate-id must use YYYY-MM-DD-NN.');
+            process.exitCode = 1;
+            return;
+        }
 
         if (!baseGitRef || !headGitRef) {
             console.error('[check:app-versions] --floor requires --base <ref> and --head <ref>.');
@@ -608,9 +656,18 @@ async function main() {
             return;
         }
 
-        const result = await runFloor({ repoRoot: REPO_ROOT, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: REPO_ROOT, baseGitRef, headGitRef, candidateId });
         printFloorResult(result);
-        process.exitCode = (result.diffError || result.belowFloor.length > 0 || result.invalid.length > 0) ? 1 : 0;
+        process.exitCode = (result.diffError || result.refreshError || result.belowFloor.length > 0 || result.invalid.length > 0) ? 1 : 0;
+        return;
+    }
+
+    const refresh = REFRESH_HEAD_PATTERN.exec(String(process.env.GITHUB_HEAD_REF || ''));
+    if (process.env.GITHUB_BASE_REF === 'staging' && refresh) {
+        const baseGitRef = resolveBaseGitRef(REPO_ROOT, { baseBranchName: 'staging', headBranchName: process.env.GITHUB_HEAD_REF });
+        const result = await runFloor({ repoRoot: REPO_ROOT, baseGitRef, headGitRef: 'HEAD', candidateId: refresh[1] });
+        printFloorResult(result);
+        process.exitCode = (result.diffError || result.refreshError || result.belowFloor.length > 0 || result.invalid.length > 0) ? 1 : 0;
         return;
     }
 
@@ -644,4 +701,5 @@ module.exports = {
     // CLI or duplicating runCheck()/runFloor()'s own version-bump-evaluation logic.
     fileExistsAtRef,
     detectChangedAppsNarrowed,
+    fileExistsAtRef,
 };

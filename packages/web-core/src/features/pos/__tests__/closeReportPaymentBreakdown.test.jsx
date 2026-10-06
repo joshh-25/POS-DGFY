@@ -153,6 +153,39 @@ describe('close-report payment breakdown rendering', () => {
         expect(text).toContain('Generated: -');
     });
 
+    it('offers the Receipt Preview paper-width choices for Z-reading output', () => {
+        const markup = renderToStaticMarkup(
+            <ZReadingPrintView
+                report={{ generated_at: '2026-09-25T12:00:00.000Z' }}
+                paperWidth="57mm"
+            />
+        );
+
+        expect(markup).toContain('data-paper-width="57mm"');
+        expect(markup).toContain('data-testid="pos-z-reading-paper-width"');
+        expect(markup).toContain('80mm (3 1/8 in)');
+        expect(markup).toContain('57mm (2 1/4 in)');
+    });
+
+    it('applies the selected paper width to the current-shift browser print view', () => {
+        const markup = renderToStaticMarkup(
+            <ShiftCloseSummaryPrintView
+                report={{ generated_at: '2026-09-25T12:00:00.000Z' }}
+                paperWidth="57mm"
+                isPrinterAvailable={false}
+            />
+        );
+
+        expect(markup).toContain('data-paper-width="57mm"');
+        expect(markup).toContain('style="--pos-shift-summary-paper-width:57mm"');
+        expect(markup).toContain('data-testid="pos-shift-summary-paper-width"');
+        expect(markup).toContain('80mm (3 1/8 in)');
+        expect(markup).toContain('57mm (2 1/4 in)');
+        expect(markup).toContain('No native POS printer detected.');
+        expect(markup).toContain('Print in browser');
+        expect(markup).not.toContain('print:max-w-[80mm]');
+    });
+
     it('formats iMin reports to the selected paper width', () => {
         const report = {
             shift: {

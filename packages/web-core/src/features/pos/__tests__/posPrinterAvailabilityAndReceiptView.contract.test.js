@@ -19,6 +19,21 @@ const readCheckoutRenderSource = () => [
 // for every terminal state (printer available/unavailable, receipt vs order
 // preview) is heavier than the codebase's existing convention for this file.
 describe('POS printer availability and post-checkout receipt view', () => {
+    it('removes app print margins while preserving the selected receipt width', () => {
+        const stylesheet = read('../../../index.css');
+        const receiptDialogsSource = read('../components/POSCheckoutTerminalReceiptDialogs.jsx');
+        const zReadingSource = read('../components/ZReadingPrintView.jsx');
+
+        expect(stylesheet).toContain('@page {\n    margin: 0;\n  }');
+        expect(stylesheet).toContain('body.pos-receipt-print-mode,\n  body.pos-z-reading-printing');
+        expect(stylesheet).toContain('width: var(--pos-receipt-paper-width, 80mm);');
+        expect(stylesheet).toContain('body.pos-z-reading-printing .pos-z-reading-print');
+        expect(stylesheet).toContain('width: var(--pos-z-reading-paper-width, 80mm);');
+        expect(receiptDialogsSource).toContain("style={{ '--pos-receipt-paper-width': receiptPaperWidth }}");
+        expect(zReadingSource).toContain("style={{ '--pos-z-reading-paper-width': resolvedPaperWidth }}");
+        expect(zReadingSource).not.toContain("style={{ width: resolvedPaperWidth, maxWidth: '100%' }}");
+    });
+
     it('gates receipt and order-ticket actions on their distinct hardware capabilities', () => {
         const source = readCheckoutRenderSource();
         const currentSaleActionsSource = read('../components/PosCurrentSaleActions.jsx');
@@ -33,7 +48,7 @@ describe('POS printer availability and post-checkout receipt view', () => {
         expect(source).toContain('printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isOrderPrinterAvailable}');
         expect(currentSaleActionsSource).toContain('disabled={printOrderDisabled}');
         expect(source).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isOrderPrinterAvailable}');
-        expect(source).toContain('disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}');
+        expect(source).toContain('disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || posHardware.loading}');
         expect(receiptDialogsSource).toContain('disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}');
         expect(viewSource).toContain('disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}');
         expect(skupervisorSource).toContain('disabled={posActionsBlocked || cart.length === 0 || !isOrderPrinterAvailable}');
@@ -47,13 +62,15 @@ describe('POS printer availability and post-checkout receipt view', () => {
         expect(source).toContain('Recheck printer');
     });
 
-    it('lets the cashier toggle between Order Preview and the receipt render after checkout', () => {
+    it('lets checkout open the receipt render without adding a Back to Order action in History', () => {
         const source = readCheckoutRenderSource();
         const receiptDialogsSource = read('../components/POSCheckoutTerminalReceiptDialogs.jsx');
         const workflowSource = read('../hooks/usePosReceiptHardwareWorkflow.js');
 
-        expect(source).toContain("receiptPreviewSource === 'order_preview' ? 'receipt_preview' : 'order_preview'");
-        expect(source).toContain("{receiptPreviewSource === 'order_preview' ? 'View Receipt' : 'Back to Order'}");
+        expect(source).toContain("{lastReceipt && receiptPreviewSource === 'order_preview' && (");
+        expect(source).toContain("onClick={() => setReceiptPreviewSource('receipt_preview')}");
+        expect(source).toContain('View Receipt');
+        expect(source).not.toContain('Back to Order');
         expect(receiptDialogsSource).toContain('w-[calc(100vw-1.5rem)] max-w-xl flex-col');
         expect(receiptDialogsSource).toContain("receiptPreviewSource === 'order_preview' ? 'bg-white' : 'bg-slate-50'");
         expect(receiptDialogsSource).not.toContain('max-w-3xl');
@@ -80,6 +97,7 @@ describe('POS printer availability and post-checkout receipt view', () => {
         expect(workflowSource).toContain('openDrawerAfterPrint: shouldOpenDrawer');
         expect(workflowSource).toContain('billRequest: true');
         expect(workflowSource).toContain('idempotencyKey');
+        expect(workflowSource).toContain('window.print();');
         expect(source).toContain('id="pos-drawer-authorization-form"');
         expect(source).toContain('type="submit"');
         expect(source).toContain('form="pos-drawer-authorization-form"');

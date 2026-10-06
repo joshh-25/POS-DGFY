@@ -37,6 +37,10 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('fetchPosParkedSales');
         expect(dialogSource).toContain('if (!open) return undefined;');
         expect(dialogSource).toContain('Pay or resume a parked sale, or request cancellation with a reason.');
+        expect(dialogSource).toContain('const loadParkedSales = useCallback(async ({ background = false } = {}) => {');
+        expect(dialogSource).toContain('if (!background) setLoading(true);');
+        expect(dialogSource).toContain('if (loadInFlightRef.current && loadInFlightScopeRef.current === loadScope) return;');
+        expect(dialogSource).toContain('void loadParkedSales({ background: true });');
         expect(dialogSource).toContain('window.setInterval(refreshVisibleParkedSales, 3000)');
         expect(dialogSource).toContain("window.addEventListener('focus', refreshVisibleParkedSales)");
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-view-${parkedSaleId}`}');
@@ -96,6 +100,8 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('Request approval');
         expect(dialogSource).toContain("const cancellationPending = status === 'cancel_pending';");
         expect(dialogSource).toContain("status === 'cancel_pending'");
+        expect(dialogSource).toContain('Request cancellation approval');
+        expect(dialogSource).not.toContain('Only the current cashier can cancel this parked sale.');
         expect(terminalViewSource).toContain("['cancel_pending', 'cancelled'].includes(String(cancelledSale?.status || '').toLowerCase())");
         expect(dialogSource).not.toContain("const PARKED_SALE_AUTO_CANCEL_REASON");
         expect(workflowSource).toContain("operation: 'parked_sale'");

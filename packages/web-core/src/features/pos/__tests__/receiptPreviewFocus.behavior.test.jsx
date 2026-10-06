@@ -6,7 +6,7 @@ import { POSCheckoutTerminalReceiptDialogs } from '../components/POSCheckoutTerm
 
 afterEach(cleanup);
 
-const renderReceiptPreview = () => render(
+const renderReceiptPreview = ({ source = 'order_preview' } = {}) => render(
   <POSCheckoutTerminalReceiptDialogs
     splitPaymentCancelModalOpen={false}
     splitPaymentCancelLoading={false}
@@ -14,7 +14,7 @@ const renderReceiptPreview = () => render(
     handleReverseSplitPaymentAndStartNew={vi.fn()}
     receiptPreviewModalOpen
     closeReceiptPreviewModal={vi.fn()}
-    receiptPreviewSource="order_preview"
+    receiptPreviewSource={source}
     lastReceiptPendingSync={false}
     lastReceipt={{ pos_transaction_id: 1 }}
     historyDetailLoading={false}
@@ -39,5 +39,11 @@ describe('POS receipt preview focus behavior', () => {
 
     const title = screen.getByRole('heading', { name: 'Order Preview' });
     expect(document.activeElement).toBe(title);
+  });
+
+  it('does not show Back to Order in the History receipt preview', () => {
+    renderReceiptPreview({ source: 'receipt_preview' });
+
+    expect(screen.queryByRole('button', { name: 'Back to Order' })).toBeNull();
   });
 });
