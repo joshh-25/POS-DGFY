@@ -11,8 +11,8 @@ verification_evidence: focused POS printer/report tests,receipt-preview browser 
 rollback_note: Revert the browser printer fallback, report paper-width controls, and this declaration; no database schema, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-06T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2260-POS-BROWSER-PRINT-FALLBACK
+preflight_run_at: 2026-10-06T07:47:59.598Z
+preflight_request_ref: PREFLIGHT-37431484571-2026-10-06-POS-BROWSER-PRINT-FALLBACK
 ---
 
 # POS browser printer fallback and report paper sizing
