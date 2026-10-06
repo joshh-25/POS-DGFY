@@ -61,6 +61,23 @@ export function getSearchSelectedPinAddress(pin) {
   return String(pin?.address_line || '').trim();
 }
 
+/** #759: the map pin for a chosen address-search suggestion, carrying its address line. */
+export function buildSearchSelectedPin(result) {
+  return {
+    latitude: Number(Number(result.latitude).toFixed(6)),
+    longitude: Number(Number(result.longitude).toFixed(6)),
+    address_line: result.addressLine
+  };
+}
+
+/**
+ * #759: rank address-search suggestions near the fulfilling branch (most deliveries are local),
+ * falling back to the customer's current pin when the branch has no coordinates.
+ */
+export function resolveAddressSearchBias(fulfillmentLocation, customerPin) {
+  return normalizeCoordinatePair(fulfillmentLocation || {}) || normalizeCoordinatePair(customerPin || {});
+}
+
 /** #506: reverse-geocodes through dgfy-api; never throws except for an aborted request. */
 export async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
   const normalized = normalizeCoordinatePair(pin);
