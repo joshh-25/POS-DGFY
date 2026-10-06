@@ -16,6 +16,7 @@ import {
     exchangeStoreGuestCheckoutGrantUseCase,
     storeCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase,
+    cancelStoreCheckoutPaymentSessionUseCase,
     reconcileStoreCheckoutPaymentSessionUseCase,
     confirmStoreCheckoutSandboxPaymentUseCase,
     storeCheckoutUseCase,
@@ -435,6 +436,31 @@ export const getCheckoutPaymentSession = async (req, res, next) => {
     try {
         const result = await getStoreCheckoutPaymentSessionUseCase({
             paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const cancelCheckoutPaymentSession = async (req, res, next) => {
+    try {
+        const customer = resolveStoreCustomer(req);
+        const customerId = customer?.customer_id || customer?.id || null;
+        const result = await cancelStoreCheckoutPaymentSessionUseCase({
+            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id,
+            actor: customerId ? `store_customer:${customerId}` : 'store_guest',
+            ipAddress: req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || null,
+            userAgent: req.get?.('user-agent') || null
         });
 
         return sendUseCaseResult(res, result, {
