@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
@@ -104,6 +104,10 @@ export function RetailOrderFulfillmentStep({
     || (showTimingChooser && scheduleMode === 'schedule');
   const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep: showTimingSection, isDeliveryOrder });
   const typography = getCheckoutStepTypography();
+  const handleAddLocationFromMap = async () => {
+    const saved = await onAddPinnedLocation?.();
+    if (saved) onCloseExpandedMap?.();
+  };
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16, fontFamily: CHECKOUT_FONT_FAMILY }}>
@@ -195,6 +199,31 @@ export function RetailOrderFulfillmentStep({
               label="Schedule"
               icon={({ size }) => <CalendarDays size={size} />}
               active={scheduleMode === 'schedule'}
+              activeBorderColor={RETAIL_ACCENT}
+              activeBackground={RETAIL_ACCENT_TINT}
+              activeTextColor={RETAIL_ACCENT}
+              activeIconBackground="#dbe8f7"
+              activeIconColor={RETAIL_ACCENT}
+              inactiveBorderColor="#dbe5ee"
+              inactiveTextColor="#334155"
+              minHeight={isMobileViewport ? 52 : 64}
+              padding={isMobileViewport ? '10px 12px' : '12px 14px'}
+              gap={isMobileViewport ? 10 : 12}
+              borderRadius={14}
+              fontSize={14}
+              fontWeight={700}
+              iconBoxSize={isMobileViewport ? 34 : 40}
+              iconSize={isMobileViewport ? 18 : 20}
+              fontFamily={CHECKOUT_FONT_FAMILY}
+            />
+            <SelectableOptionCard
+              onClick={() => {
+                setDateTimePickerOpen(false);
+                onScheduleModeChange('anytime');
+              }}
+              label="Anytime"
+              icon={({ size }) => <Clock size={size} />}
+              active={scheduleMode === 'anytime'}
               activeBorderColor={RETAIL_ACCENT}
               activeBackground={RETAIL_ACCENT_TINT}
               activeTextColor={RETAIL_ACCENT}
@@ -320,6 +349,7 @@ export function RetailOrderFulfillmentStep({
                 <DeliveryAddressSearchField
                   value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
                   onValueChange={onCustomerAddressChange}
+                  onClear={onStartMapPin}
                   onSelectResult={onSelectSearchResult}
                   bias={searchBias}
                   resolving={resolvingPinnedDeliveryAddress}
@@ -384,6 +414,20 @@ export function RetailOrderFulfillmentStep({
             isOpen={showExpandedDeliveryMap}
             onClose={onCloseExpandedMap}
           >
+            <DeliveryAddressSearchField
+              value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+              onValueChange={onCustomerAddressChange}
+              onClear={onStartMapPin}
+              onSelectResult={onSelectSearchResult}
+              bias={searchBias}
+              resolving={resolvingPinnedDeliveryAddress}
+              highlighted={Boolean(deliveryLocationDisplayAddress) && (deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map')}
+              isMobileViewport={isMobileViewport}
+              placeholder="Search an address or landmark"
+              accentColor={RETAIL_ACCENT}
+              accentTint={RETAIL_ACCENT_TINT}
+              accentBorder={RETAIL_ACCENT_SOFT_BORDER}
+            />
             <DeliveryPinMap
               pin={customerPin}
               onPinChange={onPinChange}
@@ -415,6 +459,17 @@ export function RetailOrderFulfillmentStep({
                 </>
               )}
             />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 2 }}>
+              <button
+                type="button"
+                aria-label={isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+                onClick={handleAddLocationFromMap}
+                disabled={!canAddPinnedLocation}
+                style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 16px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY }}
+              >
+                {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+              </button>
+            </div>
           </RetailOrderExpandedMapModal>
           <RetailOrderSavedAddressesModal
             addresses={deliverySavedLocations}

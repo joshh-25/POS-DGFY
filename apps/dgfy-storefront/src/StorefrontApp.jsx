@@ -4171,6 +4171,7 @@ export default function StorefrontApp() {
     setCheckoutResult,
     setCustomerPin,
     setDeliveryLocationAction,
+    setPinLocationError,
     setIsReviewModalOpen,
     setIsServiceFilterOpen,
     setReviewDraft,

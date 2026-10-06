@@ -212,6 +212,7 @@ export function RetailOrderPage({
     setSelectedSavedLocationId('');
     setPinLocationError('');
     setResolvedDeliveryAddress('');
+    onCustomerAddressChange('');
     setCustomerPin(null);
   };
 

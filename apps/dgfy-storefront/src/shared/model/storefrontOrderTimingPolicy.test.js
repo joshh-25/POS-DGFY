@@ -42,6 +42,7 @@ describe('storefront order timing policy', () => {
   it('keeps the summary aligned with the selected timing mode before a date is entered', () => {
     expect(resolveCheckoutScheduleLabel('asap', '')).toBe('NOW');
     expect(resolveCheckoutScheduleLabel('asap', '2026-08-01T10:30')).toBe('NOW');
+    expect(resolveCheckoutScheduleLabel('anytime', '2026-08-01T10:30')).toBe('ANYTIME');
     expect(resolveCheckoutScheduleLabel('schedule', '')).toBe('SCHEDULE');
     expect(resolveCheckoutScheduleLabel('schedule', 'not-a-date')).toBe('SCHEDULE');
     expect(resolveCheckoutScheduleLabel('schedule', '2026-08-01T10:30')).not.toBe('NOW');

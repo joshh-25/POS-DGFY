@@ -199,7 +199,7 @@ export function useRetailOrderPageProps({
     scheduledFor: fnbScheduledFor,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode?.(nextMode);
-      if (nextMode === 'asap') setFnbScheduledFor?.('');
+      if (nextMode === 'asap' || nextMode === 'anytime') setFnbScheduledFor?.('');
     },
     onScheduledForChange: (nextScheduledFor) => {
       setFnbScheduledFor?.(nextScheduledFor);

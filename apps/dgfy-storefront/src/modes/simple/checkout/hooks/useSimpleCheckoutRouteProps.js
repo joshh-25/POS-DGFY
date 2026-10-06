@@ -219,7 +219,7 @@ export function useSimpleCheckoutRouteProps({
     onSignInToCheckout,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode(nextMode);
-      if (nextMode === 'asap') setFnbScheduledFor('');
+      if (nextMode === 'asap' || nextMode === 'anytime') setFnbScheduledFor('');
     },
     onScheduledForChange: (nextScheduledFor) => {
       setFnbScheduledFor(nextScheduledFor);

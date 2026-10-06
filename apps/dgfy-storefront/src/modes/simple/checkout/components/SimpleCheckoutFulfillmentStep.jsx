@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
 import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
 import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
 import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';
@@ -85,6 +86,21 @@ export function SimpleCheckoutFulfillmentStep({
     isDeliveryOrder
   });
   const typography = getCheckoutStepTypography();
+  const handleSelectSearchResult = (result) => {
+    const latitude = Number(result?.latitude);
+    const longitude = Number(result?.longitude);
+    const addressLine = String(result?.addressLine || '').trim();
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !addressLine) return;
+    onPinChange?.({
+      latitude: Number(latitude.toFixed(6)),
+      longitude: Number(longitude.toFixed(6)),
+      address_line: addressLine
+    });
+  };
+  const handleAddLocationFromMap = async () => {
+    const saved = await onAddPinnedLocation?.();
+    if (saved) onCloseExpandedMap?.();
+  };
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16, fontFamily: CHECKOUT_FONT_FAMILY }}>
@@ -177,7 +193,13 @@ export function SimpleCheckoutFulfillmentStep({
                   <input
                     type="text"
                     value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
-                    onChange={(event) => onCustomerAddressChange(event.target.value)}
+                    onChange={(event) => {
+                      if (!event.target.value) {
+                        onStartMapPin?.();
+                        return;
+                      }
+                      onCustomerAddressChange(event.target.value);
+                    }}
                     placeholder="Pinned delivery address will appear here."
                     aria-label="Delivery address"
                     style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...typography.control, color: 'inherit', minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, fontFamily: CHECKOUT_FONT_FAMILY }}
@@ -197,6 +219,19 @@ export function SimpleCheckoutFulfillmentStep({
             isOpen={showExpandedDeliveryMap}
             onClose={onCloseExpandedMap}
           >
+            <DeliveryAddressSearchField
+              value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+              onValueChange={onCustomerAddressChange}
+              onClear={onStartMapPin}
+              onSelectResult={handleSelectSearchResult}
+              bias={customerPin}
+              highlighted={Boolean(deliveryLocationDisplayAddress) && (deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map')}
+              isMobileViewport={isMobileViewport}
+              placeholder="Search an address or landmark"
+              accentColor={SIMPLE_BRAND}
+              accentTint="#FFF8E7"
+              accentBorder={SIMPLE_BRAND_SOFT}
+            />
             <DeliveryPinMap
               pin={customerPin}
               onPinChange={onPinChange}
@@ -240,6 +275,17 @@ export function SimpleCheckoutFulfillmentStep({
                 </>
               )}
             />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 2 }}>
+              <button
+                type="button"
+                aria-label={isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+                onClick={handleAddLocationFromMap}
+                disabled={!canAddPinnedLocation}
+                style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${SIMPLE_BRAND}`, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 16px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(23,107,58,0.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY }}
+              >
+                {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+              </button>
+            </div>
           </SimpleCheckoutExpandedMapModal>
           <SimpleCheckoutSavedAddressesModal
             addresses={deliverySavedLocations}
