@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.06
-verification_evidence: focused POS printer/report tests,POS lint and build,git diff --check
+verification_evidence: focused POS printer/report tests,receipt-preview browser fallback sequencing test,POS lint and build,git diff --check
 rollback_note: Revert the browser printer fallback, report paper-width controls, and this declaration; no database schema, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -43,6 +43,6 @@ change payment, fiscal, inventory, authorization, or persisted transaction behav
 
 ## Verification Evidence
 
-- Focused POS printer/report tests, POS lint, and the affected app build are required before PR
-  submission.
+- Focused POS printer/report tests, receipt-preview browser fallback sequencing coverage, POS lint,
+  and the affected app build are required before PR submission.
 - The repository compliance gate validates this declaration against the changed POS/terminal files.
