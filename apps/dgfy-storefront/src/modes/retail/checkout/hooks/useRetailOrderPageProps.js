@@ -4,7 +4,7 @@ import {
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
-import { normalizeCoordinatePair } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { resolveAddressSearchBias } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 
 // Plain pass-through props bundle for RetailOrderPage. Real, already-existing shared state is
 // threaded through here: cart display, store info, navigation, viewport, the shared
@@ -121,9 +121,7 @@ export function useRetailOrderPageProps({
     RETAIL_ORDER_METHOD_OPTIONS,
     fulfillmentLocation
   );
-  // #759: rank address-search suggestions near the fulfilling branch (most deliveries are local),
-  // falling back to the customer's current pin when the branch has no coordinates.
-  const addressSearchBias = normalizeCoordinatePair(fulfillmentLocation || {}) || normalizeCoordinatePair(customerPin || {});
+  const addressSearchBias = resolveAddressSearchBias(fulfillmentLocation, customerPin);
 
   return {
     canAddPinnedLocation,

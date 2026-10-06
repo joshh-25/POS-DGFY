@@ -1,3 +1,4 @@
+import { buildSearchSelectedPin, resolveAddressSearchBias } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { resolveLocationFulfillmentSupport } from '../../../../shared/model/storefrontOrderMethodOptions.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
@@ -65,6 +66,7 @@ export function useSimpleCheckoutRouteProps({
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
+  resolvingPinnedDeliveryAddress = false,
   selectedLocation = null,
   selectedLocationId = null,
   selectedSavedLocationId = '',
@@ -104,10 +106,10 @@ export function useSimpleCheckoutRouteProps({
   totalsForDisplay,
   withAssetOrigin
 }) {
-  const orderTimingPolicy = resolveOrderTimingPolicy(
-    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
-  );
+  const fulfillmentLocation = resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId });
+  const orderTimingPolicy = resolveOrderTimingPolicy(fulfillmentLocation);
   return {
+    addressSearchBias: resolveAddressSearchBias(fulfillmentLocation, customerPin),
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     guestCheckoutAllowed,
@@ -155,6 +157,7 @@ export function useSimpleCheckoutRouteProps({
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
+    resolvingPinnedDeliveryAddress,
     selectedLocation,
     selectedLocationId,
     selectedSavedLocationId,
@@ -226,6 +229,14 @@ export function useSimpleCheckoutRouteProps({
       if (typeof handleSetDefaultDeliveryAddress === 'function' && !location.isDefault) {
         handleSetDefaultDeliveryAddress(location);
       }
+    },
+    // #759: choosing an address-search suggestion drops the pin there; its address line rides on
+    // the pin so useDeliveryPinResolution keeps it instead of reverse-geocoding the point.
+    onSelectSearchResult: (result) => {
+      setDeliveryLocationAction('map');
+      setSelectedSavedLocationId('');
+      setPinLocationError('');
+      setCustomerPin(buildSearchSelectedPin(result));
     },
     onSelectedLocationChange: setSelectedLocationId,
     onSetCheckoutResult: setCheckoutResult,
