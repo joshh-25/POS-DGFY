@@ -37,6 +37,19 @@ export function hasExplicitDeliveryAddressEdit(customerAddress = '', comparedTo 
   return typed !== String(comparedTo || '').trim();
 }
 
+/**
+ * The delivery-address field's value. The customer's own text is shown verbatim; the display
+ * address only fills an empty field (or replaces the generated "Pinned map location (...)"
+ * wording). The display address is derived from that same text but trimmed, so feeding it back
+ * whenever the two matched after trimming swallowed every trailing space as it was typed
+ * ("Jaro Plaza" became "JaroPlaza").
+ */
+export function resolveDeliveryAddressInputValue(customerAddress = '', displayAddress = '') {
+  const typed = String(customerAddress || '');
+  if (typed.trim() && !isGeneratedPinnedDeliveryAddress(typed)) return typed;
+  return String(displayAddress || '');
+}
+
 export function normalizeCoordinatePair({ latitude, longitude } = {}) {
   if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
   const parsedLatitude = Number(latitude);
