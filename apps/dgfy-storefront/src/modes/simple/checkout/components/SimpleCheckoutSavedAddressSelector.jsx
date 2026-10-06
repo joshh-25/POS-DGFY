@@ -57,12 +57,8 @@ export function SimpleCheckoutSavedAddressSelector({
         <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Delivery address
         </div>
-        {activeAddress ? renderAddress(activeAddress) : (
-          <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={getCheckoutAddLocationActionStyle(SIMPLE_ADD_LOCATION_ACTION_STYLE)}>
-            <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: '#fff', background: 'rgba(255,255,255,.16)' }}><Plus size={18} /></span>
-            Add New Location
-          </button>
-        )}
+        {/* #759: with address search and map pinning beside it, an empty saved list has nothing to open. */}
+        {activeAddress ? renderAddress(activeAddress) : null}
         {activeAddress ? (
           <button type="button" onClick={onOpenMobileAddressList} style={{ minHeight: 44, borderRadius: 14, background: SIMPLE_BRAND_TINT, border: `1.5px solid ${SIMPLE_BRAND_BORDER}`, color: SIMPLE_BRAND, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             View All Saved Addresses

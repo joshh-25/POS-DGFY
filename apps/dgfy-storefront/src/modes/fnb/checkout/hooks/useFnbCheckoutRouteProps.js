@@ -9,6 +9,7 @@
  */
 export function useFnbCheckoutRouteProps({
   activeFnbOrderStepMeta,
+  addressSearchBias = null,
   applySavedDeliveryLocation,
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
@@ -236,6 +237,7 @@ export function useFnbCheckoutRouteProps({
     renderStorefrontClosedNotice,
     resetQrphPaymentSession,
     resolvingPinnedDeliveryAddress,
+    addressSearchBias,
     selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
