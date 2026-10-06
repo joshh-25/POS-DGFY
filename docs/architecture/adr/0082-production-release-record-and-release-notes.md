@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-06
-last_reviewed: 2026-09-23
+last_reviewed: 2026-10-06
 review_by: 2027-03-23
 applies_to: development_to_production_release_flow, release_notes
 topic: production_release_record_and_release_notes
@@ -281,6 +281,20 @@ path; Decision 3 (`[binding]`) is untouched. Full detail: issue #2055,
   revive (Decision 7's own "Alternatives considered" entry above).
 - `.agents/skills/incident-responder/SKILL.md` — gains the procedural release-note-authoring step
   for the hotfix path in this same PR (Decision 6/8's hotfix-coverage gap).
+
+## Amendments
+
+### 2026-10-06 — Retain one release record across candidate refreshes (#2266, Phase 474)
+
+The candidate's existing release note and eventual GitHub Release mirror remain keyed by the
+retained candidate ID. The note carries the original `promotion_base_sha`, cumulative included
+scope, and a candidate-history table recording each refresh's incoming `develop` SHA, resulting
+STAGING SHA, promotion PR, and superseded release PR. Current selection fields may be marked
+pending until the fresh release cut; finalization records production SHA and each selected app's
+floor, artifact revision, source SHA, and digest from the active manifest. The committed note stays
+authoritative over its published mirror. Archived selections remain history and cannot be presented
+as the active production selection. Existing user-visible-change authorship rules still apply.
+`[default]` — amends Decisions 4 and 5; Decision 3's production release-note obligation is unchanged.
 
 ## Follow-ups (not built by this ADR — hand to `pm` to file, do not improvise)
 

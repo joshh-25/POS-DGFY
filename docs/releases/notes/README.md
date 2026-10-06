@@ -30,9 +30,9 @@ candidate repair. Nothing else — no per-app notes, no per-PR notes, no draft/s
 ## Schema
 
 `sku-release-note/v1` — frontmatter (`schema`, `candidate_id`, `production_date`,
-`production_commit`), a per-app version table (`dgfy-api`, `dgfy-migration-runner`, `dgfy-ims`,
-`dgfy-pos`, `dgfy-storefront` — the same five apps [ADR 0081](../../architecture/adr/0081-per-app-container-semantic-versioning.md)
-versions independently), an `## Included` section (plain-language, one line per user- or
+`production_commit`), a per-app version table for the current deployable app inventory in
+`scripts/check-app-version-bump.js` (`dgfy-api`, `dgfy-migration-runner`, IMS, POS, Storefront,
+OPIS, and Admin), an `## Included` section (plain-language, one line per user- or
 operator-visible change, each citing its source PR/issue — `No user-visible changes.` is a valid
 body; see ADR 0082 Decision 5 on why a version bump alone, including a #1605 fan-out bump, is never
 sufficient evidence for a line), and an `## Operational notes` section (`None.` when empty). See
@@ -54,3 +54,13 @@ Per `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 amendment (mechanics) an
 - **Published** as a GitHub Release on tag `release-<candidate_id>` after `deploy-main.yml`
   succeeds — the committed file here stays authoritative; the GitHub Release is a mirror cut from
   it, never edited independently.
+
+## Delayed candidate refreshes
+
+An explicitly refreshed, not-yet-merged-to-main candidate keeps this same note and candidate ID.
+`promotion_base_sha` records the verified pre-promotion staging baseline and must be preserved by
+incoming develop. Add a cumulative Candidate history row for each refresh, including incoming
+develop SHA, actual resulting staging SHA, promotion PR, and superseded release PR. Keep current
+selection values pending until the fresh release cut, then finalize from the v4 manifest, including
+each selected app's floor, artifact revision, source SHA, and digest. Older notes remain valid
+without this metadata, but cannot be refreshed until evidence-backed baseline bootstrap is merged.

@@ -629,6 +629,41 @@ test('runParityCheck (v3): API r1 and migration-runner r5 pass with per-app sour
   ]);
 });
 
+test('runParityCheck (v4): staging_refresh artifacts require and pass ordinary STAGING predecessor parity', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const floor = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '../apps/dgfy-pos/package.json'), 'utf8')).version;
+  const digest = `sha256:${'d'.repeat(64)}`;
+  const manifest = {
+    schema: 'sku-release-candidate/v4', candidate_id: '2026-10-01-03', status: 'qualified',
+    source_develop_sha: SHA('a'), promotion_base_sha: SHA('b'), current_staging_sha: headSha, staging_head_sha: headSha,
+    revisions: [{ kind: 'initial', sha: SHA('a'), parent_sha: null, branch: 'to-staging/2026-10-01-03', pr: 2001, apps_touched: ['dgfy-pos'] }],
+    staging_refresh: [{ refresh_seq: 1, source_develop_sha: SHA('c'), sha: headSha, parent_sha: SHA('a'), base_staging_sha: SHA('b'), branch: 'to-staging/2026-10-01-03-refresh-1', pr: 2003, reason: 'refresh', apps_touched: ['dgfy-pos'], artifacts: [{ app: 'dgfy-pos', revision: 4, source_sha: headSha, digest, origin: 'staging_refresh' }] }],
+    release_revision: { source_staging_sha: headSha, branch: 'release/2026-10-01-03', pr: 2004, apps: { 'dgfy-pos': { revision: 4, source_sha: headSha, digest, origin: 'staging_refresh' } } },
+  };
+  const inspected = [];
+  const inspectFn = (ref) => { inspected.push(ref); return ({ status: 0, stderr: '', stdout: JSON.stringify({ digest, Image: { Config: { Labels: {
+    [CANDIDATE_SOURCE_LABEL]: headSha,
+    'org.dgfy-platform.release-revision': 'r4',
+    'org.dgfy-platform.release-floor': floor,
+    'org.opencontainers.image.version': `${floor}-r4`,
+  } } } }) }); };
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-pos'], inspectFn });
+  assert.equal(result.ok, true);
+  assert.equal(result.results[0].verdict, 'pass');
+  assert.ok(inspected.some((ref) => ref.endsWith('-staging')), 'staging_refresh must use the ordinary STAGING predecessor');
+});
+
+test('runParityCheck rejects a candidate while refresh is incomplete', () => {
+  const manifest = {
+    schema: 'sku-release-candidate/v4', candidate_id: '2026-10-01-04', status: 'refresh_in_progress',
+    source_develop_sha: SHA('a'), promotion_base_sha: SHA('b'), current_staging_sha: SHA('a'), staging_head_sha: null,
+    revisions: [{ kind: 'initial', sha: SHA('a'), parent_sha: null, branch: 'to-staging/2026-10-01-04', pr: 1, apps_touched: ['dgfy-pos'] }],
+    release_revision: null, refresh_in_progress: { refresh_seq: 1, reason: 'refresh' },
+  };
+  assert.throws(() => runParityCheck({ manifest, apps: ['dgfy-pos'], inspectFn: () => assert.fail('must not inspect images') }), /no active selection/);
+});
+
 test('runParityCheck (v3): release_repair passes on PROD evidence alone and rejects wrong PROD source or alias digest', () => {
   const { execSync } = require('node:child_process');
   const releaseSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
