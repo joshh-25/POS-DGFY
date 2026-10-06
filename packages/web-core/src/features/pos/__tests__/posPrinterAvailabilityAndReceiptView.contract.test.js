@@ -22,11 +22,16 @@ describe('POS printer availability and post-checkout receipt view', () => {
     it('removes app print margins while preserving the selected receipt width', () => {
         const stylesheet = read('../../../index.css');
         const receiptDialogsSource = read('../components/POSCheckoutTerminalReceiptDialogs.jsx');
+        const zReadingSource = read('../components/ZReadingPrintView.jsx');
 
         expect(stylesheet).toContain('@page {\n    margin: 0;\n  }');
         expect(stylesheet).toContain('body.pos-receipt-print-mode,\n  body.pos-z-reading-printing');
         expect(stylesheet).toContain('width: var(--pos-receipt-paper-width, 80mm);');
+        expect(stylesheet).toContain('body.pos-z-reading-printing .pos-z-reading-print');
+        expect(stylesheet).toContain('width: var(--pos-z-reading-paper-width, 80mm);');
         expect(receiptDialogsSource).toContain("style={{ '--pos-receipt-paper-width': receiptPaperWidth }}");
+        expect(zReadingSource).toContain("style={{ '--pos-z-reading-paper-width': resolvedPaperWidth }}");
+        expect(zReadingSource).not.toContain("style={{ width: resolvedPaperWidth, maxWidth: '100%' }}");
     });
 
     it('gates receipt and order-ticket actions on their distinct hardware capabilities', () => {

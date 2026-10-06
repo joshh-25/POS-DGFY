@@ -76,7 +76,7 @@ export default function ZReadingPrintView({
             <article
                 className="pos-z-reading-print mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 font-mono text-[11px] leading-tight text-slate-900 shadow-2xl print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none"
                 data-paper-width={resolvedPaperWidth}
-                style={{ width: resolvedPaperWidth, maxWidth: '100%' }}
+                style={{ '--pos-z-reading-paper-width': resolvedPaperWidth }}
             >
                 <header className="border-b border-dashed border-slate-300 pb-2 text-center">
                     {businessIcon ? (

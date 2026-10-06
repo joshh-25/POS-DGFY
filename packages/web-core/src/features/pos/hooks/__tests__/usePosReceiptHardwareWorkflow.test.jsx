@@ -101,7 +101,7 @@ describe('usePosReceiptHardwareWorkflow', () => {
         }));
     });
 
-    it('opens the browser print dialog when no native printer driver is available', async () => {
+    it('opens the receipt preview before browser printing when no native printer driver is available', async () => {
         const browserPrint = vi.fn();
         const originalPrint = window.print;
         window.print = browserPrint;
@@ -115,8 +115,42 @@ describe('usePosReceiptHardwareWorkflow', () => {
             await result.current.handlePrintReceipt(transaction, 'history_modal');
         });
 
+        expect(result.current.receiptPreviewModalOpen).toBe(true);
+        expect(result.current.receiptPreviewSource).toBe('receipt_preview');
+        expect(browserPrint).not.toHaveBeenCalled();
+        expect(props.posHardware.printReceipt).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await result.current.handlePrintReceipt(transaction, 'history_modal');
+        });
+
         expect(browserPrint).toHaveBeenCalledTimes(1);
         expect(props.posHardware.printReceipt).not.toHaveBeenCalled();
+        window.print = originalPrint;
+    });
+
+    it('switches an open order preview to the receipt surface before browser printing', async () => {
+        const browserPrint = vi.fn();
+        const originalPrint = window.print;
+        window.print = browserPrint;
+        const transaction = { pos_transaction_id: 21, total_amount: 120 };
+        const { result } = renderWorkflow({
+            lastReceipt: transaction,
+            posHardware: { ...createHardware(), isPrinterAvailable: false }
+        });
+
+        act(() => {
+            result.current.setReceiptPreviewSource('order_preview');
+            result.current.setReceiptPreviewModalOpen(true);
+        });
+
+        await act(async () => {
+            await result.current.handlePrintReceipt(transaction, 'history_modal');
+        });
+
+        expect(result.current.receiptPreviewSource).toBe('receipt_preview');
+        expect(browserPrint).not.toHaveBeenCalled();
+
         window.print = originalPrint;
     });
 

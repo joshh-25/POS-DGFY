@@ -1580,7 +1580,7 @@ return (
                                     ? 'Checking printer availability.'
                                     : isPrinterAvailable
                                         ? undefined
-                                        : 'No direct printer detected. Opens the browser print dialog.'}
+                                        : 'No direct printer detected. Open the receipt preview, then choose Print in browser.'}
                             >
                                 <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                                 {receiptPrinting ? 'Printing...' : 'Print'}

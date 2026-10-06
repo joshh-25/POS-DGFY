@@ -115,6 +115,14 @@ export const usePosReceiptHardwareWorkflow = ({
         // the native path when available and use the browser print surface
         // when the hardware registry has explicitly resolved no printer.
         if (posHardware?.isPrinterAvailable === false) {
+            // Browser printing is scoped by the receipt preview's body class.
+            // Mount the receipt surface first instead of printing the current
+            // POS screen or an order-preview dialog.
+            if (!receiptPreviewModalOpen || receiptPreviewSource !== 'receipt_preview') {
+                setReceiptPreviewSource('receipt_preview');
+                setReceiptPreviewModalOpen(true);
+                return;
+            }
             printWithBrowser();
             return;
         }
@@ -147,7 +155,18 @@ export const usePosReceiptHardwareWorkflow = ({
         } finally {
             setReceiptPrinting(false);
         }
-    }, [activeShiftId, normalizedTerminalId, posHardware, printWithBrowser, receiptPaperWidth, receiptSettings]);
+    }, [
+        activeShiftId,
+        normalizedTerminalId,
+        posHardware,
+        printWithBrowser,
+        receiptPaperWidth,
+        receiptPreviewModalOpen,
+        receiptPreviewSource,
+        receiptSettings,
+        setReceiptPreviewModalOpen,
+        setReceiptPreviewSource
+    ]);
 
     const handleBillRequest = useCallback(async () => {
         if (safeCart.length === 0) {
