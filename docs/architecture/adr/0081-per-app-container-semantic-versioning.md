@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-06
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, release_process
 topic: per_app_container_semantic_versioning
@@ -939,3 +939,18 @@ Full detail: #2238, `scripts/resolve-build-skip-plan.js`, `.github/workflows/dep
 `docs/ops/STOREFRONT_PROD_FLOOR_ALIAS_COLLISION_INCIDENT_2026-10-03.md`.
 
 PR: (this PR). Refs #2238.
+
+### 2026-10-06 — Refresh floors use the original promotion baseline (#2266, Phase 474)
+
+Candidate v4 records `promotion_base_sha` and an append-only `staging_refresh` sequence. A refresh
+retains the candidate's initial source identity while recording each incoming `develop` SHA and
+actual resulting STAGING SHA independently from staging-repair and per-app artifact counters.
+Refreshed builds receive new immutable per-app `rN` revisions; untouched selected apps retain their
+earlier artifact provenance. `staging_refresh` parity requires the normal STAGING predecessor.
+
+The version-floor checker has a separate refresh context that requires a verified baseline in the
+current STAGING release note and the same baseline in incoming `develop`'s note. It enforces the
+initial minor-floor obligation against that original baseline and rejects a floor below current
+STAGING. A refresh branch name grants no exception by itself. Missing or unverifiable baseline
+evidence stops v4 conversion; v1-v3 remain valid for their existing workflows. `[default]` — amends
+Decision 6 and Decision 8; Decision 7's immutable-tag invariant is unchanged.

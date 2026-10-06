@@ -49,6 +49,7 @@ const path = require('path');
 
 const { CANDIDATE_ID_PATTERN, PromotionCandidateError } = require('./check-promotion-candidate');
 const { APPS, readVersionAt } = require('./check-app-version-bump');
+const { parseFlatFrontmatter } = require('./lib/flat-frontmatter');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -84,21 +85,10 @@ function stripHtmlComments(text) {
 // a real YAML parser would be more machinery than the format needs.
 function parseFrontMatter(content) {
   const text = String(content || '');
-  if (!text.startsWith('---')) return null;
   const end = text.indexOf('\n---', 3);
-  if (end === -1) return null;
-  const block = text.slice(3, end).trim();
-  const body = text.slice(end + 4).replace(/^\r?\n/, '');
-  const frontMatter = {};
-  for (const line of block.split(/\r?\n/)) {
-    const idx = line.indexOf(':');
-    if (idx === -1) continue;
-    const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    if (!key) continue;
-    frontMatter[key] = value;
-  }
-  return { frontMatter, body };
+  const frontMatter = parseFlatFrontmatter(text);
+  if (!frontMatter || end === -1) return null;
+  return { frontMatter, body: text.slice(end + 4).replace(/^\r?\n/, '') };
 }
 
 // One `## <heading>` section's own body, up to (not including) the next `## ` heading or EOF.
@@ -151,6 +141,9 @@ function validateFrontMatter(frontMatter, candidateId) {
       code: 'INVALID_PRODUCTION_COMMIT',
       message: `frontmatter "production_commit" must be either the literal "pending" or a lowercase 40-character git SHA (found: ${commit || '<missing>'}) -- ADR 0082 Decision 8's two-stage lifecycle.`,
     });
+  }
+  if (frontMatter.promotion_base_sha !== undefined && !SHA_PATTERN.test(String(frontMatter.promotion_base_sha))) {
+    findings.push({ code: 'INVALID_PROMOTION_BASE_SHA', message: 'frontmatter "promotion_base_sha" must be a lowercase 40-character git SHA when present.' });
   }
   return findings;
 }
@@ -240,6 +233,56 @@ function validateOperationalNotesSection(section) {
   return [];
 }
 
+function validateCandidateHistory(body) {
+  const findings = [];
+  const section = extractSection(body, 'Candidate history');
+  if (!section) return [{ code: 'MISSING_CANDIDATE_HISTORY', message: 'Refreshable notes require a "## Candidate history" section.' }];
+  const rows = section.split(/\r?\n/).filter((line) => line.trim().startsWith('|') && line.trim().endsWith('|'))
+    .map((line) => line.trim().slice(1, -1).split('|').map((cell) => cell.trim()));
+  const expected = ['Refresh', 'Incoming develop SHA', 'Resulting staging SHA', 'Promotion PR', 'Superseded release PR'];
+  if (!rows.length || rows[0].length !== expected.length || rows[0].some((cell, index) => cell.toLowerCase() !== expected[index].toLowerCase())) {
+    return [{ code: 'INVALID_CANDIDATE_HISTORY_TABLE', message: 'Candidate history must use the documented five-column table.' }];
+  }
+  const records = rows.slice(2);
+  if (!records.length) findings.push({ code: 'EMPTY_CANDIDATE_HISTORY', message: 'Candidate history must include the initial selection row.' });
+  records.forEach((row, index) => {
+    if (row.length !== expected.length) {
+      findings.push({ code: 'INVALID_CANDIDATE_HISTORY_ROW', message: `Candidate history row ${index + 1} must contain five values.` });
+      return;
+    }
+    const [refresh, incoming, staging, promotionPr, oldReleasePr] = row;
+    if (index === 0 ? refresh !== 'Initial' : Number(refresh) !== index) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_SEQ', message: `Candidate history row ${index + 1} must use ${index === 0 ? 'Initial' : `refresh sequence ${index}`}.` });
+    if (!SHA_PATTERN.test(incoming) || !SHA_PATTERN.test(staging)) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_SHA', message: `Candidate history row ${index + 1} must include valid incoming and resulting 40-character SHAs.` });
+    if (!/^#\d+$/.test(promotionPr)) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_PR', message: `Candidate history row ${index + 1} must include its promotion PR number.` });
+    if (index === 0 ? oldReleasePr !== '—' : !/^#\d+$/.test(oldReleasePr)) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_RELEASE_PR', message: `Candidate history row ${index + 1} must identify the superseded release PR where applicable.` });
+  });
+  return findings;
+}
+
+function validateProductionSelection(body) {
+  const section = extractSection(body, 'Production selection');
+  if (!section) return [{ code: 'MISSING_PRODUCTION_SELECTION', message: 'Refreshable notes require a "## Production selection" table.' }];
+  const rows = section.split(/\r?\n/).filter((line) => line.trim().startsWith('|') && line.trim().endsWith('|'))
+    .map((line) => line.trim().slice(1, -1).split('|').map((cell) => cell.trim()));
+  const expected = ['App', 'Floor', 'Artifact revision', 'Source SHA', 'Digest'];
+  if (!rows.length || rows[0].length !== expected.length || rows[0].some((cell, index) => cell.toLowerCase() !== expected[index].toLowerCase())) {
+    return [{ code: 'INVALID_PRODUCTION_SELECTION_TABLE', message: 'Production selection must use the documented five-column table.' }];
+  }
+  const selected = new Set();
+  const findings = [];
+  for (const row of rows.slice(2)) {
+    if (row.length !== expected.length) { findings.push({ code: 'INVALID_PRODUCTION_SELECTION_ROW', message: 'Production selection rows must contain five values.' }); continue; }
+    const [app, floor, revision, sourceSha, digest] = row;
+    if (!APPS.includes(app) || selected.has(app)) findings.push({ code: 'INVALID_PRODUCTION_SELECTION_APP', message: `Production selection has an unknown or duplicate app: ${app}.` });
+    selected.add(app);
+    if (!/^\d+\.\d+\.\d+$/.test(floor) || !/^r\d+$/.test(revision) || !SHA_PATTERN.test(sourceSha) || !/^sha256:[0-9a-f]{64}$/.test(digest)) {
+      findings.push({ code: 'INVALID_PRODUCTION_SELECTION_LINEAGE', message: `Production selection row for ${app} must include floor, rN, source SHA, and sha256 digest.` });
+    }
+  }
+  if (!selected.size) findings.push({ code: 'EMPTY_PRODUCTION_SELECTION', message: 'Production selection must list every app selected by the active manifest.' });
+  return findings;
+}
+
 function validateReleaseNote({ noteContent, candidateId, repoRoot, headGitRef }) {
   const findings = [];
   const stripped = stripHtmlComments(String(noteContent || ''));
@@ -251,6 +294,10 @@ function validateReleaseNote({ noteContent, candidateId, repoRoot, headGitRef })
   findings.push(...validateVersionTable(parsed.body, { repoRoot, headGitRef }));
   findings.push(...validateIncludedSection(extractSection(parsed.body, 'Included')));
   findings.push(...validateOperationalNotesSection(extractSection(parsed.body, 'Operational notes')));
+  if (parsed.frontMatter.promotion_base_sha) {
+    findings.push(...validateCandidateHistory(parsed.body));
+    findings.push(...validateProductionSelection(parsed.body));
+  }
   return findings;
 }
 
@@ -359,6 +406,8 @@ module.exports = {
   validateVersionTable,
   validateIncludedSection,
   validateOperationalNotesSection,
+  validateCandidateHistory,
+  validateProductionSelection,
   validateReleaseNote,
   runCheck,
 };

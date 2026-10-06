@@ -220,6 +220,37 @@ to `develop` through an ordinary PR; do not create a separate staging backport. 
 continues to use the incident/hotfix path on `main`, then backports the resolved main commit to
 `develop` once production is stable.
 
+## Explicit refresh of a delayed staging candidate (#2266, Phase 474)
+
+The frozen-candidate rule remains the default. Refresh only after Pat explicitly requests it,
+records the reason, and verifies the release has not merged to `main`; once merged, the candidate is
+never refreshable, even if production deploy is delayed. Preserve the candidate ID. Before branch
+work, reconcile all staging repairs and release-only repairs into `develop` through reviewed PRs or
+prove equivalent content is already present. Early release-repair backport is allowed only as this
+explicit refresh procedure; stop if any repair differs or is missing.
+
+Archive the active manifest selection and its SHA, per-app artifacts, release PR, and release-repair
+history into `release_history`; close its unmerged promotion PR and retire that release branch. Do
+not use its observation, qualification, or optional quality evidence for the refreshed candidate.
+Prepare the same release note with cumulative included scope and a history row, preserve its
+`promotion_base_sha`, reconcile compliance, then pin the exact incoming develop SHA. Run divergence
+checks and `node scripts/check-app-version-bump.js --floor --candidate-id <id> --base origin/staging
+--head <develop-sha>`. Cut a disposable `to-staging/<id>-refresh-<seq>` from that SHA; it carries no
+authored feature, note, or floor-bump commit of its own.
+
+Set manifest status to `refresh_in_progress` and clear active release selection before merging.
+Record incoming develop SHA separately from the actual resulting staging SHA and physical staging
+base. Build affected apps with fresh immutable per-app `rN` tags; retain valid untouched artifacts
+and satisfy all carried-forward selected apps. After successful merge/build, return to
+`staging_soak`, then repeat observation and all required qualification against the actual new staging
+SHA. Only then cut a fresh `release/<id>` from the qualified staging head and freeze the new
+selection. A failed refresh remains unqualified; never silently restore an archived selection.
+
+For legacy v1-v3 candidates, stop unless the original pre-promotion baseline can be established from
+reviewed evidence and merged into the release note via the amendment/backport procedure. Never guess
+it. All existing merge safety, tenant-schema, compliance, no-squash, immutable-tag, alias, and
+production authorization gates remain mandatory.
+
 ## Pre-flight — run before touching any branch
 
 The check that would have caught #426: confirm the **target** branch exists on the remote

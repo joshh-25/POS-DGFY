@@ -64,6 +64,8 @@ export function SimpleCheckoutRoutePage({
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
+  addressSearchBias = null,
+  resolvingPinnedDeliveryAddress = false,
   selectedLocation = null,
   selectedSavedLocationId = '',
   selectedStore = null,
@@ -101,6 +103,7 @@ export function SimpleCheckoutRoutePage({
   onScheduleModeChange,
   onScheduledForChange,
   onSelectAddress,
+  onSelectSearchResult,
   onSetCheckoutResult,
   onSetSimpleOrderStep,
   onSignInToCheckout,
@@ -225,6 +228,8 @@ export function SimpleCheckoutRoutePage({
             pinLocationError={pinLocationError}
             pinLocationLoading={pinLocationLoading}
             renderGuestCheckoutEntry={renderGuestCheckoutEntry}
+            resolvingPinnedDeliveryAddress={resolvingPinnedDeliveryAddress}
+            searchBias={addressSearchBias}
             scheduledFor={fnbScheduledFor}
             selectedLocation={selectedLocation}
             storefrontHours={selectedStore?.storefront_hours}
@@ -250,6 +255,7 @@ export function SimpleCheckoutRoutePage({
             onScheduleModeChange={onScheduleModeChange}
             onScheduledForChange={onScheduledForChange}
             onSelectAddress={onSelectAddress}
+            onSelectSearchResult={onSelectSearchResult}
             onSpecialInstructionsChange={onSpecialInstructionsChange}
             onStartMapPin={onStartMapPin}
           />

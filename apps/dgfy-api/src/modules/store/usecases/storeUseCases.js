@@ -5463,6 +5463,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const updated = await commercePaymentRepository.updateSessionById(session.session_id, {
                 status: 'awaiting_payment',
                 provider_payment_intent_id: providerResult.paymentIntent?.id || providerResult.attachedIntent?.id || null,
+                provider_checkout_session_id: String(providerResult.id || '').startsWith('cs_') ? providerResult.id : null,
                 provider_payment_method_id: providerResult.paymentMethod?.id || null,
                 qr_code_image_url: providerResult.qrCodeImageUrl || null,
                 checkout_url: providerResult.checkoutUrl || providerAttributes.checkout_url || null,
@@ -5534,24 +5535,36 @@ const assertStoreCheckoutPaymentSessionAccess = ({ session, tenantId, storeSlug,
     }
 };
 
-const getPayMongoProviderErrorCode = (error) => String(
-    error?.response?.data?.errors?.[0]?.code
-        || error?.response?.data?.errors?.[0]?.error_code
-        || error?.response?.data?.code
-        || ''
-).trim().toLowerCase();
+const isCommercePaymentSessionNonCancellable = (session = {}) => (
+    ['paid', 'finalized', 'paid_manual_resolution_required', 'expired', 'failed', 'refund_pending',
+        'partial_refunded', 'refunded', 'split_failed_manual_settlement_required'].includes(
+        String(session.status || '').trim().toLowerCase()
+    )
+    || Boolean(session.pos_transaction_id || session.tracking_pin)
+);
 
-const PAYMONGO_PAYMENT_ALREADY_COMPLETED_CODES = new Set([
-    'resource_succeeded_state',
-    'resource_invalid_state',
-    'payment_intent_already_succeeded'
-]);
+const buildCancellationResponse = (
+    session,
+    outcome,
+    reasonCode = null,
+    reason = null,
+    { idempotentReplay = false } = {}
+) => ok({
+    cancellation_requested: outcome === 'cancelled' && !idempotentReplay,
+    idempotent_replay: idempotentReplay,
+    payment_session: serializePaymentSession(session),
+    cancellation: { outcome, reason_code: reasonCode, reason }
+});
 
-export const buildCancelStoreCheckoutPaymentSessionUseCase = ({
-    commercePaymentRepository,
-    paymongoService
-}) => {
-    return async ({ paymentSessionId, storeSlug, storeCustomer }) => {
+export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository, paymongoService }) => {
+    return async ({
+        paymentSessionId,
+        storeSlug = null,
+        storeCustomer = null,
+        actor = 'store_guest',
+        ipAddress = null,
+        userAgent = null
+    }) => {
         try {
             const reference = String(paymentSessionId || '').trim().toUpperCase();
             if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
@@ -5561,135 +5574,194 @@ export const buildCancelStoreCheckoutPaymentSessionUseCase = ({
             const tenantContext = dbStore.getStore() || {};
             const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
             const requestedStoreSlug = normalizePaymentSessionStoreSlug(storeSlug || tenantContext.tenantToken);
-            const session = await commercePaymentRepository.findSessionByPublicReference(reference);
-            assertStoreCheckoutPaymentSessionAccess({
+            const runInTransaction = async (callback) => (
+                typeof commercePaymentRepository.runInTransaction === 'function'
+                    ? commercePaymentRepository.runInTransaction(callback)
+                    : callback({})
+            );
+            const assertSessionAccess = (session) => assertStoreCheckoutPaymentSessionAccess({
                 session,
                 tenantId,
                 storeSlug: requestedStoreSlug,
                 storeCustomer
             });
 
-            const idempotentStatuses = new Set(['cancelled', 'failed', 'expired']);
-            if (idempotentStatuses.has(String(session.status || '').toLowerCase())) {
-                return ok({
-                    cancellation_requested: false,
-                    idempotent_replay: true,
-                    payment_session: serializePaymentSession(session)
-                });
-            }
-
-            if (!['created', 'awaiting_payment'].includes(String(session.status || '').toLowerCase())) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'This payment session can no longer be changed because payment processing has already started or completed.',
-                    { statusCode: 409 }
-                );
-            }
-
-            if (session.provider_payment_id || session.pos_transaction_id || session.tracking_pin) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'This payment session can no longer be changed because it is already linked to an order payment.',
-                    { statusCode: 409 }
-                );
-            }
-
-            const providerIntentId = String(session.provider_payment_intent_id || '').trim();
-            if (!providerIntentId && session.checkout_url) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'This payment method must finish or expire before another payment method can be selected.',
-                    { statusCode: 409 }
-                );
-            }
-
-            if (providerIntentId) {
-                if (typeof paymongoService?.cancelPaymentIntent !== 'function') {
-                    throw new DomainError(
-                        DomainErrorCode.SERVICE_UNAVAILABLE,
-                        'Payment cancellation is temporarily unavailable. Please try again.',
-                        { statusCode: 503 }
-                    );
-                }
-
-                let providerCancellation;
-                try {
-                    providerCancellation = await paymongoService.cancelPaymentIntent(providerIntentId);
-                } catch (error) {
-                    if (PAYMONGO_PAYMENT_ALREADY_COMPLETED_CODES.has(getPayMongoProviderErrorCode(error))) {
-                        throw new DomainError(
-                            DomainErrorCode.CONFLICT,
-                            'This payment has already completed or changed state. Refresh the checkout before selecting another method.',
-                            { statusCode: 409 }
-                        );
-                    }
-                    throw new DomainError(
-                        DomainErrorCode.SERVICE_UNAVAILABLE,
-                        'PayMongo could not cancel this payment session. Please try again.',
-                        { statusCode: 503, cause: error }
-                    );
-                }
-
-                const providerStatus = String(
-                    providerCancellation?.attributes?.status
-                        || providerCancellation?.status
-                        || ''
-                ).trim().toLowerCase();
-                if (['succeeded', 'paid', 'captured', 'completed'].includes(providerStatus)) {
-                    throw new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        'This payment has already completed. A new payment method cannot be selected from this session.',
-                        { statusCode: 409 }
-                    );
-                }
-            }
-
-            const markCancelled = async (options = {}) => {
-                const current = await commercePaymentRepository.findSessionByPublicReference(reference, {
-                    ...options,
+            const firstStage = await runInTransaction(async (transaction) => {
+                const session = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                    transaction,
                     lock: true
                 });
-                assertStoreCheckoutPaymentSessionAccess({
-                    session: current,
-                    tenantId,
-                    storeSlug: requestedStoreSlug,
-                    storeCustomer
-                });
-
-                const currentStatus = String(current.status || '').trim().toLowerCase();
-                if (idempotentStatuses.has(currentStatus)) {
-                    return { session: current, idempotentReplay: true };
+                assertSessionAccess(session);
+                const status = String(session.status || '').trim().toLowerCase();
+                if (status === 'cancelled') {
+                    return { kind: 'complete', session, outcome: 'cancelled', idempotentReplay: true };
                 }
-                if (!['created', 'awaiting_payment'].includes(currentStatus)) {
-                    throw new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        'This payment session can no longer be changed because payment processing has already started or completed.',
-                        { statusCode: 409 }
-                    );
+                if (isCommercePaymentSessionNonCancellable(session) || !['created', 'awaiting_payment'].includes(status)) {
+                    return { kind: 'complete', session, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
                 }
 
-                const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
-                    status: 'cancelled',
-                    failure_code: 'PAYMENT_SESSION_CANCELLED',
-                    failure_reason: 'Payment session cancelled to choose another payment method.'
-                }, options);
-                if (!updated) {
-                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+                const hasPaymentIntent = Boolean(session.provider_payment_intent_id);
+                const hasCheckoutSession = Boolean(session.provider_checkout_session_id);
+                if (status === 'created' && !hasPaymentIntent && !hasCheckoutSession) {
+                    const cancelled = await commercePaymentRepository.updateSessionById(session.session_id, {
+                        status: 'cancelled',
+                        failure_code: null,
+                        failure_reason: null
+                    }, { transaction });
+                    await commercePaymentRepository.createAuditLog?.({
+                        entity_type: 'CommercePayment',
+                        entity_id: session.session_id,
+                        action: 'UPDATE',
+                        changes: {
+                            event: 'commerce_payment_session_cancelled',
+                            payment_session: session.public_reference,
+                            actor
+                        },
+                        ip_address: ipAddress,
+                        user_agent: userAgent
+                    }, { transaction });
+                    return { kind: 'complete', session: cancelled, outcome: 'cancelled', idempotentReplay: false };
                 }
-                return { session: updated, idempotentReplay: false };
-            };
+                if (!hasPaymentIntent && !hasCheckoutSession) {
+                    return {
+                        kind: 'unresolved',
+                        session,
+                        reason_code: 'PROVIDER_OBJECT_MISSING',
+                        reason: 'The payment session has no provider object that can be cancelled.'
+                    };
+                }
 
-            const cancellation = typeof commercePaymentRepository.runInTransaction === 'function'
-                ? await commercePaymentRepository.runInTransaction((transaction) => markCancelled({ transaction }))
-                : await markCancelled();
-
-            return ok({
-                cancellation_requested: true,
-                idempotent_replay: cancellation.idempotentReplay,
-                payment_session: serializePaymentSession(cancellation.session)
+                return {
+                    kind: 'provider_call',
+                    session,
+                    providerObject: hasPaymentIntent
+                        ? { type: 'payment_intent', id: session.provider_payment_intent_id }
+                        : { type: 'checkout_session', id: session.provider_checkout_session_id }
+                };
             });
+
+            if (firstStage.kind === 'complete') {
+                return buildCancellationResponse(
+                    firstStage.session,
+                    firstStage.outcome,
+                    firstStage.reason_code || null,
+                    null,
+                    { idempotentReplay: firstStage.idempotentReplay }
+                );
+            }
+
+            if (firstStage.kind === 'unresolved') {
+                const saved = await runInTransaction(async (transaction) => {
+                    const current = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                        transaction,
+                        lock: true
+                    });
+                    assertSessionAccess(current);
+                    const currentStatus = String(current.status || '').trim().toLowerCase();
+                    if (currentStatus === 'cancelled') {
+                        return { session: current, outcome: 'cancelled', idempotentReplay: true };
+                    }
+                    if (isCommercePaymentSessionNonCancellable(current) || !['created', 'awaiting_payment'].includes(currentStatus)) {
+                        return { session: current, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                    }
+                    const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        failure_code: firstStage.reason_code,
+                        failure_reason: String(firstStage.reason || '').slice(0, 500)
+                    }, { transaction });
+                    return {
+                        session: updated,
+                        outcome: 'unresolved',
+                        reason_code: firstStage.reason_code,
+                        reason: firstStage.reason,
+                        idempotentReplay: false
+                    };
+                });
+                return buildCancellationResponse(
+                    saved.session,
+                    saved.outcome,
+                    saved.reason_code || null,
+                    saved.reason || null,
+                    { idempotentReplay: saved.idempotentReplay }
+                );
+            }
+
+            const providerResult = firstStage.providerObject.type === 'payment_intent'
+                ? await paymongoService.cancelPaymentIntent(firstStage.providerObject.id)
+                : await paymongoService.expireCheckoutSession(firstStage.providerObject.id);
+
+            const providerSaysNotCancellable = providerResult?.outcome === 'not_cancellable';
+            const providerReason = String(providerResult?.reason || 'PayMongo did not confirm the cancellation.');
+            const clearlyTerminalProviderReason = /already (?:expired|cancelled|canceled)|has paid payment|already paid/i.test(providerReason);
+            const providerOutcome = providerResult?.outcome === 'cancelled'
+                ? 'cancelled'
+                : (providerSaysNotCancellable && clearlyTerminalProviderReason ? 'not_cancellable' : 'unresolved');
+
+            const secondStage = await runInTransaction(async (transaction) => {
+                const current = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                    transaction,
+                    lock: true
+                });
+                assertSessionAccess(current);
+                const currentStatus = String(current.status || '').trim().toLowerCase();
+                if (currentStatus === 'cancelled') {
+                    return { session: current, outcome: 'cancelled', idempotentReplay: true };
+                }
+                if (isCommercePaymentSessionNonCancellable(current) || !['created', 'awaiting_payment'].includes(currentStatus)) {
+                    return { session: current, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                }
+
+                if (providerOutcome === 'cancelled') {
+                    const cancelled = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        status: 'cancelled',
+                        failure_code: null,
+                        failure_reason: null
+                    }, { transaction });
+                    await commercePaymentRepository.createAuditLog?.({
+                        entity_type: 'CommercePayment',
+                        entity_id: current.session_id,
+                        action: 'UPDATE',
+                        changes: {
+                            event: 'commerce_payment_session_cancelled',
+                            payment_session: current.public_reference,
+                            actor
+                        },
+                        ip_address: ipAddress,
+                        user_agent: userAgent
+                    }, { transaction });
+                    return { session: cancelled, outcome: 'cancelled', idempotentReplay: false };
+                }
+
+                if (providerOutcome === 'unresolved') {
+                    const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        failure_code: providerResult?.reason_code || 'PAYMONGO_CANCELLATION_UNRESOLVED',
+                        failure_reason: providerReason.slice(0, 500)
+                    }, { transaction });
+                    return {
+                        session: updated,
+                        outcome: 'unresolved',
+                        reason_code: providerResult?.reason_code || 'PAYMONGO_CANCELLATION_UNRESOLVED',
+                        reason: providerReason,
+                        idempotentReplay: false
+                    };
+                }
+                return {
+                    session: current,
+                    outcome: 'not_cancellable',
+                    reason_code: providerResult?.reason_code || 'PROVIDER_SESSION_TERMINAL',
+                    reason: providerReason,
+                    idempotentReplay: false
+                };
+            });
+
+            return buildCancellationResponse(
+                secondStage.session,
+                secondStage.outcome,
+                secondStage.reason_code || null,
+                secondStage.reason || null,
+                { idempotentReplay: secondStage.idempotentReplay }
+            );
         } catch (error) {
-            return fail(mapStoreUseCaseError(error, 'Failed to cancel payment session'));
+            return fail(mapStoreUseCaseError(error, 'Failed to cancel checkout payment session'));
         }
     };
 };

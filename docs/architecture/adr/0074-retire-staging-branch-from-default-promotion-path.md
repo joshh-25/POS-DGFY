@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-06
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -629,6 +629,19 @@ detail: `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/
 `docs/ops/RELEASE_CANDIDATE_POLICY.md`, and Phase 472 in the implementation ledger.
 
 PR: (this PR). Refs #1542.
+
+### 2026-10-06 — Explicit refresh of a delayed staging candidate (#2266, Phase 474)
+
+Decision 5's frozen-candidate rule continues to prohibit folding later `develop` work into an active
+candidate by default. An operator may explicitly request a refresh only before the candidate's
+release has merged to `main`. The promoter reconciles prior staging and release-only repairs into
+`develop`, withdraws and archives any unmerged release selection, pins a new `develop` SHA, and
+repeats the normal staging merge, build, observation, and qualification for the same candidate ID.
+The archived selection never supplies active qualification evidence. A candidate merged to `main`
+is not refreshable, including while production deployment is deferred.
+
+This amends the default mid-soak routing in Decision 5 and supersedes #1660 only for this explicit
+delayed-production case. Compliance and production controls remain unchanged. `[default]`.
 
 ## Related
 

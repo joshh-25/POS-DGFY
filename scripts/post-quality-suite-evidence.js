@@ -139,9 +139,10 @@ function buildComment({ run, jobs, pr, failuresByJob = {} }) {
 function recordCandidateQualityCheck(candidateId, qualityCheck, projectRoot) {
   const manifestPath = path.join(projectRoot, '.tmp', 'release-candidates', `${candidateId}.json`);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  if (manifest.schema !== 'sku-release-candidate/v3') {
-    throw new Error(`Candidate ${candidateId} uses ${manifest.schema || 'an unknown schema'}; quality evidence is recorded only on v3 manifests`);
+  if (!['sku-release-candidate/v3', 'sku-release-candidate/v4'].includes(manifest.schema)) {
+    throw new Error(`Candidate ${candidateId} uses ${manifest.schema || 'an unknown schema'}; quality evidence is recorded only on v3/v4 manifests`);
   }
+  if (manifest.status === 'refresh_in_progress') throw new Error(`Candidate ${candidateId} is refreshing; do not attach qualification evidence until the new staging SHA is active`);
   validatePromotionCandidate(manifest);
   manifest.quality_check = qualityCheck;
   const validation = validatePromotionCandidate(manifest);

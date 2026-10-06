@@ -155,6 +155,11 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     type: DataTypes.STRING(120),
     allowNull: true
   },
+  provider_checkout_session_id: {
+    type: DataTypes.STRING(120),
+    allowNull: true,
+    comment: 'PayMongo Hosted Checkout session ID used to expire the provider checkout session.'
+  },
   provider_payment_method_id: {
     type: DataTypes.STRING(120),
     allowNull: true
@@ -220,6 +225,7 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     { unique: true, fields: ['tenant_id', 'target_type', 'idempotency_key'] },
     { fields: ['tenant_id', 'status'] },
     { fields: ['provider_payment_intent_id'] },
+    { fields: ['provider_checkout_session_id'], name: 'idx_commerce_payment_sessions_provider_checkout_session' },
     { fields: ['provider_payment_id'] },
     { fields: ['expires_at'] },
     { fields: ['provider_event_id'], unique: true, name: 'uq_commerce_payment_sessions_provider_event' }

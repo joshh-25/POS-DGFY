@@ -665,6 +665,9 @@ function checkAppRevision({ repoRoot, app, revision, candidateSha, expectedDiges
  */
 function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn = runInspect } = {}) {
   const candidate = validatePromotionCandidate(manifest);
+  if (candidate.status === 'refresh_in_progress') {
+    throw new ImageVersionParityError('A candidate undergoing refresh has no active selection and cannot be checked for production parity', 'REFRESH_IN_PROGRESS');
+  }
   // #1610: per-app resolution, not one shared current_staging_sha -- see the file header comment.
   const candidateShaByApp = resolveCandidateSourceShaByApp(manifest, apps);
 
@@ -679,7 +682,7 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
   // verified against its OWN allocated revision. Apps absent from the map were never
   // rebuilt by this candidate -- skip, don't fail: their last-published artifact stands.
   const releaseRevision = candidate.release_revision;
-  const perAppRevisions = (['sku-release-candidate/v2', 'sku-release-candidate/v3'].includes(manifest.schema) && releaseRevision !== null) ? releaseRevision : null;
+  const perAppRevisions = (['sku-release-candidate/v2', 'sku-release-candidate/v3', 'sku-release-candidate/v4'].includes(manifest.schema) && releaseRevision !== null) ? releaseRevision : null;
   const results = apps.map((app) => {
     if (perAppRevisions) {
       const entry = perAppRevisions[app];
@@ -694,7 +697,7 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
           detail: `${app} is absent from this candidate's per-app release_revision map -- the candidate never rebuilt it, so its last-published artifact stands and there is nothing new to verify (#2055).`,
         };
       }
-      return checkAppRevision({ repoRoot, app, revision: entry.revision, candidateSha: candidateShaByApp[app], expectedDigest: entry.digest, origin: entry.origin, enforceManifestLineage: manifest.schema === 'sku-release-candidate/v2' || manifest.schema === 'sku-release-candidate/v3', inspectFn });
+      return checkAppRevision({ repoRoot, app, revision: entry.revision, candidateSha: candidateShaByApp[app], expectedDigest: entry.digest, origin: entry.origin, enforceManifestLineage: manifest.schema === 'sku-release-candidate/v2' || manifest.schema === 'sku-release-candidate/v3' || manifest.schema === 'sku-release-candidate/v4', inspectFn });
     }
     return releaseRevision === null
       ? checkApp({ repoRoot, app, candidateSha: candidateShaByApp[app], inspectFn })

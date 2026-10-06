@@ -1,7 +1,7 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
-import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
@@ -347,7 +347,7 @@ export function RetailOrderFulfillmentStep({
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
                 <DeliveryAddressSearchField
-                  value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                  value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
                   onValueChange={onCustomerAddressChange}
                   onClear={onStartMapPin}
                   onSelectResult={onSelectSearchResult}
@@ -415,7 +415,7 @@ export function RetailOrderFulfillmentStep({
             onClose={onCloseExpandedMap}
           >
             <DeliveryAddressSearchField
-              value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+              value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
               onValueChange={onCustomerAddressChange}
               onClear={onStartMapPin}
               onSelectResult={onSelectSearchResult}

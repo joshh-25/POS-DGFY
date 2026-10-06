@@ -176,6 +176,7 @@ import { createAddressPinEditorRenderer } from './features/locations/renderers/a
 import {
   buildPinnedDeliveryAddress,
   normalizeCoordinatePair,
+  resolveAddressSearchBias,
   resolveDeliveryAddress,
   reverseGeocodeDeliveryPin
 } from './features/locations/utils/pinnedDeliveryAddress.js';
@@ -3342,6 +3343,7 @@ export default function StorefrontApp() {
     renderStorefrontClosedNotice,
     resetQrphPaymentSession,
     resolvingPinnedDeliveryAddress,
+    addressSearchBias: resolveAddressSearchBias(selectedCheckoutLocation, customerPin),
     selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
@@ -3624,6 +3626,7 @@ export default function StorefrontApp() {
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
+    resolvingPinnedDeliveryAddress,
     selectedLocation,
     selectedLocationId,
     selectedSavedLocationId,

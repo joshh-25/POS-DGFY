@@ -4,7 +4,7 @@ owner: DGFY POS
 last_reviewed: 2026-10-06
 declaration_id: 2026-10-06-pos-browser-print-fallback
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,settings,payments,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.06
 verification_evidence: focused POS printer/report tests,POS settings contract tests,receipt-preview browser fallback sequencing test,POS lint and build,git diff --check
@@ -29,6 +29,9 @@ change payment, fiscal, inventory, authorization, or persisted transaction behav
 
 - `pos` — receipt preview, Z-reading, shift-summary printing, and browser printer fallback.
 - `terminal` — cashier print controls, paper-width selection, print-layout CSS, and the POS settings tab strip.
+- `settings` — the POS preparation-fee configuration entry point wired into the existing editor.
+- `payments` — the related checkout/payment-session and item-processing fee behavior in this combined PR.
+- `inventory` — the related catalog and stock-authoring behavior in this combined PR.
 
 ## Compliance Preconditions
 

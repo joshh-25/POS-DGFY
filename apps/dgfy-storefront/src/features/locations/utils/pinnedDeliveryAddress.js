@@ -41,6 +41,19 @@ export function hasExplicitDeliveryAddressEdit(customerAddress = '', comparedTo 
   return rawTyped !== String(comparedTo || '');
 }
 
+/**
+ * The delivery-address field's value. The customer's own text is shown verbatim; the display
+ * address only fills an empty field (or replaces the generated "Pinned map location (...)"
+ * wording). The display address is derived from that same text but trimmed, so feeding it back
+ * whenever the two matched after trimming swallowed every trailing space as it was typed
+ * ("Jaro Plaza" became "JaroPlaza").
+ */
+export function resolveDeliveryAddressInputValue(customerAddress = '', displayAddress = '') {
+  const typed = String(customerAddress || '');
+  if (typed.trim() && !isGeneratedPinnedDeliveryAddress(typed)) return typed;
+  return String(displayAddress || '');
+}
+
 export function normalizeCoordinatePair({ latitude, longitude } = {}) {
   if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
   const parsedLatitude = Number(latitude);
@@ -63,6 +76,23 @@ export function extractSavedLocationLabel(address = '') {
  */
 export function getSearchSelectedPinAddress(pin) {
   return String(pin?.address_line || '').trim();
+}
+
+/** #759: the map pin for a chosen address-search suggestion, carrying its address line. */
+export function buildSearchSelectedPin(result) {
+  return {
+    latitude: Number(Number(result.latitude).toFixed(6)),
+    longitude: Number(Number(result.longitude).toFixed(6)),
+    address_line: result.addressLine
+  };
+}
+
+/**
+ * #759: rank address-search suggestions near the fulfilling branch (most deliveries are local),
+ * falling back to the customer's current pin when the branch has no coordinates.
+ */
+export function resolveAddressSearchBias(fulfillmentLocation, customerPin) {
+  return normalizeCoordinatePair(fulfillmentLocation || {}) || normalizeCoordinatePair(customerPin || {});
 }
 
 /** #506: reverse-geocodes through dgfy-api; never throws except for an aborted request. */

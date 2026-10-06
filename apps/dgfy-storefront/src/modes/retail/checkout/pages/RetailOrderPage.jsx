@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { hasCustomerName, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
+import { buildSearchSelectedPin } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { RetailOrderAccountStep } from '../components/RetailOrderAccountStep.jsx';
 import { RetailOrderFulfillmentStep } from '../components/RetailOrderFulfillmentStep.jsx';
 import { RetailOrderJourneyHeader } from '../components/RetailOrderJourneyHeader.jsx';
@@ -201,11 +202,7 @@ export function RetailOrderPage({
     setDeliveryLocationAction('map');
     setSelectedSavedLocationId('');
     setPinLocationError('');
-    setCustomerPin({
-      latitude: Number(Number(result.latitude).toFixed(6)),
-      longitude: Number(Number(result.longitude).toFixed(6)),
-      address_line: result.addressLine
-    });
+    setCustomerPin(buildSearchSelectedPin(result));
   };
   const handleStartMapPin = () => {
     setDeliveryLocationAction('map');
