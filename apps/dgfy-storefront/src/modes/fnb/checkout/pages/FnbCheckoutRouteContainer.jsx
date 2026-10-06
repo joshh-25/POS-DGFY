@@ -9,7 +9,7 @@ import {
   X
 } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
-import { buildSearchSelectedPin, hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { buildSearchSelectedPin, resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
@@ -333,7 +333,7 @@ export function FnbCheckoutRouteContainer({
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
                         <DeliveryAddressSearchField
-                          value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                          value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
                           onValueChange={setCustomerAddress}
                           onSelectResult={(result) => {
                             // #759: drop the pin on the chosen suggestion; its address line rides on the

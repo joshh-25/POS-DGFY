@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
-import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
 import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
 import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
@@ -133,7 +133,7 @@ export function SimpleCheckoutFulfillmentStep({
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
                 <DeliveryAddressSearchField
-                  value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                  value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
                   onValueChange={onCustomerAddressChange}
                   onSelectResult={onSelectSearchResult}
                   bias={searchBias}
