@@ -10,6 +10,7 @@ schema: sku-release-note/v1
 candidate_id: 2026-09-05-01
 production_date: 2026-09-05
 production_commit: pending
+promotion_base_sha: <original-staging-head-sha>
 ---
 
 <!--
@@ -50,6 +51,33 @@ Prefix a breaking change or a reversion so its severity doesn't have to be infer
 - **Breaking:** <what changed and what a caller must do>. (#NNNN)
 - **Reverts:** <what was reverted and why>. (#NNNN)
 -->
+
+## Candidate history
+
+| Refresh | Incoming develop SHA | Resulting staging SHA | Promotion PR | Superseded release PR |
+|---|---|---|---|---|
+| Initial | <source_develop_sha> | <current_staging_sha> | <PR number> | — |
+
+<!-- Keep one cumulative history for this candidate ID. Add one row per refresh, preserve archived
+selection details in the manifest, and mark the active selection pending until its new release cut
+is known. At production finalization, record production SHA plus each selected app's floor, artifact
+revision, source SHA, and digest from the active manifest. -->
+
+## Production selection
+
+| App | Floor | Artifact revision | Source SHA | Digest |
+|---|---|---|---|---|
+| dgfy-api | pending | pending | pending | pending |
+| dgfy-migration-runner | pending | pending | pending | pending |
+| dgfy-ims | pending | pending | pending | pending |
+| dgfy-pos | pending | pending | pending | pending |
+| dgfy-storefront | pending | pending | pending | pending |
+| dgfy-opis | pending | pending | pending | pending |
+| dgfy-admin | pending | pending | pending | pending |
+
+<!-- Before opening the release/<candidate_id> promotion PR, replace these rows with exactly the
+selected apps and values from the active manifest. Keep the table unchanged during archived-release
+withdrawal; update it for the newly qualified selection. -->
 
 ## Operational notes
 

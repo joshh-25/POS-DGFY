@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-06
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1930,3 +1930,43 @@ post-deployment hotfix routing, and production controls are unchanged. See ADRs 
 `.agents/skills/promoter/SKILL.md`, and `.agents/skills/promoter/references/promotion-runbook.md`.
 
 PR: (this PR). Refs #1542.
+
+### 2026-10-06: Explicit refresh of a delayed, unmerged STAGING candidate (#2266, Phase 474)
+
+The #1660 rule remains the default: newer `develop` work does not flow into an active staging
+candidate automatically. When production is deferred and an operator explicitly requests a refresh,
+the promoter may reuse the existing candidate ID only while its release has **not** merged to
+`main`. Record the request and reason, reconcile every staging repair and release-only repair into
+`develop` through reviewed PRs (or prove equivalent content is already present), and stop on any
+unresolved difference. Early backport of release-only repairs is an explicit exception to the
+normal post-production backport timing; it never authorizes discarding repair history.
+
+Withdraw any unmerged `release/<candidate_id>` selection before proceeding: preserve its SHA,
+artifact map, PR, and repair lineage in v4 `release_history`, close the old promotion PR, and retire
+the old branch. Pin the reconciled `develop` SHA, validate the refresh floor against the original
+pre-promotion baseline recorded by `promotion_base_sha`, and cut a disposable
+`to-staging/<candidate_id>-refresh-<seq>` branch. Keep the candidate ID and initial
+`source_develop_sha`; append a sequential `staging_refresh` record with incoming develop SHA, actual
+merged staging SHA, physical staging base SHA, PR, reason, and per-app artifact lineage. Repair and
+refresh ordinals remain independent; artifact revisions remain per-app immutable `rN` values.
+
+Refresh invalidates the old selection and all SHA-bound staging qualification. Keep the candidate
+in `refresh_in_progress` with no active release selection until the merge and artifact build finish;
+then return it to `staging_soak`, repeat observation and required qualification for the new actual
+staging SHA, and cut a fresh release branch from that qualified head. Archived selection evidence,
+including its optional quality-suite result, cannot qualify the new SHA. A failed refresh stays
+unqualified; do not restore an archived selection without a separate valid selection and
+qualification. Once a release has merged to `main`, this candidate cannot be refreshed, even if
+production deployment is deferred. Use the existing release-only repair path for work after the
+release cut when no explicit refresh was requested.
+
+This is a narrow, explicit exception to #1660, not a moving branch target or a new default. All
+compliance preflight, tenant-schema report, merge-safety, no-squash, immutable-tag, alias-collision,
+head-cut, and per-app inventory controls remain mandatory. Legacy v1-v3 candidates require an
+evidence-backed baseline bootstrap through the release-note amendment/backport process before v4
+conversion; absent evidence is a hard stop, never a guessed baseline.
+
+`[default]` tier per ADR 0039. Amendments: ADRs 0074, 0081, and 0082. See the promoter skill/runbook,
+release-note template, and Phase 474 in the implementation ledger.
+
+PR: (this PR). Closes #2266.
