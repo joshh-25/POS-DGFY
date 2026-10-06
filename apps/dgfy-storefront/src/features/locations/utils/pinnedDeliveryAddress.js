@@ -50,6 +50,17 @@ export function resolveDeliveryAddressInputValue(customerAddress = '', displayAd
   return String(displayAddress || '');
 }
 
+/**
+ * #759: an emptied field would otherwise fall straight back to the pin's looked-up address
+ * (resolveDeliveryAddressInputValue -> display address) and refill itself, so emptying it also
+ * runs the checkout's own location reset -- the same one "Add New Location" uses -- dropping the
+ * pin, its address and any selected saved address. The customer then searches or pins again.
+ */
+export function applyDeliveryAddressFieldChange(nextValue, { setCustomerAddress, clearDeliveryLocation } = {}) {
+  setCustomerAddress?.(nextValue);
+  if (!String(nextValue || '').trim()) clearDeliveryLocation?.();
+}
+
 export function normalizeCoordinatePair({ latitude, longitude } = {}) {
   if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
   const parsedLatitude = Number(latitude);

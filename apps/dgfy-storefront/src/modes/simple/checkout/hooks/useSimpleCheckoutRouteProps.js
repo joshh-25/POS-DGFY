@@ -1,4 +1,4 @@
-import { buildSearchSelectedPin, resolveAddressSearchBias } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { applyDeliveryAddressFieldChange, buildSearchSelectedPin, resolveAddressSearchBias } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { resolveLocationFulfillmentSupport } from '../../../../shared/model/storefrontOrderMethodOptions.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
@@ -108,6 +108,14 @@ export function useSimpleCheckoutRouteProps({
 }) {
   const fulfillmentLocation = resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId });
   const orderTimingPolicy = resolveOrderTimingPolicy(fulfillmentLocation);
+  const startMapPin = () => {
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setResolvedDeliveryAddress('');
+    setCustomerAddress('');
+    setCustomerPin(null);
+  };
   return {
     addressSearchBias: resolveAddressSearchBias(fulfillmentLocation, customerPin),
     canAddPinnedLocation,
@@ -187,7 +195,10 @@ export function useSimpleCheckoutRouteProps({
     onApplyGuestDetailsAndRequestOtp: handleApplyGuestDetailsAndRequestOtp,
     onBackToCatalog: goStoreCatalogPage,
     onCheckout: handleCheckout,
-    onCustomerAddressChange: setCustomerAddress,
+    onCustomerAddressChange: (value) => applyDeliveryAddressFieldChange(value, {
+      setCustomerAddress,
+      clearDeliveryLocation: startMapPin
+    }),
     onDownloadCheckoutImage: handleDownloadCheckoutImage,
     onGuestCheckoutOtpCodeChange: handleGuestCheckoutOtpCodeChange,
     onOrderMethodChange: (nextOrderMethod) => {
@@ -244,13 +255,6 @@ export function useSimpleCheckoutRouteProps({
     onSetSimpleOrderStep: setSimpleOrderStep,
     resetQrphPaymentSession,
     onSpecialInstructionsChange: setFnbSpecialInstructions,
-    onStartMapPin: () => {
-      setDeliveryLocationAction('map');
-      setSelectedSavedLocationId('');
-      setPinLocationError('');
-      setResolvedDeliveryAddress('');
-      setCustomerAddress('');
-      setCustomerPin(null);
-    }
+    onStartMapPin: startMapPin
   };
 }

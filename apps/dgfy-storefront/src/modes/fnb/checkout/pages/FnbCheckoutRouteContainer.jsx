@@ -9,7 +9,7 @@ import {
   X
 } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
-import { buildSearchSelectedPin, resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { applyDeliveryAddressFieldChange, buildSearchSelectedPin, resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
@@ -210,6 +210,18 @@ export function FnbCheckoutRouteContainer({
     isDeliveryOrder
   });
   const checkoutTypography = getCheckoutStepTypography();
+  const handleStartMapPin = () => {
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setResolvedDeliveryAddress('');
+    setCustomerAddress('');
+    setCustomerPin(null);
+  };
+  const handleDeliveryAddressChange = (value) => applyDeliveryAddressFieldChange(value, {
+    setCustomerAddress,
+    clearDeliveryLocation: handleStartMapPin
+  });
   return (
   <FnbCheckoutRouteMount
       isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
@@ -313,14 +325,7 @@ export function FnbCheckoutRouteContainer({
                         handleSetDefaultDeliveryAddress(location);
                       }
                     }}
-                    onStartMapPin={() => {
-                      setDeliveryLocationAction('map');
-                      setSelectedSavedLocationId('');
-                      setPinLocationError('');
-                      setResolvedDeliveryAddress('');
-                      setCustomerAddress('');
-                      setCustomerPin(null);
-                    }}
+                    onStartMapPin={handleStartMapPin}
                     selectedAddressId={selectedSavedLocationId}
                   />
                   <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
@@ -334,7 +339,7 @@ export function FnbCheckoutRouteContainer({
                       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
                         <DeliveryAddressSearchField
                           value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
-                          onValueChange={setCustomerAddress}
+                          onValueChange={handleDeliveryAddressChange}
                           onSelectResult={(result) => {
                             // #759: drop the pin on the chosen suggestion; its address line rides on the
                             // pin so useDeliveryPinResolution keeps it instead of reverse-geocoding.
