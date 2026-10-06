@@ -179,6 +179,36 @@ test('refresh floor uses a verified original baseline and rejects note drift or 
     }
 });
 
+test('refresh floor keeps the existing new-app rule when the app was absent from the original baseline', async () => {
+    const root = makeGitRepo();
+    const candidateId = '2026-10-01-02';
+    writeFiles(root, baseFixture());
+    fs.rmSync(path.join(root, 'apps/dgfy-admin'), { recursive: true, force: true });
+    const promotionBase = commitAll(root, 'baseline without admin app');
+    const note = `---\nschema: sku-release-note/v1\ncandidate_id: ${candidateId}\nproduction_date: 2026-10-01\nproduction_commit: pending\npromotion_base_sha: ${promotionBase}\n---\n`;
+    writeFiles(root, { [`docs/releases/notes/${candidateId}.md`]: note });
+    const staging = commitAll(root, 'staging note');
+    writeFiles(root, {
+        'apps/dgfy-admin/package.json': pkgJson('1.0.0', {
+            '@sieitzz/pos-receipt': 'file:../../packages/pos-receipt',
+            '@sieitzz/shared-constants': 'file:../../packages/shared-constants',
+            '@sieitzz/web-core': 'file:../../packages/web-core',
+        }),
+        'apps/dgfy-admin/src/index.js': 'module.exports = { added: true };\n',
+    });
+    const develop = commitAll(root, 'introduce app during refresh');
+    try {
+        const result = await runFloor({ repoRoot: root, baseGitRef: staging, headGitRef: develop, candidateId });
+        const admin = result.results.find((entry) => entry.app === 'dgfy-admin');
+        assert.equal(result.refreshError, null);
+        assert.equal(admin.newApp, true);
+        assert.equal(admin.unparseable, false);
+        assert.equal(admin.belowFloor, false);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
 // --- develop mode (unchanged floor) ------------------------------------------
 
 test('develop: code changes keep the app floor unchanged', async () => {

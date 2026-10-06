@@ -498,10 +498,11 @@ async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedF
         const obligationBase = parseVersion(obligationBaseRaw);
         const isNewAtBaseline = candidateId && refreshBaselineRef && !fileExistsAtRef(repoRoot, refreshBaselineRef, `${appDir}/package.json`);
         if (isNewAtBaseline && head) {
+            const regressed = base ? compareVersionTuples(head, base) < 0 : false;
             return {
                 app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
-                floorTarget: null, belowFloor: compareVersionTuples(head, base) < 0, unparseable: false, newApp: true,
-                regressed: compareVersionTuples(head, base) < 0, currentStagingVersion: baseVersionRaw, promotionBaselineVersion: null,
+                floorTarget: null, belowFloor: regressed, unparseable: false, newApp: true,
+                regressed, currentStagingVersion: baseVersionRaw, promotionBaselineVersion: null,
             };
         }
         const floorTarget = obligationBase ? `${obligationBase.major}.${obligationBase.minor + 1}.0` : null;
