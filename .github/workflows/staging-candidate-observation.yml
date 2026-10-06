@@ -22,6 +22,17 @@ jobs:
     steps:
       - name: Check out candidate ref
         uses: actions/checkout@v7
+      # check-promotion-candidate.js reaches check-app-version-bump.js, which
+      # imports the root devDependency `madge` for web-core reachability.
+      # Install the lockfile-pinned root dependencies before validating it.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
       - name: Validate candidate lineage
         run: node scripts/check-promotion-candidate.js --manifest "${{ inputs.candidate_manifest }}"
       - name: Validate observation report
