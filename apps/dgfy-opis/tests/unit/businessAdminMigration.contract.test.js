@@ -49,6 +49,7 @@ describe('OPIS Back Office migration contract', () => {
 
   it('retires the IMS merchant shell without removing platform administration', () => {
     const source = readRepoFile('apps/dgfy-ims/src/main.jsx');
+    const platformAdminSource = readRepoFile('apps/dgfy-admin/src/main.jsx');
     for (const [legacyRoute, backOfficeRoute] of Object.entries({
       items: 'catalog',
       suppliers: 'suppliers',
@@ -66,7 +67,7 @@ describe('OPIS Back Office migration contract', () => {
     })) {
       expect(source).toContain(`<Route path="/${legacyRoute}" element={<LegacyMerchantRoute target="/backoffice/${backOfficeRoute}`);
     }
-    expect(source).toContain('<Route path="/admin" element={<AdminLayout />}>');
+    expect(platformAdminSource).toContain('<Route path="/admin" element={<AdminLayout />}>');
     expect(source).toContain('<Route path="/receive/:token" element={<LegacyReceiveRoute />} />');
   });
 });

@@ -12,6 +12,9 @@
 
 import { jest } from '@jest/globals';
 
+// These fixtures exercise the legacy DGFY PayMongo split path. Keep the local tenant-revenue
+// rollout flag from short-circuiting the cross-entry-point fee contract without a tenant policy.
+process.env.TENANT_REVENUE_SHARING_ENABLED = 'false';
 process.env.STOREFRONT_PAYMENT_RETURN_URL = 'https://dgfy.ph/payment-return';
 
 const {

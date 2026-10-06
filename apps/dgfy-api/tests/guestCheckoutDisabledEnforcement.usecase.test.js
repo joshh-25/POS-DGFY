@@ -16,6 +16,10 @@
 
 import { jest } from '@jest/globals';
 
+// These fixtures exercise the legacy DGFY PayMongo split path. Keep a local tenant-revenue
+// rollout flag from short-circuiting the checkout assertions without a tenant policy fixture.
+process.env.TENANT_REVENUE_SHARING_ENABLED = 'false';
+
 const TENANT_ID = '33333333-3333-4333-8333-333333333333';
 
 const registeredTransactionSettingsGuestDisabled = () => [
