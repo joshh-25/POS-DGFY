@@ -11,8 +11,8 @@ verification_evidence: focused parked-sale contract test,git diff --check
 rollback_note: Revert the parked-sale background refresh and this declaration; no database schema, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-06T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2260-POS-PARKED-SALE-UI-REFRESH
+preflight_run_at: 2026-10-06T07:47:59.601Z
+preflight_request_ref: PREFLIGHT-37431484571-2026-10-06-POS-PARKED-SALE-UI-REFRESH
 ---
 
 # POS parked-sale UI refresh
