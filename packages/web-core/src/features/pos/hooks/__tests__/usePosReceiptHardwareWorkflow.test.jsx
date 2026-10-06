@@ -19,6 +19,7 @@ vi.mock('@/src/utils/iminRuntimeFeedback.js', () => ({
 }));
 
 const createHardware = () => ({
+    isPrinterAvailable: true,
     printReceipt: vi.fn().mockResolvedValue({ success: true, message: 'Receipt printed.' }),
     printOrderTicket: vi.fn().mockResolvedValue({ success: true, message: 'Order ticket sent.' }),
     openDrawer: vi.fn().mockResolvedValue({ success: true, message: 'Cash drawer opened.' })
@@ -98,6 +99,25 @@ describe('usePosReceiptHardwareWorkflow', () => {
         expect(props.posHardware.printReceipt).toHaveBeenCalledWith(expect.objectContaining({
             paperWidth: '57mm'
         }));
+    });
+
+    it('opens the browser print dialog when no native printer driver is available', async () => {
+        const browserPrint = vi.fn();
+        const originalPrint = window.print;
+        window.print = browserPrint;
+        const transaction = { pos_transaction_id: 20, total_amount: 100 };
+        const { result, props } = renderWorkflow({
+            lastReceipt: transaction,
+            posHardware: { ...createHardware(), isPrinterAvailable: false }
+        });
+
+        await act(async () => {
+            await result.current.handlePrintReceipt(transaction, 'history_modal');
+        });
+
+        expect(browserPrint).toHaveBeenCalledTimes(1);
+        expect(props.posHardware.printReceipt).not.toHaveBeenCalled();
+        window.print = originalPrint;
     });
 
     it('creates a bill draft and preserves the F&B print context', async () => {

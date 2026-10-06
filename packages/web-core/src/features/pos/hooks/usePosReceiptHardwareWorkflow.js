@@ -68,6 +68,21 @@ export const usePosReceiptHardwareWorkflow = ({
         setReceiptPaperWidthState(writePosPaperWidthPreference(normalizedTerminalId, value));
     }, [normalizedTerminalId]);
 
+    const printWithBrowser = useCallback(() => {
+        if (typeof window === 'undefined' || typeof window.print !== 'function') {
+            toast.error('Browser printing is not available on this device.');
+            return false;
+        }
+
+        try {
+            window.print();
+            return true;
+        } catch {
+            toast.error('Browser printing could not be opened.');
+            return false;
+        }
+    }, []);
+
     const closeReceiptPreviewModal = useCallback(() => {
         setReceiptPreviewModalOpen(false);
         setReceiptPreviewSource('receipt_preview');
@@ -92,6 +107,15 @@ export const usePosReceiptHardwareWorkflow = ({
         const transactionId = Number(transaction?.pos_transaction_id);
         if (!Number.isInteger(transactionId) || transactionId <= 0) {
             toast.error('Select a saved receipt first.');
+            return;
+        }
+
+        // A Windows-installed printer is available through Chrome's system
+        // print dialog, but it is not an iMin/LAN hardware driver. Preserve
+        // the native path when available and use the browser print surface
+        // when the hardware registry has explicitly resolved no printer.
+        if (posHardware?.isPrinterAvailable === false) {
+            printWithBrowser();
             return;
         }
 
@@ -123,7 +147,7 @@ export const usePosReceiptHardwareWorkflow = ({
         } finally {
             setReceiptPrinting(false);
         }
-    }, [activeShiftId, normalizedTerminalId, posHardware, receiptPaperWidth, receiptSettings]);
+    }, [activeShiftId, normalizedTerminalId, posHardware, printWithBrowser, receiptPaperWidth, receiptSettings]);
 
     const handleBillRequest = useCallback(async () => {
         if (safeCart.length === 0) {

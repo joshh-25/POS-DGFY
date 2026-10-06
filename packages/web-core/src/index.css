@@ -2173,9 +2173,48 @@ html.dgfy-imin-performance [class~="transition-all"] {
 
 @media print {
 
+  /*
+   * Keep browser-fallback output aligned with the printer's printable area.
+   * Chrome's optional headers/footers are browser controls and are not
+   * affected by this page rule; the selected receipt width is still applied
+   * by the receipt surface below.
+   */
+  @page {
+    margin: 0;
+  }
+
+  body.pos-receipt-print-mode,
+  body.pos-z-reading-printing,
+  body.pos-shift-summary-printing {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   body.pos-modal-scroll-lock,
   body.pos-receipt-print-mode {
     overflow: visible;
+  }
+
+  body.pos-receipt-print-mode > #root {
+    visibility: hidden;
+  }
+
+  body.pos-receipt-print-mode > [data-dialog-root] [data-dialog-overlay="true"] {
+    display: none;
+  }
+
+  body.pos-receipt-print-mode .pos-receipt-print-dialog,
+  body.pos-receipt-print-mode .pos-receipt-print-dialog * {
+    visibility: visible;
+  }
+
+  body.pos-receipt-print-mode .pos-receipt-print-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: var(--pos-receipt-paper-width, 80mm);
+    max-width: var(--pos-receipt-paper-width, 80mm);
+    margin: 0 auto;
   }
 
   .pos-receipt-print-shell,
@@ -2224,8 +2263,31 @@ html.dgfy-imin-performance [class~="transition-all"] {
     position: fixed;
     inset: 0;
     z-index: 2147483647;
-    width: 80mm;
+    width: 100%;
+    margin: 0;
+  }
+
+  body.pos-shift-summary-printing .pos-shift-summary-print {
+    width: var(--pos-shift-summary-paper-width, 80mm);
+    max-width: var(--pos-shift-summary-paper-width, 80mm);
     margin: 0 auto;
+  }
+
+  body.pos-z-reading-printing > #root {
+    visibility: hidden;
+  }
+
+  body.pos-z-reading-printing .pos-z-reading-print-shell,
+  body.pos-z-reading-printing .pos-z-reading-print-shell * {
+    visibility: visible;
+  }
+
+  body.pos-z-reading-printing .pos-z-reading-print-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: 100%;
+    margin: 0;
   }
 }
 
