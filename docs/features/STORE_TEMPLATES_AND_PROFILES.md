@@ -530,7 +530,7 @@ later fully restores whatever the previous one granted. Every write is also
 recorded in `TenantAdminAuditLog` (before/after settings snapshot), the same
 trail `PATCH /:id/capabilities` uses.
 
-Frontend: a per-tenant template picker on `apps/dgfy-ims/Pages/admin/TenantManager.jsx`
+Frontend: a per-tenant template picker on `apps/dgfy-admin/Pages/TenantManager.jsx`
 (published templates only, loaded via `listStoreTemplates` from
 `packages/web-core/src/services/adminService.js`), gated to active tenants, with the
 same reason-required confirmation-modal pattern the capability controls on
@@ -542,7 +542,7 @@ the same page already use.
 only (`resolvePlatformAdminRoutePolicy` in `apps/dgfy-api/src/middleware/auth.js`
 routes it to `masterOnly`, not a delegable page permission: a published
 template shapes what every future tenant provisions with, platform-wide).
-Frontend: `apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`, wired into
+Frontend: `apps/dgfy-admin/Pages/StoreTemplateManager.jsx`, wired into
 `AdminLayout.jsx`'s sidebar as "Store Templates".
 
 - `POST /admin/templates` — create a draft. `base_mode` must be an

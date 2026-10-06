@@ -71,13 +71,19 @@ test('reporter contract rejects missing or misordered Node setup and a non-root 
 });
 
 test('quality evidence keeps advisory step failures visible even when the job conclusion is success', () => {
+  const successfulQualityJobs = [
+    'dgfy-api-quality', 'migration-runner-quality', 'web-core-quality', 'frontend-pos-quality',
+    'frontend-storefront-quality', 'frontend-opis-quality', 'frontend-admin-quality',
+    'repository-dependency-quality', 'repository-ci-contracts-quality', 'repository-docs-quality',
+    'frontend-budgets-quality', 'pos-sales-e2e-quality',
+  ].map((name) => ({ name, conclusion: 'success' }));
   const comment = buildComment({
     run: {
       head_sha: 'a'.repeat(40),
       head_branch: 'release/2026-10-03-01',
       html_url: 'https://github.com/Sieitzz/dgfy-platform/actions/runs/1',
     },
-    jobs: [{ name: 'dgfy-api-quality', conclusion: 'success' }],
+    jobs: successfulQualityJobs,
     pr: { head: { sha: 'a'.repeat(40) } },
     failuresByJob: { 'dgfy-api-quality': 'Run API lint' },
   });

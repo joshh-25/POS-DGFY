@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       app:
-        description: One of dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis
+        description: One of dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, dgfy-admin
         required: true
         type: string
       runner_labels_json:

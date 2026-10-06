@@ -213,3 +213,29 @@ services:
 #   cd /opt/dgfy-dev
 #   docker compose config >/dev/null   # validates the hand-edited file
 #   docker compose up -d
+
+
+# =============================================================================
+# Cutover fragment 4 -- Platform Admin fifth frontend app (issue #350)
+# =============================================================================
+# Add dgfy-admin beside dgfy-opis when installing the new independent app. The
+# host nginx routes /admin to the app's same-origin path on 127.0.0.1:8085.
+#
+# services:
+#   dgfy-admin:
+#     image: ghcr.io/sieitzz/dgfy-admin:${IMAGE_TAG:-latest}
+#     restart: unless-stopped
+#     networks: [dgfy_dev]
+#     ports:
+#       - "127.0.0.1:8085:8085"
+#     healthcheck:
+#       test: ["CMD", "curl", "-fsS", "http://localhost:8085/admin/"]
+#       interval: 15s
+#       timeout: 5s
+#       retries: 5
+#
+# --- Apply ---
+#   cd /opt/dgfy-dev
+#   docker compose config >/dev/null
+#   docker compose up -d
+# =============================================================================

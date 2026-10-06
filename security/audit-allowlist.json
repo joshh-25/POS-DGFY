@@ -6,7 +6,7 @@
     "Fields:",
     "  tree      - one of the trees audited by audit-dependencies.js:",
     "              'root' | 'apps/dgfy-api' | 'apps/dgfy-ims' | 'apps/dgfy-pos' |",
-    "              'apps/dgfy-storefront' | 'apps/dgfy-opis' |",
+    "              'apps/dgfy-storefront' | 'apps/dgfy-opis' | 'apps/dgfy-admin' |",
     "              'apps/dgfy-migration-runner' | 'tests/frontend-cross-app'",
     "  package   - the top-level package name as reported by `npm audit --json`",
     "              (the key under `vulnerabilities`, not necessarily the vulnerable",

@@ -242,6 +242,17 @@ jobs:
       runner_labels_json: ${{ needs.route-build-checks.outputs.heavy != '' && needs.route-build-checks.outputs.heavy || '["sieitz-lg"]' }}
       cache_from: *build_cache_from
 
+  frontend-admin-build-check:
+    needs: [changes, route-build-checks]
+    # PR #1534 review RF-1: same always()/needs.changes.result reasoning as dgfy-api-build-check
+    # above -- without it, a route-build-checks job-level failure implicitly skips this job too.
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.frontend_admin == 'true'
+    uses: ./.github/workflows/pr-frontend-build-checks.yml
+    with:
+      app: dgfy-admin
+      runner_labels_json: ${{ needs.route-build-checks.outputs.heavy != '' && needs.route-build-checks.outputs.heavy || '["sieitz-lg"]' }}
+      cache_from: *build_cache_from
+
   # #1712: closes the develop-PR half of the "no eslint coverage on an ordinary develop-bound PR"
   # gap (ADR 0067's 2026-08-29 amendment, clause 6's `[snapshot]` note) -- lint-only, no Docker/vite
   # build cost, runs in parallel with the build-check jobs above via the same
@@ -281,4 +292,12 @@ jobs:
     uses: ./.github/workflows/pr-frontend-lint-checks.yml
     with:
       app: dgfy-opis
+      runner_labels_json: ${{ needs.route-build-checks.outputs.light != '' && needs.route-build-checks.outputs.light || '["sieitz-runner"]' }}
+
+  frontend-admin-lint-check:
+    needs: [changes, route-build-checks]
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.frontend_admin == 'true'
+    uses: ./.github/workflows/pr-frontend-lint-checks.yml
+    with:
+      app: dgfy-admin
       runner_labels_json: ${{ needs.route-build-checks.outputs.light != '' && needs.route-build-checks.outputs.light || '["sieitz-runner"]' }}

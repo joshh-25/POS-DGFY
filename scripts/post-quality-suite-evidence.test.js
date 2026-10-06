@@ -21,7 +21,7 @@ test('renders step failures and missing jobs as advisory evidence', () => {
     failuresByJob: { 'dgfy-api-quality': 'Run API lint,cancelled step' },
   });
 
-  assert.match(comment, /Overall:\*\* 11 job\(s\) reported advisory failures/);
+  assert.match(comment, /Overall:\*\* 12 job\(s\) reported advisory failures/);
   assert.match(comment, /advisory failures: Run API lint,cancelled step/);
   assert.match(comment, /frontend-pos-quality \| advisory: unavailable/);
   assert.match(comment, /These results are informational and do not gate promotion/);

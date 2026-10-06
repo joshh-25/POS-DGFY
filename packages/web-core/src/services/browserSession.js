@@ -2,11 +2,11 @@ import { resolveApiBaseUrl } from '../utils/runtimeConfig.js';
 
 const APP_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase();
 const IS_OPIS_SURFACE = APP_SURFACE === 'opis';
-// OPIS (issue #2052) keeps an independent browser session from POS: its CSRF cookie lives
-// in the opis_* namespace so company switching or logout in OPIS can never consume or
-// clear the sku_* POS cookies, even under a shared SESSION_COOKIE_DOMAIN.
-const CSRF_COOKIE_KEY = IS_OPIS_SURFACE ? 'opis_csrf_token' : 'sku_csrf_token';
-export const APP_SURFACE_HEADER_VALUE = IS_OPIS_SURFACE ? 'opis' : '';
+const IS_ADMIN_SURFACE = APP_SURFACE === 'admin';
+// OPIS and Platform Admin each keep an independent browser session. Their CSRF cookies use
+// separate namespaces so logout cannot consume or clear sku_* or the other app's cookies.
+const CSRF_COOKIE_KEY = IS_ADMIN_SURFACE ? 'admin_csrf_token' : IS_OPIS_SURFACE ? 'opis_csrf_token' : 'sku_csrf_token';
+export const APP_SURFACE_HEADER_VALUE = IS_ADMIN_SURFACE ? 'admin' : IS_OPIS_SURFACE ? 'opis' : '';
 const IS_STANDALONE_POS_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase() === 'pos';
 const POS_BROWSER_SESSION_STORAGE_KEY = 'pos_browser_session_v1';
 const POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY = 'pos_company_switch_handoff_v1';

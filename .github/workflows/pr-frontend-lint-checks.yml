@@ -19,7 +19,7 @@ on:
   workflow_call:
     inputs:
       app:
-        description: Which frontend app to lint (dgfy-ims, dgfy-pos, dgfy-storefront, or dgfy-opis)
+        description: Which frontend app to lint (dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, or dgfy-admin)
         required: true
         type: string
       runner_labels_json:

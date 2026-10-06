@@ -1,7 +1,14 @@
 /* @vitest-environment jsdom */
-import { renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { reverseGeocodeDeliveryCoordinates } from '../services/geocodingService.js';
 import { useDeliveryPinResolution } from '../shared/hooks/useDeliveryPinResolution.js';
+
+vi.mock('../services/geocodingService.js', () => ({ reverseGeocodeDeliveryCoordinates: vi.fn() }));
+
+beforeEach(() => {
+  reverseGeocodeDeliveryCoordinates.mockReset();
+});
 
 const baseProps = () => ({
   customerAddress: '',
@@ -40,5 +47,51 @@ describe('useDeliveryPinResolution (#1219)', () => {
       resolvedDeliveryAddress: 'Diversion Road, Mandurriao, Iloilo City'
     }));
     expect(result.current.activeServiceLocationSummary).toBe('Blue gate beside the sari-sari store, Purok 3');
+  });
+});
+
+describe('useDeliveryPinResolution -- pin-to-address lookup (#506, #759)', () => {
+  const pinnedProps = (customerPin) => ({
+    ...baseProps(),
+    isDeliveryOrder: true,
+    hasPinnedDeliveryLocation: true,
+    customerPin
+  });
+
+  it('reverse-geocodes a map pin through dgfy-api and fills the address field with the result', async () => {
+    reverseGeocodeDeliveryCoordinates.mockResolvedValue('Diversion Road, Mandurriao, Iloilo City');
+    const props = pinnedProps({ latitude: 10.72, longitude: 122.54 });
+    renderHook(() => useDeliveryPinResolution(props));
+
+    await waitFor(() => expect(props.setCustomerAddress).toHaveBeenCalledWith('Diversion Road, Mandurriao, Iloilo City'));
+    expect(reverseGeocodeDeliveryCoordinates).toHaveBeenCalledWith(expect.objectContaining({ latitude: 10.72, longitude: 122.54 }));
+    expect(props.setResolvedDeliveryAddress).toHaveBeenCalledWith('Diversion Road, Mandurriao, Iloilo City');
+    expect(props.setResolvingPinnedDeliveryAddress).toHaveBeenLastCalledWith(false);
+  });
+
+  it('uses a chosen search suggestion as-is, with no reverse-geocode round trip', () => {
+    const props = pinnedProps({ latitude: 10.7246, longitude: 122.5585, address_line: 'Jaro Plaza, Jaro, Iloilo City' });
+    renderHook(() => useDeliveryPinResolution(props));
+
+    expect(reverseGeocodeDeliveryCoordinates).not.toHaveBeenCalled();
+    expect(props.setCustomerAddress).toHaveBeenCalledWith('Jaro Plaza, Jaro, Iloilo City');
+    expect(props.setResolvedDeliveryAddress).toHaveBeenCalledWith('Jaro Plaza, Jaro, Iloilo City');
+  });
+
+  it('falls back to the pinned-coordinate wording when the lookup has no address', async () => {
+    reverseGeocodeDeliveryCoordinates.mockResolvedValue('');
+    const props = pinnedProps({ latitude: 10.72, longitude: 122.54 });
+    renderHook(() => useDeliveryPinResolution(props));
+
+    await waitFor(() => expect(props.setCustomerAddress).toHaveBeenCalledWith('Pinned map location (10.720000, 122.540000)'));
+    expect(props.setResolvedDeliveryAddress).toHaveBeenCalledWith('');
+  });
+
+  it('falls back to the pinned-coordinate wording when the lookup fails', async () => {
+    reverseGeocodeDeliveryCoordinates.mockRejectedValue(new Error('Request failed before reaching API.'));
+    const props = pinnedProps({ latitude: 10.72, longitude: 122.54 });
+    renderHook(() => useDeliveryPinResolution(props));
+
+    await waitFor(() => expect(props.setCustomerAddress).toHaveBeenCalledWith('Pinned map location (10.720000, 122.540000)'));
   });
 });
