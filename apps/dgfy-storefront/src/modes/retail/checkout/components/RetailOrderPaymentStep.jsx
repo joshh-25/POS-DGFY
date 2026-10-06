@@ -41,6 +41,7 @@ export function RetailOrderPaymentStep({
   paymentElection = 'full',
   paymentOptions = [],
   paymentType = 'cash',
+  cancellingPaymentSession = false,
   renderBillingEmailPrompt,
   storefrontClosedNotice = null,
   withAssetOrigin
@@ -74,6 +75,7 @@ export function RetailOrderPaymentStep({
         label={isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'}
         value={paymentType}
         onChange={onPaymentTypeChange}
+        disabled={cancellingPaymentSession}
         options={paymentOptions}
         DropdownComponent={StorefrontDropdown}
         labelStyle={{ ...typography.sectionTitle, color: '#1e293b', fontFamily: CHECKOUT_FONT_FAMILY }}

@@ -132,6 +132,7 @@ export function FnbCheckoutRouteContainer({
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleConfirmQrphTestPayment,
+  handleCancelQrphPaymentSession,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
@@ -154,6 +155,7 @@ export function FnbCheckoutRouteContainer({
   voucherDiscountSummaryRow,
   qrphPaymentSession,
   qrphPaymentStatusLoading,
+  cancellingPaymentSession = false,
   quoteError,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
@@ -759,6 +761,7 @@ export function FnbCheckoutRouteContainer({
                   label={downpaymentDisplay.active && !(isDineInOrder && allowDineInPayAtStore) ? 'Pay downpayment with' : 'Payment Type'}
                   value={fnbPaymentType}
                   onChange={handlePaymentTypeChange}
+                  disabled={cancellingPaymentSession}
                   options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, {
                     hideCash: (downpaymentDisplay.active && !(isDineInOrder && allowDineInPayAtStore))
                       || (isCustomerChoiceStore(selectedStore) && !(isDineInOrder && allowDineInPayAtStore))
@@ -800,6 +803,8 @@ export function FnbCheckoutRouteContainer({
                       && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                       ? handleConfirmQrphTestPayment
                       : null}
+                    onCancelPaymentSession={handleCancelQrphPaymentSession}
+                    cancellingPaymentSession={cancellingPaymentSession}
                     onChooseAnotherPaymentMethod={() => {
                       resetQrphPaymentSession();
                     }}

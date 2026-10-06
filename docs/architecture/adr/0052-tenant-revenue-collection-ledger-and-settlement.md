@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-08-22
+last_reviewed: 2026-10-06
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -248,3 +248,49 @@ failure cannot roll back a decision already committed.
 No fee policy, settlement-hold, or payment-acceptance decision changes. Full
 context: issue #824,
 `docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md`.
+
+### 2026-10-06: Tenant Owner fallback processing-fee configuration
+
+Clause 9's tenant read-only statement boundary is amended for one narrow, tenant-scoped
+configuration action. An authenticated tenant Owner may create a new version of the
+`fallback_fee_policy` values for card, e-wallet, QR Ph, online banking, and other payment
+methods from the OPIS Back Office. The Owner request is bound to the authenticated tenant
+context, requires the expected current policy version, effective date, and audit reason, and
+creates a new immutable policy version rather than editing history.
+
+This amendment does not grant tenant users authority over the DGFY platform rate, settlement
+cycle/status, minimum payout, provider-fee payer/allocation, payout destination, automatic
+payout flag, or large-payout threshold. Those fields remain platform-finance controlled and
+are copied unchanged into the Owner-created version. Provider fee priority is unchanged:
+actual PayMongo or reconciled statement/API evidence supersedes the configured fallback. A
+fallback value is explicitly estimated, opens a blocking reconciliation exception, and keeps
+settlement on hold until actual evidence is reconciled. The original estimate and the later
+reconciliation are retained in the transaction financial snapshot and immutable adjustment
+ledger.
+
+The OPIS report labels the fee source (`webhook`, `api`, `statement`, `fallback`, or
+`manual_review`) and separates actual/reconciled, estimated, and manual-review amounts. IMS,
+POS terminal checkout totals, Storefront customer totals, service fees, and delivery fees are
+outside this amendment.
+
+### 2026-10-06: Tenant-configured item-processing fee
+
+The tenant revenue policy may additionally carry a separate, Owner-configured
+`customer_processing_fee_policy` (the backward-compatible storage key for the item-processing
+policy). This is a merchant charge for processing ordered items, not a payment-provider fee,
+DGFY's platform fee, or the provider-fee fallback above. The policy is versioned with the tenant
+policy and accepts either a fixed centavo amount or a percentage expressed in basis points,
+together with the customer-facing label. A policy version may be disabled with `null`.
+
+When enabled, Storefront calculates the item-processing fee on the discounted item subtotal after
+promo and voucher discounts and before delivery fees. Percentage calculations use integer-centavo
+rounding. The authoritative quote, direct checkout, hosted payment session, and webhook
+finalization all use the same server-side calculation; the payment session is only the order
+lifecycle container and does not turn this into a payment-provider fee. The amount, label, policy
+version, base, mode, rate, and calculation timestamp are snapshotted on the payment session and
+tenant order; later policy changes therefore cannot change an order that has already been quoted.
+
+The item-processing fee is displayed as a separate Storefront checkout/tracking line and is
+exposed to the tenant's OPIS order detail/receipt surfaces. It is not added to legacy DGFY
+convenience-fee fields, provider fallback financials, or DGFY settlement allocations. IMS is
+outside this feature.

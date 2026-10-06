@@ -374,6 +374,12 @@ export function StorefrontCheckoutSummaryContainer({
                 <span style={{ fontSize: 13, opacity: .95 }}>Items Subtotal</span>
                 <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
               </div>
+              {Number(totalsForDisplay.customer_processing_fee_amount) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.customer_processing_fee_label || 'Item processing fee'}</span>
+                  <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.customer_processing_fee_amount)}</strong>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 13, opacity: .95 }}>Delivery Fee</span>
                 <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.delivery_fee)}</strong>

@@ -120,6 +120,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
   });
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [itemPickerOpen, setItemPickerOpen] = useState(false);
   const [batches, setBatches] = useState([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [scanCode, setScanCode] = useState('');
@@ -130,6 +131,13 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
     () => findItemByFormId(items, formData.item_id),
     [items, formData.item_id]
   );
+
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = String(searchQuery || '').trim().toLowerCase();
+    return (Array.isArray(items) ? items : []).filter((item) => (
+      String(item?.name || '').toLowerCase().includes(normalizedQuery)
+    ));
+  }, [items, searchQuery]);
 
   const selectedLocationIdForBatches = useMemo(() => {
     if (formData.movement_type === 'transfer') {
@@ -393,8 +401,8 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-2xl flex-col overflow-hidden overflow-y-hidden p-0 sm:w-[calc(100vw-2rem)]">
-        <DialogHeader className="shrink-0 space-y-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+      <DialogContent className="flex h-[min(92vh,52rem)] max-h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] max-w-3xl flex-col overflow-hidden p-0 sm:h-[min(88vh,52rem)] sm:w-[calc(100vw-2rem)]">
+        <DialogHeader className="shrink-0 space-y-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-600">Inventory operations</p>
@@ -417,8 +425,8 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
-          <div className="space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7 sm:py-6">
+          <div className="min-w-0 space-y-6">
           <section className="space-y-3" aria-labelledby="movement-step-heading">
             <MovementStepHeading id="movement-step-heading" number="1" title="Choose the movement" />
             <div className="grid gap-4 sm:grid-cols-2">
@@ -481,7 +489,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                 <Barcode className="h-4 w-4" />
                 Fast item lookup
               </Label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex min-w-0 flex-wrap gap-2">
                 <Input
                   id="movement-scan-code"
                   value={scanCode}
@@ -493,7 +501,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                     }
                   }}
                   placeholder="Scan barcode or label"
-                  className="min-w-[220px] flex-1 bg-white"
+                  className="min-w-0 flex-1 bg-white"
                 />
                 <Button type="button" variant="outline" onClick={handleResolveBarcodeScan} disabled={scanLoading}>
                   {scanLoading ? 'Resolving...' : 'Resolve'}
@@ -512,7 +520,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
               <div className="space-y-2">
                 <Label htmlFor="movement-item">Item</Label>
-                <Popover>
+                <Popover open={itemPickerOpen} onOpenChange={setItemPickerOpen}>
               <PopoverTrigger asChild>
                 <Button
                   id="movement-item"
@@ -528,19 +536,24 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-full p-0" align="start">
-                <Command>
+              <PopoverContent
+                portal
+                matchTriggerWidth
+                className="max-w-[calc(100vw-1.5rem)] p-0"
+                align="start"
+                sideOffset={8}
+              >
+                <Command className="h-full min-h-0">
                   <CommandInput
                     placeholder="Search items..."
                     value={searchQuery}
                     onValueChange={setSearchQuery}
                   />
-                  <CommandList>
-                    <CommandEmpty>No items found.</CommandEmpty>
-                    <CommandGroup>
-                      {items
-                        .filter((item) => String(item?.name || '').toLowerCase().includes(searchQuery.toLowerCase()))
-                        .map((item) => {
+                  <CommandList className="min-h-0 max-h-none flex-1">
+                    {filteredItems.length === 0 && <CommandEmpty>No items found.</CommandEmpty>}
+                    {filteredItems.length > 0 && (
+                      <CommandGroup>
+                        {filteredItems.map((item) => {
                           const itemId = String(item.item_id || item.id || '');
                           return (
                             <CommandItem
@@ -549,7 +562,9 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                               onSelect={() => {
                                 handleChange('item_id', itemId);
                                 setSearchQuery('');
+                                setItemPickerOpen(false);
                               }}
+                              className="min-w-0"
                             >
                               <Check
                                 className={cn(
@@ -557,9 +572,9 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                                   formData.item_id === itemId ? "opacity-100" : "opacity-0"
                                 )}
                               />
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-2">
-                                  <span>{item.name}</span>
+                              <div className="min-w-0 flex flex-col">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className="min-w-0 break-words text-left">{item.name}</span>
                                   {item.category && (
                                     <Badge variant="secondary" className="text-[10px] px-1 h-5 text-slate-500 bg-slate-100 border border-slate-200">
                                       {item.category}
@@ -573,7 +588,8 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                             </CommandItem>
                           );
                         })}
-                    </CommandGroup>
+                      </CommandGroup>
+                    )}
                   </CommandList>
                 </Command>
               </PopoverContent>
@@ -776,7 +792,7 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
           </div>
         </div>
 
-        <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-6">
+        <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-4 sm:px-7">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             type="button"

@@ -107,8 +107,10 @@ export function useRetailOrderPageProps({
   fnbPaymentType,
   handlePaymentTypeChange,
   handleConfirmQrphTestPayment,
+  handleCancelQrphPaymentSession,
   qrphPaymentSession,
   qrphPaymentStatusLoading,
+  cancellingPaymentSession = false,
   resetQrphPaymentSession,
   // Phase 150 (#866): same coordination point as fnbPaymentType/handlePaymentTypeChange above --
   // StorefrontApp.jsx's paymentElection/setElected, threaded through unrenamed since there's no
@@ -208,8 +210,10 @@ export function useRetailOrderPageProps({
     paymentElection,
     onPaymentElectionChange,
     onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
+    onCancelQrphPaymentSession: handleCancelQrphPaymentSession,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
+    cancellingPaymentSession,
     resetQrphPaymentSession,
     onImageError: (itemId) => {
       const normalizedLineItemId = Number(itemId);

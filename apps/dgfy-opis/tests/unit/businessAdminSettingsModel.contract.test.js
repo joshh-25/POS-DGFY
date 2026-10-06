@@ -24,12 +24,13 @@ describe('Business Admin settings navigation model', () => {
         team: { view: true, edit: true, scope: 'branch' },
         attendance: { view: false, edit: false, scope: 'branch' },
         payments: { view: true, edit: false, scope: 'tenant' },
+        processing_fees: { view: true, edit: false, scope: 'tenant' },
         registers: { view: false, edit: false, scope: 'branch' }
     };
 
     it('declares one canonical Business Admin owner and scope for every settings section', () => {
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.map((definition) => definition.key)).toEqual([
-            'profile', 'pos', 'taxes', 'discounts', 'storefront', 'delivery', 'branches', 'team', 'attendance', 'payments', 'registers'
+            'profile', 'pos', 'taxes', 'discounts', 'storefront', 'delivery', 'branches', 'team', 'attendance', 'payments', 'processing_fees', 'registers'
         ]);
         expect(Object.fromEntries(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.map((definition) => [definition.key, definition.scope]))).toEqual({
             profile: 'tenant',
@@ -42,6 +43,7 @@ describe('Business Admin settings navigation model', () => {
             team: 'branch',
             attendance: 'branch',
             payments: 'tenant',
+            processing_fees: 'tenant',
             registers: 'branch'
         });
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'pos').description).toContain('discount rules');
@@ -72,7 +74,7 @@ describe('Business Admin settings navigation model', () => {
 
     it('keeps server-projected view/edit capabilities separate', () => {
         expect(getVisibleBusinessAdminSettingsSections(capabilities).map((section) => section.key)).toEqual([
-            'profile', 'pos', 'taxes', 'discounts', 'delivery', 'branches', 'team', 'payments'
+            'profile', 'pos', 'taxes', 'discounts', 'delivery', 'branches', 'team', 'payments', 'processing_fees'
         ]);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'pos', 'view')).toBe(true);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'pos', 'edit')).toBe(false);

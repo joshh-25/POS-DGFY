@@ -16,6 +16,7 @@ import {
     exchangeStoreGuestCheckoutGrantUseCase,
     storeCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase,
+    cancelStoreCheckoutPaymentSessionUseCase,
     reconcileStoreCheckoutPaymentSessionUseCase,
     confirmStoreCheckoutSandboxPaymentUseCase,
     storeCheckoutUseCase,
@@ -451,6 +452,29 @@ export const getCheckoutPaymentSession = async (req, res, next) => {
     }
 };
 
+export const cancelCheckoutPaymentSession = async (req, res, next) => {
+    try {
+        const result = await cancelStoreCheckoutPaymentSessionUseCase({
+            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id,
+            storeSlug: req.headers['x-store-slug'] || req.body?.store_slug || req.validatedData?.store_slug || null,
+            storeCustomer: resolveStoreCustomer(req)
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Payment session cancelled',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const confirmCheckoutSandboxPayment = async (req, res, next) => {
     try {
         const result = await confirmStoreCheckoutSandboxPaymentUseCase({
@@ -671,6 +695,7 @@ export default {
     exchangeGuestCheckoutVerificationGrant,
     createCheckoutPaymentSession,
     getCheckoutPaymentSession,
+    cancelCheckoutPaymentSession,
     reconcileCheckoutPaymentSession,
     checkout,
     trackOrder,

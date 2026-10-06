@@ -75,6 +75,8 @@ export function toSimpleTrackingViewState(trackingPayload) {
     discountLabel: String(normalized.discountLabel || order?.discount_label_snapshot || root?.discount_label || raw?.discount_label || order?.discount_label || 'Discount').trim(),
     serviceFeeAmount: numberOrNull(normalized.serviceFeeAmount ?? root?.service_fee_amount ?? root?.service_fee ?? raw?.service_fee_amount ?? raw?.service_fee ?? order?.service_fee_amount ?? order?.service_fee),
     serviceFeeLabel: String(normalized.serviceFeeLabel || order?.service_fee_label_snapshot || root?.service_fee_label_snapshot || raw?.service_fee_label_snapshot || '').trim(),
+    customerProcessingFeeAmount: numberOrNull(normalized.customerProcessingFeeAmount ?? root?.customer_processing_fee_amount ?? raw?.customer_processing_fee_amount ?? order?.customer_processing_fee_amount),
+    customerProcessingFeeLabel: String(normalized.customerProcessingFeeLabel || order?.customer_processing_fee_label_snapshot || root?.customer_processing_fee_label || raw?.customer_processing_fee_label || '').trim(),
     vatAmount: numberOrNull(normalized.vatAmount ?? order?.vat_amount ?? root?.vat_amount ?? raw?.vat_amount),
     // RF-4 (PR #753 review): order.total_amount (server-persisted) now outranks root/raw's --
     // see retailTrackingPayload.js's own copy of this note for the full reasoning.
@@ -116,6 +118,8 @@ export function buildSimpleTrackedOrderEntry({ fallbackPin = '', normalizedEntit
     total_amount: view.totalAmount,
     delivery_fee: view.deliveryFee,
     service_fee: view.serviceFeeAmount,
+    customer_processing_fee: view.customerProcessingFeeAmount,
+    customer_processing_fee_label: view.customerProcessingFeeLabel,
     special_instructions: String(view.specialInstructions || '').trim(),
     branch_name: String(view.branchName || location?.name || '').trim(),
     eta_minutes: numberOrNull(normalizedEntity?.etaMinutes ?? root?.estimated_wait_minutes ?? raw?.estimated_wait_minutes),

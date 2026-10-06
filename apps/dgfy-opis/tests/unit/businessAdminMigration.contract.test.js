@@ -38,7 +38,7 @@ describe('OPIS Back Office migration contract', () => {
     expect(source).toContain("const isSales = section === 'sales';");
     expect(source).toContain("const isReports = section === 'reports';");
     expect(source).toContain('{!isCatalog && !isFnb && !isSales && !isReports ? (');
-    expect(source).toContain('{isCatalog || isFnb || isSales ? <Module embedded /> : <Module />}');
+    expect(source).toContain('{isCatalog ? <Module embedded editorLabel="Item Editor" itemEditorMode /> : isFnb || isSales ? <Module embedded /> : <Module />}');
   });
 
   it('does not retain a POS page-url map for historical Back Office routes', () => {

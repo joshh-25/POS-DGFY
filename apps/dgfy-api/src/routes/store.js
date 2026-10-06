@@ -139,6 +139,7 @@ router.post('/checkout/guest-otp/verify', setNoStoreCacheControl, storeGuestChec
 router.post('/checkout/guest-otp/exchange', setNoStoreCacheControl, storeGuestCheckoutGrantExchangeLimiter, validateStoreGuestCheckoutGrantExchange, storeController.exchangeGuestCheckoutVerificationGrant);
 router.post('/checkout/payment-sessions', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckoutPaymentSession, storeController.createCheckoutPaymentSession);
 router.get('/checkout/payment-sessions/:payment_session_id', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
+router.post('/checkout/payment-sessions/:payment_session_id/cancel', setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.cancelCheckoutPaymentSession);
 router.post('/checkout/payment-sessions/:payment_session_id/confirm-test', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.confirmCheckoutSandboxPayment);
 router.post('/checkout/payment-sessions/:payment_session_id/reconcile-test', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.reconcileCheckoutPaymentSession);
 router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckout, storeController.checkout);

@@ -30,6 +30,16 @@ describe('Tenant revenue security contracts', () => {
     );
   });
 
+  it('protects Owner processing-fee policy reads and writes with dedicated permissions and session tenant context', () => {
+    expect(routes).toContain('tenantFeePolicyView');
+    expect(routes).toContain('tenantFeePolicyEdit');
+    expect(routes).toContain("'/tenant/fee-history'");
+    expect(routes).toContain("'/tenant/fee-policies'");
+    expect(routes).toContain('validateTenantRevenueOwnerFeePolicyBody');
+    expect(handlers).toContain('createTenantOwnerRevenueFeePolicyUseCase');
+    expect(handlers).toContain('tenantId: tenantIdFrom(req)');
+  });
+
   it('protects all platform financial mutations behind admin auth and rate limiting', () => {
     expect(routes).toContain(
       'router.use(setNoStoreCacheControl, authenticateAdmin, tenantFinancialLimiter)'

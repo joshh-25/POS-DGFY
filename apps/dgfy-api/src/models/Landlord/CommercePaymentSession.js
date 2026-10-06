@@ -85,6 +85,18 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     allowNull: false,
     defaultValue: 0
   },
+  // Legacy field name retained for compatibility; this is the item-processing
+  // charge included in the order total, not a payment-provider fee.
+  customer_processing_fee_amount: {
+    type: DataTypes.DECIMAL(14, 4),
+    allowNull: false,
+    defaultValue: 0
+  },
+  customer_processing_fee_breakdown: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null
+  },
   total_amount: {
     type: DataTypes.DECIMAL(14, 4),
     allowNull: false,

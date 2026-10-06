@@ -106,6 +106,11 @@ import {
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { resolvePaymentTiming } from '../../shared/utils/paymentTimingPolicy.js';
 import { STOREFRONT_ORDER_METHODS, ORDER_METHOD_LOCATION_SUPPORT_KEYS } from '../../shared/constants/orderMethods.js';
+import {
+    buildCustomerProcessingFeeBreakdown,
+    calculateCustomerProcessingFee,
+    normalizeCustomerProcessingFeePolicy
+} from '../../tenantRevenue/domain/customerProcessingFeePolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
@@ -424,6 +429,9 @@ const serializeOrderBase = (order) => ({
     service_fee_amount: order?.service_fee_amount,
     service_fee_label_snapshot: order?.service_fee_label_snapshot,
     service_fee_method_snapshot: order?.service_fee_method_snapshot,
+    customer_processing_fee_amount: order?.customer_processing_fee_amount ?? 0,
+    customer_processing_fee_label_snapshot: order?.customer_processing_fee_label_snapshot ?? null,
+    customer_processing_fee_breakdown: order?.customer_processing_fee_breakdown ?? null,
     delivery_fee: order?.delivery_fee,
     // #1331 (Phase 240): additive, same posture Phase 237 already used for delivery_fee itself --
     // deliberately NOT delivery_fee_waiver_voucher_id, a raw internal id has no place on a public,
@@ -1850,6 +1858,25 @@ const isValidPinnedDeliveryBreakdown = (pin) => {
     return true;
 };
 
+const isValidPinnedCustomerProcessingFeeBreakdown = (pin) => {
+    if (!pin || typeof pin !== 'object' || Array.isArray(pin)) return false;
+    if (!Number.isInteger(pin.base_amount_centavos) || pin.base_amount_centavos < 0) return false;
+    if (!Number.isInteger(pin.amount_centavos) || pin.amount_centavos < 0) return false;
+    if (!Number.isInteger(pin.policy_version) && pin.policy_version !== null) return false;
+    if (typeof pin.calculated_at !== 'string' || !Number.isFinite(Date.parse(pin.calculated_at))) return false;
+    try {
+        normalizeCustomerProcessingFeePolicy({
+            mode: pin.mode,
+            fixed_centavos: pin.fixed_centavos,
+            rate_bps: pin.rate_bps,
+            label: pin.label
+        });
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 const resolveCheckoutContext = async ({
     storeRepository,
     payload,
@@ -1877,6 +1904,11 @@ const resolveCheckoutContext = async ({
     // so neither lookup there ever depends on ambient context being populated the same way the rest
     // of that function already trusts its own tenantId param.
     tenantId = null,
+    // Owner-configured item-processing fee policy. This is injected from the landlord repository
+    // so quote, direct checkout, and hosted-payment session creation use one source of truth
+    // without making the Storefront module import landlord models directly. It is independent of
+    // payment-provider fees.
+    tenantRevenueRepository = null,
     // Phase 140 (#821): injected, no default -- see the import-site comment above for why this is
     // not a hard-imported module-level singleton the way dgfyAffiliateRepository is. `undefined`
     // (every existing caller that doesn't pass this) means "don't read, assume full_payment", via
@@ -1900,7 +1932,11 @@ const resolveCheckoutContext = async ({
     // skips resolveStoreDeliveryFee entirely and uses this verbatim -- this is what keeps the
     // finalized order's persisted fee identical to the amount PayMongo actually captured, even if
     // settings or GraphHopper state changed between session creation and webhook finalization.
-    pinnedDeliveryBreakdown = null
+    pinnedDeliveryBreakdown = null,
+    // Webhook finalization passes the immutable item-processing calculation captured when the hosted
+    // payment session was created. A malformed/legacy pin falls back to the current effective
+    // policy, matching the delivery-breakdown compatibility behavior above.
+    pinnedCustomerProcessingFeeBreakdown = null
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -2734,8 +2770,43 @@ const resolveCheckoutContext = async ({
     // transaction header for schema compatibility and historical read contracts.
     const serviceFeeAmount = 0;
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
+    const resolvedTenantIdForFees = tenantId || currentTenantAccessContext().tenantId;
+    const discountedItemSubtotalAmount = Math.max(0, round4(
+        prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount
+    ));
+    const discountedItemSubtotalCentavos = toCentavos(discountedItemSubtotalAmount);
+    const pinnedCustomerFee = isValidPinnedCustomerProcessingFeeBreakdown(pinnedCustomerProcessingFeeBreakdown)
+        ? pinnedCustomerProcessingFeeBreakdown
+        : null;
+    const effectiveRevenuePolicy = pinnedCustomerFee || !resolvedTenantIdForFees
+        ? null
+        : await tenantRevenueRepository?.findEffectiveFeePolicy?.(resolvedTenantIdForFees, new Date());
+    const customerProcessingFeePolicy = pinnedCustomerFee
+        ? {
+            mode: pinnedCustomerFee.mode,
+            fixed_centavos: pinnedCustomerFee.fixed_centavos,
+            rate_bps: pinnedCustomerFee.rate_bps,
+            label: pinnedCustomerFee.label
+        }
+        : (effectiveRevenuePolicy?.customer_processing_fee_policy || null);
+    const customerProcessingFeeAmountCentavos = pinnedCustomerFee
+        ? pinnedCustomerFee.amount_centavos
+        : calculateCustomerProcessingFee({
+            policy: customerProcessingFeePolicy,
+            baseAmountCentavos: discountedItemSubtotalCentavos
+        });
+    const customerProcessingFeeBreakdown = pinnedCustomerFee
+        ? pinnedCustomerFee
+        : buildCustomerProcessingFeeBreakdown({
+            policy: customerProcessingFeePolicy,
+            baseAmountCentavos: discountedItemSubtotalCentavos,
+            amountCentavos: customerProcessingFeeAmountCentavos,
+            policyVersion: effectiveRevenuePolicy?.version ?? null
+        });
+    const customerProcessingFeeAmount = centavosToPeso(customerProcessingFeeAmountCentavos);
+    const customerProcessingFeeLabel = customerProcessingFeeBreakdown?.label || null;
     const totalAmount = round4(
-        prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
+        discountedItemSubtotalAmount + customerProcessingFeeAmount + deliveryFee
     );
 
     // Phase 140 (#821, ADR 0069/0070): resolve the downpayment split server-side, after the
@@ -2746,7 +2817,7 @@ const resolveCheckoutContext = async ({
     // ~30 existing store unit tests that build these use cases with a hand-rolled fake and no
     // dbStore.run context) resolves to `null` settings, which resolveDownpaymentForTotal treats as
     // full_payment -- so this addition needs no edits to any of those tests.
-    const resolvedTenantIdForDownpayment = tenantId || currentTenantAccessContext().tenantId;
+    const resolvedTenantIdForDownpayment = resolvedTenantIdForFees;
     const downpaymentSettings = resolvedTenantIdForDownpayment
         ? await downpaymentSettingsRepository?.getSettings?.(resolvedTenantIdForDownpayment)
         : null;
@@ -2781,6 +2852,11 @@ const resolveCheckoutContext = async ({
         delivery,
         serviceFeeAmount,
         serviceFeeLabel,
+        discountedItemSubtotalAmount,
+        customerProcessingFeeAmount,
+        customerProcessingFeeLabel,
+        customerProcessingFeeBreakdown,
+        customerProcessingFeePolicyVersion: effectiveRevenuePolicy?.version ?? customerProcessingFeeBreakdown?.policy_version ?? null,
         totalAmount,
         downpayment,
         // Phase 141 (#822): raw settings alongside the resolved split, so a caller can detect the
@@ -3734,7 +3810,8 @@ export const buildStoreCartQuoteUseCase = ({
     downpaymentSettingsRepository,
     // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
     // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
-    roadDistanceProvider
+    roadDistanceProvider,
+    tenantRevenueRepository = null
 }) => {
     return async ({ payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
@@ -3752,6 +3829,7 @@ export const buildStoreCartQuoteUseCase = ({
                 storeCustomer,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
+                tenantRevenueRepository,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
                 requireCheckoutContact: false,
                 // Phase 237 (#1329, ADR 0078 Decision 2 [binding], D6): a cart quote must never
@@ -3768,6 +3846,8 @@ export const buildStoreCartQuoteUseCase = ({
                 voucher_discount_amount: resolved.voucherApplication.discountAmount,
                 service_fee_amount: resolved.serviceFeeAmount,
                 service_fee_label: resolved.serviceFeeLabel,
+                customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                customer_processing_fee_label: resolved.customerProcessingFeeLabel,
                 delivery_fee: resolved.deliveryFee,
                 // #1331 (Phase 240, epic #1321 decision 9): additive, alongside delivery_fee above
                 // -- so a shopper sees the waiver applied at quote time, before reaching checkout.
@@ -3982,7 +4062,8 @@ export const buildStoreCheckoutUseCase = ({
     inventoryReservationService = null,
     // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
     // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
-    roadDistanceProvider
+    roadDistanceProvider,
+    tenantRevenueRepository = null
 }) => {
     // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
@@ -3990,7 +4071,15 @@ export const buildStoreCheckoutUseCase = ({
     // unreachable from any client request, which is what keeps this guard server-authoritative.
     // Phase 237 (#1329): pinnedDeliveryBreakdown is the same shape of sibling argument -- see
     // resolveCheckoutContext's own doc comment on the param.
-    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false, capturedPayment = null, pinnedDeliveryBreakdown = null }) => {
+    return async ({
+        tenantId,
+        payload,
+        storeCustomer = null,
+        allowExpiredGuestCheckoutProof = false,
+        capturedPayment = null,
+        pinnedDeliveryBreakdown = null,
+        pinnedCustomerProcessingFeeBreakdown = null
+    }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -4043,7 +4132,9 @@ export const buildStoreCheckoutUseCase = ({
                 tenantId: normalizedTenantId,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
-                pinnedDeliveryBreakdown
+                pinnedDeliveryBreakdown,
+                tenantRevenueRepository,
+                pinnedCustomerProcessingFeeBreakdown
             });
             const { normalized } = resolved;
 
@@ -4239,6 +4330,9 @@ export const buildStoreCheckoutUseCase = ({
                     service_fee_label_snapshot: resolved.serviceFeeLabel,
                     service_fee_method_snapshot: resolved.serviceFeeAmount > 0 ? normalized.order_method : null,
                     service_fee_overridden: false,
+                    customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                    customer_processing_fee_label_snapshot: resolved.customerProcessingFeeLabel,
+                    customer_processing_fee_breakdown: resolved.customerProcessingFeeBreakdown,
                     total_amount: resolved.totalAmount,
                     status: 'completed',
                     location_id: normalized.location_id,
@@ -4641,6 +4735,8 @@ export const buildStoreCheckoutUseCase = ({
                     voucher_discount_amount: resolved.voucherApplication.discountAmount,
                     service_fee_amount: resolved.serviceFeeAmount,
                     service_fee_label: resolved.serviceFeeLabel,
+                    customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                    customer_processing_fee_label: resolved.customerProcessingFeeLabel,
                     delivery_fee: resolved.deliveryFee,
                     total_amount: resolved.totalAmount,
                     // Phase 140 (#821, ADR 0069/0070). See the matching comment on the quote
@@ -4842,6 +4938,13 @@ const serializePaymentSession = (session = {}) => ({
     delivery_fee: session.delivery_fee,
     service_fee_amount: session.service_fee_amount,
     service_fee_label: getDgfyConvenienceFeeLabel(),
+    customer_processing_fee_amount: session.customer_processing_fee_amount ?? 0,
+    customer_processing_fee_label: session.customer_processing_fee_breakdown
+        ? parseObjectValue(session.customer_processing_fee_breakdown).label || null
+        : null,
+    customer_processing_fee_breakdown: session.customer_processing_fee_breakdown
+        ? parseObjectValue(session.customer_processing_fee_breakdown)
+        : null,
     total_amount: session.total_amount,
     currency: session.currency || 'PHP',
     platform_fee_centavos: session.platform_fee_centavos,
@@ -5038,6 +5141,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 storeRepository,
                 payload: normalizedPayload,
                 storeCustomer,
+                tenantId,
+                tenantRevenueRepository,
                 downpaymentSettingsRepository,
                 roadDistanceProvider
             });
@@ -5197,6 +5302,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     pinned_at: new Date().toISOString()
                 },
                 service_fee_amount: resolved.serviceFeeAmount,
+                customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                customer_processing_fee_breakdown: resolved.customerProcessingFeeBreakdown,
                 total_amount: capturedAmountPeso,
                 currency: 'PHP',
                 total_amount_centavos: totalAmountCentavos,
@@ -5388,6 +5495,201 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
+        }
+    };
+};
+
+const normalizePaymentSessionStoreSlug = (value) => String(value || '').trim().toLowerCase();
+
+const getPaymentSessionCustomerSnapshot = (session) => (
+    parseObjectValue(session?.checkout_payload)?._verified_store_customer || null
+);
+
+const assertStoreCheckoutPaymentSessionAccess = ({ session, tenantId, storeSlug, storeCustomer }) => {
+    if (
+        !session
+        || normalizeTenantIdentifier(session.tenant_id) !== tenantId
+        || session.target_type !== 'store_checkout'
+        || normalizePaymentSessionStoreSlug(session.store_slug) !== normalizePaymentSessionStoreSlug(storeSlug)
+    ) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+    }
+
+    const customerSnapshot = getPaymentSessionCustomerSnapshot(session);
+    const expectedCustomerId = parsePositiveInt(customerSnapshot?.customer_id);
+    const expectedDgfyAccountId = String(customerSnapshot?.dgfy_account_id || '').trim();
+    if (!expectedCustomerId && !expectedDgfyAccountId) return;
+
+    const actualCustomerId = parsePositiveInt(storeCustomer?.customer_id);
+    const actualDgfyAccountId = String(storeCustomer?.dgfy_account_id || '').trim();
+    if (
+        (expectedCustomerId && actualCustomerId !== expectedCustomerId)
+        || (expectedDgfyAccountId && actualDgfyAccountId !== expectedDgfyAccountId)
+    ) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The signed-in customer does not own this payment session',
+            { statusCode: 403 }
+        );
+    }
+};
+
+const getPayMongoProviderErrorCode = (error) => String(
+    error?.response?.data?.errors?.[0]?.code
+        || error?.response?.data?.errors?.[0]?.error_code
+        || error?.response?.data?.code
+        || ''
+).trim().toLowerCase();
+
+const PAYMONGO_PAYMENT_ALREADY_COMPLETED_CODES = new Set([
+    'resource_succeeded_state',
+    'resource_invalid_state',
+    'payment_intent_already_succeeded'
+]);
+
+export const buildCancelStoreCheckoutPaymentSessionUseCase = ({
+    commercePaymentRepository,
+    paymongoService
+}) => {
+    return async ({ paymentSessionId, storeSlug, storeCustomer }) => {
+        try {
+            const reference = String(paymentSessionId || '').trim().toUpperCase();
+            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
+            }
+
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const requestedStoreSlug = normalizePaymentSessionStoreSlug(storeSlug || tenantContext.tenantToken);
+            const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+            assertStoreCheckoutPaymentSessionAccess({
+                session,
+                tenantId,
+                storeSlug: requestedStoreSlug,
+                storeCustomer
+            });
+
+            const idempotentStatuses = new Set(['cancelled', 'failed', 'expired']);
+            if (idempotentStatuses.has(String(session.status || '').toLowerCase())) {
+                return ok({
+                    cancellation_requested: false,
+                    idempotent_replay: true,
+                    payment_session: serializePaymentSession(session)
+                });
+            }
+
+            if (!['created', 'awaiting_payment'].includes(String(session.status || '').toLowerCase())) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This payment session can no longer be changed because payment processing has already started or completed.',
+                    { statusCode: 409 }
+                );
+            }
+
+            if (session.provider_payment_id || session.pos_transaction_id || session.tracking_pin) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This payment session can no longer be changed because it is already linked to an order payment.',
+                    { statusCode: 409 }
+                );
+            }
+
+            const providerIntentId = String(session.provider_payment_intent_id || '').trim();
+            if (!providerIntentId && session.checkout_url) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This payment method must finish or expire before another payment method can be selected.',
+                    { statusCode: 409 }
+                );
+            }
+
+            if (providerIntentId) {
+                if (typeof paymongoService?.cancelPaymentIntent !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.SERVICE_UNAVAILABLE,
+                        'Payment cancellation is temporarily unavailable. Please try again.',
+                        { statusCode: 503 }
+                    );
+                }
+
+                let providerCancellation;
+                try {
+                    providerCancellation = await paymongoService.cancelPaymentIntent(providerIntentId);
+                } catch (error) {
+                    if (PAYMONGO_PAYMENT_ALREADY_COMPLETED_CODES.has(getPayMongoProviderErrorCode(error))) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'This payment has already completed or changed state. Refresh the checkout before selecting another method.',
+                            { statusCode: 409 }
+                        );
+                    }
+                    throw new DomainError(
+                        DomainErrorCode.SERVICE_UNAVAILABLE,
+                        'PayMongo could not cancel this payment session. Please try again.',
+                        { statusCode: 503, cause: error }
+                    );
+                }
+
+                const providerStatus = String(
+                    providerCancellation?.attributes?.status
+                        || providerCancellation?.status
+                        || ''
+                ).trim().toLowerCase();
+                if (['succeeded', 'paid', 'captured', 'completed'].includes(providerStatus)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'This payment has already completed. A new payment method cannot be selected from this session.',
+                        { statusCode: 409 }
+                    );
+                }
+            }
+
+            const markCancelled = async (options = {}) => {
+                const current = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                    ...options,
+                    lock: true
+                });
+                assertStoreCheckoutPaymentSessionAccess({
+                    session: current,
+                    tenantId,
+                    storeSlug: requestedStoreSlug,
+                    storeCustomer
+                });
+
+                const currentStatus = String(current.status || '').trim().toLowerCase();
+                if (idempotentStatuses.has(currentStatus)) {
+                    return { session: current, idempotentReplay: true };
+                }
+                if (!['created', 'awaiting_payment'].includes(currentStatus)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'This payment session can no longer be changed because payment processing has already started or completed.',
+                        { statusCode: 409 }
+                    );
+                }
+
+                const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
+                    status: 'cancelled',
+                    failure_code: 'PAYMENT_SESSION_CANCELLED',
+                    failure_reason: 'Payment session cancelled to choose another payment method.'
+                }, options);
+                if (!updated) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+                }
+                return { session: updated, idempotentReplay: false };
+            };
+
+            const cancellation = typeof commercePaymentRepository.runInTransaction === 'function'
+                ? await commercePaymentRepository.runInTransaction((transaction) => markCancelled({ transaction }))
+                : await markCancelled();
+
+            return ok({
+                cancellation_requested: true,
+                idempotent_replay: cancellation.idempotentReplay,
+                payment_session: serializePaymentSession(cancellation.session)
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to cancel payment session'));
         }
     };
 };

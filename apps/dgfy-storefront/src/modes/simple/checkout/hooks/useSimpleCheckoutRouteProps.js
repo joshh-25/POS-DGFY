@@ -38,6 +38,7 @@ export function useSimpleCheckoutRouteProps({
   handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
   handleConfirmQrphTestPayment,
+  handleCancelQrphPaymentSession,
   handlePinMyLocation,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
@@ -59,6 +60,7 @@ export function useSimpleCheckoutRouteProps({
   voucherDiscountSummaryRow = null,
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
+  cancellingPaymentSession = false,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
@@ -202,6 +204,8 @@ export function useSimpleCheckoutRouteProps({
     onPaymentElectionChange,
     onPaymentTypeChange: handlePaymentTypeChange,
     onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
+    onCancelQrphPaymentSession: handleCancelQrphPaymentSession,
+    cancellingPaymentSession,
     onPinChange: (nextPin) => {
       setDeliveryLocationAction('map');
       setSelectedSavedLocationId('');

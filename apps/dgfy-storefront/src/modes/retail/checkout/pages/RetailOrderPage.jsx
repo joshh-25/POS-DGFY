@@ -94,6 +94,7 @@ export function RetailOrderPage({
   onImageError,
   onSelectAddress,
   onConfirmQrphTestPayment,
+  onCancelQrphPaymentSession,
   onPaymentElectionChange,
   onPaymentTypeChange,
   orderMethod = 'delivery',
@@ -105,6 +106,7 @@ export function RetailOrderPage({
   paymentType = 'cash',
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
+  cancellingPaymentSession = false,
   resetQrphPaymentSession,
   promoDiscountSummaryRow = null,
   voucherDiscountSummaryRow = null,
@@ -390,6 +392,7 @@ export function RetailOrderPage({
               onPaymentTypeChange={onPaymentTypeChange}
               paymentOptions={retailPaymentOptions}
               paymentType={paymentType}
+              cancellingPaymentSession={cancellingPaymentSession}
               renderBillingEmailPrompt={renderBillingEmailPrompt}
               onlinePaymentPanel={isStorefrontOnlinePaymentType(paymentType) ? (
                 <StorefrontOnlinePaymentPanel
@@ -404,6 +407,8 @@ export function RetailOrderPage({
                     && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                     ? onConfirmQrphTestPayment
                     : null}
+                  onCancelPaymentSession={onCancelQrphPaymentSession}
+                  cancellingPaymentSession={cancellingPaymentSession}
                   onChooseAnotherPaymentMethod={() => {
                     resetQrphPaymentSession?.();
                   }}

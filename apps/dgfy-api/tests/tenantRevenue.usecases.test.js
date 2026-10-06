@@ -348,6 +348,178 @@ describe('Tenant revenue workflow controls', () => {
     });
   });
 
+  it('lets a tenant owner version fallback fees without changing platform settlement fields', async () => {
+    const tenantId = makeRevenue().tenant_id;
+    const latest = {
+      policy_id: 7,
+      version: 4,
+      dgfy_rate_bps: 275,
+      settlement_cycle_days: '30',
+      settlement_status: 'active',
+      minimum_payout_centavos: 500,
+      currency: 'PHP',
+      provider_fee_payer: 'tenant',
+      shared_fee_tenant_bps: null,
+      fallback_fee_policy: {
+        card: { rate_bps: 200, fixed_centavos: 50 }
+      },
+      payout_destination_encrypted: 'encrypted-owner-destination',
+      payout_destination_masked: 'BDO ••••1234',
+      automatic_payout_enabled: false,
+      large_payout_threshold_centavos: 100000,
+      effective_at: new Date('2026-09-01T00:00:00.000Z'),
+      ends_at: null
+    };
+    const repository = makeRepository({
+      findTenantById: jest.fn().mockResolvedValue({ id: tenantId }),
+      findLatestFeePolicy: jest.fn().mockResolvedValue(latest),
+      updateFeePolicy: jest.fn().mockResolvedValue({ ...latest, ends_at: new Date('2026-09-30T23:59:59.999Z') }),
+      createFeePolicy: jest.fn(async (payload) => ({ policy_id: 8, ...payload }))
+    });
+    const useCases = build(repository);
+
+    const result = await useCases.createOwnerFeePolicy({
+      tenantId,
+      actor: 'owner@example.com',
+      payload: {
+        expected_policy_version: 4,
+        fallback_fee_policy: {
+          card: { rate_bps: 250, fixed_centavos: 100 },
+          ewallet: { rate_bps: 180, fixed_centavos: 0 },
+          qrph: { rate_bps: 150, fixed_centavos: 50 },
+          online_banking: { rate_bps: 120, fixed_centavos: 75 },
+          other: { rate_bps: 300, fixed_centavos: 125 }
+        },
+        effective_at: '2026-10-01T00:00:00.000Z',
+        reason: 'Updated provider contract estimate.'
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.updateFeePolicy).toHaveBeenCalledWith(
+      latest.policy_id,
+      { ends_at: new Date('2026-09-30T23:59:59.999Z') },
+      expect.objectContaining({ lock: true })
+    );
+    expect(repository.createFeePolicy.mock.calls[0][0]).toMatchObject({
+      tenant_id: tenantId,
+      version: 5,
+      dgfy_rate_bps: latest.dgfy_rate_bps,
+      settlement_cycle_days: latest.settlement_cycle_days,
+      settlement_status: latest.settlement_status,
+      minimum_payout_centavos: latest.minimum_payout_centavos,
+      provider_fee_payer: latest.provider_fee_payer,
+      payout_destination_encrypted: latest.payout_destination_encrypted,
+      automatic_payout_enabled: latest.automatic_payout_enabled,
+      large_payout_threshold_centavos: latest.large_payout_threshold_centavos,
+      fallback_fee_policy: {
+        card: { rate_bps: 250, fixed_centavos: 100 },
+        ewallet: { rate_bps: 180, fixed_centavos: 0 },
+        qrph: { rate_bps: 150, fixed_centavos: 50 },
+        online_banking: { rate_bps: 120, fixed_centavos: 75 },
+        other: { rate_bps: 300, fixed_centavos: 125 }
+      }
+    });
+    expect(repository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          event: 'tenant_revenue_owner_fallback_policy_version_created',
+          protected_fields: expect.arrayContaining(['dgfy_rate_bps', 'payout_destination'])
+        })
+      }),
+      expect.objectContaining({ transaction: transactionContext })
+    );
+  });
+
+  it('rejects an owner fallback edit when the policy version is stale', async () => {
+    const latest = {
+      policy_id: 9,
+      version: 5,
+      effective_at: new Date('2026-09-01T00:00:00.000Z'),
+      fallback_fee_policy: null
+    };
+    const repository = makeRepository({
+      findTenantById: jest.fn().mockResolvedValue({ id: makeRevenue().tenant_id }),
+      findLatestFeePolicy: jest.fn().mockResolvedValue(latest),
+      createFeePolicy: jest.fn()
+    });
+    const useCases = build(repository);
+
+    const result = await useCases.createOwnerFeePolicy({
+      tenantId: makeRevenue().tenant_id,
+      actor: 'owner@example.com',
+      payload: {
+        expected_policy_version: 4,
+        fallback_fee_policy: { card: { rate_bps: 250, fixed_centavos: 100 } },
+        effective_at: '2026-10-01T00:00:00.000Z',
+        reason: 'Retry after stale form.'
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('CONFLICT');
+    expect(result.error.details).toMatchObject({
+      reason_code: 'TENANT_REVENUE_FEE_POLICY_VERSION_CONFLICT',
+      current_policy_version: 5
+    });
+    expect(repository.createFeePolicy).not.toHaveBeenCalled();
+    expect(repository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('keeps fallback processing fees on hold until provider evidence is available', async () => {
+    const revenue = makeRevenue();
+    const policy = {
+      policy_id: 11,
+      version: 1,
+      dgfy_rate_bps: 200,
+      settlement_cycle_days: '15',
+      settlement_status: 'active',
+      minimum_payout_centavos: 0,
+      currency: 'PHP',
+      provider_fee_payer: 'tenant',
+      shared_fee_tenant_bps: null,
+      fallback_fee_policy: { card: { rate_bps: 250, fixed_centavos: 100 } },
+      effective_at: new Date('2026-07-01T00:00:00.000Z')
+    };
+    const repository = makeRepository({
+      findRevenueTransactionBySession: jest.fn().mockResolvedValue(null),
+      findEffectiveFeePolicy: jest.fn().mockResolvedValue(policy),
+      createRevenueTransaction: jest.fn(async (payload) => ({ revenue_transaction_id: 21, ...payload }))
+    });
+    const useCases = build(repository);
+
+    const result = await useCases.postPaidTransaction({
+      session: {
+        session_id: 12,
+        tenant_id: revenue.tenant_id,
+        total_amount_centavos: 30000,
+        paid_at: '2026-07-30T00:00:00.000Z',
+        currency: 'PHP',
+        payment_method: 'card',
+        checkout_payload: { company_id: 'company-a', branch_id: 'branch-a' }
+      },
+      resource: {
+        id: 'pay_fallback',
+        attributes: { amount: 30000, payment_method_type: 'card' }
+      },
+      providerEventId: 'evt_fallback'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.transaction).toMatchObject({
+      provider_fee_centavos: 850,
+      provider_fee_source: 'fallback',
+      provider_fee_estimated: true,
+      provider_fee_basis: 'estimated_fallback',
+      reconciliation_status: 'exception',
+      settlement_status: 'on_hold'
+    });
+    expect(repository.createReconciliationRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ exception_type: 'provider_fee_estimated', severity: 'blocking' }),
+      expect.objectContaining({ transaction: transactionContext })
+    );
+  });
+
   it('records full and partial refunds idempotently and preserves a paid settlement for carry-forward', async () => {
     const revenue = makeRevenue({ settlement_status: 'settled' });
     const repository = makeRepository({
@@ -671,6 +843,64 @@ describe('Tenant revenue workflow controls', () => {
       revenue.revenue_transaction_id,
       { reconciliation_status: 'exception', settlement_status: 'on_hold' },
       expect.any(Object)
+    );
+  });
+
+  it('replaces an estimated fallback with actual provider evidence and resolves the estimate hold', async () => {
+    const revenue = makeRevenue({
+      provider_fee_source: 'fallback',
+      provider_fee_centavos: 850,
+      provider_net_centavos: 29150,
+      tenant_provider_fee_centavos: 850,
+      tenant_net_payable_centavos: 28350,
+      reconciliation_status: 'exception',
+      settlement_status: 'on_hold'
+    });
+    const repository = makeRepository({
+      findRevenueTransactionByProviderPayment: jest.fn().mockResolvedValue(revenue),
+      updateRevenueTransaction: jest.fn(async (_id, payload) => ({ ...revenue, ...payload })),
+      listReconciliationRecords: jest.fn().mockResolvedValue([
+        { reconciliation_id: 55, exception_type: 'provider_fee_estimated' }
+      ])
+    });
+    const useCases = build(repository);
+
+    const result = await useCases.reconcileProviderFinancials({
+      actor: 'finance-admin',
+      payload: {
+        source: 'statement',
+        statement_reference: 'PM-STMT-2026-08',
+        rows: [{
+          provider_payment_id: revenue.provider_payment_id,
+          gross_amount_centavos: 30000,
+          provider_fee_centavos: 900,
+          provider_net_centavos: 29100
+        }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ processed: 1, reconciled: 1, exceptions: 0 });
+    expect(repository.updateRevenueTransaction).toHaveBeenCalledWith(
+      revenue.revenue_transaction_id,
+      expect.objectContaining({
+        provider_fee_centavos: 900,
+        provider_net_centavos: 29100,
+        provider_fee_source: 'statement',
+        reconciliation_status: 'reconciled',
+        settlement_status: 'pending',
+        financial_snapshot: expect.objectContaining({
+          provider_reconciliation: expect.objectContaining({
+            actual_provider_financials: expect.objectContaining({ provider_fee_centavos: 900 })
+          })
+        })
+      }),
+      expect.objectContaining({ lock: true })
+    );
+    expect(repository.updateReconciliationRecord).toHaveBeenCalledWith(
+      55,
+      expect.objectContaining({ status: 'resolved' }),
+      expect.objectContaining({ lock: true })
     );
   });
 });

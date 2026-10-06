@@ -219,6 +219,7 @@ export const finalizePaidCommerceSession = async ({
     // null/undefined for a pre-Phase-237 session, which resolves exactly as it did before this
     // phase shipped).
     const pinnedDeliveryBreakdown = plainSession.delivery_fee_breakdown ?? null;
+    const pinnedCustomerProcessingFeeBreakdown = plainSession.customer_processing_fee_breakdown ?? null;
 
     const result = await dbStore.run(context, () => storeCheckoutUseCase({
       tenantId: tenant.id,
@@ -226,7 +227,8 @@ export const finalizePaidCommerceSession = async ({
       storeCustomer: verifiedStoreCustomer,
       allowExpiredGuestCheckoutProof: true,
       capturedPayment,
-      pinnedDeliveryBreakdown
+      pinnedDeliveryBreakdown,
+      pinnedCustomerProcessingFeeBreakdown
     }));
 
     if (!result.success) {
