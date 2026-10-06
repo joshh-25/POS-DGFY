@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { hasCustomerName, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
-import { buildSearchSelectedPin } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { applyDeliveryAddressFieldChange, buildSearchSelectedPin } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { RetailOrderAccountStep } from '../components/RetailOrderAccountStep.jsx';
 import { RetailOrderFulfillmentStep } from '../components/RetailOrderFulfillmentStep.jsx';
 import { RetailOrderJourneyHeader } from '../components/RetailOrderJourneyHeader.jsx';
@@ -209,6 +209,10 @@ export function RetailOrderPage({
     setResolvedDeliveryAddress('');
     setCustomerPin(null);
   };
+  const handleDeliveryAddressChange = (value) => applyDeliveryAddressFieldChange(value, {
+    setCustomerAddress: onCustomerAddressChange,
+    clearDeliveryLocation: handleStartMapPin
+  });
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px', fontFamily: servicesBodyFont || "'Avenir Next', 'Segoe UI', sans-serif", color: '#0f172a' }}>
@@ -309,7 +313,7 @@ export function RetailOrderPage({
               onCloseExpandedMap={() => setShowExpandedDeliveryMap(false)}
               onCloseMobileAddressModal={() => setShowMobileAddressModal(false)}
               onContinue={() => setStep(3)}
-              onCustomerAddressChange={onCustomerAddressChange}
+              onCustomerAddressChange={handleDeliveryAddressChange}
               onOpenExpandedMap={() => setShowExpandedDeliveryMap(true)}
               onOpenMobileAddressList={() => setShowMobileAddressModal(true)}
               onOrderMethodChange={setOrderMethod}
