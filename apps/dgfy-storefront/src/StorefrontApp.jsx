@@ -3101,6 +3101,7 @@ export default function StorefrontApp() {
     voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
+    resolvingPinnedDeliveryAddress,
     setCustomerAddress,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
