@@ -93,6 +93,7 @@ export default function TerminalPageDialogLayer({ model }) {
     handleTerminalUnlockSubmit,
     handleViewStockAlertItems,
     hardwareMessage,
+    hardwareLoading,
     incomingOrderDetail,
     incomingOrderModalOpen,
     incomingOrderPrintLoading,
@@ -102,6 +103,7 @@ export default function TerminalPageDialogLayer({ model }) {
     scheduledDineInAlertNow,
     handleScheduledDineInAlertOpenChange,
     isOnline,
+    isPrinterAvailable,
     legacyLinkState,
     locationNameLookup,
     locationsState,
@@ -144,6 +146,7 @@ export default function TerminalPageDialogLayer({ model }) {
     setTerminalUnlockModalOpen,
     setZReadingCloseConfirmOpen,
     setZReadingClosePin,
+    setZReadingPaperWidth,
     setZReadingPrintAutoPrint,
     setZReadingPrintOpen,
     setZReadingPrintState,
@@ -177,7 +180,8 @@ export default function TerminalPageDialogLayer({ model }) {
     zReadingPrintAutoPrint,
     zReadingPrintOpen,
     zReadingPrintState,
-    zReadingReport
+    zReadingReport,
+    zReadingPaperWidth
   } = model;
 
   const starterSetupRequired = isStarterSetupRequired(workflowMode);
@@ -1092,6 +1096,10 @@ export default function TerminalPageDialogLayer({ model }) {
             businessSettings={terminalMeta.businessSettings}
             autoPrint={closedShiftReportAutoPrint}
             title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}
+            paperWidth={zReadingPaperWidth}
+            onPaperWidthChange={setZReadingPaperWidth}
+            hardwareLoading={hardwareLoading}
+            isPrinterAvailable={isPrinterAvailable}
             onPrint={() => printClosedShiftSummary(closedShiftReport, {
               reason: closedShiftReportAutoPrint ? 'shift_summary_reprint' : 'shift_summary_manual_print'
             })}
@@ -1209,6 +1217,8 @@ export default function TerminalPageDialogLayer({ model }) {
             businessSettings={terminalMeta.businessSettings}
             autoPrint={zReadingPrintAutoPrint}
             printState={zReadingPrintState}
+            paperWidth={zReadingPaperWidth}
+            onPaperWidthChange={setZReadingPaperWidth}
             onPrint={() => printZReading(zReadingReport, {
               reason: zReadingReport.snapshot_reused ? 'z_reading_reprint' : 'z_reading_close_day'
             })}

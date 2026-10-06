@@ -156,7 +156,10 @@ import {
   readPosTextSizePreference,
   writePosTextSizePreference
 } from '../utils/posTextSizePreference.js';
-import { readPosPaperWidthPreference } from '../utils/posPaperWidthPreference.js';
+import {
+  readPosPaperWidthPreference,
+  writePosPaperWidthPreference
+} from '../utils/posPaperWidthPreference.js';
 import {
   readStoredCashierResumeContext,
   safeLocalStorageGet,
@@ -580,6 +583,15 @@ export default function TerminalPage() {
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
+  const [zReadingPaperWidth, setZReadingPaperWidthState] = useState(() => (
+    readPosPaperWidthPreference(readInitialTerminalId())
+  ));
+  useEffect(() => {
+    setZReadingPaperWidthState(readPosPaperWidthPreference(activeTerminalId));
+  }, [activeTerminalId]);
+  const setZReadingPaperWidth = useCallback((value) => {
+    setZReadingPaperWidthState(writePosPaperWidthPreference(activeTerminalId, value));
+  }, [activeTerminalId]);
   const [terminalRegistry, setTerminalRegistry] = useState([]);
   const [terminalRegistryMode, setTerminalRegistryMode] = useState('warn');
   const [terminalMeta, setTerminalMeta] = useState({
@@ -2257,7 +2269,7 @@ export default function TerminalPage() {
         reason,
         idempotencyKey: createIdempotencyKey('pos-z-reading-print'),
         copies: 1,
-        paperWidth: readPosPaperWidthPreference(sanitizeTerminalId(activeTerminalId))
+        paperWidth: zReadingPaperWidth
       });
       if (outcome?.success) {
         setZReadingPrintState('printed');
@@ -2277,7 +2289,7 @@ export default function TerminalPage() {
       toast.message(error?.response?.data?.message || 'The Z-reading was saved, but physical printing failed.');
       return false;
     }
-  }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
+  }, [activeTerminalId, posHardware, terminalMeta.businessSettings, zReadingPaperWidth]);
 
   const openPostShiftHandoff = useCallback(async ({
     source = 'shift_close',
@@ -7450,6 +7462,7 @@ function PosRestorationLoadingScreen() {
               handleTerminalUnlockSubmit,
               handleViewStockAlertItems,
               hardwareMessage,
+              hardwareLoading: posHardware.loading,
               incomingOrderDetail,
               incomingOrderModalOpen,
               incomingOrderPrintLoading,
@@ -7459,6 +7472,7 @@ function PosRestorationLoadingScreen() {
               scheduledDineInAlertNow: scheduledDineInNow,
               handleScheduledDineInAlertOpenChange,
               isOnline,
+              isPrinterAvailable: posHardware.isPrinterAvailable,
               legacyLinkState,
               locationNameLookup,
               locationsState,
@@ -7470,6 +7484,7 @@ function PosRestorationLoadingScreen() {
               postShiftHandoff,
               printClosedShiftSummary,
               printZReading,
+              setZReadingPaperWidth,
               renderUnlockFailurePanel,
               resumeTenantSetupFlow,
               saveMyDayClosePin,
@@ -7536,7 +7551,8 @@ function PosRestorationLoadingScreen() {
               zReadingPrintAutoPrint,
               zReadingPrintOpen,
               zReadingPrintState,
-              zReadingReport
+              zReadingReport,
+              zReadingPaperWidth
             }} />
           ) : null}
         </Suspense>

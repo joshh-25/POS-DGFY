@@ -1575,8 +1575,12 @@ return (
                                 size="sm"
                                 data-testid="pos-receipt-print"
                                 onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
-                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
-                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || posHardware.loading}
+                                title={posHardware.loading
+                                    ? 'Checking printer availability.'
+                                    : isPrinterAvailable
+                                        ? undefined
+                                        : 'No direct printer detected. Open the receipt preview, then choose Print in browser.'}
                             >
                                 <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                                 {receiptPrinting ? 'Printing...' : 'Print'}
@@ -1743,6 +1747,7 @@ return (
                 setReceiptPreviewSource={setReceiptPreviewSource}
                 posActionsBlocked={posActionsBlocked}
                 receiptPrinting={receiptPrinting}
+                hardwareLoading={posHardware.loading}
                 isPrinterAvailable={isPrinterAvailable}
                 isOrderPrinterAvailable={isOrderPrinterAvailable}
                 handlePrintReceipt={handlePrintReceipt}
