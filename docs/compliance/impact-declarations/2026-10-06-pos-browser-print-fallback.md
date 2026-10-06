@@ -7,15 +7,15 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.06
-verification_evidence: focused POS printer/report tests,receipt-preview browser fallback sequencing test,POS lint and build,git diff --check
-rollback_note: Revert the browser printer fallback, report paper-width controls, and this declaration; no database schema, migration, or tenant-data change is included.
+verification_evidence: focused POS printer/report tests,POS settings contract tests,receipt-preview browser fallback sequencing test,POS lint and build,git diff --check
+rollback_note: Revert the browser printer fallback, report paper-width controls, preparation-fee settings-pane wiring, and this declaration; no database schema, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-10-06T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2260-POS-BROWSER-PRINT-FALLBACK
+preflight_request_ref: NOT-EXECUTED-2289-POS-BROWSER-PRINT-FALLBACK
 ---
 
-# POS browser printer fallback and report paper sizing
+# POS browser printer fallback, report paper sizing, and settings-pane wiring
 
 ## Compliance Impact Classification
 
@@ -28,7 +28,7 @@ change payment, fiscal, inventory, authorization, or persisted transaction behav
 ## Affected Surfaces
 
 - `pos` — receipt preview, Z-reading, shift-summary printing, and browser printer fallback.
-- `terminal` — cashier print controls, paper-width selection, and print-layout CSS.
+- `terminal` — cashier print controls, paper-width selection, print-layout CSS, and the POS settings tab strip.
 
 ## Compliance Preconditions
 
@@ -37,12 +37,15 @@ change payment, fiscal, inventory, authorization, or persisted transaction behav
   bypass POS authorization, payment, fiscal, or audit controls.
 - The selected paper width affects print presentation only and is not persisted as transactional
   data.
+- The preparation-fee settings pane only wires the already-authorized editor into POS settings; it
+  does not add a second persistence path, change fee calculation, or alter payment-provider data.
 - No database schema, migration, payment, fiscal, inventory, or tenant-data change is included.
-- The `NOT-EXECUTED-*` preflight reference is a validator-required PR-open placeholder; no live
+- The `NOT-EXECUTED-*` preflight reference is a validator-required PR-open placeholder for issue
+  #2289; no live
   request-time preflight is claimed here, and the continuous compliance sweep must reconcile it.
 
 ## Verification Evidence
 
-- Focused POS printer/report tests, receipt-preview browser fallback sequencing coverage, POS lint,
-  and the affected app build are required before PR submission.
+- Focused POS printer/report/settings tests, receipt-preview browser fallback sequencing coverage,
+  POS lint, and the affected app build are required before PR submission.
 - The repository compliance gate validates this declaration against the changed POS/terminal files.
