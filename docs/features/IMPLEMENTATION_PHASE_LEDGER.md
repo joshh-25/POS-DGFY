@@ -26379,10 +26379,10 @@ does not waive Phase 473's acceptance gates.
 ### Status
 
 `in_progress` — initial v4 manifest validation, refresh floor context, candidate lineage checks,
-operator procedure, release-note guidance, and focused regression coverage are implemented. Broader
-interface parity/evidence coverage, full requested validation, PR review, and deployed qualification
-remain outstanding. Pat explicitly authorized Phase 474 to proceed independently of Phase 473; this
-does not complete or waive Phase 473.
+parity/evidence integration, operator procedure, release-note guidance, and focused regression
+coverage are implemented. The requested local validation has passed. Remaining acceptance breadth,
+PR review, and deployed qualification remain outstanding. Pat explicitly authorized Phase 474 to
+proceed independently of Phase 473; this does not complete or waive Phase 473.
 
 ### Dependencies
 
@@ -26403,9 +26403,9 @@ Issue #2266 and its ready planner handoff `.tmp/plan-2266.md` (planning head
       not affect active source resolution. Release-note history and active manifest selection agree.
 - [ ] Parity, observation, optional quality reporting, and release evidence preserve refresh and
       selected artifact lineage; all existing production controls remain in force.
-- [x] `npm run test:promotion-candidate` (46 tests), `npm run test:staging-observation` (4),
+- [x] `npm run test:promotion-candidate` (47 tests), `npm run test:staging-observation` (4),
       `npm run test:app-versions` (37), `npm run test:release-notes` (17),
-      `npm run test:artifact-revision` (18), targeted parity/evidence/build-skip suites (113),
+      `npm run test:artifact-revision` (18), targeted parity/evidence/build-skip suites (115),
       `npm run check:adr -- --write-index`, `npm run lint:docs`, `npm run check:architecture`, and
       `npm run check:compliance` pass. Local `node scripts/check-app-version-bump.js`, JavaScript
       syntax checks, and `git diff --check` also pass. Remaining unimplemented breadth is listed in
