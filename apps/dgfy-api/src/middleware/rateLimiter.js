@@ -26,6 +26,8 @@ const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) 
 const storeAuthMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_AUTH_MAX_REQUESTS) || (isDevelopment ? 60 : 10);
 const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeTrackingMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const storePaymentSessionCancelWindowMs = parseInt(process.env.RATE_LIMIT_STORE_PAYMENT_SESSION_CANCEL_WINDOW_MS) || 15 * 60 * 1000;
+const storePaymentSessionCancelMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_PAYMENT_SESSION_CANCEL_MAX_REQUESTS) || (isDevelopment ? 30 : 10);
 const storeTrackingReadWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeTrackingReadMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS) || (isDevelopment ? 600 : 300);
 const storeLocationsWindowMs = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -807,6 +809,38 @@ export const storeTrackingLimiter = rateLimit({
   },
 });
 
+export const storePaymentSessionCancelLimiter = rateLimit({
+  windowMs: storePaymentSessionCancelWindowMs,
+  max: storePaymentSessionCancelMaxRequests,
+  message: createRateLimitError('Too many payment cancellation requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_payment_session_cancel'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const paymentSessionId = String(req.params?.payment_session_id || '').trim().toUpperCase() || 'missing-session';
+    return `store_payment_session_cancel:${ip}:${paymentSessionId}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many payment cancellation requests. Please wait before trying again.',
+      'store_payment_session_cancel',
+      'ip_payment_session'
+    );
+    logRateLimitEvent(req, 'store_payment_session_cancel', response.retryAfterSeconds, 'ip_payment_session');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
+});
+
   // Public tracking reads have a dedicated tenant/store + PIN bucket with
   // headroom for customer refreshes. Claim/cancel mutations remain stricter.
   export const storeTrackingReadLimiter = rateLimit({
@@ -1557,6 +1591,7 @@ export default {
   adminAuth: adminAuthLimiter,
   storeAuth: storeAuthLimiter,
   storeTracking: storeTrackingLimiter,
+  storePaymentSessionCancel: storePaymentSessionCancelLimiter,
   storeTrackingRead: storeTrackingReadLimiter,
   storefrontDiscovery: storefrontDiscoveryLimiter,
   storefrontFollow: storefrontFollowLimiter,

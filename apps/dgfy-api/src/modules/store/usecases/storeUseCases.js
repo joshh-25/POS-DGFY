@@ -5356,6 +5356,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const updated = await commercePaymentRepository.updateSessionById(session.session_id, {
                 status: 'awaiting_payment',
                 provider_payment_intent_id: providerResult.paymentIntent?.id || providerResult.attachedIntent?.id || null,
+                provider_checkout_session_id: String(providerResult.id || '').startsWith('cs_') ? providerResult.id : null,
                 provider_payment_method_id: providerResult.paymentMethod?.id || null,
                 qr_code_image_url: providerResult.qrCodeImageUrl || null,
                 checkout_url: providerResult.checkoutUrl || providerAttributes.checkout_url || null,
@@ -5388,6 +5389,177 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
+        }
+    };
+};
+
+const isCommercePaymentSessionNonCancellable = (session = {}) => (
+    ['paid', 'finalized', 'paid_manual_resolution_required', 'expired', 'failed', 'refund_pending',
+        'partial_refunded', 'refunded', 'split_failed_manual_settlement_required'].includes(session.status)
+    || Boolean(session.pos_transaction_id || session.tracking_pin)
+);
+
+const buildCancellationResponse = (session, outcome, reasonCode = null, reason = null) => ok({
+    payment_session: serializePaymentSession(session),
+    cancellation: { outcome, reason_code: reasonCode, reason }
+});
+
+export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository, paymongoService }) => {
+    return async ({ paymentSessionId, actor = 'store_guest', ipAddress = null, userAgent = null }) => {
+        try {
+            const reference = String(paymentSessionId || '').trim().toUpperCase();
+            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
+            }
+
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const firstStage = await commercePaymentRepository.runInTransaction(async (transaction) => {
+                const session = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                    transaction,
+                    lock: true
+                });
+                if (!session || normalizeTenantIdentifier(session.tenant_id) !== tenantId) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+                }
+                if (session.status === 'cancelled') return { kind: 'complete', session, outcome: 'cancelled' };
+                if (isCommercePaymentSessionNonCancellable(session) || !['created', 'awaiting_payment'].includes(session.status)) {
+                    return { kind: 'complete', session, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                }
+
+                const hasPaymentIntent = Boolean(session.provider_payment_intent_id);
+                const hasCheckoutSession = Boolean(session.provider_checkout_session_id);
+                if (session.status === 'created' && !hasPaymentIntent && !hasCheckoutSession) {
+                    const cancelled = await commercePaymentRepository.updateSessionById(session.session_id, {
+                        status: 'cancelled',
+                        failure_code: null,
+                        failure_reason: null
+                    }, { transaction });
+                    await commercePaymentRepository.createAuditLog?.({
+                        entity_type: 'CommercePayment',
+                        entity_id: session.session_id,
+                        action: 'UPDATE',
+                        changes: {
+                            event: 'commerce_payment_session_cancelled',
+                            payment_session: session.public_reference,
+                            actor
+                        },
+                        ip_address: ipAddress,
+                        user_agent: userAgent
+                    }, { transaction });
+                    return { kind: 'complete', session: cancelled, outcome: 'cancelled' };
+                }
+                if (!hasPaymentIntent && !hasCheckoutSession) {
+                    return {
+                        kind: 'unresolved',
+                        session,
+                        reason_code: 'PROVIDER_OBJECT_MISSING',
+                        reason: 'The payment session has no provider object that can be cancelled.'
+                    };
+                }
+
+                return {
+                    kind: 'provider_call',
+                    session,
+                    providerObject: hasPaymentIntent
+                        ? { type: 'payment_intent', id: session.provider_payment_intent_id }
+                        : { type: 'checkout_session', id: session.provider_checkout_session_id }
+                };
+            });
+
+            if (firstStage.kind === 'complete') {
+                return buildCancellationResponse(firstStage.session, firstStage.outcome, firstStage.reason_code || null, null);
+            }
+
+            if (firstStage.kind === 'unresolved') {
+                const saved = await commercePaymentRepository.runInTransaction(async (transaction) => {
+                    const current = await commercePaymentRepository.findSessionByPublicReference(reference, { transaction, lock: true });
+                    if (!current || normalizeTenantIdentifier(current.tenant_id) !== tenantId) {
+                        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+                    }
+                    if (current.status === 'cancelled') return { session: current, outcome: 'cancelled' };
+                    if (isCommercePaymentSessionNonCancellable(current) || !['created', 'awaiting_payment'].includes(current.status)) {
+                        return { session: current, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                    }
+                    const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        failure_code: firstStage.reason_code,
+                        failure_reason: String(firstStage.reason || '').slice(0, 500)
+                    }, { transaction });
+                    return { session: updated, outcome: 'unresolved', reason_code: firstStage.reason_code, reason: firstStage.reason };
+                });
+                return buildCancellationResponse(saved.session, saved.outcome, saved.reason_code || null, saved.reason || null);
+            }
+
+            const providerResult = firstStage.providerObject.type === 'payment_intent'
+                ? await paymongoService.cancelPaymentIntent(firstStage.providerObject.id)
+                : await paymongoService.expireCheckoutSession(firstStage.providerObject.id);
+
+            const providerSaysNotCancellable = providerResult?.outcome === 'not_cancellable';
+            const providerReason = String(providerResult?.reason || 'PayMongo did not confirm the cancellation.');
+            const clearlyTerminalProviderReason = /already (?:expired|cancelled|canceled)|has paid payment|already paid/i.test(providerReason);
+            const providerOutcome = providerResult?.outcome === 'cancelled'
+                ? 'cancelled'
+                : (providerSaysNotCancellable && clearlyTerminalProviderReason ? 'not_cancellable' : 'unresolved');
+
+            const secondStage = await commercePaymentRepository.runInTransaction(async (transaction) => {
+                const current = await commercePaymentRepository.findSessionByPublicReference(reference, { transaction, lock: true });
+                if (!current || normalizeTenantIdentifier(current.tenant_id) !== tenantId) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+                }
+                if (current.status === 'cancelled') return { session: current, outcome: 'cancelled' };
+                if (isCommercePaymentSessionNonCancellable(current) || !['created', 'awaiting_payment'].includes(current.status)) {
+                    return { session: current, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                }
+
+                if (providerOutcome === 'cancelled') {
+                    const cancelled = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        status: 'cancelled',
+                        failure_code: null,
+                        failure_reason: null
+                    }, { transaction });
+                    await commercePaymentRepository.createAuditLog?.({
+                        entity_type: 'CommercePayment',
+                        entity_id: current.session_id,
+                        action: 'UPDATE',
+                        changes: {
+                            event: 'commerce_payment_session_cancelled',
+                            payment_session: current.public_reference,
+                            actor
+                        },
+                        ip_address: ipAddress,
+                        user_agent: userAgent
+                    }, { transaction });
+                    return { session: cancelled, outcome: 'cancelled' };
+                }
+
+                if (providerOutcome === 'unresolved') {
+                    const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        failure_code: providerResult?.reason_code || 'PAYMONGO_CANCELLATION_UNRESOLVED',
+                        failure_reason: providerReason.slice(0, 500)
+                    }, { transaction });
+                    return {
+                        session: updated,
+                        outcome: 'unresolved',
+                        reason_code: providerResult?.reason_code || 'PAYMONGO_CANCELLATION_UNRESOLVED',
+                        reason: providerReason
+                    };
+                }
+                return {
+                    session: current,
+                    outcome: 'not_cancellable',
+                    reason_code: providerResult?.reason_code || 'PROVIDER_SESSION_TERMINAL',
+                    reason: providerReason
+                };
+            });
+
+            return buildCancellationResponse(
+                secondStage.session,
+                secondStage.outcome,
+                secondStage.reason_code || null,
+                secondStage.reason || null
+            );
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to cancel checkout payment session'));
         }
     };
 };
