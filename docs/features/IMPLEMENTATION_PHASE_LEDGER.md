@@ -26360,3 +26360,69 @@ dispatch, is recorded.
 ### Next eligible phase
 
 Phase 474 only after Phase 473's acceptance gates complete and the ledger is rechecked.
+
+## Phase 474 - Server-authoritative commerce payment session cancellation (#2267)
+
+### Initiative and release
+
+Storefront commerce payments, current release.
+
+### Objective and scope
+
+Add a customer-callable, tenant-scoped endpoint to cancel an unpaid Storefront commerce payment
+session at PayMongo. Persist and backfill Hosted Checkout session IDs, preserve payment/order
+authority under concurrent webhook delivery, return explicit `cancelled`, `not_cancellable`, and
+`unresolved` outcomes, and audit confirmed cancellation. Refunds and scheduled expiry/retry remain
+out of scope.
+
+### Status
+
+`in_progress` — implementation is underway; required checks and Hosted Checkout sandbox
+verification are outstanding.
+
+**Explicit sequencing override (2026-10-06):** Pat authorized Phase 474 to proceed independently
+of Phase 473's incomplete acceptance gates. Phase 473 remains `in_progress`; this authorization
+does not mark it complete or waive its acceptance criteria.
+
+### Dependencies
+
+Issue #2267; ADR 0052's paid-session and refund boundaries; Pat's explicit 2026-10-06 authorization
+to proceed independently of Phase 473. No tenant-schema registration or capability-version change
+is required because the affected session table is landlord-only.
+
+### Acceptance and validation evidence
+
+- [x] The additive landlord migration adds and indexes `provider_checkout_session_id` and backfills
+      only literal `cs_` IDs from `provider_payload`.
+- [x] The cancellation endpoint returns the documented three-outcome response, preserves
+      already-paid/order-finalized state, and writes an audit row on confirmed cancellation.
+- [x] The provider HTTP call occurs outside transactions, and the locked re-read preserves a
+      concurrent `payment.paid` result.
+- [x] Focused cancellation/provider tests (17 passed; 30 passed across four focused suites), changed-file syntax checks, compliance,
+      architecture/ADR, documentation, and develop-base app-version checks pass.
+- [ ] `npm run check:tenant-schema` completes its report successfully before the migration deploys;
+      the local attempt exited before report output in this session.
+- [ ] PayMongo sandbox proves that Hosted Checkout created under `/v2` can be expired using the
+      selected endpoint and that its checkout URL no longer accepts payment.
+- [ ] PR review is complete; this phase does not merge, deploy, or claim deployed verification.
+
+### Links
+
+- Issue: #2267; planner handoff: `.tmp/plan-2267.md` (planning head
+  `7c3fdd014ed8b76ad47fc0fb26fa26c6228af7ee`).
+- ADR: `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`.
+- Feature contract: `docs/features/TENANT_REVENUE_SETTLEMENT.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-10-06-commerce-payment-session-cancellation.md`.
+- Implementation: `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/services/paymongoService.js`,
+  `apps/dgfy-migration-runner/migrations/20261006000001-add-checkout-session-id-to-commerce-payment-sessions.cjs`.
+- Tests: `apps/dgfy-api/tests/storeCancelPaymentSession.usecase.test.js`.
+
+### Completion date
+
+Not complete; set only after all acceptance gates above pass.
+
+### Next eligible phase
+
+Phase 475 only after Phase 474's acceptance gates pass and then-current ledger eligibility is
+reconciled.

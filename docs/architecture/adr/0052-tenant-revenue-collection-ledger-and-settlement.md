@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-08-22
+last_reviewed: 2026-10-06
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -248,3 +248,31 @@ failure cannot roll back a decision already committed.
 No fee policy, settlement-hold, or payment-acceptance decision changes. Full
 context: issue #824,
 `docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md`.
+
+### 2026-10-06: Server-authoritative cancellation of an in-flight commerce payment session (#2267)
+
+An unpaid Storefront commerce payment session may be cancelled by its customer so the
+customer can choose another payment method. This is separate from clause 14's cancellation
+of a paid order: it does not refund, reverse settlement, or create an order or charge.
+
+1. `POST /api/v1/store/checkout/payment-sessions/:payment_session_id/cancel` is tenant-scoped
+   and accepts only `created` or `awaiting_payment` sessions. Already-cancelled retries are
+   idempotent. Paid/finalized sessions, sessions carrying an order identity, and other terminal
+   states are returned as `not_cancellable` without a provider cancellation or refund request.
+2. Payment Intent sessions use PayMongo's Payment Intent cancel endpoint. Hosted Checkout
+   sessions persist their `cs_` identifier separately from the provider payload and use the
+   documented Checkout Session expire endpoint. Provider errors or timeouts never claim the
+   local session is cancelled; an unresolved result records a failure code/reason while keeping
+   the session non-terminal.
+3. The provider HTTP call is outside any database transaction. The session is locked before the
+   call and re-read under lock before recording its outcome, so a concurrent paid webhook wins
+   and cannot be overwritten as cancelled. Confirmed cancellation and local cancellation of a
+   never-created provider object write an audit event.
+4. The landlord-only nullable provider-session column is additive and backfills only IDs with
+   the literal `cs_` prefix. The customer route has a dedicated IP/session rate limit. No tenant
+   schema registration or schema capability version changes.
+
+The outcome contract is `cancelled`, `not_cancellable`, or `unresolved`; it is returned beside
+the existing payment-session serialization so clients do not infer cancellation by polling.
+Refunds and scheduled expiry/retry work remain separate processes. Full context: issue #2267
+and `docs/features/TENANT_REVENUE_SETTLEMENT.md`.

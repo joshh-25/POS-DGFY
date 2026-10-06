@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: payments,storefront,commerce
 reason_codes_impacted: PAYMENT_SESSION_CANCELLATION_UNRESOLVED,SESSION_TERMINAL
 policy_version: 2026.10.06
-verification_evidence: apps/dgfy-api/tests/storeCancelPaymentSession.usecase.test.js and tests/paymongoHostedCheckout.test.js (16 passed); node --check on changed JavaScript and migration files; npm run check:compliance; npm run check:architecture; npm run check:adr; npm run lint:docs; node scripts/check-app-version-bump.js; npm run check:tenant-schema (attempted, exited before report output)
+verification_evidence: apps/dgfy-api/tests/storeCancelPaymentSession.usecase.test.js and tests/paymongoHostedCheckout.test.js (17 passed; 30 passed across four focused suites); node --check on changed JavaScript and migration files; npm run check:compliance; npm run check:architecture; npm run check:adr; npm run lint:docs; node scripts/check-app-version-bump.js; npm run check:tenant-schema (attempted, exited before report output)
 rollback_note: Revert the API route/use case/provider methods, model field and additive landlord migration together. The backfilled checkout-session ID is recoverable from provider_payload, and dropping the nullable indexed column does not alter payment, order, refund, or ledger state.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
