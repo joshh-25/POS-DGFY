@@ -16,17 +16,11 @@ const installRuntimeDiagnostics = (page) => {
     const path = pathFor(entry.url);
     if (entry.type === 'http' && entry.status === 404 && path === '/api/v1/store/domain-context') return true;
     if (entry.type === 'requestfailed' && entry.error === 'net::ERR_ABORTED') {
-      const isNominatimReverseLookup = (() => {
-        try {
-          const url = new URL(entry.url);
-          return url.hostname === 'nominatim.openstreetmap.org' && path === '/reverse';
-        } catch {
-          return false;
-        }
-      })();
+      // A pin moved again before its address lookup finished aborts the earlier lookup (#506:
+      // reverse geocoding goes through dgfy-api, no longer nominatim.openstreetmap.org).
       return /^\/api\/v1\/storefront\/discovery(?:\/|$)/.test(path)
         || path === '/api/v1/dgfy/auth/me'
-        || isNominatimReverseLookup
+        || path === '/api/v1/storefront/reverse-geocode'
         || /^\/openfreemap\//.test(path);
     }
     return false;

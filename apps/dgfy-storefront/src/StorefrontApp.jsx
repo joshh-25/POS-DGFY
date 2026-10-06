@@ -175,7 +175,6 @@ import { DeliveryPinMap } from './features/locations/components/DeliveryPinMapLa
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
   buildPinnedDeliveryAddress,
-  formatReverseGeocodedAddress,
   normalizeCoordinatePair,
   resolveDeliveryAddress,
   reverseGeocodeDeliveryPin
