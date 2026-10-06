@@ -45,8 +45,8 @@ function pkgJson(version, deps = {}) {
     return `${JSON.stringify({ name: 'fixture', version, dependencies: deps }, null, 2)}\n`;
 }
 
-// Mirrors the real repo's six apps and their file: fan-out (apps/*/package.json,
-// confirmed live): shared-constants -> all six, web-core -> ims/pos/storefront/opis,
+// Mirrors the real repo's seven apps and their file: fan-out (apps/*/package.json,
+// confirmed live): shared-constants -> all seven, web-core -> frontend consumers,
 // pos-receipt -> ims/pos/opis.
 function baseFixture(overrides = {}) {
     const versions = {
@@ -56,6 +56,7 @@ function baseFixture(overrides = {}) {
         'dgfy-pos': '1.0.0',
         'dgfy-storefront': '1.0.0',
         'dgfy-opis': '1.0.0',
+        'dgfy-admin': '1.0.0',
         ...overrides,
     };
 
@@ -91,6 +92,12 @@ function baseFixture(overrides = {}) {
             '@sieitzz/web-core': 'file:../../packages/web-core',
         }),
         'apps/dgfy-opis/src/index.js': 'module.exports = {};\n',
+        'apps/dgfy-admin/package.json': pkgJson(versions['dgfy-admin'], {
+            '@sieitzz/pos-receipt': 'file:../../packages/pos-receipt',
+            '@sieitzz/shared-constants': 'file:../../packages/shared-constants',
+            '@sieitzz/web-core': 'file:../../packages/web-core',
+        }),
+        'apps/dgfy-admin/src/index.js': 'module.exports = {};\n',
         'packages/shared-constants/package.json': pkgJson('1.0.0'),
         'packages/shared-constants/index.js': 'module.exports = {};\n',
         'packages/pos-receipt/package.json': pkgJson('1.0.0'),
@@ -130,6 +137,73 @@ test('no apps changed: skips cleanly', async () => {
         assert.equal(result.skipped, true);
         assert.equal(result.reason, 'no-app-changed');
         assert.deepEqual(result.appResults, []);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('refresh floor uses a verified original baseline and rejects note drift or version regression', async () => {
+    const root = makeGitRepo();
+    const candidateId = '2026-10-01-01';
+    const versions = { 'dgfy-api': '1.0.0' };
+    writeFiles(root, baseFixture(versions));
+    const promotionBase = commitAll(root, 'promotion baseline');
+    const note = `---\nschema: sku-release-note/v1\ncandidate_id: ${candidateId}\nproduction_date: 2026-10-01\nproduction_commit: pending\npromotion_base_sha: ${promotionBase}\n---\n`;
+    writeFiles(root, { [`docs/releases/notes/${candidateId}.md`]: note });
+    const staging = commitAll(root, 'staging candidate note');
+    writeFiles(root, {
+        'apps/dgfy-api/package.json': pkgJson('1.1.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        'apps/dgfy-api/src/index.js': 'module.exports = { refreshed: true };\n',
+    });
+    const develop = commitAll(root, 'refresh develop candidate');
+    try {
+        const pass = await runFloor({ repoRoot: root, baseGitRef: staging, headGitRef: develop, candidateId });
+        assert.equal(pass.refreshError, null);
+        assert.equal(pass.belowFloor.length, 0);
+        assert.equal(pass.results.find((entry) => entry.app === 'dgfy-api').floorTarget, '1.1.0');
+
+        writeFiles(root, { [`docs/releases/notes/${candidateId}.md`]: note.replace(promotionBase, 'f'.repeat(40)) });
+        const altered = commitAll(root, 'alter refresh baseline');
+        const drift = await runFloor({ repoRoot: root, baseGitRef: staging, headGitRef: altered, candidateId });
+        assert.match(drift.refreshError, /must preserve STAGING promotion_base_sha/);
+
+        writeFiles(root, {
+            [`docs/releases/notes/${candidateId}.md`]: note,
+            'apps/dgfy-api/package.json': pkgJson('1.0.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        });
+        const regressed = commitAll(root, 'regress refresh floor');
+        const regression = await runFloor({ repoRoot: root, baseGitRef: staging, headGitRef: regressed, candidateId });
+        assert.equal(regression.belowFloor.some((entry) => entry.app === 'dgfy-api'), true);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('refresh floor keeps the existing new-app rule when the app was absent from the original baseline', async () => {
+    const root = makeGitRepo();
+    const candidateId = '2026-10-01-02';
+    writeFiles(root, baseFixture());
+    fs.rmSync(path.join(root, 'apps/dgfy-admin'), { recursive: true, force: true });
+    const promotionBase = commitAll(root, 'baseline without admin app');
+    const note = `---\nschema: sku-release-note/v1\ncandidate_id: ${candidateId}\nproduction_date: 2026-10-01\nproduction_commit: pending\npromotion_base_sha: ${promotionBase}\n---\n`;
+    writeFiles(root, { [`docs/releases/notes/${candidateId}.md`]: note });
+    const staging = commitAll(root, 'staging note');
+    writeFiles(root, {
+        'apps/dgfy-admin/package.json': pkgJson('1.0.0', {
+            '@sieitzz/pos-receipt': 'file:../../packages/pos-receipt',
+            '@sieitzz/shared-constants': 'file:../../packages/shared-constants',
+            '@sieitzz/web-core': 'file:../../packages/web-core',
+        }),
+        'apps/dgfy-admin/src/index.js': 'module.exports = { added: true };\n',
+    });
+    const develop = commitAll(root, 'introduce app during refresh');
+    try {
+        const result = await runFloor({ repoRoot: root, baseGitRef: staging, headGitRef: develop, candidateId });
+        const admin = result.results.find((entry) => entry.app === 'dgfy-admin');
+        assert.equal(result.refreshError, null);
+        assert.equal(admin.newApp, true);
+        assert.equal(admin.unparseable, false);
+        assert.equal(admin.belowFloor, false);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
@@ -179,7 +253,7 @@ test('develop: an app floor bump before promotion fails', async () => {
     }
 });
 
-test('develop: shared package change fans out to all six apps without requiring floor bumps', async () => {
+test('develop: shared package change fans out to all seven apps without requiring floor bumps', async () => {
     // Only the shared package changes -- no app bumps its own version here -- so this
     // isolates fan-out *detection* (all 6 apps flagged as changed via the dependency
     // map read from their own package.json, not a hardcoded list) from the separate
@@ -194,9 +268,9 @@ test('develop: shared package change fans out to all six apps without requiring 
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, true);
-        assert.equal(result.appResults.length, 6);
+        assert.equal(result.appResults.length, 7);
         const appNames = result.appResults.map((entry) => entry.app).sort();
-        assert.deepEqual(appNames, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
+        assert.deepEqual(appNames, ['dgfy-admin', 'dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
         for (const entry of result.appResults) {
             assert.equal(entry.reason, 'fan-out:packages/shared-constants');
             assert.equal(entry.ok, true);
@@ -516,7 +590,7 @@ test('--floor: only apps with real changed files are evaluated; the rest land in
         assert.equal(result.diffError, null);
 
         // Every app changed in this scenario except dgfy-opis -- only it lands in `unchanged`.
-        assert.deepEqual(result.unchanged, ['dgfy-opis']);
+        assert.deepEqual(result.unchanged, ['dgfy-opis', 'dgfy-admin']);
 
         const belowFloorApps = result.belowFloor.map((entry) => entry.app).sort();
         assert.deepEqual(belowFloorApps, ['dgfy-api', 'dgfy-ims', 'dgfy-storefront']);
@@ -540,10 +614,10 @@ test('--floor: only apps with real changed files are evaluated; the rest land in
 });
 
 // The #1740 regression itself: a candidate where exactly one app (dgfy-storefront) has a
-// real code change and the other five have none. Before the fix, all six were flagged
+// real code change and the other six have none. Before the fix, all seven were flagged
 // below floor regardless; after the fix, only dgfy-storefront is evaluated, and the other
 // five are reported as unchanged with no floor obligation.
-test('--floor (#1740 regression): a single-app change bumps only that app, not all six', async () => {
+test('--floor (#1740 regression): a single-app change bumps only that app, not all seven', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: {
             'dgfy-api': '1.2.0',
@@ -570,7 +644,7 @@ test('--floor (#1740 regression): a single-app change bumps only that app, not a
         assert.equal(result.invalid.length, 0);
         assert.deepEqual(
             result.unchanged.slice().sort(),
-            ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos'],
+            ['dgfy-admin', 'dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos'],
         );
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
@@ -598,7 +672,7 @@ test('--floor: a packages/web-core change fans out to ims/pos/storefront/opis on
         assert.equal(result.diffError, null);
 
         const inScope = result.results.map((entry) => entry.app).sort();
-        assert.deepEqual(inScope, ['dgfy-ims', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
+        assert.deepEqual(inScope, ['dgfy-admin', 'dgfy-ims', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
         for (const entry of result.results) {
             assert.equal(entry.reason, 'fan-out:packages/web-core');
             assert.equal(entry.belowFloor, true);
@@ -610,10 +684,10 @@ test('--floor: a packages/web-core change fans out to ims/pos/storefront/opis on
     }
 });
 
-// A packages/shared-constants change fans out to all six apps (mirrors the equivalent
+// A packages/shared-constants change fans out to all seven apps (mirrors the equivalent
 // runCheck() test above) -- confirms runFloor() reaches the same fan-out breadth, not a
 // narrower one.
-test('--floor: a packages/shared-constants change fans out to all six apps', async () => {
+test('--floor: a packages/shared-constants change fans out to all seven apps', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: {
             'packages/shared-constants/index.js': 'module.exports = { changed: true };\n',
@@ -624,7 +698,7 @@ test('--floor: a packages/shared-constants change fans out to all six apps', asy
         assert.equal(result.diffError, null);
 
         const inScope = result.results.map((entry) => entry.app).sort();
-        assert.deepEqual(inScope, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
+        assert.deepEqual(inScope, ['dgfy-admin', 'dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
         assert.deepEqual(result.unchanged, []);
         for (const entry of result.results) {
             assert.equal(entry.reason, 'fan-out:packages/shared-constants');
@@ -1047,7 +1121,7 @@ test("runCheck(): return shape is unchanged once resolved (now genuinely async),
         assert.equal(typeof resultPromise.then, 'function'); // genuinely async now, not a plain object
         const result = await resultPromise;
         assert.equal(result.ok, true);
-        assert.equal(result.appResults.length, 6);
+        assert.equal(result.appResults.length, 7);
         assert.equal(result.repoRoot, root);
         assert.deepEqual(result.changedFiles, ['packages/shared-constants/index.js']);
 

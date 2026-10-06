@@ -524,6 +524,47 @@ finds something outstanding here, **stop rather than dispatching the sweep** —
 preflight — pinned target-ref scan" section's own `origin/staging` case above for why, and
 `../SKILL.md`'s "Compliance preflight sweep" section for what to do instead.
 
+## Explicit refresh after a delayed staging merge (#2266, Phase 474)
+
+This is an operator-requested exception to #1660; it is never automatic. Verify the candidate's
+release has not merged to `main`, record the explicit request/reason, and keep the original candidate
+ID. Reconcile each staging repair and release-only repair into `develop` through reviewed PRs, or
+prove exact equivalent content is already present. Early backport of release-only repairs is
+permitted only for this refresh and must be documented; stop on unresolved differences.
+
+Before cutting a refresh branch, copy the active release selection into v4 `release_history`,
+including its complete per-app map, release PR, and release-only repair lineage. Close the old
+unmerged release PR and retire its branch. Preserve the existing note and published mirror identity;
+extend cumulative included scope and candidate history, retaining `promotion_base_sha`. Pin the
+reconciled develop SHA after compliance reconciliation. Run:
+
+```sh
+node scripts/check-promotion-divergence.js --base origin/staging --head <pinned-develop-sha>
+node scripts/check-app-version-bump.js --floor --candidate-id <candidate_id> --base origin/staging --head <pinned-develop-sha>
+```
+
+The version gate reads the same candidate note at STAGING and develop, verifies the baseline SHA,
+and checks both the original minor-floor obligation and non-regression from current staging. A
+refresh branch suffix alone has no effect. Cut `to-staging/<candidate_id>-refresh-<seq>` from the
+pinned SHA and merge under ordinary review controls. Record its incoming develop SHA, actual staging
+result SHA, physical base SHA, parent candidate SHA, PR, reason, and `apps_touched` in the candidate
+manifest. The refresh sequence is independent of staging repair sequences and artifact `rN` values.
+
+Set `refresh_in_progress` with no active release selection before the refresh begins. Build changed
+apps with fresh per-app immutable STAGING revisions; preserve valid untouched artifacts and include
+the complete selected/carry-forward set. The refreshed artifact origin is `staging_refresh` and
+parity requires the ordinary STAGING predecessor. Once merge and builds succeed, clear the active
+refresh marker, set status to `staging_soak`, and repeat observation and required qualification at
+the actual staging SHA. Cut a new `release/<candidate_id>` only after that qualification passes.
+Archived observation, parity, or optional quality-suite evidence cannot qualify the refreshed SHA.
+A failed refresh remains unqualified and cannot silently restore the archived selection. If the
+release already merged to `main`, reject refresh and use the post-release procedure.
+
+Legacy v1-v3 candidates need a reviewed, evidence-backed `promotion_base_sha` note amendment and
+backport before conversion to v4. Missing evidence is a hard stop. The production tenant-schema
+report, compliance preflight, merge safety, no-squash, immutable-tag checks, and explicit production
+authorization stay mandatory.
+
 ## Candidate repair after the staging merge
 
 After the `to-staging/<candidate_id>` PR merges, treat the candidate as frozen. Do not cut a new

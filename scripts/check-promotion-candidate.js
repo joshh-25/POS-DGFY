@@ -12,13 +12,14 @@ const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 // Manifest schemas: v1 is the Phase 342 candidate-wide shape (frozen legacy -- still accepted
 // so in-flight/older manifests validate, but never written anymore); v2 is the #2055
 // per-app shape; v3 adds versionless DEV lineage and release-only repairs additively.
-const CANDIDATE_SCHEMAS = Object.freeze(['sku-release-candidate/v1', 'sku-release-candidate/v2', 'sku-release-candidate/v3']);
-const RELEASE_ORIGINS = Object.freeze(['dev', 'promotion', 'staging_repair', 'release_repair']);
+const CANDIDATE_SCHEMAS = Object.freeze(['sku-release-candidate/v1', 'sku-release-candidate/v2', 'sku-release-candidate/v3', 'sku-release-candidate/v4']);
+const RELEASE_ORIGINS = Object.freeze(['dev', 'promotion', 'staging_repair', 'staging_refresh', 'release_repair']);
 const STATUS_VALUES = new Set([
   'created',
   'staging_soak',
   'repair_needed',
   'repair_in_progress',
+  'refresh_in_progress',
   'qualified',
   'promoted_main',
   'production_verified',
@@ -188,6 +189,9 @@ function validatePromotionCandidate(manifest) {
   }
   if (manifest.schema === 'sku-release-candidate/v3') {
     return validatePromotionCandidateV3(manifest);
+  }
+  if (manifest.schema === 'sku-release-candidate/v4') {
+    return validatePromotionCandidateV4(manifest);
   }
   return validatePromotionCandidateV1(manifest);
 }
@@ -420,7 +424,157 @@ function validatePromotionCandidateV3(manifest) {
   return result;
 }
 
+// v4 adds explicit, append-only refresh history while preserving the v3 initial and
+// staging-repair contract. A refresh is an operator-authorized replacement of the
+// active staging selection, so it clears release_revision until qualification is repeated.
+function validatePromotionCandidateV4(manifest) {
+  assert(manifest.schema === 'sku-release-candidate/v4', 'Candidate manifest schema must be sku-release-candidate/v4', 'INVALID_SCHEMA');
+  assertSha(manifest.promotion_base_sha, 'promotion_base_sha');
+  if (manifest.status === 'refresh_in_progress') {
+    assert(manifest.release_revision === null, 'A candidate in refresh_in_progress cannot retain an active release selection', 'REFRESH_HAS_ACTIVE_RELEASE');
+    assert(manifest.refresh_in_progress && typeof manifest.refresh_in_progress === 'object', 'refresh_in_progress details are required while refresh is active', 'MISSING_REFRESH_CONTEXT');
+    assert(Number.isInteger(manifest.refresh_in_progress.refresh_seq) && manifest.refresh_in_progress.refresh_seq > 0, 'refresh_in_progress.refresh_seq must be a positive integer', 'INVALID_REFRESH_SEQ');
+    assert(typeof manifest.refresh_in_progress.reason === 'string' && manifest.refresh_in_progress.reason.trim(), 'refresh_in_progress.reason must be non-empty', 'MISSING_REFRESH_REASON');
+    assert(!(Array.isArray(manifest.release_history) && manifest.release_history.some((entry) => entry?.main_merge_sha)), 'A candidate whose release has merged to main cannot be refreshed', 'REFRESH_AFTER_MAIN_MERGE');
+  } else {
+    assert(!Object.hasOwn(manifest, 'refresh_in_progress') || manifest.refresh_in_progress == null, 'refresh_in_progress must be cleared after a refresh is merged or abandoned', 'STALE_REFRESH_CONTEXT');
+  }
+  const baseManifest = {
+    ...manifest,
+    schema: 'sku-release-candidate/v3',
+    status: 'staging_soak',
+    current_staging_sha: manifest.revisions?.[0]?.sha,
+    revisions: manifest.revisions?.slice(0, 1),
+    staging_refresh: undefined,
+    release_revision: null,
+    refresh_in_progress: undefined,
+  };
+  const result = validatePromotionCandidateV3(baseManifest);
+  const refreshes = manifest.staging_refresh || [];
+  assert(Array.isArray(refreshes), 'staging_refresh must be an array when present', 'INVALID_STAGING_REFRESHES');
+  if (manifest.release_revision === null && manifest.status !== 'refresh_in_progress') {
+    assert(['created', 'staging_soak', 'repair_needed', 'repair_in_progress'].includes(manifest.status), 'A v4 candidate without an active release selection must still be in staging qualification', 'INVALID_RELEASE_STATUS');
+  }
+  const seenShas = new Set(manifest.revisions.map((revision) => revision.sha));
+  let previousSha = manifest.revisions[0].sha;
+  let repairSeq = 0;
+  const allOps = [
+    ...manifest.revisions.slice(1).map((entry) => ({ type: 'repair', entry })),
+    ...refreshes.map((entry) => ({ type: 'refresh', entry })),
+  ];
+  // The records may be stored in separate arrays because their ordinals are independent;
+  // parent_sha provides the single chronological chain and is the source of truth.
+  const ordered = [];
+  while (ordered.length < allOps.length) {
+    const next = allOps.find(({ entry }) => entry.parent_sha === previousSha && !ordered.includes(entry));
+    assert(next, 'Staging repair/refresh history must form one complete parent-linked chain', 'BROKEN_STAGING_HISTORY');
+    ordered.push(next.entry);
+    previousSha = next.entry.sha;
+  }
+  for (const revision of manifest.revisions.slice(1)) {
+    repairSeq += 1;
+    assert(revision && revision.kind === 'staging_repair', `Staging repair ${repairSeq} must be kind=staging_repair`, 'INVALID_REVISION_KIND');
+    assertSha(revision.sha, `staging repair ${repairSeq} sha`);
+    assertSha(revision.parent_sha, `staging repair ${repairSeq} parent_sha`);
+    assert(revision.repair_seq === repairSeq, `Repair sequences must be sequential; expected ${repairSeq}`, 'INVALID_REPAIR_SEQ');
+    assert(!('revision' in revision) || revision.revision === undefined, `Staging repair ${repairSeq} must not carry a candidate-wide revision field`, 'FORBIDDEN_REPAIR_REVISION');
+    assertRepairSeqBranch(revision.branch, manifest.candidate_id, repairSeq);
+    assert(Number.isInteger(revision.pr) && revision.pr > 0, `Staging repair ${repairSeq} must identify its PR`, 'MISSING_REPAIR_PR');
+    assert(Number.isInteger(revision.issue) && revision.issue > 0, `Staging repair ${repairSeq} must identify its issue`, 'MISSING_REPAIR_ISSUE');
+    assertAppsTouched(revision.apps_touched, `staging repair ${repairSeq}`);
+  }
+  const uniqueTimelineShas = new Set([manifest.revisions[0].sha]);
+  for (const { entry } of allOps) {
+    assert(!uniqueTimelineShas.has(entry.sha), 'Staging repair/refresh history contains a duplicate revision SHA', 'DUPLICATE_REVISION_SHA');
+    uniqueTimelineShas.add(entry.sha);
+  }
+  const refreshApps = new Set();
+  const incomingSources = new Set([manifest.source_develop_sha]);
+  refreshes.forEach((entry, index) => {
+    const seq = index + 1;
+    assert(entry && typeof entry === 'object' && !Array.isArray(entry), `Staging refresh ${seq} must be an object`, 'INVALID_STAGING_REFRESH');
+    assert(entry.refresh_seq === seq, `Refresh sequences must be sequential; expected ${seq}`, 'INVALID_REFRESH_SEQ');
+    assertSha(entry.source_develop_sha, `staging refresh ${seq} source_develop_sha`);
+    assert(!incomingSources.has(entry.source_develop_sha), `Refresh ${seq} source_develop_sha must advance beyond earlier candidate sources`, 'NON_ADVANCING_REFRESH_SOURCE');
+    incomingSources.add(entry.source_develop_sha);
+    assertSha(entry.sha, `staging refresh ${seq} sha`);
+    assertSha(entry.parent_sha, `staging refresh ${seq} parent_sha`);
+    assertSha(entry.base_staging_sha, `staging refresh ${seq} base_staging_sha`);
+    assert(entry.sha !== entry.parent_sha && !seenShas.has(entry.sha), `Staging refresh ${seq} must advance to a unique SHA`, 'DUPLICATE_REVISION_SHA');
+    assert(entry.branch === `to-staging/${manifest.candidate_id}-refresh-${seq}`, `Refresh ${seq} must use to-staging/${manifest.candidate_id}-refresh-${seq}`, 'INVALID_REFRESH_BRANCH');
+    assert(Number.isInteger(entry.pr) && entry.pr > 0, `Refresh ${seq} must identify its PR`, 'MISSING_REFRESH_PR');
+    assert(typeof entry.reason === 'string' && entry.reason.trim(), `Refresh ${seq} reason must be non-empty`, 'MISSING_REFRESH_REASON');
+    assertAppsTouched(entry.apps_touched, `staging refresh ${seq}`);
+    for (const app of entry.apps_touched) refreshApps.add(app);
+    assert(Array.isArray(entry.artifacts) && entry.artifacts.length > 0, `Refresh ${seq} artifacts must be a non-empty array`, 'INVALID_REFRESH_ARTIFACTS');
+    const artifactApps = new Set();
+    for (const artifact of entry.artifacts) {
+      assertReleaseAppEntry(artifact.app, artifact, ['staging_refresh']);
+      assert(APPS.includes(artifact.app), `Refresh ${seq} artifact names an unrecognized app: ${artifact.app}`, 'INVALID_REFRESH_ARTIFACT_APP');
+      assert(!artifactApps.has(artifact.app), `Refresh ${seq} duplicates artifact app ${artifact.app}`, 'DUPLICATE_REFRESH_ARTIFACT_APP');
+      artifactApps.add(artifact.app);
+      assert(artifact.source_sha === entry.sha, `Refresh ${seq} artifact ${artifact.app} must use the refresh SHA`, 'REFRESH_ARTIFACT_SOURCE_MISMATCH');
+    }
+    for (const app of entry.apps_touched) assert(artifactApps.has(app), `Refresh ${seq} is missing artifact for touched app ${app}`, 'MISSING_REFRESH_ARTIFACT');
+    for (const app of artifactApps) assert(entry.apps_touched.includes(app), `Refresh ${seq} has an artifact for untouched app ${app}`, 'UNSELECTED_REFRESH_ARTIFACT');
+    seenShas.add(entry.sha);
+  });
+  assert(manifest.current_staging_sha === previousSha, 'current_staging_sha must equal the latest staging history SHA', 'CURRENT_STAGING_SHA_MISMATCH');
+  if (manifest.status === 'refresh_in_progress') {
+    assert(manifest.refresh_in_progress.refresh_seq === refreshes.length + 1, 'Active refresh sequence must immediately follow completed refreshes', 'INVALID_REFRESH_SEQ');
+    return { ...result, status: manifest.status, current_staging_sha: manifest.current_staging_sha, refresh_count: refreshes.length };
+  }
+  if (manifest.release_revision) {
+    const release = manifest.release_revision;
+    assert(['qualified', 'repair_needed', 'repair_in_progress', 'promoted_main', 'production_verified', 'blocked'].includes(manifest.status), 'A v4 candidate with a release selection must be qualified, repairing, promoted, verified, or blocked', 'INVALID_RELEASE_STATUS');
+    assertSha(release.source_staging_sha, 'release source_staging_sha');
+    assert(manifest.staging_head_sha === release.source_staging_sha, 'Release branch must use the current qualified staging head', 'RELEASE_SOURCE_MISMATCH');
+    assertReleaseCutBranch(release.branch, manifest.candidate_id);
+    assert(Number.isInteger(release.pr) && release.pr > 0, 'Release cut must identify its PR', 'MISSING_RELEASE_PR');
+    assertReleaseApps(release.apps, ['promotion', 'staging_repair', 'staging_refresh', 'release_repair']);
+    validateReleaseRepairs(release.repairs, manifest.candidate_id, release.source_staging_sha, new Set([...uniqueTimelineShas, release.source_staging_sha]));
+    const touched = new Set([...manifest.revisions.flatMap((revision) => revision.apps_touched || []), ...refreshes.flatMap((entry) => entry.apps_touched || []), ...(manifest.release_revision.repairs || []).flatMap((entry) => entry.apps_touched || [])]);
+    const apps = manifest.release_revision.apps || {};
+    for (const app of touched) assert(Object.hasOwn(apps, app), `v4 release map must include selected app ${app}`, 'MISSING_TOUCHED_RELEASE_APP');
+    assert(Object.hasOwn(apps, 'dgfy-api') === Object.hasOwn(apps, 'dgfy-migration-runner'), 'v4 release map must include the API and migration runner as a pair', 'ONE_SIDED_API_MIGRATION_RELEASE_PAIR');
+    for (const [app, entry] of Object.entries(apps)) {
+      assert(entry.source_sha === resolveCandidateSourceShaByApp(manifest)[app], `release_revision.apps["${app}"].source_sha must match active lineage`, 'RELEASE_APP_SOURCE_MISMATCH');
+      const refreshArtifact = [...refreshes].reverse().flatMap((refresh) => refresh.artifacts || []).find((artifact) => artifact.app === app && artifact.source_sha === entry.source_sha);
+      if (refreshArtifact) {
+        assert(entry.revision === refreshArtifact.revision && entry.digest === refreshArtifact.digest && entry.origin === 'staging_refresh', `release_revision.apps["${app}"] must preserve its latest staging-refresh artifact record`, 'REFRESH_RELEASE_ARTIFACT_MISMATCH');
+      }
+    }
+  }
+  if (Object.hasOwn(manifest, 'quality_check')) {
+    const quality = manifest.quality_check;
+    assert(quality && typeof quality === 'object' && !Array.isArray(quality), 'quality_check must be an object when present', 'INVALID_QUALITY_CHECK');
+    assertSha(quality.sha, 'quality_check.sha');
+    assert(Number.isInteger(quality.run_id) && quality.run_id > 0, 'quality_check.run_id must be a positive integer', 'INVALID_QUALITY_CHECK_RUN_ID');
+    assert(typeof quality.run_url === 'string' && /^https:\/\//.test(quality.run_url), 'quality_check.run_url must be an HTTPS URL', 'INVALID_QUALITY_CHECK_URL');
+    assert(typeof quality.dispatched_at === 'string' && !Number.isNaN(Date.parse(quality.dispatched_at)), 'quality_check.dispatched_at must be a date-time', 'INVALID_QUALITY_CHECK_TIME');
+    assert(['clean', 'had-advisory-failures'].includes(quality.result), 'quality_check.result must be clean or had-advisory-failures', 'INVALID_QUALITY_CHECK_RESULT');
+    result.quality_check_current = quality.sha === getActiveCandidateSha(manifest);
+  }
+  const history = manifest.release_history || [];
+  assert(Array.isArray(history), 'release_history must be an array when present', 'INVALID_RELEASE_HISTORY');
+  history.forEach((entry, index) => {
+    assert(entry && typeof entry === 'object' && entry.release_revision && typeof entry.release_revision === 'object', `release_history[${index}] must preserve a release_revision`, 'INVALID_RELEASE_HISTORY_ENTRY');
+    assert(typeof entry.superseded_at === 'string' && !Number.isNaN(Date.parse(entry.superseded_at)), `release_history[${index}].superseded_at must be a date-time`, 'INVALID_RELEASE_HISTORY_TIME');
+    assert(typeof entry.reason === 'string' && entry.reason.trim(), `release_history[${index}].reason must be non-empty`, 'MISSING_RELEASE_HISTORY_REASON');
+    assert(entry.main_merge_sha == null || SHA_PATTERN.test(entry.main_merge_sha), `release_history[${index}].main_merge_sha must be null or a valid SHA`, 'INVALID_RELEASE_HISTORY_MAIN_SHA');
+    const archived = entry.release_revision;
+    assertSha(archived.source_staging_sha, `release_history[${index}].release_revision.source_staging_sha`);
+    assertReleaseCutBranch(archived.branch, manifest.candidate_id);
+    assert(Number.isInteger(archived.pr) && archived.pr > 0, `release_history[${index}] must preserve the superseded release PR number`, 'MISSING_ARCHIVED_RELEASE_PR');
+    assertReleaseApps(archived.apps, ['promotion', 'staging_repair', 'staging_refresh', 'release_repair']);
+    validateReleaseRepairs(archived.repairs, manifest.candidate_id, archived.source_staging_sha, new Set([archived.source_staging_sha]));
+    if (manifest.release_revision) assert(manifest.release_revision.source_staging_sha !== archived.source_staging_sha, 'An archived release selection cannot be restored as the active selection; cut and qualify a fresh release', 'ARCHIVED_RELEASE_RESELECTED');
+  });
+  return { ...result, status: manifest.status, current_staging_sha: manifest.current_staging_sha, refresh_count: refreshes.length };
+}
+
 function getActiveCandidateSha(manifest) {
+  if (manifest?.status === 'refresh_in_progress') return null;
   return manifest.release_revision?.source_staging_sha ||
     manifest.staging_head_sha ||
     manifest.current_staging_sha ||
@@ -435,7 +589,7 @@ function getActiveCandidateSha(manifest) {
  * (candidate-wide legacy -- callers use the integer `release_revision` instead).
  */
 function getAppRevision(manifest, app) {
-  if (!manifest || !['sku-release-candidate/v2', 'sku-release-candidate/v3'].includes(manifest.schema)) return null;
+  if (!manifest || !['sku-release-candidate/v2', 'sku-release-candidate/v3', 'sku-release-candidate/v4'].includes(manifest.schema)) return null;
   const apps = manifest.release_revision && manifest.release_revision.apps;
   if (!apps || typeof apps !== 'object') return null;
   return Object.hasOwn(apps, app) ? apps[app] : null;
@@ -454,10 +608,21 @@ function getAppRevision(manifest, app) {
  */
 function resolveCandidateSourceShaByApp(manifest, apps = APPS) {
   const initialSha = manifest.revisions[0].sha;
+  const stagingTimeline = manifest.schema === 'sku-release-candidate/v4'
+    ? [...manifest.revisions.slice(1), ...(manifest.staging_refresh || [])]
+    : manifest.revisions.slice(1);
+  const orderedTimeline = [];
+  let parentSha = initialSha;
+  while (orderedTimeline.length < stagingTimeline.length) {
+    const next = stagingTimeline.find((entry) => entry.parent_sha === parentSha && !orderedTimeline.includes(entry));
+    if (!next) break;
+    orderedTimeline.push(next);
+    parentSha = next.sha;
+  }
   const byApp = {};
   for (const app of apps) {
     let sha = initialSha;
-    for (const revision of manifest.revisions.slice(1)) {
+    for (const revision of orderedTimeline) {
       if (Array.isArray(revision.apps_touched) && revision.apps_touched.includes(app)) {
         sha = revision.sha;
       }
@@ -533,6 +698,7 @@ module.exports = {
   validatePromotionCandidateV1,
   validatePromotionCandidateV2,
   validatePromotionCandidateV3,
+  validatePromotionCandidateV4,
   getActiveCandidateSha,
   getAppRevision,
   resolveCandidateSourceShaByApp,

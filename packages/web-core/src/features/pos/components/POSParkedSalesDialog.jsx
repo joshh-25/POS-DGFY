@@ -59,6 +59,8 @@ export default function POSParkedSalesDialog({
     const [error, setError] = useState('');
     const [actionError, setActionError] = useState('');
     const latestLoadRequestRef = useRef(0);
+    const loadInFlightRef = useRef(false);
+    const loadInFlightScopeRef = useRef('');
 
     const normalizedTerminalId = normalizeTerminalId(terminalId);
     const viewLines = Array.isArray(viewTarget?.snapshot?.lines) ? viewTarget.snapshot.lines : [];
@@ -67,15 +69,20 @@ export default function POSParkedSalesDialog({
         [rows]
     );
 
-    const loadParkedSales = useCallback(async () => {
-        const requestId = latestLoadRequestRef.current + 1;
-        latestLoadRequestRef.current = requestId;
+    const loadParkedSales = useCallback(async ({ background = false } = {}) => {
         if (!activeShiftId || !canView) {
             setRows([]);
             setError('');
+            setLoading(false);
             return;
         }
-        setLoading(true);
+        const loadScope = `${Number(activeShiftId)}:${selectedLocationId ? Number(selectedLocationId) : ''}`;
+        if (loadInFlightRef.current && loadInFlightScopeRef.current === loadScope) return;
+        loadInFlightRef.current = true;
+        loadInFlightScopeRef.current = loadScope;
+        const requestId = latestLoadRequestRef.current + 1;
+        latestLoadRequestRef.current = requestId;
+        if (!background) setLoading(true);
         setError('');
         try {
             const result = await fetchPosParkedSales({
@@ -86,12 +93,21 @@ export default function POSParkedSalesDialog({
             if (requestId !== latestLoadRequestRef.current) return;
             const nextRows = Array.isArray(result?.parked_sales) ? result.parked_sales : [];
             setRows(nextRows);
-            setCancelTarget((target) => target && nextRows.some((row) => Number(row?.pos_parked_sale_id) === Number(target?.pos_parked_sale_id)) ? target : null);
+            setCancelTarget((target) => {
+                if (!target) return target;
+                return nextRows.some((row) => Number(row?.pos_parked_sale_id) === Number(target?.pos_parked_sale_id))
+                    ? target
+                    : null;
+            });
         } catch (requestError) {
             if (requestId !== latestLoadRequestRef.current) return;
             setError(requestError?.response?.data?.message || requestError?.message || 'Unable to load parked sales.');
         } finally {
-            if (requestId === latestLoadRequestRef.current) setLoading(false);
+            if (requestId === latestLoadRequestRef.current && !background) setLoading(false);
+            if (loadInFlightScopeRef.current === loadScope) {
+                loadInFlightRef.current = false;
+                loadInFlightScopeRef.current = '';
+            }
         }
     }, [activeShiftId, canView, selectedLocationId]);
 
@@ -103,7 +119,10 @@ export default function POSParkedSalesDialog({
 
     useEffect(() => {
         if (!open || typeof window === 'undefined') return undefined;
-        const refreshVisibleParkedSales = () => loadParkedSales();
+        const refreshVisibleParkedSales = () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            void loadParkedSales({ background: true });
+        };
         const refreshTimer = window.setInterval(refreshVisibleParkedSales, 3000);
         window.addEventListener('focus', refreshVisibleParkedSales);
         return () => {
@@ -309,6 +328,7 @@ export default function POSParkedSalesDialog({
                                                     disabled={claimLoadingId !== null || cancelLoadingId !== null || !canTransact || status === 'cancel_pending' || !normalizedTerminalId}
                                                     className="rounded-lg border-rose-200 px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                     data-testid={`pos-parked-sale-cancel-${parkedSaleId}`}
+                                                    title={status === 'cancel_pending' ? 'Cancellation is awaiting Back Office approval.' : undefined}
                                                 >
                                                     {status === 'cancel_pending' ? null : <Ban className="mr-1.5 h-3.5 w-3.5" />}
                                                     {status === 'cancel_pending' ? 'Awaiting approval' : 'Cancel'}

@@ -26361,7 +26361,78 @@ dispatch, is recorded.
 
 Phase 474 only after Phase 473's acceptance gates complete and the ledger is rechecked.
 
-## Phase 474 - Server-authoritative commerce payment session cancellation (#2267)
+## Phase 474 - Explicit refresh of a delayed, unmerged staging candidate (#2266)
+
+### Initiative and release
+
+Frozen promotion-candidate lifecycle, current release.
+
+### Objective and scope
+
+Allow an explicitly requested refresh of an active staging candidate while production is deferred.
+Retain the candidate ID and original promotion baseline; reconcile staging and release-only repairs
+into develop, withdraw and archive any unmerged release selection, publish new immutable per-app
+artifact revisions, and repeat staging observation and qualification. A release merged to main is
+never refreshable. This phase supersedes #1660 only for an explicit pre-main refresh request and
+does not waive Phase 473's acceptance gates.
+
+### Status
+
+`in_progress` — initial v4 manifest validation, refresh floor context, candidate lineage checks,
+parity/evidence integration, operator procedure, release-note guidance, and focused regression
+coverage are implemented. The requested local validation has passed. Remaining acceptance breadth,
+PR review, and deployed qualification remain outstanding. Pat explicitly authorized Phase 474 to
+proceed independently of Phase 473; this does not complete or waive Phase 473.
+
+### Dependencies
+
+Issue #2266 and its ready planner handoff `.tmp/plan-2266.md` (planning head
+`7c3fdd014ed8b76ad47fc0fb26fa26c6228af7ee`); ADR 0039 amendment procedure; ADRs 0074, 0081, and
+0082; Phase 472 candidate release-repair lineage; Phase 473 remains independently open.
+
+### Acceptance and validation evidence
+
+- [ ] v4 retains v1-v3 compatibility, candidate ID and original source identity while validating
+      repeated refreshes interleaved with repairs, separate ordinals, unique SHAs, complete selected
+      app/carry-forward maps, independent backend revisions, and immutable artifact snapshots.
+- [ ] Refresh is rejected after main merge or while incomplete; old SHA-bound observation and
+      quality evidence cannot qualify it; failed refresh cannot restore archived qualification.
+- [ ] Refresh floors use a verified original baseline, preserve current staging floors, cover all
+      current APPS and fan-out, and reject malformed/missing/altered/unresolvable context.
+- [ ] Release-only repairs are reconciled before withdrawal; archived repairs remain history and do
+      not affect active source resolution. Release-note history and active manifest selection agree.
+- [ ] Parity, observation, optional quality reporting, and release evidence preserve refresh and
+      selected artifact lineage; all existing production controls remain in force.
+- [x] `npm run test:promotion-candidate` (47 tests), `npm run test:staging-observation` (4),
+      `npm run test:app-versions` (38), `npm run test:release-notes` (17),
+      `npm run test:artifact-revision` (18), targeted parity/evidence/build-skip suites (115),
+      `npm run check:adr -- --write-index`, `npm run lint:docs`, `npm run check:architecture`, and
+      `npm run check:compliance` pass. Local `node scripts/check-app-version-bump.js`, JavaScript
+      syntax checks, and `git diff --check` also pass. Remaining unimplemented breadth is listed in
+      the unchecked acceptance rows above and has not been inferred from these focused tests.
+- [ ] PR review is complete. No live refresh, staging promotion, production merge, deploy, or
+      deployed QA is part of this implementation phase.
+
+### Links
+
+- Issue: #2266; planner handoff: `.tmp/plan-2266.md` (planning head above).
+- ADRs: 0074, 0081, 0082; release policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+- Implementation: `scripts/check-promotion-candidate.js`,
+  `scripts/check-app-version-bump.js`, `scripts/check-image-version-parity.js`,
+  `scripts/check-staging-candidate-observation.js`, and `scripts/check-release-notes.js`.
+- Procedure: `.agents/skills/promoter/SKILL.md` and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+
+### Completion date
+
+Not complete; set only after acceptance gates pass. This implementation does not itself perform
+staging qualification or production deployment.
+
+### Next eligible phase
+
+Phase 475, subject to then-current ledger eligibility and a fresh ledger review.
+
+## Phase 475 - Server-authoritative commerce payment session cancellation (#2267)
 
 ### Initiative and release
 
@@ -26377,18 +26448,21 @@ out of scope.
 
 ### Status
 
-`in_progress` — implementation is underway; required checks and Hosted Checkout sandbox
-verification are outstanding.
+`in_progress` — implementation and local checks are complete; production tenant-schema reporting,
+controlled PayMongo production-flow verification, PR review, merge, and deployed QA remain
+outstanding.
 
-**Explicit sequencing override (2026-10-06):** Pat authorized Phase 474 to proceed independently
-of Phase 473's incomplete acceptance gates. Phase 473 remains `in_progress`; this authorization
-does not mark it complete or waive its acceptance criteria.
+**Explicit sequencing override (2026-10-06; originally numbered Phase 474):** Pat authorized this
+work to proceed independently of Phase 473's incomplete acceptance gates. The work is numbered
+Phase 475 after Phase 474 (#2266) was added to the authoritative ledger. Phase 473 remains
+`in_progress`; this authorization does not mark it complete or waive its acceptance criteria.
 
 ### Dependencies
 
 Issue #2267; ADR 0052's paid-session and refund boundaries; Pat's explicit 2026-10-06 authorization
-to proceed independently of Phase 473. No tenant-schema registration or capability-version change
-is required because the affected session table is landlord-only.
+to proceed independently of Phase 473; Phase 474 (#2266) is a distinct in-progress ledger entry.
+The affected session table is landlord-only and requires no tenant-schema registration or
+capability-version change.
 
 ### Acceptance and validation evidence
 
@@ -26398,12 +26472,15 @@ is required because the affected session table is landlord-only.
       already-paid/order-finalized state, and writes an audit row on confirmed cancellation.
 - [x] The provider HTTP call occurs outside transactions, and the locked re-read preserves a
       concurrent `payment.paid` result.
-- [x] Focused cancellation/provider tests (17 passed; 30 passed across four focused suites), changed-file syntax checks, compliance,
-      architecture/ADR, documentation, and develop-base app-version checks pass.
+- [x] Focused cancellation/provider tests (17 passed; 30 passed across four focused suites),
+      changed-file syntax checks, compliance, architecture/ADR, documentation, and develop-base
+      app-version checks pass.
 - [ ] `npm run check:tenant-schema` completes its report successfully before the migration deploys;
       the local attempt exited before report output in this session.
-- [ ] PayMongo sandbox proves that Hosted Checkout created under `/v2` can be expired using the
-      selected endpoint and that its checkout URL no longer accepts payment.
+- [ ] Controlled production verification uses deliberately created test sessions to confirm (a) a
+      Hosted Checkout session created under `/v2` expires and its URL no longer accepts payment,
+      (b) a QR Ph Payment Intent is cancelled, and (c) an already-paid session returns
+      `not_cancellable` without refunding or charging again.
 - [ ] PR review is complete; this phase does not merge, deploy, or claim deployed verification.
 
 ### Links
@@ -26424,5 +26501,5 @@ Not complete; set only after all acceptance gates above pass.
 
 ### Next eligible phase
 
-Phase 475 only after Phase 474's acceptance gates pass and then-current ledger eligibility is
+Phase 476 only after Phase 475's acceptance gates pass and then-current ledger eligibility is
 reconciled.
