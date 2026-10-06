@@ -26404,7 +26404,7 @@ Issue #2266 and its ready planner handoff `.tmp/plan-2266.md` (planning head
 - [ ] Parity, observation, optional quality reporting, and release evidence preserve refresh and
       selected artifact lineage; all existing production controls remain in force.
 - [x] `npm run test:promotion-candidate` (47 tests), `npm run test:staging-observation` (4),
-      `npm run test:app-versions` (37), `npm run test:release-notes` (17),
+      `npm run test:app-versions` (38), `npm run test:release-notes` (17),
       `npm run test:artifact-revision` (18), targeted parity/evidence/build-skip suites (115),
       `npm run check:adr -- --write-index`, `npm run lint:docs`, `npm run check:architecture`, and
       `npm run check:compliance` pass. Local `node scripts/check-app-version-bump.js`, JavaScript
