@@ -75,7 +75,7 @@ export const buildBusinessAdminSettingsEditorUser = ({
 export const getVisibleBusinessAdminSettingsSections = (rawCapabilities) => {
     const capabilities = normalizeBusinessAdminSettingsCapabilities(rawCapabilities);
     return BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.filter((definition) => (
-        capabilities[definition.key]?.view === true
+        definition.hidden !== true && capabilities[definition.key]?.view === true
     ));
 };
 
@@ -88,7 +88,9 @@ export const canAccessBusinessAdminSettingsSection = (rawCapabilities, key, acti
 export const resolveBusinessAdminSettingsSectionKey = (requestedKey, rawCapabilities) => {
     const requested = normalizeKey(requestedKey);
     const visible = getVisibleBusinessAdminSettingsSections(rawCapabilities);
-    if (requested && visible.some((definition) => definition.key === requested)) return requested;
+    const requestedDefinition = getBusinessAdminSettingsSectionDefinition(requested);
+    const canonicalRequested = normalizeKey(requestedDefinition?.redirectTo || requested);
+    if (canonicalRequested && visible.some((definition) => definition.key === canonicalRequested)) return canonicalRequested;
     return visible[0]?.key || '';
 };
 
@@ -111,9 +113,13 @@ export const parseBusinessAdminPath = (pathname, rootPath = '/business-admin') =
     const locationView = activeSection === 'locations'
         ? (legacyLocationView || (segments[1] === 'registers' ? 'registers' : 'branches'))
         : '';
+    const requestedSettingsSection = activeSection === 'settings' ? (segments[1] || 'profile') : '';
+    const requestedSettingsDefinition = getBusinessAdminSettingsSectionDefinition(requestedSettingsSection);
     return {
         activeSection,
-        settingsSection: activeSection === 'settings' ? (segments[1] || 'profile') : '',
+        settingsSection: activeSection === 'settings'
+            ? (requestedSettingsDefinition?.redirectTo || requestedSettingsSection)
+            : '',
         locationView,
         legacyActivity,
         segments
@@ -123,7 +129,8 @@ export const parseBusinessAdminPath = (pathname, rootPath = '/business-admin') =
 export const buildBusinessAdminSettingsPath = (rootPath, sectionKey = 'profile') => {
     const rawRoot = rootPath === '/' ? '' : String(rootPath || '/business-admin').replace(/\/+$/, '');
     const root = rawRoot || (rootPath === '/' ? '' : '/business-admin');
-    const key = getBusinessAdminSettingsSectionDefinition(sectionKey)?.key || 'profile';
+    const definition = getBusinessAdminSettingsSectionDefinition(sectionKey);
+    const key = definition?.redirectTo || definition?.key || 'profile';
     return root ? `${root}/settings/${key}` : `/settings/${key}`;
 };
 

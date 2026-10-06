@@ -47,6 +47,10 @@ describe('Business Admin settings navigation model', () => {
             registers: 'branch'
         });
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'pos').description).toContain('discount rules');
+        expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'processing_fees')).toMatchObject({
+            hidden: true,
+            redirectTo: 'pos'
+        });
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'registers').description).toContain('Device enrollment remains POS-owned');
     });
 
@@ -74,7 +78,7 @@ describe('Business Admin settings navigation model', () => {
 
     it('keeps server-projected view/edit capabilities separate', () => {
         expect(getVisibleBusinessAdminSettingsSections(capabilities).map((section) => section.key)).toEqual([
-            'profile', 'pos', 'taxes', 'discounts', 'delivery', 'branches', 'team', 'payments', 'processing_fees'
+            'profile', 'pos', 'taxes', 'discounts', 'delivery', 'branches', 'team', 'payments'
         ]);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'pos', 'view')).toBe(true);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'pos', 'edit')).toBe(false);
@@ -82,6 +86,14 @@ describe('Business Admin settings navigation model', () => {
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'discounts', 'edit')).toBe(true);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'storefront', 'view')).toBe(false);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'delivery', 'view')).toBe(true);
+    });
+
+    it('routes the legacy processing-fee settings path into POS configuration', () => {
+        expect(parseBusinessAdminPath('/backoffice/settings/processing_fees', '/backoffice')).toMatchObject({
+            activeSection: 'settings',
+            settingsSection: 'pos'
+        });
+        expect(buildBusinessAdminSettingsPath('/backoffice', 'processing_fees')).toBe('/backoffice/settings/pos');
     });
 
     it('normalizes branch context to the authenticated visible scope', () => {

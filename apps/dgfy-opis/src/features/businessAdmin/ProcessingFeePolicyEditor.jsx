@@ -10,6 +10,8 @@ const PAYMENT_METHODS = Object.freeze([
     { key: 'other', label: 'Other' }
 ]);
 
+const NOOP = () => {};
+
 const EMPTY_POLICY = Object.freeze({
     card: { rate_bps: 0, fixed_centavos: 0 },
     ewallet: { rate_bps: 0, fixed_centavos: 0 },
@@ -45,6 +47,17 @@ const asObject = (value) => {
     return {};
 };
 
+const normalizeFallbackPolicy = (value) => {
+    const source = asObject(value);
+    return Object.fromEntries(PAYMENT_METHODS.map(({ key }) => {
+        const entry = asObject(source[key]);
+        return [key, {
+            rate_bps: Math.max(0, Math.min(10_000, Math.round(Number(entry.rate_bps || 0)))),
+            fixed_centavos: Math.max(0, Math.round(Number(entry.fixed_centavos || 0)))
+        }];
+    }));
+};
+
 const localDateTimeValue = (value) => {
     const parsed = value ? new Date(value) : new Date(Date.now() + 60_000);
     if (Number.isNaN(parsed.getTime())) return '';
@@ -61,20 +74,16 @@ const nextEffectiveDate = (policy) => {
 };
 
 const buildForm = (policy) => {
-    const source = asObject(policy?.fallback_fee_policy);
     const customerSource = asObject(policy?.customer_processing_fee_policy);
     const customerPolicyValue = policy?.customer_processing_fee_policy;
     const customerEnabled = customerPolicyValue !== null
         && customerPolicyValue !== undefined
         && Object.keys(customerSource).length > 0;
     return {
-        ...Object.fromEntries(PAYMENT_METHODS.map(({ key }) => {
-            const entry = source[key] || EMPTY_POLICY[key];
-            return [key, {
-                rate: Number(entry.rate_bps || 0) / 100,
-                fixed: Number(entry.fixed_centavos || 0) / 100
-            }];
-        })),
+        // The owner editor does not expose provider fee fields, but it must carry the
+        // current values forward because the versioned API intentionally stores both
+        // policies in one immutable record.
+        fallback_fee_policy: normalizeFallbackPolicy(policy?.fallback_fee_policy || EMPTY_POLICY),
         customer_enabled: customerEnabled,
         customer_mode: customerSource.mode === 'percentage' ? 'percentage' : 'fixed',
         customer_rate: Number(customerSource.rate_bps || 0) / 100,
@@ -102,10 +111,7 @@ const parseCentavos = (value) => {
 };
 
 const buildPayload = (form, expectedPolicyVersion) => {
-    const fallback = Object.fromEntries(PAYMENT_METHODS.map(({ key }) => [key, {
-        rate_bps: parseRateBps(form[key].rate),
-        fixed_centavos: parseCentavos(form[key].fixed)
-    }]));
+    const fallback = normalizeFallbackPolicy(form?.fallback_fee_policy || EMPTY_POLICY);
     const effectiveAt = new Date(form.effective_at);
     if (Number.isNaN(effectiveAt.getTime())) throw new Error('Effective date is invalid.');
     const reason = String(form.reason || '').trim();
@@ -130,12 +136,6 @@ const buildPayload = (form, expectedPolicyVersion) => {
     };
 };
 
-const fallbackSummary = (policy) => PAYMENT_METHODS.map(({ key, label }) => {
-    const entry = asObject(policy?.fallback_fee_policy)[key];
-    if (!entry) return `${label}: not configured`;
-    return `${label}: ${(Number(entry.rate_bps || 0) / 100).toFixed(2)}% + ${money(entry.fixed_centavos || 0)}`;
-}).join(' · ');
-
 const customerSummary = (policy) => {
     const customerPolicy = asObject(policy?.customer_processing_fee_policy);
     if (!Object.keys(customerPolicy).length) return 'Item processing fee: disabled';
@@ -147,8 +147,8 @@ const customerSummary = (policy) => {
 
 export default function ProcessingFeePolicyEditor({
     canEdit = false,
-    onDirtyChange = () => {},
-    onSettingsSaved = () => {}
+    onDirtyChange = NOOP,
+    onSettingsSaved = NOOP
 }) {
     const [policies, setPolicies] = useState([]);
     const [form, setForm] = useState(() => buildForm(null));
@@ -180,15 +180,6 @@ export default function ProcessingFeePolicyEditor({
         void loadPolicies();
     }, [loadPolicies]);
 
-    const updateMethod = (method, field, value) => {
-        setForm((current) => ({
-            ...current,
-            [method]: { ...current[method], [field]: value }
-        }));
-        setNotice('');
-        onDirtyChange(true);
-    };
-
     const updateFormField = (field, value) => {
         setForm((current) => ({ ...current, [field]: value }));
         setNotice('');
@@ -209,7 +200,7 @@ export default function ProcessingFeePolicyEditor({
                 : policies;
             setPolicies(nextPolicies);
             setForm(buildForm(saved || nextPolicies[0] || null));
-            setNotice(`Item processing fee policy v${saved?.version || policyVersion + 1} saved.`);
+            setNotice(`Item preparation fee policy v${saved?.version || policyVersion + 1} saved.`);
             onDirtyChange(false);
             onSettingsSaved({ policyVersion: saved?.version || policyVersion + 1 });
         } catch (saveError) {
@@ -225,9 +216,9 @@ export default function ProcessingFeePolicyEditor({
         <div className="business-admin-processing-fee-editor" data-testid="business-admin-processing-fee-editor">
             <div className="business-admin-processing-fee-intro">
                 <div>
-                    <div className="business-admin-card-title">Payment provider fallback fees and item processing fee</div>
+                    <div className="business-admin-card-title">Item preparation fee</div>
                     <p className="business-admin-card-subtitle">
-                        Set an exact fallback estimate by payment method. Provider or reconciled statement data always wins over this estimate.
+                        Configure the fee for preparing ordered items. This policy is independent of the customer&apos;s payment method.
                     </p>
                 </div>
                 <div className="business-admin-processing-fee-version">
@@ -239,13 +230,13 @@ export default function ProcessingFeePolicyEditor({
             <div className="business-admin-alert info" role="note">
                 <Info size={17} />
                 <div>
-                    <strong>Fallbacks are estimates, not provider evidence.</strong>
-                    <span>Payments using a fallback remain on hold until actual PayMongo or statement/API data reconciles them.</span>
+                    <strong>This is not a payment-processing fee.</strong>
+                    <span>The fee is calculated from the discounted item subtotal and is added before delivery fees. Payment-provider fees are managed separately.</span>
                 </div>
             </div>
 
             <fieldset className="business-admin-processing-fee-customer" disabled={!canEdit || loading}>
-                <legend>Item processing fee</legend>
+                <legend>Preparation fee policy</legend>
                 <p className="business-admin-card-subtitle">
                     This fee covers processing the ordered items. It is calculated from the discounted item subtotal, is independent of the payment method, and is added before delivery fees.
                 </p>
@@ -258,7 +249,7 @@ export default function ProcessingFeePolicyEditor({
                     <span>Enable item processing fee</span>
                 </label>
                 {form.customer_enabled ? (
-                    <div className="business-admin-processing-fee-form-row">
+                    <div className="business-admin-processing-fee-form-row business-admin-processing-fee-customer-grid">
                         <label className="business-admin-field">
                             <span>Fee type</span>
                             <select
@@ -267,7 +258,7 @@ export default function ProcessingFeePolicyEditor({
                                 aria-label="Item processing fee type"
                             >
                                 <option value="fixed">Fixed amount</option>
-                                <option value="percentage">Percentage of discounted items</option>
+                                <option value="percentage">Percentage</option>
                             </select>
                         </label>
                         {form.customer_mode === 'percentage' ? (
@@ -313,7 +304,7 @@ export default function ProcessingFeePolicyEditor({
             {!canEdit ? (
                 <div className="business-admin-alert warning" role="status">
                     <Lock size={17} />
-                    <div><strong>View-only policy access.</strong><span>Only the tenant Owner or an explicitly authorized fee-policy editor can change fallback values.</span></div>
+                    <div><strong>View-only policy access.</strong><span>Only the tenant Owner or an explicitly authorized fee-policy editor can change the preparation fee.</span></div>
                 </div>
             ) : null}
 
@@ -321,37 +312,6 @@ export default function ProcessingFeePolicyEditor({
             {notice ? <div className="business-admin-alert success" role="status"><ShieldCheck size={17} /><span>{notice}</span></div> : null}
 
             <form onSubmit={handleSubmit} className="business-admin-processing-fee-form">
-                <div className="business-admin-processing-fee-method-grid">
-                    {PAYMENT_METHODS.map(({ key, label }) => (
-                        <fieldset className="business-admin-processing-fee-method" key={key} disabled={!canEdit || loading}>
-                            <legend>{label}</legend>
-                            <label>
-                                <span>Rate (%)</span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    step="0.01"
-                                    value={form[key].rate}
-                                    onChange={(event) => updateMethod(key, 'rate', event.target.value)}
-                                    aria-label={`${label} fallback rate`}
-                                />
-                            </label>
-                            <label>
-                                <span>Fixed amount (PHP)</span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={form[key].fixed}
-                                    onChange={(event) => updateMethod(key, 'fixed', event.target.value)}
-                                    aria-label={`${label} fallback fixed amount`}
-                                />
-                            </label>
-                        </fieldset>
-                    ))}
-                </div>
-
                 <div className="business-admin-processing-fee-form-row">
                     <label className="business-admin-field">
                         <span>Effective date and time</span>
@@ -372,43 +332,42 @@ export default function ProcessingFeePolicyEditor({
                             disabled={!canEdit || loading}
                             minLength={3}
                             maxLength={500}
-                            placeholder="e.g. Updated provider contract estimate"
+                            placeholder="e.g. Updated item preparation policy"
                             required
                         />
                     </label>
                 </div>
 
                 <div className="business-admin-processing-fee-save-bar">
-                    <span>Platform settlement rate, payout destination, and payer allocation are not editable here.</span>
+                    <span>Payment-provider fallback values remain unchanged when you save this preparation-fee policy.</span>
                     <button type="submit" className="business-admin-button primary" disabled={!canSubmit}>
                         {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                        {saving ? 'Saving…' : 'Save fee policy'}
+                        {saving ? 'Saving…' : 'Save preparation fee'}
                     </button>
                 </div>
             </form>
 
-            <section className="business-admin-processing-fee-history" aria-label="Item processing fee policy history">
+            <section className="business-admin-processing-fee-history" aria-label="Item preparation fee policy history">
                 <div className="business-admin-card-header">
                     <div>
                         <div className="business-admin-card-title">Version history</div>
-                        <div className="business-admin-card-subtitle">Historical policies remain immutable and are selected by effective date.</div>
+                        <div className="business-admin-card-subtitle">Historical preparation-fee policies remain immutable and are selected by effective date.</div>
                     </div>
                     <button type="button" className="business-admin-button" onClick={() => void loadPolicies()} disabled={loading || saving}>
                         <RefreshCw size={14} /> Refresh
                     </button>
                 </div>
                 {loading ? <div className="business-admin-processing-fee-empty">Loading fee policy…</div> : null}
-                {!loading && !policies.length ? <div className="business-admin-processing-fee-empty">No tenant policy version exists yet. Saving creates version 1 with the platform fields kept on hold.</div> : null}
+                {!loading && !policies.length ? <div className="business-admin-processing-fee-empty">No preparation-fee policy version exists yet. Saving creates version 1.</div> : null}
                 {!loading && policies.length ? (
                     <div className="business-admin-table-wrap">
                         <table className="business-admin-table">
-                            <thead><tr><th>Version</th><th>Effective</th><th>Item processing fee</th><th>Fallback configuration</th><th>Reason</th><th>Created by</th></tr></thead>
+                            <thead><tr><th>Version</th><th>Effective</th><th>Item preparation fee</th><th>Reason</th><th>Created by</th></tr></thead>
                             <tbody>{policies.map((policy) => (
                                 <tr key={policy.policy_id || policy.version}>
                                     <td><strong>v{policy.version}</strong>{policy.version === policyVersion ? <span className="business-admin-status available ml-2">Current</span> : null}</td>
                                     <td>{dateTime(policy.effective_at)}</td>
                                     <td>{customerSummary(policy)}</td>
-                                    <td>{fallbackSummary(policy)}</td>
                                     <td>{policy.reason || '—'}</td>
                                     <td>{policy.created_by || '—'}</td>
                                 </tr>

@@ -2068,8 +2068,15 @@ function BusinessAdminSettingsEditor({
         sectionKey: definition?.key,
         rawCapabilities
     }), [bootstrap?.user, definition?.key, rawCapabilities]);
-    const allowedTabIds = BUSINESS_ADMIN_EDITOR_TABS[definition?.key] || [];
     const isMasterAdmin = bootstrap?.user?.is_master_admin === true;
+    const normalizedCapabilities = normalizeBusinessAdminSettingsCapabilities(rawCapabilities);
+    const processingFeeCapability = normalizedCapabilities.processing_fees || {};
+    const canViewProcessingFee = isMasterAdmin || processingFeeCapability.view === true;
+    const canEditProcessingFee = isMasterAdmin || processingFeeCapability.edit === true;
+    const baseAllowedTabIds = BUSINESS_ADMIN_EDITOR_TABS[definition?.key] || [];
+    const allowedTabIds = definition?.key === 'pos' && canViewProcessingFee
+        ? [...baseAllowedTabIds, 'processing_fees']
+        : baseAllowedTabIds;
     const canViewUsers = isMasterAdmin || sectionCapability?.user_view === true || sectionCapability?.user_edit === true;
     const canEditUsers = isMasterAdmin || sectionCapability?.user_edit === true;
     const hasEmployeeEditor = sectionCapability?.employee_edit === true
@@ -2089,7 +2096,7 @@ function BusinessAdminSettingsEditor({
     if (definition?.key === 'processing_fees') {
         return (
             <ProcessingFeePolicyEditor
-                canEdit={isMasterAdmin || sectionCapability?.edit === true}
+                canEdit={canEditProcessingFee}
                 onDirtyChange={onDirtyChange}
                 onSettingsSaved={notifySettingsSaved}
             />
@@ -2204,6 +2211,13 @@ function BusinessAdminSettingsEditor({
                 settingsRefreshKey={settingsRefreshKey}
                 onDirtyChange={onDirtyChange}
                 locationScopeId={definition?.key === 'branches' ? settingsBranchId : null}
+                processingFeePane={canViewProcessingFee ? (
+                    <ProcessingFeePolicyEditor
+                        canEdit={canEditProcessingFee}
+                        onDirtyChange={onDirtyChange}
+                        onSettingsSaved={notifySettingsSaved}
+                    />
+                ) : null}
             />
         </div>
     );
