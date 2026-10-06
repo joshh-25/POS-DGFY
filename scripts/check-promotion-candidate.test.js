@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { validatePromotionCandidate, validatePromotionCandidateV2, getAppRevision, resolveCandidateSourceShaByApp } = require('./check-promotion-candidate');
+const { validatePromotionCandidate, validatePromotionCandidateV2, getAppRevision, getActiveCandidateSha, resolveCandidateSourceShaByApp } = require('./check-promotion-candidate');
 
 const SHA = (digit) => String(digit).repeat(40);
 const DIGEST = (digit) => `sha256:${String(digit).repeat(64)}`;
@@ -229,6 +229,74 @@ test('v3: accepts frozen develop source without selecting or requiring DEV artif
   assert.equal(validatePromotionCandidate(manifest).source_develop_sha, SHA('a'));
   assert.deepEqual(manifest.revisions[0].apps_touched, ['dgfy-ims', 'dgfy-api', 'dgfy-migration-runner']);
   assert.equal(getAppRevision(manifest, 'dgfy-ims').origin, 'promotion');
+});
+
+test('v4: refresh history invalidates selection during refresh and resolves refreshed app lineage', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+    status: 'refresh_in_progress', release_revision: null,
+    refresh_in_progress: { refresh_seq: 2, reason: 'production is deferred' },
+    staging_refresh: [{
+      refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('d'), parent_sha: SHA('c'), base_staging_sha: SHA('9'),
+      branch: 'to-staging/2026-09-04-01-refresh-1', pr: 2027, reason: 'production is deferred',
+      apps_touched: ['dgfy-pos'],
+      artifacts: [{ app: 'dgfy-pos', revision: 2, source_sha: SHA('d'), digest: DIGEST('8'), origin: 'staging_refresh' }],
+    }],
+    current_staging_sha: SHA('d'),
+  });
+  assert.equal(validatePromotionCandidate(manifest).refresh_count, 1);
+  assert.equal(getActiveCandidateSha(manifest), null);
+  assert.equal(resolveCandidateSourceShaByApp(manifest)['dgfy-pos'], SHA('d'));
+  assert.equal(resolveCandidateSourceShaByApp(manifest)['dgfy-ims'], SHA('b'));
+});
+
+test('v4: rejects branch-name-only refresh bypass and duplicate refresh SHA', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'), status: 'staging_soak', release_revision: null,
+    staging_refresh: [{ refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('d'), parent_sha: SHA('c'), base_staging_sha: SHA('9'), branch: 'to-staging/2026-09-04-01-refresh-1', pr: 1, reason: 'refresh', apps_touched: ['dgfy-pos'], artifacts: [{ app: 'dgfy-pos', revision: 2, source_sha: SHA('d'), digest: DIGEST('8'), origin: 'staging_refresh' }] }],
+    current_staging_sha: SHA('d'),
+  });
+  assert.equal(validatePromotionCandidate(manifest).refresh_count, 1);
+  manifest.staging_refresh[0].branch = 'to-staging/2026-09-04-01';
+  assert.throws(() => validatePromotionCandidate(manifest), /must use to-staging\/2026-09-04-01-refresh-1/);
+  manifest.staging_refresh[0].branch = 'to-staging/2026-09-04-01-refresh-1';
+  manifest.staging_refresh[0].sha = SHA('b');
+  assert.throws(() => validatePromotionCandidate(manifest), /duplicate revision SHA/);
+});
+
+test('v4: resolves app provenance across repairs interleaved with refreshes', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'), status: 'staging_soak', release_revision: null,
+    revisions: [
+      { kind: 'initial', sha: SHA('a'), parent_sha: null, branch: 'to-staging/2026-09-04-01', pr: 2001, apps_touched: ['dgfy-pos'] },
+      { kind: 'staging_repair', repair_seq: 1, sha: SHA('b'), parent_sha: SHA('a'), branch: 'fix/staging/2026-09-04-01-1', pr: 2002, issue: 3002, apps_touched: ['dgfy-ims'] },
+      { kind: 'staging_repair', repair_seq: 2, sha: SHA('d'), parent_sha: SHA('c'), branch: 'fix/staging/2026-09-04-01-2', pr: 2004, issue: 3004, apps_touched: ['dgfy-pos'] },
+    ],
+    staging_refresh: [{ refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('c'), parent_sha: SHA('b'), base_staging_sha: SHA('9'), branch: 'to-staging/2026-09-04-01-refresh-1', pr: 2003, reason: 'refresh', apps_touched: ['dgfy-pos'], artifacts: [{ app: 'dgfy-pos', revision: 2, source_sha: SHA('c'), digest: DIGEST('8'), origin: 'staging_refresh' }] }],
+    current_staging_sha: SHA('d'),
+  });
+  assert.equal(validatePromotionCandidate(manifest).current_staging_sha, SHA('d'));
+  const sources = resolveCandidateSourceShaByApp(manifest);
+  assert.equal(sources['dgfy-ims'], SHA('b'));
+  assert.equal(sources['dgfy-pos'], SHA('d'));
+});
+
+test('v4: a release history record merged to main makes refresh invalid', () => {
+  const prior = candidateV3().release_revision;
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'), status: 'refresh_in_progress', release_revision: null,
+    refresh_in_progress: { refresh_seq: 1, reason: 'deferred production' },
+    release_history: [{ release_revision: prior, superseded_at: '2026-10-06T00:00:00Z', reason: 'refresh', main_merge_sha: SHA('f') }],
+  });
+  assert.throws(() => validatePromotionCandidate(manifest), (error) => error.code === 'REFRESH_AFTER_MAIN_MERGE');
+});
+
+test('v4: an archived release selection cannot be restored as active after refresh', () => {
+  const active = candidateV3();
+  active.schema = 'sku-release-candidate/v4';
+  active.promotion_base_sha = SHA('e');
+  active.release_history = [{ release_revision: structuredClone(active.release_revision), superseded_at: '2026-10-06T00:00:00Z', reason: 'refresh', main_merge_sha: null }];
+  assert.throws(() => validatePromotionCandidate(active), (error) => error.code === 'ARCHIVED_RELEASE_RESELECTED');
 });
 
 test('v3: accepts optional SHA-bound quality evidence and leaves it optional', () => {

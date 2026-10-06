@@ -55,6 +55,7 @@ const DEFAULT_VERSIONS = {
   'dgfy-pos': '1.1.2',
   'dgfy-storefront': '1.2.1',
   'dgfy-opis': '1.1.0',
+  'dgfy-admin': '1.0.0',
 };
 
 function appFixtures(versions = DEFAULT_VERSIONS) {
@@ -80,6 +81,7 @@ function releaseNote({
   versions = DEFAULT_VERSIONS,
   included = '- Storefront guest checkout no longer rejects a valid OTP after a page refresh. (#1614)',
   operationalNotes = 'None.',
+  promotionBaseSha = null,
   frontMatter = null,
 } = {}) {
   const fm = frontMatter !== null ? frontMatter : [
@@ -88,6 +90,7 @@ function releaseNote({
     `candidate_id: ${candidateId}`,
     `production_date: ${productionDate}`,
     `production_commit: ${productionCommit}`,
+    ...(promotionBaseSha ? [`promotion_base_sha: ${promotionBaseSha}`] : []),
     '---',
   ].join('\n');
 
@@ -101,6 +104,16 @@ function releaseNote({
     '## Included',
     '',
     included,
+    ...(promotionBaseSha ? [
+      '', '## Candidate history', '',
+      '| Refresh | Incoming develop SHA | Resulting staging SHA | Promotion PR | Superseded release PR |',
+      '|---|---|---|---|---|',
+      `| Initial | ${'a'.repeat(40)} | ${'b'.repeat(40)} | #1234 | — |`,
+      '', '## Production selection', '',
+      '| App | Floor | Artifact revision | Source SHA | Digest |',
+      '|---|---|---|---|---|',
+      ...Object.entries(versions).map(([app, version]) => `| ${app} | ${version} | r1 | ${'a'.repeat(40)} | sha256:${'c'.repeat(64)} |`),
+    ] : []),
     '',
     '## Operational notes',
     '',
@@ -252,6 +265,24 @@ test('invalid production_commit: neither 40-hex nor the literal "pending" fails'
     const result = runCheck({ repoRoot: root, headGitRef, headBranchName: HEAD_BRANCH });
     assert.equal(result.ok, false);
     assert.ok(result.findings.some((f) => f.code === 'INVALID_PRODUCTION_COMMIT'));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('optional promotion_base_sha accepts a git SHA and rejects malformed refresh context', () => {
+  const valid = releaseNote({ promotionBaseSha: 'a'.repeat(40) });
+  const { root, headGitRef } = setupScenario({ note: valid });
+  try {
+    assert.equal(runCheck({ repoRoot: root, headGitRef, headBranchName: HEAD_BRANCH }).ok, true);
+    const malformed = valid.replace(`promotion_base_sha: ${'a'.repeat(40)}`, 'promotion_base_sha: not-a-sha');
+    const bad = setupScenario({ note: malformed });
+    try {
+      const result = runCheck({ repoRoot: bad.root, headGitRef: bad.headGitRef, headBranchName: HEAD_BRANCH });
+      assert.ok(result.findings.some((finding) => finding.code === 'INVALID_PROMOTION_BASE_SHA'));
+    } finally {
+      cleanup(bad.root);
+    }
   } finally {
     cleanup(root);
   }
