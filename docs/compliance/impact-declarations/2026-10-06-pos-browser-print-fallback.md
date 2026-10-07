@@ -11,8 +11,8 @@ verification_evidence: focused POS printer/report tests,POS settings contract te
 rollback_note: Revert the browser printer fallback, report paper-width controls, preparation-fee settings-pane wiring, and this declaration; no database schema, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-06T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2289-POS-BROWSER-PRINT-FALLBACK
+preflight_run_at: 2026-10-07T15:54:06.384Z
+preflight_request_ref: PREFLIGHT-37646533737-2026-10-06-POS-BROWSER-PRINT-FALLBACK
 ---
 
 # POS browser printer fallback, report paper sizing, and settings-pane wiring
