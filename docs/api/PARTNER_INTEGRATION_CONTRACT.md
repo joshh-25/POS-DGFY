@@ -166,10 +166,16 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | POST, GET | `/location-intents[/:intentId]` | DGLaundry machine client | `requireDglaundryPartner` |
 | POST, GET | `/staff-invitation-intents[/:intentId]` | DGLaundry machine client | `requireDglaundryPartner` |
 | POST | `/mappings` | DGLaundry machine client | `requireDglaundryPartner` |
+| GET | `/health` | DGLaundry machine client | `requireDglaundryPartner` |
+| GET | `/capabilities` | DGLaundry machine client | `requireDglaundryPartner` |
+| GET | `/companies/{companyId}` | DGLaundry machine client | `requireDglaundryPartner` |
+| GET | `/orders/{externalOrderReference}` | DGLaundry machine client | `requireDglaundryPartner` |
+| POST | `/customer-activities` | DGLaundry machine client | `requireDglaundryPartner` |
 
-**Not implemented today, though probed by DGLaundry's joint qualification harness and declared in
-its own OpenAPI proposal:** `GET /health`, `GET /capabilities`, `GET /companies/{companyId}`,
-`GET /orders/{externalOrderReference}`, `POST /customer-activities`. Tracked — see "Known gaps."
+The order lookup accepts `company_id` / `location_id` or `companyId` / `locationId` query
+parameters first, with `X-DGFY-Company-Id` and `X-DGFY-Location-Id` headers as fallbacks. The joint
+harness currently uses camelCase query parameters while DGLaundry's proposal declares headers; both
+forms are supported pending alignment between the two repositories.
 
 ### Inbound event receiver and customer/storefront operations — absolute paths
 
@@ -257,7 +263,6 @@ configuration-only, and what does not exist, rather than implying full readiness
 |---|---|---|
 | Staging/production JWKS returns `503 oidc_keys_not_configured` — no key-file mount or env classification exists in `infrastructure/docker/` | ⚠️ config/infra, not code | filed under epic #517 |
 | Browser/machine/service client IDs never registered (`dglaundry-connection-manifest.json` ships blank) | ⚠️ config | filed under epic #517 |
-| `/api/v1/partners/dglaundry/{health,capabilities,companies/:id,orders/:ref,customer-activities}` absent | ❌ not built | filed under epic #517 |
 | Signed provider runtime attestation, signed event specimens, payment-lifecycle probe routes | ❌ not built | filed under epic #517 |
 | No `end_session_endpoint`, no userinfo, no introspection; access tokens are opaque; single-key JWKS (no overlap rotation); `/oidc/*` excluded from `generalLimiter` | ❌ not built | filed under epic #517 |
 | Customer-facing laundry ordering: `chooseCompany` 403s a non-staff account; no storefront UI calls these routes | ❌ not built, architecturally blocked | filed under epic #517, `area:storefront` |

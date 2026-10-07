@@ -2,6 +2,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 
 const LAUNDRY_ORIGIN = 'https://laundry.surebizcorp.com';
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
+const contractVersion = () => process.env.DGLAUNDRY_PARTNER_CONTRACT_VERSION || 'external-runtime-v0.1';
 const toTrimmed = (value) => String(value || '').trim();
 
 const requireIdempotencyKey = (value) => {
@@ -33,6 +34,44 @@ const chooseCompany = async ({ repository, dgfyAccount, companyId }) => {
 };
 
 export const buildDgfyLaundryProviderUseCases = ({ repository }) => ({
+    async health() {
+        return { status: 'ok', provider: 'dgfy', contractVersion: contractVersion(), time: new Date().toISOString() };
+    },
+
+    async capabilities() {
+        return {
+            provider: 'dgfy',
+            contractVersion: contractVersion(),
+            signatureProfiles: [
+                { scope: 'request', tag: 'dgfy-external-runtime-v1', algorithm: 'ecdsa-p256-sha256' },
+                { scope: 'event', tag: 'dglaundry-dgfy-v1', algorithm: 'ed25519' }
+            ],
+            enforcedProfile: process.env.NODE_ENV === 'production'
+                ? 'http-message-signatures-v1'
+                : (process.env.DGLAUNDRY_SIGNATURE_PROFILE || 'hmac-local-v1')
+        };
+    },
+
+    async getCompanyById({ companyId }) {
+        const company = await repository.findCompanyById({ companyId: toTrimmed(companyId) });
+        if (!company) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'DGLaundry company not found.', { statusCode: 404 });
+        const mappings = await repository.listMappings({ dgfyCompanyId: company.company_id });
+        const { dgfy_account_id: dgfyAccountId, ...companyData } = company;
+        return {
+            ...companyData,
+            owner: {
+                membershipId: String(company.membership_id),
+                dgfyAccountId: String(dgfyAccountId),
+                role: company.role
+            },
+            locations: mappings.map((mapping) => ({
+                locationId: mapping.dgfy_location_id || mapping.dglaundry_branch_id,
+                branchId: mapping.dglaundry_branch_id,
+                status: mapping.status
+            }))
+        };
+    },
+
     async listCompanies({ dgfyAccount }) {
         const { companies } = await chooseCompany({ repository, dgfyAccount });
         return { issuer: ISSUER, companies };
