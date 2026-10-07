@@ -30,6 +30,15 @@ describe('modePresentationRegistry', () => {
     expect(adapter.heroTheme.directionsColor).toBe(SERVICES_PALETTE.primary);
   });
 
+  it('keeps laundry storefront presentation distinct from service bookings', () => {
+    const adapter = getStorefrontModeAdapter({ workflow_mode: 'laundry' });
+
+    expect(adapter.isLaundryMode).toBe(true);
+    expect(adapter.isServicesMode).toBe(false);
+    expect(adapter.catalogHeading).toBe('What would you like cleaned?');
+    expect(adapter.primaryActionLabel).toBe('Start a laundry order');
+  });
+
   it('falls back to default presentation for placeholder-taxonomy modes', () => {
     const adapter = getStorefrontModeAdapter({ workflow_mode: 'healthcare' });
 

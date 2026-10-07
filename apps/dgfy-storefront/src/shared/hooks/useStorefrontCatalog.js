@@ -52,6 +52,7 @@ export function useStorefrontCatalog({
   ), [selectedStore, catalog]);
   const {
     isServicesMode,
+    isLaundryMode,
     isFnbMode,
     isSimpleMode,
     isHospitalityMode,
@@ -460,6 +461,7 @@ export function useStorefrontCatalog({
   return {
     pageModel,
     isServicesMode,
+    isLaundryMode,
     isFnbMode,
     isSimpleMode,
     isHospitalityMode,
