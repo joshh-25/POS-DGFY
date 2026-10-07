@@ -172,10 +172,10 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | GET | `/orders/{externalOrderReference}` | DGLaundry machine client | `requireDglaundryPartner` |
 | POST | `/customer-activities` | DGLaundry machine client | `requireDglaundryPartner` |
 
-The order lookup accepts `company_id` and `location_id` query parameters first, with
-`X-DGFY-Company-Id` and `X-DGFY-Location-Id` headers as fallbacks. The joint harness currently
-uses query parameters while DGLaundry's proposal declares headers; both forms are supported pending
-alignment between the two repositories.
+The order lookup accepts `company_id` / `location_id` or `companyId` / `locationId` query
+parameters first, with `X-DGFY-Company-Id` and `X-DGFY-Location-Id` headers as fallbacks. The joint
+harness currently uses camelCase query parameters while DGLaundry's proposal declares headers; both
+forms are supported pending alignment between the two repositories.
 
 ### Inbound event receiver and customer/storefront operations — absolute paths
 

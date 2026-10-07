@@ -117,9 +117,19 @@ paths:
           schema: { type: string }
         - name: company_id
           in: query
+          description: Snake_case query alias; takes precedence over companyId and the header.
+          schema: { type: string }
+        - name: companyId
+          in: query
+          description: CamelCase query alias used by the joint qualification harness.
           schema: { type: string }
         - name: location_id
           in: query
+          description: Snake_case query alias; takes precedence over locationId and the header.
+          schema: { type: string }
+        - name: locationId
+          in: query
+          description: CamelCase query alias used by the joint qualification harness.
           schema: { type: string }
         - name: X-DGFY-Company-Id
           in: header
