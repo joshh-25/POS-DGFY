@@ -346,6 +346,7 @@ export default function TerminalPageLayout({
       reports: 'Report',
       fnb_service: 'F&B service',
       items: 'Items',
+      settings_vouchers: 'Vouchers',
       services: 'Services',
       audit: 'Audit',
       incoming_queue: 'Orders',
@@ -501,7 +502,9 @@ export default function TerminalPageLayout({
   const hidesWorkspaceScrollbar = usesStandardPosPageFrame
     && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
-  const workspacePaneClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
+  const isVoucherManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_vouchers';
+  const isFullBleedCatalogWorkspace = isItemsCatalogWorkspace || isVoucherManagementWorkspace;
+  const workspacePaneClassName = isCheckoutWorkspaceMode || isFullBleedCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : `dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y ${hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`;
   const checkoutWorkspaceRowsClassName = isBranchReadOnlyView
@@ -509,10 +512,10 @@ export default function TerminalPageLayout({
     : 'grid-rows-[minmax(0,1fr)]';
   const workspaceContentClassName = isCheckoutWorkspaceMode
     ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden ${usesStandardPosPageFrame ? 'p-0' : `p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`}`
-    : isItemsCatalogWorkspace
-      ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${isItemsView ? ' pos-items-workspace-content' : ''}`
+    : isFullBleedCatalogWorkspace
+      ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${isItemsView ? ' pos-items-workspace-content' : ' pos-vouchers-workspace-content'}`
       : `grid min-w-0 max-w-full grid-cols-1 gap-2 ${usesStandardPosPageFrame ? 'p-0' : 'p-2'}`;
-  const workspaceSectionClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
+  const workspaceSectionClassName = isCheckoutWorkspaceMode || isFullBleedCatalogWorkspace
     ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition'
     : 'min-h-0 min-w-0 max-w-full transition';
 
@@ -1151,7 +1154,7 @@ export default function TerminalPageLayout({
           {isOperationsWorkspaceMode && (
             <div
               key="operations-workspace"
-              className={isItemsCatalogWorkspace
+              className={isFullBleedCatalogWorkspace
                 ? 'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'
                 : 'min-w-0 max-w-full catalog-slide-enter'}
             >

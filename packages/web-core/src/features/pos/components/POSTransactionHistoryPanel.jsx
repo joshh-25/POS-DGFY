@@ -995,6 +995,7 @@ export default function POSTransactionHistoryPanel({
                     id={filterDialogMode === 'calendar' ? 'pos-history-calendar-dialog' : 'pos-history-filter-dialog'}
                     ariaLabelledBy={filterDialogMode === 'calendar' ? 'pos-history-calendar-title' : 'pos-history-filter-title'}
                     ariaDescribedBy={filterDialogMode === 'calendar' ? 'pos-history-calendar-description' : 'pos-history-filter-description'}
+                    className={filterDialogMode === 'filters' ? 'dgfy-pos-history-filter-surface' : ''}
                 >
                         <PosFilterDialogHeader
                             title={filterDialogMode === 'calendar' ? 'Select Date' : 'Filter'}
