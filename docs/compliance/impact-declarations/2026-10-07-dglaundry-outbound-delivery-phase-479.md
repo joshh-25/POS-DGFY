@@ -11,9 +11,9 @@ policy_version: 2026.10.07
 verification_evidence: focused DGLaundry Jest suites passed (12 suites/62 tests), including payment finalization retry, mixed-child compensation, worker completion retry, and delayed caller idempotency reconciliation; changed-file node --check and git diff --check passed; npm run check:architecture passed (56 modules/680 code files, 104 controllers); npm run lint:docs and npm run check:adr --strict passed (31 governed docs/97 ADRs); npm run check:compliance passed; develop-base app-version check passed (no app version bump applies); opt-in scripts/verify-dglaundry-outbox-durability.mjs passed against disposable MySQL 8 and Redis 7, including migration up/re-run, ordered concurrent claims, expired lease recovery, stale-ack protection, scoped failed-completion inspection, completion-only redrive, separate-process MySQL persistence, parallel cross-process nonce claims, and replay rejection after process restart; hosted provider calls and full signature/time/outage edge matrix were not run; npm run lint has one pre-existing duplicate cancelPaymentIntent class-member error in apps/dgfy-api/src/services/paymongoService.js:737 plus three unrelated warnings; npm run audit:test-cost:check remains stale on baseline with many unrelated missing/stale inventory entries, including the new unit suites
 rollback_note: Stop DGLaundry outbox draining before reverting callers/worker. Preserve and reconcile all pending, leased, retry_wait, dead_letter, and completion records before any schema rollback; dropping a populated outbox is not a routine rollback. No provider capture/refund or deployed environment mutation is authorized by this change.
 preflight_result: no_breach
-preflight_reason_code: REQUEST_NOT_EXECUTED
-preflight_run_at: 2026-10-07T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2310-DGLAUNDRY-OUTBOUND-DELIVERY-PHASE-479
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-07T15:54:06.386Z
+preflight_request_ref: PREFLIGHT-37646533737-2026-10-07-DGLAUNDRY-OUTBOUND-DELIVERY-PHASE-479
 ---
 
 # DGLaundry durable outbound delivery and recovery (#2310)

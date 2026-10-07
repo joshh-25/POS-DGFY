@@ -11,8 +11,8 @@ verification_evidence: customer-display Vitest tests,real-time completion handof
 rollback_note: Revert the customer-display route, synchronization wiring, settings controls, tests, and this declaration; no backend, database, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-07T21:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2300-POS-CUSTOMER-DISPLAY
+preflight_run_at: 2026-10-07T15:54:06.387Z
+preflight_request_ref: PREFLIGHT-37646533737-2026-10-07-POS-CUSTOMER-DISPLAY
 ---
 
 # POS customer-facing display synchronization

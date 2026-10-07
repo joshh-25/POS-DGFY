@@ -12,8 +12,8 @@ verification_evidence: DGLaundry API use-case and route-contract Jest suites, St
 rollback_note: Revert the tenant-scoped laundry routes, payment-session ownership and reservation-cancel support, laundry storefront, tests, and contract documentation together; no schema or live tenant data changes are included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-07T20:36:32+08:00
-preflight_request_ref: NOT-EXECUTED-2308-LAUNDRY-CUSTOMER-ORDERING
+preflight_run_at: 2026-10-07T15:54:06.386Z
+preflight_request_ref: PREFLIGHT-37646533737-2026-10-07-LAUNDRY-CUSTOMER-ORDERING
 ---
 
 # Laundry customer ordering (#2308)
