@@ -14,7 +14,7 @@ describe('POS checkout terminal orchestration shell contract', () => {
   it('keeps the public terminal component as a compatibility shell', () => {
     expect(shellSource).toContain("const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));");
     expect(shellSource).toContain('const terminalViewModel = {');
-    expect(shellSource).toContain('<POSCheckoutTerminalView viewModel={terminalViewModel} />');
+    expect(shellSource).toContain('<POSCheckoutTerminalView viewModel={{ ...terminalViewModel, ...customerDisplay }} />');
     expect(shellSource).toContain('<Suspense fallback=');
     expect(shellSource).not.toContain('<section');
     expect(shellSource).not.toContain('<Dialog');

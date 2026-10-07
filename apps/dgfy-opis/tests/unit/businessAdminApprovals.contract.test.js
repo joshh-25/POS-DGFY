@@ -19,7 +19,32 @@ describe('Business Admin approval queue contract', () => {
         expect(businessAdminPage).toContain("businessAdminApi.decideApproval(id, decision, `${decision} requested from Back Office.`)");
         expect(businessAdminPage).toContain('Review high-risk POS requests here; POS remains the canonical execution owner');
         expect(businessAdminPage).toContain("{ key: 'reason', label: 'Reason'");
+        expect(businessAdminPage).toContain('data-testid="approved-void-history-toggle"');
+        expect(businessAdminPage).toContain('Approved Void History');
+        expect(businessAdminPage).toContain('{!voidHistoryOpen ? (');
+        expect(businessAdminPage).toContain('data-testid="approved-void-history-back"');
+        expect(businessAdminPage).toContain('Back to Approval Queue');
+        expect(businessAdminPage).toContain('data-testid="approved-void-history-refresh"');
+        expect(businessAdminPage).toContain('const BUSINESS_ADMIN_VOID_HISTORY_PAGE_SIZE = 20;');
+        expect(businessAdminPage).toContain('const VoidHistoryPagination');
+        expect(businessAdminPage).toContain('aria-label="Next approved void history page"');
+        expect(businessAdminPage).toContain('rows={visibleHistoryRows}');
+        expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'executed', limit: 100 })");
+        expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'approved', limit: 100 })");
+        expect(businessAdminPage).toContain("businessAdminApi.orders({ receipt_type: 'voided', page: 1, limit: 100 })");
+        expect(businessAdminPage).toContain("source: approval ? 'Approved workflow' : 'Direct/admin void'");
         expect(businessAdminService).toContain("get('/business-admin/approvals', params)");
         expect(businessAdminService).toContain("api.post(`/business-admin/approvals/${encodeURIComponent(id)}/${decision}`, { note })");
+        expect(businessAdminService).toContain("orders: (params) => get('/business-admin/orders', params)");
+    });
+
+    it('keeps direct/admin void actor and reason fields in the shared order-list response', () => {
+        const repository = readRepoFile('apps/dgfy-api/src/modules/businessAdmin/repositories/businessAdminOrderCenterRepository.js');
+
+        expect(repository).toContain("userInclude('voidedByUser')");
+        expect(repository).toContain('voided_by: row.voidedByUser?.username || row.voidedByUser?.email || null');
+        expect(repository).toContain('void_reason: row.void_reason || null');
+        expect(repository).toContain("if (filters.receiptType === 'voided')");
+        expect(repository).toContain("addReceiptTypeCondition({ status: 'voided' })");
     });
 });

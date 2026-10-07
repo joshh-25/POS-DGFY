@@ -78,7 +78,7 @@ const statusConfig = {
   surplus: { label: "Surplus", color: "bg-blue-100 text-blue-700" }
 };
 
-export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRestore, restoring = false, workflowMode }) {
+export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRestore, restoring = false, itemEditorMode = false, workflowMode }) {
   const [defaultOpenSections] = useState(['basic-info', 'stock-inventory', 'recipe']);
   const { canDelete } = usePermission();
 
@@ -86,6 +86,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
 
   const isInactive = item.status === 'inactive';
   const canRestore = canDelete('items') && typeof onRestore === 'function';
+  const stockMovementItemId = item.item_id || item.id;
 
   // #1495 Part A: a plain, undismissable-until-acted-on banner rather than folding into the
   // existing badge row -- restoring is the one action on this modal that changes what every other
@@ -251,7 +252,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
             )}
 
             {/* Shelf Life Info - only show if shelf_life_days is configured */}
-            {!financialPolicy.is_pure_service && item.fifo_enabled && (item.shelf_life_days || item.opened_shelf_life_days) && (
+            {!itemEditorMode && !financialPolicy.is_pure_service && item.fifo_enabled && (item.shelf_life_days || item.opened_shelf_life_days) && (
               <div className="space-y-3 rounded-lg bg-purple-50 p-3">
                 <h4 className="font-medium text-purple-900 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
@@ -275,7 +276,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
             )}
 
             {/* FIFO Batch Viewer - shows for all FIFO-enabled items (with or without expiry) */}
-            {!financialPolicy.is_pure_service && item.fifo_enabled && <FIFOBatchViewer item={item} onRefresh={onRefresh} />}
+            {!itemEditorMode && !financialPolicy.is_pure_service && item.fifo_enabled && <FIFOBatchViewer item={item} onRefresh={onRefresh} />}
             <BarcodeManager item={item} onRefresh={onRefresh} />
             {/* Cost Info */}
             {(financialPolicy.show_cost || financialPolicy.show_sale_price) && (
@@ -336,22 +337,22 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
               )}
             </div>
             )}
-            {/* Actions */}
+            {/* Stock quantity changes are recorded in the canonical Stock Movements workspace. */}
             {!financialPolicy.is_pure_service && (
-            <div className="mt-3 flex gap-3 border-t border-slate-200 pb-2 pt-4">
-              <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
-                <Button variant="outline" className="w-full">
-                  <History className="w-4 h-4 mr-2" />
-                  View Movement History
-                </Button>
-              </Link>
-              <Link to={createPageUrl("StockMovements") + `?action=create&item=${item.id}`} className="flex-1">
-                <Button className="w-full bg-teal-600 hover:bg-teal-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Stock Movement
-                </Button>
-              </Link>
-            </div>
+              <div className="mt-3 flex gap-3 border-t border-slate-200 pb-2 pt-4">
+                <Link to={createPageUrl("StockMovements") + `?item=${stockMovementItemId}`} className="flex-1">
+                  <Button variant="outline" className="w-full">
+                    <History className="w-4 h-4 mr-2" />
+                    View Movement History
+                  </Button>
+                </Link>
+                <Link to={createPageUrl("StockMovements") + `?action=create&item=${stockMovementItemId}`} className="flex-1">
+                  <Button className="w-full bg-teal-600 hover:bg-teal-700">
+                    <Plus className="w-4 h-4 mr-2" />
+                    {itemEditorMode ? 'Manage Stock' : 'Create Stock Movement'}
+                  </Button>
+                </Link>
+              </div>
             )}
           </div>
         </DialogContent>
@@ -457,18 +458,20 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
               </AccordionItem>
             )}
 
-            {/* Physical Properties */}
-            <AccordionItem value="properties">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
-                  <Droplet className="w-5 h-5 text-cyan-600" />
-                  <span className="font-semibold">Physical Properties</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <PhysicalPropertiesSection item={item} />
-              </AccordionContent>
-            </AccordionItem>
+            {/* Physical Properties are advanced manufacturing metadata; keep them out of OPIS Item Editor. */}
+            {!itemEditorMode && (
+              <AccordionItem value="properties">
+                <AccordionTrigger>
+                  <div className="flex items-center gap-2">
+                    <Droplet className="w-5 h-5 text-cyan-600" />
+                    <span className="font-semibold">Physical Properties</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <PhysicalPropertiesSection item={item} />
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
             {/* Shelf Life */}
             {!financialPolicy.is_pure_service && (
@@ -485,18 +488,20 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
               </AccordionItem>
             )}
 
-            {/* Packaging Information */}
-            <AccordionItem value="packaging">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
-                  <BoxIcon className="w-5 h-5 text-amber-600" />
-                  <span className="font-semibold">Packaging & Labeling</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <PackagingInfoSection item={item} />
-              </AccordionContent>
-            </AccordionItem>
+            {/* Packaging metadata remains available to POS/IMS callers, but not OPIS Item Editor. */}
+            {!itemEditorMode && (
+              <AccordionItem value="packaging">
+                <AccordionTrigger>
+                  <div className="flex items-center gap-2">
+                    <BoxIcon className="w-5 h-5 text-amber-600" />
+                    <span className="font-semibold">Packaging & Labeling</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <PackagingInfoSection item={item} />
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
             {/* Cost & Financial */}
             <AccordionItem value="cost">
@@ -511,34 +516,38 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
               </AccordionContent>
             </AccordionItem>
 
-            {/* Quality Control */}
-            <AccordionItem value="quality">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
-                  <ClipboardCheck className="w-5 h-5 text-indigo-600" />
-                  <span className="font-semibold">Quality Control</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <QualityControlSection item={item} />
-              </AccordionContent>
-            </AccordionItem>
+            {/* Quality controls are manufacturing metadata; keep them out of OPIS Item Editor. */}
+            {!itemEditorMode && (
+              <AccordionItem value="quality">
+                <AccordionTrigger>
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="w-5 h-5 text-indigo-600" />
+                    <span className="font-semibold">Quality Control</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <QualityControlSection item={item} />
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
-            {/* Regulatory Compliance */}
-            <AccordionItem value="compliance">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-teal-600" />
-                  <span className="font-semibold">Regulatory Compliance</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <RegulatoryComplianceSection item={item} />
-              </AccordionContent>
-            </AccordionItem>
+            {/* Compliance metadata remains stored and editable by other workflows, not OPIS Item Editor. */}
+            {!itemEditorMode && (
+              <AccordionItem value="compliance">
+                <AccordionTrigger>
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-teal-600" />
+                    <span className="font-semibold">Regulatory Compliance</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <RegulatoryComplianceSection item={item} />
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
             {/* FIFO Batches */}
-            {!financialPolicy.is_pure_service && item.fifo_enabled && (
+            {!itemEditorMode && !financialPolicy.is_pure_service && item.fifo_enabled && (
               <AccordionItem value="fifo">
                 <AccordionTrigger>
                   <div className="flex items-center gap-2">
@@ -567,22 +576,22 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
           </Accordion>
         </div>
 
-        {/* Actions Footer */}
+        {/* Stock quantity changes are recorded in the canonical Stock Movements workspace. */}
         {!financialPolicy.is_pure_service && (
-        <div className="flex flex-shrink-0 gap-3 border-t border-slate-200 px-4 pb-2 pt-3">
-          <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
-            <Button variant="outline" className="w-full">
-              <History className="w-4 h-4 mr-2" />
-              View Movement History
-            </Button>
-          </Link>
-          <Link to={createPageUrl("StockMovements") + `?action=create&item=${item.id}`} className="flex-1">
-            <Button className="w-full bg-teal-600 hover:bg-teal-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Stock Movement
-            </Button>
-          </Link>
-        </div>
+          <div className="flex flex-shrink-0 gap-3 border-t border-slate-200 px-4 pb-2 pt-3">
+            <Link to={createPageUrl("StockMovements") + `?item=${stockMovementItemId}`} className="flex-1">
+              <Button variant="outline" className="w-full">
+                <History className="w-4 h-4 mr-2" />
+                View Movement History
+              </Button>
+            </Link>
+            <Link to={createPageUrl("StockMovements") + `?action=create&item=${stockMovementItemId}`} className="flex-1">
+              <Button className="w-full bg-teal-600 hover:bg-teal-700">
+                <Plus className="w-4 h-4 mr-2" />
+                {itemEditorMode ? 'Manage Stock' : 'Create Stock Movement'}
+              </Button>
+            </Link>
+          </div>
         )}
       </DialogContent>
     </Dialog>

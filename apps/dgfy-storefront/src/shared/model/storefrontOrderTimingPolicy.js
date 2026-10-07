@@ -1,6 +1,7 @@
 export const LEAD_TIME_UNCONFIGURED_NOTICE = 'The store will confirm your fulfillment schedule after you place your order.';
 export const CHECKOUT_NOW_LABEL = 'NOW';
 export const CHECKOUT_SCHEDULE_LABEL = 'SCHEDULE';
+export const CHECKOUT_ANYTIME_LABEL = 'ANYTIME';
 const dayCount = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
@@ -35,7 +36,9 @@ export function resolveTimingStepScheduleMode(policy, currentScheduleMode) {
  * while the customer is still completing that choice.
  */
 export function resolveCheckoutScheduleLabel(scheduleMode = 'asap', scheduledFor = '') {
-  if (String(scheduleMode || '').trim().toLowerCase() !== 'schedule') return CHECKOUT_NOW_LABEL;
+  const normalizedScheduleMode = String(scheduleMode || '').trim().toLowerCase();
+  if (normalizedScheduleMode === 'anytime') return CHECKOUT_ANYTIME_LABEL;
+  if (normalizedScheduleMode !== 'schedule') return CHECKOUT_NOW_LABEL;
   const normalizedScheduledFor = String(scheduledFor || '').trim();
   if (!normalizedScheduledFor) return CHECKOUT_SCHEDULE_LABEL;
   const parsedDate = new Date(normalizedScheduledFor);

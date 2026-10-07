@@ -6,6 +6,9 @@ import {
     listLaundryCompanies,
     launchLaundryOperations,
     getLaundrySessionContext,
+    getLaundryHealth,
+    getLaundryCapabilities,
+    getLaundryCompanyById,
     createLaundryRegistrationIntent,
     createLaundryLocationIntent,
     createLaundryStaffInvitationIntent,
@@ -14,12 +17,26 @@ import {
     getLaundryStaffInvitationIntent,
     createLaundryMapping
 } from '../modules/dgfyLaundry/controllers/dgfyLaundryProviderHandlers.js';
+import {
+    getDglaundryOrderForPartner,
+    registerDglaundryCustomerActivity,
+    listDglaundryDeadLetters,
+    redriveDglaundryDeadLetter
+} from '../modules/dgfyLaundryOrders/controllers/dgfyLaundryOrderHandlers.js';
 
 const router = express.Router();
 
 router.get('/account/companies', authenticateDgfyAccount, listLaundryCompanies);
 router.post('/account/launch', authenticateDgfyAccount, launchLaundryOperations);
+router.get('/dead-letters', authenticateDgfyAccount, listDglaundryDeadLetters);
+router.post('/dead-letters/:id/redrive', authenticateDgfyAccount, redriveDglaundryDeadLetter);
 router.get('/session-context', authenticateDglaundryAccessToken, getLaundrySessionContext);
+
+router.get('/health', requireDglaundryPartner, getLaundryHealth);
+router.get('/capabilities', requireDglaundryPartner, getLaundryCapabilities);
+router.get('/companies/:companyId', requireDglaundryPartner, getLaundryCompanyById);
+router.get('/orders/:externalOrderReference', requireDglaundryPartner, getDglaundryOrderForPartner);
+router.post('/customer-activities', requireDglaundryPartner, registerDglaundryCustomerActivity);
 
 router.post('/registration-intents', requireDglaundryPartner, createLaundryRegistrationIntent);
 router.get('/registration-intents/:intentId', requireDglaundryPartner, getLaundryRegistrationIntent);

@@ -39,6 +39,7 @@ export function useSimpleCheckoutRouteProps({
   handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
   handleConfirmQrphTestPayment,
+  handleCancelQrphPaymentSession,
   handlePinMyLocation,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
@@ -60,6 +61,7 @@ export function useSimpleCheckoutRouteProps({
   voucherDiscountSummaryRow = null,
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
+  cancellingPaymentSession = false,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
@@ -216,6 +218,8 @@ export function useSimpleCheckoutRouteProps({
     onPaymentElectionChange,
     onPaymentTypeChange: handlePaymentTypeChange,
     onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
+    onCancelQrphPaymentSession: handleCancelQrphPaymentSession,
+    cancellingPaymentSession,
     onPinChange: (nextPin) => {
       setDeliveryLocationAction('map');
       setSelectedSavedLocationId('');
@@ -229,7 +233,7 @@ export function useSimpleCheckoutRouteProps({
     onSignInToCheckout,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode(nextMode);
-      if (nextMode === 'asap') setFnbScheduledFor('');
+      if (nextMode === 'asap' || nextMode === 'anytime') setFnbScheduledFor('');
     },
     onScheduledForChange: (nextScheduledFor) => {
       setFnbScheduledFor(nextScheduledFor);

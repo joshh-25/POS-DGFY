@@ -21,6 +21,17 @@ describe('POS mobile focus zoom contracts', () => {
     expect(sharedItemModal).toContain('pos-mobile-no-focus-zoom wizard-modal-shell');
   });
 
+  it('disables browser double-tap zoom across the POS surface without disabling pinch zoom', () => {
+    const css = readSource('src/index.css');
+    const posEntry = readSource('../../apps/dgfy-pos/src/main.jsx');
+    const posHtml = readSource('../../apps/dgfy-pos/index.html');
+
+    expect(css).toContain('body[data-pos-surface="pos"] {\n  touch-action: manipulation;\n}');
+    expect(posEntry).toContain("document.body.setAttribute('data-pos-surface', 'pos');");
+    expect(posHtml).not.toMatch(/user-scalable\s*=\s*["']no["']/i);
+    expect(posHtml).not.toMatch(/maximum-scale\s*=\s*["']1(?:\.0)?["']/i);
+  });
+
   it('keeps the final mobile field guard scoped to the POS Items workspace', () => {
     const css = readSource('src/index.css');
     const finalGuardStart = css.lastIndexOf('Mobile browsers may zoom the page');
@@ -36,7 +47,6 @@ describe('POS mobile focus zoom contracts', () => {
     expect(finalGuard).not.toContain('body[data-pos-surface="pos"]');
     expect(finalGuard).not.toContain('.pos-mobile-no-focus-zoom :is(');
   });
-
   it('blurs an active scanner editor before closing the scan modal', () => {
     const scanner = readSource('src/features/pos/components/POSBarcodeScanner.jsx');
 

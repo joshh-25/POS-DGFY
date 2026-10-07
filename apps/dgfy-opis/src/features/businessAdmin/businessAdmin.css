@@ -767,6 +767,29 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-order-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
 .business-admin-payments-workspace { display: grid; gap: 16px; }
 .business-admin-payments-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.business-admin-processing-fee-report { min-width: 0; overflow: hidden; }
+.business-admin-processing-fee-report-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 12px; }
+.business-admin-processing-fee-editor { display: grid; gap: 16px; }
+.business-admin-processing-fee-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.business-admin-processing-fee-version { display: grid; flex: 0 0 auto; gap: 3px; min-width: 92px; border: 1px solid #cce9e6; border-radius: 12px; padding: 10px 12px; background: #f1fcfa; text-align: right; }
+.business-admin-processing-fee-version span { color: #5d7f91; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.business-admin-processing-fee-version strong { color: #0d7773; font-size: 18px; }
+.business-admin-processing-fee-form-row input { width: 100%; min-height: 36px; border: 1px solid #cfe0e8; border-radius: 8px; padding: 8px 10px; background: #fff; color: #173e58; font-size: 12px; font-weight: 700; }
+.business-admin-processing-fee-form-row input:focus { border-color: #159891; outline: 3px solid rgba(21, 152, 145, .16); }
+.business-admin-processing-fee-customer { min-width: 0; border: 1px solid #cce9e6; border-radius: 13px; padding: 15px; background: linear-gradient(145deg, #f8fffe 0%, #ffffff 100%); }
+.business-admin-processing-fee-customer legend { padding: 0 5px; color: #0d7773; font-size: 13px; font-weight: 900; }
+.business-admin-processing-fee-customer .business-admin-card-subtitle { margin: 0 0 12px; }
+.business-admin-processing-fee-customer select,
+.business-admin-processing-fee-customer input { width: 100%; min-height: 36px; border: 1px solid #cfe0e8; border-radius: 8px; padding: 8px 10px; background: #fff; color: #173e58; font-size: 12px; font-weight: 700; }
+.business-admin-processing-fee-customer select:focus,
+.business-admin-processing-fee-customer input:focus { border-color: #159891; outline: 3px solid rgba(21, 152, 145, .16); }
+.business-admin-processing-fee-toggle { display: inline-flex; align-items: center; gap: 8px; color: #205b78; font-size: 12px; font-weight: 800; }
+.business-admin-processing-fee-toggle input { width: auto; min-height: auto; }
+.business-admin-processing-fee-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.business-admin-processing-fee-customer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.business-admin-processing-fee-save-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #e2edf1; padding-top: 14px; color: #71879a; font-size: 11px; line-height: 1.45; }
+.business-admin-processing-fee-history { display: grid; gap: 12px; border-top: 1px solid #e2edf1; padding-top: 16px; }
+.business-admin-processing-fee-empty { padding: 18px; color: #71879a; text-align: center; }
 .business-admin-payment-metric {
   display: flex;
   align-items: flex-start;
@@ -1281,6 +1304,7 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-purchase-orders-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .business-admin-shifts-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .business-admin-payments-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-processing-fee-report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .business-admin-expense-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 1023px) {
@@ -1478,6 +1502,9 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-orders-panel-error,
   .business-admin-expenses-panel-error { margin: 12px; }
   .business-admin-payments-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-processing-fee-report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-processing-fee-save-bar { align-items: stretch; flex-direction: column; }
+  .business-admin-processing-fee-save-bar .business-admin-button { width: 100%; justify-content: center; }
   .business-admin-expenses-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .business-admin-expenses-contract { align-items: flex-start; padding: 10px 12px; }
   .business-admin-expense-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1521,6 +1548,10 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
 }
 
 @media (max-width: 767px) {
+  .business-admin-processing-fee-intro { flex-direction: column; }
+  .business-admin-processing-fee-version { width: 100%; text-align: left; }
+  .business-admin-processing-fee-form-row,
+  .business-admin-processing-fee-report-summary { grid-template-columns: minmax(0, 1fr); }
   .business-admin-settings-editor .business-admin-storefront-location-sections { grid-template-columns: minmax(0, 1fr); }
   .business-admin-settings-editor .business-admin-storefront-operational-options { grid-template-columns: minmax(0, 1fr); }
   .business-admin-settings-editor .business-admin-storefront-lead-time { grid-column: auto; }

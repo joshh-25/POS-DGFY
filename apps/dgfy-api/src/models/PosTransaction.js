@@ -379,6 +379,22 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: false
     },
+    // Legacy field names retained for compatibility; these snapshot the item-processing
+    // charge included in the order total, not a payment-provider fee.
+    customer_processing_fee_amount: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    customer_processing_fee_label_snapshot: {
+        type: DataTypes.STRING(80),
+        allowNull: true
+    },
+    customer_processing_fee_breakdown: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null
+    },
     fnb_check_id: {
         type: DataTypes.INTEGER,
         allowNull: true

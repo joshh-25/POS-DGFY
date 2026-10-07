@@ -96,6 +96,7 @@ export function SimpleCheckoutRoutePage({
   onPaymentElectionChange,
   onPaymentTypeChange,
   onConfirmQrphTestPayment,
+  onCancelQrphPaymentSession,
   onPinChange,
   onPinMyLocation,
   onRequestGuestCheckoutOtp,
@@ -110,6 +111,7 @@ export function SimpleCheckoutRoutePage({
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
   resetQrphPaymentSession,
+  cancellingPaymentSession = false,
   setShowSimpleMobileAddressModal,
   setShowSimpleMobileOrderSummary
 }) {
@@ -301,6 +303,7 @@ export function SimpleCheckoutRoutePage({
             onPaymentElectionChange={onPaymentElectionChange}
             paymentElection={paymentElection}
             paymentType={fnbPaymentType}
+            cancellingPaymentSession={cancellingPaymentSession}
             paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
             isDownpaymentActive={downpaymentDisplay.active}
             downpaymentCallout={(
@@ -325,6 +328,8 @@ export function SimpleCheckoutRoutePage({
                   && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                   ? onConfirmQrphTestPayment
                   : null}
+                onCancelPaymentSession={onCancelQrphPaymentSession}
+                cancellingPaymentSession={cancellingPaymentSession}
                 onChooseAnotherPaymentMethod={() => {
                   resetQrphPaymentSession?.();
                 }}

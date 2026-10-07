@@ -691,6 +691,48 @@ describe('parked sale use cases', () => {
         }), 15, harness.transaction);
     });
 
+    it('rolls back the whole re-park atomically when the stock movement write fails (#2321)', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            park_reference: 'PARK-ABC123',
+            status: 'claimed',
+            revision: 2,
+            inventory_deducted_at: new Date(),
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            claimed_by: 15,
+            claimed_terminal_id: 'COUNTER-01'
+        };
+        const harness = buildHarness({ parkedSale });
+        const resolveInventoryEffects = jest.fn().mockResolvedValue([{ item_id: 8, quantity: 1, location_id: 3 }]);
+        // Simulate the real DB rejecting an invalid reference_type enum value, e.g. MySQL's
+        // "Data truncated for column 'reference_type' at row 1" (#2321's production error).
+        harness.inventoryCommandService.issueStockForPosSale.mockRejectedValue(
+            new Error("Data truncated for column 'reference_type' at row 1")
+        );
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
+        const payload = basePayload();
+        delete payload.idempotency_key;
+        payload.expected_revision = 2;
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload,
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
+        expect(harness.transaction.commit).not.toHaveBeenCalled();
+        expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
+        expect(harness.posRepository.createAuditLog).not.toHaveBeenCalled();
+    });
+
     it('rejects a stale re-park revision without overwriting the parked sale', async () => {
         const parkedSale = {
             pos_parked_sale_id: 101,

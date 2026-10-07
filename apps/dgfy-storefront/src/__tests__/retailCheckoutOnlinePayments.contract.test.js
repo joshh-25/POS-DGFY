@@ -85,6 +85,16 @@ describe('Retail Storefront online payment contract', () => {
     expect(shell).toContain('(isSimpleMode || isRetailMode) && isResolvedOrderSubpage');
   });
 
+  it('cancels the current payment session before changing the selected payment method', () => {
+    const shell = readSource('StorefrontApp.jsx');
+
+    expect(shell).toContain('const handlePaymentTypeChange = useCallback(async (value) => {');
+    expect(shell).toContain('const cancelled = await handleCancelQrphPaymentSession({');
+    expect(shell).toContain('silent: true');
+    expect(shell).toContain('if (!cancelled) return;');
+    expect(shell).toContain('setFnbPaymentType(nextPaymentType);');
+  });
+
   // #963: the Retail call site was written against an older panel API and never updated -- it
   // omitted `billing` (so PayMongo got no email and 422'd on card) and passed cashFallbackAllowed
   // /onUseCash, which the panel does not accept, leaving "Choose another payment method" wired to

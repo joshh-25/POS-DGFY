@@ -236,7 +236,8 @@ describe('Item/Product wizard contracts', () => {
     expect(productWizardSource).toContain('physical_properties: {}');
     expect(productWizardSource).toContain('quality_control: {}');
     expect(productWizardSource).toContain('const draftData = clearFnbManufacturingFields');
-    expect(productWizardSource).toContain('const finalData = clearFnbManufacturingFields');
+    expect(productWizardSource).toContain('const finalData = {');
+    expect(productWizardSource).toContain('...getSanitizedData(productData, true)');
     expect(productWizardSource).toContain('return clearFnbManufacturingFields(sanitized, workflowMode);');
   });
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Banknote, CircleDollarSign, Clock, Edit3, MapPin, Settings2, Volume2 } from 'lucide-react';
+import { AlertTriangle, Banknote, CircleDollarSign, Clock, Edit3, Eye, MapPin, Monitor, Settings2, Volume2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PosCashierCloseoutDefaultsModal from './PosCashierCloseoutDefaultsModal.jsx';
 
@@ -62,7 +62,14 @@ function DirectToggle({ label, description, checked, onChange, disabled, pending
 export default function PosOperationsDefaultsSection({
   loading, savingTab, posForm, locations, incomingOrders,
   queueLocationScopeId, onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, locked,
-  saveDefaults, onNavigateToOrders = () => {}
+  saveDefaults, onNavigateToOrders = () => {},
+  customerDisplayEnabled = true,
+  customerDisplayCanOpen = false,
+  customerDisplayStatus = 'closed',
+  customerDisplayStatusLabel = 'Not connected',
+  onCustomerDisplayEnabledChange = () => {},
+  onOpenCustomerDisplay = () => null,
+  onEndCustomerDisplay = () => {}
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftValues, setDraftValues] = useState(null);
@@ -192,6 +199,77 @@ export default function PosOperationsDefaultsSection({
               />
             </div>
           </>
+        </div>
+      </section>
+
+      <section aria-labelledby="pos-customer-display-title" data-testid="pos-customer-display-settings">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-[#1A4E8D]">
+              <Monitor className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <h3 id="pos-customer-display-title" className="text-[16px] font-extrabold text-[#0F172A]">Customer-facing display</h3>
+              <p className="mt-1 text-[13px] leading-5 text-[#64748B]">
+                Show the current sale on a second screen for the customer. This activation is saved for the selected POS terminal.
+              </p>
+            </div>
+          </div>
+
+          <DirectToggle
+            label="Customer display activation"
+            description={customerDisplayEnabled
+              ? 'The customer display is available from this POS Setup card.'
+              : 'Activate this terminal before opening the customer-facing screen.'}
+            checked={customerDisplayEnabled === true}
+            onChange={() => onCustomerDisplayEnabledChange(customerDisplayEnabled !== true)}
+            disabled={!canEdit}
+            icon={Monitor}
+          />
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[12px] font-bold text-[#1A4E8D]">Display session</p>
+                <p
+                  data-testid="pos-customer-display-settings-status"
+                  role="status"
+                  aria-live="polite"
+                  className={`mt-1 text-[13px] font-extrabold ${customerDisplayStatus === 'connected' ? 'text-emerald-700' : customerDisplayStatus === 'disconnected' ? 'text-amber-700' : 'text-[#0F172A]'}`}
+                >
+                  {customerDisplayEnabled ? customerDisplayStatusLabel : 'Customer display disabled'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  data-testid="pos-open-customer-display-from-settings"
+                  className="min-h-9 gap-1.5 rounded-lg bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-[#143F73]"
+                  onClick={() => { void onOpenCustomerDisplay(); }}
+                  disabled={!canEdit || !customerDisplayEnabled || !customerDisplayCanOpen || ['waiting', 'connected'].includes(customerDisplayStatus)}
+                  title={customerDisplayEnabled ? customerDisplayStatusLabel : 'Activate customer display first'}
+                >
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                  Open display
+                </Button>
+                <Button
+                  type="button"
+                  data-testid="pos-end-customer-display-from-settings"
+                  variant="outline"
+                  className="min-h-9 gap-1.5 rounded-lg border-slate-200 px-3 text-[12px] font-extrabold text-slate-600 hover:bg-slate-100"
+                  onClick={() => { void onEndCustomerDisplay(); }}
+                  disabled={!canEdit || !['waiting', 'connected', 'disconnected'].includes(customerDisplayStatus)}
+                  title="End customer display session"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                  End display
+                </Button>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] leading-4 text-[#64748B]">
+              Open display launches a separate browser window and places it on a secondary monitor when browser access is available. Allow monitor access if prompted; otherwise, move it to the customer-facing monitor once.
+            </p>
+          </div>
         </div>
       </section>
 

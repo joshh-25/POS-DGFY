@@ -188,6 +188,12 @@
       "topic": "platform_funding_and_discount_stacking",
       "expected_status": "reference",
       "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/api/PARTNER_INTEGRATION_CONTRACT.md",
+      "topic": "partner_integration_contract",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
     }
   ]
 }

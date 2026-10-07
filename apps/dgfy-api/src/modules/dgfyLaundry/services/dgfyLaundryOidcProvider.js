@@ -3,6 +3,7 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { dgfyAccountRepository } from '../../dgfy/repositories/dgfyAccountRepository.js';
+import { resolveSigningKeyMaterial } from '../../shared/utils/oidcSigningKeyResolver.js';
 
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const CLIENT_ID = process.env.DGFY_DGLAUNDRY_CLIENT_ID || 'dglaundry-web';
@@ -17,8 +18,8 @@ const readFile = (path) => {
     try { return fs.readFileSync(path, 'utf8'); } catch { return ''; }
 };
 const configuredSecret = () => readFile(process.env.DGLAUNDRY_PARTNER_TOKEN_FILE) || String(process.env.DGLAUNDRY_PARTNER_TOKEN || '').trim();
-const privateKey = () => readFile(process.env.DGFY_OIDC_PRIVATE_KEY_FILE);
-const publicKey = () => readFile(process.env.DGFY_OIDC_PUBLIC_KEY_FILE);
+const privateKey = () => resolveSigningKeyMaterial({ inlineEnvVar: 'DGFY_OIDC_PRIVATE_KEY', fileEnvVar: 'DGFY_OIDC_PRIVATE_KEY_FILE', label: 'OIDC private signing key' }).pem;
+const publicKey = () => resolveSigningKeyMaterial({ inlineEnvVar: 'DGFY_OIDC_PUBLIC_KEY', fileEnvVar: 'DGFY_OIDC_PUBLIC_KEY_FILE', label: 'OIDC public verification key' }).pem;
 const machineClientPublicKey = () => readFile(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE) || String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY || '').trim();
 const keyId = () => String(process.env.DGFY_OIDC_KEY_ID || 'dglaundry-oidc-1').trim();
 

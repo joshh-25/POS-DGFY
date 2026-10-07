@@ -127,6 +127,8 @@ export const simpleTrackingAdapter = Object.freeze({
         || 'Promo / Discount'
       ).trim(),
       serviceFeeAmount: numberOrNull(order?.service_fee_amount ?? order?.service_fee ?? payload?.service_fee_amount ?? payload?.service_fee),
+      customerProcessingFeeAmount: numberOrNull(order?.customer_processing_fee_amount ?? payload?.customer_processing_fee_amount),
+      customerProcessingFeeLabel: String(order?.customer_processing_fee_label_snapshot || payload?.customer_processing_fee_label || '').trim(),
       totalAmount: numberOrNull(order?.total_amount ?? payload?.total_amount ?? payload?.order_total),
       branchName: String(location?.name || payloadDisplay?.branch_name || orderDisplay?.branch_name || payload?.branch_name || '').trim() || null,
       branchAddress: String(location?.full_address || location?.address_line || payloadDisplay?.branch_address || orderDisplay?.branch_address || payload?.branch_address || '').trim() || null,

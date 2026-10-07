@@ -173,6 +173,8 @@ const orderSummary = (row) => ({
     fulfillment_status: row.fulfillment_status,
     payment_type: row.payment_type,
     payment_status: row.payment_status,
+    customer_processing_fee_amount: row.customer_processing_fee_amount ?? 0,
+    customer_processing_fee_label: row.customer_processing_fee_label_snapshot || null,
     provider_refund_eligible: Boolean(row.payment_session_reference && row.payment_provider),
     total_amount: row.total_amount,
     terminal_id: row.terminal_id,
@@ -184,7 +186,9 @@ const orderSummary = (row) => ({
     branch_name: row.location?.name || null,
     delivery_status: row.deliveryJob?.status || null,
     tracking_pin: row.tracking_pin || null,
-    voided_at: row.voided_at || null
+    voided_at: row.voided_at || null,
+    voided_by: row.voidedByUser?.username || row.voidedByUser?.email || null,
+    void_reason: row.void_reason || null
 });
 
 export const businessAdminOrderCenterRepository = {
@@ -310,6 +314,8 @@ export const businessAdminOrderCenterRepository = {
                 discount: value.discount_amount,
                 tax: value.vat_amount,
                 service_fee: value.service_fee_amount,
+                customer_processing_fee: value.customer_processing_fee_amount ?? 0,
+                customer_processing_fee_label: value.customer_processing_fee_label_snapshot || null,
                 restaurant_charge: value.restaurant_service_charge_amount,
                 delivery_fee: value.delivery_fee,
                 total: value.total_amount
@@ -394,6 +400,9 @@ export const buildOrderReceiptTransaction = (value = {}) => ({
     service_fee_amount: value.service_fee_amount,
     service_fee_label_snapshot: value.service_fee_label_snapshot || null,
     service_fee_method_snapshot: value.service_fee_method_snapshot || null,
+    customer_processing_fee_amount: value.customer_processing_fee_amount ?? 0,
+    customer_processing_fee_label_snapshot: value.customer_processing_fee_label_snapshot || null,
+    customer_processing_fee_breakdown: value.customer_processing_fee_breakdown || null,
     restaurant_service_charge_amount: value.restaurant_service_charge_amount,
     restaurant_service_charge_label_snapshot: value.restaurant_service_charge_label_snapshot || null,
     restaurant_service_charge_rate_snapshot: value.restaurant_service_charge_rate_snapshot,

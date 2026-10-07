@@ -12,6 +12,7 @@ import { StorefrontServicesCatalog } from '../../modes/services/storefront/compo
 import { StorefrontClassicCatalog } from '../../shared/components/storefront/StorefrontClassicCatalog.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
 import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { LaundryStorefrontCatalog } from '../../modes/laundry/storefront/LaundryStorefrontCatalog.jsx';
 
 // ZONE 4: Catalog Grid with Sidebar — cross-mode dispatcher (fnb product-details route,
 // services catalog, classic catalog). Moved verbatim out of StorefrontApp.jsx's ZONE 4 IIFE;
@@ -22,6 +23,7 @@ export function StorefrontCatalogRouteContainer(props) {
     accountStepComplete,
     fulfillmentStepComplete,
     isServicesMode,
+    isLaundryMode,
     servicesViewModel,
     activeServiceTab,
     fnbCatalogPresentation,
@@ -167,6 +169,7 @@ export function StorefrontCatalogRouteContainer(props) {
     setCustomerPin,
     setSelectedLocationId,
     setDeliveryLocationAction,
+    setPinLocationError,
     setIsReviewModalOpen,
     setIsServiceFilterOpen,
     setReviewDraft,
@@ -229,6 +232,19 @@ export function StorefrontCatalogRouteContainer(props) {
     simpleTrackingRouteProps,
     retailTrackingRouteProps
   } = props;
+
+  if (isLaundryMode) {
+    return <LaundryStorefrontCatalog
+      catalog={catalog}
+      loading={loadingCatalog}
+      error={catalogError}
+      selectedStore={selectedStore}
+      locationId={selectedLocationId}
+      customerName={customerName}
+      customerEmail={customerEmail}
+      customerPhone={customerPhone}
+    />;
+  }
 
   // --- Service Tab logic ---
   // RF-4 (PR #1583 review): `activeServiceTab`/`resolvedTab` hold `categoryIdentity` values (the
@@ -438,6 +454,7 @@ export function StorefrontCatalogRouteContainer(props) {
         setCheckoutResult={setCheckoutResult}
         setCustomerPin={setCustomerPin}
         setDeliveryLocationAction={setDeliveryLocationAction}
+        setPinLocationError={setPinLocationError}
         setIsReviewModalOpen={setIsReviewModalOpen}
         setIsServiceFilterOpen={setIsServiceFilterOpen}
         setReviewDraft={setReviewDraft}

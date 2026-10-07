@@ -2336,7 +2336,11 @@ function ItemsWorkspace({
   locationsLoading = false,
   storefrontSlug = '',
   sectionId,
-  refreshTerminalUser = async () => {}
+  refreshTerminalUser = async () => {},
+  createModalOpen = null,
+  onCreateModalOpenChange = () => {},
+  onItemCreated = () => {},
+  modalOnly = false
 }) {
   const [items, setItems] = useState([]);
   const [itemsTotal, setItemsTotal] = useState(0);
@@ -2497,6 +2501,15 @@ function ItemsWorkspace({
 
   const loadItems = useCallback(async () => {
     const sequence = ++itemsReadSequence.current;
+    if (modalOnly) {
+      itemsLoaded.current = true;
+      setItems([]);
+      setItemsTotal(0);
+      setPrimaryBarcodes({});
+      setLoading(false);
+      setError('');
+      return;
+    }
     if (!canViewPos || locked) {
       itemsLoaded.current = false;
       setItems([]);
@@ -2592,7 +2605,7 @@ function ItemsWorkspace({
     } finally {
       if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [availableLocations, canViewPos, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locationsLoading, locked, operatingLocationId, stockFilter]);
+  }, [availableLocations, canViewPos, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locationsLoading, locked, modalOnly, operatingLocationId, stockFilter]);
 
   useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
   const normalizePosFolders = useCallback((rows = []) => (
@@ -2608,7 +2621,7 @@ function ItemsWorkspace({
   ), []);
 
   const loadPosFolders = useCallback(async () => {
-    if (!canViewPos) {
+    if (!canViewPos && !modalOnly) {
       setPosFolders([]);
       return [];
     }
@@ -2621,7 +2634,7 @@ function ItemsWorkspace({
       setPosFolders([]);
       return [];
     }
-  }, [canViewPos, normalizePosFolders]);
+  }, [canViewPos, modalOnly, normalizePosFolders]);
 
   useEffect(() => {
     loadItems();
@@ -3253,6 +3266,7 @@ function ItemsWorkspace({
     setExternalQrScannerOpen(false);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
+    onCreateModalOpenChange(true);
   };
 
   const closeCreate = ({ force = false } = {}) => {
@@ -3272,7 +3286,19 @@ function ItemsWorkspace({
     setAcceptedExternalProduct(null);
     setExternalQrScannerOpen(false);
     if (force) setPendingCreateRecovery(null);
+    onCreateModalOpenChange(false);
   };
+
+  useEffect(() => {
+    if (createModalOpen === true && !showCreateModal) {
+      openCreate();
+    } else if (createModalOpen === false && showCreateModal) {
+      closeCreate({ force: true });
+    }
+    // This effect is the optional controlled bridge used by the OPIS catalog.
+    // POS keeps the existing internal open/close behavior by leaving the prop null.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createModalOpen]);
 
   const closeEditRef = useRef(closeEdit);
   closeEditRef.current = closeEdit;
@@ -3914,11 +3940,12 @@ function ItemsWorkspace({
       return;
     }
 
-    const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created' } = {}) => {
+    const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created', item = null } = {}) => {
       closeCreate({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
       notifyPosCatalogUpdated();
       setSavedMessage({ name, barcode, action });
+      onItemCreated(item);
       if (warningMessage) {
         toast.warning(warningMessage);
       }
@@ -3974,7 +4001,7 @@ function ItemsWorkspace({
         modifierGroupIds: selectedModifierGroupIds,
       });
 
-      await finalizeCreatedItem({ barcode: result.barcodeCode });
+      await finalizeCreatedItem({ barcode: result.barcodeCode, item: createdItem });
       toast.success('POS item created.');
     } catch (createError) {
       if (pendingCreateRecovery?.itemId || /post-create steps still need retry/i.test(String(createError?.message || ''))) {
@@ -4027,7 +4054,7 @@ function ItemsWorkspace({
   }
 
   return (
-    <div id={sectionId} className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-3 overflow-hidden">
+    <div id={sectionId} className={modalOnly ? 'hidden' : 'flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-3 overflow-hidden'}>
       <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-none max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:shadow-none sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
         <div className="relative">
           <div className="pos-items-desktop-toolbar hidden items-center gap-2 sm:flex">
@@ -6478,6 +6505,27 @@ function CategoryManagementWorkspace() {
   );
 }
 
+// Reuse the POS item-create workflow from back-office catalog surfaces without
+// duplicating its validation, image upload, barcode, category, and post-create
+// synchronization behavior. The workspace stays mounted so its portal-based
+// modal can render into document.body while the catalog page owns the trigger.
+export function PosItemCreateWorkflow({
+  open = false,
+  onOpenChange = () => {},
+  onCreated = () => {},
+  ...itemsWorkspaceProps
+}) {
+  return (
+    <ItemsWorkspace
+      {...itemsWorkspaceProps}
+      createModalOpen={open}
+      onCreateModalOpenChange={onOpenChange}
+      onItemCreated={onCreated}
+      modalOnly
+    />
+  );
+}
+
 function ItemsCatalogWorkspace({
   canViewPos = false,
   canManageCategories = false,
@@ -6837,6 +6885,13 @@ export default function TerminalOperationsWorkspace({
   refreshOrderHistory = () => {},
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
+  customerDisplayEnabled = true,
+  customerDisplayCanOpen = false,
+  customerDisplayStatus = 'closed',
+  customerDisplayStatusLabel = 'Not connected',
+  onCustomerDisplayEnabledChange = () => {},
+  onOpenCustomerDisplay = () => null,
+  onEndCustomerDisplay = () => {},
   queueSummary = {},
   replayingQueuedTerminalOperations = false,
   handleReplayQueuedTerminalOperations = () => {},
@@ -6853,10 +6908,12 @@ export default function TerminalOperationsWorkspace({
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
   const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
+  const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
+  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView;
   const workspaceShellClassName = usesOwnPageFrame
     ? 'p-0'
-    : effectiveViewMode === 'items'
-      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-items-workspace-shell'
+    : isFullBleedCatalogView
+      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-vouchers-workspace-shell'}`
       : 'p-5';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;
@@ -6893,6 +6950,13 @@ export default function TerminalOperationsWorkspace({
       settingsRefreshKey,
       onlineOrderSoundEnabled,
       setOnlineOrderSoundEnabled,
+      customerDisplayEnabled,
+      customerDisplayCanOpen,
+      customerDisplayStatus,
+      customerDisplayStatusLabel,
+      onCustomerDisplayEnabledChange,
+      onOpenCustomerDisplay,
+      onEndCustomerDisplay,
       terminalIdOptions,
       activeTerminalId,
       registryEnforced,
@@ -7269,6 +7333,13 @@ export default function TerminalOperationsWorkspace({
     onStorefrontSetupSaved,
     onStorefrontContentStateChange,
     onlineOrderSoundEnabled,
+    customerDisplayEnabled,
+    customerDisplayCanOpen,
+    customerDisplayStatus,
+    customerDisplayStatusLabel,
+    onCustomerDisplayEnabledChange,
+    onOpenCustomerDisplay,
+    onEndCustomerDisplay,
     operatingLocationId,
     viewingLocationId,
     openShiftForm,
@@ -7336,12 +7407,12 @@ export default function TerminalOperationsWorkspace({
       terminalUser={terminalUser}
       locked={locked}
       bare={usesOwnPageFrame}
-      borderless={effectiveViewMode === 'items'}
+      borderless={isFullBleedCatalogView}
       className={workspaceShellClassName}
     >
       <div
         key={effectiveViewMode}
-        className={effectiveViewMode === 'items'
+        className={isFullBleedCatalogView
           ? 'flex min-h-0 min-w-0 flex-1 flex-col catalog-slide-enter'
           : 'catalog-slide-enter'}
       >

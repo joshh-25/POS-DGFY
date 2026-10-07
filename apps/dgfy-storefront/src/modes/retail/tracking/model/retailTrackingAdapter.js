@@ -144,6 +144,10 @@ export const RetailTrackingAdapter = Object.freeze({
       serviceFeeAmount: Number.isFinite(Number(order?.service_fee_amount ?? order?.service_fee ?? payload?.service_fee_amount ?? payload?.service_fee))
         ? Number(order?.service_fee_amount ?? order?.service_fee ?? payload?.service_fee_amount ?? payload?.service_fee)
         : null,
+      customerProcessingFeeAmount: Number.isFinite(Number(order?.customer_processing_fee_amount ?? payload?.customer_processing_fee_amount))
+        ? Number(order?.customer_processing_fee_amount ?? payload?.customer_processing_fee_amount)
+        : null,
+      customerProcessingFeeLabel: String(order?.customer_processing_fee_label_snapshot || payload?.customer_processing_fee_label || '').trim(),
       totalAmount: Number.isFinite(Number(order?.total_amount ?? payload?.total_amount))
         ? Number(order?.total_amount ?? payload?.total_amount)
         : null,

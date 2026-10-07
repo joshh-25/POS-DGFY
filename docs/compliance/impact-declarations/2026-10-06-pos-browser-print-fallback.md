@@ -4,18 +4,18 @@ owner: DGFY POS
 last_reviewed: 2026-10-06
 declaration_id: 2026-10-06-pos-browser-print-fallback
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,settings,payments,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.06
-verification_evidence: focused POS printer/report tests,receipt-preview browser fallback sequencing test,POS lint and build,git diff --check
-rollback_note: Revert the browser printer fallback, report paper-width controls, and this declaration; no database schema, migration, or tenant-data change is included.
+verification_evidence: focused POS printer/report tests,POS settings contract tests,receipt-preview browser fallback sequencing test,POS lint and build,git diff --check
+rollback_note: Revert the browser printer fallback, report paper-width controls, preparation-fee settings-pane wiring, and this declaration; no database schema, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-06T07:47:59.598Z
-preflight_request_ref: PREFLIGHT-37431484571-2026-10-06-POS-BROWSER-PRINT-FALLBACK
+preflight_run_at: 2026-10-07T15:54:06.384Z
+preflight_request_ref: PREFLIGHT-37646533737-2026-10-06-POS-BROWSER-PRINT-FALLBACK
 ---
 
-# POS browser printer fallback and report paper sizing
+# POS browser printer fallback, report paper sizing, and settings-pane wiring
 
 ## Compliance Impact Classification
 
@@ -28,7 +28,10 @@ change payment, fiscal, inventory, authorization, or persisted transaction behav
 ## Affected Surfaces
 
 - `pos` — receipt preview, Z-reading, shift-summary printing, and browser printer fallback.
-- `terminal` — cashier print controls, paper-width selection, and print-layout CSS.
+- `terminal` — cashier print controls, paper-width selection, print-layout CSS, and the POS settings tab strip.
+- `settings` — the POS preparation-fee configuration entry point wired into the existing editor.
+- `payments` — the related checkout/payment-session and item-processing fee behavior in this combined PR.
+- `inventory` — the related catalog and stock-authoring behavior in this combined PR.
 
 ## Compliance Preconditions
 
@@ -37,12 +40,15 @@ change payment, fiscal, inventory, authorization, or persisted transaction behav
   bypass POS authorization, payment, fiscal, or audit controls.
 - The selected paper width affects print presentation only and is not persisted as transactional
   data.
+- The preparation-fee settings pane only wires the already-authorized editor into POS settings; it
+  does not add a second persistence path, change fee calculation, or alter payment-provider data.
 - No database schema, migration, payment, fiscal, inventory, or tenant-data change is included.
-- The `NOT-EXECUTED-*` preflight reference is a validator-required PR-open placeholder; no live
+- The `NOT-EXECUTED-*` preflight reference is a validator-required PR-open placeholder for issue
+  #2289; no live
   request-time preflight is claimed here, and the continuous compliance sweep must reconcile it.
 
 ## Verification Evidence
 
-- Focused POS printer/report tests, receipt-preview browser fallback sequencing coverage, POS lint,
-  and the affected app build are required before PR submission.
+- Focused POS printer/report/settings tests, receipt-preview browser fallback sequencing coverage,
+  POS lint, and the affected app build are required before PR submission.
 - The repository compliance gate validates this declaration against the changed POS/terminal files.

@@ -103,6 +103,21 @@ describe('extracted POS Settings workspace', () => {
     expect(discountsTab.className).toContain('border-[#1A4E8D]');
   });
 
+  it('renders the optional preparation-fee pane inside POS settings without adding it to terminal settings by default', async () => {
+    render(<PosSettingsWorkspace {...buildProps({
+      initialTab: 'pos_setup',
+      allowedTabIds: ['pos_setup', 'processing_fees'],
+      processingFeePane: <div data-testid="preparation-fee-pane">Preparation fee configuration</div>,
+      terminalUser: { ...buildProps().terminalUser, is_master_admin: true }
+    })} />);
+
+    const preparationFeeTab = await screen.findByRole('tab', { name: 'Preparation Fee', exact: true });
+    fireEvent.click(preparationFeeTab);
+
+    expect(await screen.findByTestId('preparation-fee-pane')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Preparation Fee', exact: true }).getAttribute('aria-selected')).toBe('true');
+  });
+
   it('preserves a profile draft across tabs and saves only the profile payload', async () => {
     const onRefreshTerminalUser = vi.fn().mockResolvedValue(undefined);
     render(<PosSettingsWorkspace {...buildProps({ onRefreshTerminalUser })} />);

@@ -23,6 +23,9 @@ const toPlain = (row) => {
   if (Object.hasOwn(normalized, 'fallback_fee_policy')) {
     normalized.fallback_fee_policy = parseJsonObject(normalized.fallback_fee_policy);
   }
+  if (Object.hasOwn(normalized, 'customer_processing_fee_policy')) {
+    normalized.customer_processing_fee_policy = parseJsonObject(normalized.customer_processing_fee_policy);
+  }
   return normalized;
 };
 const toPlainRows = (rows = []) => rows.map(toPlain);

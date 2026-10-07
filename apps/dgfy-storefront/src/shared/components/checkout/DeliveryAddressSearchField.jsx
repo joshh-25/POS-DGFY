@@ -20,6 +20,7 @@ const ERROR_MESSAGE = 'Address search is unavailable right now. Tap the map to p
 export function DeliveryAddressSearchField({
   value = '',
   onValueChange = () => {},
+  onClear = null,
   onSelectResult = () => {},
   bias = null,
   resolving = false,
@@ -88,6 +89,19 @@ export function DeliveryAddressSearchField({
     onSelectResult(result);
   };
 
+  const clearAddress = () => {
+    setEditing(false);
+    setDismissed(false);
+    setStatus('idle');
+    setResults([]);
+    setActiveIndex(0);
+    if (typeof onClear === 'function') {
+      onClear();
+      return;
+    }
+    onValueChange('');
+  };
+
   const handleKeyDown = (event) => {
     if (event.key === 'Escape') {
       setDismissed(true);
@@ -132,9 +146,14 @@ export function DeliveryAddressSearchField({
           value={value}
           placeholder={resolving ? resolvingPlaceholder : placeholder}
           onChange={(event) => {
+            const nextValue = event.target.value;
+            if (!nextValue && typeof onClear === 'function') {
+              clearAddress();
+              return;
+            }
             setEditing(true);
             setDismissed(false);
-            onValueChange(event.target.value);
+            onValueChange(nextValue);
           }}
           onFocus={() => {
             setFocused(true);
@@ -149,10 +168,7 @@ export function DeliveryAddressSearchField({
             type="button"
             aria-label="Clear delivery address"
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              setEditing(false);
-              onValueChange('');
-            }}
+            onClick={clearAddress}
             style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: 'transparent', color: '#64748b', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
           >
             <X size={16} aria-hidden="true" />

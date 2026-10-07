@@ -112,6 +112,7 @@ export function RetailTrackingRoutePage({
       hasDiscount: Number.isFinite(trackingResult.discountAmount) && trackingResult.discountAmount > 0,
       discountLabel: String(trackingResult.discountLabel || 'Promo / Discount').trim(),
       hasServiceFee: Number.isFinite(trackingResult.serviceFeeAmount) && trackingResult.serviceFeeAmount > 0,
+      hasCustomerProcessingFee: Number.isFinite(trackingResult.customerProcessingFeeAmount) && trackingResult.customerProcessingFeeAmount > 0,
       hasSubtotal: Number.isFinite(trackingResult.subtotalAmount),
       isMatchingTrackingPin,
       presentation: {
@@ -133,6 +134,7 @@ export function RetailTrackingRoutePage({
           Number.isFinite(trackingResult.discountAmount) && trackingResult.discountAmount > 0
           || Number.isFinite(trackingResult.deliveryFee) && trackingResult.deliveryFee > 0
           || Number.isFinite(trackingResult.serviceFeeAmount) && trackingResult.serviceFeeAmount > 0
+          || Number.isFinite(trackingResult.customerProcessingFeeAmount) && trackingResult.customerProcessingFeeAmount > 0
         ),
       // Phase 210 (#1179). Merchant-attributed copy, only ever shown for a rejected order --
       // never DGFY's own statement.

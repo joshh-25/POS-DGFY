@@ -13,6 +13,10 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
 import { useLocations } from '@/hooks/useLocations.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
+import {
+  buildStockAllocationDraft,
+  buildStockAllocations
+} from '@/src/features/inventory/utils/stockAllocations.js';
 import { resolveBusinessModeProductDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx';
@@ -149,7 +153,7 @@ export default function ProductCreateWizard({
   const savingActionRef = useRef(null);
   const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
   const [lastSuggestedSku, setLastSuggestedSku] = useState('');
-  const [stockBaseline, setStockBaseline] = useState(0);
+  const [stockAllocationDraft, setStockAllocationDraft] = useState({});
   const { locations, loading: loadingLocations } = useLocations();
   const activeLocations = useMemo(
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
@@ -171,11 +175,10 @@ export default function ProductCreateWizard({
     });
     return map;
   }, [product]);
-  const resolveLocationStock = (locationId) => {
-    if (!locationId) return null;
-    const normalized = String(locationId);
-    return productLocationStockMap.has(normalized) ? (productLocationStockMap.get(normalized) || 0) : null;
-  };
+  const stockAllocations = useMemo(
+    () => buildStockAllocations(stockAllocationDraft, activeLocations),
+    [activeLocations, stockAllocationDraft]
+  );
 
   const isEditingDraft = product?.status === 'draft';
   const isSaving = Boolean(savingAction);
@@ -283,7 +286,7 @@ export default function ProductCreateWizard({
 
       setProductData(loadedData);
       setInitialProductData(loadedData);
-      setStockBaseline(Number(initialLocationStock) || 0);
+      setStockAllocationDraft(buildStockAllocationDraft(activeLocations));
       setSkuManuallyEdited(Boolean(String(loadedData.sku_code || '').trim()));
       setLastSuggestedSku('');
 
@@ -306,7 +309,7 @@ export default function ProductCreateWizard({
       };
       setProductData(nextDefaultData);
       setInitialProductData(nextDefaultData);
-      setStockBaseline(Number(nextDefaultData.current_stock) || 0);
+      setStockAllocationDraft(buildStockAllocationDraft(activeLocations));
       setStep(1);
       setInitialStep(1);
       setIsDirty(false);
@@ -353,30 +356,25 @@ export default function ProductCreateWizard({
       const hasPackaging = productData.packaging_items && productData.packaging_items.length > 0;
       const hasBatchSize = productData.batch_size && productData.batch_size > 0;
       const hasDescription = productData.description && productData.description.trim() !== '';
+      const hasStockAllocations = stockAllocations.length > 0;
 
-      setIsDirty(hasName || hasSku || hasIngredients || hasPackaging || hasBatchSize || hasDescription);
+      setIsDirty(hasName || hasSku || hasIngredients || hasPackaging || hasBatchSize || hasDescription || hasStockAllocations);
     } else {
       // Editing product - check if data changed from initial
-      const hasChanges = JSON.stringify(productData) !== JSON.stringify(initialProductData);
+      const hasChanges = JSON.stringify(productData) !== JSON.stringify(initialProductData) || stockAllocations.length > 0;
       setIsDirty(hasChanges);
     }
-  }, [productData, product, initialProductData]);
+  }, [productData, product, initialProductData, stockAllocations.length]);
 
   const updateProductData = (updates) => {
-    setProductData((prev) => {
-      const next = { ...prev, ...updates };
-      if (product && Object.prototype.hasOwnProperty.call(updates, 'location_id')) {
-        const locationStock = resolveLocationStock(updates.location_id);
-        if (locationStock !== null) {
-          next.current_stock = locationStock;
-          setStockBaseline(locationStock);
-        } else if (!updates.location_id && activeLocations.length > 1) {
-          next.current_stock = 0;
-          setStockBaseline(0);
-        }
-      }
-      return next;
-    });
+    setProductData((prev) => ({ ...prev, ...updates }));
+  };
+
+  const handleStockAllocationChange = (locationId, value) => {
+    setStockAllocationDraft((previous) => ({
+      ...previous,
+      [String(locationId)]: value
+    }));
   };
 
   const handleSkuChange = (value) => {
@@ -400,7 +398,7 @@ export default function ProductCreateWizard({
     setInitialStep(1);
     setProductData({ ...buildDefaultProductData(modeProductDefaults) });
     setInitialProductData(null);
-    setStockBaseline(0);
+    setStockAllocationDraft(buildStockAllocationDraft(activeLocations));
     setIsDirty(false);
     setSkuManuallyEdited(false);
     setLastSuggestedSku('');
@@ -456,6 +454,9 @@ export default function ProductCreateWizard({
         last_saved_at: new Date().toISOString()
       }
     }, workflowMode);
+    delete draftData.current_stock;
+    delete draftData.location_id;
+    delete draftData.stock_allocations;
 
     if (onSaveDraft) {
       try {
@@ -477,25 +478,79 @@ export default function ProductCreateWizard({
     await handleSubmit();
   };
 
+  // Stock is an additive command owned by the inventory ledger. Keep the
+  // legacy form fields out of the payload so saving this wizard can never
+  // overwrite an existing branch balance.
+  const getSanitizedData = (data, includeStock = true) => {
+    const sanitized = { ...data };
+
+    // Ensure quantity fields are numbers, not NaN or strings
+    if (sanitized.packaging_items) {
+      sanitized.packaging_items = sanitized.packaging_items.map(item => ({
+        ...item,
+        quantity: Number(item.quantity) || 0,
+        item_id: Number(item.item_id)
+      })).filter(item => item.item_id && item.quantity > 0);
+    }
+
+    // Get batch size for normalization (avoid division by zero)
+    const batchSize = Number(sanitized.batch_size) || 1;
+
+    if (sanitized.ingredients) {
+      sanitized.ingredients = sanitized.ingredients.map(item => ({
+        ...item,
+        // Normalize: User inputs "Per Batch", but Backend/DB expects "Per Unit"
+        // So we divide by batch size to get the per-unit requirement.
+        // Round to 10dp to eliminate floating-point noise before DB persistence.
+        quantity: parseFloat(((Number(item.quantity) || 0) / batchSize).toFixed(10)),
+        item_id: Number(item.item_id)
+      })).filter(item => item.item_id && item.quantity > 0);
+    }
+
+    // Ensure other numeric fields are not NaN
+    // batch_size must be positive or null, not 0
+    const numericFields = ['yield_percentage', 'processing_loss', 'max_capacity', 'min_threshold', 'purchase_allowance'];
+    numericFields.forEach(field => {
+      if (field in sanitized) {
+        sanitized[field] = Number(sanitized[field]) || 0;
+      }
+    });
+
+    // batch_size requires special handling: must be positive or null (not 0)
+    if ('batch_size' in sanitized) {
+      const batchSizeValue = Number(sanitized.batch_size);
+      sanitized.batch_size = batchSizeValue > 0 ? batchSizeValue : null;
+    }
+
+    // Ensure packaging_info is an object
+    if (!sanitized.packaging_info || typeof sanitized.packaging_info !== 'object') {
+      sanitized.packaging_info = {};
+    }
+
+    delete sanitized.current_stock;
+    delete sanitized.location_id;
+    delete sanitized.stock_allocations;
+
+    const allocations = includeStock
+      ? buildStockAllocations(stockAllocationDraft, activeLocations)
+      : [];
+    if (allocations.length > 0) {
+      sanitized.stock_allocations = allocations;
+    }
+
+    return clearFnbManufacturingFields(sanitized, workflowMode);
+  };
+
   const handleFinalize = async () => {
     if (productData.product_type === 'finished_goods' && !productData.vat_type) {
       toast.error('VAT type is required to finalize finished goods.');
       return;
     }
-    const hasStockAdjustment = product
-      ? (Number(productData.current_stock) || 0) !== (Number(stockBaseline) || 0)
-      : (Number(productData.current_stock) || 0) > 0;
-    if (hasStockAdjustment && activeLocations.length > 1 && !productData.location_id) {
-      toast.error('Please select a location when setting current stock.');
-      return;
-    }
-    const parsedLocationId = Number.parseInt(productData.location_id, 10);
-    const finalData = clearFnbManufacturingFields({
-      ...productData,
-      location_id: hasStockAdjustment && Number.isInteger(parsedLocationId) && parsedLocationId > 0 ? parsedLocationId : null,
+    const finalData = {
+      ...getSanitizedData(productData, true),
       status: 'active',
       wizard_metadata: null
-    }, workflowMode);
+    };
 
     try {
       await onSubmit(finalData);
@@ -511,68 +566,6 @@ export default function ProductCreateWizard({
       toast.error('VAT type is required for finished goods.');
       return;
     }
-    const hasStockAdjustment = product
-      ? (Number(productData.current_stock) || 0) !== (Number(stockBaseline) || 0)
-      : (Number(productData.current_stock) || 0) > 0;
-    if (hasStockAdjustment && activeLocations.length > 1 && !productData.location_id) {
-      toast.error('Please select a location when setting current stock.');
-      return;
-    }
-    // Common cleanup function to ensure data validity before submission
-    const getSanitizedData = (data) => {
-      const sanitized = { ...data };
-
-      // Ensure quantity fields are numbers, not NaN or strings
-      if (sanitized.packaging_items) {
-        sanitized.packaging_items = sanitized.packaging_items.map(item => ({
-          ...item,
-          quantity: Number(item.quantity) || 0,
-          item_id: Number(item.item_id)
-        })).filter(item => item.item_id && item.quantity > 0);
-      }
-
-      // Get batch size for normalization (avoid division by zero)
-      const batchSize = Number(sanitized.batch_size) || 1;
-
-      if (sanitized.ingredients) {
-        sanitized.ingredients = sanitized.ingredients.map(item => ({
-          ...item,
-          // Normalize: User inputs "Per Batch", but Backend/DB expects "Per Unit"
-          // So we divide by batch size to get the per-unit requirement.
-          // Round to 10dp to eliminate floating-point noise before DB persistence.
-          quantity: parseFloat(((Number(item.quantity) || 0) / batchSize).toFixed(10)),
-          item_id: Number(item.item_id)
-        })).filter(item => item.item_id && item.quantity > 0);
-      }
-
-      // Ensure other numeric fields are not NaN
-      // batch_size must be positive or null, not 0
-      const numericFields = ['yield_percentage', 'processing_loss', 'current_stock', 'max_capacity', 'min_threshold', 'purchase_allowance'];
-      numericFields.forEach(field => {
-        if (field in sanitized) {
-          sanitized[field] = Number(sanitized[field]) || 0;
-        }
-      });
-
-      // batch_size requires special handling: must be positive or null (not 0)
-      if ('batch_size' in sanitized) {
-        const batchSizeValue = Number(sanitized.batch_size);
-        sanitized.batch_size = batchSizeValue > 0 ? batchSizeValue : null;
-      }
-
-      // Ensure packaging_info is an object
-      if (!sanitized.packaging_info || typeof sanitized.packaging_info !== 'object') {
-        sanitized.packaging_info = {};
-      }
-
-      const parsedLocationId = Number.parseInt(sanitized.location_id, 10);
-      sanitized.location_id = hasStockAdjustment && Number.isInteger(parsedLocationId) && parsedLocationId > 0
-        ? parsedLocationId
-        : null;
-
-      return clearFnbManufacturingFields(sanitized, workflowMode);
-    };
-
     // Validate composition for nested products (circular dependencies and depth limits)
     if (productData.ingredients && productData.ingredients.length > 0) {
       const validation = await validateComposition(
@@ -686,6 +679,10 @@ export default function ProductCreateWizard({
               items={items}
               locations={activeLocations}
               loadingLocations={loadingLocations}
+              stockAllocationDraft={stockAllocationDraft}
+              onStockAllocationChange={handleStockAllocationChange}
+              existingStockByLocation={productLocationStockMap}
+              isEditing={Boolean(product)}
               productItem={product}
               posConfig={posConfig}
               storefrontConfig={storefrontConfig}

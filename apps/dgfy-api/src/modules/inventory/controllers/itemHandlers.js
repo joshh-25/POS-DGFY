@@ -198,7 +198,13 @@ export const createItem = async (req, res, next) => {
       'Failed to create item'
     );
     if (result.success) {
-      await publishCatalogInvalidation(req, 'item_created', [result.data?.item_id]);
+      await publishCatalogInvalidation(
+        req,
+        Array.isArray(itemData?.stock_allocations) && itemData.stock_allocations.length > 0
+          ? 'item_created_stock_changed'
+          : 'item_created',
+        [result.data?.item_id]
+      );
     }
     await trackProductUsageFromResult({
       req,
@@ -256,7 +262,13 @@ export const updateItem = async (req, res, next) => {
       'Failed to update item'
     );
     if (result.success) {
-      await publishCatalogInvalidation(req, 'item_updated', [item_id]);
+      await publishCatalogInvalidation(
+        req,
+        Array.isArray(itemData?.stock_allocations) && itemData.stock_allocations.length > 0
+          ? 'item_updated_stock_changed'
+          : 'item_updated',
+        [item_id]
+      );
     }
     await trackProductUsageFromResult({
       req,
@@ -296,7 +308,13 @@ export const finalizeItem = async (req, res, next) => {
       'Failed to finalize item'
     );
     if (result.success) {
-      await publishCatalogInvalidation(req, 'item_finalized', [item_id]);
+      await publishCatalogInvalidation(
+        req,
+        Array.isArray(itemData?.stock_allocations) && itemData.stock_allocations.length > 0
+          ? 'item_finalized_stock_changed'
+          : 'item_finalized',
+        [item_id]
+      );
     }
     await trackProductUsageFromResult({
       req,

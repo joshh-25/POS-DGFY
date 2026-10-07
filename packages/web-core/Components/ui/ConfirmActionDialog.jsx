@@ -28,7 +28,11 @@ export default function ConfirmActionDialog({
   reasonMinLength = 3,
   onConfirm,
   overlayClassName,
-  confirmClassName = ''
+  confirmClassName = '',
+  stackedActions = false,
+  mobileStackedActions = false,
+  mobileHorizontalActions = false,
+  showIcon = true
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -75,9 +79,11 @@ export default function ConfirmActionDialog({
     <Dialog open={open} onOpenChange={handleOpenChange} overlayClassName={overlayClassName}>
       <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
         <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
-          <div className={`mb-2 flex h-10 w-10 items-center justify-center rounded-full ${destructive ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-          </div>
+          {showIcon ? (
+            <div className={`mb-2 flex h-10 w-10 items-center justify-center rounded-full ${destructive ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+            </div>
+          ) : null}
           <DialogTitle className="text-[16px] font-extrabold text-[#0F172A]">{title}</DialogTitle>
           <DialogDescription className="mt-1 text-[12px] leading-5 text-[#64748B]">{description}</DialogDescription>
         </DialogHeader>
@@ -104,15 +110,30 @@ export default function ConfirmActionDialog({
             ) : null}
           </div>
         ) : null}
-        <DialogFooter className="flex-row items-center gap-2 border-t border-slate-100 px-5 py-4 sm:justify-end sm:px-6">
-          <Button type="button" variant="outline" className="min-h-9 min-w-0 flex-1 text-[13px] font-bold sm:flex-none sm:text-[14px]" onClick={() => handleOpenChange(false)} disabled={submitting}>
+        <DialogFooter
+          stacked={stackedActions}
+          className={`border-t border-slate-100 px-5 py-4 sm:px-6 ${mobileStackedActions ? 'max-sm:items-stretch max-sm:gap-2' : ''} ${mobileHorizontalActions ? 'max-sm:flex-row max-sm:items-center max-sm:justify-end max-sm:gap-2' : ''}`}
+        >
+          <Button
+            type="button"
+            variant="outline"
+            className={mobileHorizontalActions
+              ? 'min-h-9 min-w-0 flex-none text-[13px] font-bold sm:text-[14px]'
+              : mobileStackedActions
+                ? 'min-h-9 min-w-0 max-sm:w-full text-[13px] font-bold sm:text-[14px]'
+              : stackedActions
+                ? 'min-h-9 w-full text-[13px] font-bold sm:text-[14px]'
+                : 'min-h-9 min-w-0 flex-1 text-[13px] font-bold sm:flex-none sm:text-[14px]'}
+            onClick={() => handleOpenChange(false)}
+            disabled={submitting}
+          >
             {cancelLabel}
           </Button>
           <Button
             type="button"
             onClick={handleConfirm}
             disabled={submitting}
-            className={destructive ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-600' : confirmClassName}
+            className={`${mobileHorizontalActions ? 'min-w-0 flex-none' : mobileStackedActions ? 'min-w-0 max-sm:w-full' : stackedActions ? 'w-full' : ''} ${confirmClassName || (destructive ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-600' : '')}`}
           >
             {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
             {submitting ? 'Working...' : confirmLabel}

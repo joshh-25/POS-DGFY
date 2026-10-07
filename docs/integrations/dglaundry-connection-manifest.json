@@ -9,16 +9,16 @@
       "issuer": "https://api.stage.dgfy.ph/oidc",
       "partnerApiOrigin": "https://api.stage.dgfy.ph",
       "storefrontOrigin": "https://dgfy.ph",
-      "dglaundryBrowserClientId": "",
-      "dglaundryServiceClientId": "",
+      "dglaundryBrowserClientId": "dglaundry-web",
+      "dglaundryServiceClientId": "dglaundry-service",
       "paymentMode": "sandbox"
     },
     "production": {
       "issuer": "https://api.dgfy.ph/oidc",
       "partnerApiOrigin": "https://api.dgfy.ph",
       "storefrontOrigin": "https://dgfy.ph",
-      "dglaundryBrowserClientId": "",
-      "dglaundryServiceClientId": "",
+      "dglaundryBrowserClientId": "dglaundry-web",
+      "dglaundryServiceClientId": "dglaundry-service",
       "paymentMode": "live-authorized-separately"
     }
   },
@@ -31,5 +31,5 @@
     "dgfyRequestSigning": { "owner": "dgfy", "privateFile": "keys/dgfy-request-signing.pem", "publicFile": "keys/dgfy-request-signing.pub.pem", "algorithm": "P-256 ieee-p1363" }
   },
   "secretPolicy": "Private keys and client secrets remain on their owning host and are never written to this manifest.",
-  "registrationStatus": "blocked-pending-dgfy-client-registration"
+  "registrationStatus": "proposed-pending-dglaundry-confirmation"
 }

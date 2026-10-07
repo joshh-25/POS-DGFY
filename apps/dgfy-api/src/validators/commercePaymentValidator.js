@@ -1,6 +1,6 @@
 import Joi from 'joi';
 
-const PAYMENT_SESSION_PATTERN = /^CPS-[A-Z0-9]{10}$/;
+const PAYMENT_SESSION_PATTERN = /^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/;
 const REFUND_STRATEGIES = ['proportional', 'tenant', 'dgfy', 'custom'];
 const REFUND_REASONS = ['requested_by_customer', 'duplicate', 'fraudulent', 'others'];
 const PAYMENT_SESSION_STATUSES = [
@@ -142,8 +142,8 @@ const dglaundryBookingPaymentSessionSchema = Joi.object({
   company_id: Joi.string().trim().max(160).optional(),
   location_id: Joi.string().trim().min(1).max(160).required(),
   mode: Joi.string().valid('fixed', 'per_kilo', 'mixed').default('fixed'),
-  external_order_reference: bookingReferenceSchema.required(),
-  external_tracking_reference: bookingReferenceSchema.required(),
+  external_order_reference: bookingReferenceSchema.optional(),
+  external_tracking_reference: bookingReferenceSchema.optional(),
   external_order_group_reference: bookingReferenceSchema.optional(),
   external_tracking_group_reference: bookingReferenceSchema.optional(),
   catalog_version: Joi.string().trim().min(1).max(120).optional(),

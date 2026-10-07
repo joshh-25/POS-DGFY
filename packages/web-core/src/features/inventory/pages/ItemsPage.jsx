@@ -1,5 +1,5 @@
-import React, { useDeferredValue, useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Sparkles } from 'lucide-react';
+import React, { Suspense, lazy, useDeferredValue, useState, useMemo, useEffect, useCallback } from 'react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -129,8 +129,19 @@ const parseStorefrontImageGallery = (value) => {
   }
 };
 
-export default function Items({ embedded = false }) {
+// Keep the POS item-create workflow out of the initial OPIS catalog bundle.
+// It is loaded only when the catalog's Add Item action is used.
+const PosItemCreateWorkflow = lazy(() => (
+  import('@/src/features/pos/components/TerminalOperationsWorkspace.jsx')
+    .then(({ PosItemCreateWorkflow: Workflow }) => ({ default: Workflow }))
+));
+
+export default function Items({ embedded = false, editorLabel = 'Inventory Items', itemEditorMode = false }) {
   const navigate = useNavigate();
+  // OPIS Item Editor keeps category data and channel controls, but does not
+  // expose the legacy folder-navigation presentation. POS/IMS callers retain
+  // their existing folder/grid behavior unless they opt into this mode.
+  const folderNavigationEnabled = !itemEditorMode;
   // #682: branch stock scope. Deliberately NOT persisted to localStorage like the other filters
   // below (categoryFilter etc.) -- always reopening on "All Locations" is what keeps this honest:
   // a stale remembered branch selection from a prior session is exactly the kind of silent
@@ -212,6 +223,7 @@ export default function Items({ embedded = false }) {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showProductWizard, setShowProductWizard] = useState(false);
+  const [showPosItemCreateWorkflow, setShowPosItemCreateWorkflow] = useState(false);
   const [msmeItemPreset, setMsmeItemPreset] = useState(MSME_ITEM_PRESET.INVENTORY_ONLY);
   const [activeCreatePreset, setActiveCreatePreset] = useState(MSME_ITEM_PRESET.INVENTORY_ONLY);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -221,7 +233,9 @@ export default function Items({ embedded = false }) {
   const [showImportExportModal, setShowImportExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [currentFolder, setCurrentFolder] = useState(() => getInitialState('currentFolder', null));
+  const [currentFolder, setCurrentFolder] = useState(() => (
+    folderNavigationEnabled ? getInitialState('currentFolder', null) : null
+  ));
   const [folderToDelete, setFolderToDelete] = useState(null);
   const [showFolderDeleteDialog, setShowFolderDeleteDialog] = useState(false);
   const [deletingFolder, setDeletingFolder] = useState(false);
@@ -238,6 +252,7 @@ export default function Items({ embedded = false }) {
   const [posChecklistSelectedIds, setPosChecklistSelectedIds] = useState(new Set());
   const [bulkPosToggleLoading, setBulkPosToggleLoading] = useState(false);
   const [bulkStorefrontToggleLoading, setBulkStorefrontToggleLoading] = useState(false);
+  const renderedViewMode = itemEditorMode ? 'list' : viewMode;
   const [bulkPosImageFiles, setBulkPosImageFiles] = useState([]);
   const [bulkStorefrontImageFiles, setBulkStorefrontImageFiles] = useState([]);
   const [bulkImageUploadLoading, setBulkImageUploadLoading] = useState(false);
@@ -1217,6 +1232,22 @@ export default function Items({ embedded = false }) {
     return null;
   }, [findFolderEntry, folderEntries]);
 
+  const resolveItemCategoryNames = useCallback((item) => {
+    const names = [];
+    const primaryName = resolveItemFolderName(item);
+    if (primaryName) names.push(primaryName);
+
+    const secondaryFolderIds = Array.isArray(item?.secondary_folder_ids)
+      ? item.secondary_folder_ids
+      : [];
+    secondaryFolderIds.forEach((folderId) => {
+      const secondaryFolder = folderEntries.find((entry) => Number(entry.folder_id) === Number(folderId));
+      if (secondaryFolder?.name) names.push(secondaryFolder.name);
+    });
+
+    return [...new Set(names)];
+  }, [folderEntries, resolveItemFolderName]);
+
   const resolveFolderAssignmentForSave = useCallback(async (folderName) => {
     const normalizedFolderName = normalizeFolderName(folderName);
     if (!normalizedFolderName) {
@@ -1468,7 +1499,7 @@ export default function Items({ embedded = false }) {
 
   // Hide the selection bar and suppress Escape handler whenever any modal is open
   const isAnyModalOpen =
-    showDetailsModal || showFormModal || showProductWizard || showMoveModal ||
+    showDetailsModal || showFormModal || showProductWizard || showPosItemCreateWorkflow || showMoveModal ||
     showDeleteDialog || showFolderDeleteDialog ||
     showImportModal || showExportModal || showImportExportModal || showPosChecklistModal;
 
@@ -1538,6 +1569,10 @@ export default function Items({ embedded = false }) {
   };
 
   const handleCreate = (presetOverride = null) => {
+    if (itemEditorMode) {
+      setShowPosItemCreateWorkflow(true);
+      return;
+    }
     const nextPreset = presetOverride || msmeItemPreset;
     setActiveCreatePreset(nextPreset);
     setEditingItem(null);
@@ -2082,7 +2117,7 @@ export default function Items({ embedded = false }) {
     >
       <div className={cn('catalog-editor-page space-y-4', embedded && 'catalog-editor-page--embedded')}>
         {/* Breadcrumb Navigation - shown when inside a folder */}
-        {currentFolder && (
+        {folderNavigationEnabled && currentFolder && (
           <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
             <Button
               variant="outline"
@@ -2112,7 +2147,7 @@ export default function Items({ embedded = false }) {
                 <Package className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{currentFolder || 'Catalog items'}</p>
+                <p className="truncate text-sm font-semibold text-slate-900">{currentFolder || editorLabel}</p>
                 <p className="text-sm text-slate-500">
                   {currentFolder
                     ? `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in this folder`
@@ -2124,7 +2159,7 @@ export default function Items({ embedded = false }) {
           ) : (
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                {currentFolder || 'Inventory Items'}
+                {currentFolder || editorLabel}
               </h1>
               <p className="mt-1 text-slate-500">
                 {currentFolder
@@ -2141,7 +2176,7 @@ export default function Items({ embedded = false }) {
                 Import / Export
               </Button>
             )}
-            {canConfigurePosCatalog && (
+            {canConfigurePosCatalog && !itemEditorMode && (
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
@@ -2156,7 +2191,7 @@ export default function Items({ embedded = false }) {
                 </Button>
               </div>
             )}
-            {!isMsmeMode && (categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
+            {!itemEditorMode && !isMsmeMode && (categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
               <Button onClick={() => handleCreateProduct()} className="bg-teal-600 hover:bg-teal-700">
                 <Package className="w-4 h-4 mr-2" />
                 Create Product
@@ -2182,11 +2217,11 @@ export default function Items({ embedded = false }) {
             {canCreate('items') && !isMsmeMode && (
               <Button
                 onClick={() => handleCreate()}
-                variant={(categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') ? 'outline' : 'default'}
-                className={(categoryFilter !== 'finished_goods' && categoryFilter !== 'work_in_progress' && categoryFilter !== 'product') ? "bg-teal-600 hover:bg-teal-700" : ""}
+                variant={itemEditorMode || (categoryFilter !== 'finished_goods' && categoryFilter !== 'work_in_progress' && categoryFilter !== 'product') ? 'default' : 'outline'}
+                className={itemEditorMode || (categoryFilter !== 'finished_goods' && categoryFilter !== 'work_in_progress' && categoryFilter !== 'product') ? "bg-teal-600 hover:bg-teal-700" : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Add New Item
+                {itemEditorMode ? 'Add Item' : 'Add New Item'}
               </Button>
             )}
           </div>
@@ -2252,19 +2287,21 @@ export default function Items({ embedded = false }) {
                 </Select>
               </div>
 
-              <Tabs value={viewMode} onValueChange={setViewMode} className="hidden sm:block">
-                <TabsList aria-label="Catalog view">
-                  <TabsTrigger value="grid"><LayoutGrid className="w-4 h-4" /></TabsTrigger>
-                  <TabsTrigger value="list"><List className="w-4 h-4" /></TabsTrigger>
-                </TabsList>
-              </Tabs>
+              {!itemEditorMode && (
+                <Tabs value={viewMode} onValueChange={setViewMode} className="hidden sm:block">
+                  <TabsList aria-label="Catalog view">
+                    <TabsTrigger value="grid"><LayoutGrid className="w-4 h-4" /></TabsTrigger>
+                    <TabsTrigger value="list"><List className="w-4 h-4" /></TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              )}
             </div>
           </div>
 
         </div>
 
         {/* Items Grid/List */}
-        {viewMode === 'grid' ? (
+        {renderedViewMode === 'grid' ? (
           currentFolder === null ? (
             /* Root view - show folders first, then uncategorized items */
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -2372,20 +2409,9 @@ export default function Items({ embedded = false }) {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="text-left p-4 font-medium text-slate-600">Item</th>
-                  <th className="text-left p-4 font-medium text-slate-600">Category</th>
-                  <th className="text-left p-4 font-medium text-slate-600">FIFO</th>
-                  <th className="text-left p-4 font-medium text-slate-600">Next Expiry</th>
-                  <th className="text-left p-4 font-medium text-slate-600">
-                    <div className="flex flex-col gap-0.5">
-                      <span>Stock Level</span>
-                      <span className={cn(
-                        'text-[11px] font-normal normal-case',
-                        stockScope.isFallbackWarning ? 'text-amber-700' : 'text-slate-400'
-                      )}>
-                        {stockScope.label}
-                      </span>
-                    </div>
-                  </th>
+                  <th className="text-left p-4 font-medium text-slate-600">Categories</th>
+                  <th className="text-left p-4 font-medium text-slate-600">Expiry</th>
+                  <th className="text-left p-4 font-medium text-slate-600">Stock Level</th>
                   <th className="text-left p-4 font-medium text-slate-600">Status</th>
                   <th className="text-left p-4 font-medium text-slate-600">POS Visible</th>
                   {canConfigureStorefrontCatalog && (
@@ -2405,13 +2431,14 @@ export default function Items({ embedded = false }) {
                     surplus: "bg-blue-100 text-blue-700"
                   };
 
-                  // Calculate expiry information
+                  // Calculate expiry information for the renamed Expiry column.
                   const nextExpiry = getNextExpiryDate(item);
                   const daysUntilExpiry = nextExpiry ? getDaysUntilExpiry(nextExpiry) : null;
                   const posConfigResolved = resolvePosConfig(item);
                   const posVisible = posConfigResolved.pos_visible !== false;
                   const storefrontConfigResolved = resolveStorefrontConfig(item);
                   const storefrontVisible = storefrontConfigResolved.storefront_visible !== false;
+                   const categoryNames = resolveItemCategoryNames(item);
 
                   return (
                     <tr
@@ -2426,20 +2453,19 @@ export default function Items({ embedded = false }) {
                         </div>
                       </td>
                       <td className="p-4">
-                        <span className="capitalize text-slate-600">{item.category}</span>
-                      </td>
-                      <td className="p-4">
-                        {item.fifo_enabled ? (
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                            <Check className="w-3 h-3 mr-1" />
-                            Enabled
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
-                            <X className="w-3 h-3 mr-1" />
-                            Disabled
-                          </Badge>
-                        )}
+                        <div className="space-y-1">
+                          {categoryNames.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {categoryNames.map((categoryName) => (
+                                <Badge key={categoryName} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">
+                                  {categoryName}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">Uncategorized</span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-4">
                         {nextExpiry ? (
@@ -2515,16 +2541,17 @@ export default function Items({ embedded = false }) {
         )}
 
         {/* Modals */}
-        <Dialog
-          open={showPosChecklistModal}
-          onOpenChange={(open) => {
-            setShowPosChecklistModal(open);
-            if (!open) {
-              setGuidedPosReadyItemId(null);
-              clearChecklistSelection();
-            }
-          }}
-        >
+        {!itemEditorMode && (
+          <Dialog
+            open={showPosChecklistModal}
+            onOpenChange={(open) => {
+              setShowPosChecklistModal(open);
+              if (!open) {
+                setGuidedPosReadyItemId(null);
+                clearChecklistSelection();
+              }
+            }}
+          >
           <DialogContent className="catalog-editor-dialog-content sm:max-w-7xl p-0">
             <DialogHeader className="border-b border-slate-100 p-4 pb-3">
               <DialogTitle className="text-lg">Catalog Setup</DialogTitle>
@@ -2957,12 +2984,14 @@ export default function Items({ embedded = false }) {
               </div>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        )}
 
         <ItemDetailsModal
           item={selectedItem}
           open={showDetailsModal}
           workflowMode={workflowMode}
+          itemEditorMode={itemEditorMode}
           onClose={() => setShowDetailsModal(false)}
           onRefresh={async () => {
             if (!selectedItem) return;
@@ -2997,6 +3026,8 @@ export default function Items({ embedded = false }) {
           workflowMode={workflowMode}
           msmeMode={isMsmeMode}
           createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
+          hideUnitOfMeasure={itemEditorMode}
+          hideStockControls={itemEditorMode}
           posConfig={editingItem ? resolvePosConfig(editingItem) : null}
           onTogglePosLocationAvailability={handleTogglePosLocationAvailability}
           onResetPosLocationAvailability={handleResetPosLocationAvailability}
@@ -3012,18 +3043,46 @@ export default function Items({ embedded = false }) {
           onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
           onDeleteStorefrontImage={handleDeleteStorefrontImage}
           onGenerateStorefrontImage={handleGenerateStorefrontImage}
-          onOpenBulkPosSetup={() => {
+          onOpenBulkPosSetup={itemEditorMode ? undefined : () => {
             openBulkPosSetupFromItemWizard(editingItem);
           }}
         />
-        <MoveToFolderModal
-          open={showMoveModal}
-          onClose={() => setShowMoveModal(false)}
-          folders={folders}
-          currentFolder={resolveItemFolderName(itemToMove)}
-          itemName={itemToMove?.name}
-          onMove={handleMoveItem}
-        />
+        {itemEditorMode && (
+          <Suspense fallback={null}>
+            <PosItemCreateWorkflow
+              open={showPosItemCreateWorkflow}
+              onOpenChange={setShowPosItemCreateWorkflow}
+              onCreated={() => {
+                void refetch();
+              }}
+              canViewPos={canViewPosCatalog || canCreate('items')}
+              canCreateItems={canCreate('items')}
+              canEditItems={canEdit('items')}
+              canDeleteItems={canDeletePermission('items')}
+              canManageCategories={can('categories:manage')}
+              canManageServiceCatalog={can('services:catalog:manage')}
+              canViewFnbModifiers={can('fnb:menu:view') || can('items:view') || canViewPosCatalog}
+              canManageFnbModifiers={can('fnb:menu:manage') || can('items:edit')}
+              workflowMode={workflowMode}
+              locked={false}
+              isOnline
+              operatingLocationId={selectedLocationId !== 'all' ? Number(selectedLocationId) : null}
+              availableLocations={activeLocations}
+              locationsLoading={false}
+              sectionId="opis-item-create-workflow"
+            />
+          </Suspense>
+        )}
+        {!itemEditorMode && (
+          <MoveToFolderModal
+            open={showMoveModal}
+            onClose={() => setShowMoveModal(false)}
+            folders={folders}
+            currentFolder={resolveItemFolderName(itemToMove)}
+            itemName={itemToMove?.name}
+            onMove={handleMoveItem}
+          />
+        )}
         {showProductWizard && (
           <ProductCreateWizard
             open={showProductWizard}
@@ -3073,25 +3132,27 @@ export default function Items({ embedded = false }) {
           className="catalog-editor-dialog-content p-0"
           compact
         />
-        <DeleteConfirmDialog
-          open={showFolderDeleteDialog}
-          onClose={handleCancelDeleteFolder}
-          onConfirm={handleConfirmDeleteFolder}
-          title="Delete Folder"
-          description={
-            <>
-              Are you sure you want to delete the folder <strong>{folderToDelete?.name}</strong>?
-              {folderToDelete?.item_count > 0 && (
-                <> This folder contains {folderToDelete.item_count} item(s) that will be moved out of the folder.</>
-              )}
-            </>
-          }
-          confirmText="Delete Folder"
-          variant="destructive"
-          loading={deletingFolder}
-          className="catalog-editor-dialog-content p-0"
-          compact
-        />
+        {!itemEditorMode && (
+          <DeleteConfirmDialog
+            open={showFolderDeleteDialog}
+            onClose={handleCancelDeleteFolder}
+            onConfirm={handleConfirmDeleteFolder}
+            title="Delete Folder"
+            description={
+              <>
+                Are you sure you want to delete the folder <strong>{folderToDelete?.name}</strong>?
+                {folderToDelete?.item_count > 0 && (
+                  <> This folder contains {folderToDelete.item_count} item(s) that will be moved out of the folder.</>
+                )}
+              </>
+            }
+            confirmText="Delete Folder"
+            variant="destructive"
+            loading={deletingFolder}
+            className="catalog-editor-dialog-content p-0"
+            compact
+          />
+        )}
         <CSVImportModal
           open={showImportModal}
           onClose={() => setShowImportModal(false)}
@@ -3125,18 +3186,20 @@ export default function Items({ embedded = false }) {
             </div>
             <div className="h-4 w-px bg-white/20" />
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="bg-white text-slate-900 hover:bg-slate-100 border-0"
-                onClick={() => {
-                  setItemToMove(null); // Ensure we are in bulk mode
-                  setShowMoveModal(true);
-                }}
-              >
-                <Folder className="w-4 h-4 mr-2 text-amber-600" />
-                Move to Folder
-              </Button>
+              {!itemEditorMode && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="bg-white text-slate-900 hover:bg-slate-100 border-0"
+                  onClick={() => {
+                    setItemToMove(null); // Ensure we are in bulk mode
+                    setShowMoveModal(true);
+                  }}
+                >
+                  <Folder className="w-4 h-4 mr-2 text-amber-600" />
+                  Move to Folder
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="secondary"
