@@ -243,9 +243,13 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 
 </details>
 
-<details><summary><code>DGFY_*</code> (19)</summary>
+<details><summary><code>DGFY_*</code> (23)</summary>
 
 - `DGFY_BUSINESS_STEP_UP_WINDOW_MINUTES`
+- `DGFY_DGLAUNDRY_CLIENT_ID`
+- `DGFY_DGLAUNDRY_MACHINE_CLIENT_ID` **[required]**
+- `DGFY_DGLAUNDRY_REDIRECT_URI` **[required]**
+- `DGFY_DGLAUNDRY_SERVICE_CLIENT_ID` **[required]**
 - `DGFY_DIRECT_INVITE_ACCEPTANCE_ENABLED`
 - `DGFY_HANDOFF_JWT_EXPIRY`
 - `DGFY_HISTORICAL_BACKFILL_ORDER_BATCH_SIZE`
