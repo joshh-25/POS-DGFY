@@ -2635,7 +2635,9 @@ secret-scrubbed cart snapshot and deducts its server-resolved inventory effects
 through the Inventory owner in the same transaction. It does not create a POS
 transaction or collect payment. All endpoints require the Premium POS gates
 above and scope the request to the authenticated cashier's open shift and
-location.
+location. The resulting `goods_issue` stock movements use
+`reference_type='POS_PARKED_SALE'`, distinct from `reference_type='POS'` used
+at checkout — see `docs/database/schema.md`'s `stock_movements` note.
 
 | Method | Endpoint | Permission | Purpose |
 |--------|----------|------------|---------|

@@ -1250,7 +1250,7 @@ CREATE TABLE stock_movements (
     from_location VARCHAR(100),
     to_location VARCHAR(100),
     reference_id VARCHAR(50),
-    reference_type ENUM('PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS') DEFAULT 'MANUAL',
+    reference_type ENUM('PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS', 'POS_PARKED_SALE') DEFAULT 'MANUAL',
     user_responsible INT,
     notes TEXT,
     loss_reason ENUM('waste', 'spoilage', 'damage', 'pilferage', NULL) NULL,
@@ -1276,9 +1276,12 @@ CREATE TABLE stock_movements (
 );
 ```
 
-**Current Implementation Note (2026-05-07):**
+**Current Implementation Note (2026-05-07, updated 2026-10-07):**
 - Runtime movement usage includes `goods_issue` for outbound sales/dispatch.
 - `reference_type` includes `POS` and `DO` in addition to legacy reference types.
+- `reference_type = 'POS_PARKED_SALE'` is used for goods-issue movements tied to a POS parked
+  sale's inventory effects (`apps/dgfy-api/src/modules/pos/usecases/parkedSaleUseCases.js`),
+  distinct from `'POS'` (used for completed POS sales).
 - Transfer movements require `source_location_id` and `destination_location_id` with different values.
 - Non-transfer movements use `location_id` for location-scoped stock and FIFO handling.
 - Pure service rows (`items.category = service` or `items.mode_item_preset = service`) are stock-exempt and must not create manual stock movement, transfer, FIFO, weighted-cost, or inventory-valuation rows. Physical service add-ons/products and supplies remain normal stock-bearing inventory rows.
