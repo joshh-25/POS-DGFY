@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: infra
-last_reviewed: 2026-10-05
+last_reviewed: 2026-10-08
 applies_to: ci_runner_routing
 topic: ci_runner_policy
 ---
@@ -92,8 +92,9 @@ which is exactly why that stays self-hosted).
 | `pr-migration-runner-build-checks.yml` | `sieitz-runner`/`sieitz-lg` | `docker/setup-qemu-action` for `linux/amd64,linux/arm64` — needs privileged Docker to register binfmt handlers | Flagged "not yet verified" in the migration handoff doc; re-confirm before relying on it |
 | `promotion-quality-gate.yml` (`dgfy-api-quality`, `migration-runner-quality`, `frontend-storefront-quality`, `salvage-api-evidence`) | `sieitz-lg` by default via `heavy_runner_labels_json`; operator can select another runner-label array for a manual trial | DB-backed API/migration jobs, storefront browser build, API evidence salvage (same runner class as API tests) | The API evidence salvage job uses the same selector, but GitHub does not guarantee that separate jobs land on the same physical host; the API job's artifact upload remains the normal evidence path |
 | `promotion-quality-gate.yml` (remaining lint/build/docs/audit jobs, including `pos-sales-e2e-quality`) | `sieitz-runner` by default via `general_runner_labels_json`; operator may select another runner-label array | POS E2E is intentionally general-class after the trimmed post-#2251 run completed on both runner classes in about 5m; both machines carry `sieitz-runner` | The shared label permits either host; GitHub's scheduler controls actual distribution. `report-quality-evidence` remains pinned to `sieitz-runner` |
-| `deploy.yml` / `deploy-main.yml` (SSH publish) | `sieitz-runner` (generic) | SSH key material, network reach to DEV/STAGING/BETA/PROD, credential cleanup step (`if: always()`, since this box is persistent, not ephemeral) | `vpn_required: false` everywhere — both self-hosted boxes reach the DEV/STAGING LAN directly; VPN only matters from a hosted runner with no LAN path (see "VPN" below) |
-| `verify-deployment.yml` | `sieitz-runner` | Read-only `docker compose ps`/`docker inspect`/in-container `curl`; `vpn_required` input, default `false` | No runner affinity needed post-#599 |
+| `deploy.yml` (DEV/STAGING build + SSH publish) | `sieitz-runner` by default; manual dispatch may select `ubuntu-latest` | SSH key material, private-network reach to DEV/STAGING, credential cleanup step (`if: always()`, since self-hosted boxes are persistent) | The `resolve-environment` guard stays self-hosted. `vpn_required` is derived from the runner selection, so a hosted DEV/STAGING dispatch automatically opens OpenVPN |
+| `deploy-main.yml` (PROD build + SSH publish) | `sieitz-runner` by default via its dispatch input; operator may select `ubuntu-latest` | SSH key material, public-internet SSH reach to PROD, credential cleanup step (`if: always()`) | PROD is public-internet reachable and does not require VPN |
+| `verify-deployment.yml` | `sieitz-runner` by default; dispatch may select `ubuntu-latest` | Read-only `docker compose ps`/`docker inspect`/in-container `curl`; `vpn_required` input, default `false` | For DEV/STAGING hosted verification, select Ubuntu and set `vpn_required: true`; no runner affinity needed post-#599 |
 | `tenant-schema-report.yml`, `compliance-preflight-sweep.yml` | `sieitz-runner` | Read-only; the sweep runs against its own ephemeral CI-provisioned instance, no deployed environment touched | |
 | `build-android-manual.yml` | `ubuntu-latest` (hardcoded) | Android SDK + Gradle | Pre-existing hosted exception, predates this policy — hosted regardless of it |
 
@@ -106,14 +107,11 @@ the SOPS/age cutover work) before it can run in CI at all.
 
 ### VPN
 
-No workflow needs the OpenVPN hop today on self-hosted (`vpn_required: false` everywhere, #598/#599)
-— both self-hosted boxes reach the internal DEV/STAGING LAN directly. **A GitHub-hosted runner has
-no path to that LAN at all** — if any job is routed to `ubuntu-latest` and needs to reach
-DEV/STAGING (not BETA/PROD, which are public-internet SSH), `vpn_required: true` must be set for
-that job specifically. Per the current matrix, only production promotion/deploy moves to hosted, and
-production (BETA/PROD) is public-internet SSH — so this shouldn't bite under the matrix above, but
-any future job added to the hosted tier that touches DEV/STAGING must set it explicitly, not assume
-the self-hosted default carries over.
+Self-hosted runners reach the internal DEV/STAGING LAN directly. **A GitHub-hosted runner has no
+path to that LAN without OpenVPN** — the staging deploy workflow derives `vpn_required: true` from
+its `runner_labels_json` input whenever it includes `ubuntu-latest`. Any other hosted job that
+reaches DEV/STAGING must set `vpn_required: true` explicitly. BETA/PROD use public-internet SSH and
+do not need this tunnel.
 
 ## The fallback switch
 
@@ -191,6 +189,18 @@ separate, gated, not-yet-run work — this doc's matrix and fallback-switch mech
 otherwise unchanged by the flip.
 
 ## Amendments
+
+### 2026-10-08: Dispatch-time Ubuntu runner for DEV/STAGING deployment
+
+`deploy.yml` now exposes a `runner_labels_json` dispatch input for image-build and SSH-publish
+jobs. Its default remains `['sieitz-runner']`; selecting `['ubuntu-latest']` is an explicit
+per-dispatch choice. The workflow derives `vpn_required` from that same input so hosted staging
+deployments tunnel into the private DEV/STAGING network without relying on an independently set
+boolean. The environment resolver remains on the self-hosted runner. `verify-deployment.yml` already
+supports an explicit runner-label and VPN selection; use Ubuntu plus `vpn_required: true` when
+verifying a hosted staging deployment. `deploy-main.yml` already supports selecting
+`['ubuntu-latest']` for production image-build and publish jobs; production remains a separate,
+explicit dispatch after Pat's manual `main` merge and go-ahead.
 
 ### 2026-10-05: Manual quality-gate heavy-job shared-pool trial on PR #2246
 
