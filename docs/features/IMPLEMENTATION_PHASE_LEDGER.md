@@ -26571,3 +26571,67 @@ resolved or explicitly waived.
 ### Next eligible phase
 
 Phase 477 only after Phase 476's local acceptance gates pass and the ledger is rechecked.
+
+## Phase 477 - POS cashier customer-display synchronization
+
+### Initiative and release
+
+POS Customer Display Synchronization, approved local same-workstation MVP.
+
+### Objective and scope
+
+Add an optional POS customer-facing window that synchronizes the active cashier cart, line
+quantities, display-safe pricing, discounts, fees, payment state, and total. Keep the cashier
+cart as the only source of truth; keep the customer route read-only; support explicit waiting,
+active, payment, completed, disconnected, and ended states; and exclude backend persistence,
+separate-LAN discovery/pairing, and multi-display management.
+
+### Status
+
+`completed` — Pat explicitly approved implementation from the plan while unrelated Phase 476
+remains open. The local MVP implementation and automated acceptance gates are complete; physical
+operator acceptance and any production release decision remain follow-up work.
+
+### Dependencies
+
+Existing POS checkout/cart view-model contracts, POS-owned route boundaries, the approved customer
+display plan, and local POS-DGFY services. No backend, database, migration, IMS, or Storefront
+dependency was introduced.
+
+### Acceptance and validation evidence
+
+- [x] Customer-display route, read-only UI, cashier open/status/end controls, and completion/clear
+      lifecycle are implemented.
+- [x] Session-scoped protocol validates message type, session, terminal, revision, timestamp,
+      and display-safe snapshot payloads; stale and malformed messages are rejected.
+- [x] Focused POS tests pass: 2 files, 4 tests; full POS unit suite passes: 6 files, 18 tests.
+- [x] Shared public-route and checkout-shell contract tests pass: 2 files, 22 tests.
+- [x] Playwright same-origin two-window E2E passes for initial snapshot, stale revision rejection,
+      close, and runtime/HTTP 5xx diagnostics.
+- [x] Changed-file lint has no errors, the POS production build passes, and architecture and
+      controller-boundary checks pass.
+- [x] Local POS-DGFY stack is healthy and the rendered customer-display route was visually checked.
+- [ ] Authenticated cashier plus physical second-monitor operator acceptance remains a release
+      follow-up; separate-LAN pairing is explicitly deferred.
+
+### Links
+
+- Plan: `output/plans/POS_Customer_Display_Synchronization/00_POS_Customer_Display_Synchronization_Index.docx`
+  through `06_Implementation_Phases_Rollout_and_Acceptance.docx`.
+- Execution records: `output/plans/POS_Customer_Display_Synchronization/execution/`.
+- Architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, and ADRs 0001, 0025, 0031, 0044, and 0055.
+- Implementation: `apps/dgfy-pos/src/main.jsx`, `packages/web-core/src/features/pos/`, and
+  `packages/web-core/src/services/publicRoutePolicy.js`.
+- Tests: `apps/dgfy-pos/src/__tests__/CustomerDisplaySynchronization.test.js`,
+  `apps/dgfy-pos/src/__tests__/CustomerDisplayPage.behavior.test.jsx`,
+  `apps/dgfy-pos/tests/e2e/pos/customer-display.spec.js`, and the updated shared contract tests.
+
+### Completion date
+
+2026-10-07.
+
+### Next eligible phase
+
+Phase 478 only after Phase 477's release-follow-up decision is recorded and the authoritative
+ledger is rechecked.
