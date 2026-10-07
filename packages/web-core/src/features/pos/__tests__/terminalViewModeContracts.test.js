@@ -128,6 +128,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).not.toContain('{!locked ? (\n        <PosAttendancePanel');
   });
 
+  it('keeps the customer display controller mounted across the settings shell routes', () => {
+    expect(terminalPageLayoutContent).toContain(
+      "const CUSTOMER_DISPLAY_SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'terminal_setup']);"
+    );
+    expect(terminalPageLayoutContent).toContain('data-testid={isCheckoutWorkspaceMode ? \'pos-checkout-workspace\' : \'pos-customer-display-controller-host\'}');
+  });
+
   it('keeps the online queue out of Services while retaining it for MSME/counter POS', () => {
     expect(terminalPageContent).toContain('isPosOnlineOrderQueueEnabled');
     expect(terminalPageContent).toContain('workflowMode,\n    posDefaults: modePosDefaults');

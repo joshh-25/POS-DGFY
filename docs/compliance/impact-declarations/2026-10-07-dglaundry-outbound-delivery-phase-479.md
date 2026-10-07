@@ -3,7 +3,7 @@ status: draft_pr
 owner: DGFY Platform
 last_reviewed: 2026-10-07
 related_adr: docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md
-declaration_id: 2026-10-07-dglaundry-outbound-delivery-phase-478
+declaration_id: 2026-10-07-dglaundry-outbound-delivery-phase-479
 classification: major
 surfaces: payments,commerce
 reason_codes_impacted: DGLAUNDRY_OUTBOUND_DELIVERY_DURABILITY,PAID_BOOKING_FINALIZATION
@@ -13,7 +13,7 @@ rollback_note: Stop DGLaundry outbox draining before reverting callers/worker. P
 preflight_result: no_breach
 preflight_reason_code: REQUEST_NOT_EXECUTED
 preflight_run_at: 2026-10-07T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2310-DGLAUNDRY-OUTBOUND-DELIVERY-PHASE-478
+preflight_request_ref: NOT-EXECUTED-2310-DGLAUNDRY-OUTBOUND-DELIVERY-PHASE-479
 ---
 
 # DGLaundry durable outbound delivery and recovery (#2310)
@@ -48,8 +48,8 @@ settlement, or payout action.
 ## Verification Evidence
 
 Final command output and any remaining blocked acceptance evidence are recorded in the linked PR
-and Phase 478 ledger entry. Real MySQL migration/claim evidence and real shared-Redis multi-process
-replay evidence are required before Phase 478 is marked complete.
+and Phase 479 ledger entry. Real MySQL migration/claim evidence and real shared-Redis multi-process
+replay evidence are required before Phase 479 is marked complete.
 
 The integration batch also routes paid-session finalization and DGLaundry order submission through
 the durable delivery state, and reconciles successful worker completion back to the caller's
