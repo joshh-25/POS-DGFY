@@ -14,7 +14,8 @@ describe('public route session refresh policy', () => {
     '/reactivate',
     '/admin',
     '/admin/tenants',
-    '/admin/dgfy-accounts'
+    '/admin/dgfy-accounts',
+    '/customer-display'
   ])('skips tenant session refresh on public route %s', (path) => {
     expect(shouldRefreshBrowserSessionForPath(path)).toBe(false);
   });

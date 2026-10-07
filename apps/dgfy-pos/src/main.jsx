@@ -6,6 +6,7 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
+import CustomerDisplayPage from '../../../packages/web-core/src/features/pos/pages/CustomerDisplayPage.jsx';
 import { publishPosUpdateNoticeState } from '../../../packages/web-core/src/features/pos/utils/posUpdateNotice.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
@@ -134,7 +135,10 @@ function AnalyticsRouteTracker() {
 // reaching into the 4,892-line TerminalPage component. Feeds both PostHog
 // and Sentry from this single lookup.
 function ObservabilityIdentitySync() {
+  const location = useLocation();
+
   useEffect(() => {
+    if (location.pathname === '/customer-display') return undefined;
     let cancelled = false;
 
     const sync = async () => {
@@ -171,9 +175,22 @@ function ObservabilityIdentitySync() {
       window.removeEventListener('auth:login', sync);
       window.removeEventListener('auth:logout', sync);
     };
-  }, []);
+  }, [location.pathname]);
 
   return null;
+}
+
+function PosGlobalChrome() {
+  const location = useLocation();
+  if (location.pathname === '/customer-display') return null;
+
+  return (
+    <>
+      <VersionBadge label="POS" />
+      <GlobalApiErrorListener />
+      <Toaster position="top-right" />
+    </>
+  );
 }
 
 const registerPosServiceWorker = async () => {
@@ -340,11 +357,9 @@ const mountApp = () => {
         >
           <AnalyticsRouteTracker />
           <ObservabilityIdentitySync />
-          <VersionBadge label="POS" />
           <PermissionProvider>
             <WorkflowModeProvider>
-              <GlobalApiErrorListener />
-              <Toaster position="top-right" />
+              <PosGlobalChrome />
               <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading...</div>}>
                 <Routes>
                   <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
@@ -352,6 +367,7 @@ const mountApp = () => {
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
                   <Route path="/sales" element={<SkupervisorSalesRedirect />} />
+                  <Route path="/customer-display" element={<CustomerDisplayPage />} />
                   <Route path="/" element={<TerminalPage />} />
                   <Route path="/terminal" element={<TerminalPage />} />
                   <Route path="/login" element={<TerminalPage />} />
