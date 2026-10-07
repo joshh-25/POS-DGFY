@@ -89,4 +89,49 @@ describe('csrfProtection', () => {
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.__setCookie || []).toEqual([]);
   });
+
+  it('accepts a matching admin CSRF pair on unsafe methods', () => {
+    const { res, next } = runMiddleware({
+      headers: {
+        'x-dgfy-app-surface': 'admin',
+        cookie: 'admin_session=session-token; admin_csrf_token=csrf-cookie',
+        'x-csrf-token': 'csrf-cookie'
+      }
+    });
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('rejects an admin session when the admin CSRF cookie is missing', () => {
+    const { res, next } = runMiddleware({
+      headers: {
+        'x-dgfy-app-surface': 'admin',
+        cookie: 'admin_session=session-token',
+        'x-csrf-token': 'csrf-cookie'
+      }
+    });
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      error_code: 'CSRF_TOKEN_REQUIRED'
+    }));
+  });
+
+  it('does not accept a legacy sku CSRF cookie for an admin session', () => {
+    const { res, next } = runMiddleware({
+      headers: {
+        'x-dgfy-app-surface': 'admin',
+        cookie: 'admin_session=session-token; sku_csrf_token=legacy-token',
+        'x-csrf-token': 'legacy-token'
+      }
+    });
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      error_code: 'CSRF_TOKEN_REQUIRED'
+    }));
+  });
 });

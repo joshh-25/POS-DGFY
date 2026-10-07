@@ -44,6 +44,7 @@ import {
     buildExchangeStoreGuestCheckoutGrantUseCase,
     buildStoreCheckoutPaymentSessionUseCase,
     buildGetStoreCheckoutPaymentSessionUseCase,
+    buildCancelStoreCheckoutPaymentSessionUseCase,
     buildReconcileStoreCheckoutPaymentSessionUseCase,
     buildConfirmStoreCheckoutSandboxPaymentUseCase,
     buildStoreCheckoutUseCase,
@@ -110,6 +111,10 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
 });
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository
+});
+export const cancelStoreCheckoutPaymentSessionUseCase = buildCancelStoreCheckoutPaymentSessionUseCase({
+    commercePaymentRepository,
+    paymongoService
 });
 // Keep the commerce-payment dependency lazy: finalization resolves Storefront checkout and the
 // two modules already have a deliberate cycle. This mirrors the existing order-lifecycle seam.

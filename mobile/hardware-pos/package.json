@@ -9,12 +9,12 @@
     "test:layout": "node --experimental-strip-types scripts/test-layout-policy.ts"
   },
   "dependencies": {
-    "react": "19.0.0",
-    "react-native": "0.79.6",
+    "react": "19.3.0",
+    "react-native": "0.87.1",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
-    "@types/react": "^19.0.2",
+    "@types/react": "^19.3.0",
     "typescript": "^5.5.4"
   }
 }

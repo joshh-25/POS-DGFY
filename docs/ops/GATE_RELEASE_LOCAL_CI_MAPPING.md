@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-09-05
+last_reviewed: 2026-10-03
 applies_to: promotion_quality_gates
 topic: gate_release_local_ci_mapping
 ---
@@ -36,40 +36,30 @@ Each gate maps to exactly one of:
   auto-skip or a `structurally_cannot_fail` flag is *not* a closed resolution, it is an open
   question with a green badge.
 
-## Current state (2026-09-03, #1431 Phase C/D) — the short version
+## Current state (2026-10-03, #2236)
 
-Every "(a) Covered" row is now **delegated** to `promotion-quality-gate.yml` via
-`scripts/gate-release-local.js`'s `CI_ENFORCED_GATES` map (17 entries as of #1278 PR 2 / Phase 298
-— 16 from the original 19-gate mapping, plus `release.notes`, the first gate added after this
-umbrella closed; see "A new gate after the mapping closed" below), cross-checked by
-`scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` so a future edit cannot
-silently regain `continue-on-error` on a supposedly-blocking step without failing that checker. Of
-those 17:
+The gate-by-gate rows, phase narratives, and former CI blocking classifications below preserve the
+historical mapping of local `gate:release:local` commands to the quality workflow. They no longer
+describe current policy.
+`promotion-quality-gate.yml` is operator-dispatched only, and every workflow step is advisory. The
+suite provides optional evidence on a selected candidate; it is not a promotion requirement and no
+failure, cancellation, or missing run blocks a promotion PR.
 
-- **14 are genuinely blocking** on the `release/*→main` leg (and `staging→main`, and any
-  `workflow_dispatch`/`workflow_call` run) — a real failure reds out the job's check-run and trips
-  `AGENTS.md`'s Merge Safety hard stop, same as any other required check.
-- **3 are deliberately advisory**, named in `check-pr-quality-workflow.js`'s
-  `ADVISORY_CI_ENFORCED_GATES` allowlist so `checkCiEnforcedGatesAreBlocking()` doesn't demand
-  blocking coverage that will never (yet) exist for them:
-  - `dependencies.audit.full` (row 3) — **permanently** advisory (Pat's call, settled this phase,
-    superseding the "not yet decided" flag the Phase 2 version of this doc carried). Its verdict
-    depends on the npm registry, not the repo; a fresh dev-only advisory can flip it red with zero
-    code change here, and its findings never ship.
-  - `backend.test_matrix` (row 10) — **temporarily** advisory, tracked by #1469, gated on #1015
-    (fast/DB tier split) and #925 (hanging `beforeAll`). Confirmed still genuinely failing (not
-    just slow) on every #1431 Phase A/C evidence run.
-  - `release.notes` — **temporarily** advisory by deliberate rollout design (ADR 0082 Decision 8),
-    not a prerequisite or flake exception like the two above: it ships advisory on first landing and
-    flips blocking only once a later, dedicated phase finds clean-run evidence (ADR 0082 Follow-up
-    1), mirroring `check:app-versions`' own advisory-to-blocking rollout (ADR 0081 Decision 9). See
-    "A new gate after the mapping closed" below.
+The 17 `CI_ENFORCED_GATES` entries still identify which commands the workflow can run. The name
+`CI_ENFORCED_GATES` is retained for compatibility with the local gate data model; it means
+"available in CI" here, not "required or blocking." `required_gate_count: 0` remains the default for
+`gate:release:local`.
 
-`gate:release:local`'s required-locally count is **0** — every gate that isn't one of the 3 retired
-rows below is now delegated. `docs/testing/release-go-no-go-checklist.md` and
-`.agents/skills/promoter/SKILL.md` have been updated to stop citing `gate:release:local` as a
-pre-`main` step; `promotion-quality-gate.yml`'s own quality jobs are the sole remaining enforcement
-mechanism.
+Operators may run the suite against the frozen `develop` candidate before the staging cut, reuse
+that SHA-bound evidence if the candidate is unchanged, optionally run it against the final release
+candidate for a rushed flow, or skip it. The workflow's evidence reporter posts job conclusions to
+an associated open PR and can optionally record `quality_check` in a local v3 candidate manifest.
+See `.agents/skills/promoter/references/promotion-runbook.md` for the commands and flow.
+
+The ordinary `pr-checks.yml` build checks, merge-safety hard stop, compliance preflight,
+production tenant-schema report, release head-cut rule, and never-`--squash` remain independently
+mandatory. This policy supersedes the blocking/advisory distribution described in the historical
+table below.
 
 ## A new gate after the mapping closed (#1278 PR 2, Phase 298)
 
@@ -110,10 +100,10 @@ note for why that API can't be trusted here):
 | `run_dependency_audit_full` (repository-dependency-quality, was repository-quality) | **real fail** (npm-registry finding, pre-existing) | real fail | **stay advisory permanently** |
 | `run_compliance_contracts` (repository-dependency-quality, was repository-quality) | pass (real PR-context run) | real fail (real PR-context run) | **flip blocking** |
 | `run_runtime_doctor` (dgfy-api-quality) | pass | real fail | **flip blocking** |
-| `run_shared_fnb_contract_tests` (frontend-ims-quality) | pass | real fail | **flip blocking** |
+| `run_shared_fnb_contract_tests` (web-core-quality) | pass | real fail | **flip blocking** |
 | `check_frontend_budgets` (frontend-budgets-quality) | pass | real fail | **flip blocking** |
 | `run_production_env_fixtures` (repository-dependency-quality, was repository-quality) | already blocking, unfaulted | — | already blocking, no change |
-| `run_scroll_contracts` (frontend-ims-quality) | already blocking | real fail (bonus confirmation) | already blocking, no change |
+| `run_scroll_contracts` (web-core-quality) | already blocking | real fail (bonus confirmation) | already blocking, no change |
 
 Run IDs: positive `33667140889`, negative-probe `33670723624` (migration/budget/contract/audit/
 doctor faults), gate-6 PR-context evidence `33667879656` (clean) / `33670845561` (fault, PR #1458,
@@ -133,13 +123,12 @@ root-cause finding that this was never "just slow" (see row 10 below and #1469).
 | 8 | `runtime.doctor` | `cd apps/dgfy-api && node scripts/doctor-runtime.js` (via `npm run doctor:runtime`) | **(a) — CLOSED: blocking in CI + delegated out of `gate:release:local` since 2026-09-03 (#1431 Phase C/D)** | `dgfy-api-quality`'s "Run runtime schema doctor" step (`run_runtime_doctor`), added after "Prepare test schema"; `continue-on-error` removed 2026-09-03 (Phase C). `dgfy-api-quality`, not `migration-runner-quality`, is the correct home: that other job never runs `npm ci` in `apps/dgfy-api`, so `doctor-runtime.js` (ESM, imports `sequelize`/`dotenv` from the API tree) cannot run there; `dgfy-api-quality` already installs the API deps *and* already migrates the same `mysql:8.0` container ("Prepare test schema"). |
 | 9 | `backend.lint` | `npm --prefix apps/dgfy-api run lint` | **(a) — CLOSED: blocking + delegated 2026-09-03 (PR-B)** | `dgfy-api-quality`'s "Run API lint" step, identical command; `continue-on-error` removed 2026-09-02 (#1431 Phase 1, PR-A). |
 | 10 | `backend.test_matrix` | `node scripts/run-backend-test-matrix.js` (via `npm run test:backend:matrix`) | **(a) — CLOSED: delegated, TEMPORARILY advisory, tracked by #1469 (gated on #1015/#925), 2026-09-03 (#1431 Phase C/D)** | `dgfy-api-quality`'s "Run dgfy-api test matrix" step runs the identical command. This is the gate #1147's own body calls the "hard technical prerequisite" — it already runs in CI today, advisory, at ~20-24min per the #1015 baseline measurement. **Root cause confirmed 2026-09-02 (#1431 Phase 1 plan, §1b) and resolved 2026-09-02 (#1432, Phase 249):** the failure was never "just slow" — it was genuinely failing, both a hosted-runner OOM and real, deterministic test/fixture/snapshot rot. The OOM's actual mechanism: `ubuntu-latest` on this private repo is a 2-vCPU runner, so Jest's own `getMaxWorkers()` resolves to 1 and `shouldRunInBand()` then runs the entire 616-file fast tier in one in-band process, whose single V8 heap accumulates every file's ESM module registry until it hits the 4096MB cap — fixed by forcing real worker-process parallelism (`BACKEND_TEST_MATRIX_FAST_MAX_WORKERS: 2` + `--workerIdleMemoryLimit=1G`). #1431 Phase A/C's own evidence runs reconfirmed this step still failing for real on every run checked (independent of which fault was being probed) — consistent with the rot never having been fully closed. Flipping this gate to blocking is #1469, gated on #1015 (fast/DB tier split) and #925 (hanging `beforeAll`) — named in `check-pr-quality-workflow.js`'s `ADVISORY_CI_ENFORCED_GATES` allowlist in the meantime. |
-| 11 | `frontend.ims.lint` | `npm --prefix apps/dgfy-ims run lint` | **(a) — CLOSED: blocking + delegated 2026-09-03 (PR-B)** | `frontend-ims-quality`'s "Run dgfy-ims lint" step, identical command; `continue-on-error` removed 2026-09-02 (#1431 Phase 1, PR-A). |
 | 12 | `frontend.pos.lint` | `npm --prefix apps/dgfy-pos run lint` | **(a) — CLOSED: blocking + delegated 2026-09-03 (PR-B)** | `frontend-pos-quality`'s "Run dgfy-pos lint" step, identical command; `continue-on-error` removed 2026-09-02 (#1431 Phase 1, PR-A). |
 | 13 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | **(a) — CLOSED: blocking + delegated 2026-09-03 (PR-B)** | `frontend-storefront-quality`'s "Run dgfy-storefront lint" step, identical command; `continue-on-error` removed 2026-09-02 (#1431 Phase 1, PR-A). |
-| 14 | `frontend.contracts` | `cd apps/dgfy-ims && npx vitest run contract.test integration.test` (via `npm run test:frontend:contracts`) | **(a) — CLOSED: blocking in CI + delegated out of `gate:release:local` since 2026-09-03 (#1431 Phase C/D)** | `frontend-ims-quality`'s "Run frontend contract tests" step (id kept stable as `run_shared_fnb_contract_tests`) runs the identical `npm run test:frontend:contracts` — **107 files / 552 tests measured 2026-09-02** (essentially all under `packages/web-core/src`); `continue-on-error` removed 2026-09-03 (Phase C). Deliberately **not** broadened further to the full IMS suite (327 files, ~2min, 4 files flaky under 2-vCPU CPU contention) — this pattern is the intended scope, not a partial stand-in for it. |
+| 14 | `frontend.contracts` | `cd apps/dgfy-ims && npx vitest run contract.test integration.test` (via `npm run test:frontend:contracts`) | **(a) — CLOSED: blocking in CI + delegated out of `gate:release:local` since 2026-09-03 (#1431 Phase C/D)** | `web-core-quality`'s "Run frontend contract tests" step (id kept stable as `run_shared_fnb_contract_tests`) runs the identical `npm run test:frontend:contracts` — **107 files / 552 tests measured 2026-09-02** (essentially all under `packages/web-core/src`); `continue-on-error` removed 2026-09-03 (Phase C). Deliberately **not** broadened further to the full IMS suite (327 files, ~2min, 4 files flaky under 2-vCPU CPU contention) — this pattern is the intended scope, not a partial stand-in for it. |
 | 15 | `frontend.storefront.contracts` | `cd apps/dgfy-storefront && npx vitest run contract.test integration.test` (via `npm run test:frontend:contracts:storefront`) | **(a)**† — **CLOSED: blocking + delegated 2026-09-03 (PR-B)** | `frontend-storefront-quality`'s "Run storefront vitest suite" step runs unfiltered `npx vitest run`; `continue-on-error` removed 2026-09-02 (#1431 Phase 1, PR-A). Storefront's `vite.config.js` `test.exclude` only excludes `tests/e2e/**` (Playwright's own domain) — every other vitest file runs, which is a strict superset of the local gate's 26-file `contract.test`/`integration.test` pattern. † Superset, not identical command — flagged so a future edit to either side doesn't assume byte-for-byte parity. |
 | 16 | `frontend.budgets` | `node scripts/check-frontend-budgets.js` (via `npm run check:frontend-budgets`) | **(a) — CLOSED: blocking in CI + delegated out of `gate:release:local` since 2026-09-03 (#1431 Phase C/D)** | New `frontend-budgets-quality` job's "Check frontend budgets" step (`check_frontend_budgets`); `continue-on-error` removed 2026-09-03 (Phase C). `check-frontend-budgets.js` needs all three `dist/assets` dirs in **one job's own workspace** — a dedicated job builds all three apps **sequentially** (`npm --prefix <app> run build` × 3, avoiding #923's documented concurrent-build OOM) and then runs `check:frontend-budgets -- --skip-build --built-after "$BUILD_STARTED_AT"` — **a different command shape than the local gate runs**, see the documented exception below. |
-| 17 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2-file scroll-contract suite>` | **(a) — CLOSED: blocking + delegated 2026-09-03 (#1431 Phase C/D)** | `frontend-ims-quality`'s "Run scroll contracts" step (`run_scroll_contracts`), mirroring the local gate's exact two-file list. `terminalResponsiveScroll.contract.test.js` already falls inside gate #14's broadened `contract.test`/`integration.test` pattern; only `scrollKeyControls.behavior.test.js` is genuinely outside it. Kept as its own step regardless (not folded into #14) so a future edit to #14's pattern can't silently drop the second file. Landed **blocking immediately** at P2-1: 2 files, ~1s, green, no external dependency. |
+| 17 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2-file scroll-contract suite>` | **(a) — CLOSED: blocking + delegated 2026-09-03 (#1431 Phase C/D)** | `web-core-quality`'s "Run scroll contracts" step (`run_scroll_contracts`), mirroring the local gate's exact two-file list. `terminalResponsiveScroll.contract.test.js` already falls inside gate #14's broadened `contract.test`/`integration.test` pattern; only `scrollKeyControls.behavior.test.js` is genuinely outside it. Kept as its own step regardless (not folded into #14) so a future edit to #14's pattern can't silently drop the second file. Landed **blocking immediately** at P2-1: 2 files, ~1s, green, no external dependency. |
 | 18 | `observability.evidence.report` | *(retired — was: `npm run gate:release:observability -- --evidence-dir <dir>`)* | **(c) — RETIRED 2026-09-02 (#1431 Phase 3, Phase 250)** | A post-deploy probe wearing a pre-merge gate's clothing: at `release/<label>`-PR time there is no running environment and no deployed SHA to probe. In a promoter's actual run, 5 of its 8 checks `warn` (no `OBSERVABILITY_BASE_URL`/`PROD_BASE_URL`/`QA_BASE_URL`, no server-side `.deploy-state/last_deployed_commit`, no `release_verdict.json`/`qa_deploy_summary.txt`), and `verdict: 'fail'` is unreachable without `--enforce`, which `gate-release-local.js` never passes. **The tool is kept, not deleted** — `npm run gate:release:observability` stays the post-deploy/incident tool `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md` already invokes. **Named residual gap:** `verify-deployment.yml` (#514) polls container health/`RestartCount`/in-container `/health` but does **not** check `services.observability.runtime_sha` parity against the promoted SHA, nor the `x-request-id`/`x-trace-id` round-trip — tracked as #1443, not silently absorbed. |
 | 19 | `release.verdict.contract` | *(retired — was: `node scripts/verify-release-verdict.js --file <verdict> --sha <sha>`, else auto-skip)* | **(c) — RETIRED 2026-09-02 (#1431 Phase 3, Phase 250)** | **Corrects this row's earlier claim that "no pipeline produces that artifact":** a producer does exist — `scripts/gate-release-no-staging.js` (`npm run gate:release:no-staging`) writes `release_verdict.json`. It is dead for a stronger reason. That script is the gate of `docs/ops/NO_STAGING_RELEASE_STANDARD.md`, which is `status: superseded` / `authority_level: historical`, retired by #1019 and ADR 0074 Decision 10; `docs/testing/release-go-no-go-checklist.md` (authoritative) states outright that it and its wrappers "are not part of this gate and are not must-pass here." The governed promotion flow never invokes it, so the artifact never exists for a `release/<label>` head and the gate auto-passed as `Skipped` on every real run. Reviving the producer is forbidden by `AGENTS.md`'s Prohibited Behavior (`superseded_by` target exists). `scripts/verify-release-verdict.js` and `scripts/gate-release-no-staging.js` are **not** deleted — `scripts/gate-release-dgfy-evidence.js` still uses the verdict contract. No residual capability lost. |
 
@@ -226,7 +215,7 @@ below is a new guardrail, only a confirmation with the exact evidence cited.
 2. **`.github/workflows/promotion-quality-gate.yml`** confirms the CI-side half live in the workflow
    file itself: the `gate` job sets `is_staging_leg=true` only for the `staging` base /
    `to-staging/*` head shape, and every quality job (`dgfy-api-quality`, `migration-runner-quality`,
-   `frontend-ims-quality`, `frontend-pos-quality`, `frontend-storefront-quality`,
+   `web-core-quality`, `frontend-pos-quality`, `frontend-storefront-quality`,
    `repository-dependency-quality`, `repository-ci-contracts-quality`, `repository-docs-quality`
    (the 3 jobs `repository-quality` split into, #1690), `frontend-budgets-quality`) gates on `if:
    needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'` — i.e.

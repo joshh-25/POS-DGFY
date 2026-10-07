@@ -19,7 +19,8 @@ describe('company registration upload validation', () => {
 
         expect(result.kind).toBe('menu');
         expect(result.extension).toBe('csv');
-        expect(result.original_filename).not.toContain('..');
+        expect(result.original_filename).toBe('menu.csv');
+        expect(result.original_filename).not.toMatch(/[\\/]/);
         expect(result.sha256).toHaveLength(64);
     });
 

@@ -34,6 +34,10 @@ on:
         description: Build/push the dgfy-opis image. Uncheck to skip.
         type: boolean
         default: true
+      build_frontend_admin:
+        description: Build/push the dgfy-admin image. Uncheck to skip.
+        type: boolean
+        default: true
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -94,6 +98,11 @@ on:
         required: false
         type: string
         default: ''
+      candidate_source_sha_frontend_admin:
+        description: Same candidate source identity contract as the other frontend apps, for dgfy-admin.
+        required: false
+        type: string
+        default: ''
       release_revision_api:
         description: >-
           Per-app artifact revision for dgfy-api (#2055, Phase 346 -- its own allocated rN,
@@ -146,6 +155,11 @@ on:
         required: false
         type: string
         default: ''
+      release_revision_frontend_admin:
+        description: Same per-app revision contract as the other frontend apps, for dgfy-admin.
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: deploy-main-${{ github.ref }}
@@ -160,12 +174,12 @@ permissions:
 # (#894/#896), so the `dgfy-{ims,pos,storefront}-beta` images/containers this
 # workflow used to build and deploy no longer have anything to serve.
 # Dispatching this with every build_* box left checked (the default) now
-# builds and deploys four frontend images, prod-only (dgfy-opis added by issue #2052):
+# builds and deploys five frontend images, prod-only (OPIS #2052, Admin #350):
 #
-#   * dgfy-ims:latest / dgfy-pos:latest / dgfy-storefront:latest / dgfy-opis:latest
+#   * dgfy-ims:latest / dgfy-pos:latest / dgfy-storefront:latest / dgfy-opis:latest / dgfy-admin:latest
 #                         -- built against the PROD GitHub Environment's
 #                         VITE_* (dgfy.ph auth/handoff URLs). Served by the
-#                         `dgfy-{ims,pos,storefront,opis}` containers -> the
+#                         `dgfy-{ims,pos,storefront,opis,admin}` containers -> the
 #                         *.dgfy.ph production domains AND, via the nginx
 #                         redirect, every *.beta.dgfy.ph request too.
 #   * api / migration-runner -- built ONCE (from apps/dgfy-api, plus a paired
@@ -180,7 +194,11 @@ permissions:
 #                         is about the `environment:` input, a separate thing
 #                         from the tag.
 #
-# `image_tags: "latest"` (#913, 2026-08-25): the shared backend was tagged
+# The PROD call sites leave `image_tags` empty so builds do not move `latest`
+# before the immutable floor alias is approved. `promote-aliases` advances each
+# app's `latest` pointer only after that app's floor alias succeeds or is reused.
+#
+# Historical context for the `latest` tag (#913, 2026-08-25): the shared backend was tagged
 # `beta` from the retired beta/prod split, a name that outlived its own
 # meaning once #329/#895/#896 retired beta.dgfy.ph. Renamed here alongside
 # the frontend-split cutover's own coordinated server restart (docs/
@@ -189,9 +207,9 @@ permissions:
 # edit lands in that same `docker compose up -d`, not on its own (that server
 # edit + restart is #913's remaining, human-only scope as of this comment).
 #
-# After all five images are pushed, a SINGLE publish job SSH-deploys once
+# After all selected images have floor aliases and moving `latest` pointers, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
-# refreshes all four frontend containers and backend:latest in one go. The
+# refreshes all five frontend containers and backend:latest in one go. The
 # deploy is resolved from the PROD Environment's SSH secrets (validated in
 # the 2026-07-20 cutover).
 #
@@ -283,7 +301,7 @@ jobs:
           echo "[workspace-hygiene] OK"
 
       - name: Checkout for runner preflight
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Assert complete working tree (workspace-hygiene v1)
         shell: bash
@@ -350,6 +368,14 @@ jobs:
       should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
       should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
       should_build_dgfy_opis: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
+      should_build_dgfy_admin: ${{ steps.resolve.outputs.should_build_dgfy_admin }}
+      build_code_dgfy_api: ${{ steps.resolve.outputs.build_code_dgfy_api }}
+      build_code_dgfy_migration_runner: ${{ steps.resolve.outputs.build_code_dgfy_migration_runner }}
+      build_code_dgfy_ims: ${{ steps.resolve.outputs.build_code_dgfy_ims }}
+      build_code_dgfy_pos: ${{ steps.resolve.outputs.build_code_dgfy_pos }}
+      build_code_dgfy_storefront: ${{ steps.resolve.outputs.build_code_dgfy_storefront }}
+      build_code_dgfy_opis: ${{ steps.resolve.outputs.build_code_dgfy_opis }}
+      build_code_dgfy_admin: ${{ steps.resolve.outputs.build_code_dgfy_admin }}
     steps:
       - name: Clear stale sparse-checkout state (workspace-hygiene v1)
         shell: bash
@@ -373,7 +399,7 @@ jobs:
           fi
           echo "[workspace-hygiene] OK"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -390,7 +416,7 @@ jobs:
           echo "[workspace-hygiene] tree complete."
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -436,7 +462,7 @@ jobs:
             echo "::error::PROD dispatch must select dgfy-api and dgfy-migration-runner artifact revisions together or omit both."
             exit 1
           fi
-          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.MIGRATION_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);put('dgfy-opis',process.env.OPIS_R);console.log(JSON.stringify(m))")"
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.MIGRATION_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);put('dgfy-opis',process.env.OPIS_R);put('dgfy-admin',process.env.ADMIN_R);console.log(JSON.stringify(m))")"
           if [ "${REVISIONS_JSON}" != "{}" ]; then
             SKIP_ARGS+=(--release-revisions-json "${REVISIONS_JSON}")
           fi
@@ -448,6 +474,7 @@ jobs:
           POS_R: ${{ inputs.release_revision_frontend_pos }}
           STOREFRONT_R: ${{ inputs.release_revision_frontend_storefront }}
           OPIS_R: ${{ inputs.release_revision_frontend_opis }}
+          ADMIN_R: ${{ inputs.release_revision_frontend_admin }}
 
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
@@ -472,7 +499,7 @@ jobs:
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       release_revision: ${{ inputs.release_revision_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -497,7 +524,7 @@ jobs:
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       release_revision: ${{ inputs.release_revision_migration_runner }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -550,7 +577,7 @@ jobs:
     with:
       app: dgfy-ims
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_ims }}
       release_revision: ${{ inputs.release_revision_frontend_ims }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -574,7 +601,7 @@ jobs:
     with:
       app: dgfy-pos
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_pos }}
       release_revision: ${{ inputs.release_revision_frontend_pos }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -598,7 +625,7 @@ jobs:
     with:
       app: dgfy-storefront
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_storefront }}
       release_revision: ${{ inputs.release_revision_frontend_storefront }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
@@ -622,9 +649,32 @@ jobs:
     with:
       app: dgfy-opis
       environment: PROD
-      image_tags: "latest"
+      image_tags: ""
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_opis }}
       release_revision: ${{ inputs.release_revision_frontend_opis }}
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+  frontend-admin-prod:
+    needs: [ guard-branch, resolve-build-plan ]
+    if: >-
+      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&
+      inputs.build_frontend_admin && needs.resolve-build-plan.outputs.should_build_dgfy_admin == 'true'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-admin
+      environment: PROD
+      image_tags: ""
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_admin }}
+      release_revision: ${{ inputs.release_revision_frontend_admin }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -671,7 +721,7 @@ jobs:
   # builders themselves fail closed on PROD without it, so any build actually attempted
   # already required it; a builds-unchecked dispatch keeps its historical no-alias behavior).
   promote-aliases:
-    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod ]
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod, frontend-admin-prod ]
     if: >-
       !cancelled() &&
       needs.guard-branch.result == 'success' &&
@@ -688,7 +738,9 @@ jobs:
       needs.frontend-storefront-prod.result != 'cancelled' &&
       needs.frontend-opis-prod.result != 'failure' &&
       needs.frontend-opis-prod.result != 'cancelled' &&
-      (inputs.release_revision_api != '' || inputs.release_revision_migration_runner != '' || inputs.release_revision_frontend_ims != '' || inputs.release_revision_frontend_pos != '' || inputs.release_revision_frontend_storefront != '' || inputs.release_revision_frontend_opis != '')
+      needs.frontend-admin-prod.result != 'failure' &&
+      needs.frontend-admin-prod.result != 'cancelled' &&
+      (inputs.release_revision_api != '' || inputs.release_revision_migration_runner != '' || inputs.release_revision_frontend_ims != '' || inputs.release_revision_frontend_pos != '' || inputs.release_revision_frontend_storefront != '' || inputs.release_revision_frontend_opis != '' || inputs.release_revision_frontend_admin != '')
     # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 10
@@ -718,7 +770,7 @@ jobs:
           fi
           echo "[workspace-hygiene] OK"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Assert complete working tree (workspace-hygiene v1)
         shell: bash
@@ -733,7 +785,7 @@ jobs:
           echo "[workspace-hygiene] tree complete."
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -752,7 +804,7 @@ jobs:
           set -euo pipefail
           FAILURES=0
           SKIPPED=0
-          for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
+          for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis dgfy-admin; do
             # #2055 (Phase 346): each app aliases its OWN allocated revision -- an unchecked
             # app-group (empty input, nothing built) is skipped, never aliased blind.
             case "${APP}" in
@@ -762,6 +814,16 @@ jobs:
               dgfy-pos) APP_REVISION="${{ inputs.release_revision_frontend_pos }}" ;;
               dgfy-storefront) APP_REVISION="${{ inputs.release_revision_frontend_storefront }}" ;;
               dgfy-opis) APP_REVISION="${{ inputs.release_revision_frontend_opis }}" ;;
+              dgfy-admin) APP_REVISION="${{ inputs.release_revision_frontend_admin }}" ;;
+            esac
+            case "${APP}" in
+              dgfy-api) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_api }}" ;;
+              dgfy-migration-runner) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_migration_runner }}" ;;
+              dgfy-ims) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_ims }}" ;;
+              dgfy-pos) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_pos }}" ;;
+              dgfy-storefront) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_storefront }}" ;;
+              dgfy-opis) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_opis }}" ;;
+              dgfy-admin) BUILD_CODE="${{ needs.resolve-build-plan.outputs.build_code_dgfy_admin }}" ;;
             esac
             if [ -z "${APP_REVISION:-}" ]; then
               echo "[promote-aliases] ${APP}: no revision input for this app-group (unchecked build) -- skipping, not aliasing."
@@ -774,16 +836,28 @@ jobs:
             ALIAS_TAG="$(node -p "JSON.parse(process.argv[1]).canonicalAlias" "${RESOLVED}")"
             IMAGE="ghcr.io/sieitzz/${APP}"
             echo "[promote-aliases] ${APP}: ${SOURCE_TAG} -> ${ALIAS_TAG}"
-            if ! node scripts/promote-image-alias.js --source "${IMAGE}:${SOURCE_TAG}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${APP_REVISION}"; then
-              echo "::error::floor-alias promotion failed for ${APP} -- refusing to deploy PROD with an unaliased revision tag."
-              FAILURES=$((FAILURES + 1))
+            ALIAS_PROMOTION_SUCCEEDED=false
+            if [ "${BUILD_CODE:-}" = "floor-alias-content-equivalent" ]; then
+              # The preflight proved the existing floor alias has identical tracked build inputs;
+              # the candidate's per-revision PROD tag may not exist because its build was skipped.
+              # Reuse the existing floor image directly and leave the immutable alias untouched.
+              SOURCE_REF="${IMAGE}:${ALIAS_TAG}"
+              echo "[promote-aliases] ${APP}: reusing content-equivalent existing floor alias."
+              ALIAS_PROMOTION_SUCCEEDED=true
+            else
+              SOURCE_REF="${IMAGE}:${SOURCE_TAG}"
+              if node scripts/promote-image-alias.js --source "${SOURCE_REF}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${APP_REVISION}"; then
+                ALIAS_PROMOTION_SUCCEEDED=true
+              else
+                echo "::error::floor-alias promotion failed for ${APP} -- refusing to deploy PROD with an unaliased revision tag."
+                FAILURES=$((FAILURES + 1))
+              fi
             fi
-            # When backend images are skipped (content-equivalent), deploy-api.yml / deploy-migration-runner.yml
-            # do not run and therefore the latest tag is not updated. Alias latest here so PROD compose
-            # (${IMAGE_TAG:-latest}) pulls the current release:
-            if [ "${APP}" = "dgfy-api" ] || [ "${APP}" = "dgfy-migration-runner" ]; then
-              echo "[promote-aliases] ${APP}: ${SOURCE_TAG} -> latest"
-              if ! docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${SOURCE_TAG}"; then
+            # `latest` is the server's moving compose pointer. Move it only after this app's
+            # immutable floor alias is verified or safely reused, for every app (not at build time).
+            if [ "${ALIAS_PROMOTION_SUCCEEDED}" = "true" ]; then
+              echo "[promote-aliases] ${APP}: ${SOURCE_REF} -> latest"
+              if ! docker buildx imagetools create --tag "${IMAGE}:latest" "${SOURCE_REF}"; then
                 echo "::error::latest-alias promotion failed for ${APP}"
                 FAILURES=$((FAILURES + 1))
               fi
@@ -796,7 +870,7 @@ jobs:
           echo "[promote-aliases] floor aliases verified (${SKIPPED} unchecked app(s) skipped)."
 
   publish:
-    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod, promote-aliases ]
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod, frontend-admin-prod, promote-aliases ]
     if: >-
       inputs.deploy && !cancelled() &&
       needs.guard-branch.result == 'success' &&
@@ -813,6 +887,8 @@ jobs:
       needs.frontend-storefront-prod.result != 'cancelled' &&
       needs.frontend-opis-prod.result != 'failure' &&
       needs.frontend-opis-prod.result != 'cancelled' &&
+      needs.frontend-admin-prod.result != 'failure' &&
+      needs.frontend-admin-prod.result != 'cancelled' &&
       needs.promote-aliases.result != 'failure' &&
       needs.promote-aliases.result != 'cancelled'
     uses: ./.github/workflows/publish-platform.yml

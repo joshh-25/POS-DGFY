@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { hasCustomerName, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
+import { applyDeliveryAddressFieldChange, buildSearchSelectedPin } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { RetailOrderAccountStep } from '../components/RetailOrderAccountStep.jsx';
 import { RetailOrderFulfillmentStep } from '../components/RetailOrderFulfillmentStep.jsx';
 import { RetailOrderJourneyHeader } from '../components/RetailOrderJourneyHeader.jsx';
@@ -110,6 +111,8 @@ export function RetailOrderPage({
   voucherDiscountSummaryRow = null,
   pinLocationError = '',
   pinLocationLoading = false,
+  resolvingPinnedDeliveryAddress = false,
+  addressSearchBias = null,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
@@ -190,6 +193,15 @@ export function RetailOrderPage({
     gap: 14,
     alignItems: 'start'
   };
+  // #759: choosing an address-search suggestion drops the pin there. The suggestion's own address
+  // line rides on the pin so useDeliveryPinResolution uses it as-is instead of reverse-geocoding
+  // the point back into a (usually coarser) address.
+  const handleSelectSearchResult = (result) => {
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setCustomerPin(buildSearchSelectedPin(result));
+  };
   const handleStartMapPin = () => {
     setDeliveryLocationAction('map');
     setSelectedSavedLocationId('');
@@ -197,6 +209,10 @@ export function RetailOrderPage({
     setResolvedDeliveryAddress('');
     setCustomerPin(null);
   };
+  const handleDeliveryAddressChange = (value) => applyDeliveryAddressFieldChange(value, {
+    setCustomerAddress: onCustomerAddressChange,
+    clearDeliveryLocation: handleStartMapPin
+  });
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px', fontFamily: servicesBodyFont || "'Avenir Next', 'Segoe UI', sans-serif", color: '#0f172a' }}>
@@ -297,7 +313,7 @@ export function RetailOrderPage({
               onCloseExpandedMap={() => setShowExpandedDeliveryMap(false)}
               onCloseMobileAddressModal={() => setShowMobileAddressModal(false)}
               onContinue={() => setStep(3)}
-              onCustomerAddressChange={onCustomerAddressChange}
+              onCustomerAddressChange={handleDeliveryAddressChange}
               onOpenExpandedMap={() => setShowExpandedDeliveryMap(true)}
               onOpenMobileAddressList={() => setShowMobileAddressModal(true)}
               onOrderMethodChange={setOrderMethod}
@@ -310,6 +326,9 @@ export function RetailOrderPage({
               onScheduleModeChange={onScheduleModeChange}
               onScheduledForChange={onScheduledForChange}
               onSelectAddress={onSelectAddress}
+              onSelectSearchResult={handleSelectSearchResult}
+              resolvingPinnedDeliveryAddress={resolvingPinnedDeliveryAddress}
+              searchBias={addressSearchBias}
               onSpecialInstructionsChange={setSpecialInstructions}
               onStartMapPin={handleStartMapPin}
               orderMethod={orderMethod}

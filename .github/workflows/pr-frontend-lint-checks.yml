@@ -19,7 +19,7 @@ on:
   workflow_call:
     inputs:
       app:
-        description: Which frontend app to lint (dgfy-ims, dgfy-pos, dgfy-storefront, or dgfy-opis)
+        description: Which frontend app to lint (dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, or dgfy-admin)
         required: true
         type: string
       runner_labels_json:
@@ -59,7 +59,7 @@ jobs:
           fi
           echo "[workspace-hygiene] OK"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Assert complete working tree (workspace-hygiene v1)
         shell: bash

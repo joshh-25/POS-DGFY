@@ -36,8 +36,10 @@ export const validateCompanyRegistrationUpload = ({ file, kind }) => {
                 : isCsv;
     if (!signatureMatches) throw invalid('The file signature does not match its declared type.', { field: 'file' });
 
-    const basename = path.basename(String(file.originalname || 'upload'));
-    const originalFilename = [...basename]
+    // Treat both separator styles as path separators regardless of the host OS. The
+    // display metadata must never retain traversal components from a client path.
+    const basename = path.posix.basename(String(file.originalname || 'upload').replace(/\\/g, '/'));
+    const originalFilename = [...basename.replace(/\.\.+/g, '_')]
         .map((character) => {
             const code = character.charCodeAt(0);
             return code < 32 || character === '\\' || character === '/' ? '_' : character;

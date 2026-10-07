@@ -78,6 +78,9 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    file(s) in question, as part of the same hotfix PR — `.agents/skills/incident-responder/SKILL.md`'s
    "Compliance-preflight reconciliation obligation" section owns the procedure; propose it as the RF's
    concrete fix rather than restating the command inline.
+   A fourth shape is a release-only repair PR: base `release/<candidate_id>`, head `fix/release/*`.
+   It receives no promotion-bundle exemption because the base is the per-candidate release ref,
+   not the literal `main`; run the per-file compliance check against its diff as for an ordinary PR.
    A `NOT-APPLICABLE-*` `preflight_request_ref` (#1396) is a distinct, legitimate reconciled state —
    not a finding on any PR — recording a `minor` declaration whose surfaces the live endpoint cannot
    evaluate at all; a `major`/`regulatory` declaration reaching this state instead of a real
@@ -187,6 +190,7 @@ Rules for filling this in:
 | Condition | Action |
 |---|---|
 | Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --merge --delete-branch` (true merge commit, never `--squash`) — unattended, no confirmation needed |
+| Base `release/<candidate_id>`, head `fix/release/*`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --merge --delete-branch` — unattended after the release repair review; preserve the merge commit and never `--squash`. Apply the repo-wide Merge Safety hard stop |
 | Base `develop` or `staging`, verdict `APPROVE`, GitHub's checks are stuck (verified `runner_offline` / `queue_starvation` / `billing_allocation_failure` / `github_platform_outage`, not merely slow), a `## Local CI` comment reads `PASS`, **and its `Commit:` SHA matches `headRefOid`** | `gh pr merge <N> --merge --delete-branch`, citing the `## Local CI` comment as evidence in the merge — the bounded carve-out in `AGENTS.md`'s Merge Safety section, full precondition list there. Still never `--squash` |
 | Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never. The local-CI carve-out above **also never applies to `main`** |
 | Verdict `BLOCK`, any base | Never merge |

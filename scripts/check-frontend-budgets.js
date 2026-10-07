@@ -113,7 +113,7 @@ function resolveRequiredAssetDirs(projectRoot) {
   }));
 }
 
-const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront', 'apps/dgfy-opis'];
+const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront', 'apps/dgfy-opis', 'apps/dgfy-admin'];
 
 function spawnFrontendBuild(projectRoot, appDir) {
   const buildCommand = `npm --prefix ${appDir} run build`;

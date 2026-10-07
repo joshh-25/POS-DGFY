@@ -158,6 +158,44 @@ alternative to the `fix/staging/*` repair route above whenever a Worker is alrea
 declaration — the `fix/staging/*` path is still correct for a pre-existing finding with no in-flight
 fix behind it.
 
+## Optional promotion quality suite
+
+The operator chooses whether and when to run `.github/workflows/promotion-quality-gate.yml`; the
+workflow is manual-only and every check is advisory. For a normal promotion, run it against the
+frozen `develop` candidate before cutting `to-staging/<candidate_id>`. For a rushed promotion, skip
+that run and optionally dispatch against the final `release/<candidate_id>` branch before `main`.
+The operator may also skip the suite entirely.
+
+The dispatch inputs route `dgfy-api-quality`, `migration-runner-quality`,
+`frontend-storefront-quality`, and `salvage-api-evidence` through `heavy_runner_labels_json`
+(default `['sieitz-lg']`). The remaining quality jobs, including `pos-sales-e2e-quality`, use
+`general_runner_labels_json` (default `['sieitz-runner']`). If the large runner is unavailable,
+explicitly dispatch with `heavy_runner_labels_json='["sieitz-runner"]'`; `salvage-api-evidence`
+shares the API job's selector to preserve workspace co-location. The shared general label makes
+both hosts eligible but does not guarantee how GitHub distributes jobs.
+
+```bash
+gh workflow run promotion-quality-gate.yml --ref "$CANDIDATE_BRANCH"
+gh run list --workflow=promotion-quality-gate.yml -L1 --json databaseId,status,headSha
+# After the run completes, save its evidence locally if no PR was open at dispatch time.
+RUN_ID=123 # replace with the completed run's databaseId
+PR_NUMBER=456 # replace with the associated open PR number
+GITHUB_TOKEN="$(gh auth token)" GITHUB_REPOSITORY=Sieitzz/dgfy-platform \
+  node scripts/post-quality-suite-evidence.js --run-id "$RUN_ID" --pr "$PR_NUMBER" --candidate "$CANDIDATE_ID"
+```
+
+Omit `--pr "$PR_NUMBER"` to let the script find the open PR for the dispatched branch. The workflow
+reporter posts automatically when that PR exists at dispatch time.
+
+The reporter posts each job's real conclusion to the associated PR with the checked SHA and a
+current/stale indication. The optional `quality_check` manifest entry also binds the result to that
+SHA. Compare it with the active candidate SHA; any candidate change makes the record stale. A run
+at the same SHA is reusable across the later promotion leg, so do not rerun it solely because the
+promotion branch changed. Failure, cancellation, and no run do not affect merge eligibility.
+
+`pr-checks.yml` build checks, merge safety, compliance preflight, the production tenant-schema
+report, the release head-cut rule, and never-`--squash` remain mandatory.
+
 ## #1007-gated exception: direct `develop` → `main`
 
 **Ran `gate:release:local` locally at any point earlier in this session? `git status` before
@@ -221,9 +259,9 @@ Promotes \`develop\` to \`main\` at $(git rev-parse --short "$TARGET_SHA").
 
 ## Testing Evidence
 
-\`promotion-quality-gate\` check-run: <link> (14 blocking gates + 3 deliberately advisory as of
-#1278 PR 2 / Phase 298 -- gate:release:local no longer runs as part of this procedure, see
-docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md). Tenant-schema sync checked against production: <result>.
+Optional promotion quality suite: <not run | result, run URL, and exact SHA>. This suite is
+operator-selected evidence and does not gate promotion. Tenant-schema sync checked against
+production: <result>.
 Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the compliance exemption."
 
 # Merging this PR is Pat's action, always — see ../SKILL.md's checkpoint table.
@@ -238,10 +276,9 @@ gh run list --workflow=tenant-schema-report.yml -L1 --json databaseId,status
 gh run view <id> --json conclusion   # expect "success" and failed_tenant_count: 0 in the step summary
 ```
 
-**Only the merge into `main` waits on both** — the compliance sweep (already confirmed clear above)
-and the tenant-schema report — **plus** the promotion PR's own `promotion-quality-gate` check-run
-(`gh pr checks <N>` or per-job conclusions, NEVER the workflow run's rollup conclusion — see
-`GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Current state" section). Do not merge past a failing gate.
+**Only the merge into `main` waits on the mandatory controls** — the compliance sweep (already
+confirmed clear above), the tenant-schema report, and the ordinary PR checks. The optional quality
+suite does not gate the merge, even when it reports advisory failures.
 
 ## Default: `develop` → `staging` → `main`
 
@@ -251,16 +288,10 @@ section.
 **Do NOT run `npm run gate:release:local` on this leg.** It is reserved for the `develop → main`
 (and `staging → main`) leg only — see the "#1007-gated exception" section above, where it's the
 first thing run.
-This isn't an omission to infer from silence: this leg's own CI-side check
-(`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so the `to-staging/<label>`
-PR's own CI is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks — that's
-unchanged by #1648's compliance-preflight addition below, which is a promoter-run precondition on
-cutting the branch in the first place, not a CI check on the PR once opened. Filed as #1097 after
-a live promotion attempt ran the local gate here anyway and stopped a `develop → staging` promotion
-on failures (a real dependency advisory plus false negatives from an uninstalled isolated checkout)
-that were never this leg's gate to fail on. (Briefly untrue 2026-08-29→2026-08-31 — #1124/#1165
-made this leg's quality jobs advisory-only instead of skipped, then #1253 reverted that; expect the
-plain skip described above, not a ~15-20min advisory run.)
+The promotion quality suite has no automatic PR trigger. The operator may run it against the frozen
+develop candidate before cutting the branch, then reuse that evidence on `staging → main` if the
+candidate SHA is unchanged. Running it is optional; the ordinary `pr-checks.yml` build checks and
+the compliance-preflight step below remain in force.
 
 ```bash
 git fetch origin
@@ -493,6 +524,47 @@ finds something outstanding here, **stop rather than dispatching the sweep** —
 preflight — pinned target-ref scan" section's own `origin/staging` case above for why, and
 `../SKILL.md`'s "Compliance preflight sweep" section for what to do instead.
 
+## Explicit refresh after a delayed staging merge (#2266, Phase 474)
+
+This is an operator-requested exception to #1660; it is never automatic. Verify the candidate's
+release has not merged to `main`, record the explicit request/reason, and keep the original candidate
+ID. Reconcile each staging repair and release-only repair into `develop` through reviewed PRs, or
+prove exact equivalent content is already present. Early backport of release-only repairs is
+permitted only for this refresh and must be documented; stop on unresolved differences.
+
+Before cutting a refresh branch, copy the active release selection into v4 `release_history`,
+including its complete per-app map, release PR, and release-only repair lineage. Close the old
+unmerged release PR and retire its branch. Preserve the existing note and published mirror identity;
+extend cumulative included scope and candidate history, retaining `promotion_base_sha`. Pin the
+reconciled develop SHA after compliance reconciliation. Run:
+
+```sh
+node scripts/check-promotion-divergence.js --base origin/staging --head <pinned-develop-sha>
+node scripts/check-app-version-bump.js --floor --candidate-id <candidate_id> --base origin/staging --head <pinned-develop-sha>
+```
+
+The version gate reads the same candidate note at STAGING and develop, verifies the baseline SHA,
+and checks both the original minor-floor obligation and non-regression from current staging. A
+refresh branch suffix alone has no effect. Cut `to-staging/<candidate_id>-refresh-<seq>` from the
+pinned SHA and merge under ordinary review controls. Record its incoming develop SHA, actual staging
+result SHA, physical base SHA, parent candidate SHA, PR, reason, and `apps_touched` in the candidate
+manifest. The refresh sequence is independent of staging repair sequences and artifact `rN` values.
+
+Set `refresh_in_progress` with no active release selection before the refresh begins. Build changed
+apps with fresh per-app immutable STAGING revisions; preserve valid untouched artifacts and include
+the complete selected/carry-forward set. The refreshed artifact origin is `staging_refresh` and
+parity requires the ordinary STAGING predecessor. Once merge and builds succeed, clear the active
+refresh marker, set status to `staging_soak`, and repeat observation and required qualification at
+the actual staging SHA. Cut a new `release/<candidate_id>` only after that qualification passes.
+Archived observation, parity, or optional quality-suite evidence cannot qualify the refreshed SHA.
+A failed refresh remains unqualified and cannot silently restore the archived selection. If the
+release already merged to `main`, reject refresh and use the post-release procedure.
+
+Legacy v1-v3 candidates need a reviewed, evidence-backed `promotion_base_sha` note amendment and
+backport before conversion to v4. Missing evidence is a hard stop. The production tenant-schema
+report, compliance preflight, merge safety, no-squash, immutable-tag checks, and explicit production
+authorization stay mandatory.
+
 ## Candidate repair after the staging merge
 
 After the `to-staging/<candidate_id>` PR merges, treat the candidate as frozen. Do not cut a new
@@ -605,8 +677,114 @@ missing from `release_revision.apps`. Do not qualify the candidate or dispatch p
 every app in that inventory has a recorded STAGING artifact and validation passes.
 
 Include `--candidate-manifest .tmp/release-candidates/$CANDIDATE_ID.json` when building release
-evidence. A pre-main failure returns to this staging loop and invalidates the old release head; it
-does not restart from `develop`.
+evidence.
+
+## Release-only repair after staging qualification
+
+Once the candidate passed staging observation and `release/$CANDIDATE_ID` exists, a pre-main CI or
+quality-gate failure is repaired on that existing release branch. Keep the promotion PR open so
+its required checks rerun against the updated release head. Do not recut the release branch, merge
+the repair into `staging`, dispatch a STAGING deployment, or repeat staging observation.
+
+Open one reviewed repair PR per repair sequence, based on the current release head and targeting
+that same release branch:
+
+```bash
+REPAIR_SEQ=1
+REPAIR_BRANCH="fix/release/$CANDIDATE_ID-$REPAIR_SEQ"
+REPAIR_ISSUE=2344 # replace with the PM-created repair issue number
+git fetch origin "release/$CANDIDATE_ID"
+git switch -c "$REPAIR_BRANCH" "origin/release/$CANDIDATE_ID"
+# implement only the pre-main repair
+git push -u origin "$REPAIR_BRANCH"
+BODY_FILE="$(mktemp)"
+cat > "$BODY_FILE" <<EOF
+## Summary
+
+Repairs frozen release candidate $CANDIDATE_ID after staging qualification.
+Refs #$REPAIR_ISSUE
+
+## Testing Evidence
+
+Pre-main failure evidence: <link>. Candidate manifest: .tmp/release-candidates/$CANDIDATE_ID.json.
+EOF
+gh pr create --base "release/$CANDIDATE_ID" --head "$REPAIR_BRANCH" \
+  --title "fix(release): repair candidate $CANDIDATE_ID (repair $REPAIR_SEQ)" \
+  --body-file "$BODY_FILE"
+```
+
+The repair PR follows ordinary per-file compliance validation (there is no promotion-bundle
+exemption for a `release/<candidate_id>` base). Merge it with a merge commit after review and green
+checks, with `mergeStateStatus: CLEAN`; never use `--squash`. `AGENTS.md`'s Merge Safety hard stop
+still applies.
+
+After the repair PR merges, fetch the updated release ref and record its exact head in the candidate
+manifest:
+
+```bash
+git fetch origin "release/$CANDIDATE_ID"
+RELEASE_REPAIR_SHA="$(git rev-parse "origin/release/$CANDIDATE_ID")"
+```
+
+Append one
+`release_revision.repairs` entry per merged repair; `sha` is the resulting `origin/release/$CANDIDATE_ID`
+head and `parent_sha` is the release head immediately before that repair. `apps_touched` lists
+exactly the deployable apps selected for the repair (API and migration-runner together):
+
+```json
+{
+  "repair_seq": 1,
+  "sha": "<new release branch head>",
+  "parent_sha": "<previous release branch head>",
+  "branch": "fix/release/$CANDIDATE_ID-1",
+  "pr": 2345,
+  "issue": 2344,
+  "apps_touched": ["dgfy-ims"]
+}
+```
+
+Advance `release_revision.apps[app].source_sha` to the latest release repair SHA for each touched
+app and set its `origin` to `release_repair`. Allocate a fresh per-app artifact revision for every
+app the repair rebuilds. The existing revision tag may already belong to the original STAGING
+artifact, and Decision 7 forbids overwriting it. Authenticate Docker to GHCR first, then allocate
+against the release-repair SHA (API and migration-runner are allocated independently):
+
+```bash
+APP=dgfy-ims # repeat for each app in apps_touched; allocate API and runner separately
+FLOOR="$(git show "$RELEASE_REPAIR_SHA:apps/$APP/package.json" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version")"
+REVISION="$(node scripts/allocate-artifact-revision.js \
+  --image "ghcr.io/sieitzz/$APP" --floor "$FLOOR" --revision "$RELEASE_REPAIR_SHA" \
+  | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
+```
+
+Store that new numeric revision in `release_revision.apps[app].revision`, along with the exact
+repair SHA and `release_repair` origin. The new revision tag is absent, so `deploy-main.yml`'s
+existing build-skip planner selects BUILD; no workflow change is needed. Preserve the original
+STAGING `digest` as staging provenance; it is not a digest claim for the release-only repair. For
+this origin, the parity gate
+does not require a STAGING predecessor or compare that old digest with PROD. It verifies the PROD
+source label against the resolved release repair SHA, reads the PROD digest, and requires the bare
+PROD alias to resolve to that same digest. Floor and revision labels remain mandatory.
+
+Amend `docs/releases/notes/$CANDIDATE_ID.md` in the same repair PR: add an `## Included` line and
+update the touched app's version-table row. Do not create another note for this candidate. Validate
+the edited manifest before continuing:
+
+```bash
+node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
+```
+
+The existing `release/$CANDIDATE_ID` promotion PR then reruns its required checks. Proceed through
+the existing production tenant-schema report, Merge Safety, and no-`--squash` controls. The final
+release head is not reported as having passed staging; evidence keeps the staging-qualified SHA and
+every release-only repair SHA as separate identities.
+
+After the promotion is merged and production is stable, backport every release-only repair to
+`develop` through an ordinary PR. Hand off to `pm` for a fresh issue, cherry-pick each repair with
+`git cherry-pick -x` onto a branch cut from fresh `origin/develop`, and open the PR into `develop`.
+Do not create a separate `staging` backport: these repairs never land on `staging`, so the #1696
+backport rule for commits that land there does not apply. This obligation is timed after production
+stability, like the main-hotfix backport.
 
 After a main deploy failure, use the incident/hotfix procedure on `main`, then backport the resolved
 main commit to `develop` after stabilization. No separate staging backport is needed because the

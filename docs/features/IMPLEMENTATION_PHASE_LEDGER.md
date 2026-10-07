@@ -26206,3 +26206,300 @@ execution-evidence gates pass.
 
 Phase 472 only after Phase 471 is completed under its acceptance gates; it is
 not eligible while the staging and release blockers above remain.
+
+**Overridden 2026-10-04:** Pat explicitly authorized Phase 472 to proceed independently of this
+phase's own staging/release blockers, for the unrelated #1542 release-only-repair follow-up (see
+Phase 472). This does not mark Phase 471 complete or waive its own acceptance gates above — those
+remain open and unaffected.
+
+## Phase 472 - Release-only repair after staging qualification (#1542 follow-up)
+
+### Initiative and release
+
+Frozen promotion-candidate repair lifecycle, current release.
+
+### Objective and scope
+
+After a frozen candidate passes staging qualification, allow a pre-main failure to be repaired on
+its existing `release/<candidate_id>` branch through a reviewed PR. Record every repair SHA and
+parent separately from the staging-qualified SHA, skip staging redeployment/re-observation, and
+allow PROD-only parity for apps with origin `release_repair` while preserving production controls.
+After production is stable, backport each release-only repair to `develop` by ordinary PR; do not
+create a separate `staging` backport. Existing staging repair and post-deployment main-hotfix paths
+remain unchanged. This is the #1542 follow-up only; Phase 271 remains completed history.
+
+### Status
+
+`in_progress` — local implementation, focused tests, architecture checks, and documentation checks
+are complete; PR review, merge, and deployed QA remain. Pat explicitly authorized this follow-up to
+proceed while Phase 471 remains in progress; that authorization does not change Phase 471's status
+or acceptance gates.
+
+### Dependencies
+
+Issue #1542's 2026-10-01 update; completed Phase 271 candidate-repair foundation; ADR 0074 and ADR
+0081's amendments in this phase. Phase 471 remains independently open under its acceptance gates.
+
+### Acceptance and validation evidence
+
+- [ ] A pre-main failure after staging qualification is repaired through a reviewed PR into the
+      existing release branch, and the promotion PR reruns required checks on its updated head.
+- [ ] The manifest preserves the staging-qualified SHA and each sequential release repair with
+      exact parent linkage; each touched app gets a fresh immutable per-app `rN`; final release
+      evidence never says a repair SHA passed staging.
+- [ ] Release-repair parity validates PROD source SHA, floor, revision, readable digest, and alias
+      agreement without requiring or claiming a STAGING predecessor.
+- [ ] Production tenant-schema reporting, Merge Safety, and no-`--squash` remain mandatory.
+- [ ] Each release-only repair is backported to `develop` after production is stable; no separate
+      `staging` backport is created. Existing staging repairs and main hotfixes are unchanged.
+- [x] `npm run test:promotion-candidate` (39 tests), `node --test
+      scripts/check-image-version-parity.test.js`, `npm run check:adr -- --write-index`, and
+      `npm run lint:docs` pass; the parity suite passed 59 tests. `node --check` passed for both
+      changed JavaScript files; `node scripts/check-app-version-bump.js` and
+      `npm run check:architecture` passed.
+- [x] CLI validation passed for a hand-built v3 manifest containing `release_revision.repairs`.
+- [x] `deploy-main.yml` already builds when the new PROD revision tag is absent; the
+      `build-release-candidate-evidence.js` script has no live workflow/skill caller; branch
+      cleanup already accepts `fix/`; compliance classification keys promotion exemptions only to
+      literal `staging`/`main` bases. No change was needed in these areas.
+- [ ] PR review, merge, and deployed QA are complete; this phase does not merge or deploy.
+
+### Links
+
+- Issue: #1542; planner handoff: `.tmp/plan-1542.md` (planning head
+  `e10e363a11f2db00e3d6be20c4c17e5e3fface45`).
+- ADRs: `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md` and
+  `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`.
+- Policy/runbook: `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+  `.agents/skills/promoter/SKILL.md`, and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+- Implementation/tests: `scripts/check-promotion-candidate.js`,
+  `scripts/check-promotion-candidate.test.js`, `scripts/check-image-version-parity.js`, and
+  `scripts/check-image-version-parity.test.js`.
+
+### Completion date
+
+Not complete; set only after all acceptance gates pass.
+
+### Next eligible phase
+
+Phase 473 only after Phase 472's acceptance gates complete and then-current ledger eligibility is
+reconciled; Phase 471 remains independently open unless its own gates pass.
+
+**Overridden 2026-10-04:** Pat explicitly authorized unrelated #1749 Phase 473 to proceed
+independently of Phase 472's open acceptance gates. This does not mark Phase 472 complete or waive
+its remaining criteria.
+
+## Phase 473 - POS-owned advisory sales journey and shared-code quality scope (#1749)
+
+### Initiative and release
+
+Promotion quality evidence and POS terminal sales verification, current release.
+
+### Objective and scope
+
+Replace the IMS-coupled promotion sales journey with a POS-owned browser flow that seeds a
+POS-visible item through the tenant API, completes checkout in the POS terminal, verifies stock
+decrement, opens the transaction from POS history into receipt detail, and downloads readable POS
+sales CSV. Remove the old combined IMS/POS journey and its API scripts. Rename the sales and shared
+web-core quality jobs, remove the IMS-own-lint step, retain web-core lint/contracts/scroll checks in
+the IMS-installed test toolchain, and keep all promotion-quality steps advisory.
+
+### Status
+
+`in_progress` — implementation is underway; the focused POS browser journey and required
+promotion-quality dispatch remain unverified, and PR review is outstanding. Pat explicitly
+authorized this phase to proceed while Phase 472 remains in progress.
+
+### Dependencies
+
+Issue #1749's 2026-10-03 scope update; ADR 0071 and ADR 0087 shared web-core test-runner constraint;
+promotion-quality evidence reporter contract. Phase 472 remains incomplete but is not blocking this
+unrelated phase by Pat's 2026-10-04 authorization above.
+
+### Acceptance and validation evidence
+
+- [x] POS-only browser journey proves API item seeding, UI checkout, stock decrement, POS history to
+      receipt detail continuity, and a readable downloaded POS sales CSV. `workflow_dispatch` run
+      `37208644721` completed the Playwright step successfully on `vm-openproject` via the
+      `sieitz-runner` label.
+- [x] Promotion workflow uses `pos-sales-e2e-quality` and `web-core-quality`; the former installs
+      POS dependencies, starts no IMS frontend, and both jobs remain advisory.
+- [x] The workflow checker, advisory evidence reporter, local-gate mapping, and docs agree on the
+      renamed jobs and the removed IMS-own-lint gate.
+- [x] POS build, lint, app-version policy, workflow-shape check, documentation, architecture, and
+      compliance checks pass.
+- [ ] The full `workflow_dispatch` and evidence report complete, recording timing comparisons with
+      run `37092548319` and the former IMS quality job. In run `37208644721` on implementation SHA
+      `4f9d372e0a8242a56f1d57b9638b8b3a2c569fde`, the POS job took 5m23s, Chromium installation
+      took 6s, and the passing Playwright journey took 1m14s. Compared with run `37092548319`
+      (22m16s / ~10m12s / ~5m42s), the POS job is 16m53s shorter, Chromium setup is 10m6s shorter,
+      and the journey is 4m28s shorter; it is also 24s faster than the former IMS job's 1m38s
+      journey. The POS job and its evidence artifact completed, while other advisory jobs in this
+      dispatch were still queued or running at ledger update time. Run `37203799433` on SHA
+      `122c06095e73ee5669e68df96b74c7667aa0bd39` had failed the browser journey because the API
+      rejected the dynamic Vite origin with `CORS_NOT_ALLOWED`; the explicit isolated-origin
+      allowlist is now in place.
+
+### Links
+
+- Issue: #1749; planner handoff: `.tmp/plan-1749.md` (planning head
+  `b38e0f687ee45d43de27ef4a94a8577999a5a9dc`).
+- Architecture: ADR 0071 and ADR 0087.
+- Implementation: `.github/workflows/promotion-quality-gate.yml`,
+  `apps/dgfy-pos/tests/e2e/pos/sales-journey.spec.js`, and the matching API test fixture.
+- Contracts: `scripts/check-pr-quality-workflow.js`, `scripts/post-quality-suite-evidence.js`,
+  `scripts/gate-release-local.js`, `docs/testing/README.md`, and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+
+### Completion date
+
+Not complete; set only after the acceptance evidence above, including the real promotion-quality
+dispatch, is recorded.
+
+### Next eligible phase
+
+Phase 474 only after Phase 473's acceptance gates complete and the ledger is rechecked.
+
+## Phase 474 - Explicit refresh of a delayed, unmerged staging candidate (#2266)
+
+### Initiative and release
+
+Frozen promotion-candidate lifecycle, current release.
+
+### Objective and scope
+
+Allow an explicitly requested refresh of an active staging candidate while production is deferred.
+Retain the candidate ID and original promotion baseline; reconcile staging and release-only repairs
+into develop, withdraw and archive any unmerged release selection, publish new immutable per-app
+artifact revisions, and repeat staging observation and qualification. A release merged to main is
+never refreshable. This phase supersedes #1660 only for an explicit pre-main refresh request and
+does not waive Phase 473's acceptance gates.
+
+### Status
+
+`in_progress` — initial v4 manifest validation, refresh floor context, candidate lineage checks,
+parity/evidence integration, operator procedure, release-note guidance, and focused regression
+coverage are implemented. The requested local validation has passed. Remaining acceptance breadth,
+PR review, and deployed qualification remain outstanding. Pat explicitly authorized Phase 474 to
+proceed independently of Phase 473; this does not complete or waive Phase 473.
+
+### Dependencies
+
+Issue #2266 and its ready planner handoff `.tmp/plan-2266.md` (planning head
+`7c3fdd014ed8b76ad47fc0fb26fa26c6228af7ee`); ADR 0039 amendment procedure; ADRs 0074, 0081, and
+0082; Phase 472 candidate release-repair lineage; Phase 473 remains independently open.
+
+### Acceptance and validation evidence
+
+- [ ] v4 retains v1-v3 compatibility, candidate ID and original source identity while validating
+      repeated refreshes interleaved with repairs, separate ordinals, unique SHAs, complete selected
+      app/carry-forward maps, independent backend revisions, and immutable artifact snapshots.
+- [ ] Refresh is rejected after main merge or while incomplete; old SHA-bound observation and
+      quality evidence cannot qualify it; failed refresh cannot restore archived qualification.
+- [ ] Refresh floors use a verified original baseline, preserve current staging floors, cover all
+      current APPS and fan-out, and reject malformed/missing/altered/unresolvable context.
+- [ ] Release-only repairs are reconciled before withdrawal; archived repairs remain history and do
+      not affect active source resolution. Release-note history and active manifest selection agree.
+- [ ] Parity, observation, optional quality reporting, and release evidence preserve refresh and
+      selected artifact lineage; all existing production controls remain in force.
+- [x] `npm run test:promotion-candidate` (47 tests), `npm run test:staging-observation` (4),
+      `npm run test:app-versions` (38), `npm run test:release-notes` (17),
+      `npm run test:artifact-revision` (18), targeted parity/evidence/build-skip suites (115),
+      `npm run check:adr -- --write-index`, `npm run lint:docs`, `npm run check:architecture`, and
+      `npm run check:compliance` pass. Local `node scripts/check-app-version-bump.js`, JavaScript
+      syntax checks, and `git diff --check` also pass. Remaining unimplemented breadth is listed in
+      the unchecked acceptance rows above and has not been inferred from these focused tests.
+- [ ] PR review is complete. No live refresh, staging promotion, production merge, deploy, or
+      deployed QA is part of this implementation phase.
+
+### Links
+
+- Issue: #2266; planner handoff: `.tmp/plan-2266.md` (planning head above).
+- ADRs: 0074, 0081, 0082; release policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+- Implementation: `scripts/check-promotion-candidate.js`,
+  `scripts/check-app-version-bump.js`, `scripts/check-image-version-parity.js`,
+  `scripts/check-staging-candidate-observation.js`, and `scripts/check-release-notes.js`.
+- Procedure: `.agents/skills/promoter/SKILL.md` and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+
+### Completion date
+
+Not complete; set only after acceptance gates pass. This implementation does not itself perform
+staging qualification or production deployment.
+
+### Next eligible phase
+
+Phase 475, subject to then-current ledger eligibility and a fresh ledger review.
+
+## Phase 475 - Server-authoritative commerce payment session cancellation (#2267)
+
+### Initiative and release
+
+Storefront commerce payments, current release.
+
+### Objective and scope
+
+Add a customer-callable, tenant-scoped endpoint to cancel an unpaid Storefront commerce payment
+session at PayMongo. Persist and backfill Hosted Checkout session IDs, preserve payment/order
+authority under concurrent webhook delivery, return explicit `cancelled`, `not_cancellable`, and
+`unresolved` outcomes, and audit confirmed cancellation. Refunds and scheduled expiry/retry remain
+out of scope.
+
+### Status
+
+`in_progress` — implementation and local checks are complete; production tenant-schema reporting,
+controlled PayMongo production-flow verification, PR review, merge, and deployed QA remain
+outstanding.
+
+**Explicit sequencing override (2026-10-06; originally numbered Phase 474):** Pat authorized this
+work to proceed independently of Phase 473's incomplete acceptance gates. The work is numbered
+Phase 475 after Phase 474 (#2266) was added to the authoritative ledger. Phase 473 remains
+`in_progress`; this authorization does not mark it complete or waive its acceptance criteria.
+
+### Dependencies
+
+Issue #2267; ADR 0052's paid-session and refund boundaries; Pat's explicit 2026-10-06 authorization
+to proceed independently of Phase 473; Phase 474 (#2266) is a distinct in-progress ledger entry.
+The affected session table is landlord-only and requires no tenant-schema registration or
+capability-version change.
+
+### Acceptance and validation evidence
+
+- [x] The additive landlord migration adds and indexes `provider_checkout_session_id` and backfills
+      only literal `cs_` IDs from `provider_payload`.
+- [x] The cancellation endpoint returns the documented three-outcome response, preserves
+      already-paid/order-finalized state, and writes an audit row on confirmed cancellation.
+- [x] The provider HTTP call occurs outside transactions, and the locked re-read preserves a
+      concurrent `payment.paid` result.
+- [x] Focused cancellation/provider tests (17 passed; 30 passed across four focused suites),
+      changed-file syntax checks, compliance, architecture/ADR, documentation, and develop-base
+      app-version checks pass.
+- [ ] `npm run check:tenant-schema` completes its report successfully before the migration deploys;
+      the local attempt exited before report output in this session.
+- [ ] Controlled production verification uses deliberately created test sessions to confirm (a) a
+      Hosted Checkout session created under `/v2` expires and its URL no longer accepts payment,
+      (b) a QR Ph Payment Intent is cancelled, and (c) an already-paid session returns
+      `not_cancellable` without refunding or charging again.
+- [ ] PR review is complete; this phase does not merge, deploy, or claim deployed verification.
+
+### Links
+
+- Issue: #2267; planner handoff: `.tmp/plan-2267.md` (planning head
+  `7c3fdd014ed8b76ad47fc0fb26fa26c6228af7ee`).
+- ADR: `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`.
+- Feature contract: `docs/features/TENANT_REVENUE_SETTLEMENT.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-10-06-commerce-payment-session-cancellation.md`.
+- Implementation: `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/services/paymongoService.js`,
+  `apps/dgfy-migration-runner/migrations/20261006000001-add-checkout-session-id-to-commerce-payment-sessions.cjs`.
+- Tests: `apps/dgfy-api/tests/storeCancelPaymentSession.usecase.test.js`.
+
+### Completion date
+
+Not complete; set only after all acceptance gates above pass.
+
+### Next eligible phase
+
+Phase 476 only after Phase 475's acceptance gates pass and then-current ledger eligibility is
+reconciled.

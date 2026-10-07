@@ -11,8 +11,9 @@
  *
  * This script computes, per app, whether it is safe to SKIP a build entirely -- never whether it is
  * safe to PUBLISH. Decision 7's guard (`scripts/check-tag-immutability.js`) is reused unmodified and
- * still runs, unconditionally, in every build that is actually attempted; this only decides whether
- * an attempt is made at all. Three outcomes per app (plan §1):
+ * still runs, unconditionally, in every build that is actually attempted. PROD also preflights the
+ * canonical floor alias before builds begin; a confirmed conflict with changed tracked inputs halts
+ * the whole plan, while an equivalent alias can be reused.
  *
  *   1. The version tag isn't published yet                              -> build normally (nothing
  *      to skip).
@@ -158,6 +159,18 @@ function gitDiffChangedFiles({ repoRoot, fromRevision, toRevision, paths }) {
     .filter(Boolean);
 }
 
+function digestFromInspect(stdout) {
+  try {
+    const parsed = JSON.parse(stdout);
+    return (typeof parsed.digest === 'string' && parsed.digest.trim())
+      || (parsed.manifest && typeof parsed.manifest.digest === 'string' && parsed.manifest.digest.trim())
+      || (parsed.image && typeof parsed.image.digest === 'string' && parsed.image.digest.trim())
+      || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Pure per-app verdict. See the file header for the four-outcome table and the fail-closed
  * reasoning. `inspectFn`/`diffFn` are injectable so tests never shell out to `docker`/`git`.
@@ -167,6 +180,8 @@ function gitDiffChangedFiles({ repoRoot, fromRevision, toRevision, paths }) {
  *   - image (required): `IMAGE_NAME_BY_APP(app)`, passed explicitly rather than re-derived so a
  *     caller can override it in a test.
  *   - versionTag (required): the PROD (bare, no channel suffix) `X.Y.Z` tag this app would publish.
+ *   - canonicalAlias (optional): the PROD floor alias that must remain immutable.
+ *   - collisionSourceTag (optional): the staged artifact tag used to report its digest on a collision.
  *   - currentRevision (required): `github.sha` for this build.
  *   - repoRoot (default: this repo).
  *   - inspectFn (default: runInspect from check-tag-immutability.js).
@@ -180,6 +195,8 @@ async function decideBuildSkip({
   app,
   image,
   versionTag,
+  canonicalAlias = null,
+  collisionSourceTag = null,
   currentRevision,
   repoRoot = REPO_ROOT,
   inspectFn = runInspect,
@@ -188,6 +205,73 @@ async function decideBuildSkip({
   narrowingEnabledFn = resolveNarrowingEnabled,
 }) {
   const imageRef = `${image}:${versionTag}`;
+
+  // A tracked PROD candidate publishes the revision tag above, then promotes the bare floor
+  // alias. Check that alias before any app builds or registry writes start: the ordinary tag guard
+  // below still protects the immutable revision tag, while this preflight catches a Decision 7
+  // refusal that would otherwise happen only after builds and earlier aliases have run.
+  if (canonicalAlias) {
+    const aliasRef = `${image}:${canonicalAlias}`;
+    const aliasInspect = inspectFn(aliasRef);
+    const aliasVerdict = decideImmutability({
+      inspectStatus: aliasInspect.status,
+      inspectStdout: aliasInspect.stdout,
+      inspectStderr: aliasInspect.stderr,
+      currentRevision,
+    });
+
+    if (aliasVerdict.action === 'error') {
+      return {
+        skip: false,
+        code: 'floor-alias-inspect-unavailable-fail-closed',
+        detail: `${aliasRef}: ${aliasVerdict.reason} -- building normally because the alias state is indeterminate`,
+      };
+    }
+
+    if (aliasVerdict.action === 'refuse' && aliasVerdict.existingRevision) {
+      const paths = buildInputPathsForApp(repoRoot, currentRevision, app);
+      const changedFiles = diffFn({ repoRoot, fromRevision: aliasVerdict.existingRevision, toRevision: currentRevision, paths });
+      if (changedFiles === null) {
+        return {
+          skip: false,
+          code: 'floor-alias-diff-unavailable-fail-closed',
+          detail: `could not diff ${aliasVerdict.existingRevision}..${currentRevision} for ${app}'s PROD floor alias ${canonicalAlias} (${paths.join(', ')}) -- building normally because the content comparison is indeterminate`,
+        };
+      }
+
+      const existingDigest = digestFromInspect(aliasInspect.stdout) || '<unavailable>';
+      const onlyReachabilityScopedFiles = changedFiles.length > 0 && changedFiles.every((file) =>
+        REACHABILITY_SCOPE_DIRS.some((directory) => file === directory || file.startsWith(`${directory}/`)));
+      let narrowedAsEquivalent = false;
+      if (onlyReachabilityScopedFiles && narrowingEnabledFn()) {
+        const reachabilityVerdict = await reachabilityFn(repoRoot, app, changedFiles, {
+          fileExistsAtRef: (file) => fileExistsAtRef(repoRoot, currentRevision, file),
+        });
+        narrowedAsEquivalent = reachabilityVerdict.applicable && !reachabilityVerdict.changed;
+      }
+
+      if (changedFiles.length === 0 || narrowedAsEquivalent) {
+        return {
+          skip: true,
+          code: 'floor-alias-content-equivalent',
+          detail: `${aliasRef} already points to ${existingDigest} from revision ${aliasVerdict.existingRevision}; ${currentRevision} has no ${narrowedAsEquivalent ? 'reachable ' : ''}changes under ${paths.join(', ')}, so reusing the existing PROD alias`,
+        };
+      }
+
+      const sourceRef = collisionSourceTag ? `${image}:${collisionSourceTag}` : null;
+      const sourceInspect = sourceRef ? inspectFn(sourceRef) : null;
+      const sourceDigest = sourceInspect && sourceInspect.status === 0
+        ? digestFromInspect(sourceInspect.stdout)
+        : null;
+      return {
+        skip: false,
+        code: 'floor-alias-collision',
+        haltDispatch: true,
+        detail: `${app} PROD floor ${canonicalAlias} is already claimed by ${existingDigest} (revision ${aliasVerdict.existingRevision}); incoming ${sourceRef || `revision ${currentRevision}`} has ${sourceDigest || 'no inspectable digest before build'} and changes tracked inputs (${changedFiles[0]}). Bump ${app}'s apps/${app}/package.json floor before retrying.`,
+      };
+    }
+  }
+
   const inspectResult = inspectFn(imageRef);
   const verdict = decideImmutability({
     inspectStatus: inspectResult.status,
@@ -353,10 +437,19 @@ async function resolveBuildSkipPlan({
         ? revisionsByApp[app]
         : revision;
       const versionTag = deriveVersionTag({ version: rawVersion, environment, app, revision: appRevision, prRef });
+      const isProd = String(environment || '').toUpperCase() === 'PROD';
+      const releaseTags = isProd && appRevision
+        ? resolveReleaseTags({ app, version: rawVersion, environment: 'PROD', revision: appRevision })
+        : null;
+      const collisionSourceTag = releaseTags
+        ? resolveReleaseTags({ app, version: rawVersion, environment: 'STAGING', revision: appRevision }).stagingTag
+        : null;
       plan[app] = await decideBuildSkip({
         app,
         image,
         versionTag,
+        canonicalAlias: isProd ? (releaseTags?.canonicalAlias || rawVersion) : null,
+        collisionSourceTag,
         currentRevision,
         repoRoot,
         inspectFn,
@@ -436,6 +529,9 @@ function parseArgs(argv) {
 
 function printPlan(plan) {
   for (const [app, result] of Object.entries(plan)) {
+    if (result.haltDispatch) {
+      console.log(`::error::${result.detail}`);
+    }
     const label = result.skip ? 'SKIP' : 'BUILD';
     console.log(`[resolve-build-skip-plan] [${label}] ${app} (${result.code}): ${result.detail}`);
   }
@@ -448,7 +544,13 @@ function writeGithubOutput(plan) {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (!outputPath) return;
   const lines = Object.entries(plan)
-    .map(([app, result]) => `should_build_${app.replace(/-/g, '_')}=${result.skip ? 'false' : 'true'}`)
+    .flatMap(([app, result]) => {
+      const key = app.replace(/-/g, '_');
+      return [
+        `should_build_${key}=${result.skip ? 'false' : 'true'}`,
+        `build_code_${key}=${result.code}`,
+      ];
+    })
     .join('\n');
   fs.appendFileSync(outputPath, `${lines}\n`);
 }
@@ -465,6 +567,10 @@ async function main() {
     repoRoot: options.projectRoot,
   });
   printPlan(plan);
+  if (Object.values(plan).some((result) => result.haltDispatch)) {
+    process.exitCode = 1;
+    return;
+  }
   writeGithubOutput(plan);
 }
 
