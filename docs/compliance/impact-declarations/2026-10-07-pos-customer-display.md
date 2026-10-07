@@ -57,3 +57,6 @@ persist, or alter a transaction.
   completed payment state.
 - POS lint and production build pass, and `git diff --check` reports no whitespace errors.
 - The repository compliance gate validates this declaration against the changed POS feature files.
+- Follow-up blocker fix: restored the `Eye` icon import used by `POSCheckoutTerminalView.jsx`; this
+  is a lint/runtime reference repair and does not change the feature's behavior or compliance
+  surfaces.
