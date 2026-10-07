@@ -483,7 +483,7 @@ jobs:
           set -euo pipefail
           SELECTED_JSON="$(node -e "const e=process.env;console.log(JSON.stringify({'dgfy-api':e.BUILD_API==='true','dgfy-migration-runner':e.BUILD_API==='true','dgfy-ims':e.BUILD_IMS==='true','dgfy-pos':e.BUILD_POS==='true','dgfy-storefront':e.BUILD_STOREFRONT==='true','dgfy-opis':e.BUILD_OPIS==='true','dgfy-admin':e.BUILD_ADMIN==='true'}))")"
           NEEDED_JSON="$(node -e "const e=process.env;console.log(JSON.stringify({'dgfy-api':e.NEED_API==='true','dgfy-migration-runner':e.NEED_MIGRATION==='true','dgfy-ims':e.NEED_IMS==='true','dgfy-pos':e.NEED_POS==='true','dgfy-storefront':e.NEED_STOREFRONT==='true','dgfy-opis':e.NEED_OPIS==='true','dgfy-admin':e.NEED_ADMIN==='true'}))")"
-          REVISIONS_JSON="$(node -e "const e=process.env;const r={'dgfy-api':e.REVISION_API,'dgfy-migration-runner':e.REVISION_MIGRATION,'dgfy-ims':e.REVISION_IMS,'dgfy-pos':e.REVISION_POS,'dgfy-storefront':e.REVISION_STOREFRONT,'dgfy-opis':e.REVISION_OPIS,'dgfy-admin':e.REVISION_ADMIN};console.log(JSON.stringify(Object.fromEntries(Object.entries(r).filter(([,v])=>v)))")"
+          REVISIONS_JSON="$(node -e "const e=process.env;const r={'dgfy-api':e.REVISION_API,'dgfy-migration-runner':e.REVISION_MIGRATION,'dgfy-ims':e.REVISION_IMS,'dgfy-pos':e.REVISION_POS,'dgfy-storefront':e.REVISION_STOREFRONT,'dgfy-opis':e.REVISION_OPIS,'dgfy-admin':e.REVISION_ADMIN};console.log(JSON.stringify(Object.fromEntries(Object.entries(r).filter(([,v])=>v))))")"
           node scripts/summarize-build-plan.js \
             --selected-json "${SELECTED_JSON}" \
             --needed-json "${NEEDED_JSON}" \

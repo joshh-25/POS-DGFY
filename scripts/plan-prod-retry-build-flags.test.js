@@ -38,6 +38,7 @@ test('a candidate app excluded from jobs is fail-closed and out-of-scope apps ar
   assert.match(output, /not in this candidate/);
   assert.match(output, /-f build_frontend_admin=false/);
   assert.match(output, /cannot see live CI runner or registry state/);
+  assert.doesNotMatch(output, /^\+\s+-f /m);
   for (const flag of ['build_api', 'build_frontend_ims', 'build_frontend_pos', 'build_frontend_storefront', 'build_frontend_opis', 'build_frontend_admin']) {
     assert.match(output, new RegExp(`-f ${flag}=(true|false)`));
   }

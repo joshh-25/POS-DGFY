@@ -131,7 +131,7 @@ function renderPlan({ appPlans, flagValues }) {
     'gh workflow run deploy-main.yml --ref main',
     ...Object.entries(flagValues).map(([flag, value]) => `-f ${flag}=${value}`),
     '-f deploy=true',
-  ].join(' \\\n+  ');
+  ].join(' \\\n  ');
   return [
     '| App | In candidate? | Prior job outcome | Recommended build flag |',
     '| --- | --- | --- | --- |',
