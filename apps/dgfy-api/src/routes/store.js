@@ -59,6 +59,22 @@ import {
     validateCreateFnbReservation
 } from '../validators/fnbValidator.js';
 import { getStorefrontDomainContext } from '../modules/storefrontDomains/controllers/storefrontDomainHandlers.js';
+import {
+    getPublicLaundryCatalog,
+    getPublicLaundryAvailability,
+    createPublicLaundryQuote,
+    submitPublicLaundryOrder,
+    getPublicLaundryOrder,
+    updatePublicLaundryOrder,
+    cancelPublicLaundryOrder
+} from '../modules/dgfyLaundryOrders/controllers/dgfyLaundryStoreHandlers.js';
+import {
+    validateDgfyLaundryStoreScopeQuery,
+    validateDgfyLaundryStoreQuote,
+    validateDgfyLaundryStoreOrder,
+    validateDgfyLaundryStoreOrderParam,
+    validateDgfyLaundryStoreMutation
+} from '../validators/dgfyLaundryStoreValidator.js';
 
 const router = express.Router();
 router.get('/domain-context', setNoStoreCacheControl, getStorefrontDomainContext);
@@ -151,6 +167,15 @@ router.post('/services/holds', requireWorkflowCapability('services', 'Services')
 router.get('/services/bookings/:public_reference', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storeTrackingLimiter, validateServiceBookingReferenceParam, getPublicServiceBooking);
 router.post('/services/bookings/:public_reference/claim', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingReferenceParam, validateClaimServiceBooking, claimPublicServiceBooking);
 router.post('/services/waitlist', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceWaitlistEntry, createPublicServiceWaitlistEntry);
+router.get('/laundry/catalog', requireWorkflowCapability('services', 'Services'), catalogReadCacheControl, validateDgfyLaundryStoreScopeQuery, getPublicLaundryCatalog);
+router.get('/laundry/availability', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, validateDgfyLaundryStoreScopeQuery, getPublicLaundryAvailability);
+router.post('/laundry/quotes', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateDgfyLaundryStoreQuote, createPublicLaundryQuote);
+router.post('/laundry/orders', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateDgfyLaundryStoreOrder, submitPublicLaundryOrder);
+router.get('/laundry/orders/:externalOrderReference', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateDgfyLaundryStoreOrderParam, validateDgfyLaundryStoreScopeQuery, getPublicLaundryOrder);
+router.patch('/laundry/orders/:externalOrderReference', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateDgfyLaundryStoreOrderParam, validateDgfyLaundryStoreMutation, updatePublicLaundryOrder);
+router.post('/laundry/orders/:externalOrderReference/cancel', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateDgfyLaundryStoreOrderParam, validateDgfyLaundryStoreMutation, cancelPublicLaundryOrder);
+router.get('/laundry/payment-sessions/:payment_session_id', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
+router.post('/laundry/payment-sessions/:payment_session_id/cancel', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storePaymentSessionCancelLimiter, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.cancelCheckoutPaymentSession);
 router.post('/fnb/reservations', requireWorkflowCapability('fnbDining', 'Food & Beverage'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateFnbReservation, createPublicFnbReservation);
 
 router.get('/track/:tracking_pin', storeTrackingReadLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);

@@ -4,7 +4,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { createDgfyOrderEvent, toTrimmed } from '../../dgfyLaundryOrders/contracts.js';
 
 const trim = (value, max = 255) => toTrimmed(value, max);
-const publicReference = () => `DGL-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+const publicReference = () => `DGL-${crypto.randomBytes(24).toString('hex').toUpperCase()}`;
 const childReference = (reference, suffix) => `${trim(reference, 180)}:${suffix}`.slice(0, 200);
 const enabled = () => String(process.env.DGLAUNDRY_BOOKING_PAYMENTS_ENABLED || '').toLowerCase() === 'true'
   && String(process.env.DGLAUNDRY_BOOKING_PAYMENTS_KILL_SWITCH || '').toLowerCase() !== 'true';
@@ -57,10 +57,8 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
     const locationId = trim(payload.location_id, 160);
     const mode = ['fixed', 'per_kilo', 'mixed'].includes(payload.mode) ? payload.mode : 'fixed';
     const idempotencyKey = trim(payload.idempotency_key || payload.idempotencyKey, 160);
-    const externalOrderReference = trim(payload.external_order_reference, 200);
-    const externalTrackingReference = trim(payload.external_tracking_reference, 200);
-    if (!tenantId || !companyId || !locationId || !idempotencyKey || !externalOrderReference || !externalTrackingReference || !Array.isArray(payload.lines) || !payload.lines.length) {
-      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant, company/location, references, lines, and idempotency_key are required.', { statusCode: 422 });
+    if (!tenantId || !companyId || !locationId || idempotencyKey.length < 16 || !Array.isArray(payload.lines) || !payload.lines.length) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant, company/location, lines, and a high-entropy idempotency_key are required.', { statusCode: 422 });
     }
     if (!branchEnabled(locationId)) throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'Online laundry booking is disabled for this branch.', { statusCode: 503 });
     if (typeof mappingRepository?.findActiveMapping !== 'function') {
@@ -69,19 +67,24 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
     const mapping = await mappingRepository.findActiveMapping({ companyId, locationId });
     if (!mapping) throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The DGFY company/location is not actively mapped to DGLaundry.', { statusCode: 403 });
 
-    const group = {
-      externalOrderGroupReference: trim(payload.external_order_group_reference || externalOrderReference, 200),
-      externalTrackingGroupReference: trim(payload.external_tracking_group_reference || externalTrackingReference, 200),
-      mode: mode === 'mixed' ? 'mixed' : 'single',
-      expectedChildModes: mode === 'mixed' ? ['fixed', 'per_kilo'] : [mode]
-    };
-
+    const hashPayload = { ...payload };
+    for (const key of ['external_order_reference', 'external_tracking_reference', 'external_order_group_reference', 'external_tracking_group_reference']) delete hashPayload[key];
+    if (hashPayload.customer) hashPayload.customer = { ...hashPayload.customer, id: payload.customer?.id || null };
+    const requestHash = crypto.createHash('sha256').update(JSON.stringify(hashPayload)).digest('hex');
     const existing = await commercePaymentRepository.findSessionByIdempotency({ tenantId, targetType: 'dglaundry_booking', idempotencyKey });
-    const requestHash = crypto.createHash('sha256').update(JSON.stringify({ ...payload, idempotency_key: undefined, idempotencyKey: undefined })).digest('hex');
     if (existing) {
       if (existing.request_hash !== requestHash) throw new DomainError(DomainErrorCode.CONFLICT, 'idempotency_key already used for a different booking.', { statusCode: 409 });
       return ok({ idempotent_replay: true, payment_session: serialized(existing) });
     }
+
+    const externalOrderReference = publicReference();
+    const externalTrackingReference = crypto.randomBytes(32).toString('base64url');
+    const group = {
+      externalOrderGroupReference: publicReference(),
+      externalTrackingGroupReference: crypto.randomBytes(32).toString('base64url'),
+      mode: mode === 'mixed' ? 'mixed' : 'single',
+      expectedChildModes: mode === 'mixed' ? ['fixed', 'per_kilo'] : [mode]
+    };
 
     const lineModes = payload.lines.map((line) => lineMode(line, mode));
     if (mode !== 'mixed' && lineModes.some((candidate) => candidate !== mode)) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Every line must use the selected booking mode.', { statusCode: 422 });

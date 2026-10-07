@@ -298,6 +298,7 @@ export const normalizeStorefrontPageModel = ({
   const servicesViewModel = getServicesStorefrontViewModel(catalog);
   const fnbViewModel = getFoodBeverageStorefrontViewModel(catalog);
   const isServicesMode = modeAdapter.isServicesMode === true;
+  const isLaundryMode = modeAdapter.isLaundryMode === true;
   const isFnbMode = modeAdapter.isFnbMode === true;
   const isSimpleMode = modeAdapter.isSimpleMode === true;
   const isHospitalityMode = modeAdapter.isHospitalityMode === true;
@@ -389,6 +390,7 @@ export const normalizeStorefrontPageModel = ({
     mode: modeAdapter.mode,
     modeAdapter,
     isServicesMode,
+    isLaundryMode,
     isFnbMode,
     isSimpleMode,
     isHospitalityMode,

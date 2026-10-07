@@ -9,6 +9,7 @@ const companies = [
 
 const makeRepository = () => ({
     listLaundryCompanies: jest.fn(async () => companies),
+    findCompanyById: jest.fn(async () => null),
     listMappings: jest.fn(async () => [{ dgfy_location_id: 'location-a', dglaundry_branch_id: 'branch-a', mapping_version: 2, status: 'active' }]),
     audit: jest.fn(async () => {}),
     createIntent: jest.fn(async (input) => ({ id: 'intent-1', intent_type: input.intentType, status: 'pending', idempotency_key: input.idempotencyKey, expires_at: input.expiresAt })),
@@ -17,6 +18,46 @@ const makeRepository = () => ({
 });
 
 describe('DGLaundry provider foundation use cases', () => {
+    it('returns the provider health and supported signature capabilities', async () => {
+        const useCases = buildDgfyLaundryProviderUseCases({ repository: makeRepository() });
+        await expect(useCases.health()).resolves.toEqual(expect.objectContaining({
+            status: 'ok', provider: 'dgfy', contractVersion: expect.any(String), time: expect.any(String)
+        }));
+        await expect(useCases.capabilities()).resolves.toEqual(expect.objectContaining({
+            provider: 'dgfy',
+            contractVersion: expect.any(String),
+            signatureProfiles: [
+                { scope: 'request', tag: 'dgfy-external-runtime-v1', algorithm: 'ecdsa-p256-sha256' },
+                { scope: 'event', tag: 'dglaundry-dgfy-v1', algorithm: 'ed25519' }
+            ],
+            enforcedProfile: expect.any(String)
+        }));
+    });
+
+    it('does not expose a missing or non-qualifying company', async () => {
+        const repository = makeRepository();
+        const useCases = buildDgfyLaundryProviderUseCases({ repository });
+        await expect(useCases.getCompanyById({ companyId: 'unknown' })).rejects.toMatchObject({ statusCode: 404 });
+        repository.findCompanyById.mockResolvedValueOnce(null); // inactive or non-DGLaundry tenants are filtered by the repository
+        await expect(useCases.getCompanyById({ companyId: 'other-tenant' })).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('returns a qualifying company with its owner and active location mappings', async () => {
+        const repository = makeRepository();
+        repository.findCompanyById.mockResolvedValue({
+            company_id: 'company-a', company_name: 'Laundry A', membership_id: 11,
+            dgfy_account_id: 'owner-1', role: 'owner', status: 'active',
+            business_mode: 'laundry', runtime_owner: 'dglaundry'
+        });
+        const useCases = buildDgfyLaundryProviderUseCases({ repository });
+        await expect(useCases.getCompanyById({ companyId: 'company-a' })).resolves.toMatchObject({
+            company_id: 'company-a',
+            owner: { membershipId: '11', dgfyAccountId: 'owner-1', role: 'owner' },
+            locations: [{ locationId: 'location-a', branchId: 'branch-a', status: 'active' }]
+        });
+        expect(repository.listMappings).toHaveBeenCalledWith({ dgfyCompanyId: 'company-a' });
+    });
+
     it('does not guess when an account has multiple laundry companies', async () => {
         const useCases = buildDgfyLaundryProviderUseCases({ repository: makeRepository() });
         await expect(useCases.launch({ dgfyAccount: account })).resolves.toMatchObject({ selection_required: true, companies });

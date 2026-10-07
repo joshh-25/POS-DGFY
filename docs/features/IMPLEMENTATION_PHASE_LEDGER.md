@@ -26572,7 +26572,67 @@ resolved or explicitly waived.
 
 Phase 477 only after Phase 476's local acceptance gates pass and the ledger is rechecked.
 
-## Phase 477 - POS cashier customer-display synchronization
+## Phase 477 - DGFY <-> DGLaundry partner integration contract of record and governance ratification (#519)
+
+### Initiative and release
+
+Epic #517 (Sibling operational apps on the DGFY commerce engine), issue #519 (Define what DGFY must
+expose to the Laundry App). First ledger entry for this initiative -- the DGLaundry/OIDC/partner-API
+line of work (DGFY PRs #1721, #1772, #1818, #1920, #1972, #2004) landed entirely outside the phase
+ledger, tracked only through `docs/integrations/*` handoffs and 53 comments on #519.
+
+### Objective and scope
+
+Write the authoritative, DGFY-owned partner integration contract #519 itself requires ("write the
+contract down... not tribal knowledge") from verified source on both repositories, rather than from
+any single operational handoff. Ratify the governance that implementation front-ran: move ADR 0079
+from `proposed` to `amended`, recording `laundry`'s `WORKFLOW_MODE_VALUES`/`WORKFLOW_MODE_ENGINE`
+classification as the ratified answer to #518, and reconcile
+`docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`'s "no new hard-coded verticals" rule with the
+shipped code via a dated exception. File the DGFY-side work items this initiative never put on the
+board. No feature code; no key material; no deploy.
+
+### Status
+
+`completed` for the documentation and governance deliverable itself (this phase's own scope). The
+underlying integration remains unqualified -- staging JWKS still returns `503
+oidc_keys_not_configured`, client registrations are still blank, and customer-facing ordering is
+still architecturally blocked (see the new contract's "Known gaps" table). Those remain tracked as
+separate, newly filed issues under #517, not as open items of this phase.
+
+### Dependencies
+
+ADR 0079 (now amended), ADR 0039 (amendment-path rule used to amend 0079 in place -- it carries 0
+binding clauses, so a same-document amendment is the correct, cheapest path), #517/#518/#519/#523.
+
+### Acceptance and validation evidence
+
+- [x] `npm run lint:docs` (chains `check:adr`) passes against the new/edited docs.
+- [x] `npm run check:architecture` passes (no app source touched).
+- [x] `node scripts/check-app-version-bump.js` reports no change required (docs-only diff).
+- [x] Every endpoint in the new contract doc and OpenAPI fragment verified against the actual route
+      files (`apps/dgfy-api/src/routes/{dgfyLaundry,dgfyLaundryOidc,dgfyLaundryOrders}.js`), not
+      copied from any handoff doc.
+- [x] `docs/_meta/document-registry.json` updated and `lint:docs` confirms a single authoritative
+      doc per topic.
+
+### Links
+
+- Contract: `docs/api/PARTNER_INTEGRATION_CONTRACT.md`, `docs/api/partner-dglaundry-openapi.yaml`.
+- Architecture: `docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md`
+  (2026-10-07 amendment), `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md` (dated exception).
+- Issues: #517, #518, #519, #523, #796, #803 (see the filed-issue list posted to #517 and the
+  comments posted to #519/#796/#803 the same session).
+
+### Completion date
+
+2026-10-07.
+
+### Next eligible phase
+
+Phase 478.
+
+## Phase 478 - POS cashier customer-display synchronization
 
 ### Initiative and release
 
@@ -26633,5 +26693,5 @@ dependency was introduced.
 
 ### Next eligible phase
 
-Phase 478 only after Phase 477's release-follow-up decision is recorded and the authoritative
+Phase 479 only after Phase 478's release-follow-up decision is recorded and the authoritative
 ledger is rechecked.

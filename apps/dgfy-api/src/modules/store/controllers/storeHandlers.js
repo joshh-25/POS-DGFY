@@ -435,7 +435,9 @@ export const createCheckoutPaymentSession = async (req, res, next) => {
 export const getCheckoutPaymentSession = async (req, res, next) => {
     try {
         const result = await getStoreCheckoutPaymentSessionUseCase({
-            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id
+            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id,
+            storeSlug: req.headers['x-store-slug'] || req.body?.store_slug || null,
+            storeCustomer: resolveStoreCustomer(req)
         });
 
         return sendUseCaseResult(res, result, {

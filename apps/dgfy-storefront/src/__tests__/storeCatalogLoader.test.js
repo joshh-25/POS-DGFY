@@ -14,4 +14,10 @@ describe('store catalog endpoint selection', () => {
       '/api/v1/store/catalog?limit=120&location_id=22'
     );
   });
+
+  it('uses the DGLaundry projection endpoint without unrelated generic filters', () => {
+    expect(buildCatalogRequestUrl({ isLaundryMode: true, locationId: 22 })).toBe(
+      '/api/v1/store/laundry/catalog?location_id=22'
+    );
+  });
 });

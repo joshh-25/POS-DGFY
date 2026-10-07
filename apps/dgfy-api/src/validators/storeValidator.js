@@ -117,7 +117,7 @@ const storeTrackingPinParamSchema = Joi.object({
 });
 
 const storePaymentSessionParamSchema = Joi.object({
-    payment_session_id: Joi.string().trim().uppercase().pattern(/^CPS-[A-Z0-9]{10}$/).required()
+    payment_session_id: Joi.string().trim().uppercase().pattern(/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/).required()
 });
 
 const storeCancelOrderSchema = Joi.object({

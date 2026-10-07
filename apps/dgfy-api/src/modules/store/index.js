@@ -116,9 +116,21 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository
 });
+const cancelDglaundryBookingReservationLazy = async (input) => {
+    const [{ cancelDglaundryBookingReservations }, { dglaundryPartnerClient }] = await Promise.all([
+        import('../commercePayments/usecases/finalizeDglaundryBookingSession.js'),
+        import('../dgfyLaundryOrders/services/dglaundryPartnerClient.js')
+    ]);
+    return cancelDglaundryBookingReservations({
+        ...input,
+        commercePaymentRepository,
+        partnerClient: dglaundryPartnerClient
+    });
+};
 export const cancelStoreCheckoutPaymentSessionUseCase = buildCancelStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository,
-    paymongoService
+    paymongoService,
+    cancelDglaundryReservation: cancelDglaundryBookingReservationLazy
 });
 // Keep the commerce-payment dependency lazy: finalization resolves Storefront checkout and the
 // two modules already have a deliberate cycle. This mirrors the existing order-lifecycle seam.

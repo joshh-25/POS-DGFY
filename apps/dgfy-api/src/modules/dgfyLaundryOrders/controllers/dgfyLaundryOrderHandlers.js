@@ -32,6 +32,25 @@ export const getDglaundryOrder = (req, res, next) => run(
   next
 );
 
+export const getDglaundryOrderForPartner = (req, res, next) => run(
+  dgfyLaundryOrderUseCases.getOrderForProvider,
+  {
+    companyId: req.query?.company_id || req.query?.companyId || req.headers['x-dgfy-company-id'],
+    locationId: req.query?.location_id || req.query?.locationId || req.headers['x-dgfy-location-id'],
+    externalOrderReference: req.params.externalOrderReference
+  },
+  res,
+  next
+);
+
+export const registerDglaundryCustomerActivity = (req, res, next) => run(
+  dgfyLaundryOrderUseCases.registerCustomerActivity,
+  { payload: req.body },
+  res,
+  next,
+  201
+);
+
 export const createDglaundryQuote = (req, res, next) => run(
   dgfyLaundryOrderUseCases.quote,
   { payload: { ...req.body, companyId: req.laundryCompany.company_id }, idempotencyKey: req.headers['idempotency-key'] },

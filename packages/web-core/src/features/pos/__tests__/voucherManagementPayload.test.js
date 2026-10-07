@@ -12,8 +12,13 @@
 // the create and update paths actually depend on.
 
 import { describe, test, expect } from 'vitest';
-import { buildVoucherPayload, blankForm } from '../components/VoucherManagementPanel.jsx';
-import { parseAccountGrantIds, validateFormLocally, voucherToForm } from '../components/voucherFormModel.js';
+import {
+    blankForm,
+    buildVoucherPayload,
+    parseAccountGrantIds,
+    validateFormLocally,
+    voucherToForm
+} from '../components/voucherFormModel.js';
 
 describe('#716 buildVoucherPayload — fixed_price XOR payload shape', () => {
     test('single-price sub-mode sends a real price and an explicit null pricelist_id', () => {

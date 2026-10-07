@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-08-09
+last_reviewed: 2026-10-07
 applies_to: workflow_modes
 topic: mode_development
 ---
@@ -218,6 +218,23 @@ described above. For the concrete, file-by-file recipe for both cases (a
 new template needs no code; a new capability module or a new lifecycle
 each have a traced layer checklist), see
 `docs/development/STORE_TEMPLATES_HANDOFF.md`.
+
+**Dated exception (2026-10-07): `laundry`.** `laundry` was added as a
+`WORKFLOW_MODE_VALUES` entry with `WORKFLOW_MODE_ENGINE.laundry = 'external'`
+(`packages/shared-constants/src/workflowModes.js`, commit `c460faf71`), the
+case this section's "rare genuinely new mode family" carve-out anticipates,
+ratified in
+[ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md)'s
+2026-10-07 amendment. It is not expressible as a Store Template: a Store
+Template composes DGFY-native Capability Modules, but `laundry` inverts
+engine ownership itself (`ims=false`, `pos=false` — the sibling app DGLaundry
+runs the operational engine, not DGFY) rather than selecting a bundle of
+DGFY-native capabilities. No capability-module composition can express "this
+tenant's engine lives in a different application." See
+`docs/api/PARTNER_INTEGRATION_CONTRACT.md` for the resulting integration
+contract. This exception does not widen the general rule — a future vertical
+that *can* be expressed as DGFY-native capabilities still gets a Store
+Template, not a new mode.
 
 ## Future Mode Provisioning Checklist
 

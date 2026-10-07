@@ -24,6 +24,27 @@ export const getLaundrySessionContext = (req, res, next) => run(
     next
 );
 
+export const getLaundryHealth = (req, res, next) => run(
+    dgfyLaundryProviderUseCases.health,
+    {},
+    res,
+    next
+);
+
+export const getLaundryCapabilities = (req, res, next) => run(
+    dgfyLaundryProviderUseCases.capabilities,
+    {},
+    res,
+    next
+);
+
+export const getLaundryCompanyById = (req, res, next) => run(
+    dgfyLaundryProviderUseCases.getCompanyById,
+    { companyId: req.params.companyId },
+    res,
+    next
+);
+
 export const createLaundryRegistrationIntent = (req, res, next) => run(
     dgfyLaundryProviderUseCases.createIntent,
     { intentType: 'registration', body: req.body, idempotencyKey: req.headers['idempotency-key'], dgfyAccount: req.dgfyAccount || null },

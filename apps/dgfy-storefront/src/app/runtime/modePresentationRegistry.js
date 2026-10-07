@@ -123,6 +123,26 @@ export const ModePresentationRegistry = Object.freeze({
       borderSoft: SERVICES_PALETTE.primaryBorder
     })
   }),
+  laundry: Object.freeze({
+    heroEyebrow: 'Laundry storefront',
+    heroDescription: 'Choose wash and care services, then arrange pickup or delivery.',
+    catalogEyebrow: 'Laundry services',
+    catalogHeading: 'What would you like cleaned?',
+    catalogSubtitle: 'Per-kilo services are weighed at the branch. Fixed-price services require online payment.',
+    catalogSearchPlaceholder: 'Search laundry services...',
+    catalogAddActionLabel: 'Add service',
+    primaryActionLabel: 'Start a laundry order',
+    trackHeading: 'Track laundry order',
+    trackDescription: 'Use your private tracking reference to check a laundry order.',
+    supportsServiceGrouping: false,
+    templateContent: Object.freeze({
+      navigation: Object.freeze({ brandLabel: 'Laundry', searchPlaceholder: 'Search laundry services', primaryLinks: Object.freeze(['Services', 'How it works']), utilityLinks: Object.freeze(['Pickup', 'Support']) }),
+      hero: Object.freeze({ eyebrow: 'Laundry storefront', primaryActionLabel: 'Browse services', secondaryActionLabel: 'Pickup and delivery', tertiaryActionLabel: 'Contact the branch', supportBadge: 'Laundry care for pickup and delivery' }),
+      promo: Object.freeze({ eyebrow: 'Laundry offers', title: 'Laundry offers', description: 'See current service availability and pricing.', emptyLabel: 'No current offers' }),
+      reviews: Object.freeze({ eyebrow: 'Reviews', title: 'Customer reviews', description: 'See what customers are saying', emptyLabel: 'No reviews yet' }),
+      footer: Object.freeze({ description: 'Laundry service information and ordering.', legalLine: 'Confirm per-kilo weights at the branch.' })
+    })
+  }),
   msme: Object.freeze({
     heroEyebrow: 'Simple storefront',
     heroDescription: 'Browse ready products, add what you need, and checkout in a straightforward order flow.',
@@ -383,7 +403,7 @@ export const ModePresentationRegistry = Object.freeze({
 
 export const getStorefrontModeAdapter = (store = null) => {
   const mode = normalizeBusinessMode(store?.workflow_mode || store?.ops_workflow_mode);
-  const presentationMode = mode === 'laundry' ? 'services' : mode;
+  const presentationMode = mode;
   const modeConfig = ModePresentationRegistry[presentationMode] || ModePresentationRegistry.default;
   const storefrontTemplate = getStorefrontTemplateConfig(presentationMode);
   const pin = getBusinessModePinMeta(mode);
@@ -405,7 +425,8 @@ export const getStorefrontModeAdapter = (store = null) => {
     journeyVariant: storefrontTemplate.journeyVariant,
     ...ModePresentationRegistry.default,
     ...modeConfig,
-    isServicesMode: mode === 'services' || mode === 'laundry',
+    isServicesMode: mode === 'services',
+    isLaundryMode: mode === 'laundry',
     isFnbMode: mode === 'fnb',
     isSimpleMode: mode === 'msme',
     isHospitalityMode: mode === 'hospitality',
