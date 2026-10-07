@@ -12,6 +12,7 @@ const {
   checkNoDevStagingTarget,
   checkActiveClassMatchesExpected,
   checkNoHostedLiteral,
+  checkStagingDispatchRouting,
   extractInputDefaultSite,
   extractJobBlocks,
   findActiveSites,
@@ -33,7 +34,8 @@ function readRealWorkflowInputs() {
     nonHostedFilesText[file] = readRealFile(`.github/workflows/${file}`);
   }
   const verifyDeploymentText = readRealFile(`.github/workflows/${VERIFY_DEPLOYMENT_FILE}`);
-  return { deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText };
+  const deployWorkflowText = readRealFile('.github/workflows/deploy.yml');
+  return { deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText, deployWorkflowText };
 }
 
 // Phase 233 (#1365): regression coverage for check-runner-routing.js's actual job -- catching a
@@ -241,6 +243,20 @@ jobs:
 test('checkRunnerRouting: the real workflow files pass with zero problems (EXPECTED_ACTIVE_CLASS === self-hosted)', () => {
   const problems = checkRunnerRouting(readRealWorkflowInputs());
   assert.deepEqual(problems, []);
+});
+
+test('staging deploy keeps the self-hosted default and derives VPN from hosted runner selection', () => {
+  const text = readRealFile('.github/workflows/deploy.yml');
+  assert.deepEqual(checkStagingDispatchRouting(text), []);
+});
+
+test('staging deploy rejects a hosted default or missing VPN derivation', () => {
+  const text = readRealFile('.github/workflows/deploy.yml')
+    .replace("default: '[\"sieitz-runner\"]'", "default: '[\"ubuntu-latest\"]'")
+    .replace("vpn_required: ${{ contains(fromJSON(inputs.runner_labels_json), 'ubuntu-latest') }}", 'vpn_required: false');
+  const problems = checkStagingDispatchRouting(text);
+  assert.ok(problems.some((problem) => /must default/.test(problem)));
+  assert.ok(problems.some((problem) => /vpn_required must be derived/.test(problem)));
 });
 
 test('promotion quality workflow routes its heavy and general jobs to the matching dispatch inputs', () => {
