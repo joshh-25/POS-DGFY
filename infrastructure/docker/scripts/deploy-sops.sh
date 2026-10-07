@@ -12,7 +12,9 @@
 #
 # Requires: sops, age (installed by setup-sops-age.sh, Phase 1), and
 # secrets/{shared,mysql,dgfy-api}.env already present (Phase 2, Pat runs this
-# personally -- see ADR 0060 Decision 7, `binding`).
+# personally -- see ADR 0060 Decision 7, `binding`). When the DGLaundry
+# integration is enabled, its separate SOPS-encrypted OIDC PEM files must
+# also be present in secrets/.
 set -euo pipefail
 
 # Resolve the project root correctly in BOTH locations this script runs
@@ -65,6 +67,33 @@ for f in "${SECRET_FILES[@]}"; do
   done < <(sops decrypt --input-type dotenv "$f")
 done
 set +a
+
+# File-shaped OIDC key material is a separate decrypt path from the dotenv
+# loop above. Compose's environment-backed secrets copy these values into
+# /run/secrets/ inside dgfy-api; no plaintext PEM is written to host disk.
+# This remains within ADR 0060 Decision 6: plaintext is held in this deploy
+# process environment and is never sourced as shell code or persisted.
+if [[ "${DGLAUNDRY_INTEGRATION_ENABLED:-false}" == "true" ]]; then
+  for key_name in private public; do
+    encrypted_file="secrets/dgfy-oidc-${key_name}.pem"
+    if [ ! -f "$encrypted_file" ]; then
+      echo "::error::deploy-sops.sh: missing SOPS-encrypted OIDC ${key_name} key at $encrypted_file" >&2
+      exit 1
+    fi
+    env_name="DGFY_OIDC_${key_name^^}_KEY"
+    if ! decrypted_key="$(sops decrypt --input-type binary --output-type binary "$encrypted_file")"; then
+      echo "::error::deploy-sops.sh: failed to decrypt OIDC ${key_name} key" >&2
+      exit 1
+    fi
+    if [ -z "$decrypted_key" ]; then
+      echo "::error::deploy-sops.sh: decrypted OIDC ${key_name} key is empty" >&2
+      exit 1
+    fi
+    printf -v "$env_name" '%s' "$decrypted_key"
+    export "$env_name"
+    unset decrypted_key
+  done
+fi
 
 # Pull first -- the validation run below needs the current image, and this
 # also means a pull failure aborts before any container is touched.

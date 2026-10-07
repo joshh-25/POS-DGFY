@@ -31,6 +31,8 @@ services:
       # backend compares its own pool budget against this at boot and
       # warns on a mismatch instead of failing later under load.
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
+      DGFY_OIDC_PRIVATE_KEY_FILE: ${DGFY_OIDC_PRIVATE_KEY_FILE:-/run/secrets/dgfy-oidc-private.pem}
+      DGFY_OIDC_PUBLIC_KEY_FILE: ${DGFY_OIDC_PUBLIC_KEY_FILE:-/run/secrets/dgfy-oidc-public.pem}
       SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
@@ -42,6 +44,10 @@ services:
       - ./data/dgfy-api/uploads:/app/uploads
       - ./data/dgfy-api/storage:/app/storage
       - ./data/dgfy-api/logs:/app/logs
+      # Run dglaundry-connection-setup.mjs prepare/apply first. Docker can
+      # create a missing file bind source as a directory, causing EISDIR.
+      - ./secrets/keys/dgfy-oidc-signing.pem:/run/secrets/dgfy-oidc-private.pem:ro
+      - ./secrets/keys/dgfy-oidc-signing.pub.pem:/run/secrets/dgfy-oidc-public.pem:ro
     depends_on:
       mysql:
         condition: service_healthy
