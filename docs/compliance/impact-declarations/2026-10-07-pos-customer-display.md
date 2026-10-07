@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.07
-verification_evidence: customer-display Vitest tests,customer-display Playwright E2E,POS lint,POS production build,git diff --check
+verification_evidence: customer-display Vitest tests,real-time completion handoff tests,customer-display Playwright E2E,POS settings contract tests,POS lint,POS production build,git diff --check
 rollback_note: Revert the customer-display route, synchronization wiring, settings controls, tests, and this declaration; no backend, database, migration, or tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -50,6 +50,9 @@ persist, or alter a transaction.
 
 - Customer-display behavior and synchronization tests pass, including the committed payment
   summary, cash change, thank-you state, stale revision rejection, and session close behavior.
+- The POS checkout shell forwards the committed transaction to the live customer-display
+  controller before post-checkout hardware and refresh work, and settings-controller contract
+  tests cover the activation/session wiring.
 - The same-origin Playwright customer-display E2E passes for active order rendering and the
   completed payment state.
 - POS lint and production build pass, and `git diff --check` reports no whitespace errors.

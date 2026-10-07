@@ -167,6 +167,10 @@ import {
   safeLocalStorageSet,
   writeStoredCashierResumeContext
 } from '../utils/posTerminalStorage.js';
+import {
+  readCustomerDisplayEnabled,
+  writeCustomerDisplayEnabled
+} from '../utils/customerDisplayPreference.js';
 import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 
@@ -519,6 +523,17 @@ export default function TerminalPage() {
     if (!stored) return true;
     return stored !== '0' && stored !== 'false' && stored !== 'off';
   });
+  const [customerDisplayEnabled, setCustomerDisplayEnabled] = useState(() => (
+    readCustomerDisplayEnabled(readInitialTerminalId())
+  ));
+  const [customerDisplayStatus, setCustomerDisplayStatus] = useState({
+    canOpen: false,
+    label: 'Not connected',
+    status: 'closed'
+  });
+  const [customerDisplayOpenRequest, setCustomerDisplayOpenRequest] = useState(0);
+  const [customerDisplayEndRequest, setCustomerDisplayEndRequest] = useState(0);
+  const customerDisplayControllerRef = useRef(null);
   const [posTextSize, setPosTextSize] = useState(() => readPosTextSizePreference());
   const handlePosTextSizeChange = useCallback((value) => {
     setPosTextSize(writePosTextSizePreference(value));
@@ -583,6 +598,61 @@ export default function TerminalPage() {
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
+
+  useEffect(() => {
+    customerDisplayControllerRef.current?.endCustomerDisplay?.();
+    setCustomerDisplayEnabled(readCustomerDisplayEnabled(activeTerminalId));
+    setCustomerDisplayStatus({ canOpen: false, label: 'Not connected', status: 'closed' });
+  }, [activeTerminalId]);
+
+  const handleCustomerDisplayEnabledChange = useCallback((nextEnabled) => {
+    const enabled = nextEnabled === true;
+    writeCustomerDisplayEnabled(activeTerminalId, enabled);
+    setCustomerDisplayEnabled(enabled);
+    if (!enabled) {
+      customerDisplayControllerRef.current?.endCustomerDisplay?.({
+        closeWindow: true,
+        nextStatus: 'closed'
+      });
+    }
+  }, [activeTerminalId]);
+
+  const handleCustomerDisplayControllerChange = useCallback((controller) => {
+    customerDisplayControllerRef.current = controller;
+  }, []);
+
+  const handleCustomerDisplayStatusChange = useCallback((nextStatus = {}) => {
+    setCustomerDisplayStatus({
+      canOpen: nextStatus.canOpen === true,
+      label: String(nextStatus.label || 'Not connected'),
+      status: String(nextStatus.status || 'closed')
+    });
+  }, []);
+
+  const handleOpenCustomerDisplay = useCallback(() => {
+    if (customerDisplayControllerRef.current?.openCustomerDisplay) {
+      return customerDisplayControllerRef.current.openCustomerDisplay();
+    }
+    setCustomerDisplayOpenRequest((current) => current + 1);
+    return null;
+  }, []);
+
+  const handleEndCustomerDisplay = useCallback(() => {
+    if (customerDisplayControllerRef.current?.endCustomerDisplay) {
+      customerDisplayControllerRef.current.endCustomerDisplay();
+      return;
+    }
+    setCustomerDisplayEndRequest((current) => current + 1);
+  }, []);
+
+  const handleCustomerDisplayOpenRequestHandled = useCallback((requestId) => {
+    setCustomerDisplayOpenRequest((current) => (current === requestId ? 0 : current));
+  }, []);
+
+  const handleCustomerDisplayEndRequestHandled = useCallback((requestId) => {
+    setCustomerDisplayEndRequest((current) => (current === requestId ? 0 : current));
+  }, []);
+
   const [zReadingPaperWidth, setZReadingPaperWidthState] = useState(() => (
     readPosPaperWidthPreference(readInitialTerminalId())
   ));
@@ -7626,6 +7696,19 @@ function PosRestorationLoadingScreen() {
           canRecoverStaleShifts={terminalUser?.is_master_admin === true}
           handleForceCloseStaleShift={handleForceCloseStaleShift}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
+          customerDisplayEnabled={customerDisplayEnabled}
+          customerDisplayCanOpen={customerDisplayStatus.canOpen}
+          customerDisplayStatus={customerDisplayStatus.status}
+          customerDisplayStatusLabel={customerDisplayStatus.label}
+          customerDisplayOpenRequest={customerDisplayOpenRequest}
+          customerDisplayEndRequest={customerDisplayEndRequest}
+          onCustomerDisplayEnabledChange={handleCustomerDisplayEnabledChange}
+          onOpenCustomerDisplay={handleOpenCustomerDisplay}
+          onEndCustomerDisplay={handleEndCustomerDisplay}
+          onCustomerDisplayOpenRequestHandled={handleCustomerDisplayOpenRequestHandled}
+          onCustomerDisplayEndRequestHandled={handleCustomerDisplayEndRequestHandled}
+          onCustomerDisplayControllerChange={handleCustomerDisplayControllerChange}
+          onCustomerDisplayStatusChange={handleCustomerDisplayStatusChange}
           locationsState={locationsState}
           itemsLocationScopeLoading={itemsLocationScopeLoading}
           operatingLocationId={operatingLocationId}

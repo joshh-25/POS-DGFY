@@ -50,6 +50,11 @@ const MSME_SETTINGS_SHIFT_FALLBACK_MODES = new Set(['location_scope', 'cash_draw
 const REPORT_WORKSPACE_MODES = new Set(['audit']);
 const QUEUE_WORKSPACE_MODES = new Set(['incoming_queue']);
 const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);
+// The settings shell can keep the Profile route active while the POS Setup tab
+// is selected. Keep the single checkout controller mounted for that route too,
+// otherwise the customer-display card has no live Open/End handlers after the
+// customer window is closed.
+const CUSTOMER_DISPLAY_SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'terminal_setup']);
 // A prefetch failure must be silent -- this isn't a real load, it's an idle
 // or hover-intent warm-up, and Suspense/lazyWithChunkRetry handle the actual
 // load+retry when the workspace is really rendered.
@@ -182,6 +187,19 @@ export default function TerminalPageLayout({
     canRecoverStaleShifts = false,
     handleForceCloseStaleShift = async () => false,
     onlineOrderSoundEnabled = true,
+    customerDisplayEnabled = true,
+    customerDisplayCanOpen = false,
+    customerDisplayStatus = 'closed',
+    customerDisplayStatusLabel = 'Not connected',
+    customerDisplayOpenRequest = 0,
+    customerDisplayEndRequest = 0,
+    onCustomerDisplayEnabledChange = () => {},
+    onOpenCustomerDisplay = () => null,
+    onEndCustomerDisplay = () => {},
+    onCustomerDisplayOpenRequestHandled = () => {},
+    onCustomerDisplayEndRequestHandled = () => {},
+    onCustomerDisplayControllerChange = () => {},
+    onCustomerDisplayStatusChange = () => {},
     hardwareDriverLabel = '',
     hardwareStatus = null,
     hardwareLoading = false,
@@ -509,6 +527,11 @@ export default function TerminalPageLayout({
   const hidesWorkspaceScrollbar = usesStandardPosPageFrame
     && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
+  const isCustomerDisplaySettingsMode = CUSTOMER_DISPLAY_SETTINGS_VIEW_MODES.has(posViewMode);
+  const shouldMountCheckoutTerminal = isCheckoutWorkspaceMode
+    || receiptRequestId !== null
+    || receiptReturnViewMode !== null
+    || isCustomerDisplaySettingsMode;
   const workspacePaneClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : `dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y ${hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`;
@@ -1097,8 +1120,12 @@ export default function TerminalPageLayout({
           id={TERMINAL_SECTION_IDS.checkoutWorkspace}
           className={workspaceSectionClassName}
         >
-          {!locked && (isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
-            <div key="checkout-workspace" data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
+          {!locked && shouldMountCheckoutTerminal && (
+            <div
+              key="checkout-workspace"
+              data-testid={isCheckoutWorkspaceMode ? 'pos-checkout-workspace' : 'pos-customer-display-controller-host'}
+              className={isCheckoutWorkspaceMode ? 'h-full min-h-0 overflow-hidden catalog-slide-enter' : 'hidden'}
+            >
               <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
                 <POSCheckoutTerminal
                   workflowMode={workflowMode}
@@ -1115,6 +1142,13 @@ export default function TerminalPageLayout({
                   activeShiftCashierId={shiftState?.shift?.cashier_id || null}
                   terminalId={normalizedActiveTerminalId}
                   terminalMeta={terminalMeta}
+                  customerDisplayEnabled={customerDisplayEnabled}
+                  customerDisplayOpenRequest={customerDisplayOpenRequest}
+                  customerDisplayEndRequest={customerDisplayEndRequest}
+                  onCustomerDisplayOpenRequestHandled={onCustomerDisplayOpenRequestHandled}
+                  onCustomerDisplayEndRequestHandled={onCustomerDisplayEndRequestHandled}
+                  onCustomerDisplayControllerChange={onCustomerDisplayControllerChange}
+                  onCustomerDisplayStatusChange={onCustomerDisplayStatusChange}
                   fnbContext={fnbCheckoutContext}
                   checkoutBlockedReason={workspaceCheckoutBlockedReason}
                   readOnlyBranchView={isBranchReadOnlyView}
@@ -1274,6 +1308,13 @@ export default function TerminalPageLayout({
                 canRecoverStaleShifts={workspaceCanRecoverStaleShifts}
                 handleForceCloseStaleShift={handleForceCloseStaleShift}
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
+                customerDisplayEnabled={customerDisplayEnabled}
+                customerDisplayCanOpen={customerDisplayCanOpen}
+                customerDisplayStatus={customerDisplayStatus}
+                customerDisplayStatusLabel={customerDisplayStatusLabel}
+                onCustomerDisplayEnabledChange={onCustomerDisplayEnabledChange}
+                onOpenCustomerDisplay={onOpenCustomerDisplay}
+                onEndCustomerDisplay={onEndCustomerDisplay}
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
                 handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}

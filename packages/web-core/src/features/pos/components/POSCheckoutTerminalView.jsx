@@ -12,7 +12,6 @@ import {
     ScanLine,
     ShoppingCart,
     X,
-    Eye,
     Trash2,
     LayoutGrid
 } from 'lucide-react';

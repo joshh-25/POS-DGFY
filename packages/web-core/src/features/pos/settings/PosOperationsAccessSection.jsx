@@ -9,6 +9,8 @@ import usePosOperationsAccessController from './usePosOperationsAccessController
 export default function PosOperationsAccessSection({
   terminalUser, locked, canEditSettings, loading, savingTab, handlePosSave, posForm, setPosForm, locations, incomingOrders,
   queueLocationScopeId, onlineOrderSoundEnabled, setOnlineOrderSoundEnabled,
+  customerDisplayEnabled = true, customerDisplayCanOpen = false, customerDisplayStatus = 'closed', customerDisplayStatusLabel = 'Not connected',
+  onCustomerDisplayEnabledChange = () => {}, onOpenCustomerDisplay = () => null, onEndCustomerDisplay = () => {},
   discountApprovers, discountApproversLoading, loadDiscountApprovers,
   updateDiscountAuthorization, discountAuthorizationSavingUserId, setApprovalPinUser, setApprovalPin,
   dayCloseOperators, dayCloseOperatorsLoading, loadDayCloseOperators, updateDayCloseAccess,
@@ -74,6 +76,13 @@ export default function PosOperationsAccessSection({
           queueLocationScopeId={queueLocationScopeId}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          customerDisplayEnabled={customerDisplayEnabled}
+          customerDisplayCanOpen={customerDisplayCanOpen}
+          customerDisplayStatus={customerDisplayStatus}
+          customerDisplayStatusLabel={customerDisplayStatusLabel}
+          onCustomerDisplayEnabledChange={onCustomerDisplayEnabledChange}
+          onOpenCustomerDisplay={onOpenCustomerDisplay}
+          onEndCustomerDisplay={onEndCustomerDisplay}
           saveDefaults={saveDefaults}
         />
       ) : null}
