@@ -191,6 +191,34 @@ export const buildDgfyLaundryOrderUseCases = ({ repository, partnerClient }) => 
     return requireOwnedOrder({ repository, ...scope, externalOrderReference: reference, accountId: dgfyAccountId });
   },
 
+  async getOrderForProvider({ companyId, locationId, externalOrderReference }) {
+    const scope = requireScope({ companyId, locationId });
+    await requireActiveMapping(repository, scope);
+    const reference = toTrimmed(externalOrderReference, 200);
+    if (!reference) fail('externalOrderReference is required.');
+    const row = await repository.getOrder({ ...scope, externalOrderReference: reference });
+    if (!row) orderNotFound();
+    return row;
+  },
+
+  async registerCustomerActivity({ payload }) {
+    const sanitized = sanitizeCustomerActivity(payload);
+    const scope = requireScope(sanitized);
+    if (!sanitized.activityReference) fail('A counter activity requires an activityReference.');
+    await requireActiveMapping(repository, scope);
+    if (typeof repository.upsertCustomerActivity !== 'function') {
+      fail('Customer activity projection persistence is unavailable.', 503, DomainErrorCode.SERVICE_UNAVAILABLE);
+    }
+    const version = numericVersion(payload?.activityVersion || payload?.version || 1) || 1;
+    const result = await repository.upsertCustomerActivity({
+      ...scope,
+      activityReference: sanitized.activityReference,
+      version,
+      payload: sanitized
+    });
+    return { activityReference: sanitized.activityReference, stale: result.stale, projection: result.row };
+  },
+
   async quote({ payload, idempotencyKey }) {
     const scope = requireScope(payload);
     await requireActiveMapping(repository, scope);

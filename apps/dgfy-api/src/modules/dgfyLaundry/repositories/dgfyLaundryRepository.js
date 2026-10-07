@@ -34,6 +34,23 @@ const toCompany = (membership) => {
 };
 
 export const dgfyLaundryRepository = {
+    async findCompanyById({ companyId }) {
+        const membership = await DgfyAccountTenantMembership.findOne({
+            where: {
+                tenant_id: normalizeId(companyId),
+                status: 'accepted',
+                role: ['owner', 'admin']
+            },
+            include: [{ model: Tenant, as: 'tenant', required: true }]
+        });
+        if (!membership) return null;
+        const company = toCompany(membership);
+        if (company.business_mode !== 'laundry'
+            || company.runtime_owner !== 'dglaundry'
+            || company.status !== 'active') return null;
+        return { ...company, dgfy_account_id: membership.dgfy_account_id };
+    },
+
     async listLaundryCompanies({ dgfyAccountId }) {
         const memberships = await DgfyAccountTenantMembership.findAll({
             where: { dgfy_account_id: dgfyAccountId, status: 'accepted' },

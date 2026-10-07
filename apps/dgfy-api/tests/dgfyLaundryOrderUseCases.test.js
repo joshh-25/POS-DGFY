@@ -6,12 +6,14 @@ const makeRepository = () => {
   const catalogs = new Map();
   const availability = new Map();
   const orders = new Map();
+  const customerActivities = new Map();
   const idempotency = new Map();
   return {
     events,
     catalogs,
     availability,
     orders,
+    customerActivities,
     idempotency,
     findActiveMapping: jest.fn(async () => ({ id: 'mapping-1', status: 'active' })),
     findEvent: jest.fn(async (id) => events.get(id) || null),
@@ -41,6 +43,14 @@ const makeRepository = () => {
       return { row, stale: false };
     }),
     getOrder: jest.fn(async ({ companyId, locationId, externalOrderReference }) => orders.get(`${companyId}:${locationId}:${externalOrderReference}`) || null),
+    upsertCustomerActivity: jest.fn(async ({ companyId, locationId, activityReference, version, payload }) => {
+      const key = `${companyId}:${locationId}:${activityReference}`;
+      const current = customerActivities.get(key);
+      if (current && Number(current.version_number) >= Number(version)) return { row: current, stale: true };
+      const row = { company_id: companyId, location_id: locationId, activity_reference: activityReference, version_number: version, payload };
+      customerActivities.set(key, row);
+      return { row, stale: false };
+    }),
     getOrderForAccount: jest.fn(async ({ companyId, locationId, externalOrderReference, dgfyAccountId }) => {
       const row = orders.get(`${companyId}:${locationId}:${externalOrderReference}`);
       return row?.dgfy_account_id === dgfyAccountId ? row : null;
@@ -70,6 +80,50 @@ const makeRepository = () => {
 const event = (type, data, id = `event-${type.split('.').at(-2)}`) => ({ specversion: '1.0', id, type, source: 'https://laundry.dgfy.ph', time: new Date().toISOString(), data });
 
 describe('DGFY DGLaundry storefront/order projections', () => {
+  it('reads provider orders only through an active mapping and without account ownership', async () => {
+    const repository = makeRepository();
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient: {} });
+    const input = { companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'provider-order' };
+    await expect(useCases.getOrderForProvider(input)).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    expect(repository.getOrder).toHaveBeenCalledWith(input);
+    expect(repository.findActiveMapping).toHaveBeenCalledWith({ companyId: 'company-a', locationId: 'location-a' });
+    repository.orders.set('company-a:location-a:provider-order', { id: 'order-1', external_order_reference: 'provider-order' });
+    await expect(useCases.getOrderForProvider(input)).resolves.toMatchObject({ id: 'order-1' });
+    expect(repository.getOrder.mock.calls[0][0]).not.toHaveProperty('accountId');
+
+    repository.findActiveMapping.mockResolvedValue(null);
+    await expect(useCases.getOrderForProvider(input)).rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', statusCode: 403 });
+  });
+
+  it('registers sanitized customer activity and treats same-version replays as stale', async () => {
+    const repository = makeRepository();
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient: {} });
+    const payload = {
+      companyId: 'company-a', locationId: 'location-a', activityReference: 'counter-1',
+      activityVersion: 2, summary: 'Wash completed', internalStaffId: 'must-not-persist'
+    };
+    const first = await useCases.registerCustomerActivity({ payload });
+    expect(first).toMatchObject({ activityReference: 'counter-1', stale: false, projection: { version_number: 2 } });
+    expect(first.projection.payload).not.toHaveProperty('internalStaffId');
+    const replay = await useCases.registerCustomerActivity({ payload });
+    expect(replay).toMatchObject({ activityReference: 'counter-1', stale: true });
+    expect(repository.upsertCustomerActivity).toHaveBeenCalledWith(expect.objectContaining({
+      companyId: 'company-a', locationId: 'location-a', activityReference: 'counter-1', version: 2
+    }));
+  });
+
+  it('rejects customer activities without a sanitized reference or active mapping', async () => {
+    const repository = makeRepository();
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient: {} });
+    await expect(useCases.registerCustomerActivity({ payload: { companyId: 'company-a', locationId: 'location-a' } }))
+      .rejects.toMatchObject({ statusCode: 422 });
+    repository.findActiveMapping.mockResolvedValue(null);
+    await expect(useCases.registerCustomerActivity({ payload: {
+      companyId: 'company-a', locationId: 'location-a', activityReference: 'counter-1'
+    } })).rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', statusCode: 403 });
+    expect(repository.upsertCustomerActivity).not.toHaveBeenCalled();
+  });
+
   it('materializes only sanitized catalog fields and ignores a stale publication', async () => {
     const repository = makeRepository();
     const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient: {} });
