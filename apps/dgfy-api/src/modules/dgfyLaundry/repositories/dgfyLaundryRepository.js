@@ -41,7 +41,11 @@ export const dgfyLaundryRepository = {
                 status: 'accepted',
                 role: ['owner', 'admin']
             },
-            include: [{ model: Tenant, as: 'tenant', required: true }]
+            include: [{ model: Tenant, as: 'tenant', required: true }],
+            order: [
+                [sequelize.literal("CASE WHEN role = 'owner' THEN 0 ELSE 1 END"), 'ASC'],
+                ['created_at', 'ASC']
+            ]
         });
         if (!membership) return null;
         const company = toCompany(membership);

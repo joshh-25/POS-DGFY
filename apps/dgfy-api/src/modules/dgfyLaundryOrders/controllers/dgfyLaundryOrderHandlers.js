@@ -35,8 +35,8 @@ export const getDglaundryOrder = (req, res, next) => run(
 export const getDglaundryOrderForPartner = (req, res, next) => run(
   dgfyLaundryOrderUseCases.getOrderForProvider,
   {
-    companyId: req.query?.company_id || req.headers['x-dgfy-company-id'],
-    locationId: req.query?.location_id || req.headers['x-dgfy-location-id'],
+    companyId: req.query?.company_id || req.query?.companyId || req.headers['x-dgfy-company-id'],
+    locationId: req.query?.location_id || req.query?.locationId || req.headers['x-dgfy-location-id'],
     externalOrderReference: req.params.externalOrderReference
   },
   res,
