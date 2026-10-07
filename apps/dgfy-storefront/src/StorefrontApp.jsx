@@ -847,6 +847,7 @@ export default function StorefrontApp() {
   const {
     isFnbMode,
     isServicesMode,
+    isLaundryMode,
     isSimpleMode,
     isHospitalityMode,
     isRetailMode,
@@ -973,7 +974,7 @@ export default function StorefrontApp() {
     // scoped to its own mode and slug. Without Simple MSME here, its shared
     // in-memory cart survived navigation into a different Simple storefront.
     enabled: isFnbMode || isServicesMode || isRetailMode || isSimpleMode,
-    mode: isFnbMode ? 'fnb' : (isServicesMode || selectedStore?.workflow_mode === 'laundry' ? 'services' : (isRetailMode ? 'retail' : (isSimpleMode ? 'simple' : ''))),
+    mode: isFnbMode ? 'fnb' : (isLaundryMode ? 'laundry' : (isServicesMode ? 'services' : (isRetailMode ? 'retail' : (isSimpleMode ? 'simple' : '')))),
     // #768: rides along in the same snapshot as the cart lines -- see that hook's own note.
     promoCode: checkoutPromoCode,
     setCart,
@@ -4030,6 +4031,7 @@ export default function StorefrontApp() {
     accountStepComplete: serviceAccountStepComplete,
     fulfillmentStepComplete,
     isServicesMode,
+    isLaundryMode,
     servicesViewModel,
     activeServiceTab,
     fnbCatalogPresentation,
@@ -4302,6 +4304,7 @@ export default function StorefrontApp() {
     selectedStore,
     isFnbMode,
     isServicesMode,
+    isLaundryMode,
     isMobileViewport,
     isAccountDrawerOpen,
     isServicesCartDrawerMode,
@@ -4457,7 +4460,7 @@ export default function StorefrontApp() {
 
   return (
     <main
-      data-storefront-mode={isServicesMode ? 'services' : undefined}
+      data-storefront-mode={isLaundryMode ? 'laundry' : (isServicesMode ? 'services' : undefined)}
       style={{
         '--services-body-font': servicesBodyFont,
         '--services-display-font': servicesDisplayFont,

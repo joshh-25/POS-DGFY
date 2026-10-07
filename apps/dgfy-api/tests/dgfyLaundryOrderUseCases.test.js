@@ -55,19 +55,23 @@ const makeRepository = () => {
       const row = orders.get(`${companyId}:${locationId}:${externalOrderReference}`);
       return row?.dgfy_account_id === dgfyAccountId ? row : null;
     }),
-    bindOrderOwnership: jest.fn(async ({ companyId, locationId, externalOrderReference, dgfyAccountId }) => {
+    getOrderByTrackingReference: jest.fn(async ({ companyId, locationId, externalOrderReference, externalTrackingReference }) => {
+      const row = orders.get(`${companyId}:${locationId}:${externalOrderReference}`);
+      return row?.external_tracking_reference === externalTrackingReference ? row : null;
+    }),
+    bindOrderOwnership: jest.fn(async ({ companyId, locationId, externalOrderReference, externalTrackingReference, dgfyAccountId }) => {
       const key = `${companyId}:${locationId}:${externalOrderReference}`;
       const existing = orders.get(key);
-      if (existing) return existing;
-      const row = { id: 'order-1', company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, dgfy_account_id: dgfyAccountId, aggregate_version: 0, status: 'pending_submission', payload: {} };
+      if (existing) return null;
+      const row = { id: 'order-1', company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, external_tracking_reference: externalTrackingReference, dgfy_account_id: dgfyAccountId || null, aggregate_version: 0, status: 'pending_submission', payload: {} };
       orders.set(key, row);
       return row;
     }),
-    upsertOrder: jest.fn(async ({ companyId, locationId, externalOrderReference, version, status, payload }) => {
+    upsertOrder: jest.fn(async ({ companyId, locationId, externalOrderReference, trackingReference, version, status, payload }) => {
       const key = `${companyId}:${locationId}:${externalOrderReference}`;
       const current = orders.get(key);
       if (current && Number(current.aggregate_version) >= Number(version)) return { row: current, stale: true };
-      const row = { id: current?.id || 'order-1', company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, dgfy_account_id: current?.dgfy_account_id || null, aggregate_version: Number(version), status, payload };
+      const row = { id: current?.id || 'order-1', company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, external_tracking_reference: current?.external_tracking_reference || trackingReference || null, dgfy_account_id: current?.dgfy_account_id || null, aggregate_version: Number(version), status, payload };
       orders.set(key, row);
       return { row, stale: false };
     }),
@@ -80,6 +84,27 @@ const makeRepository = () => {
 const event = (type, data, id = `event-${type.split('.').at(-2)}`) => ({ specversion: '1.0', id, type, source: 'https://laundry.dgfy.ph', time: new Date().toISOString(), data });
 
 describe('DGFY DGLaundry storefront/order projections', () => {
+  it('serves mapped catalog, availability, and fixed/per-kilo quotes to storefront callers without laundry membership', async () => {
+    const repository = makeRepository();
+    repository.getCatalog = jest.fn(async () => ({ payload: { entries: [{ id: 'item-1' }] } }));
+    repository.getAvailability = jest.fn(async () => ({ payload: { online: true } }));
+    const partnerClient = { prepareQuote: jest.fn(async (input) => ({ quoteId: `quote-${input.mode}` })) };
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient });
+    const scope = { companyId: 'company-a', locationId: 'location-a' };
+
+    await expect(useCases.getStoreCatalog(scope)).resolves.toMatchObject({ payload: { entries: [{ id: 'item-1' }] } });
+    await expect(useCases.getStoreAvailability(scope)).resolves.toMatchObject({ payload: { online: true } });
+    for (const mode of ['fixed', 'per_kilo']) {
+      await expect(useCases.quote({
+        payload: { ...scope, mode, lines: [{ variantId: 'item-1', mode, quantity: 1 }] },
+        idempotencyKey: `mapped-quote-${mode}-123456`
+      })).resolves.toMatchObject({ quote: { quoteId: `quote-${mode}` } });
+    }
+
+    expect(repository.findActiveMapping).toHaveBeenCalledTimes(4);
+    expect(partnerClient.prepareQuote).toHaveBeenCalledTimes(2);
+  });
+
   it('reads provider orders only through an active mapping and without account ownership', async () => {
     const repository = makeRepository();
     const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient: {} });
@@ -177,11 +202,57 @@ describe('DGFY DGLaundry storefront/order projections', () => {
     await useCases.quote({ payload, idempotencyKey: 'quote-key' });
     expect(repository.findActiveMapping).toHaveBeenCalledWith({ companyId: 'company-a', locationId: 'location-a' });
     expect(partnerClient.prepareQuote).toHaveBeenCalledTimes(1);
-    const orderPayload = { ...payload, externalOrderReference: 'order-1', externalTrackingReference: 'track-1' };
-    await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key' });
-    await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key' });
+    const orderPayload = { ...payload, mode: 'per_kilo', lines: [{ variantId: 'svc-1', quantity: 1, mode: 'per_kilo' }], externalOrderReference: 'client-order', externalTrackingReference: 'client-tracking' };
+    const submitted = await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key-1234567890' });
+    const replayed = await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key-1234567890' });
     expect(partnerClient.submitOrder).toHaveBeenCalledTimes(1);
+    expect(submitted.externalOrderReference).not.toBe('client-order');
+    expect(submitted.externalTrackingReference).not.toBe('client-tracking');
+    expect(replayed).toMatchObject({ idempotent_replay: true, externalOrderReference: submitted.externalOrderReference, externalTrackingReference: submitted.externalTrackingReference });
     expect(partnerClient.submitOrder.mock.calls[0][0].data).toEqual(expect.objectContaining({ customerReference: 'account-1', customerReferenceKind: 'dgfy_account' }));
+  });
+
+  it('submits per-kilo guest orders with a server-minted bearer reference and hides them without it', async () => {
+    const repository = makeRepository();
+    const partnerClient = { submitOrder: jest.fn(async () => ({ accepted: true })), cancelOrder: jest.fn(async () => ({ accepted: true })) };
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient });
+    const submitted = await useCases.submitOrder({
+      payload: { companyId: 'company-a', locationId: 'location-a', mode: 'per_kilo', lines: [{ variantId: 'svc-1', quantity: 1, mode: 'per_kilo' }], fulfillment: { mode: 'pickup' } },
+      idempotencyKey: 'guest-submit-123456789'
+    });
+    expect(partnerClient.submitOrder.mock.calls[0][0].data).toEqual(expect.objectContaining({
+      customerReference: submitted.externalTrackingReference,
+      customerReferenceKind: 'dgfy_guest'
+    }));
+    await expect(useCases.getOrder({ companyId: 'company-a', locationId: 'location-a', externalOrderReference: submitted.externalOrderReference }))
+      .rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await expect(useCases.getOrder({ companyId: 'company-a', locationId: 'location-a', externalOrderReference: submitted.externalOrderReference, externalTrackingReference: 'wrong-capability-reference' }))
+      .rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await expect(useCases.getOrder({ companyId: 'company-a', locationId: 'location-a', externalOrderReference: submitted.externalOrderReference, externalTrackingReference: submitted.externalTrackingReference }))
+      .resolves.toMatchObject({ external_order_reference: submitted.externalOrderReference, dgfy_account_id: null });
+    await expect(useCases.cancelOrder({
+      payload: { companyId: 'company-a', locationId: 'location-a', externalOrderReference: submitted.externalOrderReference, reason: 'Customer requested cancellation' },
+      idempotencyKey: 'guest-cancel-123456789',
+    })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await useCases.cancelOrder({
+      payload: { companyId: 'company-a', locationId: 'location-a', externalOrderReference: submitted.externalOrderReference, externalTrackingReference: submitted.externalTrackingReference, reason: 'Customer requested cancellation' },
+      idempotencyKey: 'guest-cancel-123456789',
+    });
+    expect(partnerClient.cancelOrder).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ externalOrderReference: submitted.externalOrderReference, externalTrackingReference: submitted.externalTrackingReference })
+    }));
+  });
+
+  it('rejects fixed and mixed direct submission before creating any order', async () => {
+    const repository = makeRepository();
+    const partnerClient = { submitOrder: jest.fn() };
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient });
+    await expect(useCases.submitOrder({
+      payload: { companyId: 'company-a', locationId: 'location-a', mode: 'fixed', lines: [{ variantId: 'svc-1', quantity: 1, mode: 'fixed' }] },
+      idempotencyKey: 'fixed-submit-12345678'
+    })).rejects.toMatchObject({ statusCode: 422 });
+    expect(partnerClient.submitOrder).not.toHaveBeenCalled();
+    expect(repository.bindOrderOwnership).not.toHaveBeenCalled();
   });
 
   it('blocks quote creation when the company/location mapping is not active', async () => {
@@ -204,19 +275,20 @@ describe('DGFY DGLaundry storefront/order projections', () => {
       cancelOrder: jest.fn(async () => ({ accepted: true }))
     };
     const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient });
-    const payload = { companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'owned-order', externalTrackingReference: 'track-1', customerReference: 'attacker-supplied', customerReferenceKind: 'dgfy_account', lines: [{ variantId: 'svc-1', quantity: 1 }], fulfillment: { mode: 'pickup' } };
+    const payload = { companyId: 'company-a', locationId: 'location-a', mode: 'per_kilo', customerReference: 'attacker-supplied', customerReferenceKind: 'dgfy_account', lines: [{ variantId: 'svc-1', quantity: 1, mode: 'per_kilo' }], fulfillment: { mode: 'pickup' } };
 
-    await useCases.submitOrder({ payload, accountId: 'account-owner', idempotencyKey: 'owned-submit' });
+    const submitted = await useCases.submitOrder({ payload, accountId: 'account-owner', idempotencyKey: 'owned-submit-12345678' });
+    const ownedPayload = { companyId: 'company-a', locationId: 'location-a', externalOrderReference: submitted.externalOrderReference };
     expect(partnerClient.submitOrder).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ customerReference: 'account-owner', customerReferenceKind: 'dgfy_account' }) }));
-    await expect(useCases.getOrder({ companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'owned-order', accountId: 'account-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
-    await expect(useCases.updateOrder({ payload, accountId: 'account-other', idempotencyKey: 'owned-update-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
-    await expect(useCases.cancelOrder({ payload, accountId: 'account-other', idempotencyKey: 'owned-cancel-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await expect(useCases.getOrder({ ...ownedPayload, accountId: 'account-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await expect(useCases.updateOrder({ payload: ownedPayload, accountId: 'account-other', idempotencyKey: 'owned-update-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await expect(useCases.cancelOrder({ payload: ownedPayload, accountId: 'account-other', idempotencyKey: 'owned-cancel-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
     expect(partnerClient.updateOrder).not.toHaveBeenCalled();
     expect(partnerClient.cancelOrder).not.toHaveBeenCalled();
 
-    await expect(useCases.getOrder({ companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'owned-order', accountId: 'account-owner' })).resolves.toEqual(expect.objectContaining({ dgfy_account_id: 'account-owner' }));
-    await useCases.updateOrder({ payload, accountId: 'account-owner', idempotencyKey: 'owned-update-owner' });
-    await useCases.cancelOrder({ payload, accountId: 'account-owner', idempotencyKey: 'owned-cancel-owner' });
+    await expect(useCases.getOrder({ ...ownedPayload, accountId: 'account-owner' })).resolves.toEqual(expect.objectContaining({ dgfy_account_id: 'account-owner' }));
+    await useCases.updateOrder({ payload: ownedPayload, accountId: 'account-owner', idempotencyKey: 'owned-update-owner' });
+    await useCases.cancelOrder({ payload: ownedPayload, accountId: 'account-owner', idempotencyKey: 'owned-cancel-owner' });
     expect(partnerClient.updateOrder).toHaveBeenCalledTimes(1);
     expect(partnerClient.cancelOrder).toHaveBeenCalledTimes(1);
   });
@@ -228,7 +300,9 @@ describe('DGFY DGLaundry storefront/order projections', () => {
     await useCases.ingestProviderEvent({ event: event('dglaundry.laundry_order.status_changed.v1', {
       companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'provider-order', externalTrackingReference: 'track-provider', aggregateVersion: 1, status: 'received', lines: [{ externalLineReference: 'line-1', serviceName: 'Wash', quantity: 1 }], fulfillment: { mode: 'pickup' }
     }, 'event-provider-order') });
-    await expect(useCases.submitOrder({ payload: { companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'provider-order', externalTrackingReference: 'track-provider', lines: [{ variantId: 'svc-1', quantity: 1 }], fulfillment: { mode: 'pickup' } }, accountId: 'account-owner', idempotencyKey: 'provider-submit' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
-    expect(partnerClient.submitOrder).not.toHaveBeenCalled();
+    const result = await useCases.submitOrder({ payload: { companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'provider-order', externalTrackingReference: 'track-provider', mode: 'per_kilo', lines: [{ variantId: 'svc-1', quantity: 1, mode: 'per_kilo' }], fulfillment: { mode: 'pickup' } }, accountId: 'account-owner', idempotencyKey: 'provider-submit-123456' });
+    expect(result.externalOrderReference).not.toBe('provider-order');
+    expect(partnerClient.submitOrder).toHaveBeenCalledTimes(1);
+    expect(repository.orders.get('company-a:location-a:provider-order')).toMatchObject({ dgfy_account_id: null, external_tracking_reference: 'track-provider' });
   });
 });

@@ -98,6 +98,7 @@ export const requestJson = async (url, options = {}) => {
 const performRequestJson = async (url, {
   method = 'GET',
   body,
+  headers: customHeaders = {},
   storeSlug,
   selectedStore = null,
   selectedLocationId = null,
@@ -131,6 +132,7 @@ const performRequestJson = async (url, {
     headers: {
       'Content-Type': 'application/json',
       ...resolveStoreContextHeaders({ storeSlug, selectedStore, selectedLocationId }),
+      ...customHeaders,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(csrfToken ? { 'x-csrf-token': csrfToken } : {})
     },

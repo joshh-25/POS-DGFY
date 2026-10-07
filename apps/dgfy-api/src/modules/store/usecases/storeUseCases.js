@@ -5481,17 +5481,22 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
 };
 
 export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository }) => {
-    return async ({ paymentSessionId }) => {
+    return async ({ paymentSessionId, storeSlug = null, storeCustomer = null }) => {
         try {
             const reference = String(paymentSessionId || '').trim().toUpperCase();
-            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+            if (!/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/.test(reference)) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
             }
             const tenantContext = dbStore.getStore() || {};
             const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
             const session = await commercePaymentRepository.findSessionByPublicReference(reference);
-            if (!session || normalizeTenantIdentifier(session.tenant_id) !== tenantId) {
+            if (!session
+                || normalizeTenantIdentifier(session.tenant_id) !== tenantId
+                || !['store_checkout', 'dglaundry_booking'].includes(session.target_type)) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+            }
+            if (session.target_type === 'dglaundry_booking') {
+                assertStoreCheckoutPaymentSessionAccess({ session, tenantId, storeSlug, storeCustomer });
             }
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
@@ -5503,14 +5508,16 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
 const normalizePaymentSessionStoreSlug = (value) => String(value || '').trim().toLowerCase();
 
 const getPaymentSessionCustomerSnapshot = (session) => (
-    parseObjectValue(session?.checkout_payload)?._verified_store_customer || null
+    parseObjectValue(session?.checkout_payload)?._verified_store_customer
+        || parseObjectValue(session?.checkout_payload)?.customer
+        || null
 );
 
 const assertStoreCheckoutPaymentSessionAccess = ({ session, tenantId, storeSlug, storeCustomer }) => {
     if (
         !session
         || normalizeTenantIdentifier(session.tenant_id) !== tenantId
-        || session.target_type !== 'store_checkout'
+        || !['store_checkout', 'dglaundry_booking'].includes(session.target_type)
         || normalizePaymentSessionStoreSlug(session.store_slug) !== normalizePaymentSessionStoreSlug(storeSlug)
     ) {
         throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
@@ -5518,7 +5525,7 @@ const assertStoreCheckoutPaymentSessionAccess = ({ session, tenantId, storeSlug,
 
     const customerSnapshot = getPaymentSessionCustomerSnapshot(session);
     const expectedCustomerId = parsePositiveInt(customerSnapshot?.customer_id);
-    const expectedDgfyAccountId = String(customerSnapshot?.dgfy_account_id || '').trim();
+    const expectedDgfyAccountId = String(customerSnapshot?.dgfy_account_id || customerSnapshot?.id || '').trim();
     if (!expectedCustomerId && !expectedDgfyAccountId) return;
 
     const actualCustomerId = parsePositiveInt(storeCustomer?.customer_id);
@@ -5556,7 +5563,7 @@ const buildCancellationResponse = (
     cancellation: { outcome, reason_code: reasonCode, reason }
 });
 
-export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository, paymongoService }) => {
+export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository, paymongoService, cancelDglaundryReservation = null }) => {
     return async ({
         paymentSessionId,
         storeSlug = null,
@@ -5567,7 +5574,7 @@ export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentR
     }) => {
         try {
             const reference = String(paymentSessionId || '').trim().toUpperCase();
-            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+            if (!/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/.test(reference)) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
             }
 
@@ -5641,6 +5648,9 @@ export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentR
             });
 
             if (firstStage.kind === 'complete') {
+                if (firstStage.outcome === 'cancelled' && firstStage.session.target_type === 'dglaundry_booking' && cancelDglaundryReservation) {
+                    await cancelDglaundryReservation({ session: firstStage.session, reason: 'CUSTOMER_CANCELLED' });
+                }
                 return buildCancellationResponse(
                     firstStage.session,
                     firstStage.outcome,
@@ -5753,6 +5763,9 @@ export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentR
                 };
             });
 
+            if (secondStage.outcome === 'cancelled' && secondStage.session.target_type === 'dglaundry_booking' && cancelDglaundryReservation) {
+                await cancelDglaundryReservation({ session: secondStage.session, reason: 'CUSTOMER_CANCELLED' });
+            }
             return buildCancellationResponse(
                 secondStage.session,
                 secondStage.outcome,
@@ -5787,7 +5800,7 @@ export const buildReconcileStoreCheckoutPaymentSessionUseCase = ({
             }
 
             const reference = String(paymentSessionId || '').trim().toUpperCase();
-            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+            if (!/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/.test(reference)) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
             }
 

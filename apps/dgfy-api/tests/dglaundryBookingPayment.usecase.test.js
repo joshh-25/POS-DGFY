@@ -8,7 +8,7 @@ const payload = (overrides = {}) => ({
   mode: 'mixed',
   external_order_reference: 'order-1',
   external_tracking_reference: 'track-1',
-  idempotency_key: 'booking-key-1',
+  idempotency_key: 'booking-key-12345678',
   lines: [
     { mode: 'fixed', variantId: 'fixed-1', quantity: 1, externalLineReference: 'line-fixed' },
     { mode: 'per_kilo', variantId: 'kilo-1', quantity: 1, externalLineReference: 'line-kilo' }
@@ -33,6 +33,25 @@ describe('DGLaundry booking payment session', () => {
   beforeEach(() => { process.env.DGLAUNDRY_BOOKING_PAYMENTS_ENABLED = 'true'; delete process.env.DGLAUNDRY_BOOKING_PAYMENTS_KILL_SWITCH; delete process.env.DGLAUNDRY_BOOKING_PAYMENTS_DISABLED_BRANCHES; });
   afterAll(() => { if (previous === undefined) delete process.env.DGLAUNDRY_BOOKING_PAYMENTS_ENABLED; else process.env.DGLAUNDRY_BOOKING_PAYMENTS_ENABLED = previous; });
 
+  it('keeps fixed-price payment dark-disabled when the feature flag is off', async () => {
+    process.env.DGLAUNDRY_BOOKING_PAYMENTS_ENABLED = 'false';
+    const commercePaymentRepository = repository();
+    const partnerClient = { prepareBookingGroup: jest.fn() };
+    const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({
+      commercePaymentRepository,
+      paymongoService: { createQrphPaymentIntent: jest.fn() },
+      partnerClient,
+      mappingRepository: mappingRepository()
+    });
+
+    const result = await useCase({ payload: payload({ mode: 'fixed', idempotency_key: 'booking-key-dark-123456' }) });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatchObject({ code: 'SERVICE_UNAVAILABLE', statusCode: 503 });
+    expect(partnerClient.prepareBookingGroup).not.toHaveBeenCalled();
+    expect(commercePaymentRepository.createSession).not.toHaveBeenCalled();
+  });
+
   it('prepares mixed fixed/per-kilo children and charges only the fixed child', async () => {
     const commercePaymentRepository = repository();
     const partnerClient = { prepareBookingGroup: jest.fn(async (request) => ({ reservation: { id: `booking-${request.mode}`, quotedAmountCentavos: request.mode === 'fixed' ? 12500 : null, inventoryReservationIds: [`reservation-${request.mode}`] } })) };
@@ -46,6 +65,10 @@ describe('DGLaundry booking payment session', () => {
     expect(activeMappings.findActiveMapping).toHaveBeenCalledWith({ companyId: 'company-a', locationId: 'location-a' });
     expect(paymongoService.createQrphPaymentIntent).toHaveBeenCalledWith(expect.objectContaining({ amount: 12500, splitPayment: null }));
     expect(commercePaymentRepository.createSession).toHaveBeenCalledWith(expect.objectContaining({ target_type: 'dglaundry_booking', platform_fee_centavos: 0 }));
+    const persisted = commercePaymentRepository.createSession.mock.calls.find(([session]) => session.target_type === 'dglaundry_booking')[0];
+    expect(persisted.public_reference).toMatch(/^DGL-[A-F0-9]{48}$/);
+    expect(persisted.public_reference).not.toBe('order-1');
+    expect(persisted.checkout_payload.dglaundry_booking_group.children.every((child) => child.externalOrderReference !== 'order-1')).toBe(true);
   });
 
   it('returns a reservation-only result for per-kilo and stays dark when the kill switch is on', async () => {
@@ -57,7 +80,7 @@ describe('DGLaundry booking payment session', () => {
     expect(result.data.payment_required).toBe(false);
     expect(commercePaymentRepository.createSession).toHaveBeenCalledWith(expect.objectContaining({ target_type: 'dglaundry_booking', total_amount_centavos: 0 }));
     process.env.DGLAUNDRY_BOOKING_PAYMENTS_KILL_SWITCH = 'true';
-    const disabled = await useCase({ payload: payload({ idempotency_key: 'booking-key-2' }) });
+    const disabled = await useCase({ payload: payload({ idempotency_key: 'booking-key-22345678' }) });
     expect(disabled.success).toBe(false);
     expect(disabled.error.code).toBe('SERVICE_UNAVAILABLE');
   });

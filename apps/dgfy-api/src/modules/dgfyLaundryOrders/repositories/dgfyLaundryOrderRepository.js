@@ -149,26 +149,39 @@ export const dgfyLaundryOrderRepository = {
     return rowPayload(rows[0]);
   },
 
+  async getOrderByTrackingReference({ companyId, locationId, externalOrderReference, externalTrackingReference }) {
+    const rows = await sequelize.query(`SELECT * FROM dgfy_dglaundry_order_projections
+      WHERE company_id = ? AND location_id = ? AND external_order_reference = ?
+        AND external_tracking_reference = ? LIMIT 1`, {
+      replacements: [companyId, locationId, externalOrderReference, externalTrackingReference], type: QueryTypes.SELECT
+    });
+    return rowPayload(rows[0]);
+  },
+
   // Bind ownership before sending a submit event.  The unique scope key makes
   // the claim race-safe; the no-op duplicate update deliberately never
   // changes an existing owner (including an unowned provider/counter row).
-  async bindOrderOwnership({ companyId, locationId, externalOrderReference, dgfyAccountId }) {
+  async bindOrderOwnership({ companyId, locationId, externalOrderReference, externalTrackingReference, dgfyAccountId = null }) {
     const existing = await this.getOrder({ companyId, locationId, externalOrderReference });
     if (!existing) {
       try {
         await sequelize.query(`INSERT INTO dgfy_dglaundry_order_projections
           (id, company_id, location_id, external_order_reference, external_tracking_reference,
            dgfy_account_id, aggregate_version, status, payload, created_at, updated_at)
-          VALUES (?, ?, ?, ?, NULL, ?, 0, 'pending_submission', JSON_OBJECT(), NOW(), NOW())
+          VALUES (?, ?, ?, ?, ?, ?, 0, 'pending_submission', JSON_OBJECT(), NOW(), NOW())
           ON DUPLICATE KEY UPDATE external_order_reference = VALUES(external_order_reference)`, {
-          replacements: [crypto.randomUUID(), companyId, locationId, externalOrderReference, dgfyAccountId]
+          replacements: [crypto.randomUUID(), companyId, locationId, externalOrderReference, externalTrackingReference, dgfyAccountId]
         });
       } catch (error) {
         const duplicateCode = error?.original?.code || error?.parent?.code;
         if (!['ER_DUP_ENTRY', '23505'].includes(duplicateCode)) throw error;
       }
     }
-    return this.getOrder({ companyId, locationId, externalOrderReference });
+    const row = await this.getOrder({ companyId, locationId, externalOrderReference });
+    if (!row
+      || row.external_tracking_reference !== externalTrackingReference
+      || (row.dgfy_account_id || null) !== (dgfyAccountId || null)) return null;
+    return row;
   },
 
   async getCustomerActivity({ companyId, locationId, activityReference }) {
