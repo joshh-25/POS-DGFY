@@ -220,9 +220,9 @@ const DialogDescription = React.forwardRef(({ className, ...props }, ref) => {
 })
 DialogDescription.displayName = 'DialogDescription'
 
-const DialogFooter = ({ className, ...props }) => {
+const DialogFooter = ({ className, stacked = false, ...props }) => {
   return (
-    <div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:gap-6 p-6 pt-8 pb-6', className)} {...props} />
+    <div className={cn('flex flex-col-reverse p-6 pt-8 pb-6', stacked ? 'items-stretch gap-2' : 'sm:flex-row sm:justify-end sm:gap-6', className)} {...props} />
   )
 }
 

@@ -6901,10 +6901,12 @@ export default function TerminalOperationsWorkspace({
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
   const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
+  const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
+  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView;
   const workspaceShellClassName = usesOwnPageFrame
     ? 'p-0'
-    : effectiveViewMode === 'items'
-      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-items-workspace-shell'
+    : isFullBleedCatalogView
+      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-vouchers-workspace-shell'}`
       : 'p-5';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;
@@ -7384,12 +7386,12 @@ export default function TerminalOperationsWorkspace({
       terminalUser={terminalUser}
       locked={locked}
       bare={usesOwnPageFrame}
-      borderless={effectiveViewMode === 'items'}
+      borderless={isFullBleedCatalogView}
       className={workspaceShellClassName}
     >
       <div
         key={effectiveViewMode}
-        className={effectiveViewMode === 'items'
+        className={isFullBleedCatalogView
           ? 'flex min-h-0 min-w-0 flex-1 flex-col catalog-slide-enter'
           : 'catalog-slide-enter'}
       >

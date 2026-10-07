@@ -13,6 +13,7 @@ export default function PosFilterDialogShell({
   id,
   ariaLabelledBy,
   ariaDescribedBy,
+  className = '',
   children
 }) {
   const isMobileDialog = mobile && !tabletPortrait;
@@ -35,6 +36,7 @@ export default function PosFilterDialogShell({
     tabletPortrait ? 'dgfy-pos-history-tablet-portrait-dialog' : '',
     landscapeMobile ? 'dgfy-pos-history-mobile-landscape-dialog' : '',
     'flex-col overflow-hidden border border-slate-300 p-0',
+    className,
     HISTORY_DIALOG_SHADOW
   ].filter(Boolean).join(' ');
   const contentStyle = !isMobileDialog && !tabletPortrait && position
