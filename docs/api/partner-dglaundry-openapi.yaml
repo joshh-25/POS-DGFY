@@ -348,6 +348,47 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/partners/dglaundry/dead-letters:
+    get:
+      tags: [partner-provider]
+      summary: List scoped DGLaundry delivery failures
+      description: Requires an accepted owner/admin membership and an active company/location mapping. Payloads and tracking capabilities are omitted. Failed paid-session completion is included for recovery without resending the delivered provider event.
+      security: [{ dgfyAccountBearer: [] }]
+      parameters:
+        - { name: company_id, in: query, required: true, schema: { type: string } }
+        - { name: location_id, in: query, required: true, schema: { type: string } }
+        - { name: direction, in: query, required: false, schema: { type: string, enum: [inbound, outbound] } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200": { description: Scoped failure metadata }
+        "400": { description: Invalid scope or limit }
+        "403": { description: Owner/admin membership or active mapping required }
+  /api/v1/partners/dglaundry/dead-letters/{id}/redrive:
+    post:
+      tags: [partner-provider]
+      summary: Audited recovery of an eligible dead letter
+      description: Cookie-authenticated calls require the existing CSRF token. Caller-supplied event payloads are not accepted. Failed paid-session completion is retried locally without resending provider delivery.
+      security: [{ dgfyAccountBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [company_id, location_id, direction, reason]
+              properties:
+                company_id: { type: string }
+                location_id: { type: string }
+                direction: { type: string, enum: [inbound, outbound] }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "202": { description: Recovery queued or stored event reprocessed }
+        "400": { description: Missing recovery reason or invalid scope }
+        "403": { description: Owner/admin membership or active mapping required }
+        "404": { description: Scoped recoverable dead letter not found }
+        "409": { description: Recovery is concurrent or operation is not eligible }
   /api/v1/partners/dglaundry/account/launch:
     post:
       tags: [partner-provider]

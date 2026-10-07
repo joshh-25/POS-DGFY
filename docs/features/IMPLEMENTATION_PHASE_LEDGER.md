@@ -26631,3 +26631,84 @@ binding clauses, so a same-document amendment is the correct, cheapest path), #5
 ### Next eligible phase
 
 Phase 478.
+
+## Phase 478 - Durable DGLaundry outbound delivery and scoped recovery (#2310)
+
+### Initiative and release
+
+Epic #517, DGFY-side partner integration durability work, issue #2310.
+
+### Objective and scope
+
+Persist DGFY-to-DGLaundry operation identity before transport, deliver through a landlord MySQL
+outbox with bounded retries and recoverable dead letters, expose owner/admin-scoped dead-letter
+inspection and audited redrive, and claim inbound signed-event nonces in shared Redis. Preserve
+customer ownership, company/location mapping, verified-payment gates, and caller-owned payment
+finalization. No production enablement, deployment, or sibling-repository change.
+
+### Status
+
+`in_progress` — implementation and evidence are not complete. No completion claim is made.
+
+### Dependencies
+
+Issue #2310; ADR 0079 Decision 6; ADR 0039's in-place amendment path; the authoritative
+`docs/api/PARTNER_INTEGRATION_CONTRACT.md`; Phase 477's ratified contract; landlord migration and
+existing commerce payment idempotency/session boundaries.
+
+### Acceptance and validation evidence
+
+- [ ] Additive landlord outbox migration is repeat-safe; MySQL claim/lease, stale-ack, ordering,
+      retry-cap, and restart evidence passes against real MySQL. 2026-10-07 opt-in harness against
+      MySQL 8 passed migration up/re-run, ordered concurrent claims, expired-lease recovery,
+      stale-ack protection, separate-process persistence, scoped completion inspection, and
+      completion-only redrive; retry-cap evidence remains.
+- [ ] All outbound operation families persist immutable payload and stable identity before send;
+      same-key caller retries recover the same operation/result, while changed payload conflicts.
+      Focused tests cover delayed caller idempotency reconciliation; the full operation-family
+      persistence matrix remains outstanding.
+- [ ] Foreground and worker delivery share fresh signing, timeout, retry classification, bounded
+      Retry-After, backoff/jitter, and explicit dead-letter behavior.
+- [ ] Booking/payment completion and mixed-child compensation recover without duplicate money
+      actions or late reservation resurrection. Focused tests cover same-event payment-finalization
+      retry, mixed-child partial-failure compensation, and worker local-completion retry; full
+      provider ambiguity/payment lifecycle acceptance remains outstanding.
+- [ ] Owner/admin dead-letter listing is company/location scoped and redacted; redrive is reasoned,
+      audited, and rejects active/delivered/invalid-scope work. Live MySQL check confirms a failed
+      paid-session completion is listed in scope and can be requeued without changing the delivered
+      provider operation; HTTP authorization/redrive remains covered by unit tests.
+- [ ] Two independent API processes sharing real Redis reject identical event bytes; Redis outage
+      fails closed; signature/time/lifetime and fresh-signature event-ID dedupe regressions pass.
+      2026-10-07 opt-in Redis 7 harness passed atomic parallel claims in separate processes and
+      replay rejection after a new process starts; outage, signature/time/lifetime edge cases, and
+      fresh-signature event-ID dedupe remain outstanding.
+- [ ] Focused behavior suites (12 suites/62 tests), architecture (56 modules/680 code files),
+      controller-boundary (104 files), docs/ADR (31 docs/97 ADRs), compliance, develop-base
+      app-version, changed-file syntax, and whitespace checks passed on 2026-10-07. The
+      repository-wide test-cost inventory check is already stale on unrelated baseline entries
+      and also lacks records for the two new suites. The real-service harness passes; paid
+      completion/compensation tests and the remaining acceptance cases are outstanding.
+- [ ] Migration rollback and deployment ordering are documented; final hardening closes replay,
+      conflict, persistence, ordering, and compensation risks.
+- [ ] PR review completed; this phase does not merge, deploy, or claim deployed verification.
+
+### Links
+
+- Issue: #2310; planner handoff: `.tmp/plan-2310.md` (planning head
+  `2de28c724baa96b3da1d518b682b7ce0661b3fb4`).
+- Architecture: [ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+  [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+  [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md).
+- Contract: [DGLaundry partner contract](../api/PARTNER_INTEGRATION_CONTRACT.md) and
+  [OpenAPI fragment](../api/partner-dglaundry-openapi.yaml).
+- Migration: `apps/dgfy-migration-runner/migrations/20261007000001-add-dglaundry-outbound-outbox.cjs`.
+- Implementation: `apps/dgfy-api/src/modules/dgfyLaundryOrders/` and
+  `apps/dgfy-api/src/workers/dglaundryOutboxWorker.js`.
+
+### Completion date
+
+Not complete; set only after every required acceptance gate and evidence item passes.
+
+### Next eligible phase
+
+Phase 479 only after Phase 478's acceptance gates pass and the live ledger is rechecked.

@@ -128,10 +128,12 @@ Applies to every signed DGLaundry↔DGFY partner-API request (not events).
 
 - Covered components, exact order: `@method`, `@authority`, `@path`, `content-digest`,
   `content-type`.
-- Timestamp window via `created`/`expires` params in `Signature-Input`: `expires − created ≤ 300s`,
-  `created ≤ now + skew`, `expires ≥ now`.
-- Receiver: DGFY's inbound replay cache is an **in-process Map**, not Redis-backed — see "Known
-  gaps."
+- Timestamp window via `created`/`expires` params in `Signature-Input`: `0 < expires − created ≤
+  300s`, `created ≤ now + skew`, and `expires ≥ now`.
+- Receiver claims `sha256(keyid\0nonce)` with Redis `SET NX EX` under the `dglaundry:event:nonce:`
+  prefix after signature verification. The claim lasts through the final accepted second. A
+  duplicate returns `401 DGLAUNDRY_SIGNATURE_REPLAY`; unavailable Redis returns `503
+  DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE` and does not ingest the event.
 
 ### Production profile requirements
 
@@ -171,11 +173,17 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | GET | `/companies/{companyId}` | DGLaundry machine client | `requireDglaundryPartner` |
 | GET | `/orders/{externalOrderReference}` | DGLaundry machine client | `requireDglaundryPartner` |
 | POST | `/customer-activities` | DGLaundry machine client | `requireDglaundryPartner` |
+| GET | `/dead-letters?company_id=&location_id=&direction=&limit=` | DGFY laundry company owner/admin | `authenticateDgfyAccount`, accepted membership + active mapping |
+| POST | `/dead-letters/{id}/redrive` | DGFY laundry company owner/admin | `authenticateDgfyAccount`, accepted membership + active mapping + CSRF for cookie sessions |
 
 The order lookup accepts `company_id` / `location_id` or `companyId` / `locationId` query
 parameters first, with `X-DGFY-Company-Id` and `X-DGFY-Location-Id` headers as fallbacks. The joint
 harness currently uses camelCase query parameters while DGLaundry's proposal declares headers; both
 forms are supported pending alignment between the two repositories.
+
+Outbound delivery failures and failed paid-session completion reconciliation appear in the scoped
+dead-letter listing. Redriving a failed completion retries only the local session reconciliation;
+it does not send the provider event again.
 
 ### Inbound event receiver and customer/storefront operations — absolute paths
 
@@ -266,7 +274,7 @@ configuration-only, and what does not exist, rather than implying full readiness
 | Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |
 | Legacy `x-dglaundry-partner-token` shared secret still accepted in production when no `Authorization` header is sent | ❌ security gap | filed under epic #517, `security` |
 | Inbound `scope` is never enforced server-side; `x-dgfy-app-id` is required-present but never validated against a registry | ❌ security gap | filed under epic #517, `security` |
-| No outbound outbox/retry/dead-letter (plain `fetch`, nothing durable); event replay cache is in-process, not Redis; `listDglaundryDeadLetters` is built but unrouted | ❌ not built | filed under epic #517 |
+| Outbound delivery is persisted in the landlord MySQL outbox and retried with bounded leases/backoff; scoped dead-letter inspection and audited recovery are mounted; inbound event nonce claims use shared Redis | ✅ implemented locally; migration and deployed verification remain separate rollout gates | #2310 |
 | `ServiceBooking.source` has no external/sibling value and the DGLaundry integration has zero coupling to `ServiceBooking` — it uses parallel projection tables and a parallel `dglaundry_booking` payment target instead | ⚠️ design question, not a build gap | #522's premise should be re-read before implementation |
 
 ### Customer-ordering hardening contract (#2308)
