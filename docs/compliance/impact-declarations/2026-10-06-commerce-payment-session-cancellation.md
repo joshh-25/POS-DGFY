@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/storeCancelPaymentSession.usecase.tes
 rollback_note: Revert the API route/use case/provider methods, model field and additive landlord migration together. The backfilled checkout-session ID is recoverable from provider_payload, and dropping the nullable indexed column does not alter payment, order, refund, or ledger state.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-06T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-ISSUE-2267-COMMERCE-PAYMENT-SESSION-CANCELLATION
+preflight_run_at: 2026-10-06T15:00:32.030Z
+preflight_request_ref: PREFLIGHT-37483118154-2026-10-06-COMMERCE-PAYMENT-SESSION-CANCELLATION
 ---
 
 # Server-authoritative commerce payment session cancellation (#2267)

@@ -294,6 +294,7 @@ The item-processing fee is displayed as a separate Storefront checkout/tracking 
 exposed to the tenant's OPIS order detail/receipt surfaces. It is not added to legacy DGFY
 convenience-fee fields, provider fallback financials, or DGFY settlement allocations. IMS is
 outside this feature.
+
 ### 2026-10-06: Server-authoritative cancellation of an in-flight commerce payment session (#2267)
 
 An unpaid Storefront commerce payment session may be cancelled by its customer so the
