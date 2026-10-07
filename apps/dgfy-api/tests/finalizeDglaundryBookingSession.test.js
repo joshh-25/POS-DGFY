@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { cancelDglaundryBookingReservations, notifyDglaundryBookingRefund, submitPaidDglaundryBooking } from '../src/modules/commercePayments/usecases/finalizeDglaundryBookingSession.js';
+import { cancelDglaundryBookingReservations, notifyDglaundryBookingRefund, reconcileDeliveredDglaundryBooking, submitPaidDglaundryBooking } from '../src/modules/commercePayments/usecases/finalizeDglaundryBookingSession.js';
 
 const session = {
   session_id: 7,
@@ -20,12 +20,40 @@ const session = {
 
 describe('DGLaundry payment lifecycle bridge', () => {
   it('submits one paid event and finalizes the landlord payment session', async () => {
-    const partnerClient = { submitOrder: jest.fn(async () => ({ accepted: true })) };
+    const partnerClient = { submitOrder: jest.fn(async () => ({ accepted: true })), completeCallerReconciliation: jest.fn(async () => {}) };
     const commercePaymentRepository = { updateSessionById: jest.fn(async (_id, patch) => ({ ...session, ...patch })) };
     const result = await submitPaidDglaundryBooking({ session, resource: { id: 'pay_1' }, providerEventId: 'pm-event-1', commercePaymentRepository, partnerClient });
-    expect(partnerClient.submitOrder).toHaveBeenCalledWith(expect.objectContaining({ type: 'dgfy.laundry_order.submitted.v1' }));
+    expect(partnerClient.submitOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'dgfy.laundry_order.submitted.v1' }),
+      expect.objectContaining({ completion: { type: 'paid_dglaundry_booking', reference: '7' } })
+    );
     expect(partnerClient.submitOrder.mock.calls[0][0].data.payment).toEqual(expect.objectContaining({ status: 'paid', amountCentavos: 12500 }));
+    expect(partnerClient.submitOrder.mock.calls[0][1]).toEqual({ completion: { type: 'paid_dglaundry_booking', reference: '7' } });
+    expect(partnerClient.completeCallerReconciliation).toHaveBeenCalledWith(partnerClient.submitOrder.mock.calls[0][0].id);
     expect(result.status).toBe('finalized');
+  });
+
+  it('reconciles a previously delivered paid booking locally without resending or repeating payment work', async () => {
+    const commercePaymentRepository = { updateSessionById: jest.fn(async (_id, patch) => ({ ...session, ...patch })) };
+    const result = await reconcileDeliveredDglaundryBooking({ session, commercePaymentRepository });
+    expect(result.status).toBe('finalized');
+    expect(commercePaymentRepository.updateSessionById).toHaveBeenCalledWith(7, expect.objectContaining({ status: 'finalized' }));
+  });
+
+  it('retries caller finalization after provider acceptance with the same event identity', async () => {
+    const partnerClient = { submitOrder: jest.fn(async () => ({ accepted: true })), completeCallerReconciliation: jest.fn(async () => {}) };
+    const commercePaymentRepository = {
+      updateSessionById: jest.fn()
+        .mockRejectedValueOnce(new Error('landlord session update unavailable'))
+        .mockResolvedValueOnce({ ...session, status: 'finalized' })
+    };
+    await expect(submitPaidDglaundryBooking({ session, resource: { id: 'pay_1' }, providerEventId: 'pm-event-retry', commercePaymentRepository, partnerClient }))
+      .rejects.toThrow('landlord session update unavailable');
+    const result = await submitPaidDglaundryBooking({ session, resource: { id: 'pay_1' }, providerEventId: 'pm-event-retry', commercePaymentRepository, partnerClient });
+    expect(result.status).toBe('finalized');
+    expect(partnerClient.submitOrder).toHaveBeenCalledTimes(2);
+    expect(partnerClient.submitOrder.mock.calls[0][0].id).toBe(partnerClient.submitOrder.mock.calls[1][0].id);
+    expect(partnerClient.completeCallerReconciliation).toHaveBeenCalledTimes(1);
   });
 
   it('submits only the fixed child after a mixed booking is paid', async () => {

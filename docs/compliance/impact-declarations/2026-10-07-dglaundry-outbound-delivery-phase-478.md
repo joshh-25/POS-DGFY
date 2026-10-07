@@ -50,3 +50,9 @@ settlement, or payout action.
 Final command output and any remaining blocked acceptance evidence are recorded in the linked PR
 and Phase 478 ledger entry. Real MySQL migration/claim evidence and real shared-Redis multi-process
 replay evidence are required before Phase 478 is marked complete.
+
+The integration batch also routes paid-session finalization and DGLaundry order submission through
+the durable delivery state, and reconciles successful worker completion back to the caller's
+idempotency record. Focused tests cover retrying finalization without a new provider event and
+partial child-order failure with cancellation intent; these paths preserve the existing verified
+payment gate and do not perform payment capture or refund.

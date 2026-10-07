@@ -84,8 +84,29 @@ export const cancelDglaundryOrder = (req, res, next) => run(
 );
 
 export const listDglaundryDeadLetters = (req, res, next) => run(
-  dgfyLaundryOrderUseCases.listDeadLetters,
-  { limit: req.query?.limit },
+  dgfyLaundryOrderUseCases.listOperatorDeadLetters,
+  {
+    dgfyAccountId: req.dgfyAccount?.id,
+    companyId: req.query?.company_id,
+    locationId: req.query?.location_id,
+    direction: req.query?.direction || null,
+    limit: req.query?.limit === undefined ? 100 : req.query.limit
+  },
   res,
   next
+);
+
+export const redriveDglaundryDeadLetter = (req, res, next) => run(
+  dgfyLaundryOrderUseCases.redriveOperatorDeadLetter,
+  {
+    dgfyAccountId: req.dgfyAccount?.id,
+    companyId: req.body?.company_id,
+    locationId: req.body?.location_id,
+    id: req.params.id,
+    direction: req.body?.direction,
+    reason: req.body?.reason
+  },
+  res,
+  next,
+  202
 );

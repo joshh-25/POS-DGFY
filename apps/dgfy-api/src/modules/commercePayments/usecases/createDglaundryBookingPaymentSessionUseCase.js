@@ -4,7 +4,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { createDgfyOrderEvent, toTrimmed } from '../../dgfyLaundryOrders/contracts.js';
 
 const trim = (value, max = 255) => toTrimmed(value, max);
-const publicReference = () => `DGL-${crypto.randomBytes(24).toString('hex').toUpperCase()}`;
+const publicReference = (identity = crypto.randomBytes(24)) => `DGL-${crypto.createHash('sha256').update(identity).digest('hex').slice(0, 48).toUpperCase()}`;
 const childReference = (reference, suffix) => `${trim(reference, 180)}:${suffix}`.slice(0, 200);
 const enabled = () => String(process.env.DGLAUNDRY_BOOKING_PAYMENTS_ENABLED || '').toLowerCase() === 'true'
   && String(process.env.DGLAUNDRY_BOOKING_PAYMENTS_KILL_SWITCH || '').toLowerCase() !== 'true';
@@ -18,6 +18,7 @@ const paymentSnapshot = ({ status, amountCentavos, externalReference = null, pro
 
 const cancelPreparedChildren = async (children, reason, partnerClient) => {
   await Promise.all(children.map((child) => partnerClient.cancelOrder(createDgfyOrderEvent({
+    id: `dglaundry-cancel-${crypto.createHash('sha256').update(`${child.externalOrderReference}\0${reason}`).digest('hex').slice(0, 48)}`,
     type: 'dgfy.laundry_order.cancelled.v1',
     data: {
       companyId: child.companyId,
@@ -77,11 +78,13 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
       return ok({ idempotent_replay: true, payment_session: serialized(existing) });
     }
 
-    const externalOrderReference = publicReference();
-    const externalTrackingReference = crypto.randomBytes(32).toString('base64url');
+    const identityHash = crypto.createHash('sha256').update(`${companyId}\0${locationId}\0${idempotencyKey}`).digest();
+    const stableReference = (prefix, offset = 0) => `${prefix}-${identityHash.subarray(offset, offset + 18).toString('hex').toUpperCase()}`;
+    const externalOrderReference = stableReference('DGL');
+    const externalTrackingReference = crypto.createHash('sha256').update(Buffer.concat([Buffer.from('tracking\0'), identityHash])).digest().toString('base64url');
     const group = {
-      externalOrderGroupReference: publicReference(),
-      externalTrackingGroupReference: crypto.randomBytes(32).toString('base64url'),
+      externalOrderGroupReference: stableReference('DGLG', 4),
+      externalTrackingGroupReference: crypto.createHash('sha256').update(Buffer.concat([Buffer.from('tracking-group\0'), identityHash])).digest().toString('base64url'),
       mode: mode === 'mixed' ? 'mixed' : 'single',
       expectedChildModes: mode === 'mixed' ? ['fixed', 'per_kilo'] : [mode]
     };
@@ -91,6 +94,7 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
     if (mode === 'mixed' && (!lineModes.includes('fixed') || !lineModes.includes('per_kilo'))) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Mixed bookings require fixed and per-kilo lines.', { statusCode: 422 });
     const childModes = mode === 'mixed' ? ['fixed', 'per_kilo'] : [mode];
     const children = [];
+    let pendingChild = null;
     try {
       for (const childMode of childModes) {
         const lines = payload.lines
@@ -112,6 +116,13 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
           lines,
           fulfillment: payload.fulfillment
         };
+        pendingChild = {
+          companyId,
+          locationId,
+          externalOrderReference: childPayload.externalOrderReference,
+          externalTrackingReference: childPayload.externalTrackingReference,
+          reservationIds: []
+        };
         const prepared = await (partnerClient.prepareBookingGroup
           ? partnerClient.prepareBookingGroup(childPayload)
           : partnerClient.prepareQuote(childPayload));
@@ -131,9 +142,10 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
           amountCentavos: Number(reservation?.quotedAmountCentavos ?? reservation?.quoted_amount_centavos ?? reservation?.totalCentavos ?? reservation?.total_amount_centavos ?? reservation?.subtotalCentavos ?? 0),
           reservationIds: Array.isArray(reservationIds) ? reservationIds : []
         });
+        pendingChild = null;
       }
     } catch (error) {
-      await cancelPreparedChildren(children, 'BOOKING_PREPARE_FAILED', partnerClient);
+      await cancelPreparedChildren([...children, ...(pendingChild ? [pendingChild] : [])], 'BOOKING_PREPARE_FAILED', partnerClient);
       throw error;
     }
 
