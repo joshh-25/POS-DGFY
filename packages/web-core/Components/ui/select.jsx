@@ -43,13 +43,14 @@ const Select = ({ children, value, onValueChange, ...props }) => {
   const selectContent = childrenArray.find(child => {
     return React.isValidElement(child) && child.type === SelectContent
   })
-  const optionLabel = getSelectedOptionLabel(selectContent?.props?.children, selectedValue)
+  const effectiveValue = value !== undefined ? value : selectedValue
+  const optionLabel = getSelectedOptionLabel(selectContent?.props?.children, effectiveValue)
 
   return (
     <SelectContext.Provider value={{
       open,
       setOpen,
-      selectedValue,
+      selectedValue: effectiveValue,
       selectedLabel: optionLabel ?? selectedLabel,
       handleValueChange,
       selectContent,
