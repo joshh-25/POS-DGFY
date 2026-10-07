@@ -51,13 +51,22 @@ export const handlePayMongoWebhook = async (req, res, next) => {
 
 export const createDglaundryBookingPaymentSession = async (req, res, next) => {
   try {
+    const bodyCustomer = req.validatedBody?.customer || {};
+    const storeCustomer = req.storeCustomer || null;
     const result = await createDglaundryBookingPaymentSessionUseCase({
       // Tenant context is resolved by the host middleware; never trust a
       // client-supplied tenant_id for payment ownership.
       payload: {
         ...req.validatedBody,
         tenant_id: req.tenant?.id || null,
-        company_id: req.tenant?.id || null
+        company_id: req.tenant?.id || null,
+        store_slug: req.headers['x-store-slug'] || req.validatedBody?.store_slug || 'tenant-store',
+        customer: {
+          id: storeCustomer?.dgfy_account_id || null,
+          displayName: storeCustomer?.name || bodyCustomer.displayName || bodyCustomer.name || '',
+          email: storeCustomer?.email || bodyCustomer.email || '',
+          phone: storeCustomer?.phone || bodyCustomer.phone || ''
+        }
       }
     });
     return sendResult(res, result, 201);

@@ -101,7 +101,8 @@ export const cancelDglaundryBookingReservations = async ({ session, reason, prov
       reason,
       occurredAt: new Date().toISOString()
     }
-  })).catch(() => null)));
+  }))));
+  if (reason === 'CUSTOMER_CANCELLED') return plain;
   return commercePaymentRepository.updateSessionById(plain.session_id, {
     status: plain.status === 'paid' ? 'paid_manual_resolution_required' : plain.status,
     provider_event_id: providerEventId || plain.provider_event_id,
