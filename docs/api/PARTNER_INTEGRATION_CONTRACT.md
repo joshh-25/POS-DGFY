@@ -182,18 +182,16 @@ forms are supported pending alignment between the two repositories.
 | Method | Path | Caller | Auth |
 |---|---|---|---|
 | POST | `/api/v1/integrations/dglaundry/events` | DGLaundry worker | Ed25519 event signature |
-| GET | `/api/v1/dgfy/laundry/catalog` | *(see below)* | `authenticateDgfyAccount` + `resolveLaundryCompany` |
-| GET | `/api/v1/dgfy/laundry/availability` | *(see below)* | `authenticateDgfyAccount` + `resolveLaundryCompany` |
-| GET | `/api/v1/dgfy/laundry/orders/:externalOrderReference` | *(see below)* | `authenticateDgfyAccount` + `resolveLaundryCompany` |
-| POST | `/api/v1/dgfy/laundry/quotes` | *(see below)* | `authenticateDgfyAccount` + `resolveLaundryCompany` |
-| POST | `/api/v1/dgfy/laundry/orders` | *(see below)* | `authenticateDgfyAccount` + `resolveLaundryCompany` |
-| PATCH | `/api/v1/dgfy/laundry/orders/:externalOrderReference` | *(see below)* | `authenticateDgfyAccount` + `resolveLaundryCompany` |
-| POST | `/api/v1/dgfy/laundry/orders/:externalOrderReference/cancel` | *(see below)* | `authenticateDgfyAccount` + `resolveLaundryCompany` |
+| GET | `/api/v1/store/laundry/catalog` | Storefront customer or guest | tenant context + active DGLaundry mapping + `services` capability |
+| GET | `/api/v1/store/laundry/availability` | Storefront customer or guest | tenant context + active DGLaundry mapping + `services` capability |
+| POST | `/api/v1/store/laundry/quotes` | Storefront customer or guest | tenant context + active DGLaundry mapping + `services` capability |
+| POST | `/api/v1/store/laundry/orders` | Storefront customer or guest; per-kilo only | tenant context + active DGLaundry mapping + `services` capability |
+| GET/PATCH | `/api/v1/store/laundry/orders/:externalOrderReference` | Owning Store customer or guest tracking capability | tenant context + active mapping + ownership binding |
+| POST | `/api/v1/store/laundry/orders/:externalOrderReference/cancel` | Owning Store customer or guest tracking capability | tenant context + active mapping + ownership binding |
+| POST | `/api/v1/commerce-payments/dglaundry/booking-groups/payment-sessions` | Storefront customer or guest; fixed/mixed | tenant context + active mapping + payment feature gate |
 
-**These six routes are commented "DGFY customer/storefront operations" in source but their auth
-chain requires an active laundry-company membership** (`chooseCompany` throws a 403 for any account
-without one). There is no store-customer adapter and no frontend wiring that calls them — see
-"Known gaps." They are not usable by an ordinary customer as built today, despite the comment.
+The legacy `/api/v1/dgfy/laundry/*` customer routes have been removed. Storefront customers use the
+tenant-scoped routes above; the integration router now only receives signed DGLaundry events.
 
 ### Outbound — DGFY calling DGLaundry
 
@@ -265,11 +263,33 @@ configuration-only, and what does not exist, rather than implying full readiness
 | Browser/machine/service client IDs never registered (`dglaundry-connection-manifest.json` ships blank) | ⚠️ config | filed under epic #517 |
 | Signed provider runtime attestation, signed event specimens, payment-lifecycle probe routes | ❌ not built | filed under epic #517 |
 | No `end_session_endpoint`, no userinfo, no introspection; access tokens are opaque; single-key JWKS (no overlap rotation); `/oidc/*` excluded from `generalLimiter` | ❌ not built | filed under epic #517 |
-| Customer-facing laundry ordering: `chooseCompany` 403s a non-staff account; no storefront UI calls these routes | ❌ not built, architecturally blocked | filed under epic #517, `area:storefront` |
+| Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |
 | Legacy `x-dglaundry-partner-token` shared secret still accepted in production when no `Authorization` header is sent | ❌ security gap | filed under epic #517, `security` |
 | Inbound `scope` is never enforced server-side; `x-dgfy-app-id` is required-present but never validated against a registry | ❌ security gap | filed under epic #517, `security` |
 | No outbound outbox/retry/dead-letter (plain `fetch`, nothing durable); event replay cache is in-process, not Redis; `listDglaundryDeadLetters` is built but unrouted | ❌ not built | filed under epic #517 |
 | `ServiceBooking.source` has no external/sibling value and the DGLaundry integration has zero coupling to `ServiceBooking` — it uses parallel projection tables and a parallel `dglaundry_booking` payment target instead | ⚠️ design question, not a build gap | #522's premise should be re-read before implementation |
+
+### Customer-ordering hardening contract (#2308)
+
+- Storefront customer identity is optional. A signed-in Store customer is bound by the trusted
+  `dgfy_account_id`; a guest receives DGFY-minted order and private tracking references. Submitted
+  contact name, email, and phone are informational and are **not verified identity or ownership
+  proof**. Do not use them for account binding.
+- The guest tracking reference is a reusable bearer capability for that guest order, not a
+  single-use credential. Per-operation idempotency keys prevent replay of the same request key and
+  payload. DGFY does not locally freeze mutations on a terminal order projection; it relies on the
+  provider to reject a mutation after a terminal transition, and the projection may lag until a
+  signed provider event arrives. This eventual state window is a residual risk for follow-up
+  hardening.
+- Direct `/api/v1/store/laundry/orders` submission is per-kilo-only. Fixed/mixed orders must use
+  the DGLaundry booking payment-session target, and `dgfy.laundry_order.submitted.v1` must remain
+  behind PayMongo-verified finalization. The `DGLAUNDRY_BOOKING_PAYMENTS_ENABLED` flag stays off
+  until its separate operator gates are approved; the storefront must show an unavailable state.
+- This work does not create, change, or extend Store customer accounts, password recovery, or
+  session lifecycle. Existing Store auth remains the account lifecycle owner.
+- Validation evidence for this surface: DGLaundry order/payment use-case and reservation-cancel
+  tests; storefront rendered-component and mode/catalog tests; `npm run build:store`;
+  `npm run check:architecture`; and `npm run lint:docs`.
 
 ## What a future sibling/third-party app can and cannot reuse
 
