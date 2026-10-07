@@ -80,7 +80,11 @@ if [[ "${DGLAUNDRY_INTEGRATION_ENABLED:-false}" == "true" ]]; then
       echo "::error::deploy-sops.sh: missing SOPS-encrypted OIDC ${key_name} key at $encrypted_file" >&2
       exit 1
     fi
-    env_name="DGFY_OIDC_${key_name^^}_KEY"
+    if [ "$key_name" = "private" ]; then
+      env_name="DGFY_OIDC_PRIVATE_KEY"
+    else
+      env_name="DGFY_OIDC_PUBLIC_KEY"
+    fi
     if ! decrypted_key="$(sops decrypt --input-type binary --output-type binary "$encrypted_file")"; then
       echo "::error::deploy-sops.sh: failed to decrypt OIDC ${key_name} key" >&2
       exit 1
