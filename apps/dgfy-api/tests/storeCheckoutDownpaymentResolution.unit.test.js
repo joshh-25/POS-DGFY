@@ -22,6 +22,11 @@
 
 import { afterAll, jest } from '@jest/globals';
 
+// These fixtures exercise the legacy DGFY PayMongo split path. Keep the local development
+// .env tenant-revenue rollout flag from changing their contract before the use case reaches the
+// downpayment assertions; tenant-revenue policy has its own focused test coverage.
+process.env.TENANT_REVENUE_SHARING_ENABLED = 'false';
+
 // Phase 141 (#822): buildStoreCheckoutPaymentSessionUseCase's success path needs a configured
 // return URL to build a PayMongo QRPh intent -- read live at call time (process.env.
 // STOREFRONT_PAYMENT_RETURN_URL), so setting it here (rather than before the dynamic import below)

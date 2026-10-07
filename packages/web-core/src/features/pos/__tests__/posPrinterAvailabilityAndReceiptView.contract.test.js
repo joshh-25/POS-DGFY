@@ -25,8 +25,14 @@ describe('POS printer availability and post-checkout receipt view', () => {
         const zReadingSource = read('../components/ZReadingPrintView.jsx');
 
         expect(stylesheet).toContain('@page {\n    margin: 0;\n  }');
+        expect(stylesheet).toContain('@page pos-thermal-57mm');
+        expect(stylesheet).toContain('size: 57mm;');
+        expect(stylesheet).toContain('@page pos-thermal-80mm');
+        expect(stylesheet).toContain('size: 80mm;');
         expect(stylesheet).toContain('body.pos-receipt-print-mode,\n  body.pos-z-reading-printing');
         expect(stylesheet).toContain('width: var(--pos-receipt-paper-width, 80mm);');
+        expect(stylesheet).toContain('body.pos-receipt-print-mode .pos-thermal-receipt[data-paper-width="57mm"]');
+        expect(stylesheet).toContain('page: pos-thermal-57mm;');
         expect(stylesheet).toContain('body.pos-z-reading-printing .pos-z-reading-print');
         expect(stylesheet).toContain('width: var(--pos-z-reading-paper-width, 80mm);');
         expect(receiptDialogsSource).toContain("style={{ '--pos-receipt-paper-width': receiptPaperWidth }}");

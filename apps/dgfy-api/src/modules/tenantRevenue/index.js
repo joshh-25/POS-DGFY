@@ -9,6 +9,7 @@ export const tenantRevenueUseCases = buildTenantRevenueUseCases({
 
 export const {
   createFeePolicy: createTenantRevenueFeePolicyUseCase,
+  createOwnerFeePolicy: createTenantOwnerRevenueFeePolicyUseCase,
   listFeePolicies: listTenantRevenueFeePoliciesUseCase,
   postPaidTransaction: postPaidTenantRevenueTransactionUseCase,
   recordOrderFulfillment: recordTenantRevenueOrderFulfillmentUseCase,

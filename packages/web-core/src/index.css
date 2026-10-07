@@ -2183,6 +2183,22 @@ html.dgfy-imin-performance [class~="transition-all"] {
     margin: 0;
   }
 
+  /*
+   * The browser print fallback needs the page width as well as the content
+   * width. Without a named page rule, Chrome/Android can lay out a 57mm
+   * receipt on its default page and scale it down in the print preview.
+   * The connected printer/system print service supplies the roll height.
+   */
+  @page pos-thermal-57mm {
+    size: 57mm;
+    margin: 0;
+  }
+
+  @page pos-thermal-80mm {
+    size: 80mm;
+    margin: 0;
+  }
+
   body.pos-receipt-print-mode,
   body.pos-z-reading-printing,
   body.pos-shift-summary-printing {
@@ -2215,6 +2231,18 @@ html.dgfy-imin-performance [class~="transition-all"] {
     width: var(--pos-receipt-paper-width, 80mm);
     max-width: var(--pos-receipt-paper-width, 80mm);
     margin: 0 auto;
+  }
+
+  body.pos-receipt-print-mode .pos-thermal-receipt[data-paper-width="57mm"],
+  body.pos-shift-summary-printing .pos-shift-summary-print[data-paper-width="57mm"],
+  body.pos-z-reading-printing .pos-z-reading-print[data-paper-width="57mm"] {
+    page: pos-thermal-57mm;
+  }
+
+  body.pos-receipt-print-mode .pos-thermal-receipt[data-paper-width="80mm"],
+  body.pos-shift-summary-printing .pos-shift-summary-print[data-paper-width="80mm"],
+  body.pos-z-reading-printing .pos-z-reading-print[data-paper-width="80mm"] {
+    page: pos-thermal-80mm;
   }
 
   .pos-receipt-print-shell,

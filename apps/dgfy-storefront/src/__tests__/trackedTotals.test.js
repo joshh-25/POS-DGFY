@@ -25,6 +25,19 @@ describe('resolveTrackedTotals', () => {
     expect(result.balance_due).toBe(404);
   });
 
+  it('overlays the server-snapshotted item-processing fee and label', () => {
+    const result = resolveTrackedTotals(
+      { total_amount: 1030, customer_processing_fee_amount: 30, customer_processing_fee_label_snapshot: 'Item processing fee' },
+      { total_amount: 1000, customer_processing_fee_amount: 0 }
+    );
+
+    expect(result).toMatchObject({
+      total_amount: 1030,
+      customer_processing_fee_amount: 30,
+      customer_processing_fee_label: 'Item processing fee'
+    });
+  });
+
   it('defaults amount_paid/balance_due to null for a full_payment order (additive-only)', () => {
     const result = resolveTrackedTotals({ total_amount: 505 }, fallbackTotals);
     expect(result.amount_paid).toBeNull();

@@ -7,6 +7,7 @@ import {
   tenantRevenueDefaultSettlementCycleDays,
   tenantRevenueSharingEnabled
 } from '../../../config/tenantRevenueFeature.js';
+import { normalizeCustomerProcessingFeePolicy } from '../domain/customerProcessingFeePolicy.js';
 
 const CENTAVOS_PER_PESO = 100n;
 const BPS_DENOMINATOR = 10000n;
@@ -161,6 +162,9 @@ const extractProviderFinancials = ({ session, resource, policy }) => {
     providerNet,
     feeVat,
     providerFeeSource: source,
+    providerFeeBasis: source === 'fallback'
+      ? 'estimated_fallback'
+      : (source === 'manual_review' ? 'manual_review' : 'actual'),
     providerBalanceTransactionId: attrs.balance_transaction_id
       || attrs.balance_transaction?.id
       || balanceAttrs.id
@@ -213,6 +217,8 @@ const buildDefaultPolicySnapshot = () => ({
   currency: 'PHP',
   provider_fee_payer: 'tenant',
   shared_fee_tenant_bps: null,
+  fallback_fee_policy: null,
+  customer_processing_fee_policy: null,
   automatic_payout_enabled: false,
   payout_destination_masked: null,
   source: 'governed_default_missing_tenant_policy'
@@ -228,6 +234,10 @@ const sanitizePolicy = (policy) => {
 const sanitizeTransaction = (transaction) => ({
   ...transaction,
   financial_snapshot: parseJsonObject(transaction.financial_snapshot),
+  provider_fee_estimated: transaction.provider_fee_source === 'fallback',
+  provider_fee_basis: transaction.provider_fee_source === 'fallback'
+    ? 'estimated_fallback'
+    : (transaction.provider_fee_source === 'manual_review' ? 'manual_review' : 'actual'),
   gross_amount_centavos: toSafeNumber(transaction.gross_amount_centavos),
   provider_fee_centavos: transaction.provider_fee_centavos === null
     ? null
@@ -269,6 +279,12 @@ const normalizeFallbackFeePolicy = (value) => {
     }
     if (!rawConfiguration || typeof rawConfiguration !== 'object' || Array.isArray(rawConfiguration)) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Fallback fee for ${method} is invalid.`);
+    }
+    if (Object.hasOwn(normalized, method)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        `Duplicate fallback payment method: ${method}.`
+      );
     }
     const rateBps = rawConfiguration.rate_bps === undefined
       ? 0
@@ -331,12 +347,31 @@ const normalizePolicyInput = (payload = {}) => {
     provider_fee_payer: providerFeePayer,
     shared_fee_tenant_bps: providerFeePayer === 'shared' ? sharedRate : null,
     fallback_fee_policy: normalizeFallbackFeePolicy(payload.fallback_fee_policy),
+    customer_processing_fee_policy: normalizeCustomerProcessingFeePolicy(payload.customer_processing_fee_policy),
     automatic_payout_enabled: payload.automatic_payout_enabled === true,
     large_payout_threshold_centavos: payload.large_payout_threshold_centavos === null
       || payload.large_payout_threshold_centavos === undefined
       ? null
       : toSafeNumber(payload.large_payout_threshold_centavos, 'large payout threshold'),
     effective_at: requireDate(payload.effective_at || new Date(), 'Effective date'),
+    reason: requireReason(payload.reason, 'Policy change reason')
+  };
+};
+
+const normalizeOwnerPolicyInput = (payload = {}) => {
+  const expectedPolicyVersion = Number.parseInt(payload.expected_policy_version, 10);
+  if (!Number.isInteger(expectedPolicyVersion) || expectedPolicyVersion < 0) {
+    throw new DomainError(
+      DomainErrorCode.VALIDATION_FAILED,
+      'The expected fee policy version is invalid.'
+    );
+  }
+
+  return {
+    expected_policy_version: expectedPolicyVersion,
+    fallback_fee_policy: normalizeFallbackFeePolicy(payload.fallback_fee_policy),
+    customer_processing_fee_policy: normalizeCustomerProcessingFeePolicy(payload.customer_processing_fee_policy),
+    effective_at: requireDate(payload.effective_at, 'Effective date'),
     reason: requireReason(payload.reason, 'Policy change reason')
   };
 };
@@ -415,6 +450,7 @@ export const buildTenantRevenueUseCases = ({
             provider_fee_payer: latest.provider_fee_payer,
             shared_fee_tenant_bps: latest.shared_fee_tenant_bps,
             fallback_fee_policy: latest.fallback_fee_policy,
+            customer_processing_fee_policy: latest.customer_processing_fee_policy,
             payout_destination_masked: latest.payout_destination_masked,
             automatic_payout_enabled: latest.automatic_payout_enabled,
             effective_at: latest.effective_at,
@@ -429,6 +465,7 @@ export const buildTenantRevenueUseCases = ({
             provider_fee_payer: created.provider_fee_payer,
             shared_fee_tenant_bps: created.shared_fee_tenant_bps,
             fallback_fee_policy: created.fallback_fee_policy,
+            customer_processing_fee_policy: created.customer_processing_fee_policy,
             payout_destination_masked: created.payout_destination_masked,
             automatic_payout_enabled: created.automatic_payout_enabled,
             effective_at: created.effective_at,
@@ -440,6 +477,108 @@ export const buildTenantRevenueUseCases = ({
           settlement_status: created.settlement_status,
           automatic_payout_enabled: created.automatic_payout_enabled,
           reason: created.reason
+        }
+      }, { transaction });
+
+      return { policy: sanitizePolicy(created) };
+    });
+  });
+
+  const createOwnerFeePolicy = wrap(async ({ tenantId, payload, actor }) => {
+    const requestedBy = requireActor(actor);
+    const normalized = normalizeOwnerPolicyInput(payload);
+    const tenant = await tenantRevenueRepository.findTenantById(tenantId);
+    if (!tenant) throw new DomainError(DomainErrorCode.TENANT_NOT_FOUND, 'Tenant not found.');
+
+    return tenantRevenueRepository.runInTransaction(async (transaction) => {
+      const latest = await tenantRevenueRepository.findLatestFeePolicy(tenantId, {
+        transaction,
+        lock: true
+      });
+      const latestVersion = Number(latest?.version || 0);
+      if (latestVersion !== normalized.expected_policy_version) {
+        throw new DomainError(
+          DomainErrorCode.CONFLICT,
+          'The fee policy changed since it was loaded. Refresh the policy and try again.',
+          {
+            details: {
+              reason_code: 'TENANT_REVENUE_FEE_POLICY_VERSION_CONFLICT',
+              expected_policy_version: normalized.expected_policy_version,
+              current_policy_version: latestVersion
+            }
+          }
+        );
+      }
+      if (latest && normalized.effective_at <= new Date(latest.effective_at)) {
+        throw new DomainError(
+          DomainErrorCode.CONFLICT,
+          'A new fee policy must take effect after the latest policy.'
+        );
+      }
+
+      const base = latest || buildDefaultPolicySnapshot();
+      if (latest && !latest.ends_at) {
+        await tenantRevenueRepository.updateFeePolicy(latest.policy_id, {
+          ends_at: new Date(normalized.effective_at.getTime() - 1)
+        }, { transaction, lock: true });
+      }
+
+      const created = await tenantRevenueRepository.createFeePolicy({
+        tenant_id: tenantId,
+        version: latestVersion + 1,
+        dgfy_rate_bps: Number(base.dgfy_rate_bps),
+        settlement_cycle_days: String(base.settlement_cycle_days),
+        settlement_status: base.settlement_status || 'on_hold',
+        minimum_payout_centavos: toSafeNumber(base.minimum_payout_centavos || 0, 'minimum payout'),
+        currency: base.currency || 'PHP',
+        provider_fee_payer: base.provider_fee_payer || 'tenant',
+        shared_fee_tenant_bps: base.shared_fee_tenant_bps ?? null,
+        fallback_fee_policy: normalized.fallback_fee_policy,
+        customer_processing_fee_policy: normalized.customer_processing_fee_policy,
+        payout_destination_encrypted: latest?.payout_destination_encrypted || null,
+        payout_destination_masked: latest?.payout_destination_masked || null,
+        automatic_payout_enabled: latest?.automatic_payout_enabled === true,
+        large_payout_threshold_centavos: latest?.large_payout_threshold_centavos ?? null,
+        effective_at: normalized.effective_at,
+        ends_at: null,
+        reason: normalized.reason,
+        created_by: requestedBy
+      }, { transaction });
+
+      await tenantRevenueRepository.createAuditLog({
+        entity_type: 'TenantRevenueFeePolicy',
+        entity_id: created.policy_id,
+        action: 'CREATE',
+        changes: {
+          event: 'tenant_revenue_owner_fallback_policy_version_created',
+          tenant_id: tenantId,
+          expected_policy_version: normalized.expected_policy_version,
+          old_value: latest
+            ? {
+              version: latest.version,
+              fallback_fee_policy: latest.fallback_fee_policy,
+              customer_processing_fee_policy: latest.customer_processing_fee_policy
+            }
+            : null,
+          new_value: {
+            version: created.version,
+            fallback_fee_policy: created.fallback_fee_policy,
+            customer_processing_fee_policy: created.customer_processing_fee_policy,
+            effective_at: created.effective_at,
+            reason: created.reason
+          },
+          protected_fields: [
+            'dgfy_rate_bps',
+            'settlement_cycle_days',
+            'settlement_status',
+            'minimum_payout_centavos',
+            'provider_fee_payer',
+            'shared_fee_tenant_bps',
+            'payout_destination',
+            'automatic_payout_enabled',
+            'large_payout_threshold_centavos'
+          ],
+          changed_by: requestedBy
         }
       }, { transaction });
 
@@ -497,7 +636,9 @@ export const buildTenantRevenueUseCases = ({
         dgfy: breakdown.dgfyProviderFee
       };
       const tenantNetPayable = breakdown.tenantNetPayable;
-      const providerIdentityMatches = providerFeeKnown
+      const providerIdentityMatches = provider.providerFeeSource !== 'fallback'
+        && provider.providerFeeSource !== 'manual_review'
+        && providerFeeKnown
         && provider.providerNet !== null
         && toBigInt(provider.providerNet) + providerFee === gross;
       const reconciliationStatus = providerIdentityMatches ? 'reconciled' : 'exception';
@@ -659,7 +800,9 @@ export const buildTenantRevenueUseCases = ({
         await tenantRevenueRepository.createReconciliationRecord({
           tenant_id: session.tenant_id,
           revenue_transaction_id: created.revenue_transaction_id,
-          exception_type: providerFeeKnown ? 'provider_net_mismatch' : 'provider_fee_missing',
+          exception_type: provider.providerFeeSource === 'fallback'
+            ? 'provider_fee_estimated'
+            : (providerFeeKnown ? 'provider_net_mismatch' : 'provider_fee_missing'),
           severity: 'blocking',
           expected_value: {
             identity: 'gross = provider_net + provider_fee',
@@ -1318,7 +1461,16 @@ export const buildTenantRevenueUseCases = ({
                 statement_reference: statementReference,
                 source,
                 reconciled_at: new Date().toISOString(),
-                reconciled_by: reconciledBy
+                reconciled_by: reconciledBy,
+                actual_provider_financials: {
+                  gross_amount_centavos: toSafeNumber(gross),
+                  provider_fee_centavos: toSafeNumber(fee),
+                  provider_net_centavos: toSafeNumber(net),
+                  provider_fee_vat_centavos: row.provider_fee_vat_centavos ?? null,
+                  provider_balance_transaction_id: row.provider_balance_transaction_id
+                    || revenue.provider_balance_transaction_id
+                    || null
+                }
               }
             }
           },
@@ -1329,6 +1481,7 @@ export const buildTenantRevenueUseCases = ({
           status: 'open'
         }, { transaction, limit: 200 });
         for (const record of openRecords.filter((entry) => [
+          'provider_fee_estimated',
           'provider_fee_missing',
           'provider_net_mismatch',
           'provider_gross_mismatch'
@@ -1429,7 +1582,18 @@ export const buildTenantRevenueUseCases = ({
     ]);
     const totals = transactions.reduce((summary, row) => {
       summary.gross_centavos += toBigInt(row.gross_amount_centavos);
-      summary.provider_fee_centavos += toBigInt(row.provider_fee_centavos);
+      const providerFee = toBigInt(row.provider_fee_centavos);
+      summary.provider_fee_centavos += providerFee;
+      const providerFeeSource = String(row.provider_fee_source || 'manual_review');
+      if (providerFeeSource === 'fallback') {
+        summary.estimated_provider_fee_centavos += providerFee;
+        summary.estimated_provider_fee_count += 1;
+      } else if (providerFeeSource === 'manual_review') {
+        summary.manual_review_provider_fee_count += 1;
+      } else {
+        summary.actual_provider_fee_centavos += providerFee;
+        summary.actual_provider_fee_count += 1;
+      }
       summary.provider_fee_vat_centavos += toBigInt(row.provider_fee_vat_centavos);
       summary.dgfy_fee_centavos += toBigInt(row.dgfy_fee_centavos);
       summary.refund_centavos += toBigInt(row.refund_centavos);
@@ -1454,6 +1618,11 @@ export const buildTenantRevenueUseCases = ({
     }, {
       gross_centavos: 0n,
       provider_fee_centavos: 0n,
+      actual_provider_fee_centavos: 0n,
+      estimated_provider_fee_centavos: 0n,
+      actual_provider_fee_count: 0,
+      estimated_provider_fee_count: 0,
+      manual_review_provider_fee_count: 0,
       provider_fee_vat_centavos: 0n,
       dgfy_fee_centavos: 0n,
       refund_centavos: 0n,
@@ -1495,6 +1664,20 @@ export const buildTenantRevenueUseCases = ({
         open_exceptions: exceptions.length,
         settlement_batches: batches.length,
         payouts: payouts.length
+      },
+      processing_fee_sources: {
+        actual: {
+          count: totals.actual_provider_fee_count,
+          amount_centavos: toSafeNumber(totals.actual_provider_fee_centavos, 'actual provider fees')
+        },
+        estimated_fallback: {
+          count: totals.estimated_provider_fee_count,
+          amount_centavos: toSafeNumber(totals.estimated_provider_fee_centavos, 'estimated provider fees')
+        },
+        manual_review: {
+          count: totals.manual_review_provider_fee_count,
+          amount_centavos: 0
+        }
       },
       recent_transactions: transactions.slice(0, 20).map(sanitizeTransaction),
       recent_batches: batches.slice(0, 20),
@@ -2210,18 +2393,22 @@ export const buildTenantRevenueUseCases = ({
       const providerNet = revenue.provider_net_centavos === null
         ? null
         : toBigInt(revenue.provider_net_centavos);
-      if (providerFee === null || providerNet === null || providerNet + providerFee !== providerGross) {
+      const providerFeeEstimated = revenue.provider_fee_source === 'fallback';
+      if (providerFeeEstimated || providerFee === null || providerNet === null || providerNet + providerFee !== providerGross) {
         blockingExceptionCreated = await flag({
           tenant: revenue.tenant_id,
           revenueTransactionId: revenue.revenue_transaction_id,
-          exceptionType: providerFee === null ? 'provider_fee_missing' : 'provider_net_mismatch',
+          exceptionType: providerFeeEstimated
+            ? 'provider_fee_estimated'
+            : (providerFee === null ? 'provider_fee_missing' : 'provider_net_mismatch'),
           expectedValue: {
             identity: 'gross = provider fee + provider net',
             gross_centavos: toSafeNumber(providerGross)
           },
           actualValue: {
             provider_fee_centavos: providerFee === null ? null : toSafeNumber(providerFee),
-            provider_net_centavos: providerNet === null ? null : toSafeNumber(providerNet)
+            provider_net_centavos: providerNet === null ? null : toSafeNumber(providerNet),
+            provider_fee_source: revenue.provider_fee_source || null
           }
         }) || blockingExceptionCreated;
       }
@@ -2367,8 +2554,13 @@ export const buildTenantRevenueUseCases = ({
       'paid_at',
       'gross_centavos',
       'provider_fee_centavos',
+      'provider_fee_source',
+      'provider_fee_basis',
+      'provider_fee_estimated',
       'provider_fee_vat_centavos',
       'provider_net_centavos',
+      'policy_version',
+      'policy_effective_at',
       'dgfy_rate_bps',
       'dgfy_fee_centavos',
       'refund_centavos',
@@ -2390,8 +2582,13 @@ export const buildTenantRevenueUseCases = ({
       row.paid_at,
       row.gross_amount_centavos,
       row.provider_fee_centavos,
+      row.provider_fee_source,
+      row.provider_fee_basis,
+      row.provider_fee_estimated,
       row.provider_fee_vat_centavos,
       row.provider_net_centavos,
+      row.financial_snapshot?.policy?.version || row.policy_id || '',
+      row.financial_snapshot?.policy?.effective_at || '',
       row.dgfy_rate_bps,
       row.dgfy_fee_centavos,
       row.refund_centavos,
@@ -2411,6 +2608,7 @@ export const buildTenantRevenueUseCases = ({
 
   return {
     createFeePolicy,
+    createOwnerFeePolicy,
     listFeePolicies,
     postPaidTransaction,
     recordOrderFulfillment,

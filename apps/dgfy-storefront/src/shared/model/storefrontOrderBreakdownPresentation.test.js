@@ -11,6 +11,8 @@ describe('buildStorefrontOrderBreakdownRows', () => {
       orderMethod: 'delivery',
       totals: {
         subtotal_amount: 100,
+        customer_processing_fee_amount: 3,
+        customer_processing_fee_label: 'Item processing fee',
         delivery_fee: 20,
         service_fee_amount: 1,
         service_fee_label: 'DGFY convenience fee',
@@ -22,6 +24,7 @@ describe('buildStorefrontOrderBreakdownRows', () => {
     expect(rows.map(({ label }) => label)).toEqual([
       'Subtotal',
       'Weekend promo',
+      'Item processing fee',
       'Delivery Fee',
       'VAT (included in item prices)',
       'Total',
@@ -29,6 +32,7 @@ describe('buildStorefrontOrderBreakdownRows', () => {
     expect(rows.map(({ value }) => value)).toEqual([
       '₱100.00',
       '- ₱10.00',
+      '₱3.00',
       '₱20.00',
       '₱10.71',
       '₱110.00',

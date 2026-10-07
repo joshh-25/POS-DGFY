@@ -18,6 +18,7 @@ const mockExchangeStoreGuestCheckoutGrantUseCase = jest.fn();
 const mockStoreCheckoutPaymentSessionUseCase = jest.fn();
 const mockGetStoreCheckoutPaymentSessionUseCase = jest.fn();
 const mockReconcileStoreCheckoutPaymentSessionUseCase = jest.fn();
+const mockCancelStoreCheckoutPaymentSessionUseCase = jest.fn();
 const mockStoreCheckoutUseCase = jest.fn();
 const mockTrackStoreOrderUseCase = jest.fn();
 const mockClaimStoreOrderUseCase = jest.fn();
@@ -46,6 +47,7 @@ jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     storeCheckoutPaymentSessionUseCase: mockStoreCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase: mockGetStoreCheckoutPaymentSessionUseCase,
     reconcileStoreCheckoutPaymentSessionUseCase: mockReconcileStoreCheckoutPaymentSessionUseCase,
+    cancelStoreCheckoutPaymentSessionUseCase: mockCancelStoreCheckoutPaymentSessionUseCase,
     confirmStoreCheckoutSandboxPaymentUseCase: jest.fn(),
     storeCheckoutUseCase: mockStoreCheckoutUseCase,
     trackStoreOrderUseCase: mockTrackStoreOrderUseCase,

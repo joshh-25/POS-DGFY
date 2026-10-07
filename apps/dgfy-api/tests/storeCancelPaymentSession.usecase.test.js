@@ -7,6 +7,9 @@ const BASE_SESSION = {
     session_id: 41,
     public_reference: 'CPS-ABCDEFGHIJ',
     tenant_id: TENANT_ID,
+    store_slug: 'masu-cafe',
+    target_type: 'store_checkout',
+    checkout_payload: { payment_type: 'card' },
     status: 'awaiting_payment',
     provider: 'paymongo',
     provider_payment_intent_id: 'pi_test_123',
@@ -55,9 +58,10 @@ const build = ({ session = {}, providerResult = { outcome: 'cancelled' }, findSe
         commercePaymentRepository: repository,
         paymongoService
     });
-    const run = (overrides = {}) => dbStore.run({ tenantId: TENANT_ID }, () => useCase({
+    const run = (overrides = {}) => dbStore.run({ tenantId: TENANT_ID, tenantToken: 'masu-cafe' }, () => useCase({
         paymentSessionId: BASE_SESSION.public_reference,
         actor: 'store_guest',
+        storeSlug: 'masu-cafe',
         ...overrides
     }));
     return { run, row, repository, paymongoService };
@@ -171,6 +175,26 @@ describe('buildCancelStoreCheckoutPaymentSessionUseCase', () => {
         expect(result.success).toBe(false);
         expect(result.error.statusCode).toBe(404);
         expect(fixture.paymongoService.cancelPaymentIntent).not.toHaveBeenCalled();
+    });
+
+    it('rejects a signed-in customer that does not own the session', async () => {
+        const fixture = build({
+            session: {
+                checkout_payload: {
+                    payment_type: 'card',
+                    _verified_store_customer: { customer_id: 11, dgfy_account_id: 'account-11' }
+                }
+            }
+        });
+        const result = await fixture.run({
+            storeCustomer: { customer_id: 12, dgfy_account_id: 'account-12' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('AUTHORIZATION_FAILED');
+        expect(result.error.statusCode).toBe(403);
+        expect(fixture.paymongoService.cancelPaymentIntent).not.toHaveBeenCalled();
+        expect(fixture.repository.updateSessionById).not.toHaveBeenCalled();
     });
 
     it('cancels a created session locally when no provider object exists', async () => {

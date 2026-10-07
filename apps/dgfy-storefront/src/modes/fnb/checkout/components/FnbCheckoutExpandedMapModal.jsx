@@ -47,7 +47,7 @@ export function FnbCheckoutExpandedMapModal({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <div style={{ display: 'grid', gap: 4 }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', fontFamily: displayFont }}>Large Map</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>Tap anywhere on the map to pin your delivery location.</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>Search an address or tap anywhere on the map to pin your delivery location.</div>
           </div>
           <button
             type="button"

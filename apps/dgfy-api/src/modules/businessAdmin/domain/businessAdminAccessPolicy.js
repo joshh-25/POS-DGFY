@@ -64,6 +64,11 @@ export const BUSINESS_ADMIN_SETTINGS_SECTIONS = Object.freeze({
         viewPermission: PERMISSIONS.DOWNPAYMENT.actions.VIEW_DOWNPAYMENT_SETTINGS,
         editPermission: PERMISSIONS.DOWNPAYMENT.actions.MANAGE_DOWNPAYMENT_SETTINGS
     }),
+    processing_fees: Object.freeze({
+        scope: 'tenant',
+        viewPermission: PERMISSIONS.TENANT_REVENUE.actions.VIEW_FEE_POLICY,
+        editPermission: PERMISSIONS.TENANT_REVENUE.actions.EDIT_FEE_POLICY
+    }),
     registers: Object.freeze({
         scope: 'branch',
         viewPermission: PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,
@@ -198,6 +203,14 @@ export const buildBusinessAdminCapabilities = (user = {}) => ({
         user?.is_master_admin
         || String(user?.role || '').trim().toLowerCase() === 'admin'
         || userHasBusinessAdminPermission(user, PERMISSIONS.POS.actions.FORCE_CLOSE_SHIFT)
+    ),
+    view_processing_fee_policy: canUsePermission(
+        user,
+        PERMISSIONS.TENANT_REVENUE.actions.VIEW_FEE_POLICY
+    ),
+    edit_processing_fee_policy: canUsePermission(
+        user,
+        PERMISSIONS.TENANT_REVENUE.actions.EDIT_FEE_POLICY
     ),
     view_audit: Boolean(
         user?.is_master_admin

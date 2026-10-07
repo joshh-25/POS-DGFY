@@ -244,7 +244,34 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     expect(screen.getByText('2. When would you like your order?')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'NOW' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Schedule' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Anytime' })).toBeTruthy();
     expect(screen.queryByTestId('order-timing-expectation')).toBeNull();
+  });
+
+  it('selects Anytime without opening the schedule picker', () => {
+    const onScheduleModeChange = vi.fn();
+    const { rerender } = render(<FnbCheckoutFulfillmentChoices
+      {...baseProps}
+      fnbScheduleMode="schedule"
+      fnbScheduledFor="2026-09-30T18:30"
+      onOrderMethodChange={vi.fn()}
+      onScheduleModeChange={onScheduleModeChange}
+      fulfillmentOptions={twoFulfillmentOptions}
+    />);
+
+    expect(screen.getByTestId('scheduled-date-time-picker')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Anytime' }));
+
+    expect(onScheduleModeChange).toHaveBeenCalledWith('anytime');
+    rerender(<FnbCheckoutFulfillmentChoices
+      {...baseProps}
+      fnbScheduleMode="anytime"
+      fnbScheduledFor=""
+      onOrderMethodChange={vi.fn()}
+      onScheduleModeChange={onScheduleModeChange}
+      fulfillmentOptions={twoFulfillmentOptions}
+    />);
+    expect(screen.queryByTestId('scheduled-date-time-picker')).toBeNull();
   });
 
   it('stacks NOW and Schedule in the small-screen responsive flow', () => {

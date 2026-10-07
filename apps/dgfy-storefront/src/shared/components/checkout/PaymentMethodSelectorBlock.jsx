@@ -18,6 +18,7 @@ export function PaymentMethodSelectorBlock({
   portalMenu = true,
   labelColor = '#475569',
   labelStyle,
+  disabled = false,
   // Phase 142 (#823): an optional node rendered under the dropdown -- the downpayment amount
   // callout + refundable seam. Kept generic (any node, not a fixed shape) so this shared block
   // doesn't need to know about downpayment presentation at all; each mode builds its own callout
@@ -56,6 +57,7 @@ export function PaymentMethodSelectorBlock({
           menuStyle={paymentMenuStyle}
           optionStyle={paymentOptionStyle}
           selectedLabelStyle={selectedLabelStyle}
+          disabled={disabled}
           portalMenu={portalMenu}
         />
       </label>

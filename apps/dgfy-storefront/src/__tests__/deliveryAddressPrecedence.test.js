@@ -59,6 +59,10 @@ describe('hasExplicitDeliveryAddressEdit (#1219)', () => {
     expect(hasExplicitDeliveryAddressEdit('Same text', 'Same text')).toBe(false);
   });
 
+  it('keeps a trailing space as a live edit while the customer is typing', () => {
+    expect(hasExplicitDeliveryAddressEdit('Same text ', 'Same text')).toBe(true);
+  });
+
   it('returns false for the generated pinned-location fallback', () => {
     expect(hasExplicitDeliveryAddressEdit(
       'Pinned map location (10.720000, 122.560000)',

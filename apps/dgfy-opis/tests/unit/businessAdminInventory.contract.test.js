@@ -21,12 +21,12 @@ describe('Business Admin inventory presentation contract', () => {
     expect(businessAdminPage).toContain('weighted_total_inventory_value');
     expect(businessAdminPage).toContain("data?.valuation?.meta?.cost_visibility === false");
     expect(businessAdminPage).toContain('Read-only inventory view');
-    expect(businessAdminPage).toContain('Catalog Editor and Stock movements');
+    expect(businessAdminPage).toContain('Item Editor and Stock movements');
   });
 
   it('provides one canonical inventory workflow entry point without creating a stock-count form', () => {
     expect(businessAdminPage).toContain('Inventory workflows');
-    expect(businessAdminPage).toContain('Catalog editor');
+    expect(businessAdminPage).toContain('Item Editor');
     expect(businessAdminPage).toContain('Stock movements');
     expect(businessAdminPage).toContain('Suppliers');
     expect(businessAdminPage).toContain('Purchase orders');

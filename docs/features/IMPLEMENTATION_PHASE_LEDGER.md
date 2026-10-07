@@ -26503,3 +26503,71 @@ Not complete; set only after all acceptance gates above pass.
 
 Phase 476 only after Phase 475's acceptance gates pass and then-current ledger eligibility is
 reconciled.
+
+## Phase 476 - Owner-configured item-processing fee for Storefront checkout
+
+### Initiative and release
+
+Configurable Item Processing Fee, local UpdatePOS verification.
+
+### Objective and scope
+
+Allow an authenticated tenant Owner to enable an item-processing fee as either a fixed PHP amount
+or a percentage of the discounted item subtotal. Calculate it authoritatively on the server,
+independent of the payment method and provider, snapshot it on orders and hosted payment sessions,
+display it as a separate Storefront checkout/tracking line, and expose it in OPIS order
+detail/receipt totals. Keep the existing provider-fee fallback policy and DGFY settlement fields
+separate. IMS is explicitly excluded.
+
+### Status
+
+`in_progress` — Pat explicitly approved this local-only implementation while Phase 473 remains
+open; no staging, production, or IMS work is authorized by this phase.
+
+### Dependencies
+
+Approved local execution of the Configurable Item Processing Fee plan; ADR 0052's
+item-processing-fee amendment; landlord policy migration; tenant schema capability
+registration; local UpdatePOS API, OPIS, POS, and Storefront services.
+
+### Acceptance and validation evidence
+
+- [x] Local landlord migration and tenant-schema capability report pass against all 15 local
+      tenant databases at capability `2026-10-06.1`.
+- [x] Policy/domain tests cover fixed and percentage modes, centavo rounding, invalid mixed modes,
+      and a ₱1,000 quote with a 3% fee producing ₱30 and a ₱1,030 total.
+- [x] Existing tenant-revenue security/use-case contracts pass with the new Owner field.
+- [x] Storefront breakdown/tracked-total tests pass; OPIS contract tests pass.
+- [x] Storefront and OPIS production builds pass locally.
+- [x] Computer-use verification confirms Owner configuration and Storefront quote/order display on
+      the local stack; the resulting tenant transaction snapshot records the separate item-processing
+      item-processing amount, label, breakdown, and total. Direct Masu OPIS order-detail browser verification is
+      blocked by the existing Masu Back Office access denial; OPIS order-detail contract coverage
+      and the server-side snapshot pass.
+- [ ] Local rollback/data-integrity evidence and final execution summary are recorded. Data-integrity
+      evidence is recorded in the local transaction snapshot and compliance declaration; rollback
+      is documented but was not exercised so the local test order remains available for inspection.
+
+### Links
+
+- Plan: `output/plans/Configurable_Payment_Processing_Fee/00_Configurable_Payment_Processing_Fee_Index.docx`
+  and `EXECUTION_MANIFEST.md`.
+- Architecture: `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`.
+- Implementation: `apps/dgfy-api/src/modules/tenantRevenue/domain/customerProcessingFeePolicy.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-opis/src/features/businessAdmin/ProcessingFeePolicyEditor.jsx`, and
+  `apps/dgfy-storefront/src/shared/model/storefrontOrderBreakdownPresentation.js`.
+- Tests: `apps/dgfy-api/tests/customerProcessingFeePolicy.unit.test.js`,
+  `apps/dgfy-storefront/src/shared/model/storefrontOrderBreakdownPresentation.test.js`,
+  `apps/dgfy-storefront/src/__tests__/trackedTotals.test.js`, and
+  `apps/dgfy-opis/tests/unit/businessAdminProcessingFees.contract.test.js`.
+
+### Completion date
+
+Not complete; the implementation and local verification gates pass except for direct Masu OPIS
+order-detail browser access and an unexercised rollback. Set only after those remaining gates are
+resolved or explicitly waived.
+
+### Next eligible phase
+
+Phase 477 only after Phase 476's local acceptance gates pass and the ledger is rechecked.

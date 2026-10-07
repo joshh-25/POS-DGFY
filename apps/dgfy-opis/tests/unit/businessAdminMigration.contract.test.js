@@ -38,7 +38,7 @@ describe('OPIS Back Office migration contract', () => {
     expect(source).toContain("const isSales = section === 'sales';");
     expect(source).toContain("const isReports = section === 'reports';");
     expect(source).toContain('{!isCatalog && !isFnb && !isSales && !isReports ? (');
-    expect(source).toContain('{isCatalog || isFnb || isSales ? <Module embedded /> : <Module />}');
+    expect(source).toContain('{isCatalog ? <Module embedded editorLabel="Item Editor" itemEditorMode /> : isFnb || isSales ? <Module embedded /> : <Module />}');
   });
 
   it('does not retain a POS page-url map for historical Back Office routes', () => {
@@ -49,6 +49,7 @@ describe('OPIS Back Office migration contract', () => {
 
   it('retires the IMS merchant shell without removing platform administration', () => {
     const source = readRepoFile('apps/dgfy-ims/src/main.jsx');
+    const platformAdminSource = readRepoFile('apps/dgfy-admin/src/main.jsx');
     for (const [legacyRoute, backOfficeRoute] of Object.entries({
       items: 'catalog',
       suppliers: 'suppliers',
@@ -66,7 +67,7 @@ describe('OPIS Back Office migration contract', () => {
     })) {
       expect(source).toContain(`<Route path="/${legacyRoute}" element={<LegacyMerchantRoute target="/backoffice/${backOfficeRoute}`);
     }
-    expect(source).toContain('<Route path="/admin" element={<AdminLayout />}>');
+    expect(platformAdminSource).toContain('<Route path="/admin" element={<AdminLayout />}>');
     expect(source).toContain('<Route path="/receive/:token" element={<LegacyReceiveRoute />} />');
   });
 });

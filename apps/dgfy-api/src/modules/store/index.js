@@ -85,7 +85,11 @@ export const createStoreCustomerAddressUseCase = buildCreateStoreCustomerAddress
 export const updateStoreCustomerAddressUseCase = buildUpdateStoreCustomerAddressUseCase({ storeRepository });
 export const setDefaultStoreCustomerAddressUseCase = buildSetDefaultStoreCustomerAddressUseCase({ storeRepository });
 export const deleteStoreCustomerAddressUseCase = buildDeleteStoreCustomerAddressUseCase({ storeRepository });
-export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository, downpaymentSettingsRepository });
+export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({
+    storeRepository,
+    downpaymentSettingsRepository,
+    tenantRevenueRepository
+});
 const emailOtpService = { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp };
 export const requestStoreGuestCheckoutOtpUseCase = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
 export const verifyStoreGuestCheckoutOtpUseCase = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
@@ -134,7 +138,8 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
 export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
     storeRepository,
     downpaymentSettingsRepository,
-    inventoryReservationService
+    inventoryReservationService,
+    tenantRevenueRepository
 });
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });

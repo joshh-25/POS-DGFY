@@ -1,4 +1,4 @@
-import { CalendarDays, ShoppingBag, Zap } from 'lucide-react';
+import { CalendarDays, Clock, ShoppingBag, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { getUnavailableFulfillmentMessage, resolveStorefrontFulfillmentOptions } from '../../../../shared/model/storefrontFulfillmentOptions.js';
@@ -193,6 +193,18 @@ export function FnbCheckoutFulfillmentChoices({
               icon: ({ size }) => <CalendarDays size={size} />,
               label: 'Schedule',
               onClick: () => onScheduleModeChange('schedule')
+            })}
+          />
+          <SelectableOptionCard
+            {...buildChoiceCardProps({
+              ...choiceProps,
+              active: fnbScheduleMode === 'anytime',
+              icon: ({ size }) => <Clock size={size} />,
+              label: 'Anytime',
+              onClick: () => {
+                setDateTimePickerOpen(false);
+                onScheduleModeChange('anytime');
+              }
             })}
           />
           </div> : null}

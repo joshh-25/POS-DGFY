@@ -124,6 +124,19 @@ describe('buildFnbCheckoutPayload', () => {
     expect(payload.scheduled_for).toBeNull();
   });
 
+  it('keeps scheduled_for null for the Anytime timing choice', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'corner-store-9f21' },
+      orderMethod: 'pickup',
+      fnbScheduleMode: 'anytime',
+      fnbScheduledFor: '2026-08-01T10:30',
+      cart: [{ item_id: 2, quantity: 1 }]
+    });
+
+    expect(payload.scheduled_for).toBeNull();
+  });
+
   it('always carries the selected dine-in time even if the timing mode is stale', () => {
     const payload = buildFnbCheckoutPayload({
       selectedLocationId: 'branch-1',

@@ -32,9 +32,13 @@ export function resolveDeliveryAddress({
 }
 
 export function hasExplicitDeliveryAddressEdit(customerAddress = '', comparedTo = '') {
-  const typed = String(customerAddress || '').trim();
+  const rawTyped = String(customerAddress || '');
+  const typed = rawTyped.trim();
   if (!typed || isGeneratedPinnedDeliveryAddress(typed)) return false;
-  return typed !== String(comparedTo || '').trim();
+  // Preserve whitespace while the customer is editing. The resolved checkout payload trims
+  // the final value, but the controlled input must not fall back to the map-generated address
+  // when the customer has only entered a trailing space or is deleting the last character.
+  return rawTyped !== String(comparedTo || '');
 }
 
 /**

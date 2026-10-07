@@ -108,6 +108,7 @@ htdocs/.htaccess
 !.cursor/rules/
 
 # Build outputs
+/output/plans/
 .vite/
 .deploy-state/
 /apps/dgfy-storefront/src/scratch/

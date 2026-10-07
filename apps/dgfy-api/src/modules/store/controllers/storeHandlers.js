@@ -458,9 +458,11 @@ export const cancelCheckoutPaymentSession = async (req, res, next) => {
         const customerId = customer?.customer_id || customer?.id || null;
         const result = await cancelStoreCheckoutPaymentSessionUseCase({
             paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id,
+            storeSlug: req.headers['x-store-slug'] || req.body?.store_slug || req.validatedData?.store_slug || null,
             actor: customerId ? `store_customer:${customerId}` : 'store_guest',
             ipAddress: req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || null,
-            userAgent: req.get?.('user-agent') || null
+            userAgent: req.get?.('user-agent') || null,
+            storeCustomer: customer
         });
 
         return sendUseCaseResult(res, result, {
@@ -468,6 +470,9 @@ export const cancelCheckoutPaymentSession = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                message: result.data?.cancellation?.outcome === 'cancelled'
+                    ? 'Payment session cancelled'
+                    : 'Payment session cancellation processed',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -697,6 +702,7 @@ export default {
     exchangeGuestCheckoutVerificationGrant,
     createCheckoutPaymentSession,
     getCheckoutPaymentSession,
+    cancelCheckoutPaymentSession,
     reconcileCheckoutPaymentSession,
     checkout,
     trackOrder,

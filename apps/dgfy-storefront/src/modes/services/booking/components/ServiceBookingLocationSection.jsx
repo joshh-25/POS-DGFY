@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Expand, MapPin, Navigation, Plus, X } from 'lucide-react';
 import { SavedAddressCard } from '../../../../shared/components/checkout/SavedAddressCard.jsx';
+import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
 import { ServiceBookingSectionHeader } from './ServiceBookingSectionHeader.jsx';
 import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
@@ -83,6 +84,9 @@ export function ServiceBookingLocationSection({
   pinLocationLoading,
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
+  setCustomerAddress,
+  setResolvedDeliveryAddress,
+  setPinLocationError,
   handleAddPinnedLocation,
   canAddPinnedLocation,
   isDgfyCustomerSignedIn,
@@ -97,6 +101,27 @@ export function ServiceBookingLocationSection({
   compactLayout = false,
 }) {
   const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
+  const [addressSearchDraft, setAddressSearchDraft] = useState(null);
+  const displayedAddress = String(deliveryLocationDisplayAddress || '');
+  const addressSearchQuery = addressSearchDraft?.sourceAddress === displayedAddress
+    ? addressSearchDraft.value
+    : displayedAddress;
+  const handleAddressSearchChange = (nextValue) => {
+    setAddressSearchDraft({ sourceAddress: displayedAddress, value: nextValue });
+  };
+  const handleClearDeliveryLocation = () => {
+    setAddressSearchDraft(null);
+    setSelectedSavedLocationId('');
+    setResolvedDeliveryAddress('');
+    setCustomerAddress('');
+    setCustomerPin(null);
+    setDeliveryLocationAction('map');
+    setPinLocationError('');
+  };
+  const handleAddLocationFromMap = async () => {
+    const saved = await handleAddPinnedLocation?.();
+    if (saved) setShowExpandedDeliveryMap(false);
+  };
 
   const normalizedFlowMethod = String(serviceFlowMethod || '').trim().toLowerCase();
   const normalizedProfileMethod = String(serviceFlowProfileMethod || '').trim().toLowerCase();
@@ -164,6 +189,20 @@ export function ServiceBookingLocationSection({
   const stopMapOverlayInteraction = (event) => {
     event.preventDefault();
     event.stopPropagation();
+  };
+  const handleSelectSearchResult = (result) => {
+    const latitude = Number(result?.latitude);
+    const longitude = Number(result?.longitude);
+    const addressLine = String(result?.addressLine || '').trim();
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !addressLine) return;
+    setAddressSearchDraft({ sourceAddress: displayedAddress, value: addressLine });
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setCustomerPin({
+      latitude: Number(latitude.toFixed(6)),
+      longitude: Number(longitude.toFixed(6)),
+      address_line: addressLine
+    });
   };
 
   if (isOnlineFlow) return null;
@@ -591,13 +630,27 @@ export function ServiceBookingLocationSection({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
               <div style={{ display: 'grid', gap: 4 }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', fontFamily: servicesDisplayFont }}>Large Map</div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Tap anywhere on the map to pin your service location.</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Search an address or tap anywhere on the map to pin your service location.</div>
               </div>
               <button type="button" onClick={() => setShowExpandedDeliveryMap(false)} style={{ minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '0 14px', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont }}>
                 Close
               </button>
             </div>
 
+            <DeliveryAddressSearchField
+              value={addressSearchQuery}
+              onValueChange={handleAddressSearchChange}
+              onClear={handleClearDeliveryLocation}
+              onSelectResult={handleSelectSearchResult}
+              bias={customerPin}
+              isMobileViewport={isMobileViewport}
+              ariaLabel="Search service address"
+              placeholder="Search an address or landmark"
+              highlighted={Boolean(deliveryLocationDisplayAddress) && (deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map')}
+              accentColor={servicesPrimary}
+              accentTint={servicesPrimarySoft}
+              accentBorder={servicesPrimaryBorder}
+            />
             <DeliveryPinMap
               pin={customerPin}
               onPinChange={(nextPin) => {
@@ -692,7 +745,7 @@ export function ServiceBookingLocationSection({
                   {deliveryLocationDisplayAddress || 'Selected service address will appear here.'}
                 </span>
               </div>
-              <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${servicesPrimary}`, background: canAddPinnedLocation ? servicesPrimary : SERVICES_PALETTE.page, color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(26,78,141,0.18)' : 'none' }}>
+              <button type="button" onClick={handleAddLocationFromMap} disabled={!canAddPinnedLocation} style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${servicesPrimary}`, background: canAddPinnedLocation ? servicesPrimary : SERVICES_PALETTE.page, color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(26,78,141,0.18)' : 'none' }}>
                 {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
               </button>
             </div>
