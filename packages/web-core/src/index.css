@@ -117,6 +117,15 @@ body {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
+/* Keep browser double-tap zoom from firing across every POS view. The
+ * manipulation value preserves normal panning and pinch zoom; it only removes
+ * the browser gesture that competes with taps on controls and cards. The POS
+ * marker is installed before React mounts, so body portals and every route are
+ * covered without changing IMS or Storefront behavior. */
+body[data-pos-surface="pos"] {
+  touch-action: manipulation;
+}
+
   -moz-osx-font-smoothing: grayscale;
 }
 
@@ -8077,4 +8086,206 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     min-height: 2rem;
     white-space: normal;
   }
+}
+
+/* POS > Vouchers frontend presentation contracts. These rules are scoped to
+   Voucher surfaces so the current develop CSS for Items and other POS modes
+   remains unchanged. */
+.pos-voucher-form-modal .pos-voucher-checkbox {
+  border-color: #8aa8cd;
+  background-color: #fff;
+  color: #fff;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.pos-voucher-form-modal .pos-voucher-checkbox[aria-checked="true"] {
+  border-color: #1a4e8d;
+  background-color: #1a4e8d;
+}
+
+.pos-voucher-form-modal .pos-voucher-checkbox:hover:not(:disabled) {
+  border-color: #1a4e8d;
+}
+
+.pos-voucher-form-modal .pos-voucher-checkbox:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #c7dcf3;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-select {
+  border-color: #c7dcf3;
+  color: #0f172a;
+  background-color: #fff;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-select:hover:not(:disabled) {
+  border-color: #8aa8cd;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-select:focus-visible {
+  border-color: #1a4e8d;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #c7dcf3;
+}
+
+@media screen and (min-width: 640px) {
+  .pos-voucher-card-row { align-items: stretch; }
+  .pos-voucher-card-icon {
+    align-self: center;
+    box-sizing: border-box;
+    width: 4.5rem !important;
+    min-width: 4.5rem !important;
+    max-width: 4.5rem !important;
+    height: 4.5rem !important;
+    min-height: 4.5rem !important;
+    max-height: 4.5rem !important;
+    aspect-ratio: 1 / 1 !important;
+    flex: 0 0 4.5rem;
+  }
+  .pos-voucher-card-icon > svg { width: 1.75rem; height: 1.75rem; }
+}
+
+@media screen and (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+  .pos-voucher-form-modal .pos-voucher-form-section { padding: 1rem; }
+  .pos-voucher-form-modal .pos-voucher-weekday-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    column-gap: 0.5rem;
+    row-gap: 0;
+  }
+  .pos-voucher-form-modal .pos-voucher-weekday-option,
+  .pos-voucher-form-modal .pos-voucher-eligibility-option {
+    align-self: flex-start;
+    width: fit-content;
+    max-width: 100%;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+  .pos-voucher-form-modal .pos-voucher-checkbox {
+    box-sizing: border-box;
+    width: 1rem;
+    min-width: 1rem;
+    max-width: 1rem;
+    height: 1rem !important;
+    min-height: 1rem !important;
+    max-height: 1rem !important;
+    flex: 0 0 1rem;
+    align-self: center;
+  }
+  .pos-voucher-form-modal .relative.inline-flex.shrink-0.align-middle {
+    box-sizing: border-box;
+    width: 1.25rem;
+    min-width: 1.25rem;
+    height: 1.25rem !important;
+    min-height: 1.25rem !important;
+    max-height: 1.25rem !important;
+    flex: 0 0 1.25rem;
+    align-self: center;
+  }
+  .pos-voucher-form-modal .relative.inline-flex.shrink-0.align-middle > button {
+    box-sizing: border-box;
+    width: 1.25rem;
+    min-width: 1.25rem;
+    max-width: 1.25rem;
+    height: 1.25rem !important;
+    min-height: 1.25rem !important;
+    max-height: 1.25rem !important;
+    padding: 0;
+  }
+  .pos-voucher-form-modal .pos-voucher-eligibility-grid {
+    column-gap: 2rem;
+    row-gap: 1.25rem;
+  }
+  .pos-voucher-form-modal .pos-voucher-eligibility-label {
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .pos-voucher-form-modal .pos-voucher-eligibility-options {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
+    margin-top: 0.125rem;
+  }
+  .pos-voucher-form-modal {
+    height: auto;
+    max-height: min(52rem, calc(100vh - 6rem));
+    max-height: min(52rem, calc(100dvh - 6rem));
+  }
+}
+
+.pos-filter-surface {
+  box-sizing: border-box;
+  border-color: #cbd5e1;
+  box-shadow: 0 12px 30px rgb(15 23 42 / 0.2);
+}
+.pos-filter-surface--extended {
+  border-color: #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgb(15 23 42 / 0.2);
+}
+.pos-filter-surface-header--extended { border-color: #143f73; background: #1a4e8d; color: #fff; }
+.pos-filter-surface-header--extended .text-slate-500 { color: #dbeafe; }
+.pos-filter-surface-header,
+.pos-filter-surface-body,
+.pos-filter-surface-footer { box-sizing: border-box; }
+.pos-filter-surface-header,
+.pos-filter-surface-footer { border-color: #e2e8f0; }
+.pos-filter-surface-title { font-size: 1.25rem; line-height: 1.75rem; font-weight: 900; }
+.pos-filter-surface-title--extended { color: #fff; font-size: 0.875rem; line-height: 1.25rem; }
+.pos-filter-trigger { box-sizing: border-box; font-size: 0.8125rem; line-height: 1.25rem; }
+.pos-filter-choice {
+  box-sizing: border-box;
+  height: auto;
+  min-height: 2rem;
+  border-radius: 0.5rem;
+  font-size: 0.625rem;
+  line-height: 1.15;
+}
+.dgfy-pos-history-filter-surface { height: min(80vh, 26rem) !important; min-height: 0 !important; }
+
+@media (max-width: 767.98px) {
+  .dgfy-pos-history-filter-surface { height: min(80vh, 24rem) !important; }
+  .pos-voucher-form-modal .pos-items-modal-body {
+    padding: 0.75rem 0.75rem 1rem;
+    scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+  .pos-voucher-form-modal .pos-voucher-form-section { border-radius: 0.75rem; padding: 0.75rem; }
+  .pos-voucher-form-modal-footer { padding: 0.625rem 0.75rem calc(0.625rem + env(safe-area-inset-bottom, 0px)); }
+  .pos-voucher-form-modal-footer > button { min-height: 2.5rem; }
+}
+
+@media (max-width: 639.98px) {
+  .pos-vouchers-workspace-shell {
+    --pos-items-mobile-gutter: 0.5rem;
+    padding: 0 var(--pos-items-mobile-gutter) 1rem;
+    padding-inline: var(--pos-items-mobile-gutter) !important;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+  }
+  .pos-vouchers-workspace-shell .dgfy-pos-history-pagination-footer { margin-top: 0 !important; }
+}
+
+@media screen and (min-width: 1280px) and (orientation: landscape) {
+  .pos-voucher-form-modal {
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+  }
+}
+
+.pos-voucher-catalog-workspace .pos-items-mobile-primary-button {
+  border-color: #1a4e8d;
+  background: #1a4e8d;
+  color: #fff;
+}
+.pos-voucher-catalog-workspace .pos-items-mobile-primary-button:hover,
+.pos-voucher-catalog-workspace .pos-items-mobile-primary-button:focus-visible,
+.pos-voucher-catalog-workspace .pos-items-mobile-primary-button:active,
+.pos-voucher-catalog-workspace .pos-items-mobile-primary-button.pos-items-mobile-icon-button--active {
+  border-color: #143f73;
+  background: #143f73;
+  color: #fff;
 }
