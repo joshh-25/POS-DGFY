@@ -476,6 +476,42 @@ jobs:
           OPIS_R: ${{ inputs.release_revision_frontend_opis }}
           ADMIN_R: ${{ inputs.release_revision_frontend_admin }}
 
+      - name: Summarize build plan (warning-only, #2297)
+        if: always() && steps.resolve.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SELECTED_JSON="$(node -e "const e=process.env;console.log(JSON.stringify({'dgfy-api':e.BUILD_API==='true','dgfy-migration-runner':e.BUILD_API==='true','dgfy-ims':e.BUILD_IMS==='true','dgfy-pos':e.BUILD_POS==='true','dgfy-storefront':e.BUILD_STOREFRONT==='true','dgfy-opis':e.BUILD_OPIS==='true','dgfy-admin':e.BUILD_ADMIN==='true'}))")"
+          NEEDED_JSON="$(node -e "const e=process.env;console.log(JSON.stringify({'dgfy-api':e.NEED_API==='true','dgfy-migration-runner':e.NEED_MIGRATION==='true','dgfy-ims':e.NEED_IMS==='true','dgfy-pos':e.NEED_POS==='true','dgfy-storefront':e.NEED_STOREFRONT==='true','dgfy-opis':e.NEED_OPIS==='true','dgfy-admin':e.NEED_ADMIN==='true'}))")"
+          REVISIONS_JSON="$(node -e "const e=process.env;const r={'dgfy-api':e.REVISION_API,'dgfy-migration-runner':e.REVISION_MIGRATION,'dgfy-ims':e.REVISION_IMS,'dgfy-pos':e.REVISION_POS,'dgfy-storefront':e.REVISION_STOREFRONT,'dgfy-opis':e.REVISION_OPIS,'dgfy-admin':e.REVISION_ADMIN};console.log(JSON.stringify(Object.fromEntries(Object.entries(r).filter(([,v])=>v)))")"
+          node scripts/summarize-build-plan.js \
+            --selected-json "${SELECTED_JSON}" \
+            --needed-json "${NEEDED_JSON}" \
+            --revisions-json "${REVISIONS_JSON}" \
+            --deploy "${{ inputs.deploy }}" \
+            --environment PROD
+        env:
+          BUILD_API: ${{ inputs.build_api }}
+          BUILD_IMS: ${{ inputs.build_frontend_ims }}
+          BUILD_POS: ${{ inputs.build_frontend_pos }}
+          BUILD_STOREFRONT: ${{ inputs.build_frontend_storefront }}
+          BUILD_OPIS: ${{ inputs.build_frontend_opis }}
+          BUILD_ADMIN: ${{ inputs.build_frontend_admin }}
+          NEED_API: ${{ steps.resolve.outputs.should_build_dgfy_api }}
+          NEED_MIGRATION: ${{ steps.resolve.outputs.should_build_dgfy_migration_runner }}
+          NEED_IMS: ${{ steps.resolve.outputs.should_build_dgfy_ims }}
+          NEED_POS: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
+          NEED_STOREFRONT: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
+          NEED_OPIS: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
+          NEED_ADMIN: ${{ steps.resolve.outputs.should_build_dgfy_admin }}
+          REVISION_API: ${{ inputs.release_revision_api }}
+          REVISION_MIGRATION: ${{ inputs.release_revision_migration_runner }}
+          REVISION_IMS: ${{ inputs.release_revision_frontend_ims }}
+          REVISION_POS: ${{ inputs.release_revision_frontend_pos }}
+          REVISION_STOREFRONT: ${{ inputs.release_revision_frontend_storefront }}
+          REVISION_OPIS: ${{ inputs.release_revision_frontend_opis }}
+          REVISION_ADMIN: ${{ inputs.release_revision_frontend_admin }}
+
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
   # input below -- see #913 for why this was renamed off beta). The
