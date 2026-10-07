@@ -20,8 +20,9 @@ import { buildGetPayMongoSandboxCertificationUseCase } from './usecases/paymongo
 import { buildHandleCommerceOrderLifecycleUseCase } from './usecases/commerceOrderLifecycleUseCase.js';
 import { recordTenantRevenueOrderFulfillmentUseCase } from '../tenantRevenue/index.js';
 import { buildCreateDglaundryBookingPaymentSessionUseCase } from './usecases/createDglaundryBookingPaymentSessionUseCase.js';
-import { dglaundryPartnerClient } from '../dgfyLaundryOrders/services/dglaundryPartnerClient.js';
+import { dglaundryDurableDelivery as dglaundryPartnerClient } from '../dgfyLaundryOrders/index.js';
 import { dgfyLaundryOrderRepository } from '../dgfyLaundryOrders/repositories/dgfyLaundryOrderRepository.js';
+import { reconcileDeliveredDglaundryBooking } from './usecases/finalizeDglaundryBookingSession.js';
 
 export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceWebhookUseCase({
   commercePaymentRepository,
@@ -99,5 +100,11 @@ export const createDglaundryBookingPaymentSessionUseCase = buildCreateDglaundryB
   partnerClient: dglaundryPartnerClient,
   mappingRepository: dgfyLaundryOrderRepository
 });
+
+export const reconcileDglaundryOutboxCompletion = async ({ completionReference }) => {
+  const session = await commercePaymentRepository.findSessionBySessionId(completionReference);
+  if (!session) throw new Error('DGLAUNDRY_BOOKING_PAYMENT_SESSION_NOT_FOUND');
+  return reconcileDeliveredDglaundryBooking({ session, commercePaymentRepository });
+};
 
 export { commercePaymentRepository };

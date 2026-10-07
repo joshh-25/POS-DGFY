@@ -19,13 +19,17 @@ import {
 } from '../modules/dgfyLaundry/controllers/dgfyLaundryProviderHandlers.js';
 import {
     getDglaundryOrderForPartner,
-    registerDglaundryCustomerActivity
+    registerDglaundryCustomerActivity,
+    listDglaundryDeadLetters,
+    redriveDglaundryDeadLetter
 } from '../modules/dgfyLaundryOrders/controllers/dgfyLaundryOrderHandlers.js';
 
 const router = express.Router();
 
 router.get('/account/companies', authenticateDgfyAccount, listLaundryCompanies);
 router.post('/account/launch', authenticateDgfyAccount, launchLaundryOperations);
+router.get('/dead-letters', authenticateDgfyAccount, listDglaundryDeadLetters);
+router.post('/dead-letters/:id/redrive', authenticateDgfyAccount, redriveDglaundryDeadLetter);
 router.get('/session-context', authenticateDglaundryAccessToken, getLaundrySessionContext);
 
 router.get('/health', requireDglaundryPartner, getLaundryHealth);

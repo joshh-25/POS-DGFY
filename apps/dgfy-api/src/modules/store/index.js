@@ -117,9 +117,9 @@ export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymen
     commercePaymentRepository
 });
 const cancelDglaundryBookingReservationLazy = async (input) => {
-    const [{ cancelDglaundryBookingReservations }, { dglaundryPartnerClient }] = await Promise.all([
+    const [{ cancelDglaundryBookingReservations }, { dglaundryDurableDelivery: dglaundryPartnerClient }] = await Promise.all([
         import('../commercePayments/usecases/finalizeDglaundryBookingSession.js'),
-        import('../dgfyLaundryOrders/services/dglaundryPartnerClient.js')
+        import('../dgfyLaundryOrders/index.js')
     ]);
     return cancelDglaundryBookingReservations({
         ...input,

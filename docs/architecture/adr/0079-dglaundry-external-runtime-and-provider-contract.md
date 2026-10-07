@@ -73,6 +73,24 @@ review but never proves hosted or production readiness.
 
 ## Amendments
 
+### 2026-10-07 — Persist DGFY-origin delivery and operator recovery
+
+Issue [#2310](https://github.com/Sieitzz/dgfy-platform/issues/2310) implements Decision 6's
+durability requirement on the DGFY side. Outbound provider operations retain an immutable,
+company/location-scoped intent before transport, reuse operation/event identity across retries,
+and use landlord MySQL leases with bounded retries. Foreground delivery and background delivery
+share the same signed transport implementation; credentials and signed headers are regenerated per
+attempt. Exhausted operations remain inspectable and require an audited owner/admin redrive.
+
+Inbound event signature nonces are claimed atomically in shared Redis only after digest, signature,
+and timestamp verification. The accepted signature lifetime is bounded to 300 seconds and claims
+remain through the final accepted second. Redis unavailability fails closed. Operator dead-letter
+inspection is scoped to the caller's accepted owner/admin membership and an active mapped
+company/location; stored payloads and guest tracking capabilities are never returned.
+
+This amendment records operational semantics under the existing, untagged Decision 6. It does not
+claim exactly-once transport: provider idempotency remains required for safe at-least-once delivery.
+
 ### 2026-10-07 — Ratify `laundry` as the #518 engine classification; widen `external`'s documented meaning; adopt the contract of record
 
 Issue [#518](https://github.com/Sieitzz/dgfy-platform/issues/518) ("Decide the sibling-app
