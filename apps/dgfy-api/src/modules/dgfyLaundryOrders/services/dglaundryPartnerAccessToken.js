@@ -1,20 +1,12 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import jwt from 'jsonwebtoken';
+import { resolveSigningKeyMaterial } from '../../shared/utils/oidcSigningKeyResolver.js';
 
 const operationScopes = new Map([
   ['/api/v1/integrations/dgfy/quotes', { method: 'POST', scope: 'dglaundry:quotes:create' }],
   ['/api/v1/integrations/dgfy/booking-groups/prepare', { method: 'POST', scope: 'dglaundry:bookings:prepare' }],
   ['/api/v1/integrations/dgfy/order-projections/resolve', { method: 'POST', scope: 'dglaundry:orders:read' }]
 ]);
-
-const configured = (name) => {
-  const direct = String(process.env[name] || '').trim();
-  if (direct) return direct;
-  const file = String(process.env[`${name}_FILE`] || '').trim();
-  if (!file) return '';
-  try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
-};
 
 const required = (value, code) => {
   const normalized = String(value || '').trim();
@@ -50,7 +42,11 @@ export const issueDglaundryPartnerAccessToken = ({ method, target, payload = {},
   const keyId = required(process.env.DGFY_OIDC_KEY_ID, 'DGFY_OIDC_KEY_ID_REQUIRED');
   if (!/^[a-z][a-z0-9._:-]{2,80}$/.test(clientId)) throw new Error('DGFY_DGLAUNDRY_SERVICE_CLIENT_ID_INVALID');
   if (!/^[A-Za-z0-9._:-]{3,128}$/.test(keyId)) throw new Error('DGFY_OIDC_KEY_ID_INVALID');
-  const signingKey = required(configured('DGFY_OIDC_PRIVATE_KEY'), 'DGFY_OIDC_PRIVATE_KEY_FILE_REQUIRED');
+  const signingKey = required(resolveSigningKeyMaterial({
+    inlineEnvVar: 'DGFY_OIDC_PRIVATE_KEY',
+    fileEnvVar: 'DGFY_OIDC_PRIVATE_KEY_FILE',
+    label: 'OIDC private signing key'
+  }).pem, 'DGFY_OIDC_PRIVATE_KEY_FILE_REQUIRED');
   const companyId = required(payload.companyId || payload.company_id, 'DGLAUNDRY_PARTNER_COMPANY_ID_REQUIRED');
   const locationId = required(payload.locationId || payload.location_id, 'DGLAUNDRY_PARTNER_LOCATION_ID_REQUIRED');
   const issuedAt = Math.floor(Number(nowSeconds));

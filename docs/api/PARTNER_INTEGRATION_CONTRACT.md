@@ -261,7 +261,7 @@ configuration-only, and what does not exist, rather than implying full readiness
 
 | Gap | Status | Tracking |
 |---|---|---|
-| Staging/production JWKS returns `503 oidc_keys_not_configured` — no key-file mount or env classification exists in `infrastructure/docker/` | ⚠️ config/infra, not code | filed under epic #517 |
+| Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
 | Browser/machine/service client IDs never registered (`dglaundry-connection-manifest.json` ships blank) | ⚠️ config | filed under epic #517 |
 | Signed provider runtime attestation, signed event specimens, payment-lifecycle probe routes | ❌ not built | filed under epic #517 |
 | No `end_session_endpoint`, no userinfo, no introspection; access tokens are opaque; single-key JWKS (no overlap rotation); `/oidc/*` excluded from `generalLimiter` | ❌ not built | filed under epic #517 |

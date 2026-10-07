@@ -134,6 +134,7 @@ bun.lock
 # certbot certs -- includes dev-certs/generate.sh's self-signed output, which
 # now lands under data/certbot/conf/live/ instead of dev-certs/ itself)
 /infrastructure/docker/data/
+/infrastructure/docker/secrets/
 
 # Ignore .env files, which may contain secrets. See
 .env
