@@ -65,6 +65,9 @@ export function useCheckoutTotalsAndGating({
     const serviceFee = quoteResult?.service_fee_amount != null
       ? Number(quoteResult.service_fee_amount)
       : 0;
+    const customerProcessingFee = quoteResult?.customer_processing_fee_amount != null
+      ? Number(quoteResult.customer_processing_fee_amount)
+      : 0;
     const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
     // #604's own field is `voucher_discount_amount`, separate from promo's `discount_amount` --
     // the two checkout discounts are independent (see buildFnbCheckoutPayload.js's own note).
@@ -88,6 +91,8 @@ export function useCheckoutTotalsAndGating({
       discount_rate: quoteResult?.discount_rate != null ? Number(quoteResult.discount_rate) : 0,
       voucher_discount_amount: displayVoucherDiscountAmount,
       service_fee_amount: serviceFee,
+      customer_processing_fee_amount: isTotalStale ? 0 : customerProcessingFee,
+      customer_processing_fee_label: quoteResult?.customer_processing_fee_label || 'Item processing fee',
       delivery_fee: isTotalStale ? 0 : deliveryFee,
       vatable_sales: !isTotalStale && quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
       vat_amount: !isTotalStale && quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,

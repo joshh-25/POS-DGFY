@@ -9,7 +9,28 @@ const PAYMENT_TYPE_FILTERS = [...PAYMENT_TYPES, 'other'];
 const PAYMENT_STATUSES = ['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
-const REPORT_SECTIONS = ['daily', 'sales', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs', 'employee_credit'];
+const DELIVERY_PROVIDER_FILTERS = ['foodpanda', 'grab', 'other'];
+const REPORT_BREAKDOWNS = ['hourly', 'items', 'categories'];
+const REPORT_BREAKDOWN_SORT_FIELDS = [
+    'bucket_start_local',
+    'item_name',
+    'sku',
+    'category_name',
+    'item_count',
+    'quantity',
+    'orders',
+    'gross_sales',
+    'discounts',
+    'net_sales',
+    'refunds_voids',
+    'cogs',
+    'profit',
+    'profit_margin',
+    'average_unit_price',
+    'sales_share'
+];
+const REPORT_SORT_DIRECTIONS = ['asc', 'desc'];
+const REPORT_SECTIONS = ['daily', 'sales', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs', 'employee_credit', 'hourly', 'item_sales', 'category_sales'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202 (#1085).
 const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit'];
@@ -190,6 +211,11 @@ const checkoutPosSchema = Joi.object({
         account_code: Joi.string().trim().uppercase().min(4).max(40).required()
     }).optional(),
     payment_handoff_mode: Joi.string().valid(...PAYMENT_HANDOFF_MODES).optional(),
+    delivery_provider_breakdown: Joi.array().items(Joi.object({
+        provider_type: Joi.string().valid('foodpanda', 'grab', 'other').required(),
+        provider_name: Joi.string().trim().max(120).allow('', null).optional(),
+        amount: Joi.number().greater(0).precision(4).required()
+    }).unknown(false)).max(1).allow(null).optional(),
     cash_received: Joi.number().min(0).precision(4).allow(null).optional(),
     change_amount: Joi.number().min(0).precision(4).allow(null).optional(),
     service_fee_amount: Joi.number().min(0).precision(4).allow(null).optional().messages({
@@ -256,6 +282,43 @@ const checkoutPosSchema = Joi.object({
         });
     }
 
+    const deliveryProviderRows = Array.isArray(value.delivery_provider_breakdown)
+        ? value.delivery_provider_breakdown
+        : [];
+    const deliveryProviderTypes = new Set();
+    deliveryProviderRows.forEach((row) => deliveryProviderTypes.add(row.provider_type));
+    if (value.order_method === 'delivery' && deliveryProviderRows.length === 0) {
+        return helpers.error('any.invalid', {
+            message: 'Delivery requires exactly one delivery provider.'
+        });
+    }
+    if (value.order_method === 'delivery' && deliveryProviderRows.length !== 1) {
+        return helpers.error('any.invalid', {
+            message: 'Delivery requires exactly one delivery provider.'
+        });
+    }
+    if (value.order_method !== 'delivery' && deliveryProviderRows.length > 0) {
+        return helpers.error('any.invalid', {
+            message: 'Delivery provider data is allowed only for Delivery orders.'
+        });
+    }
+    if (deliveryProviderTypes.size !== deliveryProviderRows.length) {
+        return helpers.error('any.invalid', {
+            message: 'A delivery transaction can contain only one row per provider type.'
+        });
+    }
+    const otherProvider = deliveryProviderRows.find((row) => row.provider_type === 'other');
+    if (otherProvider && !String(otherProvider.provider_name || '').trim()) {
+        return helpers.error('any.invalid', {
+            message: 'Other delivery providers require a provider name.'
+        });
+    }
+    if (deliveryProviderRows.some((row) => row.provider_type !== 'other' && String(row.provider_name || '').trim())) {
+        return helpers.error('any.invalid', {
+            message: 'Foodpanda and Grab must use their canonical provider names.'
+        });
+    }
+
     if (discountMode === 'none' && (hasProfile || hasDiscountRate || globalDiscountAmount > 0)) {
         return helpers.error('any.invalid', {
             message: 'discount_mode none cannot include discount values'
@@ -309,7 +372,8 @@ const listTransactionsQuerySchema = Joi.object({
     payment_type: Joi.string().valid(...PAYMENT_TYPE_FILTERS).optional(),
     payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
     order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional(),
-    order_source: Joi.string().valid(...ORDER_SOURCES).optional()
+    order_source: Joi.string().valid(...ORDER_SOURCES).optional(),
+    delivery_provider: Joi.string().valid(...DELIVERY_PROVIDER_FILTERS).optional()
 });
 
 const parkedSaleLineSchema = Joi.object({
@@ -491,6 +555,11 @@ const posExceptionApprovalParamSchema = Joi.object({
 const posExceptionApprovalBodySchema = Joi.object({
     note: Joi.string().trim().max(500).allow('', null).optional()
 }).unknown(false);
+
+const listPosExceptionApprovalsQuerySchema = Joi.object({
+    status: Joi.string().valid('pending', 'approved', 'rejected', 'executed', 'expired', 'cancelled').default('pending'),
+    limit: Joi.number().integer().min(1).max(100).default(100)
+});
 
 const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
@@ -747,15 +816,25 @@ const posReportsQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPE_FILTERS).optional(),
     source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
+    delivery_provider: Joi.string().valid(...DELIVERY_PROVIDER_FILTERS).optional(),
     category_id: Joi.number().integer().positive().optional(),
     category: Joi.string().trim().max(120).allow('', null).optional(),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(200).default(50)
 });
 
+const posReportsBreakdownQuerySchema = posReportsQuerySchema.keys({
+    granularity: Joi.forbidden(),
+    breakdown: Joi.string().valid(...REPORT_BREAKDOWNS).required(),
+    sort_by: Joi.string().valid(...REPORT_BREAKDOWN_SORT_FIELDS).optional(),
+    sort_direction: Joi.string().valid(...REPORT_SORT_DIRECTIONS).default('desc')
+});
+
 const posReportsExportQuerySchema = posReportsQuerySchema.keys({
     section: Joi.string().valid(...REPORT_SECTIONS).default('daily'),
-    format: Joi.string().valid('csv').default('csv')
+    format: Joi.string().valid('csv').default('csv'),
+    sort_by: Joi.string().valid(...REPORT_BREAKDOWN_SORT_FIELDS).optional(),
+    sort_direction: Joi.string().valid(...REPORT_SORT_DIRECTIONS).default('desc')
 });
 
 const incomingOnlineOrdersQuerySchema = Joi.object({
@@ -1592,6 +1671,7 @@ export const validateReparkPosParkedSale = validateSchema(reparkPosParkedSaleSch
 export const validateParkedSaleIdParam = validateSchema(parkedSaleIdParamSchema, 'params', 'validatedParams');
 export const validatePosExceptionApprovalParam = validateSchema(posExceptionApprovalParamSchema, 'params', 'validatedParams');
 export const validatePosExceptionApprovalBody = validateSchema(posExceptionApprovalBodySchema, 'body', 'validatedData');
+export const validateListPosExceptionApprovals = validateSchema(listPosExceptionApprovalsQuerySchema, 'query', 'validatedQuery');
 export const validateCreatePosPaymentSession = validateSchema(createPosPaymentSessionSchema, 'body', 'validatedData');
 export const validateAddPosPaymentAllocation = validateSchema(addPosPaymentAllocationSchema, 'body', 'validatedData');
 export const validateCancelPosPayment = validateSchema(cancelPosPaymentSchema, 'body', 'validatedData');
@@ -1606,6 +1686,7 @@ export const validatePosDiscountApproval = validateSchema(posDiscountApprovalSch
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsQuery = validateSchema(posReportsQuerySchema, 'query', 'validatedQuery');
+export const validatePosReportsBreakdownQuery = validateSchema(posReportsBreakdownQuerySchema, 'query', 'validatedQuery');
 export const validateMobilePosCatalogBootstrapQuery = validateSchema(mobilePosCatalogBootstrapQuerySchema, 'query', 'validatedQuery');
 export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
 export const validateVerifyTerminal = validateSchema(verifyTerminalSchema, 'body', 'validatedData');

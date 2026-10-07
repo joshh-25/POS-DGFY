@@ -167,6 +167,7 @@ export function StorefrontCatalogRouteContainer(props) {
     setCustomerPin,
     setSelectedLocationId,
     setDeliveryLocationAction,
+    setPinLocationError,
     setIsReviewModalOpen,
     setIsServiceFilterOpen,
     setReviewDraft,
@@ -438,6 +439,7 @@ export function StorefrontCatalogRouteContainer(props) {
         setCheckoutResult={setCheckoutResult}
         setCustomerPin={setCustomerPin}
         setDeliveryLocationAction={setDeliveryLocationAction}
+        setPinLocationError={setPinLocationError}
         setIsReviewModalOpen={setIsReviewModalOpen}
         setIsServiceFilterOpen={setIsServiceFilterOpen}
         setReviewDraft={setReviewDraft}

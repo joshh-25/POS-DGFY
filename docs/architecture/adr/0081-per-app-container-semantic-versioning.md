@@ -3,9 +3,9 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-09-24
+last_reviewed: 2026-10-06
 review_by: 2027-03-23
-applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
+applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, release_process
 topic: per_app_container_semantic_versioning
 ---
 
@@ -729,6 +729,39 @@ untouched. Full detail: issue #2055, `.tmp/plan-2055.md` (planner handoff),
   pattern reuse only (the promotion-inherits / hotfix-bumps shape, per-channel tag suffixes), not
   adopted wholesale — #1548's own Related section makes this distinction explicit.
 
+### 2026-10-04 — Preserve candidate identity for release-only repairs (#1542 follow-up, Phase 472)
+
+After a candidate has passed staging qualification, a pre-main failure may be fixed on its existing
+`release/<candidate_id>` branch through a reviewed repair PR. In `sku-release-candidate/v3`, the
+optional `release_revision.repairs` array records the sequential repair number, resulting release
+head SHA, previous release head SHA, repair branch, PR, issue, and non-empty `apps_touched`. The
+first repair's parent is `release_revision.source_staging_sha`; each later repair parents the prior
+repair SHA. `release_revision.apps[app].source_sha` resolves to the latest release repair SHA that
+lists that app, and its origin is `release_repair`. Unchanged apps retain their prior per-app source
+identity. Allocate a fresh immutable per-app `rN` from GHCR for every app a release repair rebuilds;
+the candidate's earlier STAGING revision tag may already occupy its existing `rN`. Use the new
+revision in the updated per-app map so PROD builds a new tag without weakening Decision 7.
+
+Decision 8's parity gate remains strict about the app's production source label, release floor,
+revision label, and production alias agreement. For `release_repair`, it does not require a STAGING
+predecessor or compare the original STAGING digest with the rebuilt PROD digest: the repaired source
+was intentionally never deployed or observed on STAGING. It reads the PROD revision digest and
+requires the bare PROD alias to reference that same digest. The recorded staging-qualified SHA and
+each release repair SHA remain distinct, so parity evidence cannot say the final release head passed
+staging. Other origins retain the existing STAGING-to-PROD checks.
+
+Once production is stable, release-only repair commits are backported to `develop` by ordinary PRs;
+they are never separately backported to `staging`. This is a new obligation for commits that do not
+land on staging and does not alter #1696's staging-commit backport rule.
+
+`[default]` tier — amends Decision 8's per-app candidate-source resolution and parity procedure.
+Decision 7's `[binding]` immutable-tag guard and all production controls remain unchanged. Full
+detail: `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`,
+`.agents/skills/promoter/references/promotion-runbook.md`, and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+PR: (this PR). Refs #1542.
+
 ## Related
 
 - #1548 — parent epic this ADR decides Wave 1 of.
@@ -793,3 +826,131 @@ already-created candidates. ADR 0081 Decisions 1, 3, 4, 6, and 8 are amended in 
 `[default]` tier. Decision 7's `[binding]` immutability rule is unchanged.
 
 PR: (this PR). Closes #2071. Refs #2055.
+
+### 2026-10-01 — Separate backend artifact revisions with paired build and deploy (#2186)
+
+The 2026-09-23 amendment's `release_revision_api` group incorrectly carried one revision into
+both backend images. Artifact revision numbers are scoped to an image repository and package
+floor, so `dgfy-api` and `dgfy-migration-runner` may have independent immutable histories even
+when their builds are coordinated. A candidate may therefore use (for example) API `r1` and
+migration-runner `r5`; allocation and same-source retry reuse are performed independently against
+each app's own repository and floor. No existing immutable tag may be overwritten.
+
+`build_api` remains one paired user selection. Candidate `apps_touched` and `release_revision.apps`
+include both backend apps or neither, while each map entry carries that app's own revision, source
+SHA, staging digest, and origin. Staging/PROD dispatches, build-skip planning, builder forwarding,
+alias creation, and parity use each app's own revision. A modern per-app map omitting both backends
+means they were not selected; a malformed or one-sided pair is rejected. Explicit legacy
+candidate-wide script inputs and v1 manifests retain their existing compatibility behavior.
+PROD publish requires neither backend job to fail or be cancelled; a verified content-equivalent
+skip remains valid. Registry pushes are not transactional, so a failed paired dispatch may leave
+one immutable artifact published; retries re-resolve each app independently and never overwrite it.
+
+Parity resolves each app's package floor at its candidate source SHA and checks the image's source
+label, floor label, revision, and staging digest against that app's manifest lineage. Backend PROD
+reuses the neutral revision digest. Frontend PROD builds contain environment-specific configuration,
+so the manifest digest check applies to STAGING; frontend PROD is still checked against its own
+source, floor, revision, and alias digest contract.
+
+**Package-floor policy conclusion.** Keep the existing per-app floor management unchanged: floors
+are already maintained independently by Decision 6, and the API `1.32.0` / migration-runner
+`1.21.0` floors demonstrate that they need not be numerically aligned. This repair changes artifact
+revision routing only. A further split or redesign of semantic-version-floor policy is outside this
+incident's compatibility scope and can be scheduled separately if a future product or release
+requirement justifies it.
+
+`[default]` tier — this amends the dispatch, manifest, build-skip, alias, and parity procedures
+recorded in Decisions 1 and 8 / the 2026-09-23 amendment. Decision 7's `[binding]` immutable-tag
+guard and the package-floor rules in Decision 6 are unchanged. Full detail: #2186,
+`scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`,
+`scripts/resolve-build-skip-plan.js`, `scripts/check-deploy-version-stamping-workflow.js`,
+`.github/workflows/deploy.yml`, `deployment-orchestrator.yml`, `deploy-main.yml`,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`, and `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #2186.
+
+### 2026-10-01 follow-up — OPIS production gating and six-app revision wiring (#2186)
+
+The amendment above split the backend revisions but predates OPIS joining the production
+path: `deploy-main.yml`'s `promote-aliases` and `publish` jobs now list `frontend-opis-prod`
+in `needs:` and fail closed on its `failure`/`cancelled` results, and `promote-aliases` runs
+whenever `release_revision_frontend_opis` is supplied (including an OPIS-only dispatch). The
+revision checker (`scripts/check-deploy-version-stamping-workflow.js`) now enforces all six app
+groups — the `release_revision_frontend_opis` declaration, `frontend-opis-prod` job forwarding,
+`frontend-opis` orchestrator wiring, and the `should_build_dgfy_opis` skip gate — the same
+contract the other five groups already carried.
+
+Package floors remain independently managed and unchanged by this follow-up (currently API
+`1.32.0`, migration-runner `1.21.1`); only revision routing and production gating change.
+
+`[default]` tier — amends the dispatch, alias, and gate procedures recorded in Decisions 1
+and 8 / the amendments above. Decision 7's `[binding]` immutable-tag guard and Decision 6's
+package-floor rules are unchanged. Full detail: #2186,
+`scripts/check-deploy-version-stamping-workflow.js`, `.github/workflows/deploy-main.yml`,
+`deployment-orchestrator.yml`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`, and
+`.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #2186.
+
+### 2026-10-03 — Require release artifacts for every touched candidate app (#2227)
+
+A v3 candidate's `apps_touched` history is the authoritative set of deployable apps selected for
+the frozen promotion and its STAGING repairs. That set includes apps changed by the candidate and
+apps carried forward from an earlier partial PROD release. When the candidate has a
+`release_revision`, its per-app map must include an immutable STAGING artifact for every app in
+that history. An app may be omitted only when it was never selected by any candidate revision.
+This keeps sparse maps valid for apps outside the candidate while preventing production dispatch
+from interpreting a missing selected-app artifact as an intentional skip.
+
+The candidate validator rejects incomplete maps before release qualification. The release runbook
+requires carrying apps omitted by an earlier partial PROD dispatch into the next normal candidate,
+building their STAGING artifacts alongside that candidate's other apps, and validating the completed
+manifest before release qualification. Existing API/migration-runner pairing and per-app
+source-lineage checks remain in force. For candidate `2026-10-03-01`, IMS, POS, and OPIS remain
+pending for the next combined PROD release; this PR does not authorize or dispatch that release.
+
+`[default]` tier — amends Decision 8's per-app candidate-map and parity procedure. Decision 7's
+`[binding]` immutable-tag guard is unchanged. Full detail: #2227,
+`scripts/check-promotion-candidate.js`, `.agents/skills/promoter/references/promotion-runbook.md`,
+and `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+PR: (this PR). Closes #2227.
+
+### 2026-10-03 — Preflight occupied PROD floors and gate moving aliases (#2238)
+
+The 2026-10-03 Storefront PROD collision showed that a candidate can pass source-side promotion
+checks while its immutable floor alias is already claimed by another artifact. `resolve-build-plan`
+now inspects each selected app's canonical PROD floor alias before any image build begins. When the
+alias exists under a different source revision, it compares the app's tracked build inputs with
+the current source: identical inputs reuse the existing alias; changed inputs fail the whole plan
+before any build or alias mutation, with the app and required floor bump reported. Indeterminate
+registry reads or diffs preserve the existing fail-closed-to-build behavior.
+
+The PROD builder call sites no longer move `latest` while building. After an app's immutable floor
+alias has been verified or safely reused, `promote-aliases` advances that app's `latest` pointer.
+This keeps an app whose floor promotion failed from publishing its unpromoted digest as the server's
+moving image pointer. The incident's partial mutations to five other apps' floor aliases were
+verified as valid and reused by the successful retry; the failed Storefront build's unconditional
+`latest` push was the registry inconsistency this tightening removes.
+
+`[default]` tier — adds preflight and moving-alias enforcement around the existing Decision 7
+invariant. Decision 7's `[binding]` immutable-tag rule and Decision 6's floor policy are unchanged.
+Full detail: #2238, `scripts/resolve-build-skip-plan.js`, `.github/workflows/deploy-main.yml`, and
+`docs/ops/STOREFRONT_PROD_FLOOR_ALIAS_COLLISION_INCIDENT_2026-10-03.md`.
+
+PR: (this PR). Refs #2238.
+
+### 2026-10-06 — Refresh floors use the original promotion baseline (#2266, Phase 474)
+
+Candidate v4 records `promotion_base_sha` and an append-only `staging_refresh` sequence. A refresh
+retains the candidate's initial source identity while recording each incoming `develop` SHA and
+actual resulting STAGING SHA independently from staging-repair and per-app artifact counters.
+Refreshed builds receive new immutable per-app `rN` revisions; untouched selected apps retain their
+earlier artifact provenance. `staging_refresh` parity requires the normal STAGING predecessor.
+
+The version-floor checker has a separate refresh context that requires a verified baseline in the
+current STAGING release note and the same baseline in incoming `develop`'s note. It enforces the
+initial minor-floor obligation against that original baseline and rejects a floor below current
+STAGING. A refresh branch name grants no exception by itself. Missing or unverifiable baseline
+evidence stops v4 conversion; v1-v3 remain valid for their existing workflows. `[default]` — amends
+Decision 6 and Decision 8; Decision 7's immutable-tag invariant is unchanged.

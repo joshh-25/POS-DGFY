@@ -340,6 +340,9 @@ const buildReceiptPayload = async ({ transaction, settings }) => {
             invoice_number: transaction?.invoice_number || null,
             created_at: transaction?.created_at || null,
             payment_type: transaction?.payment_type || null,
+            delivery_provider_breakdown: Array.isArray(transaction?.delivery_provider_breakdown)
+                ? transaction.delivery_provider_breakdown
+                : null,
             customer_name: transaction?.customer_name || null,
             subtotal_amount: round4(transaction?.subtotal_amount),
             vatable_sales: round4(transaction?.vatable_sales),

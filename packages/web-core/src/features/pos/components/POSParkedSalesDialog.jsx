@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Ban, Bookmark, CheckCircle2, Clock3, Eye, RefreshCcw, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -58,6 +58,9 @@ export default function POSParkedSalesDialog({
     const [viewTarget, setViewTarget] = useState(null);
     const [error, setError] = useState('');
     const [actionError, setActionError] = useState('');
+    const latestLoadRequestRef = useRef(0);
+    const loadInFlightRef = useRef(false);
+    const loadInFlightScopeRef = useRef('');
 
     const normalizedTerminalId = normalizeTerminalId(terminalId);
     const viewLines = Array.isArray(viewTarget?.snapshot?.lines) ? viewTarget.snapshot.lines : [];
@@ -66,13 +69,20 @@ export default function POSParkedSalesDialog({
         [rows]
     );
 
-    const loadParkedSales = useCallback(async () => {
+    const loadParkedSales = useCallback(async ({ background = false } = {}) => {
         if (!activeShiftId || !canView) {
             setRows([]);
             setError('');
+            setLoading(false);
             return;
         }
-        setLoading(true);
+        const loadScope = `${Number(activeShiftId)}:${selectedLocationId ? Number(selectedLocationId) : ''}`;
+        if (loadInFlightRef.current && loadInFlightScopeRef.current === loadScope) return;
+        loadInFlightRef.current = true;
+        loadInFlightScopeRef.current = loadScope;
+        const requestId = latestLoadRequestRef.current + 1;
+        latestLoadRequestRef.current = requestId;
+        if (!background) setLoading(true);
         setError('');
         try {
             const result = await fetchPosParkedSales({
@@ -80,12 +90,24 @@ export default function POSParkedSalesDialog({
                 location_id: selectedLocationId ? Number(selectedLocationId) : undefined,
                 limit: 100
             });
-            setRows(Array.isArray(result?.parked_sales) ? result.parked_sales : []);
+            if (requestId !== latestLoadRequestRef.current) return;
+            const nextRows = Array.isArray(result?.parked_sales) ? result.parked_sales : [];
+            setRows(nextRows);
+            setCancelTarget((target) => {
+                if (!target) return target;
+                return nextRows.some((row) => Number(row?.pos_parked_sale_id) === Number(target?.pos_parked_sale_id))
+                    ? target
+                    : null;
+            });
         } catch (requestError) {
-            setRows([]);
+            if (requestId !== latestLoadRequestRef.current) return;
             setError(requestError?.response?.data?.message || requestError?.message || 'Unable to load parked sales.');
         } finally {
-            setLoading(false);
+            if (requestId === latestLoadRequestRef.current && !background) setLoading(false);
+            if (loadInFlightScopeRef.current === loadScope) {
+                loadInFlightRef.current = false;
+                loadInFlightScopeRef.current = '';
+            }
         }
     }, [activeShiftId, canView, selectedLocationId]);
 
@@ -93,6 +115,20 @@ export default function POSParkedSalesDialog({
         if (!open) return undefined;
         loadParkedSales();
         return undefined;
+    }, [loadParkedSales, open]);
+
+    useEffect(() => {
+        if (!open || typeof window === 'undefined') return undefined;
+        const refreshVisibleParkedSales = () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            void loadParkedSales({ background: true });
+        };
+        const refreshTimer = window.setInterval(refreshVisibleParkedSales, 3000);
+        window.addEventListener('focus', refreshVisibleParkedSales);
+        return () => {
+            window.clearInterval(refreshTimer);
+            window.removeEventListener('focus', refreshVisibleParkedSales);
+        };
     }, [loadParkedSales, open]);
 
     const handleClaim = async (row, action = 'pay') => {
@@ -185,7 +221,7 @@ export default function POSParkedSalesDialog({
                                     Parked Sales
                                 </DialogTitle>
                                 <DialogDescription className="mt-1 text-sm text-slate-600">
-                                    Shared with authorized cashiers at this branch. Pay a parked sale now or resume it to add more items.
+                                    Shared with authorized cashiers at this branch. Pay or resume a parked sale, or request cancellation with a reason.
                                 </DialogDescription>
                             </div>
                         </div>
@@ -233,9 +269,6 @@ export default function POSParkedSalesDialog({
                                     && (claimedByAnotherUser
                                         || (Boolean(row?.claimed_terminal_id)
                                             && normalizeTerminalId(row.claimed_terminal_id) !== normalizedTerminalId));
-                                const ownedByCurrentCashier = Number(row?.cashier_id) === Number(currentUserId)
-                                    && Number(row?.shift_id) === Number(activeShiftId);
-                                const cancellationLocked = claimedElsewhere || !ownedByCurrentCashier;
                                 const lines = Array.isArray(row?.snapshot?.lines) ? row.snapshot.lines : [];
                                 const loadingThisRow = claimLoadingId === parkedSaleId;
                                 return (
@@ -292,21 +325,21 @@ export default function POSParkedSalesDialog({
                                                         setCancelReason('');
                                                         setActionError('');
                                                     }}
-                                                    disabled={claimLoadingId !== null || cancelLoadingId !== null || !canTransact || cancellationLocked || status === 'cancel_pending' || !normalizedTerminalId}
+                                                    disabled={claimLoadingId !== null || cancelLoadingId !== null || !canTransact || status === 'cancel_pending' || !normalizedTerminalId}
                                                     className="rounded-lg border-rose-200 px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                     data-testid={`pos-parked-sale-cancel-${parkedSaleId}`}
-                                                    title={cancellationLocked ? 'Only the current cashier can cancel this parked sale.' : undefined}
+                                                    title={status === 'cancel_pending' ? 'Cancellation is awaiting Back Office approval.' : undefined}
                                                 >
                                                     {status === 'cancel_pending' ? null : <Ban className="mr-1.5 h-3.5 w-3.5" />}
                                                     {status === 'cancel_pending' ? 'Awaiting approval' : 'Cancel'}
                                                 </Button>
                                             </div>
                                         </div>
-                                        {status === 'cancel_pending' && <p className="mt-3 text-xs font-semibold text-violet-800">Cancellation is awaiting Back Office approval. Stock remains deducted until approved.</p>}
+                                        {status === 'cancel_pending' && <p className="mt-3 text-xs font-semibold text-violet-800">Cancellation is awaiting Back Office approval. Stock remains deducted until it is approved.</p>}
                                         {cancelTarget && Number(cancelTarget?.pos_parked_sale_id) === parkedSaleId && (
                                             <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3">
                                                 <p className="text-xs font-extrabold text-rose-900">Request cancellation approval</p>
-                                                <p className="mt-1 text-xs text-rose-800">Stock was deducted when this sale was parked. It will be restored only if Back Office approves this request.</p>
+                                                <p className="mt-1 text-xs text-rose-800">Stock was deducted when this sale was parked. It will be restored only after Back Office approves the request.</p>
                                                 <label className="mt-2 block text-xs font-semibold text-rose-900" htmlFor={`parked-cancel-reason-${parkedSaleId}`}>Reason</label>
                                                 <textarea
                                                     id={`parked-cancel-reason-${parkedSaleId}`}

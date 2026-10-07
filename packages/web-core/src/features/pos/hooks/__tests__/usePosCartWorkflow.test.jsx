@@ -58,6 +58,30 @@ describe('usePosCartWorkflow', () => {
         expect(result.current.cart[0].quantity).toBe(5);
     });
 
+    it('does not add a location-unavailable required modifier to a new F&B line', () => {
+        const fnbItem = {
+            ...retailItem,
+            fnbModifierGroups: [{
+                modifier_group_id: 10,
+                name: 'Adds-On',
+                required: true,
+                min_select: 1,
+                locationAvailability: [{ location_id: 3, is_available: false }],
+                options: [{ modifier_option_id: 100, name: 'Extra cheese', is_default: true }]
+            }]
+        };
+        const { result } = renderCart({
+            catalog: [fnbItem],
+            isFnbWorkflow: true,
+            locationId: 3
+        });
+
+        act(() => result.current.addToCart(fnbItem));
+
+        expect(result.current.cart[0].line_modifiers).toEqual([]);
+        expect(result.current.cart[0].sale_price).toBe(100);
+    });
+
     it('supports decimal manual quantity without deleting the line at zero', () => {
         const { result } = renderCart({
             catalog: [{ ...retailItem, unit_of_measure: 'kg', current_stock: 20 }]

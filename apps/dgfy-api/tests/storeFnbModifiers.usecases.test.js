@@ -25,6 +25,7 @@ const customerAccessSettings = [
   { setting_key: 'tenant_onboarding_progress', setting_value: '{"classification_snapshot":{"payload":{"legitimacy":{"registration_status":"registered"}}}}' }
 ];
 const tenantId = '11111111-1111-4111-8111-111111111111';
+const freezeCheckoutTime = (isoDate) => jest.useFakeTimers().setSystemTime(new Date(isoDate));
 
 const buildRepository = (items, overrides = {}) => ({
   beginTransaction: jest.fn(async () => createTransaction()),
@@ -69,6 +70,7 @@ const buildCheckoutUseCase = (repository, dependencies = {}) => {
   const useCase = buildStoreCheckoutUseCase({
     storeRepository: repository,
     revenueSharingEnabled: false,
+    recordOrderActivity: jest.fn().mockResolvedValue(null),
     ...dependencies
   });
 
@@ -165,7 +167,7 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
-  it('waives the convenience fee only for enabled dine-in pay-at-store quotes', async () => {
+  it('does not add a convenience fee to dine-in pay-at-store or online quotes', async () => {
     const repository = buildRepository([burgerItem], {
       findLocationById: jest.fn().mockResolvedValue({
         location_id: 4,
@@ -196,8 +198,8 @@ describe('storefront F&B modifier checkout contract', () => {
 
     const onlineResult = await useCase({ payload: { ...basePayload, payment_type: 'gcash' } });
     expect(onlineResult.success).toBe(true);
-    expect(onlineResult.data.service_fee_amount).toBe(1);
-    expect(onlineResult.data.total_amount).toBe(101);
+    expect(onlineResult.data.service_fee_amount).toBe(0);
+    expect(onlineResult.data.total_amount).toBe(100);
   });
 
   it('preflights linked modifier stock using the selected location and line quantity', async () => {
@@ -335,6 +337,7 @@ describe('storefront F&B modifier checkout contract', () => {
   });
 
   it('blocks product quote outside configured storefront business hours', async () => {
+    freezeCheckoutTime('2026-05-25T08:00:00+08:00');
     const repository = buildRepository([burgerItem], {
       getSettingsByKeys: jest.fn().mockResolvedValue([
         ...customerAccessSettings,
@@ -873,6 +876,7 @@ describe('storefront F&B modifier checkout contract', () => {
   });
 
   it('allows scheduled checkout inside configured storefront hours', async () => {
+    freezeCheckoutTime('2026-05-25T08:00:00+08:00');
     const repository = buildRepository([burgerItem], {
       getSettingsByKeys: jest.fn().mockResolvedValue([
         ...customerAccessSettings,
@@ -899,6 +903,7 @@ describe('storefront F&B modifier checkout contract', () => {
   });
 
   it('rejects scheduled checkout outside configured storefront hours', async () => {
+    freezeCheckoutTime('2026-05-25T08:00:00+08:00');
     const repository = buildRepository([burgerItem], {
       getSettingsByKeys: jest.fn().mockResolvedValue([
         ...customerAccessSettings,
@@ -952,6 +957,7 @@ describe('storefront F&B modifier checkout contract', () => {
   });
 
   it('rejects direct dine-in cash checkout even when the location otherwise accepts cash', async () => {
+    freezeCheckoutTime('2026-10-01T08:00:00+08:00');
     const repository = buildRepository([burgerItem]);
     const useCase = buildCheckoutUseCase(repository);
 
@@ -1081,6 +1087,7 @@ describe('storefront F&B modifier checkout contract', () => {
   });
 
   it('rejects scheduled checkout in the closed gap between split storefront business-hours intervals', async () => {
+    freezeCheckoutTime('2026-05-25T08:00:00+08:00');
     const splitHours = {
       mode: 'weekly',
       timezone: 'Asia/Manila',
@@ -1130,6 +1137,7 @@ describe('storefront F&B modifier checkout contract', () => {
   });
 
   it('does not block scheduled checkout when storefront hours are malformed', async () => {
+    freezeCheckoutTime('2026-05-25T08:00:00+08:00');
     const repository = buildRepository([burgerItem], {
       getSettingsByKeys: jest.fn().mockResolvedValue([
         ...customerAccessSettings,
@@ -1156,6 +1164,7 @@ describe('storefront F&B modifier checkout contract', () => {
   });
 
   it('supports overnight storefront hours windows', async () => {
+    freezeCheckoutTime('2026-05-25T08:00:00+08:00');
     const repository = buildRepository([burgerItem], {
       getSettingsByKeys: jest.fn().mockResolvedValue([
         ...customerAccessSettings,

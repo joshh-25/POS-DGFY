@@ -22,6 +22,7 @@ import {
   ShoppingBag,
   Sparkles,
   Store,
+  Ticket,
   Truck,
   UserRound,
   Users,
@@ -42,6 +43,7 @@ const HospitalityPage = lazy(() => import('../../../../../packages/web-core/src/
 const SalesPage = lazy(() => import('../../../../../packages/web-core/src/features/sales/pages/SalesPage.jsx'));
 const ReportsPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx'));
 const AiChatPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/AiChatPage.jsx'));
+const LegacyPromosPage = lazy(() => import('./LegacyPromosPage.jsx'));
 
 const BUSINESS_ADMIN_ACCESS_PERMISSION = 'business_admin:access';
 
@@ -66,8 +68,11 @@ export const BACKOFFICE_MANIFEST = Object.freeze({
   sales: module('Sales', 'sales', 'Sales timeline', '', ShoppingBag, SalesPage),
   orders: module('Sales', 'orders', 'Order center', 'Investigate completed, voided, and storefront orders with receipt-safe detail history.', ShoppingBag),
   payments: module('Sales', 'payments', 'Payments', 'Review this business’s online payments and provider refund status.', Wallet),
+  // #2159: transitional read/revoke surface for setting-backed legacy promos. Retires with the
+  // legacy settings path under #991; not a home for voucher-authoring UI (that stays in POS).
+  vouchers: module('Sales', 'vouchers', 'Vouchers', 'Inspect legacy storefront promo codes and revoke an individual code.', Ticket, LegacyPromosPage),
   customers: module('Customers', 'customers', 'Customers', 'Review customer links and related transactions from the canonical Order Center.', UserRound),
-  catalog: module('Inventory', 'catalog', 'Catalog editor', 'Create, update, import, export, and organize the canonical catalog.', Package, CatalogPage),
+  catalog: module('Inventory', 'catalog', 'Item Editor', 'Create, update, import, export, categorize items, control POS/Storefront visibility, and add optional stock by branch.', Package, CatalogPage),
   inventory: module('Inventory', 'inventory', 'Inventory insights', 'Read the canonical branch stock ledger and FIFO valuation where cost access is granted.', Database),
   suppliers: module('Inventory', 'suppliers', 'Suppliers', 'Manage supplier records and item coverage.', Truck, SuppliersPage),
   'purchase-orders': module('Inventory', 'purchase-orders', 'Purchase orders', 'Create, receive, archive, and review procurement orders.', ClipboardList, PurchaseOrdersPage),
@@ -84,12 +89,14 @@ export const BACKOFFICE_MANIFEST = Object.freeze({
   'dispatch-orders': module('Operations', 'dispatch-orders', 'Dispatch orders', 'Create, dispatch, and track fulfillment orders.', Send, DispatchOrdersPage, { visibility: { workflowPage: 'DispatchOrders' } }),
   team: module('Team & Access', 'team', 'Team & access', 'Review workforce activity and branch assignments without duplicating the User owner.', Users),
   reports: module('Reports', 'reports', 'Reports & analytics', 'See sales, stock left, inventory, production, procurement, expiry, aging, and executive reports.', BarChart3, ReportsPage),
+  'pos-activity': module('Reports', 'pos-activity', 'POS activity', 'Inspect completed paid POS sales, payment volume, linked-customer counts, and historically quiet weekday/hour periods as planning guidance.', Clock3, undefined),
   notifications: module('Settings', 'notifications', 'Notifications', 'Triage inventory, terminal, payment, fulfillment, and governance conditions.', Bell),
   fiscal: module('Settings', 'fiscal', 'Fiscal & BIR', 'Inspect immutable Z-reading and eSales evidence. Accreditation remains an external gate.', Receipt),
   audit: module('Settings', 'audit', 'Audit logs', 'Review activity across this business with sensitive values protected.', ScrollText),
   approvals: module('Settings', 'approvals', 'Approvals', 'Review high-risk requests. Execution stays with the canonical POS command owner.', ShieldCheck),
   onboarding: module('Settings', 'onboarding', 'POS onboarding', 'Track the current business, branch, and workflow readiness contract.', CheckCircle2),
   storefront: module('Settings', 'storefront', 'Storefront', 'Review storefront-facing readiness while keeping public commerce ownership in Storefront.', Store),
+  company: module('Settings', 'company', 'Company', 'Review company registration, storefront readiness, location, hours, and private upload status.', Building2),
   settings: module('Settings', 'settings', 'Settings', 'Back Office owns business and branch configuration; terminal-only controls remain in POS.', Settings),
   'ai-chat': module('Settings', 'ai-chat', 'Business assistant', 'Use the assistant for this business from the POS Back Office.', Sparkles, AiChatPage)
 });
@@ -139,7 +146,7 @@ export const buildBackOfficeLocationsPath = (rootPath, view = 'branches') => {
 
 export const BACKOFFICE_SETTINGS_SECTION_MANIFEST = Object.freeze([
   { key: 'profile', label: 'Business & receipts', description: 'Business identity, receipt details, and business-wide profile values.', scope: 'tenant', ownerViewMode: 'settings_profile', ownerLabel: 'Open business settings' },
-  { key: 'pos', label: 'POS configuration', description: 'POS preferences, discount rules, and operational defaults.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open POS settings' },
+  { key: 'pos', label: 'POS configuration', description: 'POS preferences, discount rules, operational defaults, and item-preparation fee policy.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open POS settings' },
   { key: 'taxes', label: 'Taxes', description: 'Configure tenant tax treatment policies used by POS.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open tax settings' },
   { key: 'discounts', label: 'Discounts', description: 'Manage the server-authorized POS discount rules.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open discount settings' },
   { key: 'storefront', label: 'Storefront settings', description: 'Storefront identity, visibility, presentation, and public access policy.', scope: 'tenant', ownerViewMode: 'settings_storefront', ownerLabel: 'Open Storefront settings' },
@@ -148,6 +155,8 @@ export const BACKOFFICE_SETTINGS_SECTION_MANIFEST = Object.freeze([
   { key: 'team', label: 'Team & access', description: 'User access, cashier administration, branch grants, and employee ownership.', scope: 'branch', ownerViewMode: 'settings_pos', ownerLabel: 'Open team settings' },
   { key: 'attendance', label: 'Attendance settings', description: 'Cashier attendance configuration scoped to the selected branch set.', scope: 'branch', ownerViewMode: 'settings_pos', ownerLabel: 'Open attendance settings' },
   { key: 'payments', label: 'Payment policies', description: 'Downpayment and partial-payment policy for this business.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open payment settings' },
+  // Compatibility alias: the preparation-fee editor now lives inside POS configuration.
+  { key: 'processing_fees', label: 'Item preparation fee', description: 'Moved into POS configuration. Payment-provider fallback estimates remain backend-only.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open POS settings', hidden: true, redirectTo: 'pos' },
   { key: 'registers', label: 'Registers & terminal policy', description: 'Terminal registry and branch binding policy. Device enrollment remains POS-owned.', scope: 'branch', ownerViewMode: 'settings_pos', ownerLabel: 'Open register settings' }
 ]);
 

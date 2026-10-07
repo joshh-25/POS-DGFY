@@ -85,6 +85,18 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     allowNull: false,
     defaultValue: 0
   },
+  // Legacy field name retained for compatibility; this is the item-processing
+  // charge included in the order total, not a payment-provider fee.
+  customer_processing_fee_amount: {
+    type: DataTypes.DECIMAL(14, 4),
+    allowNull: false,
+    defaultValue: 0
+  },
+  customer_processing_fee_breakdown: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null
+  },
   total_amount: {
     type: DataTypes.DECIMAL(14, 4),
     allowNull: false,
@@ -142,6 +154,11 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
   provider_payment_intent_id: {
     type: DataTypes.STRING(120),
     allowNull: true
+  },
+  provider_checkout_session_id: {
+    type: DataTypes.STRING(120),
+    allowNull: true,
+    comment: 'PayMongo Hosted Checkout session ID used to expire the provider checkout session.'
   },
   provider_payment_method_id: {
     type: DataTypes.STRING(120),
@@ -208,6 +225,7 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     { unique: true, fields: ['tenant_id', 'target_type', 'idempotency_key'] },
     { fields: ['tenant_id', 'status'] },
     { fields: ['provider_payment_intent_id'] },
+    { fields: ['provider_checkout_session_id'], name: 'idx_commerce_payment_sessions_provider_checkout_session' },
     { fields: ['provider_payment_id'] },
     { fields: ['expires_at'] },
     { fields: ['provider_event_id'], unique: true, name: 'uq_commerce_payment_sessions_provider_event' }

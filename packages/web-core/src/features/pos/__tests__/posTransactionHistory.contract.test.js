@@ -282,7 +282,7 @@ describe('POS transaction history search and filter contract', () => {
         expect(historyDatePickerContent).toContain('before:rounded-l-full');
         expect(historyDatePickerContent).toContain('before:rounded-r-full');
         expect(historyDatePickerContent).toContain("mobile ? 'h-7 w-7' : 'h-6 w-6'");
-        expect(historyDialogShellContent).toContain("'max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl'");
+        expect(historyDialogShellContent).toContain("'h-[min(90vh,40rem)] max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl'");
         expect(panelContent).toContain("cancelTestId=\"pos-history-cancel-dates\"");
         expect(panelContent).toContain("resetTestId=\"pos-history-reset-filters\"");
         expect(panelContent).toContain('const [filterDraft, setFilterDraft] = useState(null);');
@@ -293,7 +293,7 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('pos-history-void-dialog sm:max-w-md');
         expect(panelContent).toContain('className="space-y-2 px-6"');
         expect(panelContent).toContain('pos-history-void-footer');
-        expect(panelContent).toContain("import { Ban, CalendarDays, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';");
+        expect(panelContent).toContain("import { Ban, CalendarDays, ClipboardCheck, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';");
         expect(panelContent).toContain("import PosSearchField from './PosSearchField.jsx';");
         expect(panelContent).toContain('<Filter className={`${isMobileViewport ? \'\' : \'mr-2\'} h-4 w-4`} aria-hidden="true" />');
         expect(panelContent).toContain('icon={ClipboardList}');
@@ -362,6 +362,8 @@ describe('POS transaction history search and filter contract', () => {
 
     it('exposes Employee Credit and cashier-name filters in the POS history panel', () => {
         expect(panelContent).toContain("{ value: 'employee_credit', label: 'Employee Credit' }");
+        expect(panelContent).toContain('label="Delivery Provider"');
+        expect(panelContent).toContain('testId="pos-history-filter-delivery-provider"');
         expect(panelContent).toContain('Search all transaction fields...');
         expect(panelContent).toContain('<PosCashierFilterControl');
         expect(cashierFilterControlContent).toContain('<span id={headingId} className={fieldLabelClassName}>{label}</span>');
@@ -378,8 +380,10 @@ describe('POS transaction history search and filter contract', () => {
 
     it('passes cashier names through the POS history query and searches displayed transaction data', () => {
         expect(queryContent).toContain('cashier_name: cashierName');
+        expect(queryContent).toContain('delivery_provider: deliveryProvider');
         expect(queryContent).not.toContain('cashier_id: cashierId');
         expect(terminalContent).toContain('historyCashierName');
+        expect(terminalContent).toContain('historyDeliveryProvider');
         expect(historyWorkflowContent).toContain('rowMatchesHistoryFilters');
         expect(searchUtilityContent).toContain("'employee_credit_employee_name_snapshot'");
         expect(searchUtilityContent).toContain("'discount.employee_name'");

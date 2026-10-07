@@ -208,12 +208,15 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^packages\/web-core\/src\/services\/adminService\.js$/,
+    // Issue #350 extracts Platform Admin from the shared trunk into its own app; keep the
+    // existing regulatory floor attached to the moved service at its new path.
+    pattern: /^apps\/dgfy-admin\/src\/services\/adminService\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^apps\/dgfy-ims\/Pages\/admin\/TenantManager\.jsx$/,
+    // The tenant administration surface moves out of IMS with the Platform Admin app.
+    pattern: /^apps\/dgfy-admin\/Pages\/TenantManager\.jsx$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   }

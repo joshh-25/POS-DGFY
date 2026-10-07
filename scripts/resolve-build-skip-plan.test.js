@@ -32,10 +32,13 @@ function inspectUnclassifiedError() {
   return { status: 1, stdout: '', stderr: 'dial tcp: lookup ghcr.io: no such host' };
 }
 
-function inspectPublishedAt(revision) {
+function inspectPublishedAt(revision, digest = 'sha256:published-image') {
   return {
     status: 0,
-    stdout: JSON.stringify({ Image: { Config: { Labels: { 'org.opencontainers.image.revision': revision } } } }),
+    stdout: JSON.stringify({
+      digest,
+      Image: { Config: { Labels: { 'org.opencontainers.image.revision': revision } } },
+    }),
     stderr: '',
   };
 }
@@ -152,6 +155,90 @@ test('decideBuildSkip: diff itself unavailable (unresolvable SHA / shallow histo
   });
   assert.equal(result.skip, false);
   assert.equal(result.code, 'diff-unavailable-fail-closed');
+});
+
+test('decideBuildSkip: occupied PROD floor with equivalent inputs reuses the floor alias', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront',
+    image: 'ghcr.io/sieitzz/dgfy-storefront',
+    versionTag: '1.0.0-r2',
+    canonicalAlias: '1.0.0',
+    currentRevision: CURRENT,
+    inspectFn: (ref) => ref.endsWith(':1.0.0')
+      ? inspectPublishedAt(EXISTING, 'sha256:existing-floor')
+      : inspectNotFound(),
+    diffFn: ({ fromRevision, toRevision }) => {
+      assert.equal(fromRevision, EXISTING);
+      assert.equal(toRevision, CURRENT);
+      return [];
+    },
+  });
+  assert.equal(result.skip, true);
+  assert.equal(result.code, 'floor-alias-content-equivalent');
+  assert.match(result.detail, /sha256:existing-floor/);
+});
+
+test('decideBuildSkip: occupied floor also reuses an alias when shared-file reachability proves no app input changed', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront', image: 'ghcr.io/sieitzz/dgfy-storefront',
+    versionTag: '1.0.0-r2', canonicalAlias: '1.0.0', currentRevision: CURRENT,
+    inspectFn: (ref) => ref.endsWith(':1.0.0')
+      ? inspectPublishedAt(EXISTING, 'sha256:existing-floor')
+      : inspectNotFound(),
+    diffFn: () => ['packages/web-core/src/features/pos/__tests__/terminalLocationScope.integration.test.jsx'],
+    reachabilityFn: async () => ({ applicable: true, changed: false }),
+  });
+  assert.equal(result.skip, true);
+  assert.equal(result.code, 'floor-alias-content-equivalent');
+});
+
+test('decideBuildSkip: changed inputs behind an occupied PROD floor halt the whole dispatch', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront',
+    image: 'ghcr.io/sieitzz/dgfy-storefront',
+    versionTag: '1.0.0-r2',
+    canonicalAlias: '1.0.0',
+    collisionSourceTag: '1.0.0-r2-staging',
+    currentRevision: CURRENT,
+    inspectFn: (ref) => {
+      if (ref.endsWith(':1.0.0')) return inspectPublishedAt(EXISTING, 'sha256:existing-floor');
+      if (ref.endsWith(':1.0.0-r2-staging')) return inspectPublishedAt(CURRENT, 'sha256:incoming-stage');
+      return inspectNotFound();
+    },
+    diffFn: () => ['apps/dgfy-storefront/src/main.jsx'],
+  });
+  assert.equal(result.skip, false);
+  assert.equal(result.code, 'floor-alias-collision');
+  assert.equal(result.haltDispatch, true);
+  assert.match(result.detail, /sha256:existing-floor/);
+  assert.match(result.detail, /sha256:incoming-stage/);
+  assert.match(result.detail, /Bump dgfy-storefront's apps\/dgfy-storefront\/package\.json floor/);
+});
+
+test('decideBuildSkip: indeterminate floor-alias inspect fails closed to build', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront', image: 'ghcr.io/sieitzz/dgfy-storefront',
+    versionTag: '1.0.0-r2', canonicalAlias: '1.0.0', currentRevision: CURRENT,
+    inspectFn: inspectUnclassifiedError,
+    diffFn: neverCalled('diffFn'),
+  });
+  assert.equal(result.skip, false);
+  assert.equal(result.haltDispatch, undefined);
+  assert.equal(result.code, 'floor-alias-inspect-unavailable-fail-closed');
+});
+
+test('decideBuildSkip: indeterminate floor-alias diff fails closed to build', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront', image: 'ghcr.io/sieitzz/dgfy-storefront',
+    versionTag: '1.0.0-r2', canonicalAlias: '1.0.0', currentRevision: CURRENT,
+    inspectFn: (ref) => ref.endsWith(':1.0.0')
+      ? inspectPublishedAt(EXISTING)
+      : inspectNotFound(),
+    diffFn: () => null,
+  });
+  assert.equal(result.skip, false);
+  assert.equal(result.haltDispatch, undefined);
+  assert.equal(result.code, 'floor-alias-diff-unavailable-fail-closed');
 });
 
 // The load-bearing test for §7's scope-widening finding: infrastructure/docker/<app>/ must be part
@@ -297,6 +384,64 @@ test('resolveBuildSkipPlan: resolves a plan across multiple apps, keyed by app n
     assert.equal(plan[app].skip, false);
     assert.equal(plan[app].code, 'not-published');
   }
+});
+
+test('resolveBuildSkipPlan: modern revision map uses independent backend tags and treats omitted apps as unselected', async () => {
+  const inspectedRefs = [];
+  const plan = await resolveBuildSkipPlan({
+    apps: ['dgfy-api', 'dgfy-migration-runner', 'dgfy-ims'],
+    currentRevision: 'HEAD',
+    environment: 'STAGING',
+    revisionsByApp: { 'dgfy-api': 'r1', 'dgfy-migration-runner': 'r5' },
+    inspectFn: (ref) => { inspectedRefs.push(ref); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  const apiFloor = JSON.parse(fs.readFileSync(path.join(__dirname, '../apps/dgfy-api/package.json'), 'utf8')).version;
+  const migrationFloor = JSON.parse(fs.readFileSync(path.join(__dirname, '../apps/dgfy-migration-runner/package.json'), 'utf8')).version;
+  assert.equal(plan['dgfy-api'].code, 'not-published');
+  assert.equal(plan['dgfy-migration-runner'].code, 'not-published');
+  assert.equal(plan['dgfy-ims'].skip, true);
+  assert.equal(plan['dgfy-ims'].code, 'app-not-selected');
+  assert.match(inspectedRefs.find((ref) => ref.includes('dgfy-api')), new RegExp(`${apiFloor.replace(/\./g, '\\.')}-r1$`));
+  assert.match(inspectedRefs.find((ref) => ref.includes('dgfy-migration-runner')), new RegExp(`${migrationFloor.replace(/\./g, '\\.')}-r5$`));
+  assert.equal(inspectedRefs.length, 2);
+});
+
+// #2186 PROD candidate (API r2, migration-runner r5, OPIS r1, storefront r1; IMS/POS absent):
+// each selected app resolves its OWN revision tag from its OWN floor, omitted apps skip as
+// unselected without any registry inspection, and a failed required build blocks the plan.
+test('resolveBuildSkipPlan: PROD candidate maps API r2, migration-runner r5, OPIS r1, and storefront r1 independently while IMS/POS skip unselected', async () => {
+  const inspectedRefs = [];
+  const plan = await resolveBuildSkipPlan({
+    apps: ['dgfy-api', 'dgfy-migration-runner', 'dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis'],
+    currentRevision: 'HEAD',
+    environment: 'PROD',
+    revisionsByApp: { 'dgfy-api': 'r2', 'dgfy-migration-runner': 'r5', 'dgfy-storefront': 'r1', 'dgfy-opis': 'r1' },
+    inspectFn: (ref) => { inspectedRefs.push(ref); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  const floorOf = (app) => JSON.parse(fs.readFileSync(path.join(__dirname, `../apps/${app}/package.json`), 'utf8')).version;
+  for (const [app, revision] of [['dgfy-api', 'r2'], ['dgfy-migration-runner', 'r5'], ['dgfy-storefront', 'r1'], ['dgfy-opis', 'r1']]) {
+    assert.equal(plan[app].code, 'not-published');
+    assert.match(inspectedRefs.find((ref) => ref.includes(`${app}:`) && ref.endsWith(`-${revision}`)), new RegExp(`${floorOf(app).replace(/\./g, '\\.')}-${revision}$`));
+  }
+  for (const app of ['dgfy-ims', 'dgfy-pos']) {
+    assert.equal(plan[app].skip, true);
+    assert.equal(plan[app].code, 'app-not-selected');
+  }
+  assert.equal(inspectedRefs.length, 8);
+});
+
+test('resolveBuildSkipPlan: explicit legacy shared revision still applies when app map omits the app', async () => {
+  const inspectedRefs = [];
+  const plan = await resolveBuildSkipPlan({
+    apps: ['dgfy-api'], currentRevision: 'HEAD', environment: 'PROD',
+    revision: 'r16', revisionsByApp: { 'dgfy-ims': 'r17' },
+    inspectFn: (ref) => { inspectedRefs.push(ref); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  assert.equal(plan['dgfy-api'].code, 'not-published');
+  assert.match(inspectedRefs.find((ref) => ref.endsWith('-r16')), /1\.36\.0-r16$/);
 });
 
 test('resolveBuildSkipPlan: an app whose version cannot be read fails closed instead of throwing', async () => {
@@ -468,10 +613,12 @@ test('resolveBuildSkipPlan: DEV always builds so the moving tag follows the sele
   assert.deepEqual(inspectedRefs, []);
 });
 test('parseArgs: --release-revisions-json parses to a per-app map; garbage fails closed', () => {
-  const options = parseArgs(['--revision', 'abc123', '--release-revisions-json', '{"dgfy-api":"r16","dgfy-pos":"17"}']);
-  assert.deepEqual(options.revisionsByApp, { 'dgfy-api': 'r16', 'dgfy-pos': '17' });
+  const options = parseArgs(['--revision', 'abc123', '--release-revisions-json', '{"dgfy-api":"r16","dgfy-migration-runner":"r4","dgfy-pos":"17"}']);
+  assert.deepEqual(options.revisionsByApp, { 'dgfy-api': 'r16', 'dgfy-migration-runner': 'r4', 'dgfy-pos': '17' });
   assert.throws(() => parseArgs(['--revision', 'abc123', '--release-revisions-json', 'not-json']), /not valid JSON/);
   assert.throws(() => parseArgs(['--revision', 'abc123', '--release-revisions-json', '["r16"]']), /must be a JSON object/);
+  assert.throws(() => parseArgs(['--revision', 'abc123', '--release-revisions-json', '{"dgfy-api":"r16"}']), /dgfy-api and dgfy-migration-runner together/);
+  assert.throws(() => parseArgs(['--revision', 'abc123', '--release-revisions-json', '{"dgfy-api":"bad","dgfy-migration-runner":"r2"}']), /positive artifact revision/);
   const prRef = parseArgs(['--revision', 'abc123', '--environment', 'DEV', '--dev-pr-ref', 'pr482']);
   assert.equal(prRef.devPrRef, 'pr482');
 });

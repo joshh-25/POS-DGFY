@@ -23,15 +23,19 @@ describe('POS pagination layout contract', () => {
       expect(source).toContain('POS_PAGINATION_FOOTER_CLASS');
     });
     expect(appStyles).toContain('.dgfy-pos-pagination-footer');
-    expect(appStyles).not.toContain('.dgfy-pos-history-pagination-footer');
+    paginatedSurfaces.forEach((source) => expect(source).not.toContain('dgfy-pos-history-pagination-footer'));
+    expect(appStyles).not.toContain('.pos-items-workspace-shell .dgfy-pos-history-pagination-footer');
+    expect(appStyles).not.toContain('.dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-history-pagination-footer');
   });
 
   it('keeps compact phone page-size and page-jump controls inside the footer', () => {
-    // The `-suffix` marker was renamed to `-value` ("{n} / page"); the
-    // rendered page-size control and its accessibility label are unchanged.
+    // The `-suffix` marker was renamed to `-value` ("{n} / page"); page-size
+    // labels remain configurable for each paginated surface.
     expect(paginationSource).toContain('dgfy-global-pagination__page-size-value');
-    expect(paginationSource).toContain('{selectedPageSize} / page');
-    expect(paginationSource).toContain('aria-label="Items per page"');
+    expect(paginationSource).toContain('{selectedPageSize}<span');
+    expect(paginationSource).toContain("pageSizeLabel = 'Items per page'");
+    expect(paginationSource).toContain('ariaLabel={pageSizeLabel}');
+    expect(paginationSource).toMatch(/\{selectedPageSize\}\s*<span[^>]*dgfy-global-pagination__page-size-suffix[^>]*>\s*\/ page<\/span>/);
     expect(appStyles).toContain('grid-template-columns: minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr);');
     expect(appStyles).toContain('min-width: 0;\n    max-width: 100%;');
     expect(appStyles).toContain('min-width: 3.25rem;\n    padding-inline: 0.5rem;');

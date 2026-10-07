@@ -120,6 +120,7 @@ export function POSCheckoutTerminalReceiptDialogs({
     setReceiptPreviewSource,
     posActionsBlocked,
     receiptPrinting,
+    hardwareLoading,
     isPrinterAvailable,
     isOrderPrinterAvailable,
     handlePrintReceipt,
@@ -173,7 +174,7 @@ export function POSCheckoutTerminalReceiptDialogs({
                     closeReceiptPreviewModal();
                 }
             }}>
-                <DialogContent className={`pos-receipt-print-dialog flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200 p-0 shadow-2xl shadow-slate-950/25 sm:max-h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none ${
+                <DialogContent style={{ '--pos-receipt-paper-width': receiptPaperWidth }} className={`pos-receipt-print-dialog flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200 p-0 shadow-2xl shadow-slate-950/25 sm:max-h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none ${
                     receiptPreviewSource === 'order_preview' ? 'bg-white' : 'bg-slate-50'
                 }`}>
                     <DialogHeader className="relative border-b border-slate-200 bg-white px-5 py-3.5 print:hidden">
@@ -233,7 +234,10 @@ export function POSCheckoutTerminalReceiptDialogs({
                                     <RefundAdjustmentAudit transaction={lastReceipt} />
                                     <div className="flex justify-center space-y-3 print:space-y-0">
                                         <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
-                                            <div className="pos-receipt-print-paper w-full max-w-[80mm] border border-slate-200 bg-white p-4 shadow-sm">
+                                            <div
+                                                className="pos-receipt-print-paper w-full border border-slate-200 bg-white p-4 shadow-sm"
+                                                style={{ maxWidth: receiptPaperWidth }}
+                                            >
                                                 <ReceiptPrintView
                                                     transaction={lastReceipt}
                                                     businessSettings={receiptSettings}
@@ -271,22 +275,24 @@ export function POSCheckoutTerminalReceiptDialogs({
                             </label>
                         )}
                         <div className="ml-auto flex min-w-0 w-full items-center gap-2 sm:max-w-none">
-                            {lastReceipt && (
+                            {lastReceipt && receiptPreviewSource === 'order_preview' && (
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => setReceiptPreviewSource(
-                                        receiptPreviewSource === 'order_preview' ? 'receipt_preview' : 'order_preview'
-                                    )}
+                                    onClick={() => setReceiptPreviewSource('receipt_preview')}
                                     className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-lg border border-[#1A4E8D] bg-white px-2 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 sm:px-3 sm:text-xs"
                                 >
-                                    {receiptPreviewSource === 'order_preview' ? 'View Receipt' : 'Back to Order'}
+                                    View Receipt
                                 </Button>
                             )}
                             <Button
                                 type="button"
-                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
-                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || hardwareLoading}
+                                title={hardwareLoading
+                                    ? 'Checking printer availability.'
+                                    : isPrinterAvailable
+                                        ? undefined
+                                        : 'No direct printer detected. Opens the browser print dialog.'}
                                 onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
                                 className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-lg bg-[#1A4E8D] px-2 text-[11px] font-extrabold text-white shadow-md shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:text-xs"
                             >

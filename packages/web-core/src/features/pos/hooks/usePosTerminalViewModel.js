@@ -56,6 +56,8 @@ export function usePosTerminalViewModel({
     isMsmeMode = false,
     sidebarCollapsed = false,
     canViewHistory = true,
+    canReviewVoidApprovals = false,
+    inlineVoidApprovalEnabled = false,
     terminalUser = null,
     selectedLocationId = null,
     activeShiftId = null,
@@ -114,7 +116,14 @@ export function usePosTerminalViewModel({
 
     const isFnbWorkflow = posWorkflow.mode === 'fnb';
     const isDineInCashCheckoutRequested = Boolean(dineInCashCheckout);
-    const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
+    const [orderMethod, setOrderMethodState] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
+    const [deliveryProviderBreakdown, setDeliveryProviderBreakdown] = useState([]);
+    const setOrderMethod = useCallback((nextOrderMethod) => {
+        setOrderMethodState(nextOrderMethod);
+        if (String(nextOrderMethod || '').trim().toLowerCase() !== 'delivery') {
+            setDeliveryProviderBreakdown([]);
+        }
+    }, []);
     const [tableNumber, setTableNumber] = useState('');
     const [kitchenNotes, setKitchenNotes] = useState('');
     const [servicesClientName, setServicesClientName] = useState('');
@@ -709,6 +718,8 @@ export function usePosTerminalViewModel({
         setHistoryStatus,
         historyPaymentType,
         setHistoryPaymentType,
+        historyDeliveryProvider,
+        setHistoryDeliveryProvider,
         historyOrderMethod,
         setHistoryOrderMethod,
         historyOrderSource,
@@ -721,8 +732,14 @@ export function usePosTerminalViewModel({
         setHistoryDateTo,
         setHistoryPageSize,
         historyDetailLoading, voidingTransactionId,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
         refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow,
-        openHistoryDetail, handleVoidHistoryTransaction,
+        openHistoryDetail, handleVoidHistoryTransaction, loadVoidApprovalQueue, openVoidApprovalQueue, closeVoidApprovalQueue, decideVoidApproval,
         loadHistory
     } = usePosHistoryVoidWorkflow({
         sessionLocked,
@@ -744,7 +761,10 @@ export function usePosTerminalViewModel({
         externalReceiptTransactionId,
         onExternalReceiptHydrated,
         externalHistoryQuery,
-        onExternalHistoryHydrated, onFinancialMutationCompleted: onCheckoutCompleted
+        onExternalHistoryHydrated,
+        onFinancialMutationCompleted: onCheckoutCompleted,
+        inlineVoidApprovalEnabled,
+        canReviewVoidApprovals
     });
 
     usePosCartDraft({
@@ -789,6 +809,7 @@ export function usePosTerminalViewModel({
         isFnbWorkflow: checkoutUsesFnbContract,
         normalizedFnbContext,
         orderMethod,
+        deliveryProviderBreakdown,
         tableNumber,
         kitchenNotes,
         servicesClientName,
@@ -833,6 +854,7 @@ export function usePosTerminalViewModel({
         discountApprovalRef,
         resetEmployeeCredit,
         setOrderMethod,
+        setDeliveryProviderBreakdown,
         setTableNumber,
         setKitchenNotes,
         setServicesClientName,
@@ -1496,6 +1518,8 @@ export function usePosTerminalViewModel({
         bindingReadinessLabel,
         calculatedDiscountAmount,
         canViewHistory,
+        canReviewVoidApprovals,
+        inlineVoidApprovalEnabled,
         canUseEmployeeCredit,
         canVoidTransactions,
         cartSubtotal,
@@ -1548,6 +1572,7 @@ export function usePosTerminalViewModel({
         customerPaymentChange,
         customerPaymentFieldLabel,
         customerPaymentShortfall,
+        deliveryProviderBreakdown,
         discountApplying,
         discountApproversLoading,
         discountEmployeesLoading,
@@ -1613,6 +1638,16 @@ export function usePosTerminalViewModel({
         handleSplitPaymentOpenChange,
         handleSplitPaymentSessionStateChange,
         handleVoidHistoryTransaction,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
+        loadVoidApprovalQueue,
+        openVoidApprovalQueue,
+        closeVoidApprovalQueue,
+        decideVoidApproval,
         historyRefundWorkflow: { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow },
         hasSplitPaymentSummary,
         headerParkedSalesHistorySlot,
@@ -1626,6 +1661,7 @@ export function usePosTerminalViewModel({
         historyPage,
         historyPageSize,
         historyPaymentType,
+        historyDeliveryProvider,
         historySearch,
         historyStatus,
         imagePreview,
@@ -1728,6 +1764,7 @@ export function usePosTerminalViewModel({
         setCurrentViewMode,
         ...customerPaymentAmountState,
         setDiscountDraft,
+        setDeliveryProviderBreakdown,
         setDiscountModalOpen,
         setDrawerAuthorizationModalOpen,
         setDrawerAuthorizationPin,
@@ -1740,6 +1777,7 @@ export function usePosTerminalViewModel({
         setHistoryOrderMethod,
         setHistoryOrderSource,
         setHistoryPaymentType,
+        setHistoryDeliveryProvider,
         setHistorySearch,
         setHistoryStatus,
         setImagePreview,

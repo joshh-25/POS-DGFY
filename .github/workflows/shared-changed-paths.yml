@@ -79,6 +79,9 @@ on:
       frontend_opis:
         description: '"true" when this range touches anything the dgfy-opis image is built from'
         value: ${{ jobs.detect.outputs.frontend_opis }}
+      frontend_admin:
+        description: '"true" when this range touches anything the dgfy-admin image is built from'
+        value: ${{ jobs.detect.outputs.frontend_admin }}
       dgfy_api:
         description: '"true" when this range touches anything the dgfy-api image is built from'
         value: ${{ jobs.detect.outputs.dgfy_api }}
@@ -103,6 +106,7 @@ jobs:
       frontend_pos: ${{ inputs.validate_pr_metadata && steps.frontend_reachability.outputs.frontend_pos || steps.filter.outputs.frontend_pos }}
       frontend_storefront: ${{ inputs.validate_pr_metadata && steps.frontend_reachability.outputs.frontend_storefront || steps.filter.outputs.frontend_storefront }}
       frontend_opis: ${{ inputs.validate_pr_metadata && steps.frontend_reachability.outputs.frontend_opis || steps.filter.outputs.frontend_opis }}
+      frontend_admin: ${{ inputs.validate_pr_metadata && steps.frontend_reachability.outputs.frontend_admin || steps.filter.outputs.frontend_admin }}
       dgfy_api: ${{ steps.filter.outputs.dgfy_api }}           # unchanged -- no web-core/shared-constants pattern to narrow
       migration_runner: ${{ steps.filter.outputs.migration_runner }}  # unchanged, same reason
       android: ${{ steps.filter.outputs.android }}             # unchanged, same reason
@@ -133,7 +137,7 @@ jobs:
           fi
           echo "[workspace-hygiene] OK"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -182,12 +186,13 @@ jobs:
             FRONTEND_POS=true
             FRONTEND_STOREFRONT=true
             FRONTEND_OPIS=true
+            FRONTEND_ADMIN=true
             DGFY_API=true
             MIGRATION_RUNNER=true
             ANDROID=true
             # #1809: no usable diff -- the "Narrow frontend build triggers..." step below can't
             # narrow what it can't diff, so it must keep this step's own fail-safe "build
-            # everything" verdict for the four frontend outputs rather than attempting to narrow.
+            # everything" verdict for the five frontend outputs rather than attempting to narrow.
             DIFF_AVAILABLE=false
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
@@ -205,8 +210,8 @@ jobs:
             # Each frontend app depends on packages/web-core (the shared trunk)
             # and packages/shared-constants; dgfy-ims/dgfy-pos/dgfy-opis additionally
             # depend on packages/pos-receipt (dgfy-storefront doesn't -- see
-            # its package.json). All four share the reusable deploy-frontend.yml
-            # workflow, so a change there invalidates all four, not just one.
+            # its package.json). All five share the reusable deploy-frontend.yml
+            # workflow, so a change there invalidates all five, not just one.
             #
             # dgfy-api and dgfy-migration-runner similarly both depend on
             # packages/tenant-bootstrap (#1819) -- a change there alone must still
@@ -215,6 +220,7 @@ jobs:
             FRONTEND_POS=false
             FRONTEND_STOREFRONT=false
             FRONTEND_OPIS=false
+            FRONTEND_ADMIN=false
             DGFY_API=false
             MIGRATION_RUNNER=false
             ANDROID=false
@@ -222,6 +228,7 @@ jobs:
             matches '^(apps/dgfy-pos/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-pos/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)' && FRONTEND_POS=true || true
             matches '^(apps/dgfy-storefront/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-storefront/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)' && FRONTEND_STOREFRONT=true || true
             matches '^(apps/dgfy-opis/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-opis/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)' && FRONTEND_OPIS=true || true
+            matches '^(apps/dgfy-admin/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-admin/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)' && FRONTEND_ADMIN=true || true
             matches '^(apps/dgfy-api/|packages/shared-constants/|packages/tenant-bootstrap/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
             matches '^(apps/dgfy-migration-runner/|packages/tenant-bootstrap/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
             matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
@@ -236,6 +243,7 @@ jobs:
             echo "frontend_pos=${FRONTEND_POS}"
             echo "frontend_storefront=${FRONTEND_STOREFRONT}"
             echo "frontend_opis=${FRONTEND_OPIS}"
+            echo "frontend_admin=${FRONTEND_ADMIN}"
             echo "dgfy_api=${DGFY_API}"
             echo "migration_runner=${MIGRATION_RUNNER}"
             echo "android=${ANDROID}"
@@ -316,12 +324,13 @@ jobs:
           FALLBACK_POS: ${{ steps.filter.outputs.frontend_pos }}
           FALLBACK_STOREFRONT: ${{ steps.filter.outputs.frontend_storefront }}
           FALLBACK_OPIS: ${{ steps.filter.outputs.frontend_opis }}
+          FALLBACK_ADMIN: ${{ steps.filter.outputs.frontend_admin }}
         run: |
           set -euo pipefail
           if [ "${DIFF_AVAILABLE}" != "true" ]; then
             # No usable diff (new branch / force-push) -- keep the filter step's own fail-safe
             # "build everything" verdict rather than attempting to narrow it.
-            { echo "frontend_ims=${FALLBACK_IMS}"; echo "frontend_pos=${FALLBACK_POS}"; echo "frontend_storefront=${FALLBACK_STOREFRONT}"; echo "frontend_opis=${FALLBACK_OPIS}"; } >> "$GITHUB_OUTPUT"
+            { echo "frontend_ims=${FALLBACK_IMS}"; echo "frontend_pos=${FALLBACK_POS}"; echo "frontend_storefront=${FALLBACK_STOREFRONT}"; echo "frontend_opis=${FALLBACK_OPIS}"; echo "frontend_admin=${FALLBACK_ADMIN}"; } >> "$GITHUB_OUTPUT"
           else
             node scripts/resolve-frontend-build-triggers.js --base "${BASE_SHA}" --head HEAD
           fi

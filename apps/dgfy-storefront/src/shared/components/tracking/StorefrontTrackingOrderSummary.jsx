@@ -48,6 +48,8 @@ export function StorefrontTrackingOrderSummary({
       subtotal_amount: trackingResult?.subtotalAmount,
       discount_amount: trackingResult?.discountAmount,
       discount_label: trackingResult?.discountLabel,
+      customer_processing_fee_amount: trackingResult?.customerProcessingFeeAmount,
+      customer_processing_fee_label: trackingResult?.customerProcessingFeeLabel,
       delivery_fee: trackingResult?.deliveryFee,
       vat_amount: trackingResult?.vatAmount,
       total_amount: trackingResult?.totalAmount,

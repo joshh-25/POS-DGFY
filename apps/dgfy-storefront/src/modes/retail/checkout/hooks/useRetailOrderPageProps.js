@@ -4,6 +4,7 @@ import {
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import { resolveAddressSearchBias } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 
 // Plain pass-through props bundle for RetailOrderPage. Real, already-existing shared state is
 // threaded through here: cart display, store info, navigation, viewport, the shared
@@ -60,6 +61,7 @@ export function useRetailOrderPageProps({
   voucherDiscountSummaryRow,
   pinLocationError,
   pinLocationLoading,
+  resolvingPinnedDeliveryAddress = false,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
@@ -105,8 +107,10 @@ export function useRetailOrderPageProps({
   fnbPaymentType,
   handlePaymentTypeChange,
   handleConfirmQrphTestPayment,
+  handleCancelQrphPaymentSession,
   qrphPaymentSession,
   qrphPaymentStatusLoading,
+  cancellingPaymentSession = false,
   resetQrphPaymentSession,
   // Phase 150 (#866): same coordination point as fnbPaymentType/handlePaymentTypeChange above --
   // StorefrontApp.jsx's paymentElection/setElected, threaded through unrenamed since there's no
@@ -119,6 +123,7 @@ export function useRetailOrderPageProps({
     RETAIL_ORDER_METHOD_OPTIONS,
     fulfillmentLocation
   );
+  const addressSearchBias = resolveAddressSearchBias(fulfillmentLocation, customerPin);
 
   return {
     canAddPinnedLocation,
@@ -160,6 +165,8 @@ export function useRetailOrderPageProps({
   voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
+    resolvingPinnedDeliveryAddress,
+    addressSearchBias,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
     renderGuestCheckoutEntry,
@@ -190,7 +197,7 @@ export function useRetailOrderPageProps({
     scheduledFor: fnbScheduledFor,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode?.(nextMode);
-      if (nextMode === 'asap') setFnbScheduledFor?.('');
+      if (nextMode === 'asap' || nextMode === 'anytime') setFnbScheduledFor?.('');
     },
     onScheduledForChange: (nextScheduledFor) => {
       setFnbScheduledFor?.(nextScheduledFor);
@@ -201,8 +208,10 @@ export function useRetailOrderPageProps({
     paymentElection,
     onPaymentElectionChange,
     onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
+    onCancelQrphPaymentSession: handleCancelQrphPaymentSession,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
+    cancellingPaymentSession,
     resetQrphPaymentSession,
     onImageError: (itemId) => {
       const normalizedLineItemId = Number(itemId);

@@ -186,4 +186,30 @@ describe('Business Admin contracts', () => {
         expect(result.error.code).toBe('CONFLICT');
         expect(result.error.details).toEqual({ reason_code: 'BUSINESS_ADMIN_APPROVAL_OWNER_UNAVAILABLE' });
     });
+
+    it('delegates approval decisions to the canonical POS owner', async () => {
+        const decidePosExceptionApprovalUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: { approval_request: { approval_request_id: 12, status: 'executed' } }
+        });
+        const useCase = buildDecideBusinessAdminApprovalUseCase({ decidePosExceptionApprovalUseCase });
+
+        const result = await useCase({
+            approvalRequestId: 12,
+            decision: 'approve',
+            note: 'Reviewed in OPIS',
+            user: ADMIN
+        });
+
+        expect(result).toEqual({
+            success: true,
+            data: { approval_request: { approval_request_id: 12, status: 'executed' } }
+        });
+        expect(decidePosExceptionApprovalUseCase).toHaveBeenCalledWith({
+            approvalRequestId: 12,
+            decision: 'approve',
+            note: 'Reviewed in OPIS',
+            user: ADMIN
+        });
+    });
 });

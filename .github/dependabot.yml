@@ -1,0 +1,48 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    # Keep this list aligned with scripts/audit-dependencies.js:32-43, plus the three
+    # dependency-bearing npm roots that the audit script does not cover yet.
+    directories:
+      - /
+      - /apps/dgfy-api
+      - /apps/dgfy-ims
+      - /apps/dgfy-pos
+      - /apps/dgfy-storefront
+      - /apps/dgfy-opis
+      - /apps/dgfy-migration-runner
+      - /tests/frontend-cross-app
+      - /apps/dgfy-api/device-bridge
+      - /mobile/hardware-pos
+      - "/Standalone POS"
+    target-branch: develop
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - security
+      - supply-chain
+    groups:
+      patch-and-minor:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - security
+      - supply-chain
+    groups:
+      patch-and-minor:
+        update-types:
+          - minor
+          - patch

@@ -80,6 +80,10 @@ on:
         description: Build/push the dgfy-opis image. Uncheck to skip.
         type: boolean
         default: true
+      build_frontend_admin:
+        description: Build/push the dgfy-admin image. Uncheck to skip.
+        type: boolean
+        default: true
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -97,14 +101,21 @@ on:
         default: ''
       release_revision_api:
         description: >-
-          Per-app artifact revision for dgfy-api and dgfy-migration-runner (#2055, Phase 346 --
-          each app's own allocated rN, e.g. "r16"). Set these four ONLY when the STAGING
+          Per-app artifact revision for dgfy-api (#2055, Phase 346 -- its own allocated rN,
+          e.g. "r16"). Set this ONLY when the STAGING
           dispatch is part of a to-staging/<candidate_id> promotion (promoter-filled from the
           candidate manifest's per-app release_revision map) -- the builders fail closed
           without them, and the published staging tags carry them (backend X.Y.Z-rN).
           DEV ignores these release inputs and always publishes the mutable `dev` tag plus
           the dispatched commit's SHA tag. STAGING candidate builds require per-app revisions;
           ad hoc STAGING builds outside a tracked candidate are refused.
+        type: string
+        default: ''
+      release_revision_migration_runner:
+        description: >-
+          Per-app artifact revision for dgfy-migration-runner. It shares the paired build_api
+          checkbox with dgfy-api but has an independent immutable image revision stream.
+          Candidate STAGING dispatch only; DEV ignores this input.
         type: string
         default: ''
       release_revision_frontend_ims:
@@ -127,6 +138,10 @@ on:
         default: ''
       release_revision_frontend_opis:
         description: Same per-app revision contract for dgfy-opis (frontend X.Y.Z-rN-staging).
+        type: string
+        default: ''
+      release_revision_frontend_admin:
+        description: Same per-app revision contract for dgfy-admin (frontend X.Y.Z-rN-staging).
         type: string
         default: ''
       environment_override:
@@ -226,13 +241,16 @@ jobs:
       build_frontend_pos: ${{ inputs.build_frontend_pos }}
       build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
       build_frontend_opis: ${{ inputs.build_frontend_opis }}
+      build_frontend_admin: ${{ inputs.build_frontend_admin }}
       runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision_api: ${{ inputs.release_revision_api }}
+      release_revision_migration_runner: ${{ inputs.release_revision_migration_runner }}
       release_revision_frontend_ims: ${{ inputs.release_revision_frontend_ims }}
       release_revision_frontend_pos: ${{ inputs.release_revision_frontend_pos }}
       release_revision_frontend_storefront: ${{ inputs.release_revision_frontend_storefront }}
       release_revision_frontend_opis: ${{ inputs.release_revision_frontend_opis }}
+      release_revision_frontend_admin: ${{ inputs.release_revision_frontend_admin }}
     secrets: inherit
     permissions:
       contents: read

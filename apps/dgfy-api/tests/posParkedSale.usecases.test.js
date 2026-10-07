@@ -63,6 +63,10 @@ const buildHarness = ({ shift = {}, parkedSale = null, parkedSales = [] } = {}) 
             business_admin_approval_request_id: 501,
             ...payload
         })),
+        updateBusinessAdminApprovalRequest: jest.fn(async (id, payload) => ({
+            business_admin_approval_request_id: id,
+            ...payload
+        })),
         getParkedSaleById: jest.fn(async () => currentParkedSale),
         findSellableItemsByIds: jest.fn().mockResolvedValue([]),
         updateParkedSale: jest.fn(async (id, payload) => {
@@ -534,6 +538,103 @@ describe('parked sale use cases', () => {
         }), expect.objectContaining({ transaction: harness.transaction }));
     });
 
+    it('requests Back Office cancellation approval for another same-location cashier\'s parked sale', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'claimed',
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            claimed_by: 15,
+            claimed_terminal_id: 'COUNTER-01',
+            inventory_deducted_at: new Date()
+        };
+        const harness = buildHarness({
+            shift: {
+                cashier_id: 22,
+                pos_terminal_shift_id: 42,
+                terminal_id: 'COUNTER-02'
+            },
+            parkedSale
+        });
+        const useCase = buildCancelPosParkedSaleUseCase({ posRepository: harness.posRepository });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload: { shift_id: 42, terminal_id: 'COUNTER-02', location_id: 3, reason: 'Customer changed order' },
+            user: { user_id: 22, role: 'cashier' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            pending: true,
+            parked_sale: expect.objectContaining({ status: 'cancel_pending' }),
+            approval_request: expect.objectContaining({
+                action_type: 'pos_parked_sale_cancel',
+                reason: 'Customer changed order',
+                status: 'pending'
+            })
+        }));
+        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).not.toHaveBeenCalled();
+        expect(harness.posRepository.createBusinessAdminApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+            action_type: 'pos_parked_sale_cancel',
+            reason: 'Customer changed order',
+            status: 'pending'
+        }), expect.objectContaining({ transaction: harness.transaction }));
+        expect(harness.posRepository.updateParkedSale).toHaveBeenCalledWith(101, expect.objectContaining({
+            status: 'cancel_pending'
+        }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
+        expect(harness.posRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_parked_sale_cancellation_requested',
+            changes: expect.objectContaining({
+                approval_request_id: 501,
+                reason: 'Customer changed order'
+            })
+        }), expect.objectContaining({ transaction: harness.transaction }));
+        expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the existing pending cancellation approval without creating a duplicate request', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'cancel_pending',
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3
+        };
+        const harness = buildHarness({
+            shift: {
+                cashier_id: 22,
+                pos_terminal_shift_id: 42,
+                terminal_id: 'COUNTER-02'
+            },
+            parkedSale
+        });
+        harness.posRepository.findPendingBusinessAdminApprovalRequest.mockResolvedValue({
+            business_admin_approval_request_id: 502,
+            action_type: 'pos_parked_sale_cancel',
+            status: 'pending'
+        });
+        const useCase = buildCancelPosParkedSaleUseCase({ posRepository: harness.posRepository });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload: { shift_id: 42, terminal_id: 'COUNTER-02', location_id: 3, reason: 'Customer changed order' },
+            user: { user_id: 22, role: 'cashier' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            pending: true,
+            parked_sale: expect.objectContaining({ status: 'cancel_pending' }),
+            approval_request: expect.objectContaining({ business_admin_approval_request_id: 502 })
+        }));
+        expect(harness.posRepository.createBusinessAdminApprovalRequest).not.toHaveBeenCalled();
+        expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
+        expect(harness.posRepository.createAuditLog).not.toHaveBeenCalled();
+        expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
+    });
+
     it('updates the same claimed parked sale and increments its revision', async () => {
         const parkedSale = {
             pos_parked_sale_id: 101,
@@ -699,27 +800,27 @@ describe('parked sale use cases', () => {
         }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
     });
 
-    it('keeps cancellation restricted to the current parked-sale owner', async () => {
+    it('denies cancellation requests from another location', async () => {
         const harness = buildHarness({
-            shift: { cashier_id: 22, pos_terminal_shift_id: 42 },
+            shift: { cashier_id: 22, pos_terminal_shift_id: 42, terminal_id: 'COUNTER-02' },
             parkedSale: {
                 pos_parked_sale_id: 101,
                 status: 'parked',
                 shift_id: 41,
                 cashier_id: 15,
-                location_id: 3
+                location_id: 9
             }
         });
         const useCase = buildCancelPosParkedSaleUseCase({ posRepository: harness.posRepository });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             parkedSaleId: 101,
-            payload: { shift_id: 42, terminal_id: 'COUNTER-01', location_id: 3, reason: 'Customer cancelled order' },
+            payload: { shift_id: 42, terminal_id: 'COUNTER-02', location_id: 3, reason: 'Customer cancelled order' },
             user: { user_id: 22 }
         }));
 
         expect(result.success).toBe(false);
-        expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'PARKED_SALE_SCOPE_DENIED' }));
+        expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'PARKED_SALE_LOCATION_MISMATCH' }));
         expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
     });
 });

@@ -65,6 +65,8 @@ services:
         condition: service_healthy
       dgfy-opis:
         condition: service_healthy
+      dgfy-admin:
+        condition: service_healthy
     networks:
       - dgfy_internal
       - dgfy-dglaundry-edge

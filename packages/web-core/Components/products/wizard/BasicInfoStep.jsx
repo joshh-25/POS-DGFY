@@ -10,10 +10,18 @@ export default function BasicInfoStep({
   updateData,
   onSkuChange,
   locations = [],
-  loadingLocations = false
+  loadingLocations = false,
+  stockAllocationDraft = {},
+  onStockAllocationChange,
+  existingStockByLocation = new Map()
 }) {
   const activeLocations = Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : [];
-  const shouldRequireLocation = activeLocations.length > 1 && Number(data.current_stock || 0) > 0;
+  const getExistingStock = (locationId) => {
+    if (existingStockByLocation instanceof Map) {
+      return Number(existingStockByLocation.get(String(locationId)) || 0);
+    }
+    return Number(existingStockByLocation?.[String(locationId)] || 0);
+  };
 
   return (
     <div className="space-y-6">
@@ -120,37 +128,42 @@ export default function BasicInfoStep({
             <p className="text-xs text-slate-500">Maximum stock capacity</p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Current Stock</Label>
-            <Input
-              type="number"
-              placeholder="0"
-              value={data.current_stock ?? ''}
-              onChange={(e) => updateData({ current_stock: parseFloat(e.target.value) || 0 })}
-            />
-            <p className="text-xs text-slate-500">Initial stock on hand</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Stock Location</Label>
-            <Select
-              value={data.location_id || ''}
-              onValueChange={(value) => updateData({ location_id: value })}
-              disabled={loadingLocations || activeLocations.length === 0}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
-              </SelectTrigger>
-              <SelectContent>
-                {activeLocations.map((location) => (
-                  <SelectItem key={`product-location-${location.location_id}`} value={String(location.location_id)}>
-                    {location.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {shouldRequireLocation && !data.location_id && (
-              <p className="text-xs text-red-600">Required when setting stock in a multi-location tenant.</p>
+          <div className="space-y-3 md:col-span-2">
+            <div>
+              <Label>Optional stock additions by branch</Label>
+              <p className="text-xs text-slate-500">
+                Add stock independently at each branch. Existing balances are reference-only and are not replaced.
+              </p>
+            </div>
+            {loadingLocations ? (
+              <p className="text-xs text-slate-500">Loading active branches...</p>
+            ) : activeLocations.length === 0 ? (
+              <p className="text-xs text-amber-700">Add an active branch before assigning stock.</p>
+            ) : (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                {activeLocations.map((location) => {
+                  const locationKey = String(location.location_id);
+                  const currentBalance = getExistingStock(location.location_id);
+                  return (
+                    <div key={`product-stock-allocation-${locationKey}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,8rem)] sm:items-center">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">{location.name}</p>
+                        <p className="text-xs text-slate-500">On hand: {currentBalance} {data.unit_of_measure || 'units'}</p>
+                      </div>
+                      <span className="hidden text-xs text-slate-400 sm:inline">Add</span>
+                      <Input
+                        aria-label={`Add stock at ${location.name}`}
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="0"
+                        value={stockAllocationDraft[locationKey] ?? ''}
+                        onChange={(event) => onStockAllocationChange?.(location.location_id, event.target.value)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 

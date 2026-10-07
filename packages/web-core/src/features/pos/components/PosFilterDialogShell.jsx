@@ -24,8 +24,8 @@ export default function PosFilterDialogShell({
   const contentClassName = [
     'flex',
     mode === 'calendar'
-      ? 'max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl'
-      : 'max-h-[min(90vh,48rem)]',
+      ? 'h-[min(90vh,40rem)] max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl'
+      : 'h-[min(90vh,48rem)] max-h-[min(90vh,48rem)]',
     isMobileDialog
       ? 'dgfy-pos-history-mobile-sheet max-w-none rounded-t-2xl'
       : mode === 'calendar'
@@ -46,7 +46,15 @@ export default function PosFilterDialogShell({
         top: `${position.top}px`,
         width: `${position.width}px`,
         maxWidth: `${position.width}px`,
-        ...(position.maxHeight != null ? { maxHeight: `${position.maxHeight}px` } : {}),
+        ...(position.maxHeight != null
+          ? {
+              // A max-height alone does not give the flex column a definite
+              // height, so the body can remain content-sized and be clipped
+              // by the shell instead of becoming the scroll container.
+              maxHeight: `${position.maxHeight}px`,
+              height: `${position.maxHeight}px`
+            }
+          : {}),
         boxSizing: 'border-box'
       }
     : undefined;

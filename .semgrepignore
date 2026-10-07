@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+coverage/
+backups/
+docs/archive/
+.tmp/
+Standalone POS/gradle/
+**/*.min.js

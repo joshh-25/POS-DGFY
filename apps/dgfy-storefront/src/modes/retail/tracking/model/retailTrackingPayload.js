@@ -88,6 +88,8 @@ export function toRetailTrackingViewState(trackingPayload) {
     ).trim(),
     serviceFeeAmount: numberOrNull(source.serviceFeeAmount ?? root?.service_fee_amount ?? root?.service_fee ?? raw?.service_fee_amount ?? raw?.service_fee ?? order?.service_fee_amount ?? order?.service_fee),
     serviceFeeLabel: String(source.serviceFeeLabel || order?.service_fee_label_snapshot || root?.service_fee_label_snapshot || raw?.service_fee_label_snapshot || '').trim(),
+    customerProcessingFeeAmount: numberOrNull(source.customerProcessingFeeAmount ?? root?.customer_processing_fee_amount ?? raw?.customer_processing_fee_amount ?? order?.customer_processing_fee_amount),
+    customerProcessingFeeLabel: String(source.customerProcessingFeeLabel || order?.customer_processing_fee_label_snapshot || root?.customer_processing_fee_label || raw?.customer_processing_fee_label || '').trim(),
     vatAmount: numberOrNull(source.vatAmount ?? order?.vat_amount ?? root?.vat_amount ?? raw?.vat_amount),
     // #747: `order?.total_amount` (the server-persisted value) now outranks `root?.total_amount` /
     // `raw?.total_amount` -- those can carry a client-snapshotted pre-submission total (see
@@ -132,6 +134,8 @@ export function buildRetailTrackedOrderEntry({ fallbackPin = '', normalizedEntit
     total_amount: view.totalAmount,
     delivery_fee: view.deliveryFee,
     service_fee: view.serviceFeeAmount,
+    customer_processing_fee: view.customerProcessingFeeAmount,
+    customer_processing_fee_label: view.customerProcessingFeeLabel,
     special_instructions: String(view.specialInstructions || '').trim(),
     branch_name: String(view.branchName || location?.name || '').trim(),
     eta_minutes: numberOrNull(normalizedEntity?.etaMinutes ?? root?.estimated_wait_minutes ?? raw?.estimated_wait_minutes),

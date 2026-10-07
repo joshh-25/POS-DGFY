@@ -49,13 +49,13 @@ describe('Back Office canonical manifest contract', () => {
         ]));
 
         expect(itemsByGroup.Overview).toEqual(['overview']);
-        expect(itemsByGroup.Sales).toEqual(['sales', 'orders', 'payments']);
+        expect(itemsByGroup.Sales).toEqual(['sales', 'orders', 'payments', 'vouchers']);
         expect(itemsByGroup.Customers).toEqual(['customers']);
         expect(itemsByGroup.Inventory).toEqual(['catalog', 'inventory', 'suppliers', 'purchase-orders', 'stock-movements', 'recipes']);
         expect(itemsByGroup.Operations).toEqual(['locations', 'shifts', 'attendance', 'expenses', 'fnb', 'services', 'hospitality', 'job-orders', 'dispatch-orders']);
         expect(itemsByGroup['Team & Access']).toEqual(['team']);
-        expect(itemsByGroup.Reports).toEqual(['reports']);
-        expect(itemsByGroup.Settings).toEqual(['notifications', 'fiscal', 'audit', 'approvals', 'onboarding', 'storefront', 'settings', 'ai-chat']);
+        expect(itemsByGroup.Reports).toEqual(['reports', 'pos-activity']);
+        expect(itemsByGroup.Settings).toEqual(['notifications', 'fiscal', 'audit', 'approvals', 'onboarding', 'storefront', 'company', 'settings', 'ai-chat']);
         expect(BACKOFFICE_NAV_GROUPS.find((group) => group.label === 'Overview')?.standalone).toBe(true);
         expect(BACKOFFICE_NAV_GROUPS.filter((group) => group.items.length > 0)).toHaveLength(8);
     });
@@ -73,6 +73,13 @@ describe('Back Office canonical manifest contract', () => {
         });
     });
 
+    it('names the OPIS catalog surface Item Editor', () => {
+        expect(BACKOFFICE_MANIFEST.catalog).toMatchObject({
+            label: 'Item Editor',
+            title: 'Item Editor'
+        });
+    });
+
     it('derives migrated component ownership without a second component registry', () => {
         const migratedKeys = Object.keys(MERCHANT_BACKOFFICE_MODULE_META);
         expect(migratedKeys.sort()).toEqual([
@@ -87,7 +94,8 @@ describe('Back Office canonical manifest contract', () => {
             'hospitality',
             'sales',
             'reports',
-            'ai-chat'
+            'ai-chat',
+            'vouchers'
         ].sort());
         for (const key of migratedKeys) {
             expect(getBackOfficeModuleDefinition(key)?.component).toBeTruthy();
@@ -132,6 +140,7 @@ describe('Back Office canonical manifest contract', () => {
             'team',
             'attendance',
             'payments',
+            'processing_fees',
             'registers'
         ]);
     });

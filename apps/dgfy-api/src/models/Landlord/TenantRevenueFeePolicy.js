@@ -12,6 +12,9 @@ export default (sequelize) => sequelize.define('TenantRevenueFeePolicy', {
   provider_fee_payer: { type: DataTypes.ENUM('tenant', 'dgfy', 'shared'), allowNull: false, defaultValue: 'tenant' },
   shared_fee_tenant_bps: { type: DataTypes.INTEGER, allowNull: true },
   fallback_fee_policy: { type: DataTypes.JSON, allowNull: true },
+  // Backward-compatible column name for the customer-facing item-processing policy;
+  // this is not a payment-provider fee.
+  customer_processing_fee_policy: { type: DataTypes.JSON, allowNull: true },
   payout_destination_encrypted: { type: DataTypes.TEXT, allowNull: true },
   payout_destination_masked: { type: DataTypes.STRING(160), allowNull: true },
   automatic_payout_enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },

@@ -6,6 +6,7 @@ import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalT
 const baseBody = {
   name: 'Micro Eatery Co',
   accepted_company_terms: true,
+  accepted_marketplace_terms: true,
   company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
   marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
 };

@@ -14,9 +14,16 @@
 // implementation.
 export const resolveTrackedTotals = (order, fallbackTotals) => {
   const serverTotal = Number(order?.total_amount);
+  const serverCustomerProcessingFee = Number(order?.customer_processing_fee_amount);
   return {
     ...fallbackTotals,
     ...(Number.isFinite(serverTotal) ? { total_amount: serverTotal } : {}),
+    ...(Number.isFinite(serverCustomerProcessingFee)
+      ? {
+        customer_processing_fee_amount: serverCustomerProcessingFee,
+        customer_processing_fee_label: order?.customer_processing_fee_label_snapshot || fallbackTotals?.customer_processing_fee_label || 'Item processing fee'
+      }
+      : {}),
     amount_paid: order?.amount_paid ?? null,
     balance_due: order?.balance_due ?? null
   };

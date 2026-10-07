@@ -56,6 +56,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_frontend_admin:
+        description: Whether to build/push the dgfy-admin image. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
+        required: false
+        type: boolean
+        default: true
       runner_labels_json:
         description: JSON array passed to runs-on for build/publish jobs
         required: false
@@ -73,13 +78,17 @@ on:
         default: ''
       release_revision_api:
         description: >-
-          Per-app artifact revision for dgfy-api AND dgfy-migration-runner (#2055, Phase 346 --
-          each app keeps its own allocated rN, e.g. "r16"; #1977's single candidate-wide value,
-          Phase 342). Covers both backends because build_api always rebuilds them as one paired
-          unit (a repair touching either always lists both in its manifest apps_touched, so the
-          promoter hands both the same value here -- their published tags still carry each
-          app's own floor). Required on a STAGING candidate dispatch (builders fail closed
-          without it); DEV ignores it (revisions are allocated in resolve-build-plan below).
+          Per-app artifact revision for dgfy-api (#2055, Phase 346). The migration runner has
+          its own input even though build_api remains the shared paired build checkbox. Required
+          when dgfy-api is selected for a STAGING candidate; DEV ignores it.
+        required: false
+        type: string
+        default: ''
+      release_revision_migration_runner:
+        description: >-
+          Independent per-app artifact revision for dgfy-migration-runner. It shares build_api
+          with dgfy-api but does not share the immutable image revision stream. Required when
+          selected for a STAGING candidate; DEV ignores it.
         required: false
         type: string
         default: ''
@@ -112,6 +121,11 @@ on:
         required: false
         type: string
         default: ''
+      release_revision_frontend_admin:
+        description: Same per-app contract as the other frontend release revisions, for dgfy-admin.
+        required: false
+        type: string
+        default: ''
     outputs:
       frontend_ims_sha_tag:
         value: ${{ jobs.frontend-ims.outputs.sha_tag }}
@@ -129,6 +143,10 @@ on:
         value: ${{ jobs.frontend-opis.outputs.sha_tag }}
       frontend_opis_version_tag:
         value: ${{ jobs.frontend-opis.outputs.version_tag }}
+      frontend_admin_sha_tag:
+        value: ${{ jobs.frontend-admin.outputs.sha_tag }}
+      frontend_admin_version_tag:
+        value: ${{ jobs.frontend-admin.outputs.version_tag }}
       dgfy_api_sha_tag:
         value: ${{ jobs.dgfy-api.outputs.sha_tag }}
       dgfy_api_version_tag:
@@ -163,6 +181,7 @@ jobs:
       should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
       should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
       should_build_dgfy_opis: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
+      should_build_dgfy_admin: ${{ steps.resolve.outputs.should_build_dgfy_admin }}
       # Per-app release revision map for STAGING/PROD builds; DEV intentionally gets an empty
       # map except under this integration branch's explicit revisioned_dev_dispatch opt-in
       # (#2055 Phase 346, temporary to this branch -- see the "Resolve per-app artifact
@@ -191,7 +210,7 @@ jobs:
           fi
           echo "[workspace-hygiene] OK"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -208,7 +227,7 @@ jobs:
           echo "[workspace-hygiene] tree complete."
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -253,15 +272,17 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           REVISIONED_DEV_DISPATCH: ${{ inputs.revisioned_dev_dispatch }}
           RELEASE_REVISION_API: ${{ inputs.release_revision_api }}
+          RELEASE_REVISION_MIGRATION_RUNNER: ${{ inputs.release_revision_migration_runner }}
           RELEASE_REVISION_IMS: ${{ inputs.release_revision_frontend_ims }}
           RELEASE_REVISION_POS: ${{ inputs.release_revision_frontend_pos }}
           RELEASE_REVISION_STOREFRONT: ${{ inputs.release_revision_frontend_storefront }}
           RELEASE_REVISION_OPIS: ${{ inputs.release_revision_frontend_opis }}
+          RELEASE_REVISION_ADMIN: ${{ inputs.release_revision_frontend_admin }}
         run: |
           set -euo pipefail
           if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ] && [ "${REVISIONED_DEV_DISPATCH}" = "true" ]; then
             echo "[revisions] revisioned DEV dispatch on '${REF_NAME}' -- allocating per-app revisions from GHCR (#2055, temporary to this integration branch -- do not generalize)."
-            REVISIONS_JSON="$(for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
+            REVISIONS_JSON="$(for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis dgfy-admin; do
               FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
               ALLOC="$(node scripts/allocate-artifact-revision.js --image "ghcr.io/sieitzz/${APP}" --floor "${FLOOR}" --revision "${GITHUB_SHA}")"
               echo "[revisions] ${ALLOC}"
@@ -275,7 +296,15 @@ jobs:
             echo "revisions_json={}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_API);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);put('dgfy-opis',process.env.RELEASE_REVISION_OPIS);console.log(JSON.stringify(m))")"
+          API_SELECTED=false
+          MIGRATION_SELECTED=false
+          [ -z "${RELEASE_REVISION_API//[[:space:]]/}" ] || API_SELECTED=true
+          [ -z "${RELEASE_REVISION_MIGRATION_RUNNER//[[:space:]]/}" ] || MIGRATION_SELECTED=true
+          if [ "${API_SELECTED}" != "${MIGRATION_SELECTED}" ]; then
+            echo "::error::Candidate dispatch must select dgfy-api and dgfy-migration-runner artifact revisions together or omit both."
+            exit 1
+          fi
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_MIGRATION_RUNNER);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);put('dgfy-opis',process.env.RELEASE_REVISION_OPIS);put('dgfy-admin',process.env.RELEASE_REVISION_ADMIN);console.log(JSON.stringify(m))")"
           echo "[revisions] STAGING dispatch -- per-app revisions from promotion inputs: ${REVISIONS_JSON}"
           echo "revisions_json=${REVISIONS_JSON}" >> "$GITHUB_OUTPUT"
 
@@ -404,8 +433,26 @@ jobs:
       contents: read
       packages: write
 
+  frontend-admin:
+    # Builds/pushes the dgfy-admin image -- see
+    # infrastructure/docker/dgfy-admin/Dockerfile (issue #350).
+    needs: resolve-build-plan
+    if: inputs.build_frontend_admin && needs.resolve-build-plan.outputs.should_build_dgfy_admin == 'true'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-admin
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-admin }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
   publish:
-    needs: [ resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims, frontend-pos, frontend-storefront, frontend-opis ]
+    needs: [ resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims, frontend-pos, frontend-storefront, frontend-opis, frontend-admin ]
     # dgfy-api/dgfy-migration-runner/frontend-* are conditionally skipped
     # (build_api/build_frontend above, and now also #1610's resolve-build-plan verdict), and
     # `needs.<job>.result` on a skipped job is 'skipped', not 'success' -- so this can't require all
@@ -421,7 +468,9 @@ jobs:
       inputs.publish && !cancelled() &&
       needs.resolve-build-plan.result == 'success' &&
       needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-api.result != 'cancelled' &&
       needs.dgfy-migration-runner.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'cancelled' &&
       needs.frontend-ims.result != 'failure' &&
       needs.frontend-pos.result != 'failure' &&
       needs.frontend-storefront.result != 'failure' &&

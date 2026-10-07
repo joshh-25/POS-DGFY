@@ -101,8 +101,9 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    // The incoming queue loads behind a lazy boundary; await its first paint.
-    expect(await screen.findByText('Location scope:')).toBeTruthy();
+    // The incoming queue loads behind a lazy boundary. Allow a cold module import
+    // more than Testing Library's 1s default when the contract suite runs under CI load.
+    expect(await screen.findByText('Location scope:', {}, { timeout: 5000 })).toBeTruthy();
     expect(screen.getByText('East Branch')).toBeTruthy();
     expect(screen.queryByLabelText('Operating Location')).toBeNull();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();

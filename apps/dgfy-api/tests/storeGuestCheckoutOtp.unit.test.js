@@ -1,13 +1,15 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import jwt from 'jsonwebtoken';
 import {
   buildRequestStoreGuestCheckoutOtpUseCase,
-  buildVerifyStoreGuestCheckoutOtpUseCase
+  buildVerifyStoreGuestCheckoutOtpUseCase,
+  buildExchangeStoreGuestCheckoutGrantUseCase
 } from '../src/modules/store/usecases/storeUseCases.js';
 import { assertGuestCheckoutProof } from '../src/modules/store/utils/storeGuestCheckoutProof.js';
 import {
   generateStoreGuestCheckoutProof,
-  verifyStoreGuestCheckoutProof
+  verifyStoreGuestCheckoutProof,
+  verifyStoreGuestCheckoutVerificationGrant
 } from '../src/modules/store/utils/storeJwtToken.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
@@ -51,6 +53,68 @@ describe('Storefront guest checkout OTP', () => {
     expect(requests[0]).toMatchObject({ purpose: 'storefront_guest_checkout', tenantId, email });
     expect(verifications[0]).toMatchObject({ purpose: 'storefront_guest_checkout', tenantId, email, code: '123456' });
     expect(verifyStoreGuestCheckoutProof(verified.data.guest_checkout_proof)).toMatchObject({ tenant_id: tenantId, email, idempotency_key: idempotencyKey });
+    expect(verifyStoreGuestCheckoutVerificationGrant(verified.data.guest_checkout_verification_grant)).toMatchObject({
+      type: 'store_guest_checkout_verification_grant', tenant_id: tenantId, email
+    });
+    expect(verified.data.verification_grant_expires_in).toBe(86400);
+  });
+
+  it('exchanges a valid grant for an idempotency-bound proof and blocks registered DGFY accounts', async () => {
+    const emailOtpService = {
+      EMAIL_OTP_PURPOSES: { STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout' },
+      verifyEmailOtp: async () => undefined
+    };
+    const verified = await buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService })(
+      { tenantId, payload: { email, code: '123456', idempotency_key: idempotencyKey } }
+    );
+    const dgfyCustomerRepository = { findDgfyAccountByEmail: async () => null };
+    const exchange = buildExchangeStoreGuestCheckoutGrantUseCase({ dgfyCustomerRepository });
+    const exchanged = await exchange({ tenantId, payload: {
+      email, idempotency_key: idempotencyKey, verification_grant: verified.data.guest_checkout_verification_grant
+    } });
+    expect(verifyStoreGuestCheckoutProof(exchanged.data.guest_checkout_proof)).toMatchObject({
+      tenant_id: tenantId, email, idempotency_key: idempotencyKey
+    });
+
+    const accountExchange = buildExchangeStoreGuestCheckoutGrantUseCase({
+      dgfyCustomerRepository: { findDgfyAccountByEmail: async () => ({ id: 'account-id' }) }
+    });
+    const rejected = await accountExchange({ tenantId, payload: {
+      email, idempotency_key: idempotencyKey, verification_grant: verified.data.guest_checkout_verification_grant
+    } });
+    expect(rejected.success).toBe(false);
+    expect(rejected.error.code).toBe(DomainErrorCode.DGFY_ACCOUNT_SIGN_IN_REQUIRED);
+    expect(rejected.error.statusCode).toBe(409);
+  });
+
+  it('rejects forged, expired, and cross-tenant grants before checking account existence', async () => {
+    const dgfyCustomerRepository = { findDgfyAccountByEmail: jest.fn(async () => null) };
+    const exchange = buildExchangeStoreGuestCheckoutGrantUseCase({ dgfyCustomerRepository });
+    const forged = await exchange({ tenantId, payload: {
+      email, idempotency_key: idempotencyKey, verification_grant: 'not-a-signed-grant'
+    } });
+    const emailOtpService = {
+      EMAIL_OTP_PURPOSES: { STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout' },
+      verifyEmailOtp: async () => undefined
+    };
+    const valid = await buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService })({
+      tenantId, payload: { email, code: '123456', idempotency_key: idempotencyKey }
+    });
+    const crossTenant = await exchange({ tenantId: 'b2c3d4e5-f6a7-489b-9c0d-1e2f3a4b5c6d', payload: {
+      email, idempotency_key: idempotencyKey, verification_grant: valid.data.guest_checkout_verification_grant
+    } });
+    const grantSecret = process.env.STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_SECRET
+      || `${process.env.JWT_SECRET || 'store-fallback-secret-change-me'}:store:guest-checkout-verification-grant`;
+    const expired = jwt.sign({
+      type: 'store_guest_checkout_verification_grant', tenant_id: tenantId, email
+    }, grantSecret, { expiresIn: '-1s' });
+    const expiredResult = await exchange({ tenantId, payload: {
+      email, idempotency_key: idempotencyKey, verification_grant: expired
+    } });
+    expect(forged.success).toBe(false);
+    expect(crossTenant.success).toBe(false);
+    expect(expiredResult.success).toBe(false);
+    expect(dgfyCustomerRepository.findDgfyAccountByEmail).not.toHaveBeenCalled();
   });
 
   it('fails closed when the OTP service records a local or failed delivery', async () => {

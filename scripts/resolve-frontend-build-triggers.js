@@ -71,6 +71,7 @@ const UNCONDITIONAL_TRIGGER_PATTERNS = Object.freeze({
     'dgfy-pos': /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
     'dgfy-storefront': /^(apps\/dgfy-storefront\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
     'dgfy-opis': /^(apps\/dgfy-opis\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-opis\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+    'dgfy-admin': /^(apps\/dgfy-admin\/|infrastructure\/docker\/dgfy-admin\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
 });
 
 /**
@@ -80,7 +81,7 @@ const UNCONDITIONAL_TRIGGER_PATTERNS = Object.freeze({
  *   - changedFiles (default: `git diff --name-only base..head`) -- override for tests
  *
  * Returns { [app]: { trigger: boolean, reason: string, detail?: string } } for every app in
- * ENTRY_FILE_BY_APP (dgfy-ims/dgfy-pos/dgfy-storefront -- the only apps a frontend Docker build
+ * ENTRY_FILE_BY_APP (the five deployable frontend apps -- the only apps a frontend Docker build
  * applies to; dgfy-api/dgfy-migration-runner/android are untouched by this script, exactly as
  * #1809's plan doc §3.2 specifies -- none of their trigger patterns reference
  * packages/web-core/packages/shared-constants, so there's nothing to narrow for them).
@@ -141,7 +142,7 @@ function printResult(result) {
 function writeGithubOutput(result) {
     const outputPath = process.env.GITHUB_OUTPUT;
     if (!outputPath) return;
-    const suffixByApp = { 'dgfy-ims': 'ims', 'dgfy-pos': 'pos', 'dgfy-storefront': 'storefront', 'dgfy-opis': 'opis' };
+    const suffixByApp = { 'dgfy-ims': 'ims', 'dgfy-pos': 'pos', 'dgfy-storefront': 'storefront', 'dgfy-opis': 'opis', 'dgfy-admin': 'admin' };
     const lines = Object.entries(result)
         .map(([app, entry]) => `frontend_${suffixByApp[app]}=${entry.trigger}`)
         .join('\n');

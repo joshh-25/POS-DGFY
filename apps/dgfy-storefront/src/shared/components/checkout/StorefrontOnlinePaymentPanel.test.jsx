@@ -30,12 +30,13 @@ const directGcashPaymentSession = {
   provider_payment_intent_id: 'pi_test_gcash_ui'
 };
 
-const renderPanel = () => render(
+const renderPanel = (props = {}) => render(
   <StorefrontOnlinePaymentPanel
     billing={{ email: 'customer@example.com' }}
     paymentEnvironment="test"
     paymentSession={paymentSession}
     paymentType="card"
+    {...props}
   />
 );
 
@@ -106,6 +107,24 @@ describe('StorefrontOnlinePaymentPanel card states', () => {
     }));
 
     resolvePayment({ status: 'awaiting_next_action', redirectUrl: null });
+  });
+
+  it('offers provider cancellation before selecting another payment method', async () => {
+    const cancelPaymentSession = vi.fn().mockResolvedValue(true);
+    renderPanel({ onCancelPaymentSession: cancelPaymentSession });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(cancelPaymentSession).toHaveBeenCalledOnce();
+  });
+
+  it('does not offer provider cancellation after payment is marked paid', () => {
+    renderPanel({
+      onCancelPaymentSession: vi.fn(),
+      paymentSession: { ...paymentSession, status: 'paid' }
+    });
+
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 });
 

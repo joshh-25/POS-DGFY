@@ -1,8 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
 
 const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
+const PAPER_OPTIONS = [
+    { value: '80mm', label: '80mm (3 1/8 in)' },
+    { value: '57mm', label: '57mm (2 1/4 in)' }
+];
 const formatGeneratedAt = (value) => {
     const date = value ? new Date(value) : null;
     if (!date || Number.isNaN(date.getTime())) return '-';
@@ -36,14 +41,24 @@ export default function ZReadingPrintView({
     onPrint,
     autoPrint = false,
     printState = 'idle',
-    businessSettings = {}
+    businessSettings = {},
+    paperWidth = '80mm',
+    onPaperWidthChange = () => {}
 }) {
+    useEffect(() => {
+        if (typeof document === 'undefined' || !report) return undefined;
+        document.body.classList.add('pos-z-reading-printing');
+        return () => document.body.classList.remove('pos-z-reading-printing');
+    }, [report]);
+
     if (!report) return null;
+    const resolvedPaperWidth = paperWidth === '57mm' ? '57mm' : '80mm';
     const summary = report.summary || {};
     const reconciliation = report.z_reading_reconciliation || report.reconciliation || null;
     const displayCurrency = currencyLabel(currency);
     const counters = report.counters || {};
     const payments = Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : [];
+    const deliveryProviders = parseDeliveryProviderSummary(summary.delivery_provider_breakdown);
     const printFailed = printState === 'failed';
     const reportBusiness = report.business || {};
     const businessName = String(
@@ -58,7 +73,11 @@ export default function ZReadingPrintView({
 
     return (
         <div className="pos-z-reading-print-shell fixed inset-0 z-[100] overflow-y-auto bg-slate-950/70 p-4 print:static print:inset-auto print:overflow-visible print:bg-white print:p-0">
-            <article className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 font-mono text-[11px] leading-tight text-slate-900 shadow-2xl print:max-w-[80mm] print:rounded-none print:border-0 print:p-0 print:shadow-none">
+            <article
+                className="pos-z-reading-print mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 font-mono text-[11px] leading-tight text-slate-900 shadow-2xl print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none"
+                data-paper-width={resolvedPaperWidth}
+                style={{ '--pos-z-reading-paper-width': resolvedPaperWidth }}
+            >
                 <header className="border-b border-dashed border-slate-300 pb-2 text-center">
                     {businessIcon ? (
                         <img src={resolveAssetUrl(businessIcon)} alt={`${businessName} icon`} className="mx-auto mb-1 h-auto w-16 object-contain" />
@@ -104,11 +123,21 @@ export default function ZReadingPrintView({
                     ))}
                 </section>
 
+                <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
+                    <p className="font-black uppercase">Delivery provider breakdown</p>
+                    {deliveryProviders.length === 0 ? <Row name="No delivery provider sales" value="0" /> : deliveryProviders.map((entry) => (
+                        <Row
+                            key={`${entry.provider_type}-${entry.provider_name || ''}`}
+                            name={`${formatDeliveryProviderSummaryLabel(entry)} (${Number(entry.transaction_count || 0).toLocaleString('en-US')})`}
+                            value={`${displayCurrency}${money(entry.amount)}`}
+                        />
+                    ))}
+                </section>
+
                 <section className="space-y-1 py-2">
                     <p className="font-black uppercase">Fiscal counters</p>
                     <Row name="Z counter" value={Number(counters.z_counter || 0).toLocaleString('en-US')} />
                     <Row name="Reset counter" value={Number(counters.reset_counter || 0).toLocaleString('en-US')} />
-                    <Row name="Lifetime total" value={`${displayCurrency}${money(Number(counters.lifetime_grand_total_cents || 0) / 100)}`} strong />
                 </section>
 
                 {printFailed ? (
@@ -122,14 +151,41 @@ export default function ZReadingPrintView({
                 <p className="text-center text-[9px] text-slate-500">
                     Provider refunds are reconciled separately and are not reported as POS voids.
                 </p>
-                <div className="mt-4 flex justify-end gap-2 print:hidden">
+                <div className="mt-4 flex flex-wrap items-center justify-end gap-2 print:hidden">
+                    <label className="mr-auto flex shrink-0 items-center gap-2 text-xs font-extrabold text-slate-700">
+                        Paper
+                        <select
+                            aria-label="Z-reading paper width"
+                            data-testid="pos-z-reading-paper-width"
+                            value={resolvedPaperWidth}
+                            onChange={(event) => onPaperWidthChange(event.target.value)}
+                            className="h-8 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-[#0F172A] focus:border-[#1A4E8D] focus:outline-none focus:ring-2 focus:ring-[#1A4E8D]"
+                        >
+                            {PAPER_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </label>
                     <button type="button" className="rounded-md border border-slate-300 px-3 py-2 text-xs font-bold" onClick={onClose}>Done</button>
                     <button
                         type="button"
                         className="rounded-md bg-[#1A4E8D] px-3 py-2 text-xs font-bold text-white"
-                        onClick={() => (onPrint ? onPrint() : window.print())}
+                        onClick={() => {
+                            if (printState === 'failed' && typeof window !== 'undefined' && typeof window.print === 'function') {
+                                window.print();
+                                return;
+                            }
+                            if (onPrint) onPrint();
+                            else window.print();
+                        }}
                     >
-                        {printState === 'printing' ? 'Printing...' : autoPrint ? 'Print again' : 'Print Z-reading'}
+                        {printState === 'printing'
+                            ? 'Printing...'
+                            : printState === 'failed'
+                                ? 'Print in browser'
+                                : autoPrint
+                                    ? 'Print again'
+                                    : 'Print Z-reading'}
                     </button>
                 </div>
             </article>

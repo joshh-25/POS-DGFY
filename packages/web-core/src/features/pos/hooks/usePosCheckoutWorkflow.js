@@ -23,6 +23,11 @@ import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { buildFnbGlobalOrderNote } from '../utils/posOrderNotes.js';
 import {
+    getDeliveryProviderValidationMessage,
+    toDeliveryProviderPayload
+} from '../utils/posDeliveryProviders.js';
+import { readPosPaperWidthPreference } from '../utils/posPaperWidthPreference.js';
+import {
     buildCompliancePolicyBlockerMessage,
     buildMissingFieldsMessage,
     buildOfflineCheckoutHistoryRow,
@@ -89,6 +94,7 @@ export const usePosCheckoutWorkflow = ({
     isFnbWorkflow = false,
     normalizedFnbContext = null,
     orderMethod = 'dine_in',
+    deliveryProviderBreakdown = [],
     tableNumber = '',
     kitchenNotes = '',
     servicesClientName = '',
@@ -133,6 +139,7 @@ export const usePosCheckoutWorkflow = ({
     discountApprovalRef,
     resetEmployeeCredit = () => {},
     setOrderMethod = () => {},
+    setDeliveryProviderBreakdown = () => {},
     setTableNumber = () => {},
     setKitchenNotes = () => {},
     setServicesClientName = () => {},
@@ -235,6 +242,7 @@ export const usePosCheckoutWorkflow = ({
                 shiftId: activeShiftId,
                 transactionId: transaction?.pos_transaction_id,
                 terminalId: normalizedTerminalId,
+                paperWidth: readPosPaperWidthPreference(normalizedTerminalId),
                 reason: printReason
             });
             if (printOutcome.success) {
@@ -417,6 +425,7 @@ export const usePosCheckoutWorkflow = ({
 
     const resetCheckoutModalState = useCallback(({ closeModal = true } = {}) => {
         setOrderMethod(posWorkflow.allowedMethods?.[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
+        setDeliveryProviderBreakdown([]);
         setTableNumber('');
         setKitchenNotes('');
         setServicesClientName('');
@@ -434,6 +443,7 @@ export const usePosCheckoutWorkflow = ({
         if (closeModal) setCheckoutConfirmModalOpen(false);
     }, [
         posWorkflow,
+        setDeliveryProviderBreakdown,
         resetEmployeeCredit,
         resetDiscountState,
         setAffiliateCodeInput,
@@ -522,6 +532,16 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        const deliveryProviderValidationMessage = getDeliveryProviderValidationMessage({
+            orderMethod,
+            entries: deliveryProviderBreakdown,
+            totalAmount: cartTotal
+        });
+        if (deliveryProviderValidationMessage) {
+            toast.error(deliveryProviderValidationMessage);
+            setCheckoutConfirmModalOpen(true);
+            return;
+        }
         if (checkoutWorkflowValidationMessage) {
             toast.error(checkoutWorkflowValidationMessage);
             return;
@@ -557,7 +577,7 @@ export const usePosCheckoutWorkflow = ({
         setCheckoutOpenedFromCurrentSale(true);
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCheckoutOpenedFromCurrentSale, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, deliveryProviderBreakdown, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCheckoutOpenedFromCurrentSale, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const openSplitPaymentModal = useCallback(async () => {
         if (checkoutBlockedReason) {
@@ -570,6 +590,16 @@ export const usePosCheckoutWorkflow = ({
         }
         if (safeCart.length === 0) {
             toast.error('Add at least one item before recording payment.');
+            return;
+        }
+        const deliveryProviderValidationMessage = getDeliveryProviderValidationMessage({
+            orderMethod,
+            entries: deliveryProviderBreakdown,
+            totalAmount: cartTotal
+        });
+        if (deliveryProviderValidationMessage) {
+            toast.error(deliveryProviderValidationMessage);
+            setCheckoutConfirmModalOpen(true);
             return;
         }
         if (checkoutWorkflowValidationMessage) {
@@ -600,7 +630,7 @@ export const usePosCheckoutWorkflow = ({
         splitPaymentReturnToCheckoutRef.current = false;
         handleSplitPaymentOpenChange(true);
         setMobileCheckoutPanelOpen(false);
-    }, [checkoutBlockedReason, checkoutWorkflowValidationMessage, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, deliveryProviderBreakdown, handleSplitPaymentOpenChange, isCheckoutWorkflowValid, isEmployeeCreditPayment, normalizedTerminalId, orderMethod, posWorkflow.mode, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
         const normalizedAction = action === 'resume' ? 'resume' : 'pay';
@@ -1232,6 +1262,9 @@ export const usePosCheckoutWorkflow = ({
 
     const splitPaymentCheckoutContext = useMemo(() => ({
         orderMethod,
+        delivery_provider_breakdown: String(orderMethod || '').trim().toLowerCase() === 'delivery'
+            ? toDeliveryProviderPayload(deliveryProviderBreakdown, cartTotal)
+            : undefined,
         posWorkflowMode: posWorkflow.mode,
         servicesClientName,
         servicesNotes,
@@ -1253,6 +1286,8 @@ export const usePosCheckoutWorkflow = ({
         affiliateCodeInput,
         appliedDiscount,
         calculatedDiscountAmount,
+        cartTotal,
+        deliveryProviderBreakdown,
         discountApprovalRef,
         itemDiscountApprovalRef,
         manualDiscountAmount,
@@ -1336,6 +1371,9 @@ export const usePosCheckoutWorkflow = ({
                 ? new Date(servicesDateTime).toISOString()
                 : undefined,
             payment_type: paymentType,
+            ...(String(orderMethod || '').trim().toLowerCase() === 'delivery'
+                ? { delivery_provider_breakdown: toDeliveryProviderPayload(deliveryProviderBreakdown, cartTotal) }
+                : {}),
             payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external',
             cash_received: isCashPayment ? effectiveCustomerPaymentAmount : undefined,
             change_amount: isCashPayment ? effectiveCustomerPaymentChange : undefined,
@@ -1549,7 +1587,11 @@ export const usePosCheckoutWorkflow = ({
                 return;
             }
             const compliancePolicyBlocker = buildCompliancePolicyBlockerMessage(error);
-            const { buildFnbRecipeBlockerMessage, buildValidationDetailMessage } = await import('../utils/posCheckoutErrorMessages.js');
+            const {
+                buildFnbRecipeBlockerMessage,
+                buildTerminalLocationMismatchMessage,
+                buildValidationDetailMessage
+            } = await import('../utils/posCheckoutErrorMessages.js');
             const rawMessage = String(error?.response?.data?.message || '').trim();
             const friendlyPriceOverrideMessage = /^Price override reason is required for item\b/i.test(rawMessage)
                 ? 'Enter a price override reason of at least 3 characters before checkout.'
@@ -1557,6 +1599,7 @@ export const usePosCheckoutWorkflow = ({
             toast.error(
                 compliancePolicyBlocker?.message
                 || buildMissingFieldsMessage(error)
+                || buildTerminalLocationMismatchMessage(error)
                 || buildFnbRecipeBlockerMessage(error)
                 || friendlyPriceOverrideMessage
                 || buildValidationDetailMessage(error)
@@ -1658,6 +1701,7 @@ export const usePosCheckoutWorkflow = ({
         onCheckoutAuthorityInvalid,
         onCheckoutCompleted,
         orderMethod,
+        deliveryProviderBreakdown,
         paymentType,
         posHardware,
         posWorkflow.mode,
@@ -1680,6 +1724,7 @@ export const usePosCheckoutWorkflow = ({
         setCatalog,
         setCart,
         setCheckoutConfirmModalOpen,
+        setDeliveryProviderBreakdown,
         setCheckoutLoading,
         setCustomerPaymentAmountAutoFilled,
         setCustomerPaymentAmountInput,

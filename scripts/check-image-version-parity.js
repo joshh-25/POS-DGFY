@@ -8,8 +8,9 @@
  * differs between the `to-staging/<candidate_id>` -> `staging` merge commit and the
  * `release/<candidate_id>-rN` -> `main` merge commit even when both carry byte-identical candidate
  * content. The candidate source identity is instead the frozen promotion candidate's own tracked SHA
- * (`scripts/check-promotion-candidate.js`'s manifest: `source_develop_sha` for a candidate with no
- * staging repairs, or the latest `staging_repair` revision's `sha` once repairs have landed).
+ * (`scripts/check-promotion-candidate.js`'s manifest: `source_develop_sha` for an untouched app,
+ * the latest `staging_repair` SHA, or—after a qualified-candidate repair—the latest
+ * `release_repair` SHA for that app).
  * `.github/workflows/{deploy-api,deploy-migration-runner,deploy-frontend}.yml` stamp this identity
  * into the `CANDIDATE_SOURCE_LABEL` OCI label below at build time, sourced from a
  * `candidate_source_sha` input the promoter threads through `deploy.yml`/`deploy-main.yml` (see
@@ -419,10 +420,12 @@ function inspectImageRevision({ image, tag, inspectFn }) {
  * Pure verdict for one app in manifest mode once the candidate carries a release revision
  * (#1977, Phase 342 -- `release_revision.revision` is the authoritative `rN`).
  *
- * Compares frontend staging `X.Y.Z-rN-staging` to production `X.Y.Z-rN` (backend: the
- * environment-neutral `X.Y.Z-rN` tag on both sides, i.e. the same-digest reuse), then
- * verifies the bare production floor alias (`X.Y.Z`) references the same digest as the
- * revision tag with agreeing revision labels. Outcomes:
+ * Normally compares frontend staging `X.Y.Z-rN-staging` to production `X.Y.Z-rN` (backend: the
+ * environment-neutral `X.Y.Z-rN` tag on both sides), then verifies the bare production floor alias
+ * (`X.Y.Z`) references the same digest as the revision tag with agreeing revision labels. A
+ * `release_repair` has no STAGING predecessor: it instead checks the PROD source label against the
+ * resolved repair SHA, validates the PROD floor/revision labels, and requires its bare alias to
+ * match the PROD revision digest. Outcomes:
  *   - prod 'ok', staging 'ok', values agree, alias digest == prod digest, revisions agree -> pass
  *   - prod 'not-found'                                                                  -> skip
  *   - either label side 'error', or either digest read 'error'                          -> error
@@ -433,7 +436,8 @@ function inspectImageRevision({ image, tag, inspectFn }) {
  *   - alias revision missing/disagreeing with prod's                                    -> fail ("alias-revision-mismatch")
  *   - prod revision label naming a different rN than the candidate released             -> fail ("revision-label-mismatch")
  */
-function decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevision, aliasRevision, expectedRevision }) {
+function decideRevisionParity({ prod, staging, prodFloor, stagingFloor, prodDigest, stagingDigest, aliasDigest, prodRevision, aliasRevision, expectedRevision, expectedSourceSha, expectedFloor, expectedStagingDigest, expectedProdDigest, origin }) {
+  const releaseRepair = origin === 'release_repair';
   if (prod.state === 'not-found') {
     return { verdict: 'skip', code: 'prod-not-found', detail: `${prod.ref} has not been published yet -- nothing to verify.` };
   }
@@ -454,35 +458,72 @@ function decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevi
       detail: `${prod.ref} carries no candidate-source-identity label at all, but manifest mode expects one (ADR 0081 Decision 8).`,
     };
   }
-  if (staging.state === 'error') {
+  if (!releaseRepair && staging.state === 'error') {
     return { verdict: 'error', code: 'staging-inspect-error', detail: staging.reason };
   }
-  if (staging.state === 'not-found') {
+  if (!releaseRepair && staging.state === 'not-found') {
     return {
       verdict: 'fail',
       code: 'staging-not-found-in-manifest-mode',
       detail: `${prod.ref} (candidate-source-sha ${prod.value}) has no staging predecessor published at all (${staging.reason}) -- the candidate staging dispatch should have published it (#1977).`,
     };
   }
-  if (staging.state === 'no-label' || staging.state === 'inconsistent') {
+  if (!releaseRepair && (staging.state === 'no-label' || staging.state === 'inconsistent')) {
     return {
       verdict: 'fail',
       code: 'staging-unreadable',
       detail: `staging image ${staging.ref} exists but ${staging.reason} -- the candidate staging dispatch always stamps a candidate-source-sha, so this is a label-stamping regression (#1977).`,
     };
   }
-  if (staging.value !== prod.value) {
+  if (!releaseRepair && staging.value !== prod.value) {
     return {
       verdict: 'fail',
       code: 'mismatch',
       detail: `${staging.ref} carries candidate-source-sha ${staging.value}, but ${prod.ref} carries ${prod.value} -- these should be the same frozen candidate (ADR 0081 Decision 8).`,
     };
   }
+  if (expectedSourceSha && (prod.value !== expectedSourceSha || (!releaseRepair && staging.value !== expectedSourceSha))) {
+    return {
+      verdict: 'fail',
+      code: 'source-label-mismatch',
+      detail: `${staging.ref} / ${prod.ref} carry candidate-source-sha ${staging.value}, but this app's manifest lineage expects ${expectedSourceSha}.`,
+    };
+  }
+  if (expectedFloor) {
+    const floorLabels = releaseRepair ? [['PROD', prodFloor]] : [['STAGING', stagingFloor], ['PROD', prodFloor]];
+    for (const [name, floorLabel] of floorLabels) {
+      if (floorLabel.state === 'error') return { verdict: 'error', code: `${name.toLowerCase()}-floor-inspect-error`, detail: floorLabel.reason };
+      if (floorLabel.state !== 'ok' || floorLabel.value !== expectedFloor) {
+        return {
+          verdict: 'fail',
+          code: `${name.toLowerCase()}-floor-mismatch`,
+          detail: `${floorLabel.ref} carries release-floor "${floorLabel.value || floorLabel.state}", expected ${expectedFloor}.`,
+        };
+      }
+    }
+  }
   if (prodDigest.state === 'error') {
     return { verdict: 'error', code: 'prod-digest-error', detail: prodDigest.reason };
   }
   if (prodDigest.state === 'not-found') {
     return { verdict: 'error', code: 'prod-digest-error', detail: `production revision tag vanished between label and digest reads (${prodDigest.reason}) -- refusing to guess.` };
+  }
+  if (!releaseRepair && stagingDigest && (stagingDigest.state === 'error' || stagingDigest.state === 'not-found')) {
+    return { verdict: 'error', code: 'staging-digest-error', detail: stagingDigest.reason || `staging digest for ${stagingDigest.ref} could not be read.` };
+  }
+  if (!releaseRepair && expectedStagingDigest && (!stagingDigest || stagingDigest.digest !== expectedStagingDigest)) {
+    return {
+      verdict: 'fail',
+      code: 'staging-digest-mismatch',
+      detail: `staging revision tag ${stagingDigest.ref} references ${stagingDigest.digest}, but the candidate manifest records ${expectedStagingDigest}.`,
+    };
+  }
+  if (expectedProdDigest && prodDigest.digest !== expectedProdDigest) {
+    return {
+      verdict: 'fail',
+      code: 'production-digest-mismatch',
+      detail: `production revision tag ${prodDigest.ref} references ${prodDigest.digest}, but the ${releaseRepair ? 'release-repair manifest' : 'environment-neutral backend candidate'} digest is ${expectedProdDigest}.`,
+    };
   }
   if (aliasDigest.state === 'not-found') {
     return {
@@ -525,7 +566,13 @@ function decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevi
       detail: `bare production alias ${aliasRevision.ref} carries revision "${aliasRevision.value || aliasRevision.state}", but revision tag carries "${prodRevision.value}" -- alias and revision tag must agree (#1977).`,
     };
   }
-  return { verdict: 'pass', code: 'match', detail: `${staging.ref} and ${prod.ref} share candidate-source-sha ${prod.value}; alias ${aliasDigest.ref} references the same digest ${prodDigest.digest} (${prodRevision.value}).` };
+  const lineageDetail = releaseRepair
+    ? '; release-only repair verified against PROD source and digest (no STAGING predecessor expected)'
+    : (expectedFloor ? `; STAGING floor ${expectedFloor}, recorded digest ${expectedStagingDigest}` : '');
+  const sourceDetail = releaseRepair
+    ? `${prod.ref} carries release-repair candidate-source-sha ${prod.value}`
+    : `${staging.ref} and ${prod.ref} share candidate-source-sha ${prod.value}`;
+  return { verdict: 'pass', code: 'match', detail: `${sourceDetail}${lineageDetail}; alias ${aliasDigest.ref} references the same digest ${prodDigest.digest} (${prodRevision.value}).` };
 }
 
 /** Orchestrates one app's version read + both inspects + the verdict (manifest mode). */
@@ -558,7 +605,7 @@ function checkApp({ repoRoot, app, candidateSha, inspectFn }) {
  * verdict above. Returns { app, version, revision, candidate_source_sha, verdict, code,
  * detail }.
  */
-function checkAppRevision({ repoRoot, app, revision, candidateSha, inspectFn }) {
+function checkAppRevision({ repoRoot, app, revision, candidateSha, expectedDigest, origin, enforceManifestLineage = true, inspectFn }) {
   const versionRaw = readVersionAt(repoRoot, candidateSha, `apps/${app}`);
   if (!versionRaw) {
     return {
@@ -582,12 +629,29 @@ function checkAppRevision({ repoRoot, app, revision, candidateSha, inspectFn }) 
   }
   const image = IMAGE_NAME_BY_APP(app);
   const prod = inspectImageLabel({ image, tag: tags.productionTag, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
-  const staging = inspectImageLabel({ image, tag: tags.stagingTag, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
+  const staging = origin === 'release_repair'
+    ? { ref: `${image}:${tags.stagingTag}`, state: 'not-found', reason: 'release-only repairs have no STAGING predecessor' }
+    : inspectImageLabel({ image, tag: tags.stagingTag, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
+  const prodFloor = enforceManifestLineage ? inspectImageLabel({ image, tag: tags.productionTag, labelKey: 'org.dgfy-platform.release-floor', inspectFn }) : undefined;
+  const stagingFloor = enforceManifestLineage && origin !== 'release_repair' ? inspectImageLabel({ image, tag: tags.stagingTag, labelKey: 'org.dgfy-platform.release-floor', inspectFn }) : undefined;
   const prodDigest = inspectImageDigest({ image, tag: tags.productionTag, inspectFn });
+  const stagingDigest = expectedDigest && origin !== 'release_repair'
+    ? inspectImageDigest({ image, tag: tags.stagingTag, inspectFn })
+    : { ref: `${image}:${tags.stagingTag}`, state: 'ok' };
   const aliasDigest = inspectImageDigest({ image, tag: tags.canonicalAlias, inspectFn });
   const prodRevision = inspectImageRevision({ image, tag: tags.productionTag, inspectFn });
   const aliasRevision = inspectImageRevision({ image, tag: tags.canonicalAlias, inspectFn });
-  const result = decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevision, aliasRevision, expectedRevision: `r${revision}` });
+  const isBackend = app === 'dgfy-api' || app === 'dgfy-migration-runner';
+  const result = decideRevisionParity({
+    prod, staging, prodFloor, stagingFloor, prodDigest, stagingDigest, aliasDigest, prodRevision, aliasRevision,
+    expectedRevision: `r${revision}`, expectedSourceSha: enforceManifestLineage ? candidateSha : undefined, expectedFloor: enforceManifestLineage ? versionRaw : undefined,
+    expectedStagingDigest: origin === 'release_repair' ? undefined : expectedDigest,
+    // The manifest digest remains the original STAGING artifact digest. A release-only repair
+    // has no STAGING build, so PROD is instead checked by its exact source label and by the
+    // existing PROD-tag/bare-alias digest agreement below.
+    expectedProdDigest: origin === 'release_repair' ? null : (isBackend ? expectedDigest : null),
+    origin,
+  });
 
   return { app, version: versionRaw, revision, candidate_source_sha: candidateSha, ...result };
 }
@@ -601,6 +665,9 @@ function checkAppRevision({ repoRoot, app, revision, candidateSha, inspectFn }) 
  */
 function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn = runInspect } = {}) {
   const candidate = validatePromotionCandidate(manifest);
+  if (candidate.status === 'refresh_in_progress') {
+    throw new ImageVersionParityError('A candidate undergoing refresh has no active selection and cannot be checked for production parity', 'REFRESH_IN_PROGRESS');
+  }
   // #1610: per-app resolution, not one shared current_staging_sha -- see the file header comment.
   const candidateShaByApp = resolveCandidateSourceShaByApp(manifest, apps);
 
@@ -615,7 +682,7 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
   // verified against its OWN allocated revision. Apps absent from the map were never
   // rebuilt by this candidate -- skip, don't fail: their last-published artifact stands.
   const releaseRevision = candidate.release_revision;
-  const perAppRevisions = (['sku-release-candidate/v2', 'sku-release-candidate/v3'].includes(manifest.schema) && releaseRevision !== null) ? releaseRevision : null;
+  const perAppRevisions = (['sku-release-candidate/v2', 'sku-release-candidate/v3', 'sku-release-candidate/v4'].includes(manifest.schema) && releaseRevision !== null) ? releaseRevision : null;
   const results = apps.map((app) => {
     if (perAppRevisions) {
       const entry = perAppRevisions[app];
@@ -630,11 +697,11 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
           detail: `${app} is absent from this candidate's per-app release_revision map -- the candidate never rebuilt it, so its last-published artifact stands and there is nothing new to verify (#2055).`,
         };
       }
-      return checkAppRevision({ repoRoot, app, revision: entry.revision, candidateSha: candidateShaByApp[app], inspectFn });
+      return checkAppRevision({ repoRoot, app, revision: entry.revision, candidateSha: candidateShaByApp[app], expectedDigest: entry.digest, origin: entry.origin, enforceManifestLineage: manifest.schema === 'sku-release-candidate/v2' || manifest.schema === 'sku-release-candidate/v3' || manifest.schema === 'sku-release-candidate/v4', inspectFn });
     }
     return releaseRevision === null
       ? checkApp({ repoRoot, app, candidateSha: candidateShaByApp[app], inspectFn })
-      : checkAppRevision({ repoRoot, app, revision: releaseRevision, candidateSha: candidateShaByApp[app], inspectFn });
+      : checkAppRevision({ repoRoot, app, revision: releaseRevision, candidateSha: candidateShaByApp[app], enforceManifestLineage: false, inspectFn });
   });
 
   return {

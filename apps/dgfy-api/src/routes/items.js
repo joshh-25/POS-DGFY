@@ -36,7 +36,7 @@ import {
   validateReplaceItemFolderMemberships
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
-import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
+import { requireLocalInventoryLedgerOwnership, bodyDeclaresStockMutation } from '../middleware/inventoryAuthorityGate.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
@@ -228,11 +228,11 @@ router.post('/validate-composition', checkPermission(PERMISSIONS.INVENTORY.actio
 // catalog metadata a delegated tenant still needs to manage locally. Only
 // block the one thing that actually overwrites the local stock ledger
 // outside the normal movement flow: a request body that declares
-// current_stock directly (see bodyDeclaresCurrentStock).
+// current_stock directly or additive stock allocations (see bodyDeclaresStockMutation).
 router.post(
   '/',
   checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS),
-  requireLocalInventoryLedgerOwnership('Setting an item opening stock balance', { shouldBlock: bodyDeclaresCurrentStock }),
+  requireLocalInventoryLedgerOwnership('Setting an item opening stock balance', { shouldBlock: bodyDeclaresStockMutation }),
   (req, res, next) => {
     // Use draft validator if save_as_draft query param is true
     const isDraft = req.query.save_as_draft === 'true' || req.body.status === 'draft';
@@ -247,7 +247,7 @@ router.post(
 router.put(
   '/:item_id',
   checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS),
-  requireLocalInventoryLedgerOwnership('Directly editing an item stock balance', { shouldBlock: bodyDeclaresCurrentStock }),
+  requireLocalInventoryLedgerOwnership('Directly editing an item stock balance', { shouldBlock: bodyDeclaresStockMutation }),
   validateUpdateItem,
   itemController.updateItem
 );

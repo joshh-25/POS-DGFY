@@ -10,6 +10,7 @@ import { voucherRepository, reverseVoucherRedemptionUseCase } from '../vouchers/
 import { paymongoService } from '../../services/paymongoService.js';
 import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
+import { dgfyCustomerRepository } from '../dgfy/repositories/dgfyCustomerRepository.js';
 import {
     commercePaymentsEnabled,
     commerceQrphEnabled,
@@ -40,8 +41,10 @@ import {
     buildStoreCartQuoteUseCase,
     buildRequestStoreGuestCheckoutOtpUseCase,
     buildVerifyStoreGuestCheckoutOtpUseCase,
+    buildExchangeStoreGuestCheckoutGrantUseCase,
     buildStoreCheckoutPaymentSessionUseCase,
     buildGetStoreCheckoutPaymentSessionUseCase,
+    buildCancelStoreCheckoutPaymentSessionUseCase,
     buildReconcileStoreCheckoutPaymentSessionUseCase,
     buildConfirmStoreCheckoutSandboxPaymentUseCase,
     buildStoreCheckoutUseCase,
@@ -82,10 +85,15 @@ export const createStoreCustomerAddressUseCase = buildCreateStoreCustomerAddress
 export const updateStoreCustomerAddressUseCase = buildUpdateStoreCustomerAddressUseCase({ storeRepository });
 export const setDefaultStoreCustomerAddressUseCase = buildSetDefaultStoreCustomerAddressUseCase({ storeRepository });
 export const deleteStoreCustomerAddressUseCase = buildDeleteStoreCustomerAddressUseCase({ storeRepository });
-export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository, downpaymentSettingsRepository });
+export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({
+    storeRepository,
+    downpaymentSettingsRepository,
+    tenantRevenueRepository
+});
 const emailOtpService = { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp };
 export const requestStoreGuestCheckoutOtpUseCase = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
 export const verifyStoreGuestCheckoutOtpUseCase = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
+export const exchangeStoreGuestCheckoutGrantUseCase = buildExchangeStoreGuestCheckoutGrantUseCase({ dgfyCustomerRepository });
 export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessionUseCase({
     storeRepository,
     commercePaymentRepository,
@@ -108,6 +116,10 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository
 });
+export const cancelStoreCheckoutPaymentSessionUseCase = buildCancelStoreCheckoutPaymentSessionUseCase({
+    commercePaymentRepository,
+    paymongoService
+});
 // Keep the commerce-payment dependency lazy: finalization resolves Storefront checkout and the
 // two modules already have a deliberate cycle. This mirrors the existing order-lifecycle seam.
 const reconcileCommercePaymentSessionLazy = async (input) => {
@@ -126,7 +138,8 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
 export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
     storeRepository,
     downpaymentSettingsRepository,
-    inventoryReservationService
+    inventoryReservationService,
+    tenantRevenueRepository
 });
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });

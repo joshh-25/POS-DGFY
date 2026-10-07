@@ -306,9 +306,9 @@ const resolveOwnedOpenShift = async ({
             shift_id: shiftId
         });
     }
-    // Parked sales are a location-level handoff queue. Listing and claiming
-    // may be performed by another authorized cashier at the same location;
-    // create, re-park, complete, and cancel still require shift ownership.
+    // Parked sales are a location-level handoff queue. Listing, claiming, and
+    // cancellation may be performed by another authorized cashier at the same
+    // location; create, re-park, and complete still require shift ownership.
     if (!allowShared && toPositiveInt(shift.cashier_id) !== shiftOwnerUserId) {
         throw buildParkedSaleError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the active register operator may manage its parked sales.', 403, {
             reason_code: 'POS_SHIFT_OWNER_REQUIRED',
@@ -833,11 +833,12 @@ export const buildCancelPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             payload,
             user,
             transaction,
-            terminalRequired: true
+            terminalRequired: true,
+            allowShared: true
         });
         const row = await posRepository.getParkedSaleById(normalizedId, { transaction, lock: true });
         if (!row) throw buildParkedSaleError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Parked POS sale not found.', 404);
-        assertParkedSaleScope(row, scope);
+        assertParkedSaleLocationScope(row, scope);
         if (row.status === 'cancelled') {
             await finishTransaction(transaction, 'commit');
             return ok(toPublicParkedSale(row, { idempotent_replay: true }), 'Parked POS sale already cancelled');

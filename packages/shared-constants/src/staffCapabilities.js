@@ -16,6 +16,7 @@ export const STAFF_CAPABILITIES = Object.freeze([
   'pos:employee_credit:manage', 'pos:employee_credit:report',
   'affiliates:view', 'affiliates:manage', 'affiliates:settings', 'affiliates:cashout_approve', 'affiliates:cashout_pay',
   'downpayment:view', 'downpayment:settings', 'vouchers:view', 'vouchers:manage',
+  'tenant_revenue:fee_policy:view', 'tenant_revenue:fee_policy:edit',
   'services:dashboard:view', 'services:catalog:view', 'services:catalog:manage', 'services:resources:view',
   'services:resources:manage', 'services:bookings:view', 'services:bookings:manage', 'services:waitlist:view',
   'services:waitlist:manage', 'services:clients:view', 'services:reminders:view', 'services:reminders:manage',

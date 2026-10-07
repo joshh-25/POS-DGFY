@@ -11,6 +11,7 @@ router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
 router.use(requireBusinessAdminDashboardEnabled);
 
 router.get('/bootstrap', businessAdminHandlers.getBootstrap);
+router.get('/company', businessAdminHandlers.getCompany);
 router.get('/overview', businessAdminHandlers.getOverview);
 router.get('/multi-company/overview', businessAdminHandlers.getMultiCompanyOverview);
 router.get('/notifications', businessAdminHandlers.listNotifications);
@@ -24,6 +25,7 @@ router.get('/activity', (req, res) => {
     return res.redirect(308, `${req.baseUrl}/audit${query}`);
 });
 router.get('/reports', businessAdminHandlers.getReports);
+router.get('/pos-activity-analytics', businessAdminHandlers.getPosActivityAnalytics);
 router.get('/reports/definitions', businessAdminHandlers.listReportDefinitions);
 router.get('/reports/datasets/:reportKey', businessAdminHandlers.getReportDataset);
 router.get('/reports/datasets/:reportKey/export', businessAdminHandlers.exportReportDataset);

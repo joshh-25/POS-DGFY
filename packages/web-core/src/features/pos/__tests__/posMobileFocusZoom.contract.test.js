@@ -31,6 +31,22 @@ describe('POS mobile focus zoom contracts', () => {
     expect(posHtml).not.toMatch(/user-scalable\s*=\s*["']no["']/i);
     expect(posHtml).not.toMatch(/maximum-scale\s*=\s*["']1(?:\.0)?["']/i);
   });
+
+  it('keeps the final mobile field guard scoped to the POS Items workspace', () => {
+    const css = readSource('src/index.css');
+    const finalGuardStart = css.lastIndexOf('Mobile browsers may zoom the page');
+    const finalGuard = css.slice(finalGuardStart);
+
+    expect(finalGuardStart).toBeGreaterThan(-1);
+    expect(finalGuard).toContain('@media screen and (max-width: 767.98px)');
+    expect(finalGuard).toContain('.dgfy-pos-shell[data-pos-items-view="true"] :is(');
+    expect(finalGuard).toContain('.pos-items-modal-overlay :is(');
+    expect(finalGuard).toContain('input:not([type="checkbox"]):not([type="radio"]):not([type="file"])');
+    expect(finalGuard).toContain('[contenteditable="true"]');
+    expect(finalGuard).toContain('font-size: 16px !important;');
+    expect(finalGuard).not.toContain('body[data-pos-surface="pos"]');
+    expect(finalGuard).not.toContain('.pos-mobile-no-focus-zoom :is(');
+  });
   it('blurs an active scanner editor before closing the scan modal', () => {
     const scanner = readSource('src/features/pos/components/POSBarcodeScanner.jsx');
 

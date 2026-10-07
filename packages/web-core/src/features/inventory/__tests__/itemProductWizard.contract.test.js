@@ -236,7 +236,8 @@ describe('Item/Product wizard contracts', () => {
     expect(productWizardSource).toContain('physical_properties: {}');
     expect(productWizardSource).toContain('quality_control: {}');
     expect(productWizardSource).toContain('const draftData = clearFnbManufacturingFields');
-    expect(productWizardSource).toContain('const finalData = clearFnbManufacturingFields');
+    expect(productWizardSource).toContain('const finalData = {');
+    expect(productWizardSource).toContain('...getSanitizedData(productData, true)');
     expect(productWizardSource).toContain('return clearFnbManufacturingFields(sanitized, workflowMode);');
   });
 
@@ -379,7 +380,9 @@ describe('Item/Product wizard contracts', () => {
     expect(selectedImageCarouselSource).toContain('selected-item-carousel-dot');
     expect(selectedImageCarouselSource).toContain("combinedGallery ? 'Item' : 'Selected item'");
     expect(selectedImageCarouselSource).toContain('Remove image');
-    expect(selectedImageCarouselSource).toContain('aria-label={`Focus ${imageLabel} image ${index + 1}`}');
+    expect(selectedImageCarouselSource).toContain('aria-label={isOverflowThumbnail');
+    expect(selectedImageCarouselSource).toContain('? `Focus ${imageLabel} image ${index + 1}; ${thumbnailOverflowCount} more image');
+    expect(selectedImageCarouselSource).toContain(': `Focus ${imageLabel} image ${index + 1}`}');
   });
 
   it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {

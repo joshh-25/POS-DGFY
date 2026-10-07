@@ -8,7 +8,8 @@ import { SimpleCheckoutFulfillmentStep } from '../modes/simple/checkout/componen
 
 afterEach(cleanup);
 
-const PLACEHOLDER = 'Pinned delivery address will appear here.';
+// #759: the address line is also the address search, so its placeholder invites a search.
+const SEARCH_PLACEHOLDER = 'Search an address or landmark';
 
 describe('#1219 -- the delivery address line is an editable input, not a read-only span', () => {
   it('RetailOrderFulfillmentStep: typing calls onCustomerAddressChange with the typed value', () => {
@@ -21,7 +22,7 @@ describe('#1219 -- the delivery address line is an editable input, not a read-on
 
     const input = screen.getByLabelText('Delivery address');
     expect(input.tagName).toBe('INPUT');
-    expect(input.placeholder).toBe(PLACEHOLDER);
+    expect(input.placeholder).toBe(SEARCH_PLACEHOLDER);
 
     fireEvent.change(input, { target: { value: 'Blue gate beside the sari-sari store, Purok 3' } });
     expect(onCustomerAddressChange).toHaveBeenCalledWith('Blue gate beside the sari-sari store, Purok 3');
@@ -40,7 +41,7 @@ describe('#1219 -- the delivery address line is an editable input, not a read-on
 
     const input = screen.getByLabelText('Delivery address');
     expect(input.tagName).toBe('INPUT');
-    expect(input.placeholder).toBe(PLACEHOLDER);
+    expect(input.placeholder).toBe(SEARCH_PLACEHOLDER);
 
     fireEvent.change(input, { target: { value: 'Blue gate beside the sari-sari store, Purok 3' } });
     expect(onCustomerAddressChange).toHaveBeenCalledWith('Blue gate beside the sari-sari store, Purok 3');

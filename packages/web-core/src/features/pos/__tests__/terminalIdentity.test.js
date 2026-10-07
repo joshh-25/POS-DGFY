@@ -5,6 +5,7 @@ import {
   normalizeTerminalCashierIds,
   normalizeTerminalRegistry,
   resolveLoginTerminalId,
+  resolveRegisteredTerminalLocationId,
   resolvePreferredTerminalId,
   sanitizeTerminalId
 } from '../utils/terminalIdentity.js';
@@ -75,6 +76,17 @@ describe('POS terminal identity helpers', () => {
 
   it('normalizes terminal cashier assignment IDs without duplicates or invalid values', () => {
     expect(normalizeTerminalCashierIds([12, '12', 7, 0, -3, 'invalid'])).toEqual([12, 7]);
+  });
+
+  it('resolves the active terminal location from the registered terminal identity', () => {
+    const registry = [
+      { terminal_id: 'COUNTER-01', location_id: 7, is_active: true },
+      { terminal_id: 'COUNTER-02', location_id: 8, is_active: false }
+    ];
+
+    expect(resolveRegisteredTerminalLocationId(registry, 'counter 01')).toBe(7);
+    expect(resolveRegisteredTerminalLocationId(registry, 'COUNTER-02')).toBeNull();
+    expect(resolveRegisteredTerminalLocationId(registry, 'UNKNOWN')).toBeNull();
   });
 
   it('preserves explicit empty cashier assignments while keeping legacy entries compatible', () => {

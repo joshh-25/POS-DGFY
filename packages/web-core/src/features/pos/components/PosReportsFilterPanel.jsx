@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ListFilter } from 'lucide-react';
 import {
   PosFilterChoiceGroup,
@@ -7,6 +7,7 @@ import {
 } from './PosFilterDialogParts.jsx';
 import PosFilterDialogShell from './PosFilterDialogShell.jsx';
 import PosCashierFilterControl from './PosCashierFilterControl.jsx';
+import PosFloatingScrollbar from './PosFloatingScrollbar.jsx';
 import { usePosViewportMode } from './PosResponsiveFormDrawer.jsx';
 import usePosReportsPopoverPosition from './usePosReportsPopoverPosition.js';
 
@@ -14,11 +15,13 @@ const buildDraft = ({
   cashierId,
   paymentType,
   source,
+  deliveryProvider,
   categoryId
 }) => ({
   cashierId: cashierId || '',
   paymentType: paymentType || '',
   source: source || '',
+  deliveryProvider: deliveryProvider || '',
   categoryId: categoryId || ''
 });
 
@@ -32,13 +35,16 @@ export default function PosReportsFilterPanel({
   paymentOptions = [],
   source,
   sourceOptions = [],
+  deliveryProvider,
+  deliveryProviderOptions = [],
   categoryId,
   categories = [],
   anchorRef
 }) {
-  const [draft, setDraft] = useState(() => buildDraft({ cashierId, paymentType, source, categoryId }));
+  const [draft, setDraft] = useState(() => buildDraft({ cashierId, paymentType, source, deliveryProvider, categoryId }));
   const [cashierSearch, setCashierSearch] = useState('');
   const [cashierPickerOpen, setCashierPickerOpen] = useState(false);
+  const filterScrollRef = useRef(null);
   const viewportMode = usePosViewportMode();
   const isMobileDialog = viewportMode === 'mobile';
   const position = usePosReportsPopoverPosition({ open, anchorRef, maxWidth: 464 });
@@ -48,6 +54,7 @@ export default function PosReportsFilterPanel({
       cashierId: '',
       paymentType: '',
       source: '',
+      deliveryProvider: '',
       categoryId: ''
     }));
     setCashierSearch('');
@@ -67,6 +74,10 @@ export default function PosReportsFilterPanel({
     label: option.value ? option.label : 'All'
   }));
   const sourceFilterOptions = sourceOptions.map((option) => ({
+    ...option,
+    label: option.value ? option.label : 'All'
+  }));
+  const deliveryProviderFilterOptions = deliveryProviderOptions.map((option) => ({
     ...option,
     label: option.value ? option.label : 'All'
   }));
@@ -113,53 +124,74 @@ export default function PosReportsFilterPanel({
           descriptionClassName="mt-0.5 text-[12px] text-slate-500"
         />
 
-        <div className={`min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain ${isMobileDialog ? 'px-4 py-3' : 'px-4 py-2.5'} dgfy-pos-history-dialog-body`}>
-          <div className={`grid min-w-0 ${isMobileDialog ? 'gap-3' : 'gap-4'}`}>
-            <PosFilterChoiceGroup
-              label="Payment Type"
-              value={draft.paymentType}
-              options={paymentFilterOptions}
-              onChange={(value) => updateDraft('paymentType', value)}
-              testId="pos-reports-filter-payment"
-              compact={!isMobileDialog}
-              mobile={isMobileDialog}
-              groupAriaLabel="Payment Type"
-            />
-            <PosFilterChoiceGroup
-              label="Sources"
-              value={draft.source}
-              options={sourceFilterOptions}
-              onChange={(value) => updateDraft('source', value)}
-              testId="pos-reports-filter-source"
-              compact={!isMobileDialog}
-              mobile={isMobileDialog}
-              groupAriaLabel="Sources"
-            />
-            <PosFilterChoiceGroup
-              label="Categories"
-              value={draft.categoryId}
-              options={categoryFilterOptions}
-              onChange={(value) => updateDraft('categoryId', value)}
-              testId="pos-reports-filter-category"
-              compact={!isMobileDialog}
-              mobile={isMobileDialog}
-              groupAriaLabel="Categories"
-            />
-            <PosCashierFilterControl
-              value={draft.cashierId}
-              searchValue={cashierSearch}
-              options={cashierFilterOptions}
-              onSearchChange={setCashierSearch}
-              onChange={(value) => updateDraft('cashierId', String(value ?? ''))}
-              expanded={cashierPickerOpen}
-              onExpandedChange={setCashierPickerOpen}
-              compact={!isMobileDialog}
-              mobile={isMobileDialog}
-              id="pos-reports-cashier-search"
-              testIdPrefix="pos-reports-filter-cashier"
-              optionName="pos-reports-filter-cashier"
-            />
+        <div className="relative min-h-0 min-w-0 flex-1">
+          <div
+            ref={filterScrollRef}
+            id="pos-reports-filter-scroll-body"
+            data-testid="pos-reports-filter-scroll-body"
+            className={`min-h-0 min-w-0 h-full overflow-x-hidden overflow-y-auto overscroll-contain ${isMobileDialog ? 'px-4 py-3' : 'px-4 py-2.5'} dgfy-pos-history-dialog-body dgfy-pos-filter-dialog-scroll-body`}
+          >
+            <div className={`grid min-w-0 ${isMobileDialog ? 'gap-3' : 'gap-4'}`}>
+              <PosFilterChoiceGroup
+                label="Payment Type"
+                value={draft.paymentType}
+                options={paymentFilterOptions}
+                onChange={(value) => updateDraft('paymentType', value)}
+                testId="pos-reports-filter-payment"
+                compact={!isMobileDialog}
+                mobile={isMobileDialog}
+                groupAriaLabel="Payment Type"
+              />
+              <PosFilterChoiceGroup
+                label="Delivery Provider"
+                value={draft.deliveryProvider}
+                options={deliveryProviderFilterOptions}
+                onChange={(value) => updateDraft('deliveryProvider', value)}
+                testId="pos-reports-filter-delivery-provider"
+                compact={!isMobileDialog}
+                mobile={isMobileDialog}
+                groupAriaLabel="Delivery Provider"
+              />
+              <PosFilterChoiceGroup
+                label="Sources"
+                value={draft.source}
+                options={sourceFilterOptions}
+                onChange={(value) => updateDraft('source', value)}
+                testId="pos-reports-filter-source"
+                compact={!isMobileDialog}
+                mobile={isMobileDialog}
+                groupAriaLabel="Sources"
+              />
+              <PosFilterChoiceGroup
+                label="Categories"
+                value={draft.categoryId}
+                options={categoryFilterOptions}
+                onChange={(value) => updateDraft('categoryId', value)}
+                testId="pos-reports-filter-category"
+                compact={!isMobileDialog}
+                mobile={isMobileDialog}
+                groupAriaLabel="Categories"
+              />
+              <PosCashierFilterControl
+                value={draft.cashierId}
+                searchValue={cashierSearch}
+                options={cashierFilterOptions}
+                onSearchChange={setCashierSearch}
+                onChange={(value) => updateDraft('cashierId', String(value ?? ''))}
+                expanded={cashierPickerOpen}
+                onExpandedChange={setCashierPickerOpen}
+                compact={!isMobileDialog}
+                mobile={isMobileDialog}
+                id="pos-reports-cashier-search"
+                testIdPrefix="pos-reports-filter-cashier"
+                optionName="pos-reports-filter-cashier"
+              />
+            </div>
           </div>
+          <PosFloatingScrollbar
+            scrollRef={filterScrollRef}
+            targetId="pos-reports-filter-scroll-body"
+          />
         </div>
 
         <PosFilterDialogFooter

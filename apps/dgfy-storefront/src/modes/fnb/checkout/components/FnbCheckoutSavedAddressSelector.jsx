@@ -42,12 +42,8 @@ export function FnbCheckoutSavedAddressSelector({
         <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Delivery address
         </div>
-        {activeAddress ? renderAddress(activeAddress) : (
-          <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={getCheckoutAddLocationActionStyle()}>
-            <span style={locationIconStyle('#fff', 'rgba(255,255,255,.16)')}><Plus size={18} /></span>
-            Add New Location
-          </button>
-        )}
+        {/* #759: with address search and map pinning beside it, an empty saved list has nothing to open. */}
+        {activeAddress ? renderAddress(activeAddress) : null}
         {activeAddress ? (
           <button type="button" onClick={onOpenMobileAddressList} style={mobileListButtonStyle(brandBorder, brandColor, brandTint)}>
             View All Saved Addresses

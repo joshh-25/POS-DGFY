@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
     buildListPosTransactionsUseCase,
+    shouldExcludeTrainingTestTransactionsFromPosHistory,
     buildGetPosTransactionByIdUseCase,
     buildGetDailyZReadingUseCase,
     buildListPosCatalogUseCase,
@@ -116,6 +117,13 @@ describe('pos use-cases application result contract', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
         expect(result.error.statusCode).toBe(400);
+    });
+
+    it('hides training-test history from ordinary cashier sessions only', () => {
+        expect(shouldExcludeTrainingTestTransactionsFromPosHistory({ role: 'cashier' })).toBe(true);
+        expect(shouldExcludeTrainingTestTransactionsFromPosHistory({ role: 'CASHIER' })).toBe(true);
+        expect(shouldExcludeTrainingTestTransactionsFromPosHistory({ role: 'admin' })).toBe(false);
+        expect(shouldExcludeTrainingTestTransactionsFromPosHistory({ role: 'cashier', is_master_admin: true })).toBe(false);
     });
 
     it('opens a shift from an active logical terminal without a pairing cookie', async () => {

@@ -8,9 +8,10 @@ jest.unstable_mockModule('../src/modules/shared/utils/inventoryAuthoritySettings
 
 let requireLocalInventoryLedgerOwnership;
 let bodyDeclaresCurrentStock;
+let bodyDeclaresStockMutation;
 
 beforeAll(async () => {
-    ({ requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } = await import('../src/middleware/inventoryAuthorityGate.js'));
+    ({ requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock, bodyDeclaresStockMutation } = await import('../src/middleware/inventoryAuthorityGate.js'));
 });
 
 const buildRes = () => {
@@ -92,5 +93,14 @@ describe('bodyDeclaresCurrentStock', () => {
         expect(bodyDeclaresCurrentStock({ body: { current_stock: '' } })).toBe(false);
         expect(bodyDeclaresCurrentStock({ body: { current_stock: 0 } })).toBe(true);
         expect(bodyDeclaresCurrentStock({ body: { current_stock: 25 } })).toBe(true);
+    });
+});
+
+describe('bodyDeclaresStockMutation', () => {
+    it('recognizes additive branch stock allocations as inventory writes', () => {
+        expect(bodyDeclaresStockMutation({ body: { name: 'Widget' } })).toBe(false);
+        expect(bodyDeclaresStockMutation({ body: { stock_allocations: [] } })).toBe(false);
+        expect(bodyDeclaresStockMutation({ body: { stock_allocations: [{ location_id: 1, quantity: 100 }] } })).toBe(true);
+        expect(bodyDeclaresStockMutation({ body: { current_stock: 0 } })).toBe(true);
     });
 });

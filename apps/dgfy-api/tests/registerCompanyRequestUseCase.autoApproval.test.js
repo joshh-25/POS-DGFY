@@ -3,7 +3,7 @@ import { buildRegisterCompanyRequestUseCase } from '../src/modules/tenants/useca
 import { normalizeTenantRegistrationApprovalMode, TENANT_REGISTRATION_APPROVAL_MODES } from '../src/config/tenantRegistrationApproval.js';
 import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
-const body = { name: 'Manual Review Foods', workflowMode: 'food_manufacturing', accepted_company_terms: true, company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms, marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms };
+const body = { name: 'Manual Review Foods', workflowMode: 'food_manufacturing', accepted_company_terms: true, accepted_marketplace_terms: true, company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms, marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms };
 const dgfyAccount = { id: 'dgfy-account-1', first_name: 'Owner', email: 'owner@manual.test', phone: '+639123456789', password_hash: 'hash' };
 
 const createUseCase = ({ emailConfigured = false } = {}) => {
@@ -51,6 +51,15 @@ describe('registerCompanyRequestUseCase mandatory manual review', () => {
     const result = await useCase({ body: { ...body, accepted_company_terms: false }, dgfyAccount, correlationId: 'missing-terms' });
     expect(result.success).toBe(false);
     expect(result.error.statusCode).toBe(422);
+    expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+  });
+
+  it('rejects registration when marketplace provider terms are not acknowledged independently', async () => {
+    const { deps, useCase } = createUseCase();
+    const result = await useCase({ body: { ...body, accepted_marketplace_terms: false }, dgfyAccount, correlationId: 'missing-marketplace-terms' });
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.details).toEqual(expect.objectContaining({ field: 'accepted_marketplace_terms' }));
     expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
   });
 

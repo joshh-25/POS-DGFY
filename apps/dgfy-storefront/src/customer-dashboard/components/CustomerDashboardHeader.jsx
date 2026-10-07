@@ -11,6 +11,8 @@ export function CustomerDashboardHeader({ style, theme, isMobileViewport, isDraw
     if (notification?.reference) {
       onTrackReference?.({ reference: notification.reference, status: notification.status });
       setIsOpen(false);
+    } else if (notification?.type === 'company_registration') {
+      setIsOpen(false);
     }
   };
   return (

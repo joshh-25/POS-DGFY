@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-24
+last_reviewed: 2026-10-06
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -135,19 +135,19 @@ legs.
   build cleanly, gated by `shared-changed-paths.yml` so an unrelated change
   doesn't force both.
 
-**Plus, since #1018 (2026-08-25), `promotion-quality-gate.yml`** — the renamed
-former `pr-quality-checks.yml` — triggers automatically on its own, on any PR
-whose base/head matches a known promotion shape (`staging` ← `to-staging/*`,
-`main` ← `release/*`; its own `gate` job decides this, see the workflow's
-header comment). It is **not** a job inside `pr-checks.yml` and does not run
-on an ordinary feature PR into `develop` — see the "Amendments" entry below
-for why once per promotion, not per PR, is what makes this affordable at all.
-It carries the blocking API matrix/open-handle diagnostics, migration smoke,
-required-index audit, frontend lint/F&B contract tests/builds, the
-deterministic Storefront F&B Playwright contract, architecture guardrails,
-governed-doc lint, compatibility seams, and diff hygiene that used to be dead
-wiring here. `workflow_dispatch`/`workflow_call` remain for a manual full run
-against an arbitrary branch.
+**Optional quality evidence (#2236):** `promotion-quality-gate.yml` is
+operator-dispatched only, has no automatic PR trigger, and every step is
+advisory. It may run against the frozen `develop` candidate before a staging
+cut, against a final release candidate in a rushed flow, or not run at all.
+The reporter attaches per-job outcomes and the checked SHA to an associated
+open PR. Failure, cancellation, missing results, or skipping the suite does
+not affect promotion eligibility.
+
+The merge and promotion controls remain `pr-checks.yml`'s ordinary build
+checks, the compliance preflight, and the production tenant-schema report.
+Merge safety, the release head-cut rule, and never-`--squash` also remain in
+force. The 2026-10-03 #2236 amendment below supersedes earlier amendments that
+describe the quality suite as an automatic blocking check.
 
 The former `code-quality` job was removed because it was advisory. Phases 24
 and 25 restore the required API, frontend, and deterministic browser coverage
@@ -176,25 +176,14 @@ on `release/* -> main` is a real process decision (what evidence is
 mandatory, who reviews it, whether it blocks merge) and is deliberately left
 as a follow-up, not assumed here.
 
-## The pre-promotion local gate
+## Former local gate and current optional quality suite
 
-`quality-checks` (described above as blocking) was removed from
-`pr-checks.yml` entirely on 2026-08-14 (#416) after sitting disabled
-(`if: false`, since 2026-08-11 over #345's ~14min unfiltered run). **The path
-back in has since been decided and built** (#1018, 2026-08-25) —
-`promotion-quality-gate.yml` (renamed from `pr-quality-checks.yml`) triggers
-itself automatically on `to-staging/*`/`release/*` promotion PRs specifically,
-never on an ordinary `develop` PR; see "What actually gates a release into
-`main` today" above and the "Promotion-time CI quality gate" amendment below.
-It is **complementary**, not a replacement: `npm run gate:release:local`, run
-by hand before a `main` promotion (`develop → main`, or `staging → main` when the optional soak is
-used), stays required regardless. **It does not run on the optional `develop → staging` soak leg
-itself** — stated explicitly here (#1097) rather than left implicit, matching the ladder table
-below and `.agents/skills/promoter/references/promotion-runbook.md`'s "Optional: a `staging` soak
-first" section. It is
-documented in `docs/testing/release-go-no-go-checklist.md`, which is the
-authoritative runbook for that gate — see #375. Do not propose rebuilding it
-(#345, #330); invoke it.
+`npm run gate:release:local` remains available for local debugging, and its
+default `required_gate_count` is zero. It is not a promotion prerequisite.
+`promotion-quality-gate.yml` is an optional operator-dispatched evidence suite;
+its run and its outcome are not merge gates. See
+`.agents/skills/promoter/references/promotion-runbook.md` for the operator
+procedure and the 2026-10-03 #2236 amendment below for the current policy.
 
 ## Known gaps (tracked, not solved by this document)
 
@@ -202,11 +191,12 @@ authoritative runbook for that gate — see #375. Do not propose rebuilding it
   `staging-qualification` / `exact-master-sha-qualification` as required
   checks for a controller that was never installed. Reconciling or removing
   it is a separate decision.
-- **Resolved 2026-08-25 (#1018):** `quality-checks` now runs automatically at
-  promotion time via `promotion-quality-gate.yml` — see "The pre-promotion
-  local gate" above. Its `dgfy-api-quality` job's AVX-dependent tests
-  (`menuPdfRasterService.test.js`) are gated on a real probe of the runner's
-  own capability (#1035, same PR) rather than assuming every runner has AVX
+- **Historical resolution, superseded 2026-10-03 (#2236):** #1018 originally restored
+  automatic promotion-time quality checks via `promotion-quality-gate.yml`. The workflow
+  is now operator-dispatched and optional; see "What actually gates a release into `main`
+  today" above. Its `dgfy-api-quality` job's AVX-dependent tests
+  (`menuPdfRasterService.test.js`) are gated on a real probe of the runner's own capability
+  (#1035, same PR), so they show as Jest `skipped` on `sieitz-lg` when AVX is unavailable.
   — on `sieitz-lg` they show as Jest `skipped`, not a false red.
 - `develop` and `staging` have drifted before without a backport in the
   other direction — the compliance bypass this document depends on
@@ -268,8 +258,8 @@ Retire staging..." amendment below for history**:
 | Stage | Gate type | What runs | Environment needed |
 |---|---|---|---|
 | `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
-| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `npm run gate:release:local` (`run_mode: "full"`, per `docs/testing/release-go-no-go-checklist.md`) against the exact target SHA; the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018) — **temporarily `continue-on-error` as of 2026-08-26, see the amendment below (#1063): it runs and records real failures as a comment on #1063, but does not block, and (since the #1066 correction below) does not show red in the Checks tab either**; a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut (a **supervised handoff, not an auto-merge**, #1295/#1374, 2026-09-02: the workflow pushes and attempts the PR, but `github-actions[bot]` is org-blocked from creating/approving it, so a human or credentialed AI session opens/merges it in the ordinary case — `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section owns the fast-signal check for a stuck handoff); **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** (A `NOT-APPLICABLE-*` ref is a reconciled state, not an outstanding one — `scripts/is-preflight-outstanding.js` already treats it as reconciled; see #1396.) All four run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which of these may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
-| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too) — **skipped entirely as of 2026-08-26, see the amendment below (#1063)**. **`npm run gate:release:local` does NOT run on this leg** — stated explicitly here (#1097) rather than left implicit by its absence from this row, after a live promotion attempt ran it here anyway and stopped a `develop → staging` promotion on findings that were never this leg's gate to fail on. Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | STAGING |
+| `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `pr-checks.yml` build checks; optional operator-dispatched `promotion-quality-gate.yml` evidence against the frozen candidate (may be skipped); a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut (a **supervised handoff, not an auto-merge**, #1295/#1374, 2026-09-02: the workflow pushes and attempts the PR, but `github-actions[bot]` is org-blocked from creating/approving it, so a human or credentialed AI session opens/merges it in the ordinary case — `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section owns the fast-signal check for a stuck handoff); **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** (A `NOT-APPLICABLE-*` ref is a reconciled state, not an outstanding one — `scripts/is-preflight-outstanding.js` already treats it as reconciled; see #1396.) These mandatory controls run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which controls may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
+| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | `pr-checks.yml` build checks and the pre-branch compliance-preflight step; the operator may dispatch the optional quality suite against the frozen develop candidate before the cut. The suite is not triggered by the PR and may be skipped. The production preflight sweep and tenant-schema report still run for the later `develop → main` promotion regardless of whether this optional soak happened | STAGING |
 | post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (PROD infra health — BETA dropped from its environment list 2026-08-23, #329/#895, once beta.dgfy.ph was retired), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
 
 This resolves the apparent circularity for the compliance preflight specifically: the endpoint
@@ -1820,3 +1810,163 @@ scans promotion tags only (`-staging` and neutral production tags), never DEV. T
 workflow and steps are documented in `.agents/skills/promoter/references/promotion-runbook.md`.
 
 PR: (this PR). Closes #2071. Refs #2055, #982.
+
+### 2026-10-01: Independent backend artifact revisions, paired build/deploy (#2186)
+
+The API and migration-runner images retain independent immutable artifact revision streams,
+allocated and retried against their own image repositories and package floors. A shared
+`build_api` selection still keeps the backend operation paired, but dispatch inputs, skip-plan
+tags, manifest entries, production aliases, and parity checks use each app's own revision. A
+candidate's per-app map includes both backends or neither; modern maps omit unselected apps, while
+explicit legacy shared-revision inputs and v1 candidate manifests retain their compatibility path.
+
+Parity verifies per-app candidate source, package floor, revision, and recorded STAGING digest.
+Backend PROD reuses that neutral artifact digest. Frontend PROD digest may differ because its image
+contains environment-specific build configuration, so the manifest digest is checked against
+STAGING while PROD source, floor, revision, and alias checks remain in force. Paired PROD publish
+blocks on either backend's failure or cancellation; explicit safe skips are valid. Registry pushes
+are not transactional, and an already-published immutable image may remain after its sibling fails.
+
+Keep API `1.32.0` and migration-runner `1.21.0` package floors independently managed as they are
+today. Decision 6 already manages floors per app; this change corrects artifact revision routing,
+not semantic-version-floor policy. Any further package-floor policy split can be scheduled
+separately. Decision 7's immutable-tag guard remains unchanged.
+
+Full workflow and commands: `.agents/skills/promoter/references/promotion-runbook.md`'s
+"Deploy dispatch" section. PR: (this PR). Refs #2186.
+
+#### 2026-10-01 follow-up: OPIS production gating (#2186)
+
+`deploy-main.yml`'s `promote-aliases` and `publish` jobs depend on `frontend-opis-prod` and
+fail closed when it fails or is cancelled; `promote-aliases` also runs on an OPIS-only
+revision dispatch. Per-app revision inputs, skip planning, aliasing, and parity now cover all
+six app groups including `dgfy-opis`. Package floors stay independently managed and unchanged.
+
+PR: (this PR). Refs #2186.
+
+
+
+### 2026-10-03: Require release artifacts for every touched candidate app (#2227)
+
+For v3 candidates, the union of `apps_touched` across the initial promotion and every STAGING
+repair is the complete selected-app inventory. This includes apps changed by the candidate and
+apps carried forward from an earlier partial PROD release. Once `release_revision` is populated,
+its per-app map must include a revisioned STAGING artifact for every app in that inventory. Sparse
+maps remain valid for apps absent from the full `apps_touched` history. `check-promotion-candidate.js`
+rejects an incomplete map before release qualification, so a missing selected-app revision cannot
+be interpreted by the deploy path as an intentional app skip. Existing backend pairing and per-app
+source-lineage validation also remain required.
+
+**Carry-forward obligation from PROD run #37100411642.** Candidate `2026-10-03-01` declared all
+six deployable apps, but its PROD dispatch included only API, migration-runner, and Storefront.
+IMS, POS, and OPIS therefore remain outstanding even though their code is already merged to
+`main`. Track them in issue #2227 and include them in the initial `apps_touched` set of the next
+normal candidate. Build their STAGING artifacts and record their revisions in that candidate's
+release map alongside any new app changes. Ship the combined map in one later PROD dispatch; do
+not send a separate app-only deploy for this recovery. Keep the tracking issue open until the
+combined production release is verified.
+
+PR: (this PR). Closes #2227.
+
+### 2026-10-03: Promotion quality suite is operator-selected evidence (#2236)
+
+`promotion-quality-gate.yml` is dispatched manually only. It has no `pull_request` or
+`workflow_call` trigger, no promotion-leg classifier, and no blocking quality step. Every workflow
+step uses `continue-on-error: true`; the workflow's reporter posts the dispatched run's per-job
+conclusions to the open PR associated with its branch. If no open PR is associated yet, the operator
+can post the evidence later with `node scripts/post-quality-suite-evidence.js --run-id <id>
+--pr <number> --candidate <candidate_id>`. The script records optional `quality_check` metadata
+in the local v3 candidate manifest, bound to the exact checked SHA; any candidate change makes that
+record stale by SHA comparison.
+
+For the normal three-stage flow, the operator may run the suite on the frozen `develop` candidate
+before cutting `to-staging/<label>`. If that candidate SHA remains unchanged through the release
+cut, no duplicate run is needed. For a rushed flow, the operator may skip the develop run and may
+run the suite on the final release candidate before production. The operator may also skip the suite
+for a release entirely. Quality-suite failures, cancellations, and missing results are informational
+and do not affect promotion eligibility.
+
+The ordinary `pr-checks.yml` build checks, merge-safety hard stop, compliance preflight, production
+tenant-schema report, never-`--squash` rule, and release head-cut rule remain independently
+mandatory. This decision supersedes the #1124 quality-gate trust epic's earlier requirement to
+restore automatic blocking; its Definition of Done must no longer require that outcome.
+
+Validation: `node scripts/check-pr-quality-workflow.js`, `node scripts/check-promotion-candidate.js
+--manifest <path>` (with and without `quality_check`), and `npm run lint:docs`.
+
+PR: (this PR). Closes #2236. Refs #1063, #1254.
+
+### 2026-10-04: Release-only repair after staging qualification (#1542 follow-up, Phase 472)
+
+The 2026-09-04 frozen-candidate repair entry says a pre-main release failure returns to staging,
+invalidates the release head, and recuts after staging changes. **That routing is superseded after
+staging qualification:** keep the existing `release/<candidate_id>` branch and promotion PR, and
+repair through a reviewed `fix/release/<candidate_id>-<repair_seq>` PR targeting that release
+branch. Record the resulting release-head SHA, its previous release-head parent, PR, issue, and
+exact `apps_touched` in `release_revision.repairs`; set each touched app's resolved candidate-source
+SHA and origin to `release_repair`. Allocate a fresh per-app immutable `rN` from GHCR for each app
+rebuilt by the release repair and update its map entry; the earlier STAGING revision tag may already
+occupy its prior `rN`, and Decision 7 still forbids overwriting it.
+
+Do not recut the release branch, merge the repair into `staging`, redeploy staging, or repeat staging
+observation. The original staging-qualified SHA and each release-only repair SHA stay separate in
+the manifest. The final release head must never be described as having passed staging. The existing
+promotion PR reruns its required checks against its updated release head.
+
+For `release_repair` apps, promotion parity requires the PROD candidate-source label to match the
+resolved repair SHA, validates floor and revision labels, reads the PROD revision digest, and
+requires the bare PROD alias to reference that same digest. It does not require a STAGING
+predecessor or compare the pre-repair STAGING digest to the rebuilt PROD digest. All other origins
+keep the existing STAGING-to-PROD evidence requirements. Production tenant-schema reporting,
+Merge Safety, and no-`--squash` remain mandatory.
+
+After production is stable, backport every release-only repair to `develop` through an ordinary PR.
+Do not create a separate backport to `staging`; this path never changes that branch and is distinct
+from #1696's obligation for commits that land there. Failures found after production deployment
+remain on the main-hotfix path.
+
+`[default]` tier per ADR 0039. This supersedes only the prior pre-main recut routing; staging repairs,
+post-deployment hotfix routing, and production controls are unchanged. See ADRs 0074 and 0081,
+`.agents/skills/promoter/SKILL.md`, and `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #1542.
+
+### 2026-10-06: Explicit refresh of a delayed, unmerged STAGING candidate (#2266, Phase 474)
+
+The #1660 rule remains the default: newer `develop` work does not flow into an active staging
+candidate automatically. When production is deferred and an operator explicitly requests a refresh,
+the promoter may reuse the existing candidate ID only while its release has **not** merged to
+`main`. Record the request and reason, reconcile every staging repair and release-only repair into
+`develop` through reviewed PRs (or prove equivalent content is already present), and stop on any
+unresolved difference. Early backport of release-only repairs is an explicit exception to the
+normal post-production backport timing; it never authorizes discarding repair history.
+
+Withdraw any unmerged `release/<candidate_id>` selection before proceeding: preserve its SHA,
+artifact map, PR, and repair lineage in v4 `release_history`, close the old promotion PR, and retire
+the old branch. Pin the reconciled `develop` SHA, validate the refresh floor against the original
+pre-promotion baseline recorded by `promotion_base_sha`, and cut a disposable
+`to-staging/<candidate_id>-refresh-<seq>` branch. Keep the candidate ID and initial
+`source_develop_sha`; append a sequential `staging_refresh` record with incoming develop SHA, actual
+merged staging SHA, physical staging base SHA, PR, reason, and per-app artifact lineage. Repair and
+refresh ordinals remain independent; artifact revisions remain per-app immutable `rN` values.
+
+Refresh invalidates the old selection and all SHA-bound staging qualification. Keep the candidate
+in `refresh_in_progress` with no active release selection until the merge and artifact build finish;
+then return it to `staging_soak`, repeat observation and required qualification for the new actual
+staging SHA, and cut a fresh release branch from that qualified head. Archived selection evidence,
+including its optional quality-suite result, cannot qualify the new SHA. A failed refresh stays
+unqualified; do not restore an archived selection without a separate valid selection and
+qualification. Once a release has merged to `main`, this candidate cannot be refreshed, even if
+production deployment is deferred. Use the existing release-only repair path for work after the
+release cut when no explicit refresh was requested.
+
+This is a narrow, explicit exception to #1660, not a moving branch target or a new default. All
+compliance preflight, tenant-schema report, merge-safety, no-squash, immutable-tag, alias-collision,
+head-cut, and per-app inventory controls remain mandatory. Legacy v1-v3 candidates require an
+evidence-backed baseline bootstrap through the release-note amendment/backport process before v4
+conversion; absent evidence is a hard stop, never a guessed baseline.
+
+`[default]` tier per ADR 0039. Amendments: ADRs 0074, 0081, and 0082. See the promoter skill/runbook,
+release-note template, and Phase 474 in the implementation ledger.
+
+PR: (this PR). Closes #2266.

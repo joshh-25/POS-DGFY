@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { acquirePosImagePreview } from '@/src/features/pos/services/posImagePreview.js';
@@ -19,6 +19,9 @@ export default function SelectedItemImageCarousel({
   posPreview = false,
   showPrimaryToggle = false,
   compactRemoveAction = false,
+  posItemsPresentation = false,
+  editItemPresentation = false,
+  maxVisibleThumbnails = null,
   primaryEntryKey,
   onPrimaryChange,
   onRemove,
@@ -83,6 +86,14 @@ export default function SelectedItemImageCarousel({
   const hasMultipleImages = orderedEntries.length > 1;
   const combinedGallery = normalizedSavedGallery.length > 0;
   const imageLabel = combinedGallery ? 'item' : 'selected item';
+  const thumbnailLimit = Number.isInteger(Number(maxVisibleThumbnails)) && Number(maxVisibleThumbnails) > 0
+    ? Number(maxVisibleThumbnails)
+    : null;
+  const hasThumbnailOverflow = thumbnailLimit !== null && orderedEntries.length > thumbnailLimit;
+  const thumbnailOverflowCount = hasThumbnailOverflow ? orderedEntries.length - thumbnailLimit : 0;
+  const thumbnailEntries = thumbnailLimit === null
+    ? orderedEntries
+    : orderedEntries.slice(0, thumbnailLimit);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,31 +173,44 @@ export default function SelectedItemImageCarousel({
 
   return (
     <div
-      className="mt-3 max-w-md space-y-2"
+      className={`${editItemPresentation ? 'mt-0 w-full space-y-2.5' : 'mt-3 max-w-md space-y-2'}`}
       role="region"
       aria-roledescription="carousel"
       aria-label={`${itemName} ${combinedGallery ? 'item image gallery' : 'selected image carousel'}`}
     >
-      <div className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
+      <div className={`relative overflow-hidden rounded-md border border-slate-200 bg-white ${editItemPresentation ? 'pos-items-image-carousel-stage aspect-[4/3]' : ''}`}>
         {activeEntry.url ? (
           <ResponsiveImage
             sources={buildImageVariantSources({ url: activeEntry.url, variants: activeEntry.variants, preferred: 'medium' })}
             alt={activeImageLabel}
             sizes="448px"
             loading="lazy"
-            className="h-32 w-full object-cover sm:h-36"
+            className={editItemPresentation ? 'pos-items-image-carousel-main-image h-full w-full object-cover' : 'h-32 w-full object-cover sm:h-36'}
           />
         ) : (
-          <div className="grid h-32 place-items-center px-4 text-center text-xs text-slate-500 sm:h-36">
+          <div className={editItemPresentation ? 'pos-items-image-carousel-placeholder grid h-full place-items-center px-4 text-center text-xs text-slate-500' : 'grid h-32 place-items-center px-4 text-center text-xs text-slate-500 sm:h-36'}>
             {activeEntry.label}
           </div>
         )}
+        {editItemPresentation && canRemoveCurrent ? (
+          <button
+            type="button"
+            className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-lg border border-rose-200 bg-white/95 text-rose-600 shadow-sm transition-colors hover:bg-rose-50 disabled:opacity-50"
+            onClick={handleRemoveCurrent}
+            disabled={disabled}
+            aria-label={`${combinedGallery ? 'Remove item image' : 'Remove selected item image'} ${resolvedActiveIndex + 1}`}
+            title="Remove image"
+            data-pos-item-image-remove="true"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : null}
         {hasMultipleImages && (
           <>
             <button
               type="button"
               aria-label={`Previous ${imageLabel} image`}
-              className="absolute left-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white"
+              className={`${editItemPresentation ? 'pos-items-image-carousel-navigation' : ''} absolute left-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white`}
               onClick={() => goToImage(resolvedActiveIndex - 1)}
               disabled={disabled}
             >
@@ -195,7 +219,7 @@ export default function SelectedItemImageCarousel({
             <button
               type="button"
               aria-label={`Next ${imageLabel} image`}
-              className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white"
+              className={`${editItemPresentation ? 'pos-items-image-carousel-navigation' : ''} absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white`}
               onClick={() => goToImage(resolvedActiveIndex + 1)}
               disabled={disabled}
             >
@@ -208,7 +232,7 @@ export default function SelectedItemImageCarousel({
                   type="button"
                   aria-label={`Show ${imageLabel} image ${index + 1}`}
                   aria-current={index === resolvedActiveIndex ? 'true' : undefined}
-                  className={`h-1.5 rounded-full transition-all ${index === resolvedActiveIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`}
+                  className={`${editItemPresentation ? 'pos-items-image-carousel-dot' : ''} h-1.5 rounded-full transition-all ${index === resolvedActiveIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`}
                   onClick={() => goToImage(index)}
                   disabled={disabled}
                 />
@@ -216,44 +240,73 @@ export default function SelectedItemImageCarousel({
             </div>
           </>
         )}
+        {editItemPresentation && showPrimaryToggle ? (
+          <div className="pos-items-image-carousel-primary-toggle absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded-full bg-slate-950/75 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm">
+            <Switch
+              checked={isPrimary}
+              onCheckedChange={(checked) => {
+                if (checked) handleSetPrimary(activeEntry);
+              }}
+              disabled={disabled || isPrimary}
+              aria-label={`Make item image ${resolvedActiveIndex + 1} primary`}
+              className={`h-5 w-9 [&>span]:h-4 [&>span]:w-4 [&[aria-checked=true]>span]:translate-x-4 ${isPrimary ? 'bg-[#1A4E8D] focus-visible:ring-[#1A4E8D]' : 'bg-slate-200'}`}
+            />
+            <span>Primary</span>
+          </div>
+        ) : null}
       </div>
       {hasMultipleImages && (
         <div
-          className="flex gap-2 overflow-x-auto pb-1"
+          className={editItemPresentation ? 'pos-items-image-carousel-thumbnails grid min-w-0 grid-cols-4 gap-2' : 'flex gap-2 overflow-x-auto pb-1'}
           aria-label={`${combinedGallery ? 'Item' : 'Selected item'} image thumbnails`}
         >
-          {orderedEntries.map((entry, index) => (
-            <button
-              key={`selected-item-carousel-thumb-${entry.key}`}
-              type="button"
-              aria-label={`Focus ${imageLabel} image ${index + 1}`}
-              aria-current={index === resolvedActiveIndex ? 'true' : undefined}
-              className={`relative h-14 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-white text-[10px] text-slate-500 transition ${index === resolvedActiveIndex ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-200 hover:border-slate-300'}`}
-              onClick={() => setActiveEntryKey(entry.key)}
-              disabled={disabled}
-            >
-              {entry.url ? (
-                <ResponsiveImage
-                  sources={buildImageVariantSources({ url: entry.url, variants: entry.variants, preferred: 'thumbnail' })}
-                  alt=""
-                  sizes="64px"
-                  loading="lazy"
-                  className="h-full w-full object-cover"
-                  aria-hidden="true"
-                />
-              ) : (
-                <span className="flex h-full items-center justify-center px-1 text-center">
-                  {index + 1}
-                </span>
-              )}
-              {showPrimaryToggle && entry.key === selectedPrimaryKey ? (
-                <span className="absolute left-0.5 top-0.5 rounded bg-teal-600 px-1 text-[8px] font-bold text-white">Primary</span>
-              ) : null}
-            </button>
-          ))}
+          {thumbnailEntries.map((entry, index) => {
+            const isOverflowThumbnail = hasThumbnailOverflow && index === thumbnailEntries.length - 1;
+            const isThumbnailActive = index === resolvedActiveIndex
+              || (isOverflowThumbnail && resolvedActiveIndex >= thumbnailEntries.length);
+
+            return (
+              <button
+                key={`selected-item-carousel-thumb-${entry.key}`}
+                type="button"
+                aria-label={isOverflowThumbnail
+                  ? `Focus ${imageLabel} image ${index + 1}; ${thumbnailOverflowCount} more image${thumbnailOverflowCount === 1 ? '' : 's'}`
+                  : `Focus ${imageLabel} image ${index + 1}`}
+                aria-current={isThumbnailActive ? 'true' : undefined}
+                className={`relative ${editItemPresentation ? 'pos-items-image-carousel-thumbnail min-w-0 w-full' : 'h-14 w-16 flex-shrink-0'} overflow-hidden rounded-md border bg-white text-[10px] text-slate-500 transition ${isThumbnailActive
+                  ? (posItemsPresentation ? 'border-[#1A4E8D] ring-2 ring-blue-100' : 'border-teal-500 ring-2 ring-teal-100')
+                  : 'border-slate-200 hover:border-slate-300'}`}
+                onClick={() => setActiveEntryKey(entry.key)}
+                disabled={disabled}
+              >
+                {entry.url ? (
+                  <ResponsiveImage
+                    sources={buildImageVariantSources({ url: entry.url, variants: entry.variants, preferred: 'thumbnail' })}
+                    alt=""
+                    sizes="64px"
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <span className="flex h-full items-center justify-center px-1 text-center">
+                    {index + 1}
+                  </span>
+                )}
+                {isOverflowThumbnail ? (
+                  <span className="pointer-events-none absolute inset-0 grid place-items-center bg-slate-950/55 text-sm font-bold text-white">
+                    +{thumbnailOverflowCount}
+                  </span>
+                ) : null}
+                {showPrimaryToggle && !editItemPresentation && entry.key === selectedPrimaryKey ? (
+                  <span className="absolute left-0.5 top-0.5 rounded bg-teal-600 px-1 text-[8px] font-bold text-white">Primary</span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       )}
-      <div className="flex min-w-0 items-center gap-2">
+      {!editItemPresentation ? <div className="flex min-w-0 items-center gap-2">
         {showPrimaryToggle ? (
           <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold text-slate-600">
             <Switch
@@ -282,8 +335,8 @@ export default function SelectedItemImageCarousel({
           <X className="h-3 w-3" aria-hidden="true" />
           <span className="truncate">{compactRemoveAction ? 'Remove current image' : 'Remove'}</span>
         </button>
-      </div>
-      {combinedGallery && showPrimaryToggle ? (
+      </div> : null}
+      {showPrimaryToggle ? (
         <p className="text-[10px] text-slate-400">Choose Primary on any image. The selected image will be used first in POS and Storefront.</p>
       ) : null}
     </div>

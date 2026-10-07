@@ -40,13 +40,13 @@ describe('POS Reports responsive table', () => {
     expect(pagination.className).toContain('max-[767px]:sticky');
     expect(pagination.className).toContain('max-[767px]:bottom-0');
     expect(screen.getByText('Showing 1–20 of 21 entries')).toBeTruthy();
-    const pageSize = screen.getByRole('button', { name: 'Items per page' });
+    const pageSize = screen.getByRole('button', { name: 'entries per page' });
     expect(pageSize.getAttribute('aria-haspopup')).toBe('listbox');
     expect(screen.getByText('1 of 2')).toBeTruthy();
-    expect(screen.getByLabelText('Previous page').disabled).toBe(true);
+    expect(screen.getByLabelText('Previous Report entries page').disabled).toBe(true);
     expect(within(screen.getByTestId('pos-reports-table-mobile-view')).queryByText('Row 21')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await user.click(screen.getByRole('button', { name: 'Next Report entries page' }));
     expect(screen.getByText('Showing 21–21 of 21 entries')).toBeTruthy();
     expect(screen.getAllByText('Row 21').length).toBeGreaterThan(0);
     expect(screen.getByText('2 of 2')).toBeTruthy();

@@ -10,6 +10,7 @@ import {
   Lock,
   Percent,
   Settings2,
+  ShieldCheck,
   ShoppingCart,
   Tags,
   Ticket,
@@ -76,6 +77,7 @@ export default function TerminalWorkspaceSidebar({
   isMsmeMode = false,
   canViewPos = false,
   canViewAudit = false,
+  canReviewVoidApprovals = false,
   canAccessPosOnlySetup = false,
   canViewVouchers = false,
   canManageCategories = false,
@@ -488,6 +490,19 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to open the tenant audit log' : 'Admin-only activity log for POS and account changes'))}
               testId="pos-nav-audit"
+              collapsed={isCollapsed}
+            />
+          )}
+          {canReviewVoidApprovals && !isCashierRole && (
+            <NavButton
+              label="Approvals"
+              icon={ShieldCheck}
+              active={currentViewMode === 'approvals'}
+              onClick={() => onSelectViewMode('approvals')}
+              onPrefetch={() => onPrefetchViewMode('approvals')}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to review approvals' : 'Review POS void and parked-sale requests'))}
+              testId="pos-nav-approvals"
               collapsed={isCollapsed}
             />
           )}

@@ -39,6 +39,11 @@ export const parseCommercialPromoConfig = (rawValue, meta = {}) => {
         promoId: String(value.id || value.promo_id || meta.promoId || '').trim(),
         raw: value,
         active: value.active === true,
+        // #2159: transitional revocation evidence, written by the OPIS Legacy Promos surface.
+        // The entry survives (no delete) so usage counters and history stay intact.
+        revoked: value.revoked === true,
+        revokedBy: String(value.revoked_by || '').trim(),
+        revokedAt: String(value.revoked_at || '').trim(),
         title: String(value.title || '').trim(),
         badge: String(value.badge || '').trim(),
         promoCode: normalizePromoCode(value.promo_code),
@@ -80,16 +85,70 @@ export const parseCommercialPromoConfigs = (settings = {}) => {
     return configs;
 };
 
+export const resolveCommercialPromoTimezone = (settings = {}) => {
+    const hours = normalizeStorefrontBusinessHours(extractSettingValue(settings?.storefront_hours));
+    return String(hours?.timezone || DEFAULT_PROMO_TIMEZONE).trim() || DEFAULT_PROMO_TIMEZONE;
+};
+
+const isCommercialPromoExhausted = (config) => config.usageLimit != null && config.usedCount >= config.usageLimit;
+
+const isCommercialPromoExpired = (config, { now, timezone }) => (
+    Boolean(config.validUntil) && zonedDate(now, timezone) > config.validUntil
+);
+
+// #2159: the public projection's single visibility decision. Revoked, exhausted, and expired
+// entries are not redeemable and must never be advertised; a future `valid_from` deliberately
+// stays visible because Storefront surfaces it as a scheduled offer with an availability message,
+// not as a currently redeemable one.
+export const isCommercialPromoPubliclyVisible = (config, { now = new Date(), timezone = DEFAULT_PROMO_TIMEZONE } = {}) => {
+    if (!config || config.active !== true || config.revoked === true) return false;
+    if (isCommercialPromoExhausted(config)) return false;
+    if (isCommercialPromoExpired(config, { now, timezone })) return false;
+    return true;
+};
+
+// The OPIS Legacy Promos surface's derived state. Unlike the public boolean above, this
+// distinguishes every operator-relevant condition and never advertises a code-less entry as
+// redeemable.
+export const resolveCommercialPromoEffectiveState = (config, { now = new Date(), timezone = DEFAULT_PROMO_TIMEZONE } = {}) => {
+    if (!config) return 'invalid';
+    if (config.revoked === true) return 'revoked';
+    if (config.active !== true) return 'inactive';
+    if (!config.promoCode || config.discountPercent <= 0) return 'invalid';
+    if (isCommercialPromoExhausted(config)) return 'exhausted';
+    if (isCommercialPromoExpired(config, { now, timezone })) return 'expired';
+    if (config.validFrom && zonedDate(now, timezone) < config.validFrom) return 'not_started';
+    return 'available';
+};
+
+// Singular `storefront_promo` compatibility projection used by discovery. A code-bearing entry
+// that is not publicly redeemable (revoked/exhausted/expired) is withheld entirely; a display-only
+// entry with no code keeps its historical `active`-driven behavior so pre-existing storefront
+// banners are untouched.
+//
+// Takes the raw entry object itself (already unwrapped from its setting row) -- deliberately NOT
+// through extractSettingValue, because a promo entry is free-form JSON and may legitimately carry
+// its own `value` field.
+export const projectPublicLegacyPromo = (rawValue, { now = new Date(), timezone = DEFAULT_PROMO_TIMEZONE } = {}) => {
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) return null;
+    const config = parseCommercialPromoConfig(rawValue, { sourceKey: STOREFRONT_PROMO_SETTING_KEY });
+    if (config.promoCode && !isCommercialPromoPubliclyVisible(config, { now, timezone })) return null;
+    return rawValue;
+};
+
 // Public storefront cards need only display and redemption fields. Keep internal
 // allocation data such as target item IDs out of the discovery read model.
-export const parsePublicCommercialPromos = (rawValue) => {
+export const parsePublicCommercialPromos = (rawValue, { now = new Date(), timezone = DEFAULT_PROMO_TIMEZONE } = {}) => {
     const entries = Array.isArray(rawValue) ? rawValue : [];
     return entries
         .map((entry, index) => parseCommercialPromoConfig(entry, {
             sourceKey: STOREFRONT_PROMOS_SETTING_KEY,
             sourceIndex: index
         }))
-        .filter((config) => config.active && config.promoCode && config.discountPercent > 0)
+        .filter((config) => config.active
+            && config.promoCode
+            && config.discountPercent > 0
+            && isCommercialPromoPubliclyVisible(config, { now, timezone }))
         .map((config) => ({
             id: config.promoId || null,
             title: String(config.raw.title || '').trim(),
@@ -181,6 +240,9 @@ export const resolveCommercialPromoApplication = ({
     if (!enteredPromoCode) return { config, enteredPromoCode: '', applied: false, discountAmount: 0, discountRate: 0, discountLabel: null, eligibleItemIds: [], lineAllocations: [], message: '' };
     if (!config.active || !config.promoCode || enteredPromoCode !== config.promoCode || config.discountPercent <= 0) {
         promoError('Invalid or inactive promo code.', 'INVALID_PROMO_CODE');
+    }
+    if (config.revoked) {
+        promoError('Promo code has been revoked.', 'PROMO_REVOKED');
     }
     if (config.usageLimit != null && config.usedCount >= config.usageLimit) {
         promoError('Promo code has reached its usage limit.', 'PROMO_USAGE_LIMIT_REACHED', { usage_limit: config.usageLimit, used_count: config.usedCount });

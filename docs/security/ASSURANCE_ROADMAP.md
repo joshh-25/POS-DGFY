@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: security
-last_reviewed: 2026-08-05
+last_reviewed: 2026-10-02
 applies_to: security_assurance_program
 topic: security_assurance_roadmap
 ---
@@ -38,8 +38,9 @@ Everything here is configuration or documentation work, achievable without new s
 
 - `SECURITY.md` + vulnerability disclosure policy (done — this repo's root)
 - `/.well-known/security.txt` (#250)
-- GitHub Dependabot alerts + security updates, gitleaks, Semgrep OSS in CI (#238)
-- Branch protection, `CODEOWNERS`, org 2FA (#238)
+- Dependabot monthly version updates are configured for dependency-bearing npm roots and GitHub Actions (#238); Dependabot alerts and security updates still require an operator to enable them in repository settings.
+- Gitleaks and Semgrep OSS run as advisory PR scans on `develop` (#238). Gitleaks remains advisory because the local baseline has existing findings, including secret-like values in the SQL backup tracked by #359; the full baseline needs review before findings can be suppressed safely. The existing production dependency audit is already blocking in the promotion quality gate; the full registry-dependent audit remains advisory.
+- `CODEOWNERS` is present but advisory only because branch protection is unavailable on the current GitHub Free plan (#238, #330). Org-wide 2FA still requires operator confirmation.
 - OWASP ASVS Level 2 self-assessment, recorded as a control matrix mirroring `docs/compliance/control-matrix.md` (#249)
 - OWASP ZAP baseline scan in CI (#249)
 - Public Trust page in merchant-readable language (#250)

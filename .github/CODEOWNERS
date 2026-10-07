@@ -1,0 +1,7 @@
+# Advisory only until branch protection is available (GitHub Free; see #238 and #330).
+# CODEOWNERS can request reviewers but cannot require approval without branch protection.
+* @patterueldev
+/docs/compliance/ @Sieitz
+/docs/architecture/adr/ @Sieitz
+/.github/workflows/ @Sieitz
+/security/ @Sieitz

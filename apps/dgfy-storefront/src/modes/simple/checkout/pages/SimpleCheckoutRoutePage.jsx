@@ -64,6 +64,8 @@ export function SimpleCheckoutRoutePage({
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
+  addressSearchBias = null,
+  resolvingPinnedDeliveryAddress = false,
   selectedLocation = null,
   selectedSavedLocationId = '',
   selectedStore = null,
@@ -94,12 +96,14 @@ export function SimpleCheckoutRoutePage({
   onPaymentElectionChange,
   onPaymentTypeChange,
   onConfirmQrphTestPayment,
+  onCancelQrphPaymentSession,
   onPinChange,
   onPinMyLocation,
   onRequestGuestCheckoutOtp,
   onScheduleModeChange,
   onScheduledForChange,
   onSelectAddress,
+  onSelectSearchResult,
   onSetCheckoutResult,
   onSetSimpleOrderStep,
   onSignInToCheckout,
@@ -107,6 +111,7 @@ export function SimpleCheckoutRoutePage({
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
   resetQrphPaymentSession,
+  cancellingPaymentSession = false,
   setShowSimpleMobileAddressModal,
   setShowSimpleMobileOrderSummary
 }) {
@@ -223,6 +228,8 @@ export function SimpleCheckoutRoutePage({
             pinLocationError={pinLocationError}
             pinLocationLoading={pinLocationLoading}
             renderGuestCheckoutEntry={renderGuestCheckoutEntry}
+            resolvingPinnedDeliveryAddress={resolvingPinnedDeliveryAddress}
+            searchBias={addressSearchBias}
             scheduledFor={fnbScheduledFor}
             selectedLocation={selectedLocation}
             storefrontHours={selectedStore?.storefront_hours}
@@ -248,6 +255,7 @@ export function SimpleCheckoutRoutePage({
             onScheduleModeChange={onScheduleModeChange}
             onScheduledForChange={onScheduledForChange}
             onSelectAddress={onSelectAddress}
+            onSelectSearchResult={onSelectSearchResult}
             onSpecialInstructionsChange={onSpecialInstructionsChange}
             onStartMapPin={onStartMapPin}
           />
@@ -295,6 +303,7 @@ export function SimpleCheckoutRoutePage({
             onPaymentElectionChange={onPaymentElectionChange}
             paymentElection={paymentElection}
             paymentType={fnbPaymentType}
+            cancellingPaymentSession={cancellingPaymentSession}
             paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
             isDownpaymentActive={downpaymentDisplay.active}
             downpaymentCallout={(
@@ -319,6 +328,8 @@ export function SimpleCheckoutRoutePage({
                   && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                   ? onConfirmQrphTestPayment
                   : null}
+                onCancelPaymentSession={onCancelQrphPaymentSession}
+                cancellingPaymentSession={cancellingPaymentSession}
                 onChooseAnotherPaymentMethod={() => {
                   resetQrphPaymentSession?.();
                 }}

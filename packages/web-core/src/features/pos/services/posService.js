@@ -227,6 +227,16 @@ export const voidPosTransaction = async (id, payload = {}) => {
     return result;
 };
 
+export const fetchPosVoidApprovals = async (params = {}) => {
+    const response = await api.get('/pos/approvals', { params });
+    return response.data?.data;
+};
+
+export const decidePosVoidApproval = async (approvalRequestId, decision, payload = {}) => {
+    const response = await api.post(`/pos/approvals/${approvalRequestId}/${decision}`, payload);
+    return response.data?.data;
+};
+
 export const refundCashPosTransaction = async (id, payload = {}) => {
     const response = await api.post(`/pos/transactions/${id}/cash-refund`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
@@ -778,6 +788,14 @@ export const fetchPosReportsOverview = async (params = {}, requestConfig = {}) =
     return response.data?.data;
 };
 
+export const fetchPosReportsBreakdown = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/breakdowns', {
+        params: normalizePosReportParams(params),
+        ...requestConfig
+    });
+    return response.data?.data;
+};
+
 export const fetchPosReportsTopItems = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/reports/top-items', { params, ...requestConfig });
     return response.data?.data;
@@ -1072,6 +1090,8 @@ export default {
     cancelPosParkedSale,
     fetchPosTransactions,
     fetchPosTransactionById,
+    fetchPosVoidApprovals,
+    decidePosVoidApproval,
     fetchPosDeviceStatus,
     testPosPrinter,
     printPosReceipt,
@@ -1096,6 +1116,7 @@ export default {
     reviewMerchantTenderReconciliation,
     fetchTerminalTodayDashboard,
     fetchPosReportsOverview,
+    fetchPosReportsBreakdown,
     fetchPosReportsTopItems,
     fetchPosReportsComparison,
     fetchPosReportsProfitLoss,

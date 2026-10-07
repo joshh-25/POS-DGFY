@@ -9,8 +9,9 @@ import {
   X
 } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
-import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { applyDeliveryAddressFieldChange, buildSearchSelectedPin, resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
@@ -67,6 +68,7 @@ import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutAddLocati
  * per-render.
  */
 export function FnbCheckoutRouteContainer({
+  addressSearchBias = null,
   applySavedDeliveryLocation,
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
@@ -132,6 +134,7 @@ export function FnbCheckoutRouteContainer({
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleConfirmQrphTestPayment,
+  handleCancelQrphPaymentSession,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
@@ -154,6 +157,7 @@ export function FnbCheckoutRouteContainer({
   voucherDiscountSummaryRow,
   qrphPaymentSession,
   qrphPaymentStatusLoading,
+  cancellingPaymentSession = false,
   quoteError,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
@@ -208,6 +212,36 @@ export function FnbCheckoutRouteContainer({
     isDeliveryOrder
   });
   const checkoutTypography = getCheckoutStepTypography();
+  const handleStartMapPin = () => {
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setResolvedDeliveryAddress('');
+    setCustomerAddress('');
+    setCustomerPin(null);
+  };
+  const handleSelectSearchResult = (result) => {
+    const latitude = Number(result?.latitude);
+    const longitude = Number(result?.longitude);
+    const addressLine = String(result?.addressLine || '').trim();
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !addressLine) return;
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setCustomerPin({
+      latitude: Number(latitude.toFixed(6)),
+      longitude: Number(longitude.toFixed(6)),
+      address_line: addressLine
+    });
+  };
+  const handleAddLocationFromMap = async () => {
+    const saved = await handleAddPinnedLocation?.();
+    if (saved) setShowExpandedDeliveryMap(false);
+  };
+  const handleDeliveryAddressChange = (value) => applyDeliveryAddressFieldChange(value, {
+    setCustomerAddress,
+    clearDeliveryLocation: handleStartMapPin
+  });
   return (
   <FnbCheckoutRouteMount
       isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
@@ -277,7 +311,7 @@ export function FnbCheckoutRouteContainer({
               }}
               onScheduleModeChange={(nextMode) => {
                 setFnbScheduleMode(nextMode);
-                if (nextMode === 'asap') setFnbScheduledFor('');
+                if (nextMode === 'asap' || nextMode === 'anytime') setFnbScheduledFor('');
               }}
               onScheduledForChange={(nextValue) => {
                 setFnbScheduleMode('schedule');
@@ -292,7 +326,7 @@ export function FnbCheckoutRouteContainer({
                 <div style={{ display: 'grid', gap: 4 }}>
                   <div style={{ ...checkoutTypography.sectionTitle, color: '#1e293b' }}>{fnbSectionNumbers.address}. Where should we deliver your order?</div>
                   <div style={{ ...checkoutTypography.description, color: '#64748b', textTransform: isFnbOrderResponsiveFlow ? 'none' : 'uppercase', letterSpacing: isFnbOrderResponsiveFlow ? 'normal' : '0.04em', fontFamily: CHECKOUT_FONT_FAMILY }}>
-                    {isFnbOrderResponsiveFlow ? 'Select or pin your location on the map.' : 'Saved locations'}
+                    {isFnbOrderResponsiveFlow ? 'Search for an address, or pin your location on the map.' : 'Saved locations'}
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isFnbOrderResponsiveFlow ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
@@ -311,14 +345,7 @@ export function FnbCheckoutRouteContainer({
                         handleSetDefaultDeliveryAddress(location);
                       }
                     }}
-                    onStartMapPin={() => {
-                      setDeliveryLocationAction('map');
-                      setSelectedSavedLocationId('');
-                      setPinLocationError('');
-                      setResolvedDeliveryAddress('');
-                      setCustomerAddress('');
-                      setCustomerPin(null);
-                    }}
+                    onStartMapPin={handleStartMapPin}
                     selectedAddressId={selectedSavedLocationId}
                   />
                   <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
@@ -327,8 +354,33 @@ export function FnbCheckoutRouteContainer({
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, fontFamily: CHECKOUT_FONT_FAMILY, display: isFnbOrderResponsiveFlow ? 'none' : 'block' }}>
                         {resolvingPinnedDeliveryAddress
                           ? 'Resolving address from your pinned location...'
-                          : 'Tap anywhere on the map, drag the pin, or use your current location.'}
+                          : 'Search for an address, tap anywhere on the map, drag the pin, or use your current location.'}
                       </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                        <DeliveryAddressSearchField
+                          value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
+                          onValueChange={handleDeliveryAddressChange}
+                          onSelectResult={(result) => {
+                            // #759: drop the pin on the chosen suggestion; its address line rides on the
+                            // pin so useDeliveryPinResolution keeps it instead of reverse-geocoding.
+                            setDeliveryLocationAction('map');
+                            setSelectedSavedLocationId('');
+                            setPinLocationError('');
+                            setCustomerPin(buildSearchSelectedPin(result));
+                          }}
+                          bias={addressSearchBias}
+                          resolving={resolvingPinnedDeliveryAddress}
+                          highlighted={Boolean(deliveryLocationDisplayAddress) && (deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map')}
+                          isMobileViewport={isFnbOrderResponsiveFlow}
+                          accentColor={fnbOrderBrand}
+                          accentTint={fnbOrderBrandTint}
+                          accentBorder={fnbOrderBrandSoft}
+                        />
+                        <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...checkoutTypography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isFnbOrderResponsiveFlow ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isFnbOrderResponsiveFlow ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
+                          {isFnbOrderResponsiveFlow ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
+                        </button>
+                      </div>
+                      {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
                       <div id="delivery-location-map-panel" style={{ position: 'relative', width: '100%', minWidth: 0 }}>
                         <DeliveryPinMap
                           pin={customerPin}
@@ -437,51 +489,7 @@ export function FnbCheckoutRouteContainer({
                           )}
                         />
                       </div>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'minmax(0, 1fr) auto',
-                          gap: 10,
-                          alignItems: 'center',
-                          width: '100%',
-                          maxWidth: '100%',
-                          minWidth: 0
-                        }}
-                      >
-                        <div style={{
-                          minHeight: CHECKOUT_CONTROL_MIN_HEIGHT,
-                          borderRadius: 12,
-                          border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? fnbOrderBrandSoft : '#dbe5ee'}`,
-                          background: '#fff',
-                          padding: '0 12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 10,
-                          color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8',
-                          ...checkoutTypography.control,
-                          fontFamily: CHECKOUT_FONT_FAMILY,
-                          minWidth: 0
-                        }}>
-                          {isFnbOrderResponsiveFlow ? (
-                            <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#eff6ff', color: fnbOrderBrand, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
-                              <MapPin size={13} />
-                            </span>
-                          ) : null}
-                          <input
-                            type="text"
-                            value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
-                            onChange={(event) => setCustomerAddress(event.target.value)}
-                            placeholder="Pinned delivery address will appear here."
-                            aria-label="Delivery address"
-                            style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...checkoutTypography.control, color: 'inherit', minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, fontFamily: CHECKOUT_FONT_FAMILY }}
-                          />
-                        </div>
-                        <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...checkoutTypography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isFnbOrderResponsiveFlow ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isFnbOrderResponsiveFlow ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
-                          {isFnbOrderResponsiveFlow ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
-                        </button>
-                      </div>
                     </div>
-                    {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
                   </div>
                 </div>
               </div>
@@ -493,7 +501,21 @@ export function FnbCheckoutRouteContainer({
               isOpen={isDeliveryOrder && showExpandedDeliveryMap}
               onClose={() => setShowExpandedDeliveryMap(false)}
             >
-                  <DeliveryPinMap
+              <DeliveryAddressSearchField
+                value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
+                onValueChange={handleDeliveryAddressChange}
+                onClear={handleStartMapPin}
+                onSelectResult={handleSelectSearchResult}
+                bias={customerPin}
+                resolving={resolvingPinnedDeliveryAddress}
+                highlighted={Boolean(deliveryLocationDisplayAddress) && (deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map')}
+                isMobileViewport={isMobileViewport}
+                placeholder="Search an address or landmark"
+                accentColor={fnbOrderBrand}
+                accentTint={fnbOrderBrandTint}
+                accentBorder={fnbOrderBrandBorder}
+              />
+              <DeliveryPinMap
                     pin={customerPin}
                     onPinChange={(nextPin) => {
                       setDeliveryLocationAction('map');
@@ -575,6 +597,17 @@ export function FnbCheckoutRouteContainer({
                       </>
                     )}
                   />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 2 }}>
+                <button
+                  type="button"
+                  aria-label={isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+                  onClick={handleAddLocationFromMap}
+                  disabled={!canAddPinnedLocation}
+                  style={{ ...checkoutTypography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 16px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? `0 8px 16px ${fnbOrderBrandShadow}` : 'none', fontFamily: CHECKOUT_FONT_FAMILY }}
+                >
+                  {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+                </button>
+              </div>
             </FnbCheckoutExpandedMapModal>
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ ...checkoutTypography.sectionTitle, color: '#1e293b' }}>{fnbSectionNumbers.notes}. Anything else we should know?</div>
@@ -759,6 +792,7 @@ export function FnbCheckoutRouteContainer({
                   label={downpaymentDisplay.active && !(isDineInOrder && allowDineInPayAtStore) ? 'Pay downpayment with' : 'Payment Type'}
                   value={fnbPaymentType}
                   onChange={handlePaymentTypeChange}
+                  disabled={cancellingPaymentSession}
                   options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, {
                     hideCash: (downpaymentDisplay.active && !(isDineInOrder && allowDineInPayAtStore))
                       || (isCustomerChoiceStore(selectedStore) && !(isDineInOrder && allowDineInPayAtStore))
@@ -800,6 +834,8 @@ export function FnbCheckoutRouteContainer({
                       && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
                       ? handleConfirmQrphTestPayment
                       : null}
+                    onCancelPaymentSession={handleCancelQrphPaymentSession}
+                    cancellingPaymentSession={cancellingPaymentSession}
                     onChooseAnotherPaymentMethod={() => {
                       resetQrphPaymentSession();
                     }}

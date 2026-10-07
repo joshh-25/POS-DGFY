@@ -42,6 +42,7 @@ describe('buildPosHistoryQuery', () => {
         expect(buildPosHistoryQuery({
             historyStatus: 'all',
             paymentType: 'employee_credit',
+            deliveryProvider: 'grab',
             orderMethod: 'dine_in',
             orderSource: 'in_store',
             cashierName: 'Hernando',
@@ -50,6 +51,7 @@ describe('buildPosHistoryQuery', () => {
             locationId: 3
         })).toMatchObject({
             payment_type: 'employee_credit',
+            delivery_provider: 'grab',
             order_method: 'dine_in',
             order_source: 'in_store',
             cashier_name: 'Hernando',

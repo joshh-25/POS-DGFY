@@ -38,16 +38,17 @@ describe('staff capability contract', () => {
       staffRole: { is_active: false, capabilities: ['orders:pack'] }
     });
     expect(permissions).not.toContain('pos:transact');
-    expect(permissions).toContain('items:edit');
+    expect(permissions).toContain('items:view');
+    expect(permissions).not.toContain('items:edit');
     expect(permissions).not.toContain('items:delete');
   });
   test('cashier account with no staff-role assignment keeps the full cashier preset (#1901)', () => {
     const permissions = resolveEffectivePermissions({ role: 'cashier', permissions: [] });
     expect(permissions).toContain('pos:transact');
   });
-  test('cashier compatibility floor and ceiling survive explicit permissions', () => {
+  test('cashier compatibility ceiling rejects delete while explicit permissions remain authoritative', () => {
     const permissions = resolveEffectivePermissions({ role: 'cashier', permissions: ['items:delete'] });
-    expect(permissions).toContain('items:edit');
+    expect(permissions).toEqual([]);
     expect(permissions).not.toContain('items:delete');
   });
   test('cashier compatibility floor is bypassed by an assigned staff role', () => {

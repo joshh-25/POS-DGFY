@@ -10,6 +10,7 @@ const read = (relativePath) => fs.readFileSync(path.resolve(webCoreRoot, relativ
 describe('POS Items button consistency contract', () => {
   it('uses one History-style control contract across all Items tabs and responsive views', () => {
     const css = read('src/index.css');
+    const workspace = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
 
     expect(css).toContain('.pos-items-catalog-workspace :where(');
     expect(css).toContain('.pos-items-desktop-actions > button');
@@ -23,5 +24,15 @@ describe('POS Items button consistency contract', () => {
     expect(css).toContain('height: 2.5rem;');
     expect(css).toContain('body[data-pos-text-size="large"] .pos-items-catalog-workspace');
     expect(css).toContain('height: auto;');
+    expect(css).toContain('.dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button');
+    expect(css).toContain('font-size: 0.875rem;');
+    expect(css).toContain('text-overflow: ellipsis;');
+    expect(css).toContain('background: #1a4e8d;');
+    expect(css).toContain('.pos-items-mobile-search > div > svg:first-child');
+    expect(css).toContain('left: 0.75rem;');
+    expect(workspace).toContain('<Filter className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />');
+    expect(workspace).toContain('<PosSearchField');
+    expect(workspace).toContain('id="pos-items-search-mobile"');
+    expect(workspace).toContain('<Filter aria-hidden="true" />');
   });
 });

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Eye, History, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
+import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
 
 const CASHIER_HISTORY_PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -57,6 +58,23 @@ export default function CashierHistoryPanel({
     const today = useMemo(() => getManilaDate(), []);
     const records = Array.isArray(state?.records) ? state.records : [];
     const pagination = state?.pagination || {};
+    const historyScope = state?.historyScope || state?.history_scope || {};
+    const historyScopeMode = String(historyScope?.mode || 'own').trim().toLowerCase();
+    const isCompanyScope = historyScopeMode === 'company';
+    const isGrantedScope = historyScopeMode === 'granted';
+    const historyScopeLabel = String(historyScope?.label || '').trim();
+    const scopeHeading = isCompanyScope
+        ? 'Cashier History — All Branches'
+        : (isGrantedScope ? 'Cashier History — Authorized Branches' : 'Cashier History');
+    const scopeDescription = isCompanyScope
+        ? `Showing shift summaries across all authorized company branches${historyScope?.location_count ? ` (${historyScope.location_count} branches).` : '.'}`
+        : (isGrantedScope
+            ? 'Showing shift summaries for the branches assigned to this account.'
+            : 'Your shift summaries only. Other cashiers’ records are not visible.');
+    const loadingCopy = isCompanyScope
+        ? 'Loading company cashier summaries...'
+        : (isGrantedScope ? 'Loading authorized branch cashier summaries...' : 'Loading your cashier summaries...');
+    const activeShiftLabel = isCompanyScope || isGrantedScope ? 'Active shift' : 'Your active shift';
     const totalPages = Math.max(1, Number(pagination.totalPages || 1));
     const activeShiftId = activeShift?.pos_terminal_shift_id || activeShift?.shift_id || null;
     const activeShiftBusinessDate = String(activeShift?.business_date || '').slice(0, 10);
@@ -90,10 +108,10 @@ export default function CashierHistoryPanel({
                 <div>
                     <div className="flex items-center gap-2">
                         <History className="h-5 w-5 text-[#1A4E8D]" />
-                        <h3 className="text-base font-black text-[#0F172A]">Cashier History</h3>
+                        <h3 className="text-base font-black text-[#0F172A]">{scopeHeading}</h3>
                     </div>
                     <p className="mt-1 text-sm text-slate-500">
-                        Your shift summaries only. Other cashiers’ records are not visible.
+                        {scopeDescription}
                     </p>
                 </div>
                 <Button
@@ -130,7 +148,7 @@ export default function CashierHistoryPanel({
                     All records
                 </Button>
                 <span className="text-xs text-slate-500">
-                    {state?.cashier?.cashier_name ? `Cashier: ${state.cashier.cashier_name}` : 'Current cashier'}
+                    {historyScopeLabel || (state?.cashier?.cashier_name ? `Cashier: ${state.cashier.cashier_name}` : 'Current cashier')}
                 </span>
             </div>
 
@@ -142,13 +160,13 @@ export default function CashierHistoryPanel({
 
             {state?.loading && records.length === 0 ? (
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600" role="status">
-                    Loading your cashier summaries...
+                    {loadingCopy}
                 </p>
             ) : records.length === 0 ? (
                 activeShift && !activeShiftIsInRecords ? (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900" role="status">
                         <p className="font-bold">
-                            Your active shift #{activeShiftId || '-'} is open, but it belongs to business date {activeShiftBusinessDate || '-'}.
+                            {activeShiftLabel} #{activeShiftId || '-'} is open, but it belongs to business date {activeShiftBusinessDate || '-'}.
                         </p>
                         <p className="mt-1 text-blue-800">
                             It is not included in the selected date period. Open All records to view this shift without changing its accounting date.
@@ -177,8 +195,20 @@ export default function CashierHistoryPanel({
                         const cash = record?.cash_summary || {};
                         const sales = record?.sales_summary || {};
                         const payments = Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : [];
+                        const deliveryProviders = parseDeliveryProviderSummary(sales.delivery_provider_breakdown);
                         const postCloseAdjustments = Array.isArray(sales.post_close_adjustments) ? sales.post_close_adjustments : [];
                         const shiftId = shift.pos_terminal_shift_id || shift.shift_id;
+                        const branchName = String(
+                            shift?.location?.name
+                            || shift?.location_name
+                            || 'Unknown branch'
+                        ).trim();
+                        const cashierName = String(
+                            shift?.cashier?.username
+                            || shift?.cashier?.email
+                            || shift?.cashier_name
+                            || (shift?.cashier_id ? `User #${shift.cashier_id}` : 'Unknown cashier')
+                        ).trim();
                         return (
                             <article key={shiftId} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -188,6 +218,9 @@ export default function CashierHistoryPanel({
                                         </p>
                                         <p className="mt-1 text-xs text-slate-500">
                                             {shift.terminal_id || 'No terminal'} · {shift.status || 'unknown'} · Opened {formatDateTime(shift.opened_at)}
+                                        </p>
+                                        <p className="mt-1 text-xs text-slate-600">
+                                            Branch: <span className="font-bold text-slate-800">{branchName}</span> · Cashier/register owner: <span className="font-bold text-slate-800">{cashierName}</span>
                                         </p>
                                         {shift.closed_at ? (
                                             <p className="mt-1 text-xs text-slate-500">Closed {formatDateTime(shift.closed_at)}</p>
@@ -268,6 +301,20 @@ export default function CashierHistoryPanel({
                                         </div>
                                     )}
                                 </div>
+                                {deliveryProviders.length > 0 ? (
+                                    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+                                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#1A4E8D]">Delivery providers</p>
+                                        <div className="grid gap-x-5 gap-y-1 sm:grid-cols-2">
+                                            {deliveryProviders.map((entry) => (
+                                                <SummaryMetric
+                                                    key={`${entry.provider_type}-${entry.provider_name || ''}`}
+                                                    label={`${formatDeliveryProviderSummaryLabel(entry)} (${entry.transaction_count || 0})`}
+                                                    value={money(entry.amount, currency)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
                             </article>
                         );
                     })}

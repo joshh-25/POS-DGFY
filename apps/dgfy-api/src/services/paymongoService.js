@@ -468,6 +468,26 @@ export class PayMongoService {
         }
     }
 
+    async cancelPaymentIntent(paymentIntentId) {
+        try {
+            const cleanPaymentIntentId = String(paymentIntentId || '').trim();
+            if (!cleanPaymentIntentId.startsWith('pi_')) {
+                throw new Error('A valid PayMongo payment intent ID is required');
+            }
+
+            const response = await axios.post(
+                `${this.baseUrl}/payment_intents/${cleanPaymentIntentId}/cancel`,
+                {},
+                { headers: this.getAuthHeader() }
+            );
+            logger.info(`PayMongo payment intent cancelled: ${cleanPaymentIntentId}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Cancel Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
     async confirmSandboxQrphPayment({
         paymentIntentId,
         expectedAmount,
@@ -711,6 +731,58 @@ export class PayMongoService {
         } catch (error) {
             logger.error('PayMongo Cancel Subscription Error:', error.response?.data || error.message);
             throw error;
+        }
+    }
+
+    async cancelPaymentIntent(paymentIntentId) {
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/payment_intents/${encodeURIComponent(paymentIntentId)}/cancel`,
+                {},
+                { headers: this.getAuthHeader(), timeout: 15000 }
+            );
+            return { outcome: 'cancelled', provider_result: response.data?.data || null };
+        } catch (error) {
+            const status = Number(error.response?.status || 0);
+            const providerError = error.response?.data?.errors?.[0] || {};
+            const outcome = status === 400
+                ? 'not_cancellable'
+                : status === 404
+                    ? 'unknown'
+                    : 'transient';
+            logger.warn('PayMongo Payment Intent cancellation did not complete:', error.response?.data || error.message);
+            return {
+                outcome,
+                reason_code: providerError.code || (status ? `PAYMONGO_HTTP_${status}` : 'PAYMONGO_NETWORK_ERROR'),
+                reason: providerError.detail || error.message || 'PayMongo cancellation could not be confirmed.'
+            };
+        }
+    }
+
+    async expireCheckoutSession(checkoutSessionId) {
+        try {
+            // The v1 endpoint is documented for expiry. Hosted sessions are created through v2;
+            // sandbox addressability across those namespaces remains an operational verification item.
+            const response = await axios.post(
+                `${this.baseUrl}/checkout_sessions/${encodeURIComponent(checkoutSessionId)}/expire`,
+                {},
+                { headers: this.getAuthHeader(), timeout: 15000 }
+            );
+            return { outcome: 'cancelled', provider_result: response.data?.data || null };
+        } catch (error) {
+            const status = Number(error.response?.status || 0);
+            const providerError = error.response?.data?.errors?.[0] || {};
+            const outcome = status === 400
+                ? 'not_cancellable'
+                : status === 404
+                    ? 'unknown'
+                    : 'transient';
+            logger.warn('PayMongo Checkout Session expiry did not complete:', error.response?.data || error.message);
+            return {
+                outcome,
+                reason_code: providerError.code || (status ? `PAYMONGO_HTTP_${status}` : 'PAYMONGO_NETWORK_ERROR'),
+                reason: providerError.detail || error.message || 'PayMongo cancellation could not be confirmed.'
+            };
         }
     }
 

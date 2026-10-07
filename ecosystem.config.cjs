@@ -73,6 +73,18 @@ module.exports = {
                 NODE_ENV: 'production',
             },
         },
+        {
+            name: 'sku-admin-frontend',
+            script: './node_modules/vite/bin/vite.js',
+            args: 'preview --host --port 5177 --strictPort',
+            cwd: './apps/dgfy-admin',
+            env: {
+                NODE_ENV: 'production',
+            },
+            env_production: {
+                NODE_ENV: 'production',
+            },
+        },
         // Staging processes — serve the staging.dgfy.ph environment
         {
             name: 'sku-staging-backend',
@@ -120,6 +132,15 @@ module.exports = {
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --host --port 5183 --strictPort',
             cwd: './apps/dgfy-ims',
+            env_staging: {
+                NODE_ENV: 'production',
+            },
+        },
+        {
+            name: 'sku-staging-admin-frontend',
+            script: './node_modules/vite/bin/vite.js',
+            args: 'preview --host --port 5187 --strictPort',
+            cwd: './apps/dgfy-admin',
             env_staging: {
                 NODE_ENV: 'production',
             },

@@ -62,6 +62,8 @@ import {
     getStoreTokenConfig,
     normalizeTenantIdentifier,
     generateStoreGuestCheckoutProof,
+    generateStoreGuestCheckoutVerificationGrant,
+    verifyStoreGuestCheckoutVerificationGrant,
     verifyStoreCancelProof,
     verifyStoreClaimToken
 } from '../utils/storeJwtToken.js';
@@ -104,6 +106,11 @@ import {
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { resolvePaymentTiming } from '../../shared/utils/paymentTimingPolicy.js';
 import { STOREFRONT_ORDER_METHODS, ORDER_METHOD_LOCATION_SUPPORT_KEYS } from '../../shared/constants/orderMethods.js';
+import {
+    buildCustomerProcessingFeeBreakdown,
+    calculateCustomerProcessingFee,
+    normalizeCustomerProcessingFeePolicy
+} from '../../tenantRevenue/domain/customerProcessingFeePolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
@@ -422,6 +429,9 @@ const serializeOrderBase = (order) => ({
     service_fee_amount: order?.service_fee_amount,
     service_fee_label_snapshot: order?.service_fee_label_snapshot,
     service_fee_method_snapshot: order?.service_fee_method_snapshot,
+    customer_processing_fee_amount: order?.customer_processing_fee_amount ?? 0,
+    customer_processing_fee_label_snapshot: order?.customer_processing_fee_label_snapshot ?? null,
+    customer_processing_fee_breakdown: order?.customer_processing_fee_breakdown ?? null,
     delivery_fee: order?.delivery_fee,
     // #1331 (Phase 240): additive, same posture Phase 237 already used for delivery_fee itself --
     // deliberately NOT delivery_fee_waiver_voucher_id, a raw internal id has no place on a public,
@@ -1848,6 +1858,25 @@ const isValidPinnedDeliveryBreakdown = (pin) => {
     return true;
 };
 
+const isValidPinnedCustomerProcessingFeeBreakdown = (pin) => {
+    if (!pin || typeof pin !== 'object' || Array.isArray(pin)) return false;
+    if (!Number.isInteger(pin.base_amount_centavos) || pin.base_amount_centavos < 0) return false;
+    if (!Number.isInteger(pin.amount_centavos) || pin.amount_centavos < 0) return false;
+    if (!Number.isInteger(pin.policy_version) && pin.policy_version !== null) return false;
+    if (typeof pin.calculated_at !== 'string' || !Number.isFinite(Date.parse(pin.calculated_at))) return false;
+    try {
+        normalizeCustomerProcessingFeePolicy({
+            mode: pin.mode,
+            fixed_centavos: pin.fixed_centavos,
+            rate_bps: pin.rate_bps,
+            label: pin.label
+        });
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 const resolveCheckoutContext = async ({
     storeRepository,
     payload,
@@ -1875,6 +1904,11 @@ const resolveCheckoutContext = async ({
     // so neither lookup there ever depends on ambient context being populated the same way the rest
     // of that function already trusts its own tenantId param.
     tenantId = null,
+    // Owner-configured item-processing fee policy. This is injected from the landlord repository
+    // so quote, direct checkout, and hosted-payment session creation use one source of truth
+    // without making the Storefront module import landlord models directly. It is independent of
+    // payment-provider fees.
+    tenantRevenueRepository = null,
     // Phase 140 (#821): injected, no default -- see the import-site comment above for why this is
     // not a hard-imported module-level singleton the way dgfyAffiliateRepository is. `undefined`
     // (every existing caller that doesn't pass this) means "don't read, assume full_payment", via
@@ -1898,7 +1932,11 @@ const resolveCheckoutContext = async ({
     // skips resolveStoreDeliveryFee entirely and uses this verbatim -- this is what keeps the
     // finalized order's persisted fee identical to the amount PayMongo actually captured, even if
     // settings or GraphHopper state changed between session creation and webhook finalization.
-    pinnedDeliveryBreakdown = null
+    pinnedDeliveryBreakdown = null,
+    // Webhook finalization passes the immutable item-processing calculation captured when the hosted
+    // payment session was created. A malformed/legacy pin falls back to the current effective
+    // policy, matching the delivery-breakdown compatibility behavior above.
+    pinnedCustomerProcessingFeeBreakdown = null
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -2732,8 +2770,43 @@ const resolveCheckoutContext = async ({
     // transaction header for schema compatibility and historical read contracts.
     const serviceFeeAmount = 0;
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
+    const resolvedTenantIdForFees = tenantId || currentTenantAccessContext().tenantId;
+    const discountedItemSubtotalAmount = Math.max(0, round4(
+        prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount
+    ));
+    const discountedItemSubtotalCentavos = toCentavos(discountedItemSubtotalAmount);
+    const pinnedCustomerFee = isValidPinnedCustomerProcessingFeeBreakdown(pinnedCustomerProcessingFeeBreakdown)
+        ? pinnedCustomerProcessingFeeBreakdown
+        : null;
+    const effectiveRevenuePolicy = pinnedCustomerFee || !resolvedTenantIdForFees
+        ? null
+        : await tenantRevenueRepository?.findEffectiveFeePolicy?.(resolvedTenantIdForFees, new Date());
+    const customerProcessingFeePolicy = pinnedCustomerFee
+        ? {
+            mode: pinnedCustomerFee.mode,
+            fixed_centavos: pinnedCustomerFee.fixed_centavos,
+            rate_bps: pinnedCustomerFee.rate_bps,
+            label: pinnedCustomerFee.label
+        }
+        : (effectiveRevenuePolicy?.customer_processing_fee_policy || null);
+    const customerProcessingFeeAmountCentavos = pinnedCustomerFee
+        ? pinnedCustomerFee.amount_centavos
+        : calculateCustomerProcessingFee({
+            policy: customerProcessingFeePolicy,
+            baseAmountCentavos: discountedItemSubtotalCentavos
+        });
+    const customerProcessingFeeBreakdown = pinnedCustomerFee
+        ? pinnedCustomerFee
+        : buildCustomerProcessingFeeBreakdown({
+            policy: customerProcessingFeePolicy,
+            baseAmountCentavos: discountedItemSubtotalCentavos,
+            amountCentavos: customerProcessingFeeAmountCentavos,
+            policyVersion: effectiveRevenuePolicy?.version ?? null
+        });
+    const customerProcessingFeeAmount = centavosToPeso(customerProcessingFeeAmountCentavos);
+    const customerProcessingFeeLabel = customerProcessingFeeBreakdown?.label || null;
     const totalAmount = round4(
-        prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
+        discountedItemSubtotalAmount + customerProcessingFeeAmount + deliveryFee
     );
 
     // Phase 140 (#821, ADR 0069/0070): resolve the downpayment split server-side, after the
@@ -2744,7 +2817,7 @@ const resolveCheckoutContext = async ({
     // ~30 existing store unit tests that build these use cases with a hand-rolled fake and no
     // dbStore.run context) resolves to `null` settings, which resolveDownpaymentForTotal treats as
     // full_payment -- so this addition needs no edits to any of those tests.
-    const resolvedTenantIdForDownpayment = tenantId || currentTenantAccessContext().tenantId;
+    const resolvedTenantIdForDownpayment = resolvedTenantIdForFees;
     const downpaymentSettings = resolvedTenantIdForDownpayment
         ? await downpaymentSettingsRepository?.getSettings?.(resolvedTenantIdForDownpayment)
         : null;
@@ -2779,6 +2852,11 @@ const resolveCheckoutContext = async ({
         delivery,
         serviceFeeAmount,
         serviceFeeLabel,
+        discountedItemSubtotalAmount,
+        customerProcessingFeeAmount,
+        customerProcessingFeeLabel,
+        customerProcessingFeeBreakdown,
+        customerProcessingFeePolicyVersion: effectiveRevenuePolicy?.version ?? customerProcessingFeeBreakdown?.policy_version ?? null,
         totalAmount,
         downpayment,
         // Phase 141 (#822): raw settings alongside the resolved split, so a caller can detect the
@@ -3732,7 +3810,8 @@ export const buildStoreCartQuoteUseCase = ({
     downpaymentSettingsRepository,
     // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
     // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
-    roadDistanceProvider
+    roadDistanceProvider,
+    tenantRevenueRepository = null
 }) => {
     return async ({ payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
@@ -3750,6 +3829,7 @@ export const buildStoreCartQuoteUseCase = ({
                 storeCustomer,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
+                tenantRevenueRepository,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
                 requireCheckoutContact: false,
                 // Phase 237 (#1329, ADR 0078 Decision 2 [binding], D6): a cart quote must never
@@ -3766,6 +3846,8 @@ export const buildStoreCartQuoteUseCase = ({
                 voucher_discount_amount: resolved.voucherApplication.discountAmount,
                 service_fee_amount: resolved.serviceFeeAmount,
                 service_fee_label: resolved.serviceFeeLabel,
+                customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                customer_processing_fee_label: resolved.customerProcessingFeeLabel,
                 delivery_fee: resolved.deliveryFee,
                 // #1331 (Phase 240, epic #1321 decision 9): additive, alongside delivery_fee above
                 // -- so a shopper sees the waiver applied at quote time, before reaching checkout.
@@ -3921,7 +4003,12 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
                     email,
                     idempotencyKey
                 }),
-                expires_in: getStoreTokenConfig().guestCheckoutProofExpiresIn
+                expires_in: getStoreTokenConfig().guestCheckoutProofExpiresIn,
+                guest_checkout_verification_grant: generateStoreGuestCheckoutVerificationGrant({
+                    tenantId: normalizedTenantId,
+                    email
+                }),
+                verification_grant_expires_in: 86400
             });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to verify guest checkout code'));
@@ -3929,15 +4016,54 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
     };
 };
 
+export const buildExchangeStoreGuestCheckoutGrantUseCase = ({ dgfyCustomerRepository }) => {
+    return async ({ tenantId, payload }) => {
+        try {
+            const normalizedTenantId = ensureTenantContext(tenantId);
+            const email = String(payload?.email || '').trim().toLowerCase();
+            const idempotencyKey = String(payload?.idempotency_key || '').trim();
+            const grant = verifyStoreGuestCheckoutVerificationGrant(payload?.verification_grant);
+            if (
+                grant?.type !== 'store_guest_checkout_verification_grant'
+                || grant?.tenant_id !== normalizedTenantId
+                || grant?.email !== email
+            ) {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Guest email verification has expired. Verify your email again.');
+            }
+            const account = await dgfyCustomerRepository.findDgfyAccountByEmail(email);
+            if (account) {
+                throw new DomainError(
+                    DomainErrorCode.DGFY_ACCOUNT_SIGN_IN_REQUIRED,
+                    'This email belongs to a DGFY account. Sign in to continue.'
+                );
+            }
+            return ok({
+                email,
+                idempotency_key: idempotencyKey,
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: normalizedTenantId,
+                    email,
+                    idempotencyKey
+                }),
+                expires_in: getStoreTokenConfig().guestCheckoutProofExpiresIn
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to exchange guest checkout verification'));
+        }
+    };
+};
+
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
+    recordOrderActivity = recordDgfyOrderActivity,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
     inventoryReservationService = null,
     // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
     // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
-    roadDistanceProvider
+    roadDistanceProvider,
+    tenantRevenueRepository = null
 }) => {
     // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
@@ -3945,7 +4071,15 @@ export const buildStoreCheckoutUseCase = ({
     // unreachable from any client request, which is what keeps this guard server-authoritative.
     // Phase 237 (#1329): pinnedDeliveryBreakdown is the same shape of sibling argument -- see
     // resolveCheckoutContext's own doc comment on the param.
-    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false, capturedPayment = null, pinnedDeliveryBreakdown = null }) => {
+    return async ({
+        tenantId,
+        payload,
+        storeCustomer = null,
+        allowExpiredGuestCheckoutProof = false,
+        capturedPayment = null,
+        pinnedDeliveryBreakdown = null,
+        pinnedCustomerProcessingFeeBreakdown = null
+    }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -3998,7 +4132,9 @@ export const buildStoreCheckoutUseCase = ({
                 tenantId: normalizedTenantId,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
-                pinnedDeliveryBreakdown
+                pinnedDeliveryBreakdown,
+                tenantRevenueRepository,
+                pinnedCustomerProcessingFeeBreakdown
             });
             const { normalized } = resolved;
 
@@ -4046,7 +4182,7 @@ export const buildStoreCheckoutUseCase = ({
                 });
 
                 await transaction.commit();
-                await recordDgfyOrderActivity({
+                await recordOrderActivity({
                     tenantId: normalizedTenantId,
                     order: existing,
                     storeCustomer: normalizedStoreCustomer
@@ -4194,6 +4330,9 @@ export const buildStoreCheckoutUseCase = ({
                     service_fee_label_snapshot: resolved.serviceFeeLabel,
                     service_fee_method_snapshot: resolved.serviceFeeAmount > 0 ? normalized.order_method : null,
                     service_fee_overridden: false,
+                    customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                    customer_processing_fee_label_snapshot: resolved.customerProcessingFeeLabel,
+                    customer_processing_fee_breakdown: resolved.customerProcessingFeeBreakdown,
                     total_amount: resolved.totalAmount,
                     status: 'completed',
                     location_id: normalized.location_id,
@@ -4437,7 +4576,7 @@ export const buildStoreCheckoutUseCase = ({
                 options: { transaction }
             });
             await transaction.commit();
-            await recordDgfyOrderActivity({
+            await recordOrderActivity({
                 tenantId: normalizedTenantId,
                 order: created,
                 storeCustomer: normalizedStoreCustomer
@@ -4596,6 +4735,8 @@ export const buildStoreCheckoutUseCase = ({
                     voucher_discount_amount: resolved.voucherApplication.discountAmount,
                     service_fee_amount: resolved.serviceFeeAmount,
                     service_fee_label: resolved.serviceFeeLabel,
+                    customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                    customer_processing_fee_label: resolved.customerProcessingFeeLabel,
                     delivery_fee: resolved.deliveryFee,
                     total_amount: resolved.totalAmount,
                     // Phase 140 (#821, ADR 0069/0070). See the matching comment on the quote
@@ -4797,6 +4938,13 @@ const serializePaymentSession = (session = {}) => ({
     delivery_fee: session.delivery_fee,
     service_fee_amount: session.service_fee_amount,
     service_fee_label: getDgfyConvenienceFeeLabel(),
+    customer_processing_fee_amount: session.customer_processing_fee_amount ?? 0,
+    customer_processing_fee_label: session.customer_processing_fee_breakdown
+        ? parseObjectValue(session.customer_processing_fee_breakdown).label || null
+        : null,
+    customer_processing_fee_breakdown: session.customer_processing_fee_breakdown
+        ? parseObjectValue(session.customer_processing_fee_breakdown)
+        : null,
     total_amount: session.total_amount,
     currency: session.currency || 'PHP',
     platform_fee_centavos: session.platform_fee_centavos,
@@ -4993,6 +5141,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 storeRepository,
                 payload: normalizedPayload,
                 storeCustomer,
+                tenantId,
+                tenantRevenueRepository,
                 downpaymentSettingsRepository,
                 roadDistanceProvider
             });
@@ -5152,6 +5302,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     pinned_at: new Date().toISOString()
                 },
                 service_fee_amount: resolved.serviceFeeAmount,
+                customer_processing_fee_amount: resolved.customerProcessingFeeAmount,
+                customer_processing_fee_breakdown: resolved.customerProcessingFeeBreakdown,
                 total_amount: capturedAmountPeso,
                 currency: 'PHP',
                 total_amount_centavos: totalAmountCentavos,
@@ -5311,6 +5463,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const updated = await commercePaymentRepository.updateSessionById(session.session_id, {
                 status: 'awaiting_payment',
                 provider_payment_intent_id: providerResult.paymentIntent?.id || providerResult.attachedIntent?.id || null,
+                provider_checkout_session_id: String(providerResult.id || '').startsWith('cs_') ? providerResult.id : null,
                 provider_payment_method_id: providerResult.paymentMethod?.id || null,
                 qr_code_image_url: providerResult.qrCodeImageUrl || null,
                 checkout_url: providerResult.checkoutUrl || providerAttributes.checkout_url || null,
@@ -5343,6 +5496,272 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
+        }
+    };
+};
+
+const normalizePaymentSessionStoreSlug = (value) => String(value || '').trim().toLowerCase();
+
+const getPaymentSessionCustomerSnapshot = (session) => (
+    parseObjectValue(session?.checkout_payload)?._verified_store_customer || null
+);
+
+const assertStoreCheckoutPaymentSessionAccess = ({ session, tenantId, storeSlug, storeCustomer }) => {
+    if (
+        !session
+        || normalizeTenantIdentifier(session.tenant_id) !== tenantId
+        || session.target_type !== 'store_checkout'
+        || normalizePaymentSessionStoreSlug(session.store_slug) !== normalizePaymentSessionStoreSlug(storeSlug)
+    ) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+    }
+
+    const customerSnapshot = getPaymentSessionCustomerSnapshot(session);
+    const expectedCustomerId = parsePositiveInt(customerSnapshot?.customer_id);
+    const expectedDgfyAccountId = String(customerSnapshot?.dgfy_account_id || '').trim();
+    if (!expectedCustomerId && !expectedDgfyAccountId) return;
+
+    const actualCustomerId = parsePositiveInt(storeCustomer?.customer_id);
+    const actualDgfyAccountId = String(storeCustomer?.dgfy_account_id || '').trim();
+    if (
+        (expectedCustomerId && actualCustomerId !== expectedCustomerId)
+        || (expectedDgfyAccountId && actualDgfyAccountId !== expectedDgfyAccountId)
+    ) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The signed-in customer does not own this payment session',
+            { statusCode: 403 }
+        );
+    }
+};
+
+const isCommercePaymentSessionNonCancellable = (session = {}) => (
+    ['paid', 'finalized', 'paid_manual_resolution_required', 'expired', 'failed', 'refund_pending',
+        'partial_refunded', 'refunded', 'split_failed_manual_settlement_required'].includes(
+        String(session.status || '').trim().toLowerCase()
+    )
+    || Boolean(session.pos_transaction_id || session.tracking_pin)
+);
+
+const buildCancellationResponse = (
+    session,
+    outcome,
+    reasonCode = null,
+    reason = null,
+    { idempotentReplay = false } = {}
+) => ok({
+    cancellation_requested: outcome === 'cancelled' && !idempotentReplay,
+    idempotent_replay: idempotentReplay,
+    payment_session: serializePaymentSession(session),
+    cancellation: { outcome, reason_code: reasonCode, reason }
+});
+
+export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository, paymongoService }) => {
+    return async ({
+        paymentSessionId,
+        storeSlug = null,
+        storeCustomer = null,
+        actor = 'store_guest',
+        ipAddress = null,
+        userAgent = null
+    }) => {
+        try {
+            const reference = String(paymentSessionId || '').trim().toUpperCase();
+            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
+            }
+
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const requestedStoreSlug = normalizePaymentSessionStoreSlug(storeSlug || tenantContext.tenantToken);
+            const runInTransaction = async (callback) => (
+                typeof commercePaymentRepository.runInTransaction === 'function'
+                    ? commercePaymentRepository.runInTransaction(callback)
+                    : callback({})
+            );
+            const assertSessionAccess = (session) => assertStoreCheckoutPaymentSessionAccess({
+                session,
+                tenantId,
+                storeSlug: requestedStoreSlug,
+                storeCustomer
+            });
+
+            const firstStage = await runInTransaction(async (transaction) => {
+                const session = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                    transaction,
+                    lock: true
+                });
+                assertSessionAccess(session);
+                const status = String(session.status || '').trim().toLowerCase();
+                if (status === 'cancelled') {
+                    return { kind: 'complete', session, outcome: 'cancelled', idempotentReplay: true };
+                }
+                if (isCommercePaymentSessionNonCancellable(session) || !['created', 'awaiting_payment'].includes(status)) {
+                    return { kind: 'complete', session, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                }
+
+                const hasPaymentIntent = Boolean(session.provider_payment_intent_id);
+                const hasCheckoutSession = Boolean(session.provider_checkout_session_id);
+                if (status === 'created' && !hasPaymentIntent && !hasCheckoutSession) {
+                    const cancelled = await commercePaymentRepository.updateSessionById(session.session_id, {
+                        status: 'cancelled',
+                        failure_code: null,
+                        failure_reason: null
+                    }, { transaction });
+                    await commercePaymentRepository.createAuditLog?.({
+                        entity_type: 'CommercePayment',
+                        entity_id: session.session_id,
+                        action: 'UPDATE',
+                        changes: {
+                            event: 'commerce_payment_session_cancelled',
+                            payment_session: session.public_reference,
+                            actor
+                        },
+                        ip_address: ipAddress,
+                        user_agent: userAgent
+                    }, { transaction });
+                    return { kind: 'complete', session: cancelled, outcome: 'cancelled', idempotentReplay: false };
+                }
+                if (!hasPaymentIntent && !hasCheckoutSession) {
+                    return {
+                        kind: 'unresolved',
+                        session,
+                        reason_code: 'PROVIDER_OBJECT_MISSING',
+                        reason: 'The payment session has no provider object that can be cancelled.'
+                    };
+                }
+
+                return {
+                    kind: 'provider_call',
+                    session,
+                    providerObject: hasPaymentIntent
+                        ? { type: 'payment_intent', id: session.provider_payment_intent_id }
+                        : { type: 'checkout_session', id: session.provider_checkout_session_id }
+                };
+            });
+
+            if (firstStage.kind === 'complete') {
+                return buildCancellationResponse(
+                    firstStage.session,
+                    firstStage.outcome,
+                    firstStage.reason_code || null,
+                    null,
+                    { idempotentReplay: firstStage.idempotentReplay }
+                );
+            }
+
+            if (firstStage.kind === 'unresolved') {
+                const saved = await runInTransaction(async (transaction) => {
+                    const current = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                        transaction,
+                        lock: true
+                    });
+                    assertSessionAccess(current);
+                    const currentStatus = String(current.status || '').trim().toLowerCase();
+                    if (currentStatus === 'cancelled') {
+                        return { session: current, outcome: 'cancelled', idempotentReplay: true };
+                    }
+                    if (isCommercePaymentSessionNonCancellable(current) || !['created', 'awaiting_payment'].includes(currentStatus)) {
+                        return { session: current, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                    }
+                    const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        failure_code: firstStage.reason_code,
+                        failure_reason: String(firstStage.reason || '').slice(0, 500)
+                    }, { transaction });
+                    return {
+                        session: updated,
+                        outcome: 'unresolved',
+                        reason_code: firstStage.reason_code,
+                        reason: firstStage.reason,
+                        idempotentReplay: false
+                    };
+                });
+                return buildCancellationResponse(
+                    saved.session,
+                    saved.outcome,
+                    saved.reason_code || null,
+                    saved.reason || null,
+                    { idempotentReplay: saved.idempotentReplay }
+                );
+            }
+
+            const providerResult = firstStage.providerObject.type === 'payment_intent'
+                ? await paymongoService.cancelPaymentIntent(firstStage.providerObject.id)
+                : await paymongoService.expireCheckoutSession(firstStage.providerObject.id);
+
+            const providerSaysNotCancellable = providerResult?.outcome === 'not_cancellable';
+            const providerReason = String(providerResult?.reason || 'PayMongo did not confirm the cancellation.');
+            const clearlyTerminalProviderReason = /already (?:expired|cancelled|canceled)|has paid payment|already paid/i.test(providerReason);
+            const providerOutcome = providerResult?.outcome === 'cancelled'
+                ? 'cancelled'
+                : (providerSaysNotCancellable && clearlyTerminalProviderReason ? 'not_cancellable' : 'unresolved');
+
+            const secondStage = await runInTransaction(async (transaction) => {
+                const current = await commercePaymentRepository.findSessionByPublicReference(reference, {
+                    transaction,
+                    lock: true
+                });
+                assertSessionAccess(current);
+                const currentStatus = String(current.status || '').trim().toLowerCase();
+                if (currentStatus === 'cancelled') {
+                    return { session: current, outcome: 'cancelled', idempotentReplay: true };
+                }
+                if (isCommercePaymentSessionNonCancellable(current) || !['created', 'awaiting_payment'].includes(currentStatus)) {
+                    return { session: current, outcome: 'not_cancellable', reason_code: 'SESSION_TERMINAL' };
+                }
+
+                if (providerOutcome === 'cancelled') {
+                    const cancelled = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        status: 'cancelled',
+                        failure_code: null,
+                        failure_reason: null
+                    }, { transaction });
+                    await commercePaymentRepository.createAuditLog?.({
+                        entity_type: 'CommercePayment',
+                        entity_id: current.session_id,
+                        action: 'UPDATE',
+                        changes: {
+                            event: 'commerce_payment_session_cancelled',
+                            payment_session: current.public_reference,
+                            actor
+                        },
+                        ip_address: ipAddress,
+                        user_agent: userAgent
+                    }, { transaction });
+                    return { session: cancelled, outcome: 'cancelled', idempotentReplay: false };
+                }
+
+                if (providerOutcome === 'unresolved') {
+                    const updated = await commercePaymentRepository.updateSessionById(current.session_id, {
+                        failure_code: providerResult?.reason_code || 'PAYMONGO_CANCELLATION_UNRESOLVED',
+                        failure_reason: providerReason.slice(0, 500)
+                    }, { transaction });
+                    return {
+                        session: updated,
+                        outcome: 'unresolved',
+                        reason_code: providerResult?.reason_code || 'PAYMONGO_CANCELLATION_UNRESOLVED',
+                        reason: providerReason,
+                        idempotentReplay: false
+                    };
+                }
+                return {
+                    session: current,
+                    outcome: 'not_cancellable',
+                    reason_code: providerResult?.reason_code || 'PROVIDER_SESSION_TERMINAL',
+                    reason: providerReason,
+                    idempotentReplay: false
+                };
+            });
+
+            return buildCancellationResponse(
+                secondStage.session,
+                secondStage.outcome,
+                secondStage.reason_code || null,
+                secondStage.reason || null,
+                { idempotentReplay: secondStage.idempotentReplay }
+            );
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to cancel checkout payment session'));
         }
     };
 };

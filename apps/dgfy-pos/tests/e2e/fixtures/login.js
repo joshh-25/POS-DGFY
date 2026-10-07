@@ -17,11 +17,15 @@ export async function signIn(page, credentials, options = {}) {
   const companySelect = page.getByLabel('Company');
   const catalogHeading = page.getByRole('heading', { name: 'POS Catalog' });
   const loginHeading = page.getByRole('heading', { name: 'Terminal Login Required' });
+  const loginDrawer = page.locator('.dgfy-pos-terminal-lock-drawer');
   const waitForTenantStep = async (timeout) => {
     try {
       await expect.poll(async () => (
         await companySelect.isVisible().catch(() => false)
-        || !(await loginHeading.isVisible().catch(() => false))
+        || (
+          await catalogHeading.isVisible().catch(() => false)
+          && !await loginHeading.isVisible().catch(() => false)
+        )
       ), { timeout }).toBe(true);
       return true;
     } catch {
@@ -42,12 +46,24 @@ export async function signIn(page, credentials, options = {}) {
   if (await companySelect.isVisible().catch(() => false)) {
     await expect(companySelect).toBeEnabled();
     const requestedCompany = options.companyName?.trim() || process.env.E2E_TEST_COMPANY_NAME?.trim();
-    if (requestedCompany) {
-      await companySelect.selectOption({ label: requestedCompany });
-    } else {
-      await companySelect.selectOption({ index: 1 });
+    const tagName = await companySelect.evaluate((element) => element.tagName.toLowerCase());
+    if (tagName === 'select') {
+      if (requestedCompany) {
+        await companySelect.selectOption({ label: requestedCompany });
+      } else {
+        await companySelect.selectOption({ index: 1 });
+      }
+    } else if (!await companySelect.getAttribute('data-company-value')) {
+      await companySelect.click();
+      const companies = page.getByRole('option').filter({ hasNotText: 'Select accessible company' });
+      if (requestedCompany) {
+        await companies.filter({ hasText: requestedCompany }).first().click();
+      } else {
+        await companies.first().click();
+      }
     }
-    await expect(companySelect).toHaveValue(/.+/);
+    if (tagName === 'select') await expect(companySelect).toHaveValue(/.+/);
+    else await expect(companySelect).toHaveAttribute('data-company-value', /.+/);
     const tenantSessionResponse = page.waitForResponse(
       (response) => /\/api\/v1\/dgfy\/auth\/tenant-session$/.test(new URL(response.url()).pathname),
       { timeout: 20_000 }
@@ -59,25 +75,17 @@ export async function signIn(page, credentials, options = {}) {
     await expect(catalogHeading).toBeVisible();
   }
   const openShiftHeading = page.getByRole('heading', { name: 'Open Shift', exact: true });
-  if (await loginHeading.isVisible().catch(() => false)) {
-    const continueButton = page.getByRole('button', { name: /^continue to pos$/i });
-    if (await continueButton.isVisible().catch(() => false) && await continueButton.isEnabled().catch(() => false)) {
-      await continueButton.click();
-    }
-  }
-  // Admin and cashier sessions can legitimately land on the authenticated POS
-  // workspace with the Open Shift dialog still visible. Treat that dialog as
-  // proof that tenant-session completed instead of misclassifying a stale
-  // login heading in the background as an auth failure.
-  if (await loginHeading.isVisible().catch(() => false)) {
-    try {
-      await expect.poll(async () => (
-        await openShiftHeading.isVisible().catch(() => false)
-        || !(await loginHeading.isVisible().catch(() => false))
-      ), { timeout: 20_000 }).toBe(true);
-    } catch {
-      throw new Error(`POS login drawer remained open after authentication. API responses: ${authResponses.slice(-30).join(' | ')}`);
-    }
+  // The drawer stays mounted when closed, so `isVisible()` on its heading does
+  // not prove it is open: the off-screen transform leaves that check true.
+  // Confirm the drawer closed or an Open Shift dialog appeared after the
+  // tenant-session response before treating login as complete.
+  try {
+    await expect.poll(async () => (
+      String(await loginDrawer.getAttribute('class').catch(() => '') || '').includes('translate-x-full')
+      || await openShiftHeading.isVisible().catch(() => false)
+    ), { timeout: 20_000 }).toBe(true);
+  } catch {
+    throw new Error(`POS login drawer remained open after authentication. API responses: ${authResponses.slice(-30).join(' | ')}`);
   }
   await expect(catalogHeading).toBeVisible();
 }

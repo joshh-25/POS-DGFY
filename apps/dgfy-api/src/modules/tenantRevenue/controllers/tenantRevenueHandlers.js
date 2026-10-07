@@ -5,6 +5,7 @@ import {
   confirmTenantManualPayoutUseCase,
   failTenantManualPayoutUseCase,
   createTenantManualPayoutUseCase,
+  createTenantOwnerRevenueFeePolicyUseCase,
   createTenantRevenueFeePolicyUseCase,
   createTenantSettlementBatchUseCase,
   exportTenantRevenueTransactionsCsvUseCase,
@@ -93,6 +94,18 @@ export const createRevenueFeePolicy = async (req, res, next) => {
   try {
     return sendResult(res, await createTenantRevenueFeePolicyUseCase({
       tenantId: (req.validatedParams || req.params).tenant_id,
+      payload: req.validatedBody || req.body || {},
+      actor: actorFrom(req)
+    }), 201);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const createTenantOwnerFeePolicy = async (req, res, next) => {
+  try {
+    return sendResult(res, await createTenantOwnerRevenueFeePolicyUseCase({
+      tenantId: tenantIdFrom(req),
       payload: req.validatedBody || req.body || {},
       actor: actorFrom(req)
     }), 201);

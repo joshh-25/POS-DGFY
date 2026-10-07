@@ -4,7 +4,7 @@
  * deploy-migration-runner.yml, and deploy-frontend.yml each compute and emit the ADR 0081
  * `X.Y.Z[-channel]` version tag, stamp the `org.opencontainers.image.version` label, bake
  * `APP_VERSION` as a build-arg, and run the tag-immutability guard (Decision 7) -- plus that all
- * five Dockerfiles accept and expose `APP_VERSION`. Regex/text assertions against the real files,
+ * all seven Dockerfiles accept and expose `APP_VERSION`. Regex/text assertions against the real files,
  * same "no live GHCR push, no live docker build" bar `check-pr-quality-workflow.js` already sets
  * for this class of check (no compiler exists for `.github/workflows/*.yml` or a Dockerfile).
  *
@@ -32,6 +32,7 @@ const DOCKERFILES = Object.freeze([
   'infrastructure/docker/dgfy-pos/Dockerfile',
   'infrastructure/docker/dgfy-storefront/Dockerfile',
   'infrastructure/docker/dgfy-opis/Dockerfile',
+  'infrastructure/docker/dgfy-admin/Dockerfile',
 ]);
 
 const ORCHESTRATOR_FILE = '.github/workflows/deployment-orchestrator.yml';
@@ -47,6 +48,7 @@ const ORCHESTRATOR_VERSION_TAG_OUTPUTS = Object.freeze([
   ['frontend_pos_version_tag', 'frontend-pos'],
   ['frontend_storefront_version_tag', 'frontend-storefront'],
   ['frontend_opis_version_tag', 'frontend-opis'],
+  ['frontend_admin_version_tag', 'frontend-admin'],
   ['dgfy_api_version_tag', 'dgfy-api'],
   ['migration_runner_version_tag', 'dgfy-migration-runner'],
 ]);
@@ -204,11 +206,12 @@ function checkOrchestratorVersionTagMapping(orchestratorText) {
   return problems;
 }
 
-// #1588 (epic #1548 Wave 4, Phase 279): the five builder jobs deployment-orchestrator.yml calls,
+// #1588 (epic #1548 Wave 4, Phase 279): the builder jobs deployment-orchestrator.yml calls,
 // each must forward candidate_source_sha straight through -- the `publish` job (calling
 // publish-platform.yml, which has no such input) is deliberately excluded here.
 const ORCHESTRATOR_BUILDER_JOBS = Object.freeze([
   'dgfy-api', 'dgfy-migration-runner', 'frontend-ims', 'frontend-pos', 'frontend-storefront',
+  'frontend-opis', 'frontend-admin',
 ]);
 
 /**
@@ -238,7 +241,7 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
 
 /**
  * #2055 (Phase 346): deployment-orchestrator.yml declares the four per-app-group
- * `release_revision_*` workflow_call inputs (api covers both backends, one per frontend),
+ * `release_revision_*` workflow_call inputs (one for each backend, one per frontend),
  * and each of its five builder jobs forwards its own app's STAGING revision out of the
  * resolve-build-plan job's `revisions_json` map -- checked
  * per-job, same shape as checkOrchestratorCandidateSourceShaWiring, so one job silently
@@ -247,9 +250,12 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
  */
 const ORCHESTRATOR_RELEASE_REVISION_INPUTS = Object.freeze([
   'release_revision_api',
+  'release_revision_migration_runner',
   'release_revision_frontend_ims',
   'release_revision_frontend_pos',
   'release_revision_frontend_storefront',
+  'release_revision_frontend_opis',
+  'release_revision_frontend_admin',
 ]);
 
 const ORCHESTRATOR_JOB_REVISION_KEYS = Object.freeze([
@@ -258,6 +264,8 @@ const ORCHESTRATOR_JOB_REVISION_KEYS = Object.freeze([
   ['frontend-ims', 'dgfy-ims'],
   ['frontend-pos', 'dgfy-pos'],
   ['frontend-storefront', 'dgfy-storefront'],
+  ['frontend-opis', 'dgfy-opis'],
+  ['frontend-admin', 'dgfy-admin'],
 ]);
 
 function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
@@ -294,6 +302,11 @@ function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
   if (!skipStepRegion || !/--release-revisions-json/.test(skipStepRegion[0])) {
     problems.push('deployment-orchestrator.yml: the resolve-build-plan step does not pass "--release-revisions-json" -- the skip check would inspect legacy tags instead of each app\'s own revision-aware matrix tag (#2055).');
   }
+  if (!/RELEASE_REVISION_MIGRATION_RUNNER:\s*\$\{\{\s*inputs\.release_revision_migration_runner\s*\}\}/.test(orchestratorText)
+    || !/put\('dgfy-migration-runner',process\.env\.RELEASE_REVISION_MIGRATION_RUNNER\)/.test(orchestratorText)
+    || !/must select dgfy-api and dgfy-migration-runner artifact revisions together/.test(orchestratorText)) {
+    problems.push('deployment-orchestrator.yml: migration-runner revision must have its own input, map entry, and paired-selection guard (#2186).');
+  }
 
   return problems;
 }
@@ -314,6 +327,7 @@ const DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS = Object.freeze([
   'candidate_source_sha_frontend_pos',
   'candidate_source_sha_frontend_storefront',
   'candidate_source_sha_frontend_opis',
+  'candidate_source_sha_frontend_admin',
 ]);
 
 const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
@@ -323,11 +337,12 @@ const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
   ['frontend-pos-prod', 'candidate_source_sha_frontend_pos'],
   ['frontend-storefront-prod', 'candidate_source_sha_frontend_storefront'],
   ['frontend-opis-prod', 'candidate_source_sha_frontend_opis'],
+  ['frontend-admin-prod', 'candidate_source_sha_frontend_admin'],
 ]);
 
 /**
- * ADR 0081 Decision 8 amendment (#1610): deploy-main.yml must declare all four per-app-group
- * `candidate_source_sha_*` workflow_dispatch inputs, and each of its five builder jobs (not
+ * ADR 0081 Decision 8 amendment (#1610): deploy-main.yml must declare all six per-app-group
+ * `candidate_source_sha_*` workflow_dispatch inputs, and each of its six builder jobs (not
  * `publish`) must forward its own correctly-grouped one -- checked per-job, same shape as
  * checkOrchestratorCandidateSourceShaWiring above, so one job silently missing or misrouting its
  * input isn't masked by another job having the right one.
@@ -364,17 +379,22 @@ function checkDeployMainCandidateSourceShaWiring(deployMainText) {
  */
 const DEPLOY_MAIN_RELEASE_REVISION_INPUTS = Object.freeze([
   'release_revision_api',
+  'release_revision_migration_runner',
   'release_revision_frontend_ims',
   'release_revision_frontend_pos',
   'release_revision_frontend_storefront',
+  'release_revision_frontend_opis',
+  'release_revision_frontend_admin',
 ]);
 
 const DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES = Object.freeze([
   ['dgfy-api', 'release_revision_api'],
-  ['dgfy-migration-runner', 'release_revision_api'],
+  ['dgfy-migration-runner', 'release_revision_migration_runner'],
   ['frontend-ims-prod', 'release_revision_frontend_ims'],
   ['frontend-pos-prod', 'release_revision_frontend_pos'],
   ['frontend-storefront-prod', 'release_revision_frontend_storefront'],
+  ['frontend-opis-prod', 'release_revision_frontend_opis'],
+  ['frontend-admin-prod', 'release_revision_frontend_admin'],
 ]);
 
 function checkDeployMainReleaseRevisionWiring(deployMainText) {
@@ -405,6 +425,11 @@ function checkDeployMainReleaseRevisionWiring(deployMainText) {
   if (!skipStepRegion || !/--environment\s+PROD/.test(skipStepRegion[0])) {
     problems.push('deploy-main.yml: the resolve-build-plan step does not pass "--environment PROD" -- revision-aware PROD tags cannot be resolved without the explicit environment (#1977).');
   }
+  if (!/MIGRATION_R:\s*\$\{\{\s*inputs\.release_revision_migration_runner\s*\}\}/.test(deployMainText)
+    || !/put\('dgfy-migration-runner',process\.env\.MIGRATION_R\)/.test(deployMainText)
+    || !/must select dgfy-api and dgfy-migration-runner artifact revisions together/.test(deployMainText)) {
+    problems.push('deploy-main.yml: migration-runner revision must have its own input, build-skip map entry, and paired-selection guard (#2186).');
+  }
 
   if (!/promote-aliases:\s*\n/.test(deployMainText)) {
     problems.push('deploy-main.yml: no "promote-aliases" job found -- every PROD revision tag needs its bare floor alias from the same digest (#1977).');
@@ -416,8 +441,10 @@ function checkDeployMainReleaseRevisionWiring(deployMainText) {
     if (!block || !/node scripts\/resolve-release-tags\.js/.test(block)) {
       problems.push('deploy-main.yml: the "promote-aliases" job does not resolve tags via "node scripts/resolve-release-tags.js" -- alias sources/targets must come from the central resolver (#1977).');
     }
-    // #2055: one shared revision for all five apps no longer exists -- the loop must read
-    // each app-group's own input (the api-group value covers both backends).
+    if (!block || !/dgfy-migration-runner\) APP_REVISION="\$\{\{ inputs\.release_revision_migration_runner \}\}"/.test(block)) {
+      problems.push('deploy-main.yml: promote-aliases must route dgfy-migration-runner through its own release revision input (#2186).');
+    }
+    // #2186: each image, including both backend images, reads its own input.
     for (const inputName of DEPLOY_MAIN_RELEASE_REVISION_INPUTS) {
       const pattern = new RegExp(`\\$\\{\\{\\s*inputs\\.${inputName}\\s*\\}\\}`);
       if (!pattern.test(block)) {
@@ -486,7 +513,7 @@ function checkMetaStepStampsCandidateLabel(workflowText, { label }) {
   return problems;
 }
 
-// #1610 (ADR 0081 Decision 7 residue): each of deploy-main.yml's five builder jobs must gate its
+// #1610 (ADR 0081 Decision 7 residue): each of deploy-main.yml's six builder jobs must gate its
 // `if:` on its OWN `should_build_<app>` output from the new `resolve-build-plan` job -- keyed by
 // job name here (not app name) since `frontend-ims-prod` etc. don't share their job name with the
 // app-keyed output name the way `dgfy-api`/`dgfy-migration-runner` do.
@@ -496,11 +523,13 @@ const DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES = Object.freeze([
   ['frontend-ims-prod', 'should_build_dgfy_ims'],
   ['frontend-pos-prod', 'should_build_dgfy_pos'],
   ['frontend-storefront-prod', 'should_build_dgfy_storefront'],
+  ['frontend-opis-prod', 'should_build_dgfy_opis'],
+  ['frontend-admin-prod', 'should_build_dgfy_admin'],
 ]);
 
 /**
  * ADR 0081 Decision 7 residue (#1610): deploy-main.yml must declare a `resolve-build-plan` job
- * (`needs: guard-branch`), and each of its five builder jobs must both list "resolve-build-plan" in
+ * (`needs: guard-branch`), and each of its six builder jobs must both list "resolve-build-plan" in
  * its own `needs:` array AND reference its own `should_build_<app>` output in its `if:` --
  * referencing `needs.resolve-build-plan` in a job's `if:` without also listing it in that job's own
  * `needs:` silently evaluates to empty in GitHub Actions (a parse-time gap, not a runtime failure),
@@ -550,6 +579,9 @@ function checkDeployMainPublishGate(deployMainText) {
     return problems;
   }
 
+  problems.push(...checkPairedBackendPublishGate(deployMainText, 'deploy-main.yml', 'publish'));
+  problems.push(...checkPairedBackendPublishGate(deployMainText, 'deploy-main.yml', 'promote-aliases'));
+
   if (!/needs:\s*\[\s*guard-branch\s*,\s*resolve-build-plan\s*,/.test(block)) {
     problems.push('deploy-main.yml: "publish" job\'s "needs:" does not start with "[ guard-branch, resolve-build-plan, ..." (#1610).');
   }
@@ -578,6 +610,87 @@ function checkDeployMainPublishGate(deployMainText) {
   }
 
   return problems;
+}
+
+/** OPIS and Platform Admin must participate in both production gates: aliases must wait for
+ * each image and refuse failures/cancellations, and publish must do the same before updating. */
+function checkDeployMainOpisPublishGates(deployMainText) {
+  const problems = [];
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+
+  for (const [surface, job] of [['OPIS', 'frontend-opis-prod'], ['Platform Admin', 'frontend-admin-prod']]) {
+    for (const jobName of ['promote-aliases', 'publish']) {
+      const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+      if (!block) {
+        problems.push(`deploy-main.yml: no "${jobName}" job found for ${surface} production gating.`);
+        continue;
+      }
+
+      const needs = /needs:\s*\[([^\]]*)\]/.exec(block)?.[1] ?? '';
+      if (!new RegExp(`(^|,)\\s*${job}\\s*(,|$)`).test(needs)) {
+        problems.push(`deploy-main.yml: "${jobName}" job must list "${job}" in needs: so ${surface} build results gate production.`);
+      }
+      for (const result of ['failure', 'cancelled']) {
+        if (!new RegExp(`needs\\.${job}\\.result != '${result}'`).test(block)) {
+          problems.push(`deploy-main.yml: "${jobName}" job must require "needs.${job}.result != '${result}'" to fail closed.`);
+        }
+      }
+    }
+  }
+
+  const aliasBlock = jobBlocks.find((chunk) => chunk.startsWith('promote-aliases:\n'));
+  if (aliasBlock && !/inputs\.release_revision_frontend_opis\s*!=\s*''/.test(aliasBlock)) {
+    problems.push('deploy-main.yml: promote-aliases must run when "inputs.release_revision_frontend_opis" is supplied, including an OPIS-only revision dispatch.');
+  }
+  if (aliasBlock && !/inputs\.release_revision_frontend_admin\s*!=\s*''/.test(aliasBlock)) {
+    problems.push('deploy-main.yml: promote-aliases must run when "inputs.release_revision_frontend_admin" is supplied, including an Admin-only revision dispatch.');
+  }
+
+  return problems;
+}
+
+/**
+ * A paired backend operation may accept `skipped` for an explicitly unselected or
+ * content-equivalent image, but must reject either backend's failed or cancelled result.
+ * Requiring `success` here would break safe reuse; ignoring `cancelled` could deploy a
+ * partially published pair.
+ */
+function checkPairedBackendPublishGate(workflowText, label, jobName) {
+  const problems = [];
+  const jobBlocks = workflowText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+  if (!block) {
+    if (jobName !== 'promote-aliases') problems.push(`${label}: "${jobName}" job not found for paired backend result gating.`);
+    return problems;
+  }
+  for (const backendJob of ['dgfy-api', 'dgfy-migration-runner']) {
+    for (const terminalState of ['failure', 'cancelled']) {
+      if (!new RegExp(`needs\\.${backendJob}\\.result != '${terminalState}'`).test(block)) {
+        problems.push(`${label}: "${jobName}" does not reject ${backendJob} result '${terminalState}' -- both paired backend images must complete or be safely skipped before deploy.`);
+      }
+    }
+    if (new RegExp(`needs\\.${backendJob}\\.result == 'success'`).test(block)) {
+      problems.push(`${label}: "${jobName}" requires ${backendJob} to be 'success' instead of accepting an approved skip/reuse result.`);
+    }
+  }
+  return problems;
+}
+
+function checkDeployDispatchReleaseRevisionWiring(deployText) {
+  const problems = [];
+  if (!/release_revision_migration_runner:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(deployText)) {
+    problems.push('deploy.yml: workflow_dispatch is missing the release_revision_migration_runner string input (#2186).');
+  }
+  const jobBlocks = deployText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  const block = jobBlocks.find((chunk) => chunk.startsWith('build-and-push:\n'));
+  if (!block || !/release_revision_migration_runner:\s*\$\{\{\s*inputs\.release_revision_migration_runner\s*\}\}/.test(block)) {
+    problems.push('deploy.yml: build-and-push does not forward release_revision_migration_runner to deployment-orchestrator.yml (#2186).');
+  }
+  return problems;
+}
+
+function checkOrchestratorPairedPublishGate(orchestratorText) {
+  return checkPairedBackendPublishGate(orchestratorText, 'deployment-orchestrator.yml', 'publish');
 }
 
 /** #2071: DEV's resolver path is versionless and does not need a branch suffix or revision. */
@@ -676,15 +789,18 @@ function runAllChecks({ readFile = read } = {}) {
   }
 
   const orchestratorText = readFile(ORCHESTRATOR_FILE);
+  problems.push(...checkDeployDispatchReleaseRevisionWiring(readFile('.github/workflows/deploy.yml')));
   problems.push(...checkOrchestratorVersionTagMapping(orchestratorText));
   problems.push(...checkOrchestratorCandidateSourceShaWiring(orchestratorText));
   problems.push(...checkOrchestratorReleaseRevisionWiring(orchestratorText));
+  problems.push(...checkOrchestratorPairedPublishGate(orchestratorText));
 
   const deployMainText = readFile(DEPLOY_MAIN_FILE);
   problems.push(...checkDeployMainCandidateSourceShaWiring(deployMainText));
   problems.push(...checkDeployMainReleaseRevisionWiring(deployMainText));
   problems.push(...checkDeployMainBuildSkipPlanJob(deployMainText));
   problems.push(...checkDeployMainPublishGate(deployMainText));
+  problems.push(...checkDeployMainOpisPublishGates(deployMainText));
 
   return problems;
 }
@@ -696,7 +812,7 @@ function main() {
     for (const problem of problems) console.error(`  - ${problem}`);
     process.exit(1);
   }
-  console.log('[check-deploy-version-stamping-workflow] PASS -- all three builder workflows and five Dockerfiles carry the ADR 0081 version-stamping shape (incl. the #1977 release-floor/revision contract).');
+  console.log(`[check-deploy-version-stamping-workflow] PASS -- all three builder workflows and ${DOCKERFILES.length} Dockerfiles carry the ADR 0081 version-stamping shape (incl. the #1977 release-floor/revision contract).`);
 }
 
 if (require.main === module) {
@@ -730,6 +846,10 @@ module.exports = {
   checkDeployMainReleaseRevisionWiring,
   checkDeployMainBuildSkipPlanJob,
   checkDeployMainPublishGate,
+  checkDeployMainOpisPublishGates,
+  checkDeployDispatchReleaseRevisionWiring,
+  checkPairedBackendPublishGate,
+  checkOrchestratorPairedPublishGate,
   DEPLOY_MAIN_FILE,
   DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
   DEPLOY_MAIN_JOB_INPUT_NAMES,

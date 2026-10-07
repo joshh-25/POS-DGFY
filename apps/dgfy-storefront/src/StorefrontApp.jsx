@@ -175,8 +175,8 @@ import { DeliveryPinMap } from './features/locations/components/DeliveryPinMapLa
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
   buildPinnedDeliveryAddress,
-  formatReverseGeocodedAddress,
   normalizeCoordinatePair,
+  resolveAddressSearchBias,
   resolveDeliveryAddress,
   reverseGeocodeDeliveryPin
 } from './features/locations/utils/pinnedDeliveryAddress.js';
@@ -610,6 +610,9 @@ export default function StorefrontApp() {
   } = useFnbCheckoutRouteState();
   const paymentReturnSessionRef = useRef('');
   const qrphPaymentRefreshRef = useRef(null);
+  const cancelQrphPaymentSessionInFlightRef = useRef(false);
+  const paymentTypeChangeInFlightRef = useRef(false);
+  const [cancellingQrphPaymentSession, setCancellingQrphPaymentSession] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
   const uiOpenOnlinePaymentModal = useStorefrontStore((s) => s.uiOpenOnlinePaymentModal);
   const uiCloseOnlinePaymentModal = useStorefrontStore((s) => s.uiCloseOnlinePaymentModal);
@@ -773,20 +776,6 @@ export default function StorefrontApp() {
   const dineInPayAtStoreAvailable = orderMethod === 'dine_in' && allowDineInPayAtStore;
   const requiresOnlinePaymentForCurrentOrder = (expectsDownpaymentCapture && !dineInPayAtStoreAvailable)
     || (orderMethod === 'dine_in' && !allowDineInPayAtStore);
-
-  const handlePaymentTypeChange = useCallback((val) => {
-    if (val === 'online') {
-      uiOpenOnlinePaymentModal();
-      setFnbPaymentType(requiresOnlinePaymentForCurrentOrder ? resolveDefaultDownpaymentRail() : 'cash');
-    } else {
-      if (val === 'cash' && orderMethod === 'dine_in' && !allowDineInPayAtStore) {
-        setFnbPaymentType(resolveDefaultDownpaymentRail());
-        return;
-      }
-      if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
-      setFnbPaymentType(val);
-    }
-  }, [allowDineInPayAtStore, orderMethod, requiresOnlinePaymentForCurrentOrder, resolveDefaultDownpaymentRail, resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
 
   useEffect(() => {
     if (!requiresOnlinePaymentForCurrentOrder || fnbPaymentType !== 'cash') return;
@@ -2536,6 +2525,109 @@ export default function StorefrontApp() {
     setCheckoutError,
     toast
   ]);
+  const handleCancelQrphPaymentSession = useCallback(async ({ allowDuringStatusRefresh = false, silent = false } = {}) => {
+    const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
+    if (!paymentSessionId || !selectedStore?.slug || (qrphPaymentStatusLoading && !allowDuringStatusRefresh) || cancellingQrphPaymentSession || cancelQrphPaymentSessionInFlightRef.current) return false;
+
+    cancelQrphPaymentSessionInFlightRef.current = true;
+    setCheckoutError('');
+    setCancellingQrphPaymentSession(true);
+    setQrphPaymentStatusLoading(true);
+    try {
+      const data = await requestJson(
+        `/api/v1/store/checkout/payment-sessions/${encodeURIComponent(paymentSessionId)}/cancel`,
+        {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken: isDgfyCustomerSignedIn
+            ? (readDgfyAuthToken() || readStoreAuthToken())
+            : readStoreAuthToken(),
+          body: {},
+          cache: 'no-store'
+        }
+      );
+      const cancelledSession = data?.payment_session || null;
+      if (!['cancelled', 'failed', 'expired'].includes(String(cancelledSession?.status || '').trim().toLowerCase())) {
+        throw new Error('The payment session was not cancelled. Refresh and try again.');
+      }
+      resetQrphPaymentSession();
+      if (!silent) toast.success('Payment cancelled. Choose another payment method.');
+      return true;
+    } catch (error) {
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to cancel this payment session.');
+      setCheckoutError(message);
+      toast.error(message);
+      return false;
+    } finally {
+      setCancellingQrphPaymentSession(false);
+      setQrphPaymentStatusLoading(false);
+      cancelQrphPaymentSessionInFlightRef.current = false;
+    }
+  }, [
+    cancellingQrphPaymentSession,
+    isDgfyCustomerSignedIn,
+    normalizeStorefrontErrorMessage,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
+    readDgfyAuthToken,
+    readStoreAuthToken,
+    requestJson,
+    resetQrphPaymentSession,
+    selectedStore,
+    setCheckoutError,
+    setQrphPaymentStatusLoading,
+    toast
+  ]);
+
+  const handlePaymentTypeChange = useCallback(async (value) => {
+    const nextPaymentType = String(value || '').trim().toLowerCase();
+    const currentPaymentType = String(fnbPaymentType || '').trim().toLowerCase();
+    if (!nextPaymentType || nextPaymentType === currentPaymentType || paymentTypeChangeInFlightRef.current) return;
+
+    paymentTypeChangeInFlightRef.current = true;
+    try {
+      const currentPaymentSession = qrphPaymentSession;
+      const currentPaymentSessionId = String(currentPaymentSession?.payment_session_id || '').trim();
+      const currentPaymentSessionMethod = String(currentPaymentSession?.payment_method || currentPaymentType).trim().toLowerCase();
+      let paymentSessionReset = false;
+
+      if (currentPaymentSessionId && currentPaymentSessionMethod !== nextPaymentType) {
+        const cancelled = await handleCancelQrphPaymentSession({
+          allowDuringStatusRefresh: true,
+          silent: true
+        });
+        if (!cancelled) return;
+        paymentSessionReset = true;
+      }
+
+      if (nextPaymentType === 'online') {
+        uiOpenOnlinePaymentModal();
+        setFnbPaymentType(requiresOnlinePaymentForCurrentOrder ? resolveDefaultDownpaymentRail() : 'cash');
+        return;
+      }
+
+      if (nextPaymentType === 'cash' && orderMethod === 'dine_in' && !allowDineInPayAtStore) {
+        setFnbPaymentType(resolveDefaultDownpaymentRail());
+        return;
+      }
+
+      if (!isStorefrontOnlinePaymentType(nextPaymentType) && !paymentSessionReset) resetQrphPaymentSession();
+      setFnbPaymentType(nextPaymentType);
+    } finally {
+      paymentTypeChangeInFlightRef.current = false;
+    }
+  }, [
+    allowDineInPayAtStore,
+    fnbPaymentType,
+    handleCancelQrphPaymentSession,
+    orderMethod,
+    qrphPaymentSession,
+    requiresOnlinePaymentForCurrentOrder,
+    resolveDefaultDownpaymentRail,
+    resetQrphPaymentSession,
+    setFnbPaymentType,
+    uiOpenOnlinePaymentModal
+  ]);
   useEffect(() => {
     const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
     const paymentStatus = String(qrphPaymentSession?.status || '').trim().toLowerCase();
@@ -3102,6 +3194,7 @@ export default function StorefrontApp() {
     voucherDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
+    resolvingPinnedDeliveryAddress,
     setCustomerAddress,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
@@ -3137,6 +3230,8 @@ export default function StorefrontApp() {
     fnbPaymentType,
     handlePaymentTypeChange,
     handleConfirmQrphTestPayment,
+    handleCancelQrphPaymentSession,
+    cancellingPaymentSession: cancellingQrphPaymentSession,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
     resetQrphPaymentSession,
@@ -3214,6 +3309,7 @@ export default function StorefrontApp() {
     onPaymentElectionChange: setElected,
     handlePaymentTypeChange,
     handleConfirmQrphTestPayment,
+    handleCancelQrphPaymentSession,
     handlePinMyLocation,
     handleRemoveDeliveryAddress,
     handleRequestGuestCheckoutOtp,
@@ -3237,6 +3333,7 @@ export default function StorefrontApp() {
     voucherDiscountSummaryRow,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
+    cancellingPaymentSession: cancellingQrphPaymentSession,
     quoteError,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
@@ -3246,6 +3343,7 @@ export default function StorefrontApp() {
     renderStorefrontClosedNotice,
     resetQrphPaymentSession,
     resolvingPinnedDeliveryAddress,
+    addressSearchBias: resolveAddressSearchBias(selectedCheckoutLocation, customerPin),
     selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
@@ -3497,6 +3595,7 @@ export default function StorefrontApp() {
     onPaymentElectionChange: setElected,
     handlePaymentTypeChange,
     handleConfirmQrphTestPayment,
+    handleCancelQrphPaymentSession,
     handlePinMyLocation,
     handleRequestGuestCheckoutOtp,
     handleVerifyGuestCheckoutOtp,
@@ -3520,12 +3619,14 @@ export default function StorefrontApp() {
     voucherDiscountSummaryRow,
     qrphPaymentSession,
     qrphPaymentStatusLoading,
+    cancellingPaymentSession: cancellingQrphPaymentSession,
     renderAccountOwnedIdentitySummary,
     renderBillingEmailPrompt,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
+    resolvingPinnedDeliveryAddress,
     selectedLocation,
     selectedLocationId,
     selectedSavedLocationId,
@@ -4073,6 +4174,7 @@ export default function StorefrontApp() {
     setCheckoutResult,
     setCustomerPin,
     setDeliveryLocationAction,
+    setPinLocationError,
     setIsReviewModalOpen,
     setIsServiceFilterOpen,
     setReviewDraft,

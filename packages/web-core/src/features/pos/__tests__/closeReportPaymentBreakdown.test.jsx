@@ -83,6 +83,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingMarkup).toContain('MATCHED');
         expect(zReadingMarkup).toContain('Report recognized sales');
         expect(zReadingMarkup).toContain('Checked');
+        expect(zReadingMarkup).not.toContain('Lifetime total');
     });
 
     it('uses the same method labels for iMin shift-summary and Z-reading text', () => {
@@ -137,6 +138,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).toContain('Difference');
         expect(zReadingText).toContain('Checked');
         expect(zReadingText).toContain('Provider refunds reconciled separately.');
+        expect(zReadingText).not.toContain('Lifetime total');
     });
 
     it('keeps missing or invalid generation times readable without breaking the report', () => {
@@ -149,6 +151,80 @@ describe('close-report payment breakdown rendering', () => {
 
         expect(markup).toContain('Generated: -');
         expect(text).toContain('Generated: -');
+    });
+
+    it('offers the Receipt Preview paper-width choices for Z-reading output', () => {
+        const markup = renderToStaticMarkup(
+            <ZReadingPrintView
+                report={{ generated_at: '2026-09-25T12:00:00.000Z' }}
+                paperWidth="57mm"
+            />
+        );
+
+        expect(markup).toContain('data-paper-width="57mm"');
+        expect(markup).toContain('data-testid="pos-z-reading-paper-width"');
+        expect(markup).toContain('80mm (3 1/8 in)');
+        expect(markup).toContain('57mm (2 1/4 in)');
+    });
+
+    it('applies the selected paper width to the current-shift browser print view', () => {
+        const markup = renderToStaticMarkup(
+            <ShiftCloseSummaryPrintView
+                report={{ generated_at: '2026-09-25T12:00:00.000Z' }}
+                paperWidth="57mm"
+                isPrinterAvailable={false}
+            />
+        );
+
+        expect(markup).toContain('data-paper-width="57mm"');
+        expect(markup).toContain('style="--pos-shift-summary-paper-width:57mm"');
+        expect(markup).toContain('data-testid="pos-shift-summary-paper-width"');
+        expect(markup).toContain('80mm (3 1/8 in)');
+        expect(markup).toContain('57mm (2 1/4 in)');
+        expect(markup).toContain('No native POS printer detected.');
+        expect(markup).toContain('Print in browser');
+        expect(markup).not.toContain('print:max-w-[80mm]');
+    });
+
+    it('formats iMin reports to the selected paper width', () => {
+        const report = {
+            shift: {
+                business_date: '2026-09-25',
+                terminal_id: 'COUNTER-01',
+                pos_terminal_shift_id: 8
+            },
+            cash_summary: {
+                opening_float_amount: 1000,
+                cash_sales_amount: 123,
+                cash_in_total: 25,
+                cash_out_total: 10,
+                expected_cash_amount: 1138,
+                closing_cash_amount: 1138,
+                cash_variance_amount: 0
+            },
+            sales_summary: {
+                payment_breakdown: paymentBreakdown,
+                delivery_provider_breakdown: [
+                    { provider_type: 'foodpanda', transaction_count: 2, amount: 350 }
+                ]
+            }
+        };
+
+        const narrowText = formatIminShiftSummaryText({
+            shiftSummary: report,
+            businessSettings,
+            paperWidth: '57mm'
+        });
+        const wideText = formatIminShiftSummaryText({
+            shiftSummary: report,
+            businessSettings,
+            paperWidth: '80mm'
+        });
+
+        expect(narrowText.split('\n').every((row) => row.length <= 32)).toBe(true);
+        expect(wideText).toContain('-'.repeat(42));
+        expect(narrowText).toContain('-'.repeat(32));
+        expect(narrowText).toContain('DELIVERY PROVIDER BREAKDOWN');
     });
 
     it('does not show zero closing cash or variance before an open shift is closed', () => {

@@ -58,7 +58,8 @@ export const returnStockForVoidedSale = (movementData, userId, transaction = nul
       reference_type: 'POS'
     }),
     userId,
-    transaction
+    transaction,
+    { allowArchivedItem: true }
   )
 );
 

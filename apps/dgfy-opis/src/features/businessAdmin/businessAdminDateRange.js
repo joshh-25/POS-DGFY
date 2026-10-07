@@ -16,7 +16,7 @@ export const DATE_RANGE_PRESETS = Object.freeze([
 ]);
 
 export const isHistoricalBusinessAdminSection = (section) => (
-    ['orders', 'shifts', 'expenses', 'audit'].includes(section)
+    ['orders', 'shifts', 'expenses', 'audit', 'pos-activity'].includes(section)
 );
 
 export const getManilaToday = () => formatDateOnly(new Date(), MANILA_TIME_ZONE);

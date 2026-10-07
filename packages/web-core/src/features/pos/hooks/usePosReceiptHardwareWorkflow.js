@@ -9,6 +9,10 @@ import {
     getLineKey,
     inferReceiptContract
 } from '../utils/posCheckoutTerminalUtils.js';
+import {
+    readPosPaperWidthPreference,
+    writePosPaperWidthPreference
+} from '../utils/posPaperWidthPreference.js';
 
 const buildOrderTicketCart = (transaction) => {
     const lines = Array.isArray(transaction?.lines) ? transaction.lines : [];
@@ -41,7 +45,9 @@ export const usePosReceiptHardwareWorkflow = ({
     onExternalReceiptClosed = null
 } = {}) => {
     const [receiptPrinting, setReceiptPrinting] = useState(false);
-    const [receiptPaperWidth, setReceiptPaperWidth] = useState('80mm');
+    const [receiptPaperWidth, setReceiptPaperWidthState] = useState(() => (
+        readPosPaperWidthPreference(normalizedTerminalId)
+    ));
     const [receiptPreviewModalOpen, setReceiptPreviewModalOpen] = useState(false);
     const [receiptPreviewSource, setReceiptPreviewSource] = useState('receipt_preview');
     const [externalReceiptModalActive, setExternalReceiptModalActive] = useState(false);
@@ -53,6 +59,29 @@ export const usePosReceiptHardwareWorkflow = ({
     const [drawerAuthorizationReason, setDrawerAuthorizationReason] = useState('');
     const [drawerAuthorizationPin, setDrawerAuthorizationPin] = useState('');
     const [drawerAuthorizationSubmitting, setDrawerAuthorizationSubmitting] = useState(false);
+
+    useEffect(() => {
+        setReceiptPaperWidthState(readPosPaperWidthPreference(normalizedTerminalId));
+    }, [normalizedTerminalId]);
+
+    const setReceiptPaperWidth = useCallback((value) => {
+        setReceiptPaperWidthState(writePosPaperWidthPreference(normalizedTerminalId, value));
+    }, [normalizedTerminalId]);
+
+    const printWithBrowser = useCallback(() => {
+        if (typeof window === 'undefined' || typeof window.print !== 'function') {
+            toast.error('Browser printing is not available on this device.');
+            return false;
+        }
+
+        try {
+            window.print();
+            return true;
+        } catch {
+            toast.error('Browser printing could not be opened.');
+            return false;
+        }
+    }, []);
 
     const closeReceiptPreviewModal = useCallback(() => {
         setReceiptPreviewModalOpen(false);
@@ -81,6 +110,23 @@ export const usePosReceiptHardwareWorkflow = ({
             return;
         }
 
+        // A Windows-installed printer is available through Chrome's system
+        // print dialog, but it is not an iMin/LAN hardware driver. Preserve
+        // the native path when available and use the browser print surface
+        // when the hardware registry has explicitly resolved no printer.
+        if (posHardware?.isPrinterAvailable === false) {
+            // Browser printing is scoped by the receipt preview's body class.
+            // Mount the receipt surface first instead of printing the current
+            // POS screen or an order-preview dialog.
+            if (!receiptPreviewModalOpen || receiptPreviewSource !== 'receipt_preview') {
+                setReceiptPreviewSource('receipt_preview');
+                setReceiptPreviewModalOpen(true);
+                return;
+            }
+            printWithBrowser();
+            return;
+        }
+
         setReceiptPrinting(true);
         try {
             // Reprinting a cash receipt must not silently pulse the drawer.
@@ -94,6 +140,7 @@ export const usePosReceiptHardwareWorkflow = ({
                 shiftId: activeShiftId,
                 transactionId,
                 terminalId: normalizedTerminalId || undefined,
+                paperWidth: receiptPaperWidth,
                 reason,
                 idempotencyKey: createIdempotencyKey()
             });
@@ -108,7 +155,18 @@ export const usePosReceiptHardwareWorkflow = ({
         } finally {
             setReceiptPrinting(false);
         }
-    }, [activeShiftId, normalizedTerminalId, posHardware, receiptSettings]);
+    }, [
+        activeShiftId,
+        normalizedTerminalId,
+        posHardware,
+        printWithBrowser,
+        receiptPaperWidth,
+        receiptPreviewModalOpen,
+        receiptPreviewSource,
+        receiptSettings,
+        setReceiptPreviewModalOpen,
+        setReceiptPreviewSource
+    ]);
 
     const handleBillRequest = useCallback(async () => {
         if (safeCart.length === 0) {
@@ -143,7 +201,8 @@ export const usePosReceiptHardwareWorkflow = ({
                     ? buildFnbGlobalOrderNote({ kitchenNotes })
                     : kitchenNotes,
                 billRequest: true,
-                billTotal: cartTotal
+                billTotal: cartTotal,
+                paperWidth: receiptPaperWidth
             });
 
             if (outcome.success) {
@@ -156,7 +215,7 @@ export const usePosReceiptHardwareWorkflow = ({
         } finally {
             setBillRequestPrinting(false);
         }
-    }, [cartTotal, isFnbWorkflow, kitchenNotes, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, safeCart, setCheckoutConfirmModalOpen, tableNumber]);
+    }, [cartTotal, isFnbWorkflow, kitchenNotes, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, receiptPaperWidth, safeCart, setCheckoutConfirmModalOpen, tableNumber]);
 
     const handlePrintOrder = useCallback(async (transaction = null) => {
         const transactionId = Number(transaction?.pos_transaction_id);
@@ -186,7 +245,8 @@ export const usePosReceiptHardwareWorkflow = ({
                 ? printOrderNotes
                 : isFnbWorkflow
                 ? buildFnbGlobalOrderNote({ kitchenNotes })
-                : kitchenNotes
+                : kitchenNotes,
+            paperWidth: receiptPaperWidth
         });
 
         if (outcome.success) {
@@ -196,7 +256,7 @@ export const usePosReceiptHardwareWorkflow = ({
         } else {
             toast.error(outcome.message || 'Failed to print order ticket.');
         }
-    }, [isFnbWorkflow, kitchenNotes, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, safeCart, tableNumber]);
+    }, [isFnbWorkflow, kitchenNotes, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware, receiptPaperWidth, safeCart, tableNumber]);
 
     const handleOpenDrawer = useCallback(({ transactionId = null } = {}) => {
         if (!activeShiftId) {

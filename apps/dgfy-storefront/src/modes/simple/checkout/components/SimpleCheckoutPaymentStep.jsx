@@ -23,6 +23,7 @@ export function SimpleCheckoutPaymentStep({
   paymentElection = 'full',
   paymentType = 'cash',
   paymentOptions = [],
+  cancellingPaymentSession = false,
   onlinePaymentPanel = null,
   renderBillingEmailPrompt,
   simpleCheckoutAllowed = false,
@@ -53,6 +54,7 @@ export function SimpleCheckoutPaymentStep({
         label={isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'}
         value={paymentType}
         onChange={onPaymentTypeChange}
+        disabled={cancellingPaymentSession}
         options={paymentOptions}
         DropdownComponent={DropdownComponent}
         labelStyle={{ ...typography.sectionTitle, color: '#1e293b', fontFamily: CHECKOUT_FONT_FAMILY }}

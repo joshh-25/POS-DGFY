@@ -307,6 +307,13 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.JSON,
         allowNull: true
     },
+    // Immutable delivery-provider classification captured at completed sale time.
+    // This is deliberately separate from payment_breakdown, which represents
+    // settlement tenders such as cash, GCash, or card.
+    delivery_provider_breakdown: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     employee_credit_account_id: { type: DataTypes.INTEGER, allowNull: true },
     employee_credit_user_id: { type: DataTypes.INTEGER, allowNull: true },
     employee_credit_employee_id: { type: DataTypes.INTEGER, allowNull: true },
@@ -371,6 +378,22 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false
+    },
+    // Legacy field names retained for compatibility; these snapshot the item-processing
+    // charge included in the order total, not a payment-provider fee.
+    customer_processing_fee_amount: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    customer_processing_fee_label_snapshot: {
+        type: DataTypes.STRING(80),
+        allowNull: true
+    },
+    customer_processing_fee_breakdown: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null
     },
     fnb_check_id: {
         type: DataTypes.INTEGER,

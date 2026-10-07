@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ban, CalendarDays, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';
+import { Ban, CalendarDays, ClipboardCheck, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import {
@@ -22,7 +22,9 @@ import { isPosTabletPortraitViewport, isPosTabletViewport } from '../utils/posTa
 import { POS_HISTORY_PAGE_SIZE_OPTIONS } from '../utils/posHistoryQuery.js';
 import { ORDER_METHOD_LABELS, resolveAppliedVouchers } from './orderFulfillmentUi.js';
 import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
+import POSInlineVoidApprovalDialog from './POSInlineVoidApprovalDialog.jsx';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import { DELIVERY_PROVIDER_OPTIONS } from '../utils/posDeliveryProviders.js';
 import PosTableSurface, { POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
@@ -129,6 +131,10 @@ const FILTER_OPTIONS = {
         { value: 'all', label: 'All' },
         { value: 'in_store', label: 'In-Store' },
         { value: 'online_store', label: 'Online Store' }
+    ],
+    deliveryProvider: [
+        { value: 'all', label: 'All' },
+        ...DELIVERY_PROVIDER_OPTIONS
     ]
 };
 
@@ -170,6 +176,7 @@ const getActiveFilterChips = ({
     historySearch,
     historyStatus,
     historyPaymentType,
+    historyDeliveryProvider,
     historyOrderMethod,
     historyCashierName,
     historyDateFrom,
@@ -178,6 +185,7 @@ const getActiveFilterChips = ({
 }) => [
     historyStatus !== 'all' ? { key: 'status', label: `Sales: ${getFilterOptionLabel('status', historyStatus)}` } : null,
     historyPaymentType !== 'all' ? { key: 'payment', label: `Payment: ${getFilterOptionLabel('paymentType', historyPaymentType)}` } : null,
+    historyDeliveryProvider !== 'all' ? { key: 'delivery_provider', label: `Delivery Provider: ${getFilterOptionLabel('deliveryProvider', historyDeliveryProvider)}` } : null,
     historyOrderMethod !== 'all' ? { key: 'method', label: `Method: ${getFilterOptionLabel('orderMethod', historyOrderMethod, orderMethodOptions)}` } : null,
     String(historyCashierName || '').trim() ? { key: 'cashier', label: `Cashier: ${String(historyCashierName).trim()}` } : null,
     historyDateFrom || historyDateTo
@@ -435,6 +443,8 @@ export default function POSTransactionHistoryPanel({
     setHistoryStatus,
     historyPaymentType,
     setHistoryPaymentType,
+    historyDeliveryProvider,
+    setHistoryDeliveryProvider,
     historyOrderMethod,
     setHistoryOrderMethod,
     historyOrderSource,
@@ -473,7 +483,20 @@ export default function POSTransactionHistoryPanel({
     universalPendingSyncCount = 0,
     sidebarCollapsed = false,
     posWorkflow = null,
-    isMobileViewport: isMobileViewportProp = null
+    isMobileViewport: isMobileViewportProp = null,
+    inlineVoidApprovalEnabled = false,
+    canReviewVoidApprovals = false,
+    voidApprovalQueue = [],
+    voidApprovalQueueLoading = false,
+    voidApprovalQueueError = '',
+    voidApprovalDialogOpen = false,
+    voidApprovalDecisionLoading = false,
+    voidApprovalSelectedRequest = null,
+    currentUserId = null,
+    openVoidApprovalQueue = async () => {},
+    closeVoidApprovalQueue = () => {},
+    loadVoidApprovalQueue = async () => {},
+    decideVoidApproval = async () => {}
 }) {
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [isTabletViewport, setIsTabletViewport] = useState(() => (
@@ -528,6 +551,7 @@ export default function POSTransactionHistoryPanel({
     const currentFilterValues = {
         historyStatus,
         historyPaymentType,
+        historyDeliveryProvider,
         historyOrderMethod,
         historyOrderSource,
         historyCashierName,
@@ -671,6 +695,7 @@ export default function POSTransactionHistoryPanel({
             ...(current || currentFilterValues),
             historyStatus: 'all',
             historyPaymentType: 'all',
+            historyDeliveryProvider: 'all',
             historyOrderMethod: 'all',
             historyOrderSource: 'all',
             historyCashierName: '',
@@ -692,6 +717,7 @@ export default function POSTransactionHistoryPanel({
 
         if (filterKey === 'status') setHistoryStatus('all');
         if (filterKey === 'payment') setHistoryPaymentType('all');
+        if (filterKey === 'delivery_provider') setHistoryDeliveryProvider('all');
         if (filterKey === 'method') setHistoryOrderMethod('all');
         if (filterKey === 'cashier') setHistoryCashierName('');
         if (filterKey === 'date') {
@@ -706,6 +732,7 @@ export default function POSTransactionHistoryPanel({
         setHistorySearch('');
         setHistoryStatus('all');
         setHistoryPaymentType('all');
+        setHistoryDeliveryProvider('all');
         setHistoryOrderMethod('all');
         setHistoryOrderSource('all');
         setHistoryCashierName('');
@@ -730,6 +757,7 @@ export default function POSTransactionHistoryPanel({
         filterApplyPendingRef.current = true;
         setHistoryStatus(next.historyStatus);
         setHistoryPaymentType(next.historyPaymentType);
+        setHistoryDeliveryProvider(next.historyDeliveryProvider);
         setHistoryOrderMethod(next.historyOrderMethod);
         setHistoryOrderSource(next.historyOrderSource);
         setHistoryCashierName(next.historyCashierName);
@@ -771,6 +799,7 @@ export default function POSTransactionHistoryPanel({
         historyOrderMethod,
         historyOrderSource,
         historyPaymentType,
+        historyDeliveryProvider,
         historyStatus,
         loadHistory
     ]);
@@ -961,6 +990,25 @@ export default function POSTransactionHistoryPanel({
                         >
                             <RefreshCcw className={`h-4 w-4 ${syncingPendingTransactions ? 'animate-spin' : ''}`} aria-hidden="true" />
                         </Button>
+                        {inlineVoidApprovalEnabled && canReviewVoidApprovals ? (
+                            <Button
+                                type="button"
+                                data-testid="pos-history-void-approval-button"
+                                onClick={() => void openVoidApprovalQueue()}
+                                size={isMobileViewport ? 'icon' : 'default'}
+                                aria-label="Open POS approval requests"
+                                title="Open POS approval requests"
+                                className={`${isMobileViewport ? 'relative w-11 px-0' : 'min-w-[8.5rem] px-3'} ${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} shrink-0 rounded-xl bg-amber-600 text-white shadow-lg shadow-amber-900/15 hover:bg-amber-700`}
+                            >
+                                <ClipboardCheck className={`${isMobileViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
+                                {isMobileViewport ? <span className="sr-only">POS approvals</span> : 'POS approvals'}
+                                {voidApprovalQueue.length > 0 ? (
+                                    <span className={`${isMobileViewport ? 'absolute -right-1 -top-1' : 'ml-1.5'} inline-flex min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black text-amber-700`}>
+                                        {voidApprovalQueue.length > 99 ? '99+' : voidApprovalQueue.length}
+                                    </span>
+                                ) : null}
+                            </Button>
+                        ) : null}
                     </div>
                     <p className="sr-only" aria-live="polite">
                             {universalPendingSyncCount > 0
@@ -1057,6 +1105,15 @@ export default function POSTransactionHistoryPanel({
                                         options={FILTER_OPTIONS.paymentType}
                                         onChange={(value) => updateFilterDraft('historyPaymentType', value)}
                                         testId="pos-history-filter-payment"
+                                        compact={isDesktopFilterDialog}
+                                        mobile={isMobileViewport}
+                                    />
+                                    <PosFilterChoiceGroup
+                                        label="Delivery Provider"
+                                        value={filterDraft?.historyDeliveryProvider || historyDeliveryProvider}
+                                        options={FILTER_OPTIONS.deliveryProvider}
+                                        onChange={(value) => updateFilterDraft('historyDeliveryProvider', value)}
+                                        testId="pos-history-filter-delivery-provider"
                                         compact={isDesktopFilterDialog}
                                         mobile={isMobileViewport}
                                     />
@@ -1568,7 +1625,7 @@ export default function POSTransactionHistoryPanel({
                     <DialogHeader className="px-6">
                         <DialogTitle>Void Transaction</DialogTitle>
                         <DialogDescription>
-                            Enter a reason to send this request to Back Office. The transaction and stock will change only after approval.
+                            Enter a reason to request manager approval. The transaction and stock remain unchanged until approval.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-2 px-6">
@@ -1600,7 +1657,7 @@ export default function POSTransactionHistoryPanel({
                             onClick={submitVoid}
                             disabled={String(voidReason).trim().length < 3 || voidingTransactionId !== null}
                         >
-                            {voidingTransactionId !== null ? 'Submitting request...' : 'Request Void Approval'}
+                            {voidingTransactionId !== null ? 'Submitting request...' : 'Request Manager Approval'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1615,6 +1672,23 @@ export default function POSTransactionHistoryPanel({
                     hasActiveShift={hasActiveShift}
                     onOpenChange={(open) => !open && onCloseRefundWorkflow()}
                     onSubmit={onSubmitRefundWorkflow}
+                />
+            ) : null}
+            {inlineVoidApprovalEnabled ? (
+                <POSInlineVoidApprovalDialog
+                    open={voidApprovalDialogOpen}
+                    onOpenChange={(open) => {
+                        if (!open) closeVoidApprovalQueue();
+                    }}
+                    requests={voidApprovalQueue}
+                    loading={voidApprovalQueueLoading}
+                    error={voidApprovalQueueError}
+                    decisionLoading={voidApprovalDecisionLoading}
+                    canReview={canReviewVoidApprovals}
+                    currentUserId={currentUserId}
+                    selectedRequest={voidApprovalSelectedRequest}
+                    onRefresh={loadVoidApprovalQueue}
+                    onDecision={decideVoidApproval}
                 />
             ) : null}
         </section>

@@ -25,6 +25,17 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
   return next();
 };
 
+const validateStrictSchema = (schema, source, target) => (req, res, next) => {
+  const { error, value } = schema.validate(req[source], {
+    abortEarly: false,
+    stripUnknown: false,
+    convert: true
+  });
+  if (error) return res.status(422).json(buildValidationErrorResponse(error));
+  req[target] = value;
+  return next();
+};
+
 const tenantParamSchema = Joi.object({ tenant_id: tenantId.required() });
 const settlementBatchParamSchema = Joi.object({ settlement_batch_id: databaseId.required() });
 const payoutParamSchema = Joi.object({ payout_id: databaseId.required() });
@@ -81,6 +92,12 @@ const feePolicyBodySchema = Joi.object({
       fixed_centavos: Joi.number().integer().min(0).default(0)
     }).optional()
   }).allow(null).optional(),
+  customer_processing_fee_policy: Joi.object({
+    mode: Joi.string().valid('fixed', 'percentage').required(),
+    fixed_centavos: Joi.number().integer().min(0).default(0),
+    rate_bps: Joi.number().integer().min(0).max(10000).default(0),
+    label: Joi.string().trim().min(1).max(80).default('Item processing fee')
+  }).allow(null).optional().unknown(false),
   payout_destination: Joi.object({
     type: Joi.string().trim().max(40).required(),
     provider: Joi.string().trim().max(120).optional(),
@@ -100,6 +117,33 @@ const feePolicyBodySchema = Joi.object({
   }
   return value;
 });
+
+const fallbackFeeConfigurationSchema = Joi.object({
+  rate_bps: Joi.number().integer().min(0).max(10000).default(0),
+  fixed_centavos: Joi.number().integer().min(0).default(0)
+}).unknown(false);
+
+// Tenant Owners may version only the payment-method fallback. Platform rate,
+// settlement, payout, and provider-payer fields are intentionally absent and
+// rejected by this strict schema to prevent mass assignment.
+const ownerFeePolicyBodySchema = Joi.object({
+  expected_policy_version: Joi.number().integer().min(0).required(),
+  fallback_fee_policy: Joi.object({
+    card: fallbackFeeConfigurationSchema.optional(),
+    ewallet: fallbackFeeConfigurationSchema.optional(),
+    qrph: fallbackFeeConfigurationSchema.optional(),
+    online_banking: fallbackFeeConfigurationSchema.optional(),
+    other: fallbackFeeConfigurationSchema.optional()
+  }).allow(null).required().unknown(false),
+  customer_processing_fee_policy: Joi.object({
+    mode: Joi.string().valid('fixed', 'percentage').required(),
+    fixed_centavos: Joi.number().integer().min(0).default(0),
+    rate_bps: Joi.number().integer().min(0).max(10000).default(0),
+    label: Joi.string().trim().min(1).max(80).default('Item processing fee')
+  }).allow(null).required().unknown(false),
+  effective_at: Joi.date().iso().required(),
+  reason: Joi.string().trim().min(3).max(500).required()
+}).unknown(false);
 
 const settlementBatchBodySchema = Joi.object({
   tenant_id: tenantId.required(),
@@ -163,6 +207,7 @@ export const validateTenantRevenuePayoutParam = validateSchema(payoutParamSchema
 export const validateTenantRevenueReconciliationParam = validateSchema(reconciliationParamSchema, 'params', 'validatedParams');
 export const validateTenantRevenueAdjustmentParam = validateSchema(adjustmentParamSchema, 'params', 'validatedParams');
 export const validateTenantRevenueFeePolicyBody = validateSchema(feePolicyBodySchema, 'body', 'validatedBody');
+export const validateTenantRevenueOwnerFeePolicyBody = validateStrictSchema(ownerFeePolicyBodySchema, 'body', 'validatedBody');
 export const validateTenantRevenueSettlementBatchBody = validateSchema(settlementBatchBodySchema, 'body', 'validatedBody');
 export const validateTenantRevenueReasonBody = validateSchema(reasonBodySchema, 'body', 'validatedBody');
 export const validateTenantRevenueManualPayoutBody = validateSchema(manualPayoutBodySchema, 'body', 'validatedBody');

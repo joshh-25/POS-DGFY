@@ -19,6 +19,7 @@ import {
   Receipt,
   Scale,
   ShoppingBag,
+  Tags,
   Users
 } from 'lucide-react';
 import {
@@ -35,6 +36,7 @@ import {
 } from 'recharts';
 import {
   exportPosReportCsv,
+  fetchPosReportsBreakdown,
   fetchPosZReadingDetails,
   fetchPosZReadingHistory,
   fetchPosReportsOverview
@@ -55,6 +57,7 @@ import PosReportsHandoffTable from './PosReportsHandoffTable.jsx';
 import PosReportsProfitLossTable from './PosReportsProfitLossTable.jsx';
 import PosReportsSalesTable from './PosReportsSalesTable.jsx';
 import PosReportsTopItemsTable from './PosReportsTopItemsTable.jsx';
+import PosReportsBreakdownTable, { PosReportsBreakdownSummary } from './PosReportsBreakdownTable.jsx';
 import PosReportsComparisonPanel from './PosReportsComparisonPanel.jsx';
 import PosReportsToolbar from './PosReportsToolbar.jsx';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
@@ -70,7 +73,13 @@ import PosSubtabNavigation from './PosSubtabNavigation.jsx';
 import PosPageFrame from './PosPageFrame.jsx';
 import { POS_MOBILE_STICKY_TAB_ROW_CLASS, POS_PAGE_CONTENT_STACK_CLASS } from './PosPageSpacing.js';
 import { buildPosReportsActiveFilters } from './posReportsActiveFilters.js';
+import { getPosReportRefundsVoidsDisplayValue } from './posReportFormatting.js';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import {
+  DELIVERY_PROVIDER_OPTIONS,
+  formatDeliveryProviderSummaryLabel,
+  parseDeliveryProviderSummary
+} from '../utils/posDeliveryProviders.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import {
   BackOfficeReportDataTable as DataTable,
@@ -82,11 +91,20 @@ const REPORT_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, granularity: 'daily', exportSection: 'daily' },
   { id: 'z_readings', label: 'Z-Readings', icon: Calendar, granularity: 'daily', exportSection: 'daily' },
   { id: 'sales', label: 'Sales', icon: Receipt, granularity: 'daily', exportSection: 'sales' },
+  { id: 'hourly', label: 'Hourly Sales', icon: Clock3, granularity: 'daily', breakdown: 'hourly', exportSection: 'hourly' },
+  { id: 'item_sales', label: 'Item Sales', icon: ShoppingBag, granularity: 'daily', breakdown: 'items', exportSection: 'item_sales' },
+  { id: 'category_sales', label: 'Sales by Category', icon: Tags, granularity: 'daily', breakdown: 'categories', exportSection: 'category_sales' },
   { id: 'comparison', label: 'Comparison', icon: ArrowLeftRight, granularity: 'daily', exportSection: 'comparison' },
   { id: 'top_items', label: 'Top Selling Items', icon: ShoppingBag, granularity: 'daily', exportSection: 'daily' },
   { id: 'profit_loss', label: 'Profit/Loss', icon: Scale, granularity: 'monthly', exportSection: 'profit_loss' },
   { id: 'operations', label: 'Operations', icon: BarChart3, granularity: 'daily', exportSection: 'cashiers' }
 ];
+
+const getDefaultBreakdownSort = (breakdown) => (
+  breakdown === 'hourly'
+    ? { sort_by: 'bucket_start_local', sort_direction: 'asc' }
+    : { sort_by: 'net_sales', sort_direction: 'desc' }
+);
 
 const REPORT_OPERATION_SECTIONS = [
   { id: 'cashiers', label: 'Cashiers', icon: Users },
@@ -118,6 +136,11 @@ const SOURCE_OPTIONS = [
   { value: 'online_store', label: 'Online Store' },
   { value: 'delivery', label: 'Delivery' },
   { value: 'pickup', label: 'Pickup' }
+];
+
+const DELIVERY_PROVIDER_FILTER_OPTIONS = [
+  { value: '', label: 'All delivery providers' },
+  ...DELIVERY_PROVIDER_OPTIONS
 ];
 
 const CHART_COLORS = ['#2563EB', '#14B8A6', '#F97316', '#0EA5E9', '#8B5CF6'];
@@ -414,11 +437,19 @@ function PosReportsAnalyticsWorkspace({
   const [cashierId, setCashierId] = useState('');
   const [paymentType, setPaymentType] = useState('');
   const [source, setSource] = useState('');
+  const [deliveryProvider, setDeliveryProvider] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [overviewSearchQuery, setOverviewSearchQuery] = useState('');
   const [reportFiltersOpen, setReportFiltersOpen] = useState(false);
   const [reportDateFilterOpen, setReportDateFilterOpen] = useState(false);
   const [reportData, setReportData] = useState(null);
+  const [breakdownData, setBreakdownData] = useState(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [breakdownError, setBreakdownError] = useState('');
+  const [breakdownOffline, setBreakdownOffline] = useState(false);
+  const [breakdownPage, setBreakdownPage] = useState(1);
+  const [breakdownLimit, setBreakdownLimit] = useState(50);
+  const [breakdownSort, setBreakdownSort] = useState(() => getDefaultBreakdownSort('hourly'));
   const [employeeCreditReportData, setEmployeeCreditReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -427,6 +458,9 @@ function PosReportsAnalyticsWorkspace({
     !section.permission || terminalUser?.is_master_admin === true || resolveUserPermissionList(terminalUser).includes(section.permission)
   )), [terminalUser]);
   const selectedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0], [activeTab]);
+  const renderedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === renderedTab) || REPORT_TABS[0], [renderedTab]);
+  const activeBreakdown = selectedReportTab.breakdown || null;
+  const isBreakdownTab = Boolean(activeBreakdown);
   const displayGranularity = activeTab === 'comparison' ? granularity : selectedReportTab.granularity;
   const clearReportPanelAnimationTimers = useCallback(() => {
     reportPanelAnimationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
@@ -503,12 +537,15 @@ function PosReportsAnalyticsWorkspace({
   }), [dateRange.dateFrom, dateRange.dateTo]);
   const offlineReportKey = useMemo(() => JSON.stringify({
     granularity: displayGranularity,
+    breakdown: activeBreakdown,
+    reportTab: activeTab,
     locationId: operatingLocationId || null,
     dateFrom: normalizedDateRange.dateFrom,
     dateTo: normalizedDateRange.dateTo,
     cashierId,
     paymentType,
     source,
+    deliveryProvider,
     categoryId
   }), [
     categoryId,
@@ -518,7 +555,10 @@ function PosReportsAnalyticsWorkspace({
     normalizedDateRange.dateFrom,
     normalizedDateRange.dateTo,
     paymentType,
-    source
+    source,
+    deliveryProvider,
+    activeBreakdown,
+    activeTab
   ]);
 
   const handleTabChange = (tabId) => {
@@ -569,6 +609,7 @@ function PosReportsAnalyticsWorkspace({
     setCashierId('');
     setPaymentType('');
     setSource('');
+    setDeliveryProvider('');
     setCategoryId('');
     setOverviewSearchQuery('');
     setZReadingHistoryPage(1);
@@ -586,6 +627,8 @@ function PosReportsAnalyticsWorkspace({
       setPaymentType('');
     } else if (filterKey === 'source') {
       setSource('');
+    } else if (filterKey === 'delivery_provider') {
+      setDeliveryProvider('');
     } else if (filterKey === 'category') {
       setCategoryId('');
     } else if (filterKey === 'granularity' && activeTab === 'comparison') {
@@ -599,6 +642,7 @@ function PosReportsAnalyticsWorkspace({
     setCashierId(nextFilters.cashierId);
     setPaymentType(nextFilters.paymentType);
     setSource(nextFilters.source);
+    setDeliveryProvider(nextFilters.deliveryProvider);
     setCategoryId(nextFilters.categoryId);
     setReportFiltersOpen(false);
   };
@@ -630,6 +674,11 @@ function PosReportsAnalyticsWorkspace({
   }, [reportData?.date_bounds?.first_transaction_date, reportData?.date_bounds?.today, reportDateFilterApplied]);
 
   useEffect(() => {
+    setBreakdownPage(1);
+    setBreakdownSort(getDefaultBreakdownSort(activeBreakdown));
+  }, [activeBreakdown, cashierId, categoryId, deliveryProvider, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, operatingLocationId, paymentType, source]);
+
+  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setZReadingHistoryPage(1);
       setZReadingHistorySearchQuery(String(zReadingHistorySearchInput || '').trim());
@@ -645,10 +694,61 @@ function PosReportsAnalyticsWorkspace({
         setLoading(false);
         return;
       }
+
+      if (isBreakdownTab) {
+        setBreakdownLoading(true);
+        setBreakdownError('');
+        setBreakdownOffline(false);
+        setBreakdownData(null);
+        if (!isOnline) {
+          const snapshot = loadOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, `breakdown:${activeBreakdown}`);
+          if (!cancelled) {
+            setBreakdownData(snapshot?.payload || null);
+            setBreakdownOffline(Boolean(snapshot));
+            setBreakdownError(snapshot
+              ? 'Offline snapshot loaded. Report values are display-only until the connection is restored.'
+              : 'No cached breakdown exists for these filters. Reconnect once to load it.');
+            setBreakdownLoading(false);
+          }
+          return;
+        }
+        try {
+          const payload = await fetchPosReportsBreakdown({
+            breakdown: activeBreakdown,
+            date_from: normalizedDateRange.dateFrom,
+            date_to: normalizedDateRange.dateTo,
+            cashier_id: cashierId || undefined,
+            payment_type: paymentType || undefined,
+            source: source || undefined,
+            delivery_provider: deliveryProvider || undefined,
+            category_id: categoryId || undefined,
+            location_id: operatingLocationId || undefined,
+            page: breakdownPage,
+            limit: breakdownLimit,
+            sort_by: breakdownSort.sort_by,
+            sort_direction: breakdownSort.sort_direction
+          });
+          if (!cancelled) {
+            setBreakdownData(payload);
+            saveOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, payload, `breakdown:${activeBreakdown}`);
+          }
+        } catch (loadError) {
+          if (!cancelled) {
+            setBreakdownError(loadError?.response?.data?.message || 'Failed to load the selected POS report breakdown.');
+          }
+        } finally {
+          if (!cancelled) setBreakdownLoading(false);
+        }
+        return;
+      }
+
+      setBreakdownLoading(false);
+      setBreakdownOffline(false);
+      setBreakdownError('');
       setLoading(true);
       setError('');
       if (!isOnline) {
-        const snapshot = loadOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey);
+        const snapshot = loadOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, 'overview');
         if (!cancelled) {
           setReportData(snapshot?.payload || null);
           setError(snapshot ? 'Offline estimate from the last synced report. Pending local sales are not final until Sync completes.' : 'No cached report exists for this filter. Reconnect once to load it.');
@@ -664,12 +764,13 @@ function PosReportsAnalyticsWorkspace({
           cashier_id: cashierId || undefined,
           payment_type: paymentType || undefined,
           source: source || undefined,
+          delivery_provider: deliveryProvider || undefined,
           category_id: categoryId || undefined,
           location_id: operatingLocationId || undefined
         });
         if (!cancelled) {
           setReportData(payload);
-          saveOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, payload);
+          saveOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, payload, 'overview');
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -688,10 +789,16 @@ function PosReportsAnalyticsWorkspace({
       cancelled = true;
     };
   }, [
+    activeBreakdown,
     categoryId,
     cashierId,
+    breakdownLimit,
+    breakdownPage,
+    breakdownSort.sort_by,
+    breakdownSort.sort_direction,
     displayGranularity,
     isOnline,
+    isBreakdownTab,
     normalizedDateRange.dateFrom,
     normalizedDateRange.dateTo,
     offlineReportKey,
@@ -700,6 +807,7 @@ function PosReportsAnalyticsWorkspace({
     paymentType,
     reportRefreshKey,
     source,
+    deliveryProvider,
     activeTab
   ]);
 
@@ -849,20 +957,29 @@ function PosReportsAnalyticsWorkspace({
     ...entry,
     fill: CHART_COLORS[index % CHART_COLORS.length]
   }));
-  const isInitialLoading = loading && !reportData;
-  const isRefreshing = loading && Boolean(reportData);
-  const showBlockingError = Boolean(error) && !reportData;
-  const showInlineError = Boolean(error) && Boolean(reportData);
+  const deliveryProviderRows = parseDeliveryProviderSummary(dailyReport.delivery_provider_breakdown);
+  const activeReportData = isBreakdownTab ? breakdownData : reportData;
+  const activeLoading = isBreakdownTab ? breakdownLoading : loading;
+  const activeError = isBreakdownTab ? breakdownError : error;
+  const isInitialLoading = activeLoading && !activeReportData;
+  const isRefreshing = activeLoading && Boolean(activeReportData);
+  const showBlockingError = Boolean(activeError) && !activeReportData;
+  const showInlineError = Boolean(activeError) && Boolean(activeReportData);
 
-  const hasData = Boolean(reportData) && (
+  const hasData = isBreakdownTab
+    ? Boolean(breakdownData)
+    : Boolean(reportData) && (
     Number(summaryCards.total_transactions || 0) > 0
     || Number(summaryCards.total_sales || 0) > 0
     || Number(dailyReport.adjustment_summary?.adjustment_count || 0) > 0
     || (trendSeries || []).length > 0
     || (activeTab === 'operations' && Object.keys(cashierLifecycle || {}).length > 0)
   );
-  const shouldRenderReportPanel = activeTab === 'z_readings' || (Boolean(reportData) && (hasData || activeTab === 'overview'));
+  const shouldRenderReportPanel = isBreakdownTab
+    ? Boolean(breakdownData)
+    : activeTab === 'z_readings' || (Boolean(reportData) && (hasData || activeTab === 'overview'));
   const shouldShowOperationsSubtabs = activeTab === 'operations'
+    && !isBreakdownTab
     && !isInitialLoading
     && !showBlockingError
     && shouldRenderReportPanel;
@@ -884,6 +1001,9 @@ function PosReportsAnalyticsWorkspace({
   const selectedSourceLabel = source
     ? SOURCE_OPTIONS.find((option) => option.value === source)?.label || source
     : '';
+  const selectedDeliveryProviderLabel = deliveryProvider
+    ? DELIVERY_PROVIDER_FILTER_OPTIONS.find((option) => option.value === deliveryProvider)?.label || deliveryProvider
+    : '';
   const selectedCategory = categories.find((entry) => String(entry.folder_id) === String(categoryId));
   const activeReportFilterChips = useMemo(() => buildPosReportsActiveFilters({
     dateFilterApplied: reportDateFilterApplied,
@@ -893,6 +1013,7 @@ function PosReportsAnalyticsWorkspace({
     cashierLabel: cashierId ? reportCashierLabel : '',
     paymentLabel: selectedPaymentLabel,
     sourceLabel: selectedSourceLabel,
+    deliveryProviderLabel: selectedDeliveryProviderLabel,
     categoryLabel: categoryId ? (selectedCategory?.name || `Category #${categoryId}`) : '',
     searchQuery: overviewSearchQuery
   }), [
@@ -906,21 +1027,33 @@ function PosReportsAnalyticsWorkspace({
     selectedCategory?.name,
     selectedPaymentLabel,
     selectedReportTab.granularity,
-    selectedSourceLabel
+    selectedSourceLabel,
+    selectedDeliveryProviderLabel
   ]);
 
   const handleExportCsv = async () => {
     const selectedTab = REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0];
-    const { blob, filename } = await exportPosReportCsv({
+    const reportParams = {
       location_id: operatingLocationId || undefined,
       section: activeTab === 'operations' ? operationSection : selectedTab.exportSection,
-      granularity: displayGranularity,
       date_from: normalizedDateRange.dateFrom,
       date_to: normalizedDateRange.dateTo,
       cashier_id: cashierId || undefined,
       payment_type: paymentType || undefined,
       source: source || undefined,
+      delivery_provider: deliveryProvider || undefined,
       category_id: categoryId || undefined
+    };
+    if (selectedTab.breakdown) {
+      reportParams.page = breakdownPage;
+      reportParams.limit = breakdownLimit;
+      reportParams.sort_by = breakdownSort.sort_by;
+      reportParams.sort_direction = breakdownSort.sort_direction;
+    } else {
+      reportParams.granularity = displayGranularity;
+    }
+    const { blob, filename } = await exportPosReportCsv({
+      ...reportParams
     });
     downloadBlob(blob, filename);
   };
@@ -1041,9 +1174,101 @@ function PosReportsAnalyticsWorkspace({
 
   const handlePrint = () => {
     const isEmployeeCreditReport = activeTab === 'operations' && operationSection === 'employee_credit';
-    if (typeof window === 'undefined' || !reportData || (isEmployeeCreditReport && !employeeCreditReportData)) return;
+    if (typeof window === 'undefined' || !activeReportData || (isEmployeeCreditReport && !employeeCreditReportData)) return;
     const printWindow = window.open('', '_blank', 'width=1120,height=900');
     if (!printWindow) return;
+
+    if (isBreakdownTab) {
+      const breakdownRows = Array.isArray(breakdownData?.rows) ? breakdownData.rows : [];
+      const breakdownSummary = breakdownData?.summary || {};
+      const title = selectedReportTab.label;
+      const rowCells = (row) => {
+        if (activeBreakdown === 'hourly') {
+          return [
+            row.bucket_start_local,
+            row.transaction_count,
+            row.item_quantity,
+            money(row.gross_sales, currencySymbol),
+            money(row.net_sales, currencySymbol),
+            money(getPosReportRefundsVoidsDisplayValue(row.refunds_voids), currencySymbol),
+            money(row.profit, currencySymbol)
+          ];
+        }
+        if (activeBreakdown === 'items') {
+          return [
+            row.item_name,
+            row.sku || '—',
+            row.category_name || 'Uncategorized',
+            row.quantity,
+            row.orders,
+            money(row.net_sales, currencySymbol),
+            `${Number(row.sales_share || 0).toFixed(2)}%`,
+            money(row.profit, currencySymbol)
+          ];
+        }
+        return [
+          row.category_name || 'Uncategorized',
+          row.item_count,
+          row.quantity,
+          row.orders,
+          money(row.net_sales, currencySymbol),
+          `${Number(row.sales_share || 0).toFixed(2)}%`,
+          money(row.profit, currencySymbol)
+        ];
+      };
+      const headers = activeBreakdown === 'hourly'
+        ? ['Hour', 'Transactions', 'Items Sold', 'Gross Sales', 'Net Sales', 'Refunds/Voids', 'Profit']
+        : activeBreakdown === 'items'
+          ? ['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit']
+          : ['Category', 'Items', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit'];
+      const printableRows = breakdownRows.map((row) => `<tr>${rowCells(row).map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('');
+      const filterText = [
+        `Cashier: ${cashierId ? reportCashierLabel : 'All cashiers'}`,
+        `Payment: ${selectedPaymentLabel || 'All payments'}`,
+        `Source: ${selectedSourceLabel || 'All sources'}`,
+        `Category: ${categoryId ? (selectedCategory?.name || `Category #${categoryId}`) : 'All categories'}`
+      ].join(' · ');
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>${escapeHtml(title)}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
+              h1 { margin: 0 0 8px; font-size: 28px; }
+              p { margin: 0 0 10px; color: #475569; }
+              .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 20px 0; }
+              .card { border: 1px solid #cbd5e1; border-radius: 14px; padding: 14px; }
+              .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 700; }
+              .value { font-size: 20px; font-weight: 800; margin-top: 8px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+              th, td { border: 1px solid #e2e8f0; padding: 9px; font-size: 12px; text-align: left; }
+              th { background: #f8fafc; text-transform: uppercase; letter-spacing: 0.06em; }
+              @media print { .grid { grid-template-columns: repeat(5, 1fr); } }
+            </style>
+          </head>
+          <body>
+            <h1>${escapeHtml(title)}</h1>
+            <p>Range: ${escapeHtml(breakdownData?.range?.date_from || normalizedDateRange.dateFrom)} to ${escapeHtml(breakdownData?.range?.date_to || normalizedDateRange.dateTo)} · Timezone: ${escapeHtml(breakdownData?.timezone || 'Asia/Manila')}</p>
+            <p>Applied filters: ${escapeHtml(filterText)} · Generated: ${escapeHtml(printDateTime(breakdownData?.generated_at))}</p>
+            <div class="grid">
+              <div class="card"><div class="label">Net Sales</div><div class="value">${escapeHtml(money(breakdownSummary.net_sales, currencySymbol))}</div></div>
+              <div class="card"><div class="label">Gross Sales</div><div class="value">${escapeHtml(money(breakdownSummary.gross_sales, currencySymbol))}</div></div>
+              <div class="card"><div class="label">Transactions</div><div class="value">${Number(breakdownSummary.total_transactions || 0)}</div></div>
+              <div class="card"><div class="label">Items Sold</div><div class="value">${Number(breakdownSummary.total_items_sold || 0)}</div></div>
+              <div class="card"><div class="label">Profit</div><div class="value">${escapeHtml(money(breakdownSummary.profit ?? breakdownSummary.pos_profit_loss, currencySymbol))}</div></div>
+            </div>
+            <table>
+              <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+              <tbody>${printableRows || `<tr><td colspan="${headers.length}">No rows found.</td></tr>`}</tbody>
+            </table>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      return;
+    }
 
     if (activeTab === 'operations' && operationSection === 'employee_credit') {
       const employeeCreditEntries = employeeCreditReportData?.entries || [];
@@ -1137,9 +1362,17 @@ function PosReportsAnalyticsWorkspace({
         <td>${escapeHtml(printDateTime(entry.created_at))}</td>
         <td>${escapeHtml(entry.cashier_name || '-')}</td>
         <td>${escapeHtml(formatPosTransactionPaymentMethods(entry))}</td>
+        <td>${escapeHtml(Array.isArray(entry.delivery_provider_breakdown) ? entry.delivery_provider_breakdown.map((provider) => `${provider.display_label || provider.provider_name || provider.provider_type}: ${money(provider.amount, currencySymbol)}`).join(' + ') : '-')}</td>
         <td>${escapeHtml(entry.status || '-')}</td>
         <td style="text-align:right">${escapeHtml(money(entry.total_amount, currencySymbol))}</td>
         <td style="text-align:right">${escapeHtml(money(entry.net_sales, currencySymbol))}</td>
+      </tr>
+    `).join('');
+    const deliveryProviderPrintRows = deliveryProviderRows.map((entry) => `
+      <tr>
+        <td>${escapeHtml(formatDeliveryProviderSummaryLabel(entry))}</td>
+        <td style="text-align:right">${Number(entry.transaction_count || 0)}</td>
+        <td style="text-align:right">${escapeHtml(money(entry.amount, currencySymbol))}</td>
       </tr>
     `).join('');
     const zReadingPrint = zReadingReconciliation ? `
@@ -1197,8 +1430,15 @@ function PosReportsAnalyticsWorkspace({
           <div class="section">
             <h2>Filtered Transactions</h2>
             <table>
-              <thead><tr><th>Invoice</th><th>Datetime</th><th>Cashier</th><th>Payment</th><th>Status</th><th>Total</th><th>Reported Net Sales</th></tr></thead>
-              <tbody>${filteredTransactions || '<tr><td colspan="7">No transactions found.</td></tr>'}</tbody>
+              <thead><tr><th>Invoice</th><th>Datetime</th><th>Cashier</th><th>Payment</th><th>Delivery Provider</th><th>Status</th><th>Total</th><th>Reported Net Sales</th></tr></thead>
+              <tbody>${filteredTransactions || '<tr><td colspan="8">No transactions found.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="section">
+            <h2>Delivery Provider Breakdown</h2>
+            <table>
+              <thead><tr><th>Provider</th><th>Transactions</th><th>Amount</th></tr></thead>
+              <tbody>${deliveryProviderPrintRows || '<tr><td colspan="3">No delivery provider sales found.</td></tr>'}</tbody>
             </table>
           </div>
           <div class="section">
@@ -1228,9 +1468,11 @@ function PosReportsAnalyticsWorkspace({
       paymentOptions={PAYMENT_OPTIONS}
       source={source}
       sourceOptions={SOURCE_OPTIONS}
-        categoryId={categoryId}
-        categories={categories}
-        anchorRef={reportFilterButtonRef}
+      deliveryProvider={deliveryProvider}
+      deliveryProviderOptions={DELIVERY_PROVIDER_FILTER_OPTIONS}
+      categoryId={categoryId}
+      categories={categories}
+      anchorRef={reportFilterButtonRef}
       />
   );
 
@@ -1256,8 +1498,8 @@ function PosReportsAnalyticsWorkspace({
       onClearAllFilters={handleClearAllFilters}
       onPrint={handlePrint}
       onExport={handleExportCsv}
-      exportDisabled={!reportData}
-      printDisabled={!reportData || (activeTab === 'operations' && operationSection === 'employee_credit' && !employeeCreditReportData)}
+      exportDisabled={!activeReportData}
+      printDisabled={!activeReportData || (activeTab === 'operations' && operationSection === 'employee_credit' && !employeeCreditReportData)}
       filtersOpen={reportFiltersOpen}
       dateFilterOpen={reportDateFilterOpen}
       filterButtonRef={reportFilterButtonRef}
@@ -1350,44 +1592,67 @@ function PosReportsAnalyticsWorkspace({
     </>
   );
 
-  const renderTrendAndPaymentBreakdown = () => (
-    <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-      <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : displayGranularity === 'yearly' ? 'Yearly Breakdown' : displayGranularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
-        <div className="h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={trendSeries}>
-              <defs>
-                <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563EB" stopOpacity={0.28} />
-                  <stop offset="95%" stopColor="#2563EB" stopOpacity={0.03} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-              <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
-              <YAxis stroke="#64748B" fontSize={11} />
-              <Tooltip formatter={(value) => money(value, currencySymbol)} />
-              <Area type="monotone" dataKey="net_sales" stroke="#2563EB" fill="url(#reportTrendFill)" strokeWidth={2.5} />
-            </AreaChart>
-          </ResponsiveContainer>
+  const renderDeliveryProviderBreakdown = () => (
+    <SectionCard title="Delivery Provider Breakdown">
+      {deliveryProviderRows.length === 0 ? (
+        <p className="text-sm font-semibold text-slate-500">No delivery provider sales were recorded for the selected filters.</p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {deliveryProviderRows.map((entry) => (
+            <div key={`${entry.provider_type}-${entry.provider_name || ''}`} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+              <div>
+                <p className="text-sm font-black text-slate-900">{formatDeliveryProviderSummaryLabel(entry)}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{Number(entry.transaction_count || 0).toLocaleString('en-US')} transactions</p>
+              </div>
+              <p className="text-sm font-black tabular-nums text-[#1A4E8D]">{money(entry.amount, currencySymbol)}</p>
+            </div>
+          ))}
         </div>
-      </SectionCard>
+      )}
+    </SectionCard>
+  );
 
-      <SectionCard title="Payment Breakdown">
-        <div className="h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={paymentChartRows}>
-              <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-              <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
-              <YAxis stroke="#64748B" fontSize={11} />
-              <Tooltip formatter={(value) => money(value, currencySymbol)} />
-              <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
-                {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </SectionCard>
-    </div>
+  const renderTrendAndPaymentBreakdown = () => (
+    <>
+      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
+        <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : displayGranularity === 'yearly' ? 'Yearly Breakdown' : displayGranularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendSeries}>
+                <defs>
+                  <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0.03} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
+                <YAxis stroke="#64748B" fontSize={11} />
+                <Tooltip formatter={(value) => money(value, currencySymbol)} />
+                <Area type="monotone" dataKey="net_sales" stroke="#2563EB" fill="url(#reportTrendFill)" strokeWidth={2.5} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Payment Breakdown">
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={paymentChartRows}>
+                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
+                <YAxis stroke="#64748B" fontSize={11} />
+                <Tooltip formatter={(value) => money(value, currencySymbol)} />
+                <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
+                  {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+      </div>
+      {renderDeliveryProviderBreakdown()}
+    </>
   );
 
   return (
@@ -1407,6 +1672,7 @@ function PosReportsAnalyticsWorkspace({
           activeTab={activeTab}
           onTabChange={handleTabChange}
           ariaLabel="POS reports"
+          hideScrollbar
           idPrefix={(tabId) => `${sectionId || 'pos-reports'}-${tabId}-tab`}
           panelId={`${sectionId || 'pos-reports'}-panel`}
         />
@@ -1454,14 +1720,14 @@ function PosReportsAnalyticsWorkspace({
 
       {activeTab !== 'z_readings' && showInlineError ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-          {error}
+          {activeError}
         </div>
       ) : null}
 
       {activeTab !== 'z_readings' && isInitialLoading ? (
         <EmptyState message="Loading POS reports..." />
       ) : activeTab !== 'z_readings' && showBlockingError ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm font-semibold text-rose-700">{error}</div>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm font-semibold text-rose-700">{activeError}</div>
       ) : !shouldRenderReportPanel ? (
         <EmptyState message="No POS report data found for the selected filters." />
       ) : (
@@ -1486,6 +1752,35 @@ function PosReportsAnalyticsWorkspace({
 
           <div className={isRefreshing ? 'opacity-80 transition-opacity' : 'transition-opacity'}>
 
+          {renderedReportTab.breakdown && isBreakdownTab ? (
+            <div className="space-y-4">
+              <PosReportsBreakdownSummary
+                breakdown={renderedReportTab.breakdown}
+                data={breakdownData}
+                currencySymbol={currencySymbol}
+                stale={breakdownOffline}
+              />
+              <PosReportsBreakdownTable
+                breakdown={renderedReportTab.breakdown}
+                data={breakdownData}
+                currencySymbol={currencySymbol}
+                searchQuery={overviewSearchQuery}
+                sort={breakdownSort}
+                onSortChange={(nextSort) => {
+                  setBreakdownSort(nextSort);
+                  setBreakdownPage(1);
+                }}
+                onPageChange={setBreakdownPage}
+                onPageSizeChange={(nextLimit) => {
+                  setBreakdownLimit(nextLimit);
+                  setBreakdownPage(1);
+                }}
+                loading={breakdownLoading}
+                disabled={breakdownOffline}
+              />
+            </div>
+          ) : null}
+
           {renderedTab === 'overview' ? (
             <div className="space-y-4">
               <PosReportsOverviewTable
@@ -1493,7 +1788,7 @@ function PosReportsAnalyticsWorkspace({
                 currencySymbol={currencySymbol}
                 searchQuery={overviewSearchQuery}
               />
-
+              {renderDeliveryProviderBreakdown()}
             </div>
           ) : null}
 
@@ -1620,6 +1915,7 @@ function PosReportsAnalyticsWorkspace({
                 emptyMessage="No shared-access or counted handoffs were recorded for these filters."
                 searchEmptyMessage="No handoff timeline rows match your search."
                 resultLabel="handoff events"
+                showActions={false}
               />
             </div>
           ) : null}

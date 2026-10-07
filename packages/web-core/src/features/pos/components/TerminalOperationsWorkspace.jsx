@@ -3,10 +3,20 @@ import StorefrontSectionInfo from '../settings/StorefrontSectionInfo.jsx';
 import PosFnbSelect from './PosFnbSelect.jsx';
 import PosSearchField from './PosSearchField.jsx';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
 import { createPortal } from 'react-dom';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core';
 import {
   AlertCircle,
   AlertTriangle,
@@ -53,13 +63,14 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { GlobalPagination } from '@/components/ui/pagination';
+import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
 const CSVImportModal = lazyWithChunkRetry(() => import('@/components/items/CSVImportModal.jsx'));
 import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
+  acquireModalScrollLock,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -70,7 +81,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { acquireModalScrollLock } from '@/components/ui/dialog';
 import { useCreateItem, useDeleteItem, useUpdateItem } from '@/hooks/useItems.js';
 import {
   attachItemBarcode,
@@ -83,7 +93,8 @@ import {
   lookupExternalProduct,
   replaceItemFolders,
   updateItemBarcode,
-  updateFolder
+  updateFolder,
+  reorderFolders
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import {
@@ -2103,13 +2114,21 @@ function EditableFoodCategoryCombobox({
       const rect = input.getBoundingClientRect();
       const menuMaxHeight = 184;
       const viewportPadding = 8;
-      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
-      const spaceAbove = rect.top - viewportPadding;
+      const scrollRegion = containerRef.current.closest('.pos-items-modal-scroll-region');
+      const scrollRegionRect = scrollRegion?.getBoundingClientRect();
+      const boundaryTop = scrollRegionRect
+        ? Math.max(viewportPadding, scrollRegionRect.top + viewportPadding)
+        : viewportPadding;
+      const boundaryBottom = scrollRegionRect
+        ? Math.min(window.innerHeight - viewportPadding, scrollRegionRect.bottom - viewportPadding)
+        : window.innerHeight - viewportPadding;
+      const spaceBelow = boundaryBottom - rect.bottom - 4;
+      const spaceAbove = rect.top - boundaryTop - 4;
       const openUpward = spaceBelow < menuMaxHeight && spaceAbove > spaceBelow;
       const availableHeight = Math.max(96, Math.min(menuMaxHeight, openUpward ? spaceAbove : spaceBelow));
 
       setListboxPosition({
-        top: openUpward ? Math.max(viewportPadding, rect.top - availableHeight - 4) : rect.bottom + 4,
+        top: openUpward ? Math.max(boundaryTop, rect.top - availableHeight - 4) : rect.bottom + 4,
         left: rect.left,
         width: rect.width,
         maxHeight: availableHeight
@@ -2178,12 +2197,14 @@ function EditableFoodCategoryCombobox({
           id={`${id}-listbox`}
           role="listbox"
           aria-label="Food categories"
-          className="pos-items-catalog-category-menu fixed z-[10050] rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+           className="pos-items-catalog-category-menu fixed z-[10050] rounded-lg border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/15"
           style={{
             top: listboxPosition.top,
             left: listboxPosition.left,
             width: listboxPosition.width,
-            maxHeight: listboxPosition.maxHeight
+            maxHeight: listboxPosition.maxHeight,
+            overflowX: 'hidden',
+            overflowY: 'auto'
           }}
         >
           {filteredOptions.length > 0 ? filteredOptions.map((option) => (
@@ -2192,10 +2213,10 @@ function EditableFoodCategoryCombobox({
               type="button"
               role="option"
               aria-selected={normalizeFolderNameKey(option.name) === normalizedValue}
-              className="flex min-h-8 w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-[#0F172A] hover:bg-blue-50 focus:bg-blue-50 focus:outline-none sm:text-sm"
+              className={`pos-items-dropdown-option flex min-h-8 w-full items-center rounded-md px-2.5 py-1.5 text-left text-[12px] transition-colors focus:outline-none ${normalizeFolderNameKey(option.name) === normalizedValue ? 'bg-blue-50 font-bold text-[#1A4E8D]' : 'text-[#0F172A] hover:bg-blue-50 focus:bg-blue-50'}`}
               onClick={() => selectOption(option)}
             >
-              {option.label}
+              <span className="min-w-0 truncate">{option.label}</span>
             </button>
           )) : (
             <p className="px-3 py-2 text-xs text-slate-500">No existing category matches. Save to create “{value.trim()}”.</p>
@@ -2311,13 +2332,21 @@ function ItemsWorkspace({
   isOnline = true,
   onQueueOfflineItemDraft = async () => '',
   operatingLocationId = null,
+  availableLocations = [],
+  locationsLoading = false,
   storefrontSlug = '',
-  sectionId
+  sectionId,
+  refreshTerminalUser = async () => {},
+  createModalOpen = null,
+  onCreateModalOpenChange = () => {},
+  onItemCreated = () => {},
+  modalOnly = false
 }) {
   const [items, setItems] = useState([]);
   const [itemsTotal, setItemsTotal] = useState(0);
   const itemsReadSequence = useRef(0);
   const itemsLoaded = useRef(false);
+  const scopedItemsCache = useRef(new Map());
   const [primaryBarcodes, setPrimaryBarcodes] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -2328,7 +2357,10 @@ function ItemsWorkspace({
   // enabled; both flags default OFF and are independently killable.
   const menuImportBatchEnabled = isMenuImportBatchEnabled();
   const menuImportEntryEnabled = pdfMenuImportEnabled || menuImportBatchEnabled;
-  const menuImportButtonLabel = menuImportBatchEnabled ? 'Import Menu' : 'Import from PDF';
+  // Use the shared menu-import label for both supported local import paths. The
+  // feature flags still decide whether the entry point is rendered and which
+  // importer modal is opened.
+  const menuImportButtonLabel = 'Import Menu';
   const [showCsvImport, setShowCsvImport] = useState(false);
   const { updateItem, loading: savingItem } = useUpdateItem();
   const { deleteItem, loading: deletingItem } = useDeleteItem();
@@ -2373,6 +2405,7 @@ function ItemsWorkspace({
   const [focusedEditMoneyField, setFocusedEditMoneyField] = useState('');
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
   const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
+  const [editPermissionDenied, setEditPermissionDenied] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2418,6 +2451,7 @@ function ItemsWorkspace({
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
+  const [selectedCreatePrimaryFile, setSelectedCreatePrimaryFile] = useState(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [externalBarcode, setExternalBarcode] = useState('');
   const [externalLookupLoading, setExternalLookupLoading] = useState(false);
@@ -2467,6 +2501,15 @@ function ItemsWorkspace({
 
   const loadItems = useCallback(async () => {
     const sequence = ++itemsReadSequence.current;
+    if (modalOnly) {
+      itemsLoaded.current = true;
+      setItems([]);
+      setItemsTotal(0);
+      setPrimaryBarcodes({});
+      setLoading(false);
+      setError('');
+      return;
+    }
     if (!canViewPos || locked) {
       itemsLoaded.current = false;
       setItems([]);
@@ -2474,6 +2517,52 @@ function ItemsWorkspace({
       setPrimaryBarcodes({});
       setError('');
       setLoading(false);
+      return;
+    }
+
+    // A loaded location list without a selected location is still an
+    // incomplete scope. Do not send an unscoped catalog request during the
+    // short render between those two state updates; the API must reject it.
+    const scopedLocationId = Number(operatingLocationId || 0);
+    const hasValidOperatingLocation = Number.isInteger(scopedLocationId)
+      && scopedLocationId > 0
+      && (availableLocations.length === 0
+        || availableLocations.some((location) => (
+          Number(location?.location_id) === scopedLocationId
+        )));
+    const scopedItemsCacheKey = hasValidOperatingLocation
+      ? JSON.stringify({
+        locationId: scopedLocationId,
+        search: deferredItemsSearch,
+        page: itemsPage,
+        pageSize: itemsPageSize,
+        categoryFilter,
+        stockFilter
+      })
+      : '';
+    const cachedItems = scopedItemsCacheKey
+      ? scopedItemsCache.current.get(scopedItemsCacheKey)
+      : null;
+
+    if (locationsLoading || !hasValidOperatingLocation) {
+      if (cachedItems) {
+        setItems(cachedItems.items);
+        setItemsTotal(cachedItems.total);
+        loadPrimaryBarcodes(cachedItems.items);
+        itemsLoaded.current = true;
+        setError('');
+        setLoading(false);
+      } else {
+        // Never replace an unavailable location-scoped response with the
+        // tenant-wide inventory endpoint. That endpoint is not a safe POS
+        // fallback because it is intentionally not location-scoped.
+        itemsLoaded.current = false;
+        setItems([]);
+        setItemsTotal(0);
+        setPrimaryBarcodes({});
+        setLoading(locationsLoading);
+        setError(locationsLoading ? '' : 'Select an authorized location to load POS items.');
+      }
       return;
     }
 
@@ -2486,21 +2575,37 @@ function ItemsWorkspace({
         page_size: itemsPageSize,
         category_filter: categoryFilter,
         stock_filter: stockFilter,
-        ...(operatingLocationId ? { location_id: operatingLocationId } : {})
+        location_id: scopedLocationId
       });
       if (itemsReadSequence.current !== sequence) return;
       const catalogItems = Array.isArray(data?.items) ? data.items : [];
       setItems(catalogItems);
       setItemsTotal(Number(data?.pagination?.total || 0));
+      scopedItemsCache.current.set(scopedItemsCacheKey, {
+        items: catalogItems,
+        total: Number(data?.pagination?.total || 0)
+      });
       itemsLoaded.current = true;
       loadPrimaryBarcodes(catalogItems);
     } catch (loadError) {
       if (itemsReadSequence.current !== sequence) return;
-      setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
+      if (cachedItems) {
+        setItems(cachedItems.items);
+        setItemsTotal(cachedItems.total);
+        loadPrimaryBarcodes(cachedItems.items);
+        itemsLoaded.current = true;
+        setError('');
+      } else {
+        itemsLoaded.current = false;
+        setItems([]);
+        setItemsTotal(0);
+        setPrimaryBarcodes({});
+        setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
+      }
     } finally {
       if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [canViewPos, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locked, operatingLocationId, stockFilter]);
+  }, [availableLocations, canViewPos, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locationsLoading, locked, modalOnly, operatingLocationId, stockFilter]);
 
   useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
   const normalizePosFolders = useCallback((rows = []) => (
@@ -2516,7 +2621,7 @@ function ItemsWorkspace({
   ), []);
 
   const loadPosFolders = useCallback(async () => {
-    if (!canViewPos) {
+    if (!canViewPos && !modalOnly) {
       setPosFolders([]);
       return [];
     }
@@ -2529,7 +2634,7 @@ function ItemsWorkspace({
       setPosFolders([]);
       return [];
     }
-  }, [canViewPos, normalizePosFolders]);
+  }, [canViewPos, modalOnly, normalizePosFolders]);
 
   useEffect(() => {
     loadItems();
@@ -2737,9 +2842,20 @@ function ItemsWorkspace({
   };
 
   const openMobileFilters = () => {
+    setShowDesktopFilters(false);
+    setDesktopFilterPosition(null);
     setDraftCategoryFilter(categoryFilter);
     setDraftStockFilter(stockFilter);
     setShowMobileFilters(true);
+  };
+
+  const toggleDesktopFilters = () => {
+    setShowMobileFilters(false);
+    if (!showDesktopFilters) {
+      setDraftCategoryFilter(categoryFilter);
+      setDraftStockFilter(stockFilter);
+    }
+    setShowDesktopFilters((visible) => !visible);
   };
 
   const applyMobileFilters = () => {
@@ -2755,7 +2871,7 @@ function ItemsWorkspace({
     setStockFilter('all');
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!showDesktopFilters || typeof window === 'undefined') {
       setDesktopFilterPosition(null);
       return undefined;
@@ -3072,6 +3188,7 @@ function ItemsWorkspace({
       : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
     setEditingItemSnapshot(item || null);
+    setEditPermissionDenied(false);
     setFocusedEditMoneyField('');
     const savedBarcode = primaryBarcodes[String(item?.item_id)] || item?.primary_barcode || null;
     const savedBarcodeCode = String(savedBarcode?.code || '').trim();
@@ -3107,6 +3224,7 @@ function ItemsWorkspace({
     cancelImageGenerationPoll();
     setEditingItemId(null);
     setEditingItemSnapshot(null);
+    setEditPermissionDenied(false);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
@@ -3138,6 +3256,7 @@ function ItemsWorkspace({
     setSelectedCreateModifierOptionKeys([]);
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setSelectedCreatePrimaryFile(null);
     setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
@@ -3147,6 +3266,7 @@ function ItemsWorkspace({
     setExternalQrScannerOpen(false);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
+    onCreateModalOpenChange(true);
   };
 
   const closeCreate = ({ force = false } = {}) => {
@@ -3157,6 +3277,7 @@ function ItemsWorkspace({
     setSelectedCreateModifierOptionKeys([]);
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setSelectedCreatePrimaryFile(null);
     setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
@@ -3165,21 +3286,42 @@ function ItemsWorkspace({
     setAcceptedExternalProduct(null);
     setExternalQrScannerOpen(false);
     if (force) setPendingCreateRecovery(null);
+    onCreateModalOpenChange(false);
   };
 
   useEffect(() => {
-    if (!showCreateModal && !activeEditItem) return undefined;
+    if (createModalOpen === true && !showCreateModal) {
+      openCreate();
+    } else if (createModalOpen === false && showCreateModal) {
+      closeCreate({ force: true });
+    }
+    // This effect is the optional controlled bridge used by the OPIS catalog.
+    // POS keeps the existing internal open/close behavior by leaving the prop null.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createModalOpen]);
+
+  const closeEditRef = useRef(closeEdit);
+  closeEditRef.current = closeEdit;
+  const closeCreateRef = useRef(closeCreate);
+  closeCreateRef.current = closeCreate;
+  const externalQrScannerOpenRef = useRef(externalQrScannerOpen);
+  externalQrScannerOpenRef.current = externalQrScannerOpen;
+  const editItemModalOpen = Boolean(activeEditItem);
+
+  useEffect(() => {
+    if (!showCreateModal && !editItemModalOpen) return undefined;
+
     const releaseScrollLock = acquireModalScrollLock();
     const handleKeyDown = (event) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || (showCreateModal && externalQrScannerOpenRef.current)) return;
       if (showCreateModal && !creatingItem && !postCreateSaving) {
         event.preventDefault();
-        closeCreate();
+        closeCreateRef.current();
         return;
       }
-      if (activeEditItem && !savingItem && !persistingEditAssets) {
+      if (editItemModalOpen && !savingItem && !persistingEditAssets) {
         event.preventDefault();
-        closeEdit();
+        closeEditRef.current();
       }
     };
     document.addEventListener('keydown', handleKeyDown, true);
@@ -3187,7 +3329,7 @@ function ItemsWorkspace({
       document.removeEventListener('keydown', handleKeyDown, true);
       releaseScrollLock();
     };
-  }, [activeEditItem, creatingItem, persistingEditAssets, postCreateSaving, savingItem, showCreateModal]);
+  }, [creatingItem, editItemModalOpen, persistingEditAssets, postCreateSaving, savingItem, showCreateModal]);
 
   const parseMoneyValue = (rawValue) => Number(String(rawValue || '').trim());
 
@@ -3198,7 +3340,7 @@ function ItemsWorkspace({
   );
 
   const handleSave = async () => {
-    if (!activeEditItem) return;
+    if (!activeEditItem || !canEditItems || editPermissionDenied) return;
 
     const editItemId = activeEditItem.item_id;
     let editSaveStage = 'item_details';
@@ -3312,6 +3454,14 @@ function ItemsWorkspace({
         action: 'updated'
       });
     } catch (updateError) {
+      if (editSaveStage === 'item_details' && updateError?.response?.status === 403) {
+        setEditPermissionDenied(true);
+        try {
+          await refreshTerminalUser({ suppressGlobalErrors: true });
+        } catch {
+          // Keep the item's draft open and locked even if the permission refresh itself fails.
+        }
+      }
       toast.error(resolveEditItemSaveError(updateError, editSaveStage).message);
     } finally {
       setPersistingEditAssets(false);
@@ -3330,14 +3480,25 @@ function ItemsWorkspace({
     if (normalizedFiles.length > remainingSlots) {
       toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected.`);
     }
-    setSelectedImageFiles((current) => [
-      ...current,
-      ...normalizedFiles.slice(0, remainingSlots)
-    ]);
+    setSelectedImageFiles((current) => {
+      const availableSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - current.length);
+      return [
+        ...current,
+        ...normalizedFiles.slice(0, availableSlots)
+      ];
+    });
   };
 
   const removeSelectedCreateImageFile = (imageIndex) => {
+    const removedFile = selectedImageFiles[imageIndex];
+    if (removedFile === selectedCreatePrimaryFile) {
+      setSelectedCreatePrimaryFile(null);
+    }
     setSelectedImageFiles((current) => current.filter((_, index) => index !== imageIndex));
+  };
+
+  const handleSetPendingCreatePrimary = (file) => {
+    setSelectedCreatePrimaryFile(file || null);
   };
 
   const handleExternalBarcodeChange = (value) => {
@@ -3425,20 +3586,24 @@ function ItemsWorkspace({
       return;
     }
     const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
-    const filesToPreview = normalizedFiles.slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT);
+    const remainingSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount);
+    const filesToPreview = normalizedFiles.slice(0, remainingSlots);
+    if (filesToPreview.length === 0) {
+      setSelectedEditImageFiles([]);
+      setDeferredEditImageFiles([]);
+      setSelectedEditPrimaryFile(null);
+      toast.error(`Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images are allowed per item. Remove an existing image before adding another.`);
+      return;
+    }
     if (normalizedFiles.length > filesToPreview.length) {
-      toast.error(`Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} pending images can be selected at once.`);
+      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected.`);
     }
 
-    // Always mount the local preview first. If legacy data already exceeds
-    // the gallery limit, the selected files stay deferred until the operator
-    // removes enough existing images; no existing image is deleted silently.
+    // Preview only images that fit the remaining gallery slots. Existing
+    // over-limit images stay visible and removable; never stage a sixth image.
     setSelectedEditImageFiles(filesToPreview);
     setDeferredEditImageFiles(filesToPreview);
     setSelectedEditPrimaryFile(null);
-    if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) {
-      toast.info('Preview shown. Remove existing images to make room; upload will continue automatically.');
-    }
   };
 
   const handleRemoveSelectedEditImageFile = (imageIndex) => {
@@ -3671,6 +3836,9 @@ function ItemsWorkspace({
     const price = parseMoneyValue(createForm.default_sale_price);
     const cost = parseMoneyValue(createForm.cost_per_unit);
     const stock = Number(String(createForm.current_stock || '0').trim());
+    const createImageFiles = selectedCreatePrimaryFile && selectedImageFiles.includes(selectedCreatePrimaryFile)
+      ? [selectedCreatePrimaryFile, ...selectedImageFiles.filter((file) => file !== selectedCreatePrimaryFile)]
+      : selectedImageFiles;
     const skuCode = String(createForm.sku_code || '').trim();
     const selectedModifierGroupIds = selectedCreateModifierGroupIds;
     const typedCategoryName = String(createCategoryInput || '').trim().replace(/\s+/g, ' ');
@@ -3772,11 +3940,12 @@ function ItemsWorkspace({
       return;
     }
 
-    const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created' } = {}) => {
+    const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created', item = null } = {}) => {
       closeCreate({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
       notifyPosCatalogUpdated();
       setSavedMessage({ name, barcode, action });
+      onItemCreated(item);
       if (warningMessage) {
         toast.warning(warningMessage);
       }
@@ -3790,7 +3959,7 @@ function ItemsWorkspace({
         const result = await runPostCreateStages({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
-          imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
+          imageFiles: pendingCreateRecovery.imageFiles || createImageFiles,
           externalProductCode: pendingCreateRecovery.externalProductCode || '',
           requestedBarcodeCode: pendingCreateRecovery.requestedBarcodeCode || '',
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
@@ -3822,7 +3991,7 @@ function ItemsWorkspace({
       const result = await runPostCreateStages({
         itemId,
         itemName: name,
-        imageFiles: selectedImageFiles,
+        imageFiles: createImageFiles,
         externalProductCode: selectedImageFiles.length === 0 && acceptedExternalProduct?.product?.image_url
           ? acceptedExternalProduct.code
           : '',
@@ -3832,7 +4001,7 @@ function ItemsWorkspace({
         modifierGroupIds: selectedModifierGroupIds,
       });
 
-      await finalizeCreatedItem({ barcode: result.barcodeCode });
+      await finalizeCreatedItem({ barcode: result.barcodeCode, item: createdItem });
       toast.success('POS item created.');
     } catch (createError) {
       if (pendingCreateRecovery?.itemId || /post-create steps still need retry/i.test(String(createError?.message || ''))) {
@@ -3885,7 +4054,7 @@ function ItemsWorkspace({
   }
 
   return (
-    <div id={sectionId} className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-3 overflow-hidden">
+    <div id={sectionId} className={modalOnly ? 'hidden' : 'flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-3 overflow-hidden'}>
       <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-none max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:shadow-none sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
         <div className="relative">
           <div className="pos-items-desktop-toolbar hidden items-center gap-2 sm:flex">
@@ -3902,33 +4071,25 @@ function ItemsWorkspace({
             <div className="pos-items-desktop-actions flex shrink-0 flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
-                variant={showDesktopFilters || hasActiveItemsFilters ? 'default' : 'outline'}
+                variant="default"
                 ref={desktopFilterButtonRef}
-                onClick={() => {
-                  if (!showDesktopFilters) {
-                    setDraftCategoryFilter(categoryFilter);
-                    setDraftStockFilter(stockFilter);
-                  }
-                  setShowDesktopFilters((visible) => !visible);
-                }}
-                className={showDesktopFilters || hasActiveItemsFilters
-                   ? 'pos-filter-trigger h-9 rounded-lg bg-[#1A4E8D] px-3 text-[13px] text-white hover:bg-[#143F73]'
-                   : 'pos-filter-trigger h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] text-[#1A4E8D] hover:bg-[#1A4E8D]/5 active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white'}
+                onClick={toggleDesktopFilters}
+                className="pos-filter-trigger pos-items-primary-action h-9 rounded-lg bg-[#1A4E8D] px-3 text-[13px] text-white hover:bg-[#143F73] active:bg-[#143F73]"
                 aria-expanded={showDesktopFilters}
                 aria-pressed={showDesktopFilters || hasActiveItemsFilters}
                 aria-controls="pos-items-desktop-filters"
               >
-                <Filter className="mr-1.5 h-3.5 w-3.5" />
+                <Filter className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                 Filter
               </Button>
               {canCreateItems ? (
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="default"
                   onClick={openCreate}
                   disabled={locked || creatingItem}
                   aria-pressed={showCreateModal}
-                  className={`h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] shadow-none active:bg-[#1A4E8D] active:text-white ${showCreateModal ? 'bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-white text-[#1A4E8D] hover:bg-[#1A4E8D]/5'}`}
+                  className="pos-items-primary-action h-9 rounded-lg border-[#1A4E8D] bg-[#1A4E8D] px-3 text-[13px] text-white shadow-none hover:bg-[#143F73] active:bg-[#143F73]"
                 >
                   <Plus className="mr-1.5 h-3.5 w-3.5" />
                   Add Items
@@ -3942,7 +4103,7 @@ function ItemsWorkspace({
                   disabled={locked || !isOnline}
                   aria-pressed={showCsvImport}
                   title={!isOnline ? 'Reconnect to import items.' : 'Import items using the IMS CSV template.'}
-                  className={`h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] active:bg-[#1A4E8D] active:text-white ${showCsvImport ? 'bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-white text-[#1A4E8D] hover:bg-[#1A4E8D]/5'}`}
+                  className={`pos-items-desktop-import-button h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] active:bg-[#1A4E8D] active:text-white ${showCsvImport ? 'bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-white text-[#1A4E8D] hover:bg-[#1A4E8D]/5'}`}
                 >
                   <Upload className="mr-1.5 h-3.5 w-3.5" />
                   Import Items
@@ -3955,7 +4116,7 @@ function ItemsWorkspace({
                   onClick={() => setShowPdfMenuImport(true)}
                   disabled={locked}
                   aria-pressed={showPdfMenuImport}
-                  className={`h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] active:bg-[#1A4E8D] active:text-white ${showPdfMenuImport ? 'bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-white text-[#1A4E8D] hover:bg-[#1A4E8D]/5'}`}
+                  className={`pos-items-desktop-import-button h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] active:bg-[#1A4E8D] active:text-white ${showPdfMenuImport ? 'bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-white text-[#1A4E8D] hover:bg-[#1A4E8D]/5'}`}
                 >
                   <Upload className="mr-1.5 h-3.5 w-3.5" />
                   {menuImportButtonLabel}
@@ -3972,15 +4133,10 @@ function ItemsWorkspace({
               className="pos-filter-surface pos-filter-surface--extended fixed z-40 hidden max-h-[min(90vh,48rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-900/20 sm:flex"
               style={desktopFilterPosition || undefined}
             >
-              <div className="pos-filter-surface-header pos-filter-surface-header--extended -mx-px -mt-px flex shrink-0 flex-row items-center justify-between gap-3 rounded-t-[17px] border-b px-4 py-2.5 text-white sm:px-5">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
-                    <Filter className="h-4 w-4" aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0">
-                    <p id="pos-items-filter-title" className="pos-filter-surface-title pos-filter-surface-title--extended truncate text-sm font-black">Filter</p>
-                    <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">Refine your Item list</p>
-                  </div>
+              <div className="pos-filter-surface-header pos-filter-surface-header--extended flex shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-[#0F172A]">
+                <div className="min-w-0 flex-1">
+                  <p id="pos-items-filter-title" className="pos-filter-surface-title pos-filter-surface-title--extended truncate text-xl font-bold leading-6 tracking-tight">Filter</p>
+                  <p className="mt-1 max-w-full break-words text-sm leading-5 text-slate-500">Refine your item list</p>
                 </div>
                 <Button
                   type="button"
@@ -3988,9 +4144,9 @@ function ItemsWorkspace({
                   size="icon"
                   onClick={() => setShowDesktopFilters(false)}
                   aria-label="Close item filters"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D]"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
 
@@ -4013,12 +4169,14 @@ function ItemsWorkspace({
                             type="button"
                             role="radio"
                             aria-checked={isSelected}
+                            aria-label={`Category: ${label}`}
+                            title={label}
                             onClick={() => setDraftCategoryFilter(option)}
-                            className={`pos-filter-choice inline-flex h-8 w-full min-w-0 items-center justify-center whitespace-nowrap rounded-lg border px-2 py-1 text-center text-[10px] font-extrabold leading-none transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${isSelected
+                            className={`pos-filter-choice inline-flex min-h-8 h-auto w-full min-w-0 items-center justify-center rounded-lg border px-2 py-1 text-center text-[10px] font-extrabold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${isSelected
                               ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
                               : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'}`}
                           >
-                            {label}
+                            <span className="min-w-0 max-w-full whitespace-normal break-words text-center">{label}</span>
                           </button>
                         );
                       })}
@@ -4036,12 +4194,14 @@ function ItemsWorkspace({
                             type="button"
                             role="radio"
                             aria-checked={isSelected}
+                            aria-label={`Stock level: ${label}`}
+                            title={label}
                             onClick={() => setDraftStockFilter(value)}
-                            className={`pos-filter-choice inline-flex h-8 w-full min-w-0 items-center justify-center whitespace-nowrap rounded-lg border px-2 py-1 text-center text-[10px] font-extrabold leading-none transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${isSelected
+                            className={`pos-filter-choice inline-flex min-h-8 h-auto w-full min-w-0 items-center justify-center rounded-lg border px-2 py-1 text-center text-[10px] font-extrabold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${isSelected
                               ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
                               : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'}`}
                           >
-                            {label}
+                            <span className="min-w-0 max-w-full whitespace-normal break-words text-center">{label}</span>
                           </button>
                         );
                       })}
@@ -4069,7 +4229,7 @@ function ItemsWorkspace({
                     type="button"
                     variant="outline"
                     onClick={resetDesktopFilters}
-                    className="h-10 min-w-0 flex-1 rounded-lg border-[#1A4E8D] bg-white px-3 text-[13px] font-extrabold text-[#1A4E8D] shadow-sm hover:bg-blue-50"
+                    className="pos-items-reset-action h-10 min-w-0 flex-1 rounded-lg px-3 text-[13px] font-extrabold shadow-sm hover:bg-[#fff1f2] hover:text-[#9f1239]"
                   >
                     <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
                     Reset All
@@ -4098,7 +4258,7 @@ function ItemsWorkspace({
                 onClear={() => setSearchQuery('')}
                 placeholder="Search"
                 className="w-full"
-                inputClassName="h-11 rounded-2xl text-base shadow-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
+                inputClassName="h-11 rounded-2xl border-[#1A4E8D] bg-white pl-9 pr-10 text-base text-[#0F172A] placeholder:text-slate-300 shadow-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <button
@@ -4108,7 +4268,7 @@ function ItemsWorkspace({
               aria-expanded={showMobileFilters}
               aria-controls="pos-items-mobile-filter-dialog"
               aria-pressed={showMobileFilters || hasActiveItemsFilters}
-              className={`pos-items-mobile-icon-button ${showMobileFilters || hasActiveItemsFilters ? 'pos-items-mobile-icon-button--active' : ''}`}
+              className={`pos-items-mobile-icon-button pos-items-mobile-primary-button ${showMobileFilters || hasActiveItemsFilters ? 'pos-items-mobile-icon-button--active' : ''}`}
             >
               <Filter aria-hidden="true" />
             </button>
@@ -4118,23 +4278,40 @@ function ItemsWorkspace({
                 onClick={openCreate}
                 disabled={locked || creatingItem}
                 aria-label="Add item"
-                className="pos-items-mobile-icon-button"
+                className="pos-items-mobile-icon-button pos-items-mobile-primary-button"
               >
                 <Plus aria-hidden="true" />
               </button>
             ) : null}
-            {canImportItems ? (
-              <button
-                type="button"
-                onClick={() => setShowCsvImport(true)}
-                disabled={locked || !isOnline}
-                aria-label="Import Items"
-                title={!isOnline ? 'Reconnect to import items.' : 'Import items using the IMS CSV template.'}
-                className="pos-items-mobile-icon-button"
-              >
-                <ClipboardList aria-hidden="true" />
-              </button>
-            ) : null}
+            <div className="pos-items-mobile-import-actions">
+              {canImportItems ? (
+                <button
+                  type="button"
+                  onClick={() => setShowCsvImport(true)}
+                  disabled={locked || !isOnline}
+                  aria-label="Import Items"
+                  title={!isOnline ? 'Reconnect to import items.' : 'Import items using the IMS CSV template.'}
+                  className="pos-items-mobile-icon-button pos-items-mobile-import-button"
+                >
+                  <Upload aria-hidden="true" />
+                  <span>Import Items</span>
+                </button>
+              ) : null}
+              {canCreateItems && menuImportEntryEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPdfMenuImport(true)}
+                  disabled={locked}
+                  aria-label={menuImportButtonLabel}
+                  aria-pressed={showPdfMenuImport}
+                  title={menuImportButtonLabel}
+                  className={`pos-items-mobile-icon-button pos-items-mobile-import-button ${showPdfMenuImport ? 'pos-items-mobile-icon-button--active' : ''}`}
+                >
+                  <Upload aria-hidden="true" />
+                  <span>{menuImportButtonLabel}</span>
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <Dialog
@@ -4147,18 +4324,18 @@ function ItemsWorkspace({
               id="pos-items-mobile-filter-dialog"
               className="pos-filter-surface flex max-h-[min(90vh,40rem)] max-w-none flex-col overflow-hidden rounded-t-2xl border border-slate-300 bg-white p-0 shadow-[0_12px_30px_rgba(15,23,42,0.2)] dgfy-pos-history-mobile-sheet"
             >
-              <DialogHeader className="pos-filter-surface-header shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-                <div className="min-w-0">
-                  <DialogTitle className="pos-filter-surface-title truncate text-sm font-black text-[#0F172A]">Filter</DialogTitle>
-                  <DialogDescription className="mt-0.5 text-[12px] text-slate-500">Refine your Item list</DialogDescription>
+              <DialogHeader className="pos-filter-surface-header shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-[#0F172A]">
+                <div className="min-w-0 flex-1">
+                  <DialogTitle className="pos-filter-surface-title truncate text-xl font-bold leading-6 tracking-tight">Filter</DialogTitle>
+                  <DialogDescription className="mt-1 text-sm leading-5 text-slate-500">Refine your item list</DialogDescription>
                 </div>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={() => setShowMobileFilters(false)}
                   aria-label="Close item filters"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full border-[#1A4E8D] bg-white text-[#1A4E8D] shadow-none hover:bg-blue-50 hover:text-[#143F73]"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
@@ -4171,18 +4348,21 @@ function ItemsWorkspace({
                     <div className="dgfy-pos-history-horizontal-scroll mt-1 flex min-w-0 max-w-full flex-nowrap gap-2 overflow-x-auto overscroll-x-contain scroll-smooth pb-1 touch-pan-x" role="group" aria-label="Category options">
                       {categoryOptions.map((option) => {
                         const selected = draftCategoryFilter === option;
+                        const label = option === 'all' ? 'All' : (categoryOptionLabels.get(option) || option);
                         return (
                           <button
                             key={option}
                             type="button"
                             data-testid={`pos-items-mobile-filter-category-${option}`}
                             aria-pressed={selected}
+                            aria-label={`Category: ${label}`}
+                            title={label}
                             onClick={() => setDraftCategoryFilter(option)}
-                            className={`inline-flex h-11 w-[6.5rem] min-w-[6.5rem] shrink-0 items-center justify-center whitespace-nowrap rounded-lg border px-2 py-1 text-center text-[11px] font-extrabold leading-none transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
+                            className={`inline-flex min-h-11 h-auto w-[6.5rem] min-w-[6.5rem] shrink-0 items-center justify-center rounded-lg border px-2 py-1 text-center text-[11px] font-extrabold leading-tight transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
                               ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
                               : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'}`}
                           >
-                            {option === 'all' ? 'All' : (categoryOptionLabels.get(option) || option)}
+                            <span className="min-w-0 max-w-full whitespace-normal break-words text-center">{label}</span>
                           </button>
                         );
                       })}
@@ -4200,12 +4380,14 @@ function ItemsWorkspace({
                             type="button"
                             data-testid={`pos-items-mobile-filter-stock-${option.value}`}
                             aria-pressed={selected}
+                            aria-label={`Stock level: ${option.label}`}
+                            title={option.label}
                             onClick={() => setDraftStockFilter(option.value)}
-                            className={`inline-flex h-11 w-[6.5rem] min-w-[6.5rem] shrink-0 items-center justify-center whitespace-nowrap rounded-lg border px-2 py-1 text-center text-[11px] font-extrabold leading-none transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
+                            className={`inline-flex min-h-11 h-auto w-[6.5rem] min-w-[6.5rem] shrink-0 items-center justify-center rounded-lg border px-2 py-1 text-center text-[11px] font-extrabold leading-tight transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
                               ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
                               : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'}`}
                           >
-                            {option.label}
+                            <span className="min-w-0 max-w-full whitespace-normal break-words text-center">{option.label}</span>
                           </button>
                         );
                       })}
@@ -4220,7 +4402,7 @@ function ItemsWorkspace({
                   variant="outline"
                   onClick={resetMobileFilters}
                   data-testid="pos-items-mobile-reset-filters"
-                  className="h-12 min-w-0 flex-1 rounded-lg border-[#1A4E8D] bg-white text-[13px] font-extrabold text-[#1A4E8D] shadow-sm hover:bg-blue-50 active:border-[#143F73] active:bg-[#1A4E8D] active:text-white"
+                  className="pos-items-reset-action h-12 min-w-0 flex-1 rounded-lg text-[13px] font-extrabold shadow-sm hover:bg-[#fff1f2] hover:text-[#9f1239]"
                 >
                   <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
                   Reset All
@@ -4250,18 +4432,6 @@ function ItemsWorkspace({
               Add Service
             </Button>
           ) : null}
-          {canCreateItems && menuImportEntryEnabled ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowPdfMenuImport(true)}
-              disabled={locked}
-              className="mt-2 h-11 w-full rounded-xl border-[#1A4E8D]/30 text-[#1A4E8D] hover:bg-[#1A4E8D]/5"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {menuImportButtonLabel}
-            </Button>
-          ) : null}
         </div>
       </div>
 
@@ -4281,14 +4451,15 @@ function ItemsWorkspace({
         ) : null}
 
         {showCsvImport && canImportItems ? (
-          <CSVImportModal
-            open={showCsvImport}
-            onClose={() => setShowCsvImport(false)}
-            onSuccess={async () => {
-              await Promise.all([loadItems(), loadPosFolders()]);
-              notifyPosCatalogUpdated();
-            }}
-          />
+        <CSVImportModal
+          open={showCsvImport}
+          posItemsPresentation
+          onClose={() => setShowCsvImport(false)}
+          onSuccess={async () => {
+            await Promise.all([loadItems(), loadPosFolders()]);
+            notifyPosCatalogUpdated();
+          }}
+        />
         ) : null}
 
         {showCreateServiceModal ? (
@@ -4611,6 +4782,7 @@ function ItemsWorkspace({
             totalItems={itemsTotal}
             pageSize={itemsPageSize}
             pageSizeOptions={POS_ITEMS_PAGE_SIZE_OPTIONS}
+            hidePageSizeSuffixOnMobile
             itemLabel="entries"
             loading={loading}
             onPageChange={setItemsPage}
@@ -4620,21 +4792,21 @@ function ItemsWorkspace({
               setItemsPage(1);
             }}
             accentColor="#1A4E8D"
-            className="dgfy-pos-history-pagination-footer mt-auto shrink-0 rounded-none border-0 border-t border-slate-200 px-6 py-2.5 shadow-none"
+            className={`${POS_PAGINATION_FOOTER_CLASS} mt-auto`}
           />
         </div>
       )}
 
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-items-modal-overlay pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-700/30 px-3 py-3 backdrop-blur-[2px] sm:items-center sm:px-4 sm:py-6"
+          className="pos-items-modal-overlay pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-700/30 px-3 py-3 backdrop-blur-[2px] sm:items-center sm:px-4 sm:py-3"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-create-modal-title"
           onClick={closeCreate}
         >
           <div
-            className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-items-form-scale relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[54rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-items-form-scale relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[54rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[calc(100dvh-1.5rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 sm:px-5">
@@ -4660,11 +4832,11 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="pos-items-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto bg-white px-4 pb-4 sm:px-5 sm:pb-5">
-              <section className="mt-4 space-y-2.5 rounded-xl border border-[#C7DCF3] bg-[#EEF5FF] p-3" aria-labelledby="pos-external-barcode-heading">
-                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                  <h3 id="pos-external-barcode-heading" className="shrink-0 whitespace-nowrap text-[11px] font-black text-[#0F172A]">Product Barcode</h3>
-                  <p className="min-w-0 text-left text-[10px] leading-3 text-[#64748B] sm:max-w-[22rem] sm:text-right">Manual barcode takes priority. Otherwise a valid GTIN is used; a code is generated only when both fields are empty.</p>
+            <div className="pos-items-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto bg-white px-4 pb-5 sm:px-5 sm:pb-6">
+              <section className="mt-4 space-y-3 rounded-xl border border-[#C7DCF3] bg-[#EEF5FF] p-3" aria-labelledby="pos-external-barcode-heading">
+                <div className="space-y-1.5">
+                  <h3 id="pos-external-barcode-heading" className="whitespace-nowrap text-[11px] font-black text-[#0F172A]">Product Barcode</h3>
+                  <p className="min-w-0 text-left text-[10px] leading-3 text-[#64748B] sm:whitespace-nowrap">Manual barcode takes priority. Otherwise a valid GTIN is used; a code is generated only when both fields are empty.</p>
                 </div>
                 <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
                   <div className="space-y-1">
@@ -4769,7 +4941,7 @@ function ItemsWorkspace({
                 ) : null}
               </section>
 
-              <div className="pos-items-status-grid mt-3 grid gap-2 md:grid-cols-3">
+              <div className="pos-items-status-grid mt-4 grid gap-3 md:grid-cols-3">
                 <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-600"><Check className="h-3.5 w-3.5" aria-hidden="true" /></div>
@@ -4793,49 +4965,71 @@ function ItemsWorkspace({
                 </div>
               </div>
 
-              <div className="pos-items-form-columns mt-4 grid min-w-0 gap-3 xl:grid-cols-[12rem_minmax(0,1fr)_12rem]">
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-1">
-                    <label className="pos-items-modal-label block">Product Image</label>
-                    <StorefrontSectionInfo label="Product Image" panelId="pos-items-create-product-image-info" portal>
-                      <p>The same image will be used for POS and storefront visibility.</p>
-                    </StorefrontSectionInfo>
+              <div className="pos-items-form-columns mt-5 grid min-w-0 gap-4 xl:grid-cols-[12rem_minmax(0,1fr)_12rem]">
+                <div className="space-y-3">
+                  <div className="flex min-h-5 items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-1">
+                      <label className="pos-items-modal-label block">Product Images</label>
+                      <StorefrontSectionInfo label="Product Images" panelId="pos-items-create-product-image-info" portal>
+                        <p>The same images will be used for POS and storefront visibility.</p>
+                      </StorefrontSectionInfo>
+                    </div>
+                    <span className="shrink-0 text-[10px] font-semibold text-[#94A3B8]">
+                      {selectedImageFiles.length} / {STOREFRONT_ITEM_IMAGE_MAX_COUNT}
+                    </span>
                   </div>
 
-                  <label
-                    htmlFor="pos-item-image"
-                    className={`flex min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#1A4E8D]/45 bg-[#F5F8FC] p-3 text-center transition-colors hover:bg-blue-50/60 ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
-                  >
-                    <div className="grid h-7 w-7 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]"><Upload className="h-3.5 w-3.5" aria-hidden="true" /></div>
-                    <p className="mt-2 text-[10px] font-black text-[#64748B]">Add Item Images</p>
-                    <p className="mt-0.5 text-[10px] font-medium leading-3 text-[#64748B]">JPG, PNG or WEBP (large files optimized by server)</p>
-                    <p className="mt-1.5 text-[10px] leading-3 text-[#94A3B8]">
-                      Up to 5 images per item. The first image is the primary image; all images are shared with Storefront.
-                    </p>
-                    <input
-                      id="pos-item-image"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      disabled={creatingItem || postCreateSaving}
-                      onChange={(event) => {
-                        const files = Array.from(event.target.files || []);
-                        if (files.length) {
-                          handleSelectCreateImageFiles(files);
-                        }
-                        event.target.value = '';
-                      }}
-                    />
-                  </label>
-
-                  <SelectedItemImageCarousel
-                    files={selectedImageFiles}
-                    itemName={createForm.name || 'Item'}
+                  <input
+                    id="pos-item-image"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
                     disabled={creatingItem || postCreateSaving}
-                    compactRemoveAction
-                    onRemove={removeSelectedCreateImageFile}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files || []);
+                      if (files.length) {
+                        handleSelectCreateImageFiles(files);
+                      }
+                      event.target.value = '';
+                    }}
                   />
+
+                  {selectedImageFiles.length > 0 ? (
+                    <>
+                      <SelectedItemImageCarousel
+                        files={selectedImageFiles}
+                        itemName={createForm.name || 'Item'}
+                        disabled={creatingItem || postCreateSaving}
+                        posItemsPresentation
+                        showPrimaryToggle
+                        editItemPresentation
+                        maxVisibleThumbnails={4}
+                        onRemove={removeSelectedCreateImageFile}
+                        onSetPendingPrimary={handleSetPendingCreatePrimary}
+                      />
+                      <label
+                        htmlFor="pos-item-image"
+                        className={`flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-3 text-[10px] font-bold text-[#1A4E8D] transition-colors hover:bg-blue-50/60 ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
+                      >
+                        <Upload className="h-4 w-4" aria-hidden="true" />
+                        Upload New Image
+                      </label>
+                      <p className="text-[10px] leading-3 text-[#94A3B8]">JPG, PNG or WEBP (large files optimized by server)</p>
+                    </>
+                  ) : (
+                    <label
+                      htmlFor="pos-item-image"
+                      className={`pos-items-image-upload-dropzone flex min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#1A4E8D]/45 bg-[#F5F8FC] p-3 text-center transition-colors hover:bg-blue-50/60 ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
+                    >
+                      <div className="grid h-7 w-7 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]"><Upload className="h-3.5 w-3.5" aria-hidden="true" /></div>
+                      <p className="mt-2 text-[10px] font-black text-[#64748B]">Add Item Images</p>
+                      <p className="mt-0.5 text-[10px] font-medium leading-3 text-[#64748B]">JPG, PNG or WEBP (large files optimized by server)</p>
+                      <p className="mt-1.5 text-[10px] leading-3 text-[#94A3B8]">
+                        Up to 5 images per item. Choose a primary image after uploading.
+                      </p>
+                    </label>
+                  )}
                   {selectedImageFiles.length === 0 && acceptedExternalProduct?.product?.image_url ? (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                       The accepted registry image will be optimized and saved to DGFY storage when this item is created.
@@ -5015,11 +5209,11 @@ function ItemsWorkspace({
                   </div>
                 </div>
 
-                <section
-                  className="pos-items-modal-secondary-panel pos-items-create-options-panel min-w-0"
-                  style={createItemDetailsHeight ? { '--pos-items-create-options-height': `${createItemDetailsHeight}px` } : undefined}
-                  aria-labelledby="pos-items-create-options-heading"
-                >
+                  <section
+                    className="pos-items-modal-secondary-panel pos-items-create-options-panel min-w-0"
+                    style={createItemDetailsHeight ? { '--pos-items-create-options-max-height': `${createItemDetailsHeight}px` } : undefined}
+                    aria-labelledby="pos-items-create-options-heading"
+                  >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-1">
                       <h3 id="pos-items-create-options-heading" className="pos-items-modal-section-title">Add Options</h3>
@@ -5072,14 +5266,14 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 border-t border-slate-200 bg-white px-4 py-2.5 sm:px-5">
+            <div className="pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 border-t border-slate-200 bg-white px-4 py-2 sm:px-5">
               <div className="pos-items-modal-footer-actions grid min-w-0 grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={closeCreate}
                   disabled={creatingItem || postCreateSaving}
-                  className="h-9 min-w-0 w-full rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] hover:bg-blue-50"
+                  className="h-10 min-w-0 w-full rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] hover:bg-blue-50"
                 >
                   Cancel
                 </Button>
@@ -5087,7 +5281,7 @@ function ItemsWorkspace({
                   type="button"
                   onClick={handleCreateItem}
                   disabled={creatingItem || postCreateSaving || locked}
-                  className="flex h-9 min-w-0 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1A4E8D] px-2 text-[11px] font-bold text-white transition-colors hover:bg-[#143F73]"
+                  className="flex h-10 min-w-0 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1A4E8D] px-2 text-[11px] font-bold text-white transition-colors hover:bg-[#143F73]"
                 >
                   <Save className="h-3.5 w-3.5" />
                   {creatingItem || postCreateSaving ? 'Saving…' : (pendingCreateRecovery?.itemId ? 'Resume Item Setup' : 'Save Item')}
@@ -5116,14 +5310,14 @@ function ItemsWorkspace({
 
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-items-modal-overlay pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-700/30 px-3 py-3 backdrop-blur-[2px] sm:items-center sm:px-4 sm:py-6"
+          className="pos-items-modal-overlay pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-700/30 px-3 py-3 backdrop-blur-[2px] sm:items-center sm:px-4 sm:py-3"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-edit-modal-title"
           onClick={closeEdit}
         >
           <div
-            className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-items-form-scale relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[54rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-items-form-scale relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[54rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[calc(100dvh-1.5rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 sm:px-5">
@@ -5147,8 +5341,8 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="pos-items-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto bg-white px-4 pb-4 sm:px-5 sm:pb-5">
-              <div className="pos-items-status-grid mt-3 grid gap-2 md:grid-cols-3">
+            <div className="pos-items-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto bg-white px-4 pb-5 sm:px-5 sm:pb-6">
+              <div className="pos-items-status-grid mt-4 grid gap-3 md:grid-cols-3">
                 {/* Toggle Card 1: Always Available */}
                 <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
                   <div className="flex min-w-0 items-start gap-2">
@@ -5212,81 +5406,115 @@ function ItemsWorkspace({
               </div>
 
               {/* Main Body: shared Add/Edit three-column layout */}
-              <div className="pos-items-form-columns mt-4 grid min-w-0 gap-3 xl:grid-cols-[12rem_minmax(0,1fr)_12rem]">
+              <div className="pos-items-form-columns mt-5 grid min-w-0 gap-4 xl:grid-cols-[12rem_minmax(0,1fr)_12rem]">
                 {/* Column 1: Product Image */}
-                <div className="min-w-0 space-y-2.5">
-                  <div className="space-y-1">
-                    <div className="flex min-h-5 items-center gap-1 leading-4">
-                      <label className="pos-items-modal-label block">Product Image</label>
-                      <StorefrontSectionInfo label="Product Image" panelId="pos-items-edit-product-image-info" portal>
-                        <p>The same image will be used for POS and storefront visibility.</p>
-                      </StorefrontSectionInfo>
-                    </div>
+                <div className="min-w-0 space-y-3">
+                  {(() => {
+                    const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
+                    const hasEditImages = editGallery.length > 0 || selectedEditImageFiles.length > 0;
+                    const editImageCount = editGallery.length + selectedEditImageFiles.length;
+                    const imageControlsDisabled = savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh;
 
-                    {(() => {
-                      const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
-                      return (
-                        <div className="space-y-3">
-                          <label
-                            htmlFor="pos-item-edit-image"
-                            className={`flex min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#1A4E8D]/45 bg-[#F5F8FC] p-3 text-center transition-colors hover:bg-blue-50/60 ${(savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) ? 'cursor-not-allowed opacity-50' : ''}`}
-                          >
-                            <div className="grid h-7 w-7 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]"><Upload className="h-3.5 w-3.5" aria-hidden="true" /></div>
-                            <p className="mt-2 text-[10px] font-black text-[#64748B]">Add Item Images</p>
-                            <p className="mt-0.5 text-[10px] font-medium leading-3 text-[#64748B]">JPG, PNG or WEBP (large files optimized by server)</p>
-                            <p className="mt-1.5 text-[10px] leading-3 text-[#94A3B8]">
-                              The preview appears immediately. The optimized image is saved automatically and then replaces the preview.
-                            </p>
-                            <input
-                              id="pos-item-edit-image"
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              className="hidden"
-                              disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
-                              onChange={(event) => {
-                                const files = Array.from(event.target.files || []);
-                                void handleSelectEditImageFile(files);
-                                event.target.value = '';
-                              }}
+                    return (
+                      <div className="space-y-3">
+                        <input
+                          id="pos-item-edit-image"
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          disabled={imageControlsDisabled}
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files || []);
+                            void handleSelectEditImageFile(files);
+                            event.target.value = '';
+                          }}
+                        />
+
+                        {hasEditImages ? (
+                          <>
+                            <div className="flex min-h-5 items-center justify-between gap-2 leading-4">
+                              <div className="flex min-w-0 items-center gap-1">
+                                <label className="pos-items-modal-label block">Product Images</label>
+                                <StorefrontSectionInfo label="Product Images" panelId="pos-items-edit-product-image-info" portal>
+                                  <p>The same images will be used for POS and storefront visibility.</p>
+                                </StorefrontSectionInfo>
+                              </div>
+                              <span className="shrink-0 text-[10px] font-semibold text-[#94A3B8]">{editImageCount} / {STOREFRONT_ITEM_IMAGE_MAX_COUNT}</span>
+                            </div>
+
+                            <SelectedItemImageCarousel
+                              files={selectedEditImageFiles}
+                              savedGallery={editGallery}
+                              itemName={editForm.name || activeEditItem?.name || 'Item'}
+                              disabled={imageControlsDisabled}
+                              posItemsPresentation
+                              showPrimaryToggle
+                              editItemPresentation
+                              maxVisibleThumbnails={4}
+                              onRemove={handleRemoveSelectedEditImageFile}
+                              onSetPendingPrimary={handleSetPendingEditPrimary}
+                              onSetSavedPrimary={handleSetSavedEditPrimary}
+                              onRemoveSaved={handleRemoveSavedEditImage}
                             />
-                          </label>
 
-                          <SelectedItemImageCarousel
-                            files={selectedEditImageFiles}
-                            savedGallery={editGallery}
-                            itemName={editForm.name || activeEditItem?.name || 'Item'}
-                            disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
-                            showPrimaryToggle
-                            compactRemoveAction
-                            onRemove={handleRemoveSelectedEditImageFile}
-                            onSetPendingPrimary={handleSetPendingEditPrimary}
-                            onSetSavedPrimary={handleSetSavedEditPrimary}
-                            onRemoveSaved={handleRemoveSavedEditImage}
-                          />
+                            <label
+                              htmlFor="pos-item-edit-image"
+                              className={`flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-3 text-[10px] font-bold text-[#1A4E8D] transition-colors hover:bg-blue-50/60 ${imageControlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                            >
+                              <Upload className="h-4 w-4" aria-hidden="true" />
+                              Upload New Image
+                            </label>
+                            <p className="text-[10px] leading-3 text-[#94A3B8]">JPG, PNG or WEBP (large files optimized by server)</p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex min-h-5 items-center gap-1 leading-4">
+                              <label className="pos-items-modal-label block">Product Image</label>
+                              <StorefrontSectionInfo label="Product Image" panelId="pos-items-edit-product-image-info" portal>
+                                <p>The same image will be used for POS and storefront visibility.</p>
+                              </StorefrontSectionInfo>
+                            </div>
+                            <label
+                              htmlFor="pos-item-edit-image"
+                              className={`pos-items-image-upload-dropzone flex min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#1A4E8D]/45 bg-[#F5F8FC] p-3 text-center transition-colors hover:bg-blue-50/60 ${imageControlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                            >
+                              <div className="grid h-7 w-7 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]"><Upload className="h-3.5 w-3.5" aria-hidden="true" /></div>
+                              <p className="mt-2 text-[10px] font-black text-[#64748B]">Add Item Images</p>
+                              <p className="mt-0.5 text-[10px] font-medium leading-3 text-[#64748B]">JPG, PNG or WEBP (large files optimized by server)</p>
+                              <p className="mt-1.5 text-[10px] leading-3 text-[#94A3B8]">
+                                The preview appears immediately. The optimized image is saved automatically and then replaces the preview.
+                              </p>
+                            </label>
+                          </>
+                        )}
 
-                          {selectedEditImageFiles.length > 0
-                            && editGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT
-                            && !editImageUploadJob
-                            && !pendingEditImageRefresh && (
-                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-normal text-amber-800" role="status">
-                              Preview ready. Remove existing images to make room; the upload will continue automatically.
+                        {selectedEditImageFiles.length > 0
+                          && editGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT
+                          && !editImageUploadJob
+                          && !pendingEditImageRefresh && (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-normal text-amber-800" role="status">
+                            Preview ready. Remove existing images to make room; the upload will continue automatically.
+                          </p>
+                        )}
+
+                        {canEditItems && (
+                          <div className="space-y-1">
+                            <p className="pos-items-modal-label block whitespace-nowrap">
+                              Generate your product image with AI
                             </p>
-                          )}
-
-                          {canEditItems && (
                             <Button
                               type="button"
                               variant="outline"
                               onClick={() => handleGenerateEditImage(activeEditItem)}
                               disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}
-                              className="h-8 w-full rounded-lg px-2 text-[10px]"
+                              className="h-9 w-full rounded-lg px-2 text-[10px] font-bold"
                               title={
                                 editGallery.length > 0
                                   ? 'Generate a new AI photo, replacing the current one.'
                                   : 'Generate an AI photo for this item (watermarked).'
                               }
-                            >
+                              >
                               <ImagePlus className="mr-2 h-4 w-4" />
                               {generatingEditImage
                                 ? 'Queuing…'
@@ -5294,21 +5522,16 @@ function ItemsWorkspace({
                                   ? 'Generating…'
                                   : editGallery.length > 0 ? 'Regenerate Image (AI)' : 'Generate Image (AI)'}
                             </Button>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Column 1 Footer Notice */}
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2 text-[10px] text-slate-500 flex items-center gap-2">
-                    <Info className="h-3.5 w-3.5 shrink-0 text-[#1A4E8D]" aria-hidden="true" />
-                    <span>Image will be visible in POS and storefront.</span>
-                  </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Column 2: Item Details */}
                 <div ref={editItemDetailsRef} className="min-w-0">
+                  <h3 className="pos-items-modal-section-title mb-2">Item Details</h3>
                   <div className="grid gap-2.5 sm:grid-cols-2">
                     <div className="space-y-1 sm:col-span-2">
                     <label className="pos-items-modal-label block">
@@ -5464,55 +5687,49 @@ function ItemsWorkspace({
                     />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="pos-items-modal-label block whitespace-nowrap">Manual Barcode (priority)</label>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label htmlFor="pos-items-edit-manual-barcode" className="pos-items-modal-label block">
+                        Manual Barcode (priority)
+                      </label>
                       <Input
+                        id="pos-items-edit-manual-barcode"
                         value={editForm.manual_barcode}
                         onChange={(event) => setEditForm((current) => ({
                           ...current,
                           manual_barcode: normalizeBarcodeEntry(event.target.value)
                         }))}
-                        className="pos-items-modal-field font-medium"
+                        className="pos-items-modal-field w-full font-medium"
                         placeholder="Supplier or company barcode"
                         disabled={savingItem || persistingEditAssets}
                       />
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1 sm:col-span-2">
                       <div className="flex min-h-5 items-center gap-1 leading-4">
-                        <label className="pos-items-modal-label block">GTIN / UPC / EAN</label>
+                        <label htmlFor="pos-items-edit-gtin" className="pos-items-modal-label block">GTIN / UPC / EAN</label>
                         <StorefrontSectionInfo label="GTIN / UPC / EAN" panelId="pos-items-edit-gtin-info" portal>
                           <p>Manual barcode wins when both fields are filled. Leaving both empty preserves the current barcode.</p>
                         </StorefrontSectionInfo>
                       </div>
                       <Input
+                        id="pos-items-edit-gtin"
                         value={editForm.gtin}
                         onChange={(event) => setEditForm((current) => ({
                           ...current,
                           gtin: normalizeBarcodeEntry(event.target.value)
                         }))}
-                        className="pos-items-modal-field font-medium"
+                        className="pos-items-modal-field w-full font-medium"
                         placeholder="8, 12, 13, or 14 digit GTIN"
                         disabled={savingItem || persistingEditAssets}
                       />
                     </div>
 
-                    <div className="flex justify-center sm:col-span-2">
-                      <StorefrontItemQrCard
-                        itemName={editForm.name || activeEditItem.name}
-                        itemUrl={activeEditStorefrontUrl}
-                        helperText=""
-                        compact
-                        fullWidth
-                        qrSize={160}
-                      />
-                    </div>
                   </div>
                 </div>
 
                 {/* Column 3: Additional Categories */}
-                <div className="min-w-0 space-y-2.5">
-                  <div className="space-y-2.5">
+                <div className="min-w-0 space-y-3">
+                  <div className="space-y-3">
                     {/* #1318 Wave C/C5 — Additional Categories: secondary-membership editor,
                         POS's own equivalent of ItemFormModal.jsx's Phase 268 section. Visible
                         (never hidden) when the operator lacks canManageCategories, matching the
@@ -5522,12 +5739,11 @@ function ItemsWorkspace({
                       <div
                         className="pos-items-modal-secondary-panel pos-items-edit-categories-panel space-y-1.5"
                         style={editItemDetailsHeight ? { '--pos-items-edit-categories-height': `${editItemDetailsHeight}px` } : undefined}
-                        data-pos-tooltip-boundary
                       >
                         <div className="pos-items-modal-section-title flex min-h-5 items-center gap-1">
                           <Tags className="h-3.5 w-3.5" />
                           Additional Categories
-                          <StorefrontSectionInfo label="Additional Categories" panelId="pos-items-edit-additional-categories-info" placement="below-left" portal>
+                          <StorefrontSectionInfo label="Additional Categories" panelId="pos-items-edit-additional-categories-info" portal>
                             <p>Optional. List this item under up to 10 more categories, alongside its primary category above. This does not change the primary category.</p>
                           </StorefrontSectionInfo>
                         </div>
@@ -5603,34 +5819,46 @@ function ItemsWorkspace({
                     )}
 
                   </div>
+                  <div className="flex justify-center">
+                    <StorefrontItemQrCard
+                      itemName={editForm.name || activeEditItem.name}
+                      itemUrl={activeEditStorefrontUrl}
+                      helperText=""
+                      compact
+                      fullWidth
+                      qrSize={160}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="pos-items-modal-footer grid shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:px-5">
-              <div className="pos-items-modal-footer-info flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-2.5 py-1.5 text-[10px] font-medium text-slate-600">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-blue-50 text-[#1A4E8D]">
-                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-                <span className="break-words whitespace-normal">Changes update this item across POS and storefront immediately.</span>
-              </div>
-
+            <div className="pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 border-t border-slate-200 bg-white px-4 py-2 sm:px-5">
+              {editPermissionDenied ? (
+                <div
+                  role="alert"
+                  data-testid="pos-edit-item-permission-denied"
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"
+                >
+                  Your permission to edit items changed. Your unsaved changes are still open, but you can’t save them.
+                </div>
+              ) : null}
               <div className="pos-items-modal-footer-actions grid min-w-0 grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={closeEdit}
                   disabled={savingItem || persistingEditAssets}
-                  className="h-9 min-w-0 w-full rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] hover:bg-blue-50"
+                  className="h-10 min-w-0 w-full rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] hover:bg-blue-50"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="button"
                   onClick={handleSave}
-                  disabled={savingItem || persistingEditAssets}
-                  className="flex h-9 min-w-0 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1A4E8D] px-2 text-[11px] font-bold text-white transition-colors hover:bg-[#143F73]"
+                  disabled={!canEditItems || editPermissionDenied || savingItem || persistingEditAssets}
+                  className="flex h-10 min-w-0 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1A4E8D] px-2 text-[11px] font-bold text-white transition-colors hover:bg-[#143F73]"
                 >
                   <Save className="h-3.5 w-3.5" />
                   {savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}
@@ -5773,9 +6001,14 @@ function ItemsWorkspace({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-slate-900">
-              <div className="min-w-0 flex-1">
-                <p id="pos-items-delete-confirm-modal-title" className="text-base font-black leading-5 text-[#0F172A]">Delete Item</p>
-                <p className="mt-0.5 break-words text-xs leading-4 text-slate-500">Confirm the removal of this item from POS and IMS.</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-600 ring-1 ring-slate-200">
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <p id="pos-items-delete-confirm-modal-title" className="text-base font-black leading-5 text-[#0F172A]">Delete Item</p>
+                  <p className="mt-0.5 break-words text-xs leading-4 text-slate-500">Confirm the removal of this item from POS and IMS.</p>
+                </div>
               </div>
               <button
                 type="button"
@@ -5888,6 +6121,58 @@ function ItemsWorkspace({
   );
 }
 
+function PosCategoryCard({ folder, disabled, onEdit, onLifecycleAction }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDraggableNodeRef,
+    isDragging
+  } = useDraggable({ id: folder.folder_id, disabled });
+  const { setNodeRef: setDroppableNodeRef, isOver } = useDroppable({ id: folder.folder_id, disabled });
+  const setNodeRef = useCallback((node) => {
+    setDraggableNodeRef(node);
+    setDroppableNodeRef(node);
+  }, [setDraggableNodeRef, setDroppableNodeRef]);
+
+  return (
+    <div
+      {...attributes}
+      {...listeners}
+      ref={setNodeRef}
+      role="group"
+      aria-label={`Reorder ${folder.name}`}
+      aria-roledescription="sortable category"
+      aria-disabled={disabled}
+      tabIndex={disabled ? -1 : 0}
+      data-testid={`pos-category-card-${folder.folder_id}`}
+      className={`pos-categories-mobile-card box-border h-full min-w-0 overflow-hidden rounded-xl border bg-white p-3 shadow-none transition-colors ${folder.is_active ? '' : 'bg-slate-50'} ${isOver ? 'border-[#1A4E8D] ring-2 ring-blue-100' : 'border-slate-300'} ${isDragging ? 'relative z-10 opacity-70' : ''} ${disabled ? 'cursor-default' : 'cursor-default'}`}
+    >
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="pos-categories-mobile-card-title truncate text-[14px] font-black leading-5 tracking-tight text-[#0F172A]">{folder.name}</p>
+          <p className="pos-categories-mobile-card-description mt-1 break-words text-[10.5px] font-medium leading-4 text-[#64748B]">{folder.description || 'No description provided.'}</p>
+          <p className="pos-categories-mobile-card-count mt-1 text-[10.5px] font-bold leading-4 text-[#64748B]">{folder.item_count} Items Assigned</p>
+        </div>
+        <div
+          className="pos-categories-mobile-card-actions flex shrink-0 items-center gap-2"
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <Button type="button" variant="outline" onClick={() => onEdit(folder)} disabled={disabled} aria-label={`Edit category ${folder.name}`} title={`Edit category ${folder.name}`} className="grid aspect-square h-8 w-8 min-h-0 min-w-0 shrink-0 place-items-center rounded-lg border-[#1A4E8D] bg-white p-0 text-[#1A4E8D] shadow-none transition hover:bg-[#1A4E8D]/5 active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white">
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button type="button" variant="outline" onClick={() => onLifecycleAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={disabled} aria-label={`${folder.is_active ? 'Deactivate' : 'Activate'} category ${folder.name}`} title={`${folder.is_active ? 'Deactivate' : 'Activate'} category ${folder.name}`} className="grid aspect-square h-8 w-8 min-h-0 min-w-0 shrink-0 place-items-center rounded-lg border-[#1A4E8D] bg-white p-0 text-[#1A4E8D] shadow-none transition hover:bg-[#1A4E8D]/5 active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white">
+            <CircleSlash className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button type="button" variant="outline" onClick={() => onLifecycleAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={disabled} aria-label={`Delete category ${folder.name}`} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : `Delete category ${folder.name}`} className="grid aspect-square h-8 w-8 min-h-0 min-w-0 shrink-0 place-items-center rounded-lg border-rose-300 bg-white p-0 text-rose-700 shadow-none transition hover:bg-rose-50 hover:text-rose-800 active:border-rose-600 active:bg-rose-600 active:text-white disabled:cursor-not-allowed">
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CategoryManagementWorkspace() {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5898,6 +6183,11 @@ function CategoryManagementWorkspace() {
   const [form, setForm] = useState({ name: '', description: '' });
   const [pendingAction, setPendingAction] = useState(null);
 
+  const categorySensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
+  );
+
   const loadFolders = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setError('');
@@ -5905,9 +6195,10 @@ function CategoryManagementWorkspace() {
       const response = await getFolders();
       setFolders(
         (Array.isArray(response) ? response : [])
-          .map((folder) => ({
+          .map((folder, index) => ({
             ...folder,
             folder_id: Number(folder?.folder_id),
+            sort_order: Number.isFinite(Number(folder?.sort_order)) ? Number(folder.sort_order) : index,
             name: String(folder?.name || '').trim(),
             description: String(folder?.description || '').trim(),
             item_count: Number(folder?.item_count || 0),
@@ -5917,6 +6208,7 @@ function CategoryManagementWorkspace() {
             is_active: folder?.is_active !== false
           }))
           .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
+          .sort((left, right) => left.sort_order - right.sort_order)
       );
     } catch (loadError) {
       setFolders([]);
@@ -5932,13 +6224,9 @@ function CategoryManagementWorkspace() {
 
   const filteredFolders = useMemo(() => {
     const normalizedQuery = String(query || '').trim().toLowerCase();
-    return [...folders]
-      .filter((folder) => !normalizedQuery || `${folder.name} ${folder.description}`.toLowerCase().includes(normalizedQuery))
-      .sort((left, right) => {
-        if (left.is_active !== right.is_active) return left.is_active ? -1 : 1;
-        return left.name.localeCompare(right.name);
-      });
+    return folders.filter((folder) => !normalizedQuery || `${folder.name} ${folder.description}`.toLowerCase().includes(normalizedQuery));
   }, [folders, query]);
+  const categoryReorderDisabled = Boolean(query.trim()) || busy || loading;
 
   const replacementFolders = useMemo(() => folders
     .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
@@ -5975,6 +6263,35 @@ function CategoryManagementWorkspace() {
       await loadFolders({ silent: true });
     } catch (saveError) {
       toast.error(saveError?.response?.data?.message || 'Unable to save this category.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCategoryDragEnd = async ({ active, over }) => {
+    if (categoryReorderDisabled || !active?.id || !over?.id || String(active.id) === String(over.id)) return;
+
+    const activeIndex = folders.findIndex((folder) => String(folder.folder_id) === String(active.id));
+    const overIndex = folders.findIndex((folder) => String(folder.folder_id) === String(over.id));
+    if (activeIndex < 0 || overIndex < 0) return;
+
+    const previousFolders = folders;
+    const nextFolders = [...folders];
+    const [movedFolder] = nextFolders.splice(activeIndex, 1);
+    nextFolders.splice(overIndex, 0, movedFolder);
+    const orderedFolders = nextFolders.map((folder, index) => ({ ...folder, sort_order: index }));
+    setFolders(orderedFolders);
+    setBusy(true);
+    try {
+      await reorderFolders(orderedFolders.map((folder) => folder.folder_id));
+    } catch (reorderError) {
+      if (reorderError?.response?.status === 409) {
+        await loadFolders({ silent: true });
+        toast.error(reorderError?.response?.data?.message || 'Categories changed elsewhere. The latest order has been loaded.');
+      } else {
+        setFolders(previousFolders);
+        toast.error(reorderError?.response?.data?.message || 'Unable to save the category order. The previous order was restored.');
+      }
     } finally {
       setBusy(false);
     }
@@ -6030,11 +6347,11 @@ function CategoryManagementWorkspace() {
               />
             </div>
             <div className="pos-categories-mobile-actions flex shrink-0 flex-wrap items-center justify-end gap-2">
-              <Button type="button" onClick={() => loadFolders()} disabled={loading || busy} aria-label="Refresh categories" title="Refresh categories" className="pos-items-mobile-icon-button pos-items-mobile-icon-button--active h-9 rounded-lg bg-[#1A4E8D] px-3 text-[13px] text-white hover:bg-[#143F73]">
+              <Button type="button" onClick={() => loadFolders()} disabled={loading || busy} aria-label="Refresh categories" title="Refresh categories" className="pos-items-category-refresh-button pos-items-mobile-icon-button pos-items-mobile-icon-button--active h-9 rounded-lg bg-[#1A4E8D] px-3 text-[13px] text-white hover:bg-[#143F73]">
                 <RefreshCcw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
                 <span className="pos-categories-mobile-action-label ml-1.5">Refresh</span>
               </Button>
-              <Button type="button" variant="outline" onClick={openCreate} aria-pressed={editor?.mode === 'create'} aria-label="Add category" title="Add category" className={`pos-items-mobile-icon-button h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white ${editor?.mode === 'create' ? 'pos-items-mobile-icon-button--active bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-white text-[#1A4E8D] hover:bg-[#1A4E8D]/5'}`}>
+              <Button type="button" variant="outline" onClick={openCreate} aria-pressed={editor?.mode === 'create'} aria-label="Add category" title="Add category" className={`pos-items-category-add-action pos-items-mobile-icon-button h-9 rounded-lg border-[#1A4E8D] px-3 text-[13px] ${editor?.mode === 'create' ? 'pos-items-mobile-icon-button--active bg-[#1A4E8D] text-white' : 'bg-white text-[#1A4E8D]'}`}>
                 <Plus className="h-3.5 w-3.5" />
                 <span className="pos-categories-mobile-action-label ml-1.5">Add Categories</span>
               </Button>
@@ -6057,30 +6374,19 @@ function CategoryManagementWorkspace() {
             <p className="mt-1 text-sm text-slate-500">Create a category before adding POS items.</p>
           </div>
         ) : (
-          <div className="pos-categories-mobile-grid grid gap-2 xl:grid-cols-2">
-            {filteredFolders.map((folder) => (
-              <div key={folder.folder_id} className={`pos-categories-mobile-card box-border h-full min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white p-3 shadow-none transition-colors ${folder.is_active ? '' : 'bg-slate-50'}`}>
-                <div className="flex min-w-0 items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="pos-categories-mobile-card-title truncate text-[14px] font-black leading-5 tracking-tight text-[#0F172A]">{folder.name}</p>
-                  <p className="pos-categories-mobile-card-description mt-1 break-words text-[10.5px] font-medium leading-4 text-[#64748B]">{folder.description || 'No description provided.'}</p>
-                  <p className="pos-categories-mobile-card-count mt-1 text-[10.5px] font-bold leading-4 text-[#64748B]">{folder.item_count} Items Assigned</p>
-                </div>
-                <div className="pos-categories-mobile-card-actions flex shrink-0 items-center gap-2">
-                  <Button type="button" variant="outline" onClick={() => openEdit(folder)} disabled={busy} aria-label={`Edit category ${folder.name}`} title={`Edit category ${folder.name}`} className="grid aspect-square h-8 w-8 min-h-0 min-w-0 shrink-0 place-items-center rounded-lg border-[#1A4E8D] bg-white p-0 text-[#1A4E8D] shadow-none transition hover:bg-[#1A4E8D]/5 active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white">
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} aria-label={`${folder.is_active ? 'Deactivate' : 'Activate'} category ${folder.name}`} title={`${folder.is_active ? 'Deactivate' : 'Activate'} category ${folder.name}`} className="grid aspect-square h-8 w-8 min-h-0 min-w-0 shrink-0 place-items-center rounded-lg border-[#1A4E8D] bg-white p-0 text-[#1A4E8D] shadow-none transition hover:bg-[#1A4E8D]/5 active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white">
-                    <CircleSlash className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} aria-label={`Delete category ${folder.name}`} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : `Delete category ${folder.name}`} className="grid aspect-square h-8 w-8 min-h-0 min-w-0 shrink-0 place-items-center rounded-lg border-rose-300 bg-white p-0 text-rose-700 shadow-none transition hover:bg-rose-50 hover:text-rose-800 active:border-rose-600 active:bg-rose-600 active:text-white disabled:cursor-not-allowed">
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <DndContext sensors={categorySensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+            <div className="pos-categories-mobile-grid grid gap-2 xl:grid-cols-2">
+              {filteredFolders.map((folder) => (
+                <PosCategoryCard
+                  key={folder.folder_id}
+                  folder={folder}
+                  disabled={categoryReorderDisabled}
+                  onEdit={openEdit}
+                  onLifecycleAction={setPendingAction}
+                />
+              ))}
+            </div>
+          </DndContext>
         )}
         </div>
       </div>
@@ -6199,6 +6505,27 @@ function CategoryManagementWorkspace() {
   );
 }
 
+// Reuse the POS item-create workflow from back-office catalog surfaces without
+// duplicating its validation, image upload, barcode, category, and post-create
+// synchronization behavior. The workspace stays mounted so its portal-based
+// modal can render into document.body while the catalog page owns the trigger.
+export function PosItemCreateWorkflow({
+  open = false,
+  onOpenChange = () => {},
+  onCreated = () => {},
+  ...itemsWorkspaceProps
+}) {
+  return (
+    <ItemsWorkspace
+      {...itemsWorkspaceProps}
+      createModalOpen={open}
+      onCreateModalOpenChange={onOpenChange}
+      onItemCreated={onCreated}
+      modalOnly
+    />
+  );
+}
+
 function ItemsCatalogWorkspace({
   canViewPos = false,
   canManageCategories = false,
@@ -6207,6 +6534,7 @@ function ItemsCatalogWorkspace({
   canViewFnbModifiers = false,
   canManageFnbModifiers = false,
   locations = [],
+  locationsLoading = false,
   serviceOperationsPermissions = {},
   shiftState,
   activeTerminalId = '',
@@ -6410,6 +6738,8 @@ function ItemsCatalogWorkspace({
               isOnline={isOnline}
               canManage={canManageFnbModifiers}
               locations={locations}
+              operatingLocationId={operatingLocationId}
+              locationsLoading={locationsLoading}
               sectionId={`pos-items-${visibleTab}-panel`}
             />
           </Suspense>
@@ -6429,6 +6759,8 @@ function ItemsCatalogWorkspace({
             canManageServiceCatalog={canManageServiceCatalog}
             canManageFnbModifiers={canManageFnbModifiers}
             operatingLocationId={operatingLocationId}
+            availableLocations={locations}
+            locationsLoading={locationsLoading}
             isOnline={isOnline}
           />
         )}
@@ -6511,6 +6843,7 @@ export default function TerminalOperationsWorkspace({
   handleViewCashierHistoryShift = () => {},
   refreshOperationalContext,
   locationsState = { loading: false, locations: [] },
+  itemsLocationScopeLoading = false,
   operatingLocationId = null,
   setOperatingLocationId = () => {},
   viewingLocationId = null,
@@ -6874,11 +7207,13 @@ export default function TerminalOperationsWorkspace({
           canViewFnbModifiers={canViewFnbModifiers}
           canManageFnbModifiers={isBranchReadOnlyView ? false : canManageFnbModifiers}
           locations={locationsState?.locations || []}
+          locationsLoading={(locationsState?.loading === true) || itemsLocationScopeLoading}
           serviceOperationsPermissions={serviceOperationsPermissions}
           shiftState={shiftState}
           activeTerminalId={activeTerminalId}
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
+          refreshTerminalUser={refreshTerminalUser}
           workflowMode={workflowMode}
           locked={locked}
           isOnline={isOnline}

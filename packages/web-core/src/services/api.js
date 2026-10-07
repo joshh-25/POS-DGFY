@@ -7,7 +7,8 @@ import {
   getBrowserSessionSnapshot,
   ensureCsrfToken,
   refreshBrowserSession,
-  setBrowserSession
+  setBrowserSession,
+  clearBrowserSession
 } from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
@@ -73,9 +74,10 @@ const formatApiValidationError = (data) => {
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const RUNTIME_CONFIG = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const IS_POS_SURFACE = RUNTIME_CONFIG.appSurface === 'pos';
-// OPIS (issue #2052) carries x-dgfy-app-surface: opis as a cookie-namespace selector only;
-// it grants no authorization. Every other surface sends no surface header (unchanged shape).
+// OPIS and Platform Admin carry x-dgfy-app-surface as cookie-namespace selectors only;
+// neither grants authorization. Other surfaces send no surface header (unchanged shape).
 const IS_OPIS_SURFACE = RUNTIME_CONFIG.appSurface === 'opis';
+const IS_ADMIN_SURFACE = RUNTIME_CONFIG.appSurface === 'admin';
 // Matches TerminalPage.jsx/posService.js's TERMINAL_ID_STORAGE_KEY. Not a
 // shared export -- like those two, this is a plain localStorage key string
 // contract, not a module dependency (api.js must not import the POS feature).
@@ -226,6 +228,7 @@ const getResponseReasonCode = (error) => String(
 const NON_REFRESHABLE_401_REASONS = new Set([
   'POS_TERMINAL_PAIRING_INVALID'
 ]);
+let tenantContextRepairInFlight = null;
 
 export const isPublicOrAuthRequest = (url = '') => {
   const path = resolveRequestPath(url);
@@ -240,6 +243,44 @@ export const isPublicOrAuthRequest = (url = '') => {
     path.startsWith('/stores/') ||
     path.startsWith('/public/')
   );
+};
+
+const isSafeRequest = (config = {}) => (
+  ['get', 'head', 'options'].includes(String(config.method || 'get').toLowerCase())
+);
+
+const shouldRepairOpisTenantContext = (error) => {
+  const request = error?.config;
+  return Boolean(
+    IS_OPIS_SURFACE
+    && error?.response?.status === 409
+    && getResponseReasonCode(error) === 'TENANT_SESSION_CONTEXT_MISMATCH'
+    && request
+    && !request._tenantContextRepair
+    && !request.skipAuthRefresh
+    && !isSessionRefreshRequest(request.url)
+    && !isPublicOrAuthRequest(request.url)
+    && isSafeRequest(request)
+  );
+};
+
+const repairOpisTenantContext = async () => {
+  if (!tenantContextRepairInFlight) {
+    tenantContextRepairInFlight = (async () => {
+      // Keep the HttpOnly OPIS refresh cookie; only discard the stale in-memory
+      // credentials so refreshBrowserSession resolves the authoritative company
+      // from that cookie and reissues the matching context cookie.
+      clearBrowserSession();
+      const token = await refreshBrowserSession();
+      if (!token || !getCompanyToken()) {
+        throw new Error('The OPIS tenant session could not be repaired.');
+      }
+      return token;
+    })().finally(() => {
+      tenantContextRepairInFlight = null;
+    });
+  }
+  return tenantContextRepairInFlight;
 };
 
 const shouldPreflightBrowserSession = (config = {}) => (
@@ -450,6 +491,8 @@ api.interceptors.request.use(
     // OPIS cookie-namespace selector (issue #2052): namespace only, never authorization.
     if (IS_OPIS_SURFACE) {
       setRequestHeader(config.headers, 'x-dgfy-app-surface', 'opis');
+    } else if (IS_ADMIN_SURFACE) {
+      setRequestHeader(config.headers, 'x-dgfy-app-surface', 'admin');
     }
     config._outcomeStartedAt = Date.now();
 
@@ -471,6 +514,32 @@ api.interceptors.response.use(
     // which is indistinguishable from a real network failure downstream)
     // and into captureRequestFailure as a Sentry event.
     if (axios.isCancel(error)) return Promise.reject(error);
+
+    // OPIS keeps its tenant context in an isolated HttpOnly cookie. If another
+    // OPIS tab switched companies, a safe read can arrive with the previous
+    // in-memory session and hit the server's mismatch guard. Rehydrate from the
+    // cookie-backed session once, then retry the read with matching credentials.
+    // POS deliberately does not use this recovery path because an automatic
+    // company switch could disrupt an active terminal.
+    if (shouldRepairOpisTenantContext(error)) {
+      try {
+        await repairOpisTenantContext();
+        const currentSession = getBrowserSessionSnapshot();
+        originalRequest._tenantContextRepair = true;
+        originalRequest.headers = originalRequest.headers || {};
+        if (currentSession.token) {
+          setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${currentSession.token}`);
+        }
+        if (currentSession.companyToken) {
+          setRequestHeader(originalRequest.headers, 'x-company-token', currentSession.companyToken);
+        }
+        return api(originalRequest);
+      } catch {
+        // Preserve the original 409 so the caller can present its normal
+        // session-recovery state when the refresh cookie is no longer usable.
+        return Promise.reject(error);
+      }
+    }
 
     if (
       error.response?.status === 401

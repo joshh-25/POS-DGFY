@@ -994,11 +994,22 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
     }
 };
 
-export const buildListDgfyAccountCompaniesUseCase = ({ repository }) => async ({ account, currentTenantToken = '' }) => {
+export const buildListDgfyAccountCompaniesUseCase = ({
+    repository,
+    ensureRejectedCompanyRegistrationNotifications = null
+}) => async ({ account, currentTenantToken = '' }) => {
     await repository.mirrorPendingInvitationsForAccount?.(account);
     await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
     const memberships = await repository.listMemberships(account.id);
     const registrationApplications = await repository.listRegistrationApplications?.(account.id) || [];
+    try {
+        await ensureRejectedCompanyRegistrationNotifications?.({
+            accountId: account.id,
+            applications: registrationApplications
+        });
+    } catch {
+        // Notification backfill is best-effort; it must never hide the account's company list.
+    }
     const companies = memberships.map((membership) => serializeCompanyMembership(membership, {
         currentTenantToken,
         accountId: account.id

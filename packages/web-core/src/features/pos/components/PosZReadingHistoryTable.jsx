@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
+import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
 import PosTableSurface, {
   POS_TABLE_CELL_CLASS,
   POS_TABLE_HEADER_CELL_CLASS,
@@ -91,6 +92,7 @@ export default function PosZReadingHistoryTable({
   const detailSummary = preview?.data?.summary || {};
   const detailSnapshot = previewData.details || {};
   const paymentBreakdown = Array.isArray(detailSummary.payment_breakdown) ? detailSummary.payment_breakdown : [];
+  const deliveryProviderBreakdown = parseDeliveryProviderSummary(detailSummary.delivery_provider_breakdown);
   const capturedRefunds = detailSnapshot.refunds || {};
   const capturedReceipts = detailSnapshot.receipt_ranges || {};
   const capturedShifts = detailSnapshot.captured && Array.isArray(detailSnapshot.shifts)
@@ -155,6 +157,16 @@ export default function PosZReadingHistoryTable({
                       : `${formatMoney(entry.amount, currencySymbol)} · ${formatCount(entry.count)} payments`
                   }))
               : [DetailField({ label: 'Payments', value: 'No payment entries recorded' })]
+          },
+          {
+            key: 'delivery-provider-breakdown',
+            title: 'Delivery provider breakdown',
+            fields: deliveryProviderBreakdown.length > 0
+              ? deliveryProviderBreakdown.map((entry) => DetailField({
+                label: formatDeliveryProviderSummaryLabel(entry),
+                value: `${formatMoney(entry.amount, currencySymbol)} · ${formatCount(entry.transaction_count)} transactions`
+              }))
+              : [DetailField({ label: 'Delivery providers', value: 'No delivery provider sales recorded' })]
           },
           {
             key: 'adjustments',

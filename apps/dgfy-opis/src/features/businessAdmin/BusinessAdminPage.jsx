@@ -15,6 +15,7 @@ import {
     Database,
     Download,
     ExternalLink,
+    Info,
     Lock,
     MapPin,
     Menu,
@@ -74,8 +75,10 @@ import {
     BackOfficeStatusPill as StatusPill
 } from '../../../../../packages/web-core/src/components/backOffice/BackOfficePrimitives.jsx';
 import MigratedBackOfficeModule from './MigratedBackOfficeModule.jsx';
+import PosActivityAnalyticsPage from './PosActivityAnalyticsPage.jsx';
 import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
 import BusinessAdminAccountActions from './BusinessAdminAccountActions.jsx';
+import ProcessingFeePolicyEditor from './ProcessingFeePolicyEditor.jsx';
 import {
     BACKOFFICE_NAV_GROUPS,
     BACKOFFICE_SECTION_META,
@@ -106,6 +109,7 @@ const BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE = 'Your session is missing or expi
 const BUSINESS_ADMIN_COMPANY_SWITCHED_MESSAGE = 'The company changed in another window. Return to POS and open Back Office again for the selected company.';
 const BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE = 'Your account is authenticated but is not authorized to open Back Office.';
 const BUSINESS_ADMIN_ORDERS_PAGE_SIZE = 20;
+const BUSINESS_ADMIN_VOID_HISTORY_PAGE_SIZE = 20;
 const BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE = 10;
 const BUSINESS_ADMIN_CASH_SUMMARY_EXPORT_PAGE_SIZE = 100;
 const BUSINESS_ADMIN_INVENTORY_PAGE_SIZE = 10;
@@ -120,8 +124,8 @@ const BUSINESS_ADMIN_RECEIPT_TYPE_OPTIONS = Object.freeze([
 const INVENTORY_WORKFLOW_LINKS = Object.freeze([
     {
         moduleId: 'catalog',
-        title: 'Catalog editor',
-        description: 'Items, categories, variants, pricing, import/export, packaging, and labels.',
+        title: 'Item Editor',
+        description: 'Items, categories, variants, pricing, branch stock, import/export, packaging, and labels.',
         icon: Package
     },
     {
@@ -379,6 +383,12 @@ const buildQuery = ({ dateFrom, dateTo, branchId, search, itemId, receiptType })
     ...(itemId ? { item_id: itemId } : {}),
     ...(receiptType ? { receipt_type: receiptType } : {}),
     ...(search ? { search } : {})
+});
+
+const buildTenantRevenueQuery = (params = {}) => ({
+    ...(params.branch_id ? { branch_id: params.branch_id } : {}),
+    ...(params.date_from ? { period_start: `${params.date_from}T00:00:00.000Z` } : {}),
+    ...(params.date_to ? { period_end: `${params.date_to}T23:59:59.999Z` } : {})
 });
 
 const historicalEmptyMessage = (message, dateFrom, dateTo) => (
@@ -1190,7 +1200,7 @@ function InventoryWorkspace({ data, onPageChange, refreshing = false, rootPath =
 
             <div className="business-admin-inventory-context">
                 <Database size={16} />
-                <div><strong>Read-only inventory view</strong><span>Use Catalog Editor and Stock movements for inventory changes.</span></div>
+                <div><strong>Read-only inventory view</strong><span>Use Item Editor and Stock movements for inventory changes.</span></div>
             </div>
 
             <SectionCard
@@ -1667,8 +1677,152 @@ function NotificationsWorkspace({ data, onAction, actionLoading, refreshing = fa
         </div>
     );
 }
-function ApprovalsWorkspace({ data, onDecision, actionLoading }) {
-    return <SectionCard title="Approval queue" subtitle="High-risk requests are visible here; mutation remains with POS"><DataTable rows={data?.approvals || []} rowKey={(row) => row.approval_request_id} emptyMessage="No approval requests are pending." columns={[{ key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) }, { key: 'entity_id', label: 'Entity' }, { key: 'requested_by', label: 'Requested by' }, { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) }, { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> }, { key: 'actions', label: 'Decision', render: (row) => row.status === 'pending' ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div> : <span className="business-admin-muted">No action</span> }]} /></SectionCard>;
+const normalizeVoidHistoryTransactionId = (value) => {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isInteger(normalized) && normalized > 0 ? String(normalized) : '';
+};
+
+const buildApprovedVoidHistoryRows = ({ approvals = [], orders = [] } = {}) => {
+    const approvedVoidApprovals = (Array.isArray(approvals) ? approvals : [])
+        .filter((row) => row?.action_type === 'pos_void' && ['approved', 'executed'].includes(String(row.status || '').toLowerCase()));
+    const approvalByTransaction = new Map();
+    approvedVoidApprovals.forEach((row) => {
+        const transactionId = normalizeVoidHistoryTransactionId(row.related_transaction_id || row.payload?.transaction_id || row.entity_id);
+        if (transactionId && !approvalByTransaction.has(transactionId)) approvalByTransaction.set(transactionId, row);
+    });
+
+    const seenTransactionIds = new Set();
+    const rows = (Array.isArray(orders) ? orders : []).map((order, index) => {
+        const transactionId = normalizeVoidHistoryTransactionId(order.transaction_id);
+        const approval = transactionId ? approvalByTransaction.get(transactionId) : null;
+        if (transactionId) seenTransactionIds.add(transactionId);
+        return {
+            key: `transaction-${transactionId || index}`,
+            occurred_at: order.voided_at || approval?.executed_at || approval?.approved_at || order.created_at,
+            invoice_number: order.invoice_number || approval?.payload?.invoice_number || (transactionId ? `Transaction #${transactionId}` : '—'),
+            total_amount: order.total_amount ?? approval?.requested_value ?? null,
+            voided_by: order.voided_by || approval?.approved_by || '—',
+            requested_by: approval?.requested_by || '—',
+            approved_by: approval?.approved_by || '—',
+            source: approval ? 'Approved workflow' : 'Direct/admin void',
+            reason: order.void_reason || approval?.reason || '—'
+        };
+    });
+
+    approvedVoidApprovals.forEach((approval, index) => {
+        const transactionId = normalizeVoidHistoryTransactionId(approval.related_transaction_id || approval.payload?.transaction_id || approval.entity_id);
+        if (transactionId && seenTransactionIds.has(transactionId)) return;
+        rows.push({
+            key: `approval-${approval.approval_request_id || index}`,
+            occurred_at: approval.executed_at || approval.approved_at || approval.requested_at,
+            invoice_number: approval.payload?.invoice_number || (transactionId ? `Transaction #${transactionId}` : '—'),
+            total_amount: approval.requested_value ?? null,
+            voided_by: approval.approved_by || '—',
+            requested_by: approval.requested_by || '—',
+            approved_by: approval.approved_by || '—',
+            source: 'Approved workflow',
+            reason: approval.reason || '—'
+        });
+    });
+
+    return rows.sort((left, right) => new Date(right.occurred_at || 0).getTime() - new Date(left.occurred_at || 0).getTime());
+};
+
+const VoidHistoryPagination = ({ page, totalPages, total, onPageChange, refreshing = false }) => {
+    const normalizedTotal = Math.max(Number(total) || 0, 0);
+    const normalizedTotalPages = Math.max(Number(totalPages) || 1, 1);
+    const currentPage = Math.min(Math.max(Number(page) || 1, 1), normalizedTotalPages);
+    if (!normalizedTotal) return null;
+    const start = ((currentPage - 1) * BUSINESS_ADMIN_VOID_HISTORY_PAGE_SIZE) + 1;
+    const end = Math.min(currentPage * BUSINESS_ADMIN_VOID_HISTORY_PAGE_SIZE, normalizedTotal);
+    const recordLabel = normalizedTotal === 1 ? 'void record' : 'void records';
+
+    return (
+        <nav className="business-admin-orders-pagination" aria-label="Approved void history pagination">
+            <div className="business-admin-orders-pagination-summary">
+                <strong>{number(start)}–{number(end)}</strong>
+                <span>of {number(normalizedTotal)} {recordLabel}</span>
+            </div>
+            <div className="business-admin-orders-pagination-actions">
+                <button type="button" className="business-admin-button" onClick={() => onPageChange(currentPage - 1)} disabled={refreshing || currentPage <= 1} aria-label="Previous approved void history page">
+                    <ChevronLeft size={14} /> Previous
+                </button>
+                <span className="business-admin-orders-pagination-page">Page {number(currentPage)} of {number(normalizedTotalPages)}</span>
+                <button type="button" className="business-admin-button" onClick={() => onPageChange(currentPage + 1)} disabled={refreshing || currentPage >= normalizedTotalPages} aria-label="Next approved void history page">
+                    Next <ChevronRight size={14} />
+                </button>
+            </div>
+        </nav>
+    );
+};
+
+function ApprovalsWorkspace({ data, onDecision, actionLoading, voidHistoryOpen, voidHistoryRows, voidHistoryLoading, voidHistoryError, onToggleVoidHistory, onRefreshVoidHistory }) {
+    const [voidHistoryPage, setVoidHistoryPage] = useState(1);
+    const rows = data?.approvals || [];
+    const historyRows = Array.isArray(voidHistoryRows) ? voidHistoryRows : [];
+    const historyTotal = historyRows.length;
+    const historyTotalPages = Math.max(Math.ceil(historyTotal / BUSINESS_ADMIN_VOID_HISTORY_PAGE_SIZE), 1);
+    const currentHistoryPage = Math.min(Math.max(voidHistoryPage, 1), historyTotalPages);
+    const visibleHistoryRows = historyRows.slice(
+        (currentHistoryPage - 1) * BUSINESS_ADMIN_VOID_HISTORY_PAGE_SIZE,
+        currentHistoryPage * BUSINESS_ADMIN_VOID_HISTORY_PAGE_SIZE
+    );
+    const handleHistoryToggle = () => {
+        if (!voidHistoryOpen) setVoidHistoryPage(1);
+        onToggleVoidHistory();
+    };
+    const handleHistoryRefresh = () => {
+        setVoidHistoryPage(1);
+        onRefreshVoidHistory();
+    };
+    const approvalColumns = [
+        { key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) },
+        { key: 'entity_id', label: 'Entity' },
+        { key: 'requested_by', label: 'Requested by' },
+        { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) },
+        { key: 'reason', label: 'Reason', render: (row) => row.reason || '—' },
+        { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> },
+        {
+            key: 'actions',
+            label: 'Decision',
+            render: (row) => row.status === 'pending'
+                ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div>
+                : <span className="business-admin-muted">No action</span>
+        }
+    ];
+    const voidHistoryColumns = [
+        { key: 'occurred_at', label: 'When', render: (row) => dateTime(row.occurred_at) },
+        { key: 'invoice_number', label: 'Invoice' },
+        { key: 'total_amount', label: 'Amount', render: (row) => row.total_amount == null ? '—' : money(row.total_amount) },
+        { key: 'voided_by', label: 'Voided by' },
+        { key: 'requested_by', label: 'Requested by' },
+        { key: 'approved_by', label: 'Approved by' },
+        { key: 'source', label: 'Source' },
+        { key: 'reason', label: 'Reason' }
+    ];
+
+    return <>
+        {!voidHistoryOpen ? (
+            <SectionCard
+                title="Approval queue"
+                subtitle="Review high-risk POS requests here; POS remains the canonical execution owner"
+                action={<button type="button" className="business-admin-button" data-testid="approved-void-history-toggle" onClick={handleHistoryToggle}><Receipt size={14} /> Approved Void History</button>}
+            >
+                <DataTable rows={rows} rowKey={(row) => row.approval_request_id} emptyMessage="No approval requests are pending." columns={approvalColumns} />
+            </SectionCard>
+        ) : null}
+        {voidHistoryOpen ? (
+            <SectionCard
+                title="Approved Void History"
+                subtitle="Includes completed approval voids and direct/admin POS voids. Original records remain read-only."
+                action={<div className="flex flex-wrap gap-2"><button type="button" className="business-admin-button" data-testid="approved-void-history-back" onClick={handleHistoryToggle}><X size={14} /> Back to Approval Queue</button><button type="button" className="business-admin-button" data-testid="approved-void-history-refresh" onClick={handleHistoryRefresh} disabled={voidHistoryLoading}><RefreshCw size={14} /> Refresh</button></div>}
+            >
+                {voidHistoryLoading ? <div className="business-admin-loading" role="status" aria-live="polite"><span className="business-admin-spinner" /> Loading void history…</div> : null}
+                {!voidHistoryLoading && voidHistoryError ? <div className="business-admin-alert error"><AlertTriangle size={17} /><div>{voidHistoryError}</div></div> : null}
+                {!voidHistoryLoading && !voidHistoryError ? <><DataTable rows={visibleHistoryRows} rowKey={(row) => row.key} emptyMessage="No approved or direct/admin voids were found." columns={voidHistoryColumns} /><VoidHistoryPagination page={currentHistoryPage} totalPages={historyTotalPages} total={historyTotal} onPageChange={setVoidHistoryPage} refreshing={voidHistoryLoading} /></> : null}
+            </SectionCard>
+        ) : null}
+    </>;
 }
 
 function AuditWorkspace({ data, dateFrom, dateTo }) {
@@ -1740,6 +1894,14 @@ const PaymentSessionCard = ({ row }) => (
     </article>
 );
 
+const processingFeeBasisLabel = (source) => {
+    if (source === 'fallback') return 'Estimated fallback';
+    if (source === 'manual_review') return 'Manual review';
+    if (source === 'statement') return 'Provider statement';
+    if (source === 'api') return 'Provider API';
+    return 'Provider evidence';
+};
+
 function PaymentsWorkspace({ data }) {
     const account = data?.payment_account;
     const reconciliation = data?.reconciliation || {};
@@ -1749,6 +1911,11 @@ function PaymentsWorkspace({ data }) {
     }));
     const paymentSessionTotal = data?.payment_sessions_page?.total ?? sessions.length;
     const exceptionCount = Number(reconciliation.exception_count || 0);
+    const revenueSummary = data?.tenant_revenue?.summary || {};
+    const revenueTotals = revenueSummary.totals || {};
+    const processingFeeSources = revenueSummary.processing_fee_sources || {};
+    const revenueTransactions = data?.tenant_revenue?.transactions || [];
+    const revenueStatementAvailable = Boolean(data?.tenant_revenue?.summary);
 
     return (
         <div className="business-admin-payments-workspace">
@@ -1786,6 +1953,43 @@ function PaymentsWorkspace({ data }) {
                     </div>
                 </SectionCard>
             </div>
+            <SectionCard
+                className="business-admin-processing-fee-report"
+                title="Processing fee statement"
+                subtitle="Provider evidence, configured estimates, and reconciliation status for this business"
+            >
+                {revenueStatementAvailable ? (
+                    <>
+                        <div className="business-admin-processing-fee-report-summary">
+                            <PaymentSummaryMetric icon={Wallet} label="Processing fees" value={money(Number(revenueTotals.provider_fee_centavos || 0) / 100)} detail={`${number(revenueSummary.counts?.transactions || 0)} revenue transactions`} />
+                            <PaymentSummaryMetric icon={ShieldCheck} label="Actual / reconciled" value={money(Number(processingFeeSources.actual?.amount_centavos || 0) / 100)} detail={`${number(processingFeeSources.actual?.count || 0)} payments`} tone="positive" />
+                            <PaymentSummaryMetric icon={AlertTriangle} label="Estimated fallback" value={money(Number(processingFeeSources.estimated_fallback?.amount_centavos || 0) / 100)} detail={`${number(processingFeeSources.estimated_fallback?.count || 0)} on hold`} tone={Number(processingFeeSources.estimated_fallback?.count || 0) ? 'warning' : ''} />
+                            <PaymentSummaryMetric icon={Lock} label="Manual review" value={number(processingFeeSources.manual_review?.count || 0)} detail="Missing provider fee evidence" tone={Number(processingFeeSources.manual_review?.count || 0) ? 'warning' : 'positive'} />
+                        </div>
+                        <div className="business-admin-alert info mt-4" role="note">
+                            <Info size={17} />
+                            <span>Estimated fallback fees never replace provider evidence. The actual or reconciled amount updates the immutable financial snapshot and closes the estimate exception.</span>
+                        </div>
+                        {revenueTransactions.length ? (
+                            <div className="business-admin-table-wrap mt-4">
+                                <DataTable
+                                    rows={revenueTransactions}
+                                    rowKey={(row) => row.revenue_transaction_id || row.provider_payment_id}
+                                    columns={[
+                                        { key: 'provider_payment_id', label: 'Payment', render: (row) => <strong>{row.provider_payment_id || '—'}</strong> },
+                                        { key: 'payment_method', label: 'Method', render: (row) => humanize(row.payment_method) },
+                                        { key: 'gross_amount_centavos', label: 'Gross', render: (row) => money(Number(row.gross_amount_centavos || 0) / 100) },
+                                        { key: 'provider_fee_centavos', label: 'Processing fee', render: (row) => row.provider_fee_centavos == null ? 'Manual review' : money(Number(row.provider_fee_centavos || 0) / 100) },
+                                        { key: 'provider_fee_basis', label: 'Basis', render: (row) => processingFeeBasisLabel(row.provider_fee_source) },
+                                        { key: 'reconciliation_status', label: 'Reconciliation', render: (row) => <StatusPill value={row.reconciliation_status} /> },
+                                        { key: 'paid_at', label: 'Paid', render: (row) => dateTime(row.paid_at) }
+                                    ]}
+                                />
+                            </div>
+                        ) : <Empty message="No tenant-revenue transactions match the selected period." />}
+                    </>
+                ) : <Empty message="The source-aware processing-fee statement is not available for the selected account." />}
+            </SectionCard>
             <SectionCard
                 className="business-admin-payments-section-card"
                 title="Recent online payments"
@@ -1830,6 +2034,7 @@ const BUSINESS_ADMIN_EDITOR_TABS = Object.freeze({
     branches: ['storefront'],
     attendance: ['pos_setup'],
     payments: ['payments'],
+    processing_fees: [],
     registers: ['pos_setup']
 });
 
@@ -1863,8 +2068,15 @@ function BusinessAdminSettingsEditor({
         sectionKey: definition?.key,
         rawCapabilities
     }), [bootstrap?.user, definition?.key, rawCapabilities]);
-    const allowedTabIds = BUSINESS_ADMIN_EDITOR_TABS[definition?.key] || [];
     const isMasterAdmin = bootstrap?.user?.is_master_admin === true;
+    const normalizedCapabilities = normalizeBusinessAdminSettingsCapabilities(rawCapabilities);
+    const processingFeeCapability = normalizedCapabilities.processing_fees || {};
+    const canViewProcessingFee = isMasterAdmin || processingFeeCapability.view === true;
+    const canEditProcessingFee = isMasterAdmin || processingFeeCapability.edit === true;
+    const baseAllowedTabIds = BUSINESS_ADMIN_EDITOR_TABS[definition?.key] || [];
+    const allowedTabIds = definition?.key === 'pos' && canViewProcessingFee
+        ? [...baseAllowedTabIds, 'processing_fees']
+        : baseAllowedTabIds;
     const canViewUsers = isMasterAdmin || sectionCapability?.user_view === true || sectionCapability?.user_edit === true;
     const canEditUsers = isMasterAdmin || sectionCapability?.user_edit === true;
     const hasEmployeeEditor = sectionCapability?.employee_edit === true
@@ -1880,6 +2092,16 @@ function BusinessAdminSettingsEditor({
             ...details
         });
     }, [definition?.key, definition?.scope, onSettingsSaved, settingsBranchId]);
+
+    if (definition?.key === 'processing_fees') {
+        return (
+            <ProcessingFeePolicyEditor
+                canEdit={canEditProcessingFee}
+                onDirtyChange={onDirtyChange}
+                onSettingsSaved={notifySettingsSaved}
+            />
+        );
+    }
 
     if (definition?.key === 'team') {
         return (
@@ -1989,6 +2211,13 @@ function BusinessAdminSettingsEditor({
                 settingsRefreshKey={settingsRefreshKey}
                 onDirtyChange={onDirtyChange}
                 locationScopeId={definition?.key === 'branches' ? settingsBranchId : null}
+                processingFeePane={canViewProcessingFee ? (
+                    <ProcessingFeePolicyEditor
+                        canEdit={canEditProcessingFee}
+                        onDirtyChange={onDirtyChange}
+                        onSettingsSaved={notifySettingsSaved}
+                    />
+                ) : null}
             />
         </div>
     );
@@ -2460,6 +2689,27 @@ function SimpleWorkspace({ section, bootstrap }) {
     return <><div className="business-admin-alert info"><CheckCircle2 size={17} /><div><strong>Read-model boundary.</strong><div>This business Back Office keeps POS, Storefront, catalog, inventory, identity, and fiscal ownership boundaries intact.</div></div></div><div className="business-admin-feature-grid">{cards}</div><div className="mt-5 flex flex-wrap gap-3"><a href={buildPosTerminalUrl()} className="business-admin-button primary"><ExternalLink size={14} /> Open POS terminal</a>{section === 'fnb' ? <a href={buildPosTerminalUrl()} className="business-admin-button"><ChefHat size={14} /> Open F&B operations</a> : null}</div></>;
 }
 
+function CompanyWorkspace({ data }) {
+    const readiness = data?.readiness || {};
+    const checks = [
+        ['company_profile', 'Company profile'],
+        ['storefront', 'Storefront settings'],
+        ['location', 'Primary location'],
+        ['hours', 'Business hours'],
+        ['uploads_reviewed', 'Registration uploads reviewed'],
+        ['menu_extraction', 'Menu extraction reviewed']
+    ];
+    return <div className="space-y-5" data-testid="company-workspace">
+        <SectionCard title="Company readiness" subtitle="Company registration and setup status for this tenant.">
+            <div className="grid gap-4 sm:grid-cols-3"><Metric label="Company" value={data?.identity?.name || '—'} /><Metric label="Registration" value={humanize(data?.registration?.review_status || 'not submitted')} /><Metric label="Provisioning" value={humanize(data?.registration?.provisioning_status || 'not started')} /></div>
+            <div className="mt-5 rounded-xl border border-[#d8e8e3] bg-[#f7fbfa] p-4"><div className="business-admin-kicker">Next authorized action</div><p className="mt-1 font-semibold text-[#173e58]">{data?.next_action || 'Review company setup.'}</p></div>
+        </SectionCard>
+        <SectionCard title="Readiness checks" subtitle="These checks read canonical settings and location data; this page does not duplicate their editors."><div className="grid gap-3 sm:grid-cols-2">{checks.map(([key, label]) => <div key={key} className="flex items-center justify-between rounded-xl border p-3"><span className="text-sm font-medium">{label}</span><StatusPill value={readiness[key] ? 'ready' : 'needs attention'} /></div>)}</div></SectionCard>
+        <SectionCard title="Registration uploads" subtitle="Original files remain private and auditable. Menu extraction never publishes catalog rows automatically."><DataTable rows={data?.storefront?.uploads || []} rowKey={(row) => row.id} emptyMessage="No registration uploads." columns={[{ key: 'original_filename', label: 'File', render: (row) => <strong>{row.original_filename}</strong> }, { key: 'asset_kind', label: 'Kind', render: (row) => humanize(row.asset_kind) }, { key: 'extraction_status', label: 'Extraction', render: (row) => <StatusPill value={row.extraction_status} /> }, { key: 'review_status', label: 'Review', render: (row) => <StatusPill value={row.review_status} /> }]} /></SectionCard>
+        <SectionCard title="Canonical editors" subtitle="Use the existing settings and location owners for changes."><div className="flex flex-wrap gap-3"><a className="business-admin-button primary" href={data?.authorized_actions?.settings_profile || '/settings/profile'}>Open business settings</a><a className="business-admin-button" href={data?.authorized_actions?.storefront_settings || '/settings/storefront'}>Open Storefront settings</a><a className="business-admin-button" href={data?.authorized_actions?.locations || '/settings/branches'}>Open locations</a></div></SectionCard>
+    </div>;
+}
+
 export default function BusinessAdminPage() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -2506,6 +2756,10 @@ export default function BusinessAdminPage() {
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [actionLoading, setActionLoading] = useState(null);
     const [actionError, setActionError] = useState('');
+    const [voidHistoryOpen, setVoidHistoryOpen] = useState(false);
+    const [voidHistoryRows, setVoidHistoryRows] = useState([]);
+    const [voidHistoryLoading, setVoidHistoryLoading] = useState(false);
+    const [voidHistoryError, setVoidHistoryError] = useState('');
     const [cashSummaryExporting, setCashSummaryExporting] = useState(false);
     const [reloadNonce, setReloadNonce] = useState(0);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -2866,7 +3120,32 @@ export default function BusinessAdminPage() {
             else if (activeSection === 'notifications') payload = await businessAdminApi.notifications({ ...(branchId ? { branch_id: branchId } : {}), status: 'open', limit: 100 });
             else if (activeSection === 'audit') payload = await businessAdminApi.audit({ ...params, limit: 100, page: 1 });
             else if (activeSection === 'approvals') payload = { approvals: (await businessAdminApi.approvals({ status: 'pending', limit: 100 })).approvals || [] };
-            else if (activeSection === 'payments') payload = await businessAdminApi.payments(params);
+            else if (activeSection === 'payments') {
+                const revenueParams = buildTenantRevenueQuery(params);
+                const [monitoring, revenueSummary, revenueTransactions, feeHistory] = await Promise.allSettled([
+                    businessAdminApi.payments(params),
+                    businessAdminApi.tenantRevenueSummary(revenueParams),
+                    businessAdminApi.tenantRevenueTransactions({ ...revenueParams, limit: 100, offset: 0 }),
+                    businessAdminApi.tenantRevenueFeeHistory()
+                ]);
+                if (monitoring.status === 'rejected') throw monitoring.reason;
+                payload = {
+                    ...monitoring.value,
+                    tenant_revenue: {
+                        summary: revenueSummary.status === 'fulfilled' ? revenueSummary.value : null,
+                        transactions: revenueTransactions.status === 'fulfilled'
+                            ? (revenueTransactions.value?.transactions || [])
+                            : [],
+                        policies: feeHistory.status === 'fulfilled'
+                            ? (feeHistory.value?.policies || [])
+                            : [],
+                        error: [revenueSummary, revenueTransactions, feeHistory]
+                            .find((result) => result.status === 'rejected')?.reason || null
+                    }
+                };
+            }
+            else if (activeSection === 'company') payload = await businessAdminApi.company();
+            else if (activeSection === 'pos-activity') payload = await businessAdminApi.posActivityAnalytics(params);
             else payload = { bootstrap };
             if (requestRef.current === requestId) {
                 setSectionData(payload);
@@ -2977,6 +3256,36 @@ export default function BusinessAdminPage() {
         } catch (error) { setActionError(getBusinessAdminErrorMessage(error)); } finally { setActionLoading(null); }
     }, []);
 
+    const loadVoidHistory = useCallback(async () => {
+        setVoidHistoryLoading(true);
+        setVoidHistoryError('');
+        try {
+            const [executedApprovals, approvedApprovals, voidedOrders] = await Promise.all([
+                businessAdminApi.approvals({ status: 'executed', limit: 100 }),
+                businessAdminApi.approvals({ status: 'approved', limit: 100 }),
+                businessAdminApi.orders({ receipt_type: 'voided', page: 1, limit: 100 })
+            ]);
+            setVoidHistoryRows(buildApprovedVoidHistoryRows({
+                approvals: [...(executedApprovals?.approvals || []), ...(approvedApprovals?.approvals || [])],
+                orders: voidedOrders?.orders || []
+            }));
+        } catch (error) {
+            setVoidHistoryRows([]);
+            setVoidHistoryError(getBusinessAdminErrorMessage(error));
+        } finally {
+            setVoidHistoryLoading(false);
+        }
+    }, []);
+
+    const handleVoidHistoryToggle = useCallback(() => {
+        if (voidHistoryOpen) {
+            setVoidHistoryOpen(false);
+            return;
+        }
+        setVoidHistoryOpen(true);
+        void loadVoidHistory();
+    }, [loadVoidHistory, voidHistoryOpen]);
+
     const handleExpenseCreate = useCallback(async (payload) => {
         setActionLoading('expense-create');
         setActionError('');
@@ -3024,7 +3333,8 @@ export default function BusinessAdminPage() {
 
     const showDateFilters = [
         'overview', 'locations', 'orders', 'customers', 'team',
-        'attendance', 'shifts', 'expenses', 'inventory', 'recipes', 'fiscal', 'audit'
+        'attendance', 'shifts', 'expenses', 'inventory', 'recipes', 'fiscal', 'audit',
+        'pos-activity'
     ].includes(activeSection);
     const showHistoricalRangePreset = isHistoricalBusinessAdminSection(activeSection);
     const showBranchFilter = activeSection !== 'audit';
@@ -3170,9 +3480,11 @@ export default function BusinessAdminPage() {
         if (activeSection === 'recipes') return <RecipesWorkspace data={sectionData} />;
         if (activeSection === 'fiscal') return <FiscalWorkspace data={sectionData} />;
         if (activeSection === 'notifications') return <NotificationsWorkspace data={sectionData} onAction={handleNotificationAction} actionLoading={actionLoading} />;
-        if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} onDecision={handleApprovalDecision} actionLoading={actionLoading} />;
+        if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} onDecision={handleApprovalDecision} actionLoading={actionLoading} voidHistoryOpen={voidHistoryOpen} voidHistoryRows={voidHistoryRows} voidHistoryLoading={voidHistoryLoading} voidHistoryError={voidHistoryError} onToggleVoidHistory={handleVoidHistoryToggle} onRefreshVoidHistory={loadVoidHistory} />;
         if (activeSection === 'audit') return <AuditWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} />;
         if (activeSection === 'payments') return <PaymentsWorkspace data={sectionData} />;
+        if (activeSection === 'company') return <CompanyWorkspace data={sectionData} />;
+        if (activeSection === 'pos-activity') return <PosActivityAnalyticsPage data={sectionData} />;
         return <SimpleWorkspace section={activeSection} bootstrap={bootstrap} />;
     };
 

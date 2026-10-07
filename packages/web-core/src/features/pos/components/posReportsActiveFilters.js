@@ -15,6 +15,7 @@ export function buildPosReportsActiveFilters({
   cashierLabel,
   paymentLabel,
   sourceLabel,
+  deliveryProviderLabel,
   categoryLabel,
   searchQuery = ''
 } = {}) {
@@ -27,6 +28,7 @@ export function buildPosReportsActiveFilters({
   if (cashierLabel) filters.push({ key: 'cashier', label: `Cashier: ${cashierLabel}` });
   if (paymentLabel) filters.push({ key: 'payment', label: `Payment: ${paymentLabel}` });
   if (sourceLabel) filters.push({ key: 'source', label: `Source: ${sourceLabel}` });
+  if (deliveryProviderLabel) filters.push({ key: 'delivery_provider', label: `Delivery Provider: ${deliveryProviderLabel}` });
   if (categoryLabel) filters.push({ key: 'category', label: `Category: ${categoryLabel}` });
 
   if (granularity && defaultGranularity && granularity !== defaultGranularity) {

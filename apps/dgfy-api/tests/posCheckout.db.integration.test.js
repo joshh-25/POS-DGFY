@@ -558,6 +558,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             idempotency_key: `idem-multi-beneficiary-${crypto.randomUUID()}`,
             payment_type: 'cash',
             order_method: 'dine_in',
+            customer_name: 'Senior beneficiaries',
             discount_approval: {
                 approver_user_id: approver.user_id,
                 manager_pin: '2468',
@@ -976,7 +977,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const checkoutResult = await checkoutAsCashier(cashier, {
                 idempotency_key: idempotencyKey,
                 payment_type: 'cash',
-                order_method: 'delivery',
+                order_method: 'dine_in',
                 service_fee_amount: 60,
                 lines: [
                     {

@@ -137,6 +137,8 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         canViewHistory,
         canUseEmployeeCredit,
         canVoidTransactions,
+        canReviewVoidApprovals,
+        inlineVoidApprovalEnabled,
         cartSubtotal,
         cartTotal,
         cartTotalQuantity,
@@ -220,6 +222,10 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleSplitPaymentOpenChange,
         handleSplitPaymentSessionStateChange,
         handleVoidHistoryTransaction,
+        openVoidApprovalQueue,
+        closeVoidApprovalQueue,
+        loadVoidApprovalQueue,
+        decideVoidApproval,
         historyRefundWorkflow,
         headerParkedSalesHistorySlot,
         historyCashierName,
@@ -232,6 +238,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historyPage,
         historyPageSize,
         historyPaymentType,
+        historyDeliveryProvider,
         historySearch,
         historyStatus,
         imagePreview,
@@ -325,6 +332,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setHistoryOrderMethod,
         setHistoryOrderSource,
         setHistoryPaymentType,
+        setHistoryDeliveryProvider,
         setHistorySearch,
         setHistoryStatus,
         setImagePreview,
@@ -362,6 +370,12 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         visibleCatalogRange,
         visibleHistoryPagination,
         visibleHistoryRows,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
         voidingTransactionId
     } = viewModel;
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
@@ -430,6 +444,8 @@ return (
                         setHistoryStatus={setHistoryStatus}
                         historyPaymentType={historyPaymentType}
                         setHistoryPaymentType={setHistoryPaymentType}
+                        historyDeliveryProvider={historyDeliveryProvider}
+                        setHistoryDeliveryProvider={setHistoryDeliveryProvider}
                         historyOrderMethod={historyOrderMethod}
                         setHistoryOrderMethod={setHistoryOrderMethod}
                         historyOrderSource={historyOrderSource}
@@ -470,6 +486,19 @@ return (
                          sidebarCollapsed={sidebarCollapsed}
                          posWorkflow={posWorkflow}
                          isMobileViewport={isMobileViewport}
+                         inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}
+                         canReviewVoidApprovals={canReviewVoidApprovals}
+                         voidApprovalQueue={voidApprovalQueue}
+                         voidApprovalQueueLoading={voidApprovalQueueLoading}
+                         voidApprovalQueueError={voidApprovalQueueError}
+                         voidApprovalDialogOpen={voidApprovalDialogOpen}
+                         voidApprovalDecisionLoading={voidApprovalDecisionLoading}
+                         voidApprovalSelectedRequest={voidApprovalSelectedRequest}
+                         currentUserId={terminalUser?.user_id || terminalUser?.id || null}
+                         openVoidApprovalQueue={openVoidApprovalQueue}
+                         closeVoidApprovalQueue={closeVoidApprovalQueue}
+                         loadVoidApprovalQueue={loadVoidApprovalQueue}
+                         decideVoidApproval={decideVoidApproval}
                      />
                 </Suspense>
                 </div>
@@ -1546,8 +1575,12 @@ return (
                                 size="sm"
                                 data-testid="pos-receipt-print"
                                 onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
-                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
-                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || posHardware.loading}
+                                title={posHardware.loading
+                                    ? 'Checking printer availability.'
+                                    : isPrinterAvailable
+                                        ? undefined
+                                        : 'No direct printer detected. Open the receipt preview, then choose Print in browser.'}
                             >
                                 <Printer className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                                 {receiptPrinting ? 'Printing...' : 'Print'}
@@ -1714,6 +1747,7 @@ return (
                 setReceiptPreviewSource={setReceiptPreviewSource}
                 posActionsBlocked={posActionsBlocked}
                 receiptPrinting={receiptPrinting}
+                hardwareLoading={posHardware.loading}
                 isPrinterAvailable={isPrinterAvailable}
                 isOrderPrinterAvailable={isOrderPrinterAvailable}
                 handlePrintReceipt={handlePrintReceipt}
@@ -1796,7 +1830,7 @@ return (
                         onClaimed={handleParkedSaleClaimed}
                         onCancelled={(cancelledSale) => {
                             if (Number(cancelledSale?.pos_parked_sale_id) !== Number(activeParkedSale?.pos_parked_sale_id)) return;
-                            if (cancelledSale?.status !== 'cancelled') return;
+                            if (!['cancel_pending', 'cancelled'].includes(String(cancelledSale?.status || '').toLowerCase())) return;
                             clearPosCartDraft(offlineSnapshotScope, activeShiftId);
                             setActiveParkedSale(null);
                             resetCurrentSaleForNewSale();

@@ -26,6 +26,7 @@ import {
     validateCancelPosParkedSale,
     validateReparkPosParkedSale,
     validateParkedSaleIdParam,
+    validateListPosExceptionApprovals,
     validatePosExceptionApprovalParam,
     validatePosExceptionApprovalBody,
     validateCreatePosPaymentSession,
@@ -44,6 +45,7 @@ import {
     validatePosCatalogOverrideParam,
     validateUpdatePosCatalogOverride,
     validatePosReportsQuery,
+    validatePosReportsBreakdownQuery,
     validatePosTransactionsQuery,
     validatePosReportsExportQuery,
     validateProcurementExportQuery,
@@ -303,7 +305,23 @@ router.get('/parked-sales', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), v
 router.post('/parked-sales/:id/claim', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateClaimPosParkedSale, posController.requireActiveOperatorForMutation, posController.claimParkedSale);
 router.post('/parked-sales/:id/repark', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateReparkPosParkedSale, posController.requireActiveOperatorForMutation, posController.reparkParkedSale);
 router.post('/parked-sales/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateCancelPosParkedSale, posController.requireActiveOperatorForMutation, posController.cancelParkedSale);
-router.post('/approvals/:id/:decision', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validatePosExceptionApprovalParam, validatePosExceptionApprovalBody, posController.decidePosExceptionApproval);
+router.get(
+    '/approvals',
+    checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.ACCESS),
+    checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES),
+    checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.APPROVE_HIGH_RISK),
+    validateListPosExceptionApprovals,
+    posController.listPosExceptionApprovals
+);
+router.post(
+    '/approvals/:id/:decision',
+    checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.ACCESS),
+    checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES),
+    checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.APPROVE_HIGH_RISK),
+    validatePosExceptionApprovalParam,
+    validatePosExceptionApprovalBody,
+    posController.decidePosExceptionApproval
+);
 router.post('/payment-sessions', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateCreatePosPaymentSession, posController.requireActiveOperatorForMutation, posController.createPaymentSession);
 router.get('/payment-sessions/active', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentSessionScopeQuery, posController.getActivePaymentSession);
 router.get('/payment-sessions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateSplitPaymentSessionIdParam, validateSplitPaymentSessionScopeQuery, posController.getPaymentSession);
@@ -353,6 +371,7 @@ router.get('/terminal/shifts/:id/merchant-tender-reconciliation', checkPermissio
 router.post('/terminal/shifts/:id/merchant-tender-reconciliation', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateReviewMerchantTenderReconciliation, posController.reviewMerchantTenderReconciliation);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
 router.get('/reports/overview', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosReportsQuery, posController.getReportsOverview);
+router.get('/reports/breakdowns', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosReportsBreakdownQuery, posController.getReportBreakdown);
 router.get('/reports/export', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosReportsExportQuery, posController.exportReports);
 // Phase 261 (#1488): pre-run procurement CSV export, deliberately no shift_id requirement --
 // usable before a run is built, unlike the shift-bound incoming-orders queue below.

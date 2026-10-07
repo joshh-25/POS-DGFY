@@ -26,7 +26,7 @@ const normalizePageSizeOptions = (options, pageSize) => {
 
 const getControlId = (prefix, testId, suffix) => `${prefix || testId || 'pagination'}-${suffix}`;
 
-const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onChange }) => {
+const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onChange, ariaLabel = 'Items per page', hidePageSizeSuffixOnMobile = false }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const menuId = `${controlId}-options`;
@@ -64,7 +64,7 @@ const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onCh
         id={controlId}
         data-testid={controlId}
         type="button"
-        aria-label="Items per page"
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-controls={menuId}
         aria-expanded={open}
@@ -73,7 +73,7 @@ const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onCh
         className="dgfy-global-pagination__page-size-trigger inline-flex h-10 min-w-[5.75rem] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm outline-none transition hover:border-[#1A4E8D]/50 hover:bg-[#F8FBFF] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/15 disabled:cursor-not-allowed disabled:opacity-50 lg:text-[13px]"
       >
         <span className="dgfy-global-pagination__page-size-value whitespace-nowrap">
-          {selectedPageSize}<span className="dgfy-global-pagination__page-size-suffix"> / page</span>
+          {selectedPageSize}<span className={`dgfy-global-pagination__page-size-suffix${hidePageSizeSuffixOnMobile ? ' dgfy-global-pagination__page-size-suffix--hide-on-mobile' : ''}`}> / page</span>
         </span>
         <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -81,7 +81,7 @@ const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onCh
         <div
           id={menuId}
           role="listbox"
-          aria-label="Items per page options"
+          aria-label={`${ariaLabel} options`}
           className="dgfy-global-pagination__page-size-menu absolute bottom-[calc(100%+0.375rem)] left-0 z-50 min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
         >
           {options.map((option) => (
@@ -118,11 +118,16 @@ export function GlobalPagination({
   disabled = false,
   loading = false,
   showPageSize = true,
+  hidePageSizeSuffixOnMobile = false,
   showGoTo = true,
   accentColor = '#1A4E8D',
   className,
   testId,
   controlTestIdPrefix,
+  pageSizeLabel = 'Items per page',
+  pageInputLabel = 'Go to page',
+  previousLabel = 'Previous page',
+  nextLabel = 'Next page',
   ariaLabel = 'Pagination'
 }) {
   const safeTotalItems = Math.max(0, Number(totalItems) || 0);
@@ -180,6 +185,8 @@ export function GlobalPagination({
             selectedPageSize={selectedPageSize}
             disabled={isDisabled}
             onChange={onPageSizeChange}
+            ariaLabel={pageSizeLabel}
+            hidePageSizeSuffixOnMobile={hidePageSizeSuffixOnMobile}
           />
         ) : null}
       </div>
@@ -189,8 +196,8 @@ export function GlobalPagination({
           type="button"
           variant="outline"
           data-testid={previousPageId}
-          aria-label="Previous page"
-          title="Previous page"
+          aria-label={previousLabel}
+          title={previousLabel}
           disabled={isDisabled || safeCurrentPage <= 1}
           onClick={() => changePage(safeCurrentPage - 1)}
           style={{ color: accentColor }}
@@ -205,8 +212,8 @@ export function GlobalPagination({
           type="button"
           variant="outline"
           data-testid={nextPageId}
-          aria-label="Next page"
-          title="Next page"
+          aria-label={nextLabel}
+          title={nextLabel}
           disabled={isDisabled || safeCurrentPage >= safeTotalPages}
           onClick={() => changePage(safeCurrentPage + 1)}
           style={{ color: accentColor }}
@@ -222,7 +229,7 @@ export function GlobalPagination({
               <input
                 id={goToPageId}
                 data-testid={goToPageId}
-                aria-label="Go to page"
+                aria-label={pageInputLabel}
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={goToPage}

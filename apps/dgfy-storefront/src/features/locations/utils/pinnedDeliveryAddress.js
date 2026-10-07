@@ -1,3 +1,5 @@
+import { reverseGeocodeDeliveryCoordinates } from '../../../services/geocodingService.js';
+
 export function buildPinnedDeliveryAddress(pin) {
   const latitude = Number(pin?.latitude);
   const longitude = Number(pin?.longitude);
@@ -30,9 +32,37 @@ export function resolveDeliveryAddress({
 }
 
 export function hasExplicitDeliveryAddressEdit(customerAddress = '', comparedTo = '') {
-  const typed = String(customerAddress || '').trim();
+  const rawTyped = String(customerAddress || '');
+  const typed = rawTyped.trim();
   if (!typed || isGeneratedPinnedDeliveryAddress(typed)) return false;
-  return typed !== String(comparedTo || '').trim();
+  // Preserve whitespace while the customer is editing. The resolved checkout payload trims
+  // the final value, but the controlled input must not fall back to the map-generated address
+  // when the customer has only entered a trailing space or is deleting the last character.
+  return rawTyped !== String(comparedTo || '');
+}
+
+/**
+ * The delivery-address field's value. The customer's own text is shown verbatim; the display
+ * address only fills an empty field (or replaces the generated "Pinned map location (...)"
+ * wording). The display address is derived from that same text but trimmed, so feeding it back
+ * whenever the two matched after trimming swallowed every trailing space as it was typed
+ * ("Jaro Plaza" became "JaroPlaza").
+ */
+export function resolveDeliveryAddressInputValue(customerAddress = '', displayAddress = '') {
+  const typed = String(customerAddress || '');
+  if (typed.trim() && !isGeneratedPinnedDeliveryAddress(typed)) return typed;
+  return String(displayAddress || '');
+}
+
+/**
+ * #759: an emptied field would otherwise fall straight back to the pin's looked-up address
+ * (resolveDeliveryAddressInputValue -> display address) and refill itself, so emptying it also
+ * runs the checkout's own location reset -- the same one "Add New Location" uses -- dropping the
+ * pin, its address and any selected saved address. The customer then searches or pins again.
+ */
+export function applyDeliveryAddressFieldChange(nextValue, { setCustomerAddress, clearDeliveryLocation } = {}) {
+  setCustomerAddress?.(nextValue);
+  if (!String(nextValue || '').trim()) clearDeliveryLocation?.();
 }
 
 export function normalizeCoordinatePair({ latitude, longitude } = {}) {
@@ -50,33 +80,41 @@ export function extractSavedLocationLabel(address = '') {
   return segments.slice(0, 2).join(', ') || normalized;
 }
 
-export function formatReverseGeocodedAddress(payload = {}) {
-  const address = payload?.address || {};
-  const localParts = [
-    address.house_number && address.road ? `${address.house_number} ${address.road}` : '',
-    address.road && !address.house_number ? address.road : '',
-    address.neighbourhood,
-    address.suburb,
-    address.city_district,
-    address.city || address.town || address.village || address.municipality,
-    address.state
-  ].filter(Boolean);
-  if (localParts.length > 0) {
-    return localParts.join(', ');
-  }
-  const displayName = String(payload?.display_name || '').trim();
-  if (!displayName) return '';
-  const segments = displayName.split(',').map((segment) => segment.trim()).filter(Boolean);
-  return segments.slice(0, 5).join(', ');
+/**
+ * #759: a pin placed by choosing an address-search suggestion carries the chosen address line,
+ * so the pin's address is already known and needs no reverse-geocode round trip. Map taps, drags
+ * and "Use Current Location" produce bare coordinates and return ''.
+ */
+export function getSearchSelectedPinAddress(pin) {
+  return String(pin?.address_line || '').trim();
 }
 
+/** #759: the map pin for a chosen address-search suggestion, carrying its address line. */
+export function buildSearchSelectedPin(result) {
+  return {
+    latitude: Number(Number(result.latitude).toFixed(6)),
+    longitude: Number(Number(result.longitude).toFixed(6)),
+    address_line: result.addressLine
+  };
+}
+
+/**
+ * #759: rank address-search suggestions near the fulfilling branch (most deliveries are local),
+ * falling back to the customer's current pin when the branch has no coordinates.
+ */
+export function resolveAddressSearchBias(fulfillmentLocation, customerPin) {
+  return normalizeCoordinatePair(fulfillmentLocation || {}) || normalizeCoordinatePair(customerPin || {});
+}
+
+/** #506: reverse-geocodes through dgfy-api; never throws except for an aborted request. */
 export async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
   const normalized = normalizeCoordinatePair(pin);
   if (!normalized) return '';
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(normalized.latitude)}&lon=${encodeURIComponent(normalized.longitude)}`,
-    { signal, headers: { Accept: 'application/json' } }
-  );
-  if (!response.ok) return buildPinnedDeliveryAddress(normalized);
-  return formatReverseGeocodedAddress(await response.json()) || buildPinnedDeliveryAddress(normalized);
+  try {
+    const addressLine = await reverseGeocodeDeliveryCoordinates({ ...normalized, signal });
+    return addressLine || buildPinnedDeliveryAddress(normalized);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    return buildPinnedDeliveryAddress(normalized);
+  }
 }

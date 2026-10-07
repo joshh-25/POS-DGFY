@@ -31,7 +31,7 @@ export const adminLogin = async (req, res) => {
       if (result.data?.token) {
         setBearerSessionCookie(res, SESSION_COOKIE_NAMES.admin, result.data.token, {
           maxAgeMs: 8 * 60 * 60 * 1000
-        });
+        }, req);
       }
       logger.info('[AdminAuth] Login succeeded', {
         username,
@@ -69,6 +69,7 @@ export const adminLogout = async (req, res) => {
     if (req.admin?.session_id) await createPlatformAdminRepository().revokeSession(req.admin.session_id, 'logout');
     const result = await adminLogoutUseCase({ token });
     clearSessionCookie(res, SESSION_COOKIE_NAMES.admin);
+    clearSessionCookie(res, 'admin_csrf_token', { httpOnly: false });
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,

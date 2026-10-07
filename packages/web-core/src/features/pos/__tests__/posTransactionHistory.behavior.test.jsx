@@ -24,6 +24,8 @@ const buildPanelProps = (overrides = {}) => ({
     setHistorySearch: vi.fn(),
     historyStatus: 'all',
     historyPaymentType: 'all',
+    historyDeliveryProvider: 'all',
+    setHistoryDeliveryProvider: vi.fn(),
     historyOrderMethod: 'all',
     historyOrderSource: 'all',
     historyCashierName: '',
@@ -51,6 +53,7 @@ function HistoryHarness({ onLoadHistory }) {
     const [historySearch, setHistorySearch] = useState('');
     const [historyStatus, setHistoryStatus] = useState('all');
     const [historyPaymentType, setHistoryPaymentType] = useState('all');
+    const [historyDeliveryProvider, setHistoryDeliveryProvider] = useState('all');
     const [historyOrderMethod, setHistoryOrderMethod] = useState('all');
     const [historyOrderSource, setHistoryOrderSource] = useState('all');
     const [historyCashierName, setHistoryCashierName] = useState('');
@@ -66,6 +69,8 @@ function HistoryHarness({ onLoadHistory }) {
                 setHistoryStatus,
                 historyPaymentType,
                 setHistoryPaymentType,
+                historyDeliveryProvider,
+                setHistoryDeliveryProvider,
                 historyOrderMethod,
                 setHistoryOrderMethod,
                 historyOrderSource,
@@ -107,6 +112,7 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(screen.getByRole('dialog').className).toContain('shadow-[0_12px_30px_rgba(15,23,42,0.2)]');
         expect(screen.getByText('Sales View')).toBeTruthy();
         expect(screen.getByText('Payment Method')).toBeTruthy();
+        expect(screen.getByText('Delivery Provider')).toBeTruthy();
         expect(screen.getByText('Order Method')).toBeTruthy();
         expect(screen.getByRole('dialog').textContent).not.toContain('Source');
         expect(screen.getByPlaceholderText('Search Cashier')).toBeTruthy();
@@ -116,6 +122,7 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(resetFiltersButton.className).toContain('hover:bg-rose-50');
         expect(screen.getByTestId('pos-history-filter-status-all').getAttribute('aria-pressed')).toBe('true');
         expect(screen.getByTestId('pos-history-filter-payment-employee_credit')).toBeTruthy();
+        expect(screen.getByTestId('pos-history-filter-delivery-provider-grab')).toBeTruthy();
         const paymentOptions = screen.getByRole('group', { name: 'Payment Method options' });
         expect(paymentOptions.className).toContain('grid-cols-4');
         expect(paymentOptions.className).not.toContain('flex-wrap');
@@ -125,6 +132,20 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         fireEvent.click(screen.getByTestId('pos-history-cashier-dropdown-toggle'));
         expect(screen.getByTestId('pos-history-cashier-option-all')).toBeTruthy();
         expect(screen.getByTestId('pos-history-cashier-option-jane-doe')).toBeTruthy();
+    });
+
+    it('applies the selected delivery provider and exposes the active filter chip', async () => {
+        const loadHistory = vi.fn();
+        render(<HistoryHarness onLoadHistory={loadHistory} />);
+
+        fireEvent.click(screen.getByTestId('pos-history-filter-button'));
+        fireEvent.click(screen.getByTestId('pos-history-filter-delivery-provider-grab'));
+        fireEvent.click(screen.getByTestId('pos-history-apply-filters'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Delivery Provider: Grab')).toBeTruthy();
+            expect(loadHistory).toHaveBeenCalledWith(1);
+        });
     });
 
     it('shows only order methods allowed by the active storefront workflow', () => {
@@ -844,5 +865,94 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(syncButton.getAttribute('aria-label')).toBe('Sync 1 pending POS record');
         expect(syncButton.getAttribute('title')).toBe('Sync 1 pending POS record');
         expect(syncButton.className).toContain('w-10');
+    });
+
+    it('shows the temporary POS void approval popup only for an authorized reviewer', async () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 501,
+            action_type: 'pos_void',
+            entity_id: 7,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Correct duplicate sale',
+            created_at: '2026-09-10T09:05:00.000Z',
+            payload: { transaction_id: 7, invoice_number: 'NFS-000007', amount: 75 }
+        };
+        const decideVoidApproval = vi.fn().mockResolvedValue({});
+
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true,
+            voidApprovalQueue: [approvalRequest],
+            voidApprovalDialogOpen: true,
+            voidApprovalSelectedRequest: approvalRequest,
+            decideVoidApproval,
+            currentUserId: 99
+        })} />);
+
+        expect(screen.getByTestId('pos-history-void-approval-button')).toBeTruthy();
+        expect(screen.getByTestId('pos-inline-void-approval-dialog')).toBeTruthy();
+        expect(screen.getAllByText('NFS-000007').length).toBeGreaterThanOrEqual(2);
+
+        fireEvent.click(screen.getByTestId('pos-inline-void-approval-approve-501'));
+
+        await waitFor(() => {
+            expect(decideVoidApproval).toHaveBeenCalledWith(approvalRequest, 'approve', '');
+        });
+    });
+
+    it('disables self-review in the inline POS void approval popup', () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 502,
+            action_type: 'pos_void',
+            entity_id: 8,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Duplicate sale',
+            payload: { transaction_id: 8, invoice_number: 'NFS-000008', amount: 80 }
+        };
+
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true,
+            voidApprovalQueue: [approvalRequest],
+            voidApprovalDialogOpen: true,
+            voidApprovalSelectedRequest: approvalRequest,
+            currentUserId: 10
+        })} />);
+
+        expect(screen.queryByTestId('pos-inline-void-approval-approve-502')).toBeNull();
+        expect(screen.getByText('Waiting for an authorized manager.')).toBeTruthy();
+    });
+
+    it('shows parked-sale cancellation approvals with the parked-sale reference and action', () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 503,
+            action_type: 'pos_parked_sale_cancel',
+            entity_type: 'pos_parked_sale',
+            entity_id: 33,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Test parked-sale cancellation',
+            payload: {
+                parked_sale_id: 33,
+                park_reference: 'PARK-00033',
+                reason: 'Test parked-sale cancellation'
+            }
+        };
+
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true,
+            voidApprovalQueue: [approvalRequest],
+            voidApprovalDialogOpen: true,
+            voidApprovalSelectedRequest: approvalRequest,
+            currentUserId: 99
+        })} />);
+
+        expect(screen.getAllByText('Parked sale PARK-00033').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('Cancel parked sale').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('No payment captured').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getByTestId('pos-inline-void-approval-approve-503').textContent).toContain('Approve cancellation');
     });
 });

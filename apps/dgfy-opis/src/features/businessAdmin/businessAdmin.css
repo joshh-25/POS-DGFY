@@ -309,6 +309,24 @@
 }
 .business-admin-alert.error { border-color: #f0c8c5; background: #fff7f6; color: #9d4037; }
 .business-admin-alert.info { border-color: #bfdfed; background: #f1faff; color: #205b78; }
+.business-admin-alert.warning { border-color: #f0d39b; background: #fffaf0; color: #805d1f; }
+
+/* #2193 POS activity analytics workspace (OPIS-owned). */
+.business-admin-pos-activity { display: grid; gap: 16px; min-width: 0; }
+.business-admin-pos-activity-bars { display: grid; gap: 6px; margin-bottom: 14px; }
+.business-admin-pos-activity-bar-row { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) minmax(150px, auto); gap: 10px; align-items: center; font-size: 12px; }
+.business-admin-pos-activity-bar-label { color: #475569; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.business-admin-pos-activity-bar-track { display: block; height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.business-admin-pos-activity-bar-fill { display: block; height: 100%; border-radius: 999px; background: #159891; }
+.business-admin-pos-activity-bar-value { color: #0f172a; font-weight: 800; white-space: nowrap; text-align: right; }
+.business-admin-pos-activity-definitions { display: grid; gap: 8px; font-size: 13px; color: #334155; margin: 0; padding: 0; list-style: none; }
+ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20px; }
+.business-admin-pos-activity-definition { color: #475569; font-size: 12px; }
+.business-admin-pos-activity-footnote { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: #64748b; font-size: 12px; margin: 12px 0 0; }
+@media (max-width: 720px) {
+  .business-admin-pos-activity-bar-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .business-admin-pos-activity-bar-value { text-align: left; }
+}
 
 .business-admin-metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .business-admin-metric { padding: 15px; min-height: 104px; }
@@ -749,6 +767,29 @@
 .business-admin-order-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
 .business-admin-payments-workspace { display: grid; gap: 16px; }
 .business-admin-payments-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.business-admin-processing-fee-report { min-width: 0; overflow: hidden; }
+.business-admin-processing-fee-report-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 12px; }
+.business-admin-processing-fee-editor { display: grid; gap: 16px; }
+.business-admin-processing-fee-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.business-admin-processing-fee-version { display: grid; flex: 0 0 auto; gap: 3px; min-width: 92px; border: 1px solid #cce9e6; border-radius: 12px; padding: 10px 12px; background: #f1fcfa; text-align: right; }
+.business-admin-processing-fee-version span { color: #5d7f91; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.business-admin-processing-fee-version strong { color: #0d7773; font-size: 18px; }
+.business-admin-processing-fee-form-row input { width: 100%; min-height: 36px; border: 1px solid #cfe0e8; border-radius: 8px; padding: 8px 10px; background: #fff; color: #173e58; font-size: 12px; font-weight: 700; }
+.business-admin-processing-fee-form-row input:focus { border-color: #159891; outline: 3px solid rgba(21, 152, 145, .16); }
+.business-admin-processing-fee-customer { min-width: 0; border: 1px solid #cce9e6; border-radius: 13px; padding: 15px; background: linear-gradient(145deg, #f8fffe 0%, #ffffff 100%); }
+.business-admin-processing-fee-customer legend { padding: 0 5px; color: #0d7773; font-size: 13px; font-weight: 900; }
+.business-admin-processing-fee-customer .business-admin-card-subtitle { margin: 0 0 12px; }
+.business-admin-processing-fee-customer select,
+.business-admin-processing-fee-customer input { width: 100%; min-height: 36px; border: 1px solid #cfe0e8; border-radius: 8px; padding: 8px 10px; background: #fff; color: #173e58; font-size: 12px; font-weight: 700; }
+.business-admin-processing-fee-customer select:focus,
+.business-admin-processing-fee-customer input:focus { border-color: #159891; outline: 3px solid rgba(21, 152, 145, .16); }
+.business-admin-processing-fee-toggle { display: inline-flex; align-items: center; gap: 8px; color: #205b78; font-size: 12px; font-weight: 800; }
+.business-admin-processing-fee-toggle input { width: auto; min-height: auto; }
+.business-admin-processing-fee-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.business-admin-processing-fee-customer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.business-admin-processing-fee-save-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #e2edf1; padding-top: 14px; color: #71879a; font-size: 11px; line-height: 1.45; }
+.business-admin-processing-fee-history { display: grid; gap: 12px; border-top: 1px solid #e2edf1; padding-top: 16px; }
+.business-admin-processing-fee-empty { padding: 18px; color: #71879a; text-align: center; }
 .business-admin-payment-metric {
   display: flex;
   align-items: flex-start;
@@ -1263,6 +1304,7 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-purchase-orders-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .business-admin-shifts-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .business-admin-payments-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-processing-fee-report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .business-admin-expense-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 1023px) {
@@ -1460,6 +1502,9 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-orders-panel-error,
   .business-admin-expenses-panel-error { margin: 12px; }
   .business-admin-payments-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-processing-fee-report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-processing-fee-save-bar { align-items: stretch; flex-direction: column; }
+  .business-admin-processing-fee-save-bar .business-admin-button { width: 100%; justify-content: center; }
   .business-admin-expenses-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .business-admin-expenses-contract { align-items: flex-start; padding: 10px 12px; }
   .business-admin-expense-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1503,6 +1548,10 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
 }
 
 @media (max-width: 767px) {
+  .business-admin-processing-fee-intro { flex-direction: column; }
+  .business-admin-processing-fee-version { width: 100%; text-align: left; }
+  .business-admin-processing-fee-form-row,
+  .business-admin-processing-fee-report-summary { grid-template-columns: minmax(0, 1fr); }
   .business-admin-settings-editor .business-admin-storefront-location-sections { grid-template-columns: minmax(0, 1fr); }
   .business-admin-settings-editor .business-admin-storefront-operational-options { grid-template-columns: minmax(0, 1fr); }
   .business-admin-settings-editor .business-admin-storefront-lead-time { grid-column: auto; }
@@ -2109,3 +2158,14 @@ html.business-admin-page.business-admin-scrollbar-active body::-webkit-scrollbar
   background: #94a3b8;
   background-clip: padding-box;
 }
+
+/* #2159: transitional OPIS Legacy Promos surface (read/revoke only). */
+.legacy-promo-muted { margin-top: 3px; color: #7890a1; font-size: 11px; }
+.legacy-promo-state { display: inline-flex; align-items: center; border: 1px solid #d4e4e9; border-radius: 99px; padding: 4px 8px; background: #f5fbfb; color: #3c6472; font-size: 10px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.legacy-promo-state.is-available { border-color: #bfe3df; background: #effbf9; color: #0b706c; }
+.legacy-promo-state.is-revoked { border-color: #f0c8c5; background: #fff7f6; color: #9d4037; }
+.legacy-promo-state.is-exhausted,
+.legacy-promo-state.is-expired,
+.legacy-promo-state.is-invalid { border-color: #f1d48c; background: #fffaf0; color: #a96800; }
+.legacy-promo-state.is-not_started { border-color: #bfdfed; background: #f1faff; color: #205b78; }
+.legacy-promo-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }

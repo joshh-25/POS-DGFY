@@ -146,6 +146,17 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- TENANT REVENUE / PROCESSING FEE POLICY ---
+    // These permissions control the tenant-visible processing-fee policy surface. Platform
+    // settlement fields remain finance-owned even when a tenant Owner can edit fallbacks.
+    TENANT_REVENUE: {
+        label: "Tenant Revenue Processing Fees",
+        actions: {
+            VIEW_FEE_POLICY: "tenant_revenue:fee_policy:view",
+            EDIT_FEE_POLICY: "tenant_revenue:fee_policy:edit"
+        }
+    },
+
     // --- VOUCHERS (#655) ---
     // Split out of SYSTEM.VIEW_SETTINGS/EDIT_SETTINGS, which Phase 103 (#614) deliberately reused as
     // a scoping shortcut -- see routes/vouchers.js's own comment. Dual-gated for one release

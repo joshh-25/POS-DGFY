@@ -1,3 +1,4 @@
+import { applyDeliveryAddressFieldChange, buildSearchSelectedPin, resolveAddressSearchBias } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { resolveLocationFulfillmentSupport } from '../../../../shared/model/storefrontOrderMethodOptions.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
@@ -38,6 +39,7 @@ export function useSimpleCheckoutRouteProps({
   handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
   handleConfirmQrphTestPayment,
+  handleCancelQrphPaymentSession,
   handlePinMyLocation,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
@@ -59,12 +61,14 @@ export function useSimpleCheckoutRouteProps({
   voucherDiscountSummaryRow = null,
   qrphPaymentSession = null,
   qrphPaymentStatusLoading = false,
+  cancellingPaymentSession = false,
   renderAccountOwnedIdentitySummary,
   renderBillingEmailPrompt,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
+  resolvingPinnedDeliveryAddress = false,
   selectedLocation = null,
   selectedLocationId = null,
   selectedSavedLocationId = '',
@@ -104,10 +108,18 @@ export function useSimpleCheckoutRouteProps({
   totalsForDisplay,
   withAssetOrigin
 }) {
-  const orderTimingPolicy = resolveOrderTimingPolicy(
-    resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
-  );
+  const fulfillmentLocation = resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId });
+  const orderTimingPolicy = resolveOrderTimingPolicy(fulfillmentLocation);
+  const startMapPin = () => {
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setResolvedDeliveryAddress('');
+    setCustomerAddress('');
+    setCustomerPin(null);
+  };
   return {
+    addressSearchBias: resolveAddressSearchBias(fulfillmentLocation, customerPin),
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     guestCheckoutAllowed,
@@ -155,6 +167,7 @@ export function useSimpleCheckoutRouteProps({
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
+    resolvingPinnedDeliveryAddress,
     selectedLocation,
     selectedLocationId,
     selectedSavedLocationId,
@@ -184,7 +197,10 @@ export function useSimpleCheckoutRouteProps({
     onApplyGuestDetailsAndRequestOtp: handleApplyGuestDetailsAndRequestOtp,
     onBackToCatalog: goStoreCatalogPage,
     onCheckout: handleCheckout,
-    onCustomerAddressChange: setCustomerAddress,
+    onCustomerAddressChange: (value) => applyDeliveryAddressFieldChange(value, {
+      setCustomerAddress,
+      clearDeliveryLocation: startMapPin
+    }),
     onDownloadCheckoutImage: handleDownloadCheckoutImage,
     onGuestCheckoutOtpCodeChange: handleGuestCheckoutOtpCodeChange,
     onOrderMethodChange: (nextOrderMethod) => {
@@ -202,6 +218,8 @@ export function useSimpleCheckoutRouteProps({
     onPaymentElectionChange,
     onPaymentTypeChange: handlePaymentTypeChange,
     onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
+    onCancelQrphPaymentSession: handleCancelQrphPaymentSession,
+    cancellingPaymentSession,
     onPinChange: (nextPin) => {
       setDeliveryLocationAction('map');
       setSelectedSavedLocationId('');
@@ -215,7 +233,7 @@ export function useSimpleCheckoutRouteProps({
     onSignInToCheckout,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode(nextMode);
-      if (nextMode === 'asap') setFnbScheduledFor('');
+      if (nextMode === 'asap' || nextMode === 'anytime') setFnbScheduledFor('');
     },
     onScheduledForChange: (nextScheduledFor) => {
       setFnbScheduledFor(nextScheduledFor);
@@ -227,19 +245,20 @@ export function useSimpleCheckoutRouteProps({
         handleSetDefaultDeliveryAddress(location);
       }
     },
+    // #759: choosing an address-search suggestion drops the pin there; its address line rides on
+    // the pin so useDeliveryPinResolution keeps it instead of reverse-geocoding the point.
+    onSelectSearchResult: (result) => {
+      setDeliveryLocationAction('map');
+      setSelectedSavedLocationId('');
+      setPinLocationError('');
+      setCustomerPin(buildSearchSelectedPin(result));
+    },
     onSelectedLocationChange: setSelectedLocationId,
     onSetCheckoutResult: setCheckoutResult,
     onSetDefaultDeliveryAddress: handleSetDefaultDeliveryAddress,
     onSetSimpleOrderStep: setSimpleOrderStep,
     resetQrphPaymentSession,
     onSpecialInstructionsChange: setFnbSpecialInstructions,
-    onStartMapPin: () => {
-      setDeliveryLocationAction('map');
-      setSelectedSavedLocationId('');
-      setPinLocationError('');
-      setResolvedDeliveryAddress('');
-      setCustomerAddress('');
-      setCustomerPin(null);
-    }
+    onStartMapPin: startMapPin
   };
 }

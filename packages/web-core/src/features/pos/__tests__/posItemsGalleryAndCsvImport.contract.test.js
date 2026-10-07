@@ -25,7 +25,7 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
     expect(stages.indexOf('pollCatalogImageUploadStatus(itemId)')).toBeGreaterThan(stages.indexOf('queueStorefrontCatalogImages(itemId, imageFiles)'));
     expect(stages.indexOf('if (!barcodeCode)')).toBeGreaterThan(stages.indexOf('pollCatalogImageUploadStatus(itemId)'));
     expect(stages).toContain("uploadStatus.status === 'failed'");
-    expect(workspace).toContain('imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles');
+    expect(workspace).toContain('imageFiles: pendingCreateRecovery.imageFiles || createImageFiles');
   });
 
   it('supports the shared five-image gallery in create and edit flows', () => {
@@ -65,8 +65,9 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
   it('uses the existing IMS CSV wizard and the dedicated import permission', () => {
     expect(workspace).toContain("const CSVImportModal = lazyWithChunkRetry(() => import('@/components/items/CSVImportModal.jsx'));");
     expect(workspace).toContain('showCsvImport && canImportItems');
+    expect(workspace).toContain('open={showCsvImport}');
     expect(workspace).toContain('onClick={() => setShowCsvImport(true)}');
-    expect(workspace.match(/Import Items/g)).toHaveLength(2);
+    expect(workspace.match(/Import Items/g)).toHaveLength(3);
     expect(workspace).toContain('await Promise.all([loadItems(), loadPosFolders()]);');
     expect(workspace).toContain("const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';");
     expect(workspace).toContain("resolveUserPermissionList(terminalUser).includes('items:import')");

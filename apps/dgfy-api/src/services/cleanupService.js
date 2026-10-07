@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import fs from 'fs/promises';
 import path from 'path';
 import logger from '../config/logger.js';
+import { companyRegistrationRepository } from '../modules/tenants/repositories/companyRegistrationRepository.js';
+import { companyRegistrationUploadStorage } from '../modules/tenants/repositories/companyRegistrationUploadStorage.js';
 
 // Fallback if not exported
 const UPLOAD_DIR = 'uploads/temp';
@@ -17,16 +19,32 @@ export const initCleanupJob = () => {
     cleanupTempFiles().catch(err =>
         logger.warn('Startup cleanup failed:', err.message)
     );
+    cleanupExpiredCompanyRegistrationUploads().catch(err =>
+        logger.warn('Startup company-registration upload cleanup failed:', err.message)
+    );
 
     // Run every 15 minutes
     cron.schedule('*/15 * * * *', async () => {
         logger.info('Running scheduled file cleanup...');
         try {
             await cleanupTempFiles();
+            await cleanupExpiredCompanyRegistrationUploads();
         } catch (error) {
             logger.error('Error during file cleanup:', error);
         }
     });
+};
+
+export const cleanupExpiredCompanyRegistrationUploads = async () => {
+    const uploads = await companyRegistrationRepository.cleanupExpiredUploads();
+    let purged = 0;
+    for (const upload of uploads) {
+        if (upload.storage_key) await companyRegistrationUploadStorage.remove(upload.storage_key);
+        await companyRegistrationRepository.markUploadPurged(upload);
+        purged += 1;
+    }
+    if (purged > 0) logger.info(`Purged ${purged} expired company-registration upload(s).`);
+    return purged;
 };
 
 /**

@@ -1,8 +1,9 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
-import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
+import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { RetailOrderExpandedMapModal } from './RetailOrderExpandedMapModal.jsx';
 import { RetailOrderSavedAddressesModal } from './RetailOrderSavedAddressesModal.jsx';
@@ -68,12 +69,15 @@ export function RetailOrderFulfillmentStep({
   onScheduleModeChange,
   onScheduledForChange,
   onSelectAddress,
+  onSelectSearchResult = () => {},
   onSpecialInstructionsChange,
   onStartMapPin,
   orderMethod = 'delivery',
   orderMethodOptions = null,
   pinLocationError = '',
   pinLocationLoading = false,
+  resolvingPinnedDeliveryAddress = false,
+  searchBias = null,
   scheduleMode = 'asap',
   scheduledFor = '',
   selectedSavedLocationId = '',
@@ -100,6 +104,10 @@ export function RetailOrderFulfillmentStep({
     || (showTimingChooser && scheduleMode === 'schedule');
   const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep: showTimingSection, isDeliveryOrder });
   const typography = getCheckoutStepTypography();
+  const handleAddLocationFromMap = async () => {
+    const saved = await onAddPinnedLocation?.();
+    if (saved) onCloseExpandedMap?.();
+  };
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16, fontFamily: CHECKOUT_FONT_FAMILY }}>
@@ -208,6 +216,31 @@ export function RetailOrderFulfillmentStep({
               iconSize={isMobileViewport ? 18 : 20}
               fontFamily={CHECKOUT_FONT_FAMILY}
             />
+            <SelectableOptionCard
+              onClick={() => {
+                setDateTimePickerOpen(false);
+                onScheduleModeChange('anytime');
+              }}
+              label="Anytime"
+              icon={({ size }) => <Clock size={size} />}
+              active={scheduleMode === 'anytime'}
+              activeBorderColor={RETAIL_ACCENT}
+              activeBackground={RETAIL_ACCENT_TINT}
+              activeTextColor={RETAIL_ACCENT}
+              activeIconBackground="#dbe8f7"
+              activeIconColor={RETAIL_ACCENT}
+              inactiveBorderColor="#dbe5ee"
+              inactiveTextColor="#334155"
+              minHeight={isMobileViewport ? 52 : 64}
+              padding={isMobileViewport ? '10px 12px' : '12px 14px'}
+              gap={isMobileViewport ? 10 : 12}
+              borderRadius={14}
+              fontSize={14}
+              fontWeight={700}
+              iconBoxSize={isMobileViewport ? 34 : 40}
+              iconSize={isMobileViewport ? 18 : 20}
+              fontFamily={CHECKOUT_FONT_FAMILY}
+            />
           </div> : null}
           {showSchedule && !showImmediate ? (
             <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
@@ -234,7 +267,7 @@ export function RetailOrderFulfillmentStep({
           <div style={{ display: 'grid', gap: 4 }}>
             <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
-              {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
+              {isMobileViewport ? 'Search for an address, or pin your location on the map.' : 'Saved locations'}
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
@@ -257,12 +290,13 @@ export function RetailOrderFulfillmentStep({
                     themeShadowColor={RETAIL_ACCENT_SHADOW_STRONG}
                     themeShadowColorSoft="rgba(26,69,134,.12)"
                   />
-                ) : (
-                  <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={getCheckoutAddLocationActionStyle()}>
-                    <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: '#fff', background: 'rgba(255,255,255,.16)' }}><Plus size={18} /></span>
-                    Add New Location
+                ) : deliverySavedLocations.length > 0 ? (
+                  // #759: with address search and map pinning below, this only needs to lead to
+                  // saved addresses; with none saved it used to open an empty list.
+                  <button type="button" onClick={onOpenMobileAddressList} style={{ minHeight: 44, borderRadius: 14, background: RETAIL_ACCENT_TINT, border: `1.5px solid ${RETAIL_ACCENT_SOFT_BORDER}`, color: RETAIL_ACCENT, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    Choose a Saved Address
                   </button>
-                )}
+                ) : null}
                 {activeAddress ? (
                   <button type="button" onClick={onOpenMobileAddressList} style={{ minHeight: 44, borderRadius: 14, background: RETAIL_ACCENT_TINT, border: `1.5px solid ${RETAIL_ACCENT_SOFT_BORDER}`, color: RETAIL_ACCENT, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                     View All Saved Addresses
@@ -309,8 +343,27 @@ export function RetailOrderFulfillmentStep({
             )}
             <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, display: isMobileViewport ? 'none' : 'block' }}>
-                Tap anywhere on the map, drag the pin, or use your current location.
+                Search for an address, tap anywhere on the map, drag the pin, or use your current location.
               </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                <DeliveryAddressSearchField
+                  value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
+                  onValueChange={onCustomerAddressChange}
+                  onClear={onStartMapPin}
+                  onSelectResult={onSelectSearchResult}
+                  bias={searchBias}
+                  resolving={resolvingPinnedDeliveryAddress}
+                  highlighted={Boolean(deliveryLocationDisplayAddress) && (deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map')}
+                  isMobileViewport={isMobileViewport}
+                  accentColor={RETAIL_ACCENT}
+                  accentTint={RETAIL_ACCENT_TINT}
+                  accentBorder={RETAIL_ACCENT_SOFT_BORDER}
+                />
+                <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isMobileViewport ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
+                  {isMobileViewport ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
+                </button>
+              </div>
+              {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
               <div style={{ position: 'relative', width: '100%', minWidth: 0 }}>
                 <DeliveryPinMap
                   pin={customerPin}
@@ -352,27 +405,6 @@ export function RetailOrderFulfillmentStep({
                   )}
                 />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                <div style={{ minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? RETAIL_ACCENT_SOFT_BORDER : '#dbe5ee'}`, background: '#fff', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', ...typography.control, minWidth: 0 }}>
-                  {isMobileViewport ? (
-                    <span style={{ width: 24, height: 24, borderRadius: '50%', background: RETAIL_ACCENT_TINT, color: RETAIL_ACCENT, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
-                      <MapPin size={13} />
-                    </span>
-                  ) : null}
-                  <input
-                    type="text"
-                    value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
-                    onChange={(event) => onCustomerAddressChange(event.target.value)}
-                    placeholder="Pinned delivery address will appear here."
-                    aria-label="Delivery address"
-                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...typography.control, color: 'inherit', minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, fontFamily: CHECKOUT_FONT_FAMILY }}
-                  />
-                </div>
-                <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isMobileViewport ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
-                  {isMobileViewport ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
-                </button>
-              </div>
-              {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
             </div>
           </div>
           <RetailOrderExpandedMapModal
@@ -382,6 +414,20 @@ export function RetailOrderFulfillmentStep({
             isOpen={showExpandedDeliveryMap}
             onClose={onCloseExpandedMap}
           >
+            <DeliveryAddressSearchField
+              value={resolveDeliveryAddressInputValue(customerAddress, deliveryLocationDisplayAddress)}
+              onValueChange={onCustomerAddressChange}
+              onClear={onStartMapPin}
+              onSelectResult={onSelectSearchResult}
+              bias={searchBias}
+              resolving={resolvingPinnedDeliveryAddress}
+              highlighted={Boolean(deliveryLocationDisplayAddress) && (deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map')}
+              isMobileViewport={isMobileViewport}
+              placeholder="Search an address or landmark"
+              accentColor={RETAIL_ACCENT}
+              accentTint={RETAIL_ACCENT_TINT}
+              accentBorder={RETAIL_ACCENT_SOFT_BORDER}
+            />
             <DeliveryPinMap
               pin={customerPin}
               onPinChange={onPinChange}
@@ -413,6 +459,17 @@ export function RetailOrderFulfillmentStep({
                 </>
               )}
             />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 2 }}>
+              <button
+                type="button"
+                aria-label={isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+                onClick={handleAddLocationFromMap}
+                disabled={!canAddPinnedLocation}
+                style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 16px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY }}
+              >
+                {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
+              </button>
+            </div>
           </RetailOrderExpandedMapModal>
           <RetailOrderSavedAddressesModal
             addresses={deliverySavedLocations}

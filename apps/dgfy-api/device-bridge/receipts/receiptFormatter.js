@@ -2,6 +2,13 @@ const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 const paymentBreakdownLabel = (entry) => String(
   entry?.payment_label || entry?.payment_type || 'Other'
 ).replace(/_/g, ' ');
+const deliveryProviderLabel = (entry) => {
+  const providerType = String(entry?.provider_type || '').trim().toLowerCase();
+  if (providerType === 'other') return `${String(entry?.provider_name || 'Other').trim() || 'Other'} (Other)`;
+  if (providerType === 'foodpanda') return 'Foodpanda';
+  if (providerType === 'grab') return 'Grab';
+  return String(entry?.display_label || providerType || 'Delivery provider');
+};
 
 const clampWidth = (value = 48) => Math.max(32, Math.min(Number.parseInt(value, 10) || 48, 64));
 const formatGeneratedAt = (value) => {
@@ -119,6 +126,19 @@ export const buildReceiptLines = (receipt = {}, { width = 48 } = {}) => {
   }
   output.push(buildKeyValueLine('VAT Amount (12%)', money(transaction.vat_amount), normalizedWidth));
   output.push(buildKeyValueLine('Total', money(transaction.total_amount), normalizedWidth));
+  const deliveryProviders = Array.isArray(transaction?.delivery_provider_breakdown)
+    ? transaction.delivery_provider_breakdown
+    : [];
+  if (deliveryProviders.length > 0) {
+    output.push(divider, 'DELIVERY PROVIDER BREAKDOWN');
+    deliveryProviders.forEach((entry) => {
+      output.push(buildKeyValueLine(
+        deliveryProviderLabel(entry),
+        money(entry.amount),
+        normalizedWidth
+      ));
+    });
+  }
   output.push(divider);
   if (business.footer_message) {
     output.push(...wrapText(business.footer_message, normalizedWidth));
@@ -152,6 +172,17 @@ export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
       normalizedWidth
     ));
   });
+  const deliveryProviders = Array.isArray(sales.delivery_provider_breakdown) ? sales.delivery_provider_breakdown : [];
+  if (deliveryProviders.length > 0) {
+    lines.push(divider, 'DELIVERY PROVIDER BREAKDOWN');
+    deliveryProviders.forEach((entry) => {
+      lines.push(buildKeyValueLine(
+        `${deliveryProviderLabel(entry)} (${entry.transaction_count || 0})`,
+        money(entry.amount),
+        normalizedWidth
+      ));
+    });
+  }
 
   lines.push(
     divider,
@@ -214,12 +245,23 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     ));
   });
 
+  const deliveryProviders = Array.isArray(summary.delivery_provider_breakdown) ? summary.delivery_provider_breakdown : [];
+  if (deliveryProviders.length > 0) {
+    lines.push(divider, 'DELIVERY PROVIDER BREAKDOWN');
+    deliveryProviders.forEach((entry) => {
+      lines.push(buildKeyValueLine(
+        `${deliveryProviderLabel(entry)} (${entry.transaction_count || 0})`,
+        money(entry.amount),
+        normalizedWidth
+      ));
+    });
+  }
+
   lines.push(
     divider,
     'FISCAL COUNTERS',
     buildKeyValueLine('Z counter', String(reading.z_counter_value || 0), normalizedWidth),
     buildKeyValueLine('Reset counter', String(reading.reset_counter_value || 0), normalizedWidth),
-    buildKeyValueLine('Lifetime total', money(Number(reading.lifetime_grand_total_cents || 0) / 100), normalizedWidth),
     divider,
     'Provider refunds are reconciled separately.',
     'Keep this report with the day-end close evidence.'

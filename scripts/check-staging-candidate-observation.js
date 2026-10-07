@@ -27,6 +27,7 @@ function validateStagingObservation(observation, candidateManifest) {
     if (error instanceof PromotionCandidateError) throw new StagingObservationError(`Candidate manifest is invalid: ${error.message}`, 'CANDIDATE_MANIFEST_INVALID');
     throw error;
   }
+  assert(candidate.status !== 'refresh_in_progress', 'A candidate undergoing refresh cannot be qualified by a staging observation', 'REFRESH_IN_PROGRESS');
   assert(observation.candidate_id === candidate.candidate_id, 'Observation candidate_id does not match the candidate manifest', 'CANDIDATE_ID_MISMATCH');
   assert(observation.candidate_sha === candidate.current_staging_sha, 'Observation candidate_sha does not match current_staging_sha', 'CANDIDATE_SHA_MISMATCH');
   assert(observation.runtime_sha === candidate.current_staging_sha, 'Staging runtime_sha does not match the candidate SHA', 'RUNTIME_SHA_MISMATCH');

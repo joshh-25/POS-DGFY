@@ -81,6 +81,9 @@ export function StorefrontServicesCatalog({
   checkoutPromoCode,
   checkoutResult,
   customerPin,
+  setCustomerAddress,
+  setResolvedDeliveryAddress,
+  setPinLocationError,
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
   deliverySavedLocations,
@@ -694,6 +697,9 @@ export function StorefrontServicesCatalog({
                           pinLocationLoading={pinLocationLoading}
                           deliveryLocationAction={deliveryLocationAction}
                           deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
+                          setCustomerAddress={setCustomerAddress}
+                          setResolvedDeliveryAddress={setResolvedDeliveryAddress}
+                          setPinLocationError={setPinLocationError}
                           handleAddPinnedLocation={handleAddPinnedLocation}
                           canAddPinnedLocation={canAddPinnedLocation}
                           isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
