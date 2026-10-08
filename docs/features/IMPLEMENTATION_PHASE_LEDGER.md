@@ -27009,6 +27009,73 @@ Phase 482 is the next phase number (#2357) and has no dependency on Phase 480 or
 test-inventory baseline overlap for Phase 481's suites is non-blocking; record it as a risk if
 needed, not as a dependency.
 
+## Phase 482 - dgfy-api quality-gate runtime and repeated test setup (#2357)
+
+### Initiative and release
+
+Backend release-quality test execution, setup reuse, and runtime evidence.
+
+### Objective and scope
+
+Measure the `dgfy-api-quality` job across hosted and self-hosted runners, remove repeated full
+migration work for isolated DB suites through an equivalence-verified migrated template, retain the
+F&B open-handle diagnostic while running those suites only once, and report per-suite timings and
+before/after evidence. Preserve every test, assertion, test database isolation, and the existing
+fast-tier worker/memory settings.
+
+### Status
+
+`in_progress` — implementation and local validation are underway. Hosted evidence is collected;
+the default self-hosted comparison and final before/after analysis remain pending. The existing
+baseline includes 8 failing fast-tier suites / 26 tests; acceptance is no new failures, with those
+baseline failures reported separately.
+
+### Dependencies
+
+Issue #2357; `promotion-quality-gate.yml`; MySQL 8 test service; the backend DB-tier manifest and
+test cleanup lifecycle. Phases 480 and 481 are not dependencies; Pat explicitly authorized this
+independent work while their external acceptance evidence remains open.
+
+### Acceptance and validation evidence
+
+- [ ] Hosted and self-hosted before/after runs report test counts, per-step and per-tier/group
+      duration, and slowest-suite timing evidence; existing 8 suites / 26 tests remain identified
+      separately and no new failures are introduced.
+- [ ] The four full-migration DB suites use unique per-test databases cloned from one migrated
+      template; the equivalence test compares columns, indexes, foreign keys, triggers, views,
+      migration history, and row counts against a database migrated for real.
+- [ ] The migrated-template name guard rejects malformed names, empty templates fail closed, and
+      absent template configuration retains the real-migration fallback. Each test still owns and
+      drops its own database; matrix-owned template databases are dropped after the DB tier.
+- [ ] F&B suites run once in the matrix and retain `--detectOpenHandles` coverage.
+- [ ] Jest JSON timing evidence identifies the slowest 15 suites per tier and reports durations
+      for failing suites; textual failure extraction remains visible in CI summaries.
+- [ ] The F&B QA documentation, workflow outcome recorder, and implementation phase ledger match
+      the new execution path. Architecture, compliance, docs lint, workspace hygiene, and relevant
+      unit/DB checks pass.
+- [ ] Historical ~7-minute / ~34-minute estimates are replaced or verified; remaining bottlenecks
+      and the C3-informed follow-up are recorded.
+
+### Links
+
+- Issue: #2357; planner handoff: `.tmp/plan-2357.md` (planning head
+  `bbab2518c5001151902dc9cf6212312171013756`).
+- Sequencing: Phase 482 has no dependency on Phases 480 or 481 under the repository's explicit
+  dependency rule. Phase 483 remains independently eligible.
+- Implementation: `scripts/run-backend-test-matrix.js`,
+  `scripts/summarize-backend-test-matrix.js`, and
+  `apps/dgfy-api/tests/helpers/migratedTestDatabase.js`.
+- Tests: `scripts/run-backend-test-matrix.test.js` and
+  `apps/dgfy-api/tests/migratedTemplateClone.db.integration.test.js`.
+
+### Completion date
+
+Not complete; set only after the acceptance evidence above is collected and reviewed.
+
+### Next eligible phase
+
+Phase 484. Phase 483 is already tracked separately and does not depend on Phase 482.
+
 ## Phase 483 - Reduce avoidable Planner-to-Worker handoff interruptions (#2346)
 
 ### Initiative and release
