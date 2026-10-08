@@ -255,22 +255,25 @@ jobs:
             if [ -n "$chunk" ]; then args+=(--chunk "$chunk"); fi
             echo "[selected-db-tests] target=$target"
             node scripts/run-backend-test-matrix.js "${args[@]}" || overall_status=1
-          done
-          node scripts/summarize-backend-test-matrix.js | tee -a "$GITHUB_STEP_SUMMARY" || true
-          MATRIX_FILE="$RELEASE_GATES_EVIDENCE_ROOT/$RELEASE_TARGET_SHA/backend-test-matrix/backend_test_matrix.json"
-          if [ -f "$MATRIX_FILE" ]; then
-            node - "$MATRIX_FILE" <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
+            MATRIX_DIR="$RELEASE_GATES_EVIDENCE_ROOT/$RELEASE_TARGET_SHA/backend-test-matrix"
+            MATRIX_FILE="$MATRIX_DIR/backend_test_matrix.json"
+            if [ -f "$MATRIX_FILE" ]; then
+              chunk_label="${chunk:-all}"
+              cp "$MATRIX_FILE" "$MATRIX_DIR/backend_test_matrix_${group}_${chunk_label}.json"
+              node - "$MATRIX_FILE" "$group" "$chunk_label" <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
           const fs = require('node:fs');
           const path = require('node:path');
           const matrixFile = process.argv[2];
+          const selectedGroup = process.argv[3];
+          const selectedChunk = process.argv[4];
           const root = process.cwd();
           const matrix = JSON.parse(fs.readFileSync(matrixFile, 'utf8'));
-          console.log('### All selected DB suite timings\n');
+          console.log(`### DB suite timings: ${selectedGroup} chunk ${selectedChunk}\n`);
           console.log('| Group | Chunk | Suite | Status | Duration |');
           console.log('|---|---:|---|---|---:|');
-          for (const chunk of matrix.chunks || []) {
-            if (chunk.tier !== 'db' || !chunk.jest_results_file) continue;
-            const resultPath = path.resolve(root, chunk.jest_results_file);
+          for (const chunkResult of matrix.chunks || []) {
+            if (chunkResult.tier !== 'db' || !chunkResult.jest_results_file) continue;
+            const resultPath = path.resolve(root, chunkResult.jest_results_file);
             if (!fs.existsSync(resultPath)) continue;
             const results = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
             for (const suite of results.testResults || []) {
@@ -278,11 +281,12 @@ jobs:
               const end = Number(suite.perfStats?.end ?? suite.endTime);
               const duration = Number.isFinite(end - start) ? `${((end - start) / 1000).toFixed(1)}s` : 'n/a';
               const suitePath = path.relative(path.join(root, 'apps/dgfy-api'), suite.name || suite.testFilePath || 'unknown');
-              console.log(`| ${chunk.group || '-'} | ${chunk.chunk_index ?? '-'} | \`${suitePath}\` | \`${suite.status || 'unknown'}\` | ${duration} |`);
+              console.log(`| ${chunkResult.group || selectedGroup} | ${chunkResult.chunk_index ?? selectedChunk} | \`${suitePath}\` | \`${suite.status || 'unknown'}\` | ${duration} |`);
             }
           }
           NODE
-          fi
+            fi
+          done
           exit "$overall_status"
 
       - name: Upload selected DB test evidence

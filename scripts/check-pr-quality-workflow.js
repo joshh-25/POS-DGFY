@@ -158,8 +158,10 @@ function checkSelectiveDispatchShape(qualityWorkflowText) {
     }
     if (!targetJob.includes('vmstat 1') || !targetJob.includes('free -h')
       || !targetJob.includes('scripts/ci-s3-upload.sh')
-      || !targetJob.includes("tee -a \"$GITHUB_STEP_SUMMARY\"")) {
-      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry and persist evidence to S3 and the run summary');
+      || !targetJob.includes("tee -a \"$GITHUB_STEP_SUMMARY\"")
+      || !targetJob.includes('backend_test_matrix_${group}_${chunk_label}.json')
+      || !targetJob.includes('results.testResults')) {
+      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry, preserve each selected matrix, report every suite, and persist evidence to S3');
     }
   }
 
