@@ -3,16 +3,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
-import {
-  buildOidcAuthorizeHandler,
-  oidcDiscovery,
-  oidcEndSession,
-  oidcIntrospect,
-  oidcJwks,
-  oidcPar,
-  oidcRevoke,
-  oidcToken
-} from '../src/modules/dgfyLaundry/services/dgfyLaundryOidcProvider.js';
+
+let buildOidcAuthorizeHandler;
+let oidcDiscovery;
+let oidcEndSession;
+let oidcIntrospect;
+let oidcJwks;
+let oidcPar;
+let oidcRevoke;
+let oidcToken;
 
 const makeResponse = () => ({
   statusCode: 200,
@@ -32,10 +31,16 @@ describe('DGFY OIDC provider key resolution', () => {
   let clientSecretPath;
   let publicKey;
 
-  beforeAll(() => {
-    for (const name of ['DGFY_OIDC_PRIVATE_KEY', 'DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_JWKS_KEYS_JSON', 'DGFY_OIDC_ISSUER', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_CLIENT_SECRET', 'DGFY_DGLAUNDRY_CLIENT_SECRET_FILE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGLAUNDRY_INTEGRATION_ENVIRONMENT', 'DGLAUNDRY_PARTNER_AUDIENCE', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_TOKEN', 'DGLAUNDRY_PARTNER_TOKEN_FILE', 'NODE_ENV']) {
+  beforeAll(async () => {
+    for (const name of ['DGFY_OIDC_PRIVATE_KEY', 'DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_JWKS_KEYS_JSON', 'DGFY_OIDC_ISSUER', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_CLIENT_ID', 'DGFY_DGLAUNDRY_REDIRECT_URI', 'DGFY_DGLAUNDRY_CLIENT_SECRET', 'DGFY_DGLAUNDRY_CLIENT_SECRET_FILE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGLAUNDRY_INTEGRATION_ENVIRONMENT', 'DGLAUNDRY_PARTNER_AUDIENCE', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_TOKEN', 'DGLAUNDRY_PARTNER_TOKEN_FILE', 'NODE_ENV']) {
       priorEnv[name] = process.env[name];
     }
+    process.env.DGFY_OIDC_ISSUER = 'https://api.dgfy.ph/oidc';
+    process.env.DGFY_DGLAUNDRY_CLIENT_ID = 'dglaundry-web';
+    process.env.DGFY_DGLAUNDRY_REDIRECT_URI = 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+    process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID = 'dglaundry-machine';
+    process.env.DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE = 'https://api.dgfy.ph/oidc/token';
+    ({ buildOidcAuthorizeHandler, oidcDiscovery, oidcEndSession, oidcIntrospect, oidcJwks, oidcPar, oidcRevoke, oidcToken } = await import('../src/modules/dgfyLaundry/services/dgfyLaundryOidcProvider.js'));
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dgfy-oidc-provider-'));
     privatePath = path.join(directory, 'private.pem');
     publicPath = path.join(directory, 'public.pem');
@@ -57,6 +62,11 @@ describe('DGFY OIDC provider key resolution', () => {
 
   beforeEach(() => {
     process.env.NODE_ENV = 'test';
+    process.env.DGFY_OIDC_ISSUER = 'https://api.dgfy.ph/oidc';
+    process.env.DGFY_DGLAUNDRY_CLIENT_ID = 'dglaundry-web';
+    process.env.DGFY_DGLAUNDRY_REDIRECT_URI = 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+    process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID = 'dglaundry-machine';
+    process.env.DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE = 'https://api.dgfy.ph/oidc/token';
     delete process.env.DGFY_OIDC_PRIVATE_KEY;
     delete process.env.DGFY_OIDC_PUBLIC_KEY;
     process.env.DGFY_OIDC_PRIVATE_KEY_FILE = privatePath;
