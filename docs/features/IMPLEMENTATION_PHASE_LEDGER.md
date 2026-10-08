@@ -11004,6 +11004,18 @@ Pat to run by hand — not a fix, since the root cause is unknown until that acc
 open against `develop`. Still blocked on Pat's own SSH access to `vm-sieitzstaging` for everything
 past that; no role can advance the actual root-cause investigation unattended.
 
+2026-10-08 update: the recurrence on run `37759977686` completed successfully on the self-hosted
+runner after the initial report, so that retry did not reproduce the failure. The hosted-runner
+trial (run `37786879649`, current `develop` SHA
+`bbab2518c5001151902dc9cf6212312171013756`) ended `cancelled` during the
+`compliance_pos_fiscal` DB group, after the fast tier reported 767 passed and 26 failed tests across
+8 suites; the F&B contracts step was skipped. The API lint step also reported four errors. This is
+inconclusive for the runner-class hypothesis and does not reproduce the original step-boundary
+failure shape. The original failed SHA no longer has a dispatchable branch ref. PR #2362 adds a
+best-effort post-matrix runner-health snapshot before the F&B contracts step; it will be available
+on the next occurrence after merge. These results do not establish root cause; Phase 192 remains
+`blocked` pending the operator's SSH investigation.
+
 ### Dependencies
 
 None from this repo's side; blocked on infrastructure access outside any agent role.
@@ -11022,6 +11034,7 @@ None from this repo's side; blocked on infrastructure access outside any agent r
 ### Implementation links
 
 - Issue #1168, Refs #1124, #1165, #1063
+- PR #2362 (workflow snapshot and hosted-runner trial follow-up)
 
 ### Next eligible phase
 

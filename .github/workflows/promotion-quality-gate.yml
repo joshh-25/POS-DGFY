@@ -324,6 +324,29 @@ jobs:
           BACKEND_TEST_MATRIX_FAST_MAX_WORKERS: 2
           BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT: 1G
 
+      - name: Capture post-matrix runner health snapshot
+        continue-on-error: true
+        id: capture_post_matrix_health
+        if: always() && steps.run_test_matrix.outcome != 'skipped'
+        shell: bash
+        run: |
+          {
+            echo "### Post-matrix runner health snapshot"
+            echo '```'
+            echo "uptime: $(uptime 2>&1 || true)"
+            echo "--- free -h ---"
+            free -h 2>&1 || true
+            echo "--- df -h ---"
+            df -h 2>&1 || true
+            echo "--- docker ps -a ---"
+            docker ps -a 2>&1 || true
+            echo "--- docker stats --no-stream ---"
+            docker stats --no-stream 2>&1 || true
+            echo "--- node/jest processes ---"
+            pgrep -af 'node|jest' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run F&B contracts with open-handle diagnostics
         continue-on-error: true
         id: run_fnb_contracts
@@ -485,6 +508,7 @@ jobs:
             Enforce controller architecture boundaries|${{ steps.enforce_controller_boundaries.outcome }}
             Run API lint|${{ steps.run_api_lint.outcome }}
             Run dgfy-api test matrix|${{ steps.run_test_matrix.outcome }}
+            Capture post-matrix runner health snapshot|${{ steps.capture_post_matrix_health.outcome }}
             Run F&B contracts with open-handle diagnostics|${{ steps.run_fnb_contracts.outcome }}
             Audit required indexes|${{ steps.audit_indexes.outcome }}
             Upload API test-matrix evidence|${{ steps.upload_test_matrix_evidence.outcome }}
