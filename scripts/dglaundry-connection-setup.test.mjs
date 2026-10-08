@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash, createPublicKey, generateKeyPairSync, randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -63,7 +63,7 @@ function ensureDglaundryMachinePublicKey(root) {
 test("setup package is safe, repeatable, and rollback-capable", () => {
   const root = mkdtempSync(join(tmpdir(), "dglaundry-setup-"));
   try {
-    writeFileSync(join(root, "dglaundry-connection.env"), "# preserve operator settings\nDGLAUNDRY_CUSTOM_SETTING=keep-this-value\n", { mode: 0o600 });
+    writeFileSync(join(root, "dglaundry-connection.env"), "# preserve operator settings\nDGFY_OIDC_JWKS_KEYS_JSON=retired\nDGLAUNDRY_CUSTOM_SETTING=keep-this-value\n", { mode: 0o600 });
     const missingRegistration = run("prepare", root, [], { ...testRegistrationEnv, DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: "" });
     assert.equal(missingRegistration.status, 2);
     assert.match(missingRegistration.output, /REGISTRATION_IDS_REQUIRED/);
@@ -82,7 +82,9 @@ test("setup package is safe, repeatable, and rollback-capable", () => {
     assert.match(candidate, /DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE=\/run\/dgfy-secrets\/dglaundry-machine-assertion\.pub\.pem/);
     assert.match(candidate, /DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE=\/run\/dgfy-secrets\/dglaundry-request-signing\.pub\.pem/);
     assert.match(candidate, /DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON=.*dglaundry-event-stage-ed25519/);
-    assert.match(candidate, /DGFY_OIDC_JWKS_KEYS_JSON=.*dgfy-oidc-stage-2026-10/);
+    assert.match(candidate, /DGFY_OIDC_PRIVATE_KEY_FILE=\/run\/dgfy-secrets\/dgfy-oidc-private\.pem/);
+    assert.match(candidate, /DGFY_OIDC_PUBLIC_KEY_FILE=\/run\/dgfy-secrets\/dgfy-oidc-public\.pem/);
+    assert.doesNotMatch(candidate, /DGFY_OIDC_JWKS_KEYS_JSON=/);
     assert.match(candidate, /DGLAUNDRY_CUSTOM_SETTING=keep-this-value/);
     assert.match(candidate, /DGFY_OIDC_KEY_ID=dgfy-oidc-stage-2026-10/);
     assert.match(candidate, /DGLAUNDRY_PARTNER_SIGNING_KEY_ID=dgfy-request-stage-p256/);
@@ -120,30 +122,6 @@ test("production mutation actions are disabled and concurrent setup is rejected"
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("prepare preserves prior public JWKS keys for overlap rotation and rejects key-ID reuse", () => {
-  const root = mkdtempSync(join(tmpdir(), "dglaundry-setup-jwks-"));
-  try {
-    const previousPair = generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" } });
-    const previousJwk = { ...createPublicKey(previousPair.publicKey).export({ format: "jwk" }), kid: "previous-oidc-key", alg: "RS256", use: "sig" };
-    writeFileSync(join(root, "dglaundry-connection.env"), `DGFY_OIDC_JWKS_KEYS_JSON=${JSON.stringify({ keys: [previousJwk] })}\nDGLAUNDRY_OPERATOR_SETTING=preserve\n`, { mode: 0o600 });
-    const prepared = run("prepare", root);
-    assert.equal(prepared.status, 0);
-    const candidate = readFileSync(join(root, "dglaundry-connection.env.candidate"), "utf8");
-    const registryLine = candidate.split(/\r?\n/).find((line) => line.startsWith("DGFY_OIDC_JWKS_KEYS_JSON="));
-    const registry = JSON.parse(registryLine.slice("DGFY_OIDC_JWKS_KEYS_JSON=".length));
-    assert.deepEqual(registry.keys.map((entry) => entry.kid).sort(), ["dgfy-oidc-stage-2026-10", "previous-oidc-key"]);
-    assert.match(candidate, /DGLAUNDRY_OPERATOR_SETTING=preserve/);
-
-    const reuseRoot = mkdtempSync(join(tmpdir(), "dglaundry-setup-jwks-reuse-"));
-    try {
-      const conflicting = { ...previousJwk, kid: "dgfy-oidc-stage-2026-10" };
-      writeFileSync(join(reuseRoot, "dglaundry-connection.env"), `DGFY_OIDC_JWKS_KEYS_JSON=${JSON.stringify({ keys: [conflicting] })}\n`, { mode: 0o600 });
-      const rejected = run("prepare", reuseRoot);
-      assert.equal(rejected.status, 2);
-      assert.match(rejected.output, /OIDC_KEY_ID_REUSE/);
-    } finally { rmSync(reuseRoot, { recursive: true, force: true }); }
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
 
 test("apply refuses a managed configuration changed after prepare", () => {
   const root = mkdtempSync(join(tmpdir(), "dglaundry-setup-drift-"));

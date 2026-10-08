@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe('DGLaundry partner request profile', () => {
-  it('emits a mapped, operation-scoped DGFY JWT and a separate P-256 signature', () => {
+  it('emits a mapped, operation-scoped DGFY JWT and a separate P-256 signature', async () => {
     process.env.DGLAUNDRY_INTEGRATION_ENVIRONMENT = 'staging';
     process.env.DGFY_OIDC_ISSUER = 'https://api.stage.dgfy.ph/oidc';
     process.env.DGFY_OIDC_KEY_ID = 'dgfy-oidc-stage-1';
@@ -26,7 +26,7 @@ describe('DGLaundry partner request profile', () => {
     process.env.DGFY_OIDC_PRIVATE_KEY = oidcPrivateKey.export({ type: 'pkcs8', format: 'pem' });
     const target = new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes?location_id=branch-1');
     const rawBody = JSON.stringify({ companyId: 'company-1', locationId: 'branch-1', quoteId: 'quote-1' });
-    const headers = signDglaundryPartnerRequest({ method: 'POST', target, rawBody, idempotencyKey: 'idem-1' });
+    const headers = await signDglaundryPartnerRequest({ method: 'POST', target, rawBody, idempotencyKey: 'idem-1' });
     expect(headers.authorization).toMatch(/^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     const accessToken = headers.authorization.slice('Bearer '.length);
     const claims = jwt.verify(accessToken, oidcPublicKey, { algorithms: ['RS256'], issuer: 'https://api.stage.dgfy.ph/oidc', audience: 'https://laundry.surebizcorp.com' });
@@ -66,7 +66,7 @@ describe('DGLaundry partner request profile', () => {
   it.each([
     ['/api/v1/integrations/dgfy/booking-groups/prepare', 'dglaundry:bookings:prepare'],
     ['/api/v1/integrations/dgfy/order-projections/resolve', 'dglaundry:orders:read']
-  ])('issues the exact scope for %s', (path, expectedScope) => {
+  ])('issues the exact scope for %s', async (path, expectedScope) => {
     process.env.DGLAUNDRY_INTEGRATION_ENVIRONMENT = 'staging';
     process.env.DGFY_OIDC_ISSUER = 'https://api.stage.dgfy.ph/oidc';
     process.env.DGFY_OIDC_KEY_ID = 'dgfy-oidc-stage-1';
@@ -76,7 +76,7 @@ describe('DGLaundry partner request profile', () => {
     process.env.DGLAUNDRY_PARTNER_SIGNING_KEY_ID = 'dgfy-request-stage-1';
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
     process.env.DGFY_OIDC_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' });
-    const token = issueDglaundryPartnerAccessToken({
+    const token = await issueDglaundryPartnerAccessToken({
       method: 'POST',
       target: new URL(`https://laundry.surebizcorp.com${path}`),
       payload: { company_id: 'company-1', location_id: 'branch-1' }
@@ -88,7 +88,7 @@ describe('DGLaundry partner request profile', () => {
     expect(claims.exp - claims.iat).toBe(300);
   });
 
-  it('fails closed for unscoped paths, incomplete branch context, and mismatched audiences', () => {
+  it('fails closed for unscoped paths, incomplete branch context, and mismatched audiences', async () => {
     process.env.DGLAUNDRY_INTEGRATION_ENVIRONMENT = 'staging';
     process.env.DGFY_OIDC_ISSUER = 'https://api.stage.dgfy.ph/oidc';
     process.env.DGFY_OIDC_KEY_ID = 'dgfy-oidc-stage-1';
@@ -101,13 +101,13 @@ describe('DGLaundry partner request profile', () => {
     const { privateKey: oidcPrivateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
     process.env.DGFY_OIDC_PRIVATE_KEY = oidcPrivateKey.export({ type: 'pkcs8', format: 'pem' });
 
-    expect(() => signDglaundryPartnerRequest({ method: 'GET', target: new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/health'), rawBody: '' })).toThrow('DGLAUNDRY_PARTNER_OPERATION_SCOPE_UNSUPPORTED');
-    expect(() => signDglaundryPartnerRequest({ method: 'POST', target: new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes'), rawBody: JSON.stringify({ companyId: 'company-1' }) })).toThrow('DGLAUNDRY_PARTNER_LOCATION_ID_REQUIRED');
+    await expect(signDglaundryPartnerRequest({ method: 'GET', target: new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/health'), rawBody: '' })).rejects.toThrow('DGLAUNDRY_PARTNER_OPERATION_SCOPE_UNSUPPORTED');
+    await expect(signDglaundryPartnerRequest({ method: 'POST', target: new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes'), rawBody: JSON.stringify({ companyId: 'company-1' }) })).rejects.toThrow('DGLAUNDRY_PARTNER_LOCATION_ID_REQUIRED');
     process.env.DGLAUNDRY_PARTNER_AUDIENCE = 'https://api.stage.dgfy.ph';
-    expect(() => signDglaundryPartnerRequest({ method: 'POST', target: new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes'), rawBody: JSON.stringify({ companyId: 'company-1', locationId: 'branch-1' }) })).toThrow('DGLAUNDRY_PARTNER_AUDIENCE_ORIGIN_MISMATCH');
+    await expect(signDglaundryPartnerRequest({ method: 'POST', target: new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes'), rawBody: JSON.stringify({ companyId: 'company-1', locationId: 'branch-1' }) })).rejects.toThrow('DGLAUNDRY_PARTNER_AUDIENCE_ORIGIN_MISMATCH');
   });
 
-  it('does not mint a scoped token for a non-POST operation method', () => {
+  it('does not mint a scoped token for a non-POST operation method', async () => {
     process.env.DGLAUNDRY_INTEGRATION_ENVIRONMENT = 'staging';
     process.env.DGFY_OIDC_ISSUER = 'https://api.stage.dgfy.ph/oidc';
     process.env.DGFY_OIDC_KEY_ID = 'dgfy-oidc-stage-1';
@@ -117,10 +117,10 @@ describe('DGLaundry partner request profile', () => {
     const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
     process.env.DGFY_OIDC_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' });
 
-    expect(() => issueDglaundryPartnerAccessToken({
+    await expect(issueDglaundryPartnerAccessToken({
       method: 'GET',
       target: new URL('https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes'),
       payload: { companyId: 'company-1', locationId: 'branch-1' }
-    })).toThrow('DGLAUNDRY_PARTNER_OPERATION_METHOD_UNSUPPORTED');
+    })).rejects.toThrow('DGLAUNDRY_PARTNER_OPERATION_METHOD_UNSUPPORTED');
   });
 });

@@ -3,11 +3,13 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { dgfyAccountRepository } from '../../dgfy/repositories/dgfyAccountRepository.js';
-import { resolveSigningKeyMaterial } from '../../shared/utils/oidcSigningKeyResolver.js';
+import { getActiveSigningKey, listVerificationKeys } from './oidcSigningKeyRegistry.js';
 
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const CLIENT_ID = process.env.DGFY_DGLAUNDRY_CLIENT_ID || 'dglaundry-web';
 const REDIRECT_URI = process.env.DGFY_DGLAUNDRY_REDIRECT_URI || 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+const POST_LOGOUT_REDIRECT_URI = String(process.env.DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI || '').trim();
+const DEFAULT_SCOPE = 'openid profile email dglaundry.company_context';
 const MACHINE_CLIENT_ID = String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID || 'dglaundry-machine').trim();
 // The existing DGLaundry machine registration uses one inbound API scope.
 // The dglaundry:* scopes are issued in the reverse DGFY -> DGLaundry direction.
@@ -24,10 +26,7 @@ const readFile = (path) => {
 // partner-token settings. Hosted deployments should deliver this through the
 // secret manager as a file; the inline form is retained for local tooling.
 const configuredSecret = () => readFile(process.env.DGFY_DGLAUNDRY_CLIENT_SECRET_FILE) || String(process.env.DGFY_DGLAUNDRY_CLIENT_SECRET || '').trim();
-const privateKey = () => resolveSigningKeyMaterial({ inlineEnvVar: 'DGFY_OIDC_PRIVATE_KEY', fileEnvVar: 'DGFY_OIDC_PRIVATE_KEY_FILE', label: 'OIDC private signing key' }).pem;
-const publicKey = () => resolveSigningKeyMaterial({ inlineEnvVar: 'DGFY_OIDC_PUBLIC_KEY', fileEnvVar: 'DGFY_OIDC_PUBLIC_KEY_FILE', label: 'OIDC public verification key' }).pem;
 const machineClientPublicKey = () => readFile(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE) || String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY || '').trim();
-const keyId = () => String(process.env.DGFY_OIDC_KEY_ID || 'dglaundry-oidc-1').trim();
 
 const useRedis = () => isRedisConnected() && getRedisClient();
 const stateStoreUnavailable = () => Object.assign(new Error('Redis-backed OIDC state is required.'), { statusCode: 503 });
@@ -214,51 +213,6 @@ const authenticateOidcClient = async (req, input) => {
     throw error;
 };
 
-const readOidcPublicKeys = () => {
-    const registryJson = String(process.env.DGFY_OIDC_JWKS_KEYS_JSON || '').trim();
-    let entries;
-    if (registryJson) {
-        let parsed;
-        try { parsed = JSON.parse(registryJson); }
-        catch { throw new Error('OIDC public key registry is invalid.'); }
-        if (!parsed || !Array.isArray(parsed.keys) || parsed.keys.length < 1) throw new Error('OIDC public key registry must contain a non-empty keys array.');
-        entries = parsed.keys;
-    } else {
-        const pem = publicKey();
-        if (!pem) return [];
-        entries = [{ kid: keyId(), publicKeyPem: pem }];
-    }
-
-    const seen = new Set();
-    const keys = entries.map((entry) => {
-        const kid = String(entry?.kid || '').trim();
-        const privateFields = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'];
-        if (!/^[A-Za-z0-9._:-]{3,96}$/.test(kid) || seen.has(kid)) throw new Error('OIDC public key registry contains an invalid entry.');
-        seen.add(kid);
-        let parsed;
-        if (registryJson) {
-            if (entry?.kty !== 'RSA' || entry?.alg !== 'RS256' || entry?.use !== 'sig' || privateFields.some((field) => entry[field] !== undefined)) throw new Error('OIDC public key registry must contain public RSA signing keys only.');
-            parsed = crypto.createPublicKey({ key: { kty: 'RSA', n: entry.n, e: entry.e }, format: 'jwk' });
-        } else {
-            const pem = String(entry?.publicKeyPem || '').trim();
-            if (!pem.startsWith('-----BEGIN PUBLIC KEY-----')) throw new Error('OIDC public key registry contains an invalid entry.');
-            parsed = crypto.createPublicKey(pem);
-        }
-        if (parsed.asymmetricKeyType !== 'rsa' || (parsed.asymmetricKeyDetails?.modulusLength || 0) < 2048) throw new Error('OIDC public key registry requires RSA keys of at least 2048 bits.');
-        return { kid, key: parsed };
-    });
-    const active = keys.find((entry) => entry.kid === keyId());
-    if (!active) throw new Error('The active OIDC key ID is absent from the public key registry.');
-    const configuredActivePem = publicKey();
-    if (configuredActivePem && !crypto.createPublicKey(configuredActivePem).equals(active.key)) throw new Error('The active OIDC public key does not match the registry.');
-    return keys;
-};
-
-const assertActiveSigningKey = (signingPem) => {
-    const active = readOidcPublicKeys().find((entry) => entry.kid === keyId());
-    if (!active || !crypto.createPublicKey(signingPem).equals(active.key)) throw Object.assign(new Error('The active OIDC signing key does not match the published JWKS key.'), { statusCode: 503 });
-};
-
 export const oidcDiscovery = (_req, res) => res.json({
     issuer: ISSUER,
     authorization_endpoint: `${ISSUER}/authorize`,
@@ -277,11 +231,11 @@ export const oidcDiscovery = (_req, res) => res.json({
     token_endpoint_auth_methods_supported: ['client_secret_basic', 'private_key_jwt']
 });
 
-export const oidcJwks = (_req, res) => {
+export const oidcJwks = async (_req, res) => {
     try {
-        const keys = readOidcPublicKeys();
+        const keys = await listVerificationKeys();
         if (!keys.length) return res.status(503).json({ error: 'oidc_keys_not_configured' });
-        return res.json({ keys: keys.map(({ kid, key }) => ({ ...key.export({ format: 'jwk' }), kid, use: 'sig', alg: 'RS256', kty: 'RSA' })) });
+        return res.json({ keys: keys.map(({ kid, publicKeyPem }) => ({ ...crypto.createPublicKey(publicKeyPem).export({ format: 'jwk' }), kid, use: 'sig', alg: 'RS256', kty: 'RSA' })) });
     } catch {
         return res.status(503).json({ error: 'oidc_public_key_invalid' });
     }
@@ -290,28 +244,43 @@ export const oidcJwks = (_req, res) => {
 // RP-initiated logout is intentionally limited to the registered DGLaundry
 // browser client and the matching active DGFY browser session. No post-logout
 // redirect is accepted until an exact URI is registered for this client.
-export const oidcEndSession = (req, res, next) => {
+export const oidcEndSession = async (req, res, next) => {
     const input = formOrJson(req);
     if (input.client_id && input.client_id !== CLIENT_ID) return res.status(400).json({ error: 'invalid_request', error_description: 'The client is not registered for this logout endpoint.' });
-    if (input.post_logout_redirect_uri) return res.status(400).json({ error: 'invalid_request', error_description: 'No post-logout redirect URI is registered.' });
+    const redirectUri = String(input.post_logout_redirect_uri || '').trim();
+    if (redirectUri && (!POST_LOGOUT_REDIRECT_URI || redirectUri !== POST_LOGOUT_REDIRECT_URI)) return res.status(400).json({ error: 'invalid_request', error_description: 'post_logout_redirect_uri is not registered.' });
     const idTokenHint = String(input.id_token_hint || '').trim();
     if (!idTokenHint) return res.status(400).json({ error: 'invalid_request', error_description: 'An ID token hint is required.' });
-    const decoded = jwt.decode(idTokenHint, { complete: true });
-    const hintKeyId = String(decoded?.header?.kid || '');
     let keys;
-    try { keys = readOidcPublicKeys(); }
+    try { keys = await listVerificationKeys(); }
     catch { return res.status(503).json({ error: 'oidc_public_key_invalid' }); }
     if (!keys.length) return res.status(503).json({ error: 'oidc_keys_not_configured' });
-    const hintKey = keys.find((entry) => entry.kid === hintKeyId)?.key;
-    if (!hintKey) return res.status(400).json({ error: 'invalid_request', error_description: 'The ID token hint signing key is not registered.' });
     let claims;
-    try { claims = jwt.verify(idTokenHint, hintKey, { algorithms: ['RS256'], issuer: ISSUER, audience: CLIENT_ID, clockTolerance: 5 }); }
-    catch { return res.status(400).json({ error: 'invalid_request', error_description: 'The ID token hint is invalid.' }); }
-    if (!Number.isInteger(claims.exp) || !Number.isInteger(claims.iat) || String(claims.sub || '') !== String(req.dgfyAccount?.id || '')) {
+    for (const key of keys) {
+        try {
+            claims = jwt.verify(idTokenHint, key.publicKeyPem, { algorithms: ['RS256'], issuer: ISSUER, audience: CLIENT_ID, clockTolerance: 5, ignoreExpiration: true });
+            break;
+        } catch { /* Try every active and retiring verification key. */ }
+    }
+    if (!claims || !Number.isInteger(claims.exp) || !Number.isInteger(claims.iat) || String(claims.sub || '') !== String(req.dgfyAccount?.id || '')) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'The ID token hint does not match the active DGFY session.' });
     }
     req.oidcLogoutClientId = CLIENT_ID;
+    req.oidcLogoutClaims = claims;
+    req.oidcPostLogoutRedirectUri = redirectUri;
+    req.oidcPostLogoutState = input.state === undefined ? undefined : String(input.state);
     return next();
+};
+
+export const oidcLogout = async (req, res, next) => {
+    try {
+        const sid = String(req.oidcLogoutClaims?.sid || '').trim();
+        if (sid) {
+            const accessToken = await consume(`dglaundry:oidc:session:${sid}`);
+            if (accessToken) await consume(`dglaundry:oidc:access:${accessToken}`);
+        }
+        return next();
+    } catch (error) { return next(error); }
 };
 
 export const oidcPar = async (req, res, next) => {
@@ -327,6 +296,7 @@ export const oidcPar = async (req, res, next) => {
         delete safeInput.client_secret;
         const stored = await store(`dglaundry:oidc:par:${requestUri}`, {
             ...safeInput,
+            scope: input.scope || DEFAULT_SCOPE,
             client_id: input.client_id || clientId,
             created_at: Date.now()
         });
@@ -356,6 +326,7 @@ export const buildOidcAuthorizeHandler = ({ chooseCompany }) => async (req, res,
             display_name: `${req.dgfyAccount.first_name || ''} ${req.dgfyAccount.last_name || ''}`.trim() || 'DGFY Account',
             email: req.dgfyAccount.email,
             company: selection.company,
+            scope: params.scope || DEFAULT_SCOPE,
             nonce: params.nonce,
             code_challenge: params.code_challenge,
             client_id: params.client_id,
@@ -402,17 +373,21 @@ export const oidcToken = async (req, res, next) => {
         if (input.grant_type !== 'authorization_code' || !input.code || !input.code_verifier) return res.status(400).json({ error: 'invalid_grant' });
         const grant = await consume(`dglaundry:oidc:code:${input.code}`);
         if (!grant || grant.client_id !== authenticatedClientId || grant.redirect_uri !== input.redirect_uri || grant.code_challenge !== crypto.createHash('sha256').update(input.code_verifier).digest('base64url')) return res.status(400).json({ error: 'invalid_grant' });
-        const signingKey = privateKey();
-        if (!signingKey) return res.status(503).json({ error: 'oidc_keys_not_configured' });
-        try { assertActiveSigningKey(signingKey); }
-        catch { return res.status(503).json({ error: 'oidc_signing_key_mismatch' }); }
+        const signingKey = await getActiveSigningKey();
+        if (!signingKey?.privateKeyPem || !signingKey?.kid) return res.status(503).json({ error: 'oidc_keys_not_configured' });
         const now = Math.floor(Date.now() / 1000);
-        const idToken = jwt.sign({ iss: ISSUER, sub: grant.subject, aud: CLIENT_ID, azp: CLIENT_ID, iat: now, exp: now + 300, nonce: grant.nonce, name: grant.display_name, email: grant.email, dglaundry_company_context: { companyId: grant.company.company_id, membershipId: grant.company.membership_id, role: grant.company.role } }, signingKey, { algorithm: 'RS256', keyid: keyId() });
+        const sid = crypto.randomUUID();
+        const idToken = jwt.sign({ iss: ISSUER, sub: grant.subject, aud: CLIENT_ID, azp: CLIENT_ID, iat: now, exp: now + 300, nonce: grant.nonce, sid, name: grant.display_name, email: grant.email, dglaundry_company_context: { companyId: grant.company.company_id, membershipId: grant.company.membership_id, role: grant.company.role } }, signingKey.privateKeyPem, { algorithm: 'RS256', keyid: signingKey.kid });
         const accessToken = crypto.randomBytes(32).toString('base64url');
         const issuedAt = Date.now();
         const stored = await store(`dglaundry:oidc:access:${accessToken}`, { ...grant, access_token: accessToken, issued_at: issuedAt, expires_at: issuedAt + 300_000 }, 300);
         if (!stored) return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'Redis-backed OIDC state is required.' });
-        return res.json({ access_token: accessToken, token_type: 'Bearer', expires_in: 300, id_token: idToken, scope: input.scope || 'openid profile email dglaundry.company_context' });
+        const sessionStored = await store(`dglaundry:oidc:session:${sid}`, accessToken, 300);
+        if (!sessionStored) {
+            await consume(`dglaundry:oidc:access:${accessToken}`);
+            return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'Redis-backed OIDC state is required.' });
+        }
+        return res.json({ access_token: accessToken, token_type: 'Bearer', expires_in: 300, id_token: idToken, scope: grant.scope || DEFAULT_SCOPE });
     } catch (error) { return next(error); }
 };
 

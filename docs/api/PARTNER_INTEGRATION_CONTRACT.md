@@ -163,13 +163,18 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | Method | Path | Caller | Auth |
 |---|---|---|---|
 | GET | `/oidc/.well-known/openid-configuration` | Anyone | none |
-| GET | `/oidc/jwks` | Anyone | none (returns 503 if signing key unconfigured); publishes the active key and any explicitly configured overlap keys |
+| GET | `/oidc/jwks` | Anyone | none (returns 503 if signing key unconfigured); publishes active and retiring registry keys |
 | POST | `/oidc/par` | DGLaundry browser client | client registration check |
 | GET | `/oidc/authorize` | DGFY account holder (browser) | `authenticateDgfyAccount` |
 | POST | `/oidc/token` | DGLaundry browser or machine client | client credentials / `private_key_jwt` |
-| GET | `/oidc/logout` | Signed-in DGFY account holder and registered browser client | `authenticateDgfyAccount`, matching signed `id_token_hint`; redirect URIs are rejected until explicitly registered |
+| GET | `/oidc/logout` | Signed-in DGFY account holder and registered browser client | `authenticateDgfyAccount`, signed `id_token_hint` matching that account; revokes its linked opaque token and redirects only to the exact configured post-logout URI |
 | POST | `/oidc/revoke` | Registered browser or machine client | `client_secret_basic` or `private_key_jwt`; revokes only tokens owned by the authenticated client |
 | POST | `/oidc/introspect` | Registered browser or machine client | `client_secret_basic` or `private_key_jwt`; tokens owned by another client are reported inactive |
+
+All `/oidc/*` endpoints use the Redis-backed `oidcLimiter`: 20 requests per 5 minutes in
+production and 100 per 5 minutes in development by default. `OIDC_RATE_LIMIT_MAX_REQUESTS` and
+`OIDC_RATE_LIMIT_WINDOW_MS` override the budget and window. The limiter keys requests by IP,
+client ID, and route; see [RATE_LIMITING.md](RATE_LIMITING.md).
 
 ### Partner provider API — mounted at `/api/v1/partners/dglaundry`
 
@@ -285,7 +290,7 @@ configuration-only, and what does not exist, rather than implying full readiness
 | Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
 | Browser/machine/service client IDs (`dglaundry-web`, `dglaundry-machine`, `dglaundry-service`) and app ID (`dglaundry`) are agreed in the shared manifest; environment registrations and live callback verification remain outstanding | ⚠️ contract agreed; host registration and verification remain open | #2304, #519 |
 | Signed provider runtime attestation, signed event specimens, and persisted sandbox payment-lifecycle probe routes | ❌ not built; source/runtime evidence remains required | #2306 |
-| OIDC end-session, opaque-token introspection/revocation, public-JWKS overlap rotation, dedicated `/oidc/*` rate limiting, and production Redis fail-closed behavior are implemented on the open provider-hardening PR #2334 candidate; no merge or hosted verification yet | ⚠️ source candidate only; issuer keys, registrations, Redis and real-host behavior remain unverified | #2307, #2334 |
+| OIDC end-session, opaque-token introspection/revocation, DB-backed signing-key overlap rotation, dedicated `/oidc/*` rate limiting, and production Redis fail-closed behavior are implemented on PR #2337; the source is not merged and hosted issuer configuration/verification remain outstanding | ⚠️ source candidate only; staging/production keys, registrations, Redis and real-host behavior remain unverified | #2307, #2337 |
 | Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |
 | Hosted legacy `x-dglaundry-partner-token` fallback, inbound-scope enforcement, and registered app-ID binding | ⚠️ source hardening is implemented on the current candidate; hosted behavior and exact environment registrations remain to verify | #2309 |
 | Outbound delivery is persisted in the landlord MySQL outbox and retried with bounded leases/backoff; scoped dead-letter inspection and audited recovery are mounted; inbound event nonce claims use shared Redis | ✅ implemented locally; migration and deployed verification remain separate rollout gates | #2310 |

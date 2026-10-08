@@ -96,6 +96,10 @@ to the linked issue or PR.
       `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback`.
 - [ ] Confirm the approved launch/logout origins and the post-logout redirect
       before sending them to DGLaundry; do not invent a second staff origin.
+- [ ] Register the approved exact post-logout redirect in
+      `DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI`; the provider advertises
+      `GET /oidc/logout` as `end_session_endpoint` and echoes `state` only to
+      that exact URI.
 - [ ] Return the client identifier, scopes, audience, and the approved origin
       list through the approved secret/configuration channel. Do not put client
       secrets in GitHub, issue comments, chat, URLs, or logs.
@@ -115,13 +119,23 @@ to the linked issue or PR.
 - [ ] Use `DGFY_DGLAUNDRY_CLIENT_SECRET` as the browser client's own credential,
       delivered through the approved secret manager. The OIDC provider no longer
       accepts `DGLAUNDRY_PARTNER_TOKEN` as a browser client secret.
-- [ ] For an overlap rotation, publish both active and previous **public** RSA
-      keys in `DGFY_OIDC_JWKS_KEYS_JSON`; keep `kid` unique, ensure the active
-      `DGFY_OIDC_KEY_ID` has a matching public key, and remove the old public key
-      only after every relying party has refreshed its JWKS cache.
-- [ ] The OIDC end-session endpoint requires the current DGFY browser session and
-      a matching, valid `id_token_hint`. It does not redirect; reject any
-      `post_logout_redirect_uri` until an exact URI has been registered.
+- [ ] Apply the landlord `oidc_signing_keys` migration before switching from the
+      legacy environment-key fallback to the DB registry.
+- [ ] For a rotation, add the new public key and its private-key environment
+      reference with `apps/dgfy-api/scripts/rotate-oidc-signing-key.js add --kid
+      <kid> --public-key-file <public.pem> --private-key-env-ref
+      DGFY_OIDC_SIGNING_KEY_<N>_PRIVATE_FILE`, then promote it with
+      `.../rotate-oidc-signing-key.js promote --kid <kid>`. The previous active
+      key becomes `retiring` and remains in JWKS until explicitly retired or
+      revoked after the overlap window.
+- [ ] Keep private key bytes in the approved environment-specific secret path;
+      the registry stores only public PEM and the private-key environment
+      variable name. Use the CLI `list`, `promote`, `retire`, and `revoke`
+      commands for state changes.
+- [ ] The OIDC end-session endpoint requires the current DGFY browser session
+      and a matching signed `id_token_hint` (expired hints are accepted after
+      signature verification). It revokes the linked opaque token and redirects
+      only to the exact configured post-logout URI.
 
 Read-only preflight on 2026-10-08 found staging discovery reachable with issuer
 `https://api.stage.dgfy.ph/oidc`, but staging JWKS returned

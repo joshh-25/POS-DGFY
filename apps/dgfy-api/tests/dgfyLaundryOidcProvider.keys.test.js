@@ -3,12 +3,35 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
+import { jest } from '@jest/globals';
+
+const registryRows = [];
+jest.unstable_mockModule('../src/modules/dgfyLaundry/repositories/oidcSigningKeyRepository.js', () => ({
+  oidcSigningKeyRepository: {
+    count: async () => registryRows.length,
+    findActive: async () => registryRows.find((row) => row.status === 'active') || null,
+    findVerificationKeys: async () => registryRows.filter((row) => ['active', 'retiring'].includes(row.status)),
+    findByKid: async (kid) => registryRows.find((row) => row.kid === kid) || null,
+    promote: async (kid) => {
+      for (const row of registryRows) if (row.status === 'active') row.status = 'retiring';
+      const row = registryRows.find((candidate) => candidate.kid === kid);
+      if (row) row.status = 'active';
+      return row || null;
+    },
+    transition: async (kid, status) => {
+      const row = registryRows.find((candidate) => candidate.kid === kid);
+      if (row) row.status = status;
+      return row || null;
+    }
+  }
+}));
 
 let buildOidcAuthorizeHandler;
 let oidcDiscovery;
 let oidcEndSession;
 let oidcIntrospect;
 let oidcJwks;
+let oidcLogout;
 let oidcPar;
 let oidcRevoke;
 let oidcToken;
@@ -32,15 +55,16 @@ describe('DGFY OIDC provider key resolution', () => {
   let publicKey;
 
   beforeAll(async () => {
-    for (const name of ['DGFY_OIDC_PRIVATE_KEY', 'DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_JWKS_KEYS_JSON', 'DGFY_OIDC_ISSUER', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_CLIENT_ID', 'DGFY_DGLAUNDRY_REDIRECT_URI', 'DGFY_DGLAUNDRY_CLIENT_SECRET', 'DGFY_DGLAUNDRY_CLIENT_SECRET_FILE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGLAUNDRY_INTEGRATION_ENVIRONMENT', 'DGLAUNDRY_PARTNER_AUDIENCE', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_TOKEN', 'DGLAUNDRY_PARTNER_TOKEN_FILE', 'NODE_ENV']) {
+    for (const name of ['DGFY_OIDC_PRIVATE_KEY', 'DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE', 'DGFY_OIDC_JWKS_KEYS_JSON', 'DGFY_OIDC_SIGNING_KEY_REGISTRY_TEST_MODE', 'DGFY_OIDC_ISSUER', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_CLIENT_ID', 'DGFY_DGLAUNDRY_REDIRECT_URI', 'DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI', 'DGFY_DGLAUNDRY_CLIENT_SECRET', 'DGFY_DGLAUNDRY_CLIENT_SECRET_FILE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGLAUNDRY_INTEGRATION_ENVIRONMENT', 'DGLAUNDRY_PARTNER_AUDIENCE', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_TOKEN', 'DGLAUNDRY_PARTNER_TOKEN_FILE', 'NODE_ENV']) {
       priorEnv[name] = process.env[name];
     }
     process.env.DGFY_OIDC_ISSUER = 'https://api.dgfy.ph/oidc';
     process.env.DGFY_DGLAUNDRY_CLIENT_ID = 'dglaundry-web';
     process.env.DGFY_DGLAUNDRY_REDIRECT_URI = 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+    process.env.DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI = 'https://laundry.surebizcorp.com/logout/callback';
     process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID = 'dglaundry-machine';
     process.env.DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE = 'https://api.dgfy.ph/oidc/token';
-    ({ buildOidcAuthorizeHandler, oidcDiscovery, oidcEndSession, oidcIntrospect, oidcJwks, oidcPar, oidcRevoke, oidcToken } = await import('../src/modules/dgfyLaundry/services/dgfyLaundryOidcProvider.js'));
+    ({ buildOidcAuthorizeHandler, oidcDiscovery, oidcEndSession, oidcIntrospect, oidcJwks, oidcLogout, oidcPar, oidcRevoke, oidcToken } = await import('../src/modules/dgfyLaundry/services/dgfyLaundryOidcProvider.js'));
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dgfy-oidc-provider-'));
     privatePath = path.join(directory, 'private.pem');
     publicPath = path.join(directory, 'public.pem');
@@ -65,6 +89,7 @@ describe('DGFY OIDC provider key resolution', () => {
     process.env.DGFY_OIDC_ISSUER = 'https://api.dgfy.ph/oidc';
     process.env.DGFY_DGLAUNDRY_CLIENT_ID = 'dglaundry-web';
     process.env.DGFY_DGLAUNDRY_REDIRECT_URI = 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+    process.env.DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI = 'https://laundry.surebizcorp.com/logout/callback';
     process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID = 'dglaundry-machine';
     process.env.DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE = 'https://api.dgfy.ph/oidc/token';
     delete process.env.DGFY_OIDC_PRIVATE_KEY;
@@ -77,49 +102,51 @@ describe('DGFY OIDC provider key resolution', () => {
     delete process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY;
     delete process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE;
     process.env.DGFY_OIDC_KEY_ID = 'dglaundry-oidc-1';
+    registryRows.length = 0;
+    delete process.env.OIDC_SIGNING_KEY_REGISTRY_TEST_MODE;
     delete process.env.DGFY_OIDC_JWKS_KEYS_JSON;
     process.env.DGLAUNDRY_PARTNER_TOKEN = 'legacy-partner-token';
     delete process.env.DGLAUNDRY_PARTNER_TOKEN_FILE;
   });
 
-  test('serves a valid JWKS from the configured public key file', () => {
+  test('serves a valid JWKS from the configured public key file', async () => {
     const response = makeResponse();
-    oidcJwks({}, response);
+    await oidcJwks({}, response);
 
     expect(response.statusCode).toBe(200);
     expect(response.body.keys).toHaveLength(1);
     expect(response.body.keys[0]).toMatchObject({ alg: 'RS256', use: 'sig', kty: 'RSA' });
   });
 
-  test('publishes overlapping public RSA keys and rejects an active-key mismatch', () => {
-    const priorPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-    const activeJwk = crypto.createPublicKey(publicKey).export({ format: 'jwk' });
-    const previousJwk = priorPair.publicKey.export({ format: 'jwk' });
-    const jwks = {
-      keys: [
-        { ...activeJwk, kid: 'dgfy-active-1', use: 'sig', alg: 'RS256' },
-        { ...previousJwk, kid: 'dgfy-previous-1', use: 'sig', alg: 'RS256' }
-      ]
-    };
-    process.env.DGFY_OIDC_KEY_ID = 'dgfy-active-1';
-    process.env.DGFY_OIDC_JWKS_KEYS_JSON = JSON.stringify(jwks);
-
+  test('publishes active and retiring keys from the signing-key registry', async () => {
+    const activePair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const retiringPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const activePrivatePath = path.join(directory, 'active-private.pem');
+    fs.writeFileSync(activePrivatePath, activePair.privateKey.export({ type: 'pkcs8', format: 'pem' }));
+    process.env.DGFY_OIDC_PRIVATE_KEY_FILE = activePrivatePath;
+    process.env.OIDC_SIGNING_KEY_REGISTRY_TEST_MODE = 'true';
+    registryRows.push(
+      { kid: 'dgfy-active-1', status: 'active', public_key_pem: activePair.publicKey.export({ type: 'spki', format: 'pem' }), private_key_env_ref: 'DGFY_OIDC_PRIVATE_KEY_FILE' },
+      { kid: 'dgfy-previous-1', status: 'retiring', public_key_pem: retiringPair.publicKey.export({ type: 'spki', format: 'pem' }), private_key_env_ref: 'DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE' },
+      { kid: 'dgfy-revoked-1', status: 'revoked', public_key_pem: retiringPair.publicKey.export({ type: 'spki', format: 'pem' }), private_key_env_ref: 'DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE' }
+    );
+    process.env.DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE = activePrivatePath;
     const response = makeResponse();
-    oidcJwks({}, response);
+    await oidcJwks({}, response);
     expect(response.statusCode).toBe(200);
     expect(response.body.keys.map(({ kid }) => kid)).toEqual(['dgfy-active-1', 'dgfy-previous-1']);
     expect(response.body.keys.every((key) => !('d' in key))).toBe(true);
-
-    process.env.DGFY_OIDC_JWKS_KEYS_JSON = JSON.stringify({
-      keys: [{ ...previousJwk, kid: 'dgfy-active-1', use: 'sig', alg: 'RS256' }]
-    });
-    const mismatch = makeResponse();
-    oidcJwks({}, mismatch);
-    expect(mismatch.statusCode).toBe(503);
-    expect(mismatch.body).toEqual({ error: 'oidc_public_key_invalid' });
+    delete process.env.OIDC_SIGNING_KEY_REGISTRY_TEST_MODE;
   });
 
   test('OIDC token and partner tokens both sign from the same private key file setting', async () => {
+    process.env.OIDC_SIGNING_KEY_REGISTRY_TEST_MODE = 'true';
+    registryRows.push({
+      kid: 'dglaundry-oidc-1',
+      status: 'active',
+      public_key_pem: publicKey,
+      private_key_env_ref: 'DGFY_OIDC_PRIVATE_KEY_FILE'
+    });
     const codeVerifier = 'a-code-verifier-with-enough-entropy';
     const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
     const authorization = `Basic ${Buffer.from('dglaundry-web:test-client-secret').toString('base64')}`;
@@ -167,18 +194,30 @@ describe('DGFY OIDC provider key resolution', () => {
     expect(queryTokenResponse.statusCode).toBe(400);
     expect(queryTokenResponse.body.error).toBe('invalid_request');
 
+    const tokenClaims = jwt.decode(tokenResponse.body.id_token);
+    const expiredHint = jwt.sign({
+      ...tokenClaims,
+      iat: Math.floor(Date.now() / 1000) - 600,
+      exp: Math.floor(Date.now() / 1000) - 300
+    }, fs.readFileSync(privatePath, 'utf8'), { algorithm: 'RS256', keyid: 'dglaundry-oidc-1' });
     let logoutPassed = false;
     const logoutResponse = makeResponse();
-    oidcEndSession({
+    await oidcEndSession({
       headers: {},
       body: {},
-      query: { id_token_hint: tokenResponse.body.id_token },
+      query: { id_token_hint: expiredHint, post_logout_redirect_uri: 'https://laundry.surebizcorp.com/logout/callback', state: 'logout-state' },
       dgfyAccount: { id: 'account-1' }
     }, logoutResponse, () => { logoutPassed = true; });
     expect(logoutPassed).toBe(true);
+    let logoutContinued = false;
+    await oidcLogout({ oidcLogoutClaims: jwt.decode(expiredHint) }, logoutResponse, () => { logoutContinued = true; });
+    expect(logoutContinued).toBe(true);
+    const logoutIntrospection = makeResponse();
+    await oidcIntrospect({ headers: { authorization }, body: { token: tokenResponse.body.access_token }, query: {} }, logoutIntrospection, (error) => { throw error; });
+    expect(logoutIntrospection.body).toEqual({ active: false });
 
     const mismatchedLogout = makeResponse();
-    oidcEndSession({
+    await oidcEndSession({
       headers: {},
       body: {},
       query: { id_token_hint: tokenResponse.body.id_token, post_logout_redirect_uri: 'https://attacker.invalid/' },
@@ -200,7 +239,7 @@ describe('DGFY OIDC provider key resolution', () => {
     process.env.DGLAUNDRY_PARTNER_BASE_URL = 'https://laundry.surebizcorp.com';
     process.env.DGFY_DGLAUNDRY_SERVICE_CLIENT_ID = 'dgfy-service-client';
     const { issueDglaundryPartnerAccessToken } = await import('../src/modules/dgfyLaundryOrders/services/dglaundryPartnerAccessToken.js');
-    const partnerToken = issueDglaundryPartnerAccessToken({
+    const partnerToken = await issueDglaundryPartnerAccessToken({
       method: 'POST',
       target: 'https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes',
       payload: { companyId: 'company-1', locationId: 'location-1' },
@@ -209,10 +248,10 @@ describe('DGFY OIDC provider key resolution', () => {
     expect(jwt.verify(partnerToken, publicKey, { algorithms: ['RS256'], audience: 'https://laundry.surebizcorp.com' })).toMatchObject({ scope: 'dglaundry:quotes:create' });
   });
 
-  test('preserves the JWKS unconfigured response for an unreadable key path', () => {
+  test('preserves the JWKS unconfigured response for an unreadable key path', async () => {
     process.env.DGFY_OIDC_PUBLIC_KEY_FILE = path.join(directory, 'missing-public.pem');
     const response = makeResponse();
-    oidcJwks({}, response);
+    await oidcJwks({}, response);
 
     expect(response.statusCode).toBe(503);
     expect(response.body).toEqual({ error: 'oidc_keys_not_configured' });

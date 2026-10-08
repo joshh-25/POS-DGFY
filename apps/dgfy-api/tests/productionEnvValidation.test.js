@@ -93,7 +93,7 @@ describe('production environment validation', () => {
         DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc',
         DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback',
         DGFY_OIDC_PRIVATE_KEY_FILE: '/run/secrets/dgfy-oidc-private.pem',
-        DGFY_OIDC_JWKS_KEYS_JSON: '{"keys":[{"kty":"RSA","kid":"dgfy-oidc-stage-1","use":"sig","alg":"RS256","n":"sample","e":"AQAB"}]}',
+        DGFY_OIDC_PUBLIC_KEY_FILE: '/run/secrets/dgfy-oidc-public.pem',
         DGFY_OIDC_KEY_ID: 'dgfy-oidc-stage-1',
         DGFY_DGLAUNDRY_CLIENT_SECRET_FILE: '/run/secrets/dglaundry-oidc-client-secret',
         DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: 'dglaundry-machine-stage',
@@ -117,7 +117,7 @@ describe('production environment validation', () => {
     expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_SERVICE_CLIENT_ID');
     expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_PARTNER_APP_ID');
     expect(result.errors).not.toContain('DGLAUNDRY_PARTNER_AUDIENCE must exactly match the DGLAUNDRY_PARTNER_BASE_URL origin');
-    expect(result.errors).not.toContain('Missing required environment value: DGFY_OIDC_PUBLIC_KEY_FILE (or DGFY_OIDC_PUBLIC_KEY or DGFY_OIDC_JWKS_KEYS_JSON)');
+    expect(result.errors).not.toContain('Missing required environment value: DGFY_OIDC_PUBLIC_KEY_FILE (or DGFY_OIDC_PUBLIC_KEY)');
     expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_CLIENT_SECRET_FILE (or DGFY_DGLAUNDRY_CLIENT_SECRET)');
   });
 

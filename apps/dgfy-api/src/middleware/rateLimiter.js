@@ -16,14 +16,14 @@ const maxRequests = isDevelopment
 export const DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS;
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
+const oidcWindowMs = parseInt(process.env.OIDC_RATE_LIMIT_WINDOW_MS) || 5 * 60 * 1000;
+const oidcMaxRequests = parseInt(process.env.OIDC_RATE_LIMIT_MAX_REQUESTS) || (isDevelopment ? 100 : 20);
 const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes default
 const lookupMaxRequests = parseInt(process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const emailOtpWindowMs = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_WINDOW_MS) || 10 * 60 * 1000; // 10 minutes
 const emailOtpMaxRequests = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS) || (isDevelopment ? 12 : 3);
 const adminAuthWindowMs = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const adminAuthMaxRequests = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
-const oidcWindowMs = parseInt(process.env.RATE_LIMIT_OIDC_WINDOW_MS) || 15 * 60 * 1000;
-const oidcMaxRequests = parseInt(process.env.RATE_LIMIT_OIDC_MAX_REQUESTS) || (isDevelopment ? 300 : 120);
 const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeAuthMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_AUTH_MAX_REQUESTS) || (isDevelopment ? 60 : 10);
 const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
@@ -569,32 +569,6 @@ export const generalLimiter = rateLimit({
   },
 });
 
-// OIDC endpoints are mounted outside /api, so they need their own explicit
-// abuse boundary. Use Express's trusted-proxy-aware req.ip handling; do not
-// key this security limiter directly on an untrusted X-Forwarded-For value.
-export const oidcLimiter = rateLimit({
-  windowMs: oidcWindowMs,
-  max: oidcMaxRequests,
-  message: createRateLimitError('Too many OIDC requests. Please try again later.'),
-  standardHeaders: true,
-  legacyHeaders: false,
-  validate: { trustProxy: false },
-  store: new DynamicStore('oidc'),
-  handler: (req, res, _next, options) => {
-    const response = buildRateLimitResponse(
-      req,
-      options,
-      'Too many OIDC requests. Please try again later.',
-      'oidc',
-      'ip'
-    );
-    logRateLimitEvent(req, 'oidc', response.retryAfterSeconds, 'ip');
-    res.set('Retry-After', String(response.retryAfterSeconds));
-    res.status(response.status).json(response.body);
-  },
-  skip: () => process.env.NODE_ENV === 'test'
-});
-
 // Stricter rate limiter for authentication endpoints.
 // Uses ip + email keying so users sharing one public IP do not throttle each other.
 export const authLimiter = rateLimit({
@@ -651,6 +625,30 @@ export const authLimiter = rateLimit({
     if (shouldSkipLocalPosAuthRateLimit(req)) return true;
     return false;
   },
+});
+
+export const oidcLimiter = rateLimit({
+  windowMs: oidcWindowMs,
+  max: oidcMaxRequests,
+  message: createRateLimitError('Too many OIDC requests, please try again later.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('oidc'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const clientId = String(req.body?.client_id || req.query?.client_id || 'anonymous').trim().slice(0, 128);
+    const path = String(req.path || '/').slice(0, 128);
+    return `oidc:${ip}:${clientId}:${path}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(req, options, 'Too many OIDC requests, please try again later.', 'oidc', 'ip_client_path');
+    logRateLimitEvent(req, 'oidc', response.retryAfterSeconds, 'ip_client_path');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: (req) => process.env.NODE_ENV === 'test'
+    || (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true')
 });
 
 export const emailOtpLimiter = rateLimit({

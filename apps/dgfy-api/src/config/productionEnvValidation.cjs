@@ -247,8 +247,8 @@ const validateDglaundryProviderConfig = (env, errors) => {
   for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_PARTNER_APP_ID', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID', 'DGLAUNDRY_INTEGRATION_KEY_ID', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_AUDIENCE']) {
     if (!hasValue(env, key)) addMissing(errors, key);
   }
-  if (!hasValue(env, 'DGFY_OIDC_PUBLIC_KEY_FILE') && !hasValue(env, 'DGFY_OIDC_PUBLIC_KEY') && !hasValue(env, 'DGFY_OIDC_JWKS_KEYS_JSON')) {
-    errors.push('Missing required environment value: DGFY_OIDC_PUBLIC_KEY_FILE (or DGFY_OIDC_PUBLIC_KEY or DGFY_OIDC_JWKS_KEYS_JSON)');
+  if (!hasValue(env, 'DGFY_OIDC_PUBLIC_KEY_FILE') && !hasValue(env, 'DGFY_OIDC_PUBLIC_KEY')) {
+    errors.push('Missing required environment value: DGFY_OIDC_PUBLIC_KEY_FILE (or DGFY_OIDC_PUBLIC_KEY)');
   }
   if (!hasValue(env, 'DGFY_DGLAUNDRY_CLIENT_SECRET_FILE') && !hasValue(env, 'DGFY_DGLAUNDRY_CLIENT_SECRET')) {
     errors.push('Missing required environment value: DGFY_DGLAUNDRY_CLIENT_SECRET_FILE (or DGFY_DGLAUNDRY_CLIENT_SECRET)');

@@ -16,10 +16,12 @@ connection package. The reviewed setup utility generates only DGFY-owned keypair
 environment's host-owned configuration directory. Registration, secret-manager delivery, review,
 and hosted verification remain operator actions.
 
-Both `dgfyLaundryOidcProvider.js` and `dglaundryPartnerAccessToken.js` resolve signing material
-with `DGFY_OIDC_PRIVATE_KEY` first and `DGFY_OIDC_PRIVATE_KEY_FILE` second. The public JWKS reader
-uses the matching `DGFY_OIDC_PUBLIC_KEY` / `DGFY_OIDC_PUBLIC_KEY_FILE` pair. Inline values are
-supported for existing deployments; file paths are the documented deployment configuration.
+Both `dgfyLaundryOidcProvider.js` and `dglaundryPartnerAccessToken.js` use the shared OIDC signing
+key registry. While `oidc_signing_keys` is empty, both retain the legacy `DGFY_OIDC_PRIVATE_KEY`
+or `DGFY_OIDC_PRIVATE_KEY_FILE` fallback, and JWKS uses the matching public-key setting. After
+the first registry row is added, the registry becomes authoritative: both signers use its active
+row, and JWKS publishes active plus retiring public keys. The registry stores public PEM and the
+private-key environment variable name only; private key bytes stay in the approved secret files.
 
 ## Protected staging profile
 
@@ -38,6 +40,21 @@ The setup utility renders these container paths into the candidate environment f
 DGFY_OIDC_PRIVATE_KEY_FILE=/run/dgfy-secrets/dgfy-oidc-private.pem
 DGFY_OIDC_PUBLIC_KEY_FILE=/run/dgfy-secrets/dgfy-oidc-public.pem
 ```
+
+After applying the landlord `oidc_signing_keys` migration, register the initial active key and
+confirm `/oidc/jwks` returns it before enabling partner sign-in. For later rotations, stage the new
+private key file under an environment-specific variable such as
+`DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE`, then run:
+
+```sh
+node apps/dgfy-api/scripts/rotate-oidc-signing-key.js add --kid <kid> --public-key-file <public.pem> --private-key-env-ref DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE
+node apps/dgfy-api/scripts/rotate-oidc-signing-key.js promote --kid <kid>
+```
+
+Promotion moves the previous active key to `retiring`; leave it in the JWKS overlap until all
+issued tokens have expired and relying parties have refreshed their key cache. Use `list`, `retire`,
+and `revoke` to inspect and complete the lifecycle. The `add` and `promote` commands must be run
+sequentially; signing pauses after the first registry row is inserted until an active key exists.
 
 Run `scripts/dglaundry-connection-setup.mjs inspect` and `prepare` with
 `--config-dir /etc/dgfy/dglaundry/staging` and the reviewed manifest. The tool creates missing

@@ -23,8 +23,8 @@ let defaultAuthRateLimitWindowMs;
 beforeAll(async () => {
   process.env.NODE_ENV = 'development';
   process.env.RATE_LIMIT_WINDOW_MS = '60000';
-  process.env.RATE_LIMIT_OIDC_WINDOW_MS = '60000';
-  process.env.RATE_LIMIT_OIDC_MAX_REQUESTS = '1';
+  process.env.OIDC_RATE_LIMIT_WINDOW_MS = '60000';
+  process.env.OIDC_RATE_LIMIT_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_AUTH_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_AUTH_MAX_REQUESTS = '1';
@@ -121,7 +121,7 @@ describe('Rate limiter behavior', () => {
     expect(limited.body).toEqual(expect.objectContaining({
       success: false,
       limitScope: 'oidc',
-      limitKeyType: 'ip',
+      limitKeyType: 'ip_client_path',
       retryAfterSeconds: expect.any(Number)
     }));
     expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);

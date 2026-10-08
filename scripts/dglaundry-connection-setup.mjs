@@ -165,7 +165,7 @@ if (action === "inspect") {
   checks.push(check("machine-client-public-key", envValue(appliedEnv, "DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE") === "/run/dgfy-secrets/dglaundry-machine-assertion.pub.pem" && await keyHealthy(join(root, manifest.keyRoles.dglaundryMachineAssertion.publicFile), "RS256")));
   checks.push(check("request-verification-key", envValue(appliedEnv, "DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE") === "/run/dgfy-secrets/dglaundry-request-signing.pub.pem" && await keyHealthy(join(root, manifest.keyRoles.dglaundryRequestSigning.publicFile), "P-256 ieee-p1363")));
   checks.push(check("event-verification-key-registry", await eventRegistryMatches(appliedEnv, join(root, manifest.keyRoles.dglaundryEventSigning.publicFile), target.keyIds.dglaundryEventSigning)));
-  checks.push(check("jwks-active-key", await jwksRegistryMatches(appliedEnv, join(root, manifest.keyRoles.oidcSigning.publicFile), state?.registrationIds?.oidcKeyId)));
+  checks.push(check("oidc-legacy-key-fallback", await oidcLegacyKeyMatches(appliedEnv, join(root, manifest.keyRoles.oidcSigning.publicFile), state?.registrationIds?.oidcKeyId)));
   checks.push(check("signing-key-ids", Boolean(state?.registrationIds
     && envValue(appliedEnv, "DGFY_OIDC_KEY_ID") === state.registrationIds.oidcKeyId
     && envValue(appliedEnv, "DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID") === state.registrationIds.eventKeyId
@@ -228,10 +228,12 @@ function digest(value) { return createHash("sha256").update(value).digest("hex")
 function mergeEnv(previous, generated) {
   const generatedLines = String(generated || "").split(/\r?\n/).filter(Boolean);
   const managed = new Set(generatedLines.map((line) => line.slice(0, line.indexOf("="))));
+  const retired = new Set(["DGFY_OIDC_JWKS_KEYS_JSON"]);
   const seenManaged = new Set();
   const preserved = [];
   for (const line of String(previous || "").split(/\r?\n/)) {
     const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    if (match && retired.has(match[1])) continue;
     if (match && managed.has(match[1])) {
       if (seenManaged.has(match[1])) fail("MANAGED_CONFIGURATION_AMBIGUOUS", `The existing managed configuration defines ${match[1]} more than once.`);
       seenManaged.add(match[1]);
@@ -274,7 +276,6 @@ async function prerequisites(rootDir) {
   return output;
 }
 async function renderEnv(rootDir, value, targetConfig, previousEnv) {
-  const jwks = await renderJwksRegistry(rootDir, value, targetConfig, previousEnv);
   const eventKeys = await renderDglaundryEventRegistry(rootDir, value, targetConfig, previousEnv);
   const lines = [
     `DGLAUNDRY_CONNECTION_CONFIG_DIR=${rootDir}`,
@@ -285,11 +286,11 @@ async function renderEnv(rootDir, value, targetConfig, previousEnv) {
     `DGLAUNDRY_CONNECTION_ENVIRONMENT=${environment}`,
     `DGFY_OIDC_ISSUER=${targetConfig.issuer}`,
     `DGFY_DGLAUNDRY_REDIRECT_URI=${value.callback}`,
+    `DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI=${process.env.DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI || ""}`,
     `DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID=${setupInputs.eventKeyId}`,
     "DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE=/run/dgfy-secrets/dgfy-event-signing.pem",
     "DGFY_OIDC_PRIVATE_KEY_FILE=/run/dgfy-secrets/dgfy-oidc-private.pem",
     "DGFY_OIDC_PUBLIC_KEY_FILE=/run/dgfy-secrets/dgfy-oidc-public.pem",
-    `DGFY_OIDC_JWKS_KEYS_JSON=${JSON.stringify(jwks)}`,
     `DGFY_OIDC_KEY_ID=${setupInputs.oidcKeyId}`,
     `DGFY_DGLAUNDRY_CLIENT_ID=${setupInputs.browserClientId}`,
     "DGFY_DGLAUNDRY_CLIENT_SECRET_FILE=/run/dgfy-secrets/dglaundry-oidc-client-secret",
@@ -311,40 +312,6 @@ async function renderEnv(rootDir, value, targetConfig, previousEnv) {
     "DGLAUNDRY_CONNECTION_PRIVATE_VALUES=secret-manager-only",
   ];
   return lines.join("\n") + "\n";
-}
-async function renderJwksRegistry(rootDir, value, targetConfig, previousEnv) {
-  const priorRaw = envValue(previousEnv, "DGFY_OIDC_JWKS_KEYS_JSON");
-  let priorKeys = [];
-  if (priorRaw) {
-    let parsed;
-    try { parsed = JSON.parse(priorRaw); }
-    catch { fail("OIDC_JWKS_REGISTRY_INVALID", "The existing public OIDC key registry is not valid JSON; refusing to replace it."); }
-    if (!parsed || !Array.isArray(parsed.keys)) fail("OIDC_JWKS_REGISTRY_INVALID", "The existing OIDC public key registry must contain a keys array.");
-    priorKeys = parsed.keys;
-  }
-  const activePem = await readText(join(rootDir, value.keyRoles.oidcSigning.publicFile));
-  if (!(await keyHealthy(join(rootDir, value.keyRoles.oidcSigning.publicFile), "RS256"))) fail("OIDC_PUBLIC_KEY_INVALID", "The active OIDC public key is missing or invalid.");
-  const activeJwk = createPublicKey(activePem).export({ format: "jwk" });
-  const active = { ...activeJwk, kid: setupInputs.oidcKeyId, alg: "RS256", use: "sig" };
-  const keysById = new Map();
-  for (const entry of priorKeys) {
-    const kid = String(entry?.kid || "").trim();
-    if (!/^[A-Za-z0-9._:-]{3,96}$/.test(kid) || entry?.kty !== "RSA" || entry?.alg !== "RS256" || entry?.use !== "sig"
-      || ["d", "p", "q", "dp", "dq", "qi", "oth"].some((field) => entry[field] !== undefined)) {
-      fail("OIDC_JWKS_REGISTRY_INVALID", "The existing OIDC registry must contain public RSA signing keys only.");
-    }
-    try {
-      const key = createPublicKey({ key: { kty: "RSA", n: entry.n, e: entry.e }, format: "jwk" });
-      if (key.asymmetricKeyType !== "rsa" || (key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048) throw new Error();
-    } catch { fail("OIDC_JWKS_REGISTRY_INVALID", "An existing OIDC registry key is malformed or too small."); }
-    if (keysById.has(kid)) fail("OIDC_JWKS_REGISTRY_INVALID", "The existing OIDC public registry has duplicate key IDs.");
-    keysById.set(kid, entry);
-  }
-  const existingActive = keysById.get(setupInputs.oidcKeyId);
-  if (existingActive && (existingActive.n !== active.n || existingActive.e !== active.e)) fail("OIDC_KEY_ID_REUSE", "The selected active OIDC key ID already identifies a different key; choose a new registered key ID.");
-  keysById.set(setupInputs.oidcKeyId, active);
-  if (!targetConfig.dglaundryPartnerAppId) fail("PARTNER_APP_ID_INVALID", "The reviewed manifest must define DGLaundry's partner app ID.");
-  return { keys: [...keysById.values()] };
 }
 async function renderDglaundryEventRegistry(rootDir, value, targetConfig, previousEnv) {
   const priorRaw = envValue(previousEnv, "DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON");
@@ -389,14 +356,12 @@ async function keyFingerprintMatches(file, expectedFingerprint) {
   } catch { return false; }
 }
 function targetKeyId(value, role) { return value.environments[environment].keyIds[role]; }
-async function jwksRegistryMatches(envText, publicPemPath, activeKid) {
+async function oidcLegacyKeyMatches(envText, publicPemPath, activeKid) {
   try {
-    const registry = JSON.parse(envValue(envText, "DGFY_OIDC_JWKS_KEYS_JSON"));
-    const active = registry.keys.find((entry) => entry.kid === activeKid);
-    if (!active || active.alg !== "RS256" || active.use !== "sig" || active.kty !== "RSA") return false;
-    const published = createPublicKey({ key: { kty: active.kty, n: active.n, e: active.e }, format: "jwk" });
-    const configured = createPublicKey(await readFile(publicPemPath, "utf8"));
-    return published.export({ type: "spki", format: "der" }).equals(configured.export({ type: "spki", format: "der" }));
+    return envValue(envText, "DGFY_OIDC_KEY_ID") === activeKid
+      && envValue(envText, "DGFY_OIDC_PRIVATE_KEY_FILE") === "/run/dgfy-secrets/dgfy-oidc-private.pem"
+      && envValue(envText, "DGFY_OIDC_PUBLIC_KEY_FILE") === "/run/dgfy-secrets/dgfy-oidc-public.pem"
+      && await keyHealthy(publicPemPath, "RS256");
   } catch { return false; }
 }
 async function ensureExternalPublicKey(rootDir, role) {
