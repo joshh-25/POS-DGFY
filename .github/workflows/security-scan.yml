@@ -87,13 +87,23 @@ jobs:
               /repo
 
       - name: Upload gitleaks report
+        id: upload_gitleaks_report
         if: always()
         uses: actions/upload-artifact@v7
+        # Artifact storage outages/quota exhaustion must not prevent the independent
+        # Semgrep scan from running. The report remains best-effort evidence; the
+        # step outcome is surfaced by the warning step below.
+        continue-on-error: true
         timeout-minutes: 5
         with:
           name: gitleaks-report
           path: ${{ runner.temp }}/security-scan/gitleaks-report.json
           if-no-files-found: warn
+
+      - name: Report gitleaks artifact upload failure
+        if: steps.upload_gitleaks_report.outcome == 'failure'
+        shell: bash
+        run: echo "::warning::Gitleaks completed, but its report artifact could not be uploaded. Review Actions artifact storage/quota before relying on the report as retained evidence."
 
       - name: Scan with Semgrep
         shell: bash
