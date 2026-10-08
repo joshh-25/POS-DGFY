@@ -27170,8 +27170,9 @@ selection and keeping the existing full quality run unchanged.
 
 ### Status
 
-`in_progress` — selective workflow support is implemented; self-hosted repetitions, test-change
-decision, final evidence, and PR review remain outstanding.
+`in_progress` — selective workflow support and all three same-SHA self-hosted measurements are
+complete; the evidence supports no test-code optimization. PR review and post-merge verification
+remain outstanding.
 
 ### Dependencies
 
@@ -27180,25 +27181,39 @@ no explicit dependency on Phase 483 or any earlier phase.
 
 ### Acceptance and validation evidence
 
-- [ ] Three or more serialized `sieitz-lg` runs against one SHA include at least one idle observation;
-      each records both suite durations and contemporaneous uptime, memory, swap, and load evidence.
-- [ ] Compare repeated self-hosted results with the fixed hosted baseline from run #37807851576;
-      do not dispatch `ubuntu-latest` or the full quality gate for this investigation.
-- [ ] Document the tenant setup and cleanup sequence and the evidence-backed decision to change or
-      leave test code.
+- [x] Three serialized `sieitz-lg` runs against SHA
+      `aadf28110d540c2b40f6ca99963ab4c9fea60670` include an idle-runner observation and capture both
+      suite durations plus contemporaneous uptime, memory, swap, load, and vmstat samples.
+- [x] Compare repeated self-hosted results with the fixed hosted baseline from run #37807851576;
+      no `ubuntu-latest` or full quality-gate run was dispatched for this investigation.
+- [x] Document the tenant setup and cleanup sequence in `docs/testing/README.md`; variable clone/drop
+      phases explain the suite-time swings, so no test-code optimization is justified.
 - [x] The operator workflow exposes `full` and opt-in `api_db_chunks` selections; `full` is the
       default, while the targeted mode accepts DB group/chunk selectors and uses only self-hosted
       runners.
-- [ ] If test code changes, preserve each suite's assertions, unique DB isolation, and cleanup, and
-      run the affected DB chunks on the exact final SHA.
-- [ ] `actionlint` (with the repository's custom self-hosted-label diagnostic ignored), workspace
+- [x] No test-code changes were justified. Both target chunks passed three times on the measured
+      SHA, preserving assertions, per-test database isolation, and cleanup.
+- [x] `actionlint` (with the repository's custom self-hosted-label diagnostic ignored), workspace
       hygiene, selector contract tests, docs lint, architecture check, and compliance check pass.
+
+| Runner/run | `purchaseOrder.test.js` | `tenantSchemaBootstrap.integration.test.js` | Load avg start → end (1/5/15 min) | Swap used start → end |
+|---|---:|---:|---|---:|
+| Hosted #37807851576 (fixed baseline) | 24.2s | 20.8s | n/a | n/a |
+| `sieitz-lg` [#37828223391](https://github.com/Sieitzz/dgfy-platform/actions/runs/37828223391) | 26.3s | 45.4s | 0.27/1.28/1.67 → 2.20/2.27/2.07 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37829654736](https://github.com/Sieitzz/dgfy-platform/actions/runs/37829654736) | 47.7s | 23.2s | 0.61/1.55/1.82 → 2.05/2.64/2.29 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37830928352](https://github.com/Sieitzz/dgfy-platform/actions/runs/37830928352) | 26.6s | 26.6s | 1.53/1.99/2.08 → 2.45/2.35/2.23 | 2.4/4.0 → 2.4/4.0 GiB |
+
+Most 157-table clone phases took 4.4–5.4s; outliers reached 11.7–19.4s. Database drops usually took
+1.1–1.2s, with outliers around 3–8s. `vmstat` showed no sustained swap-in/out, CPU was mostly idle,
+and I/O wait varied. The opposite suite-time swings and variable DDL phases do not identify a stable
+suite-level bottleneck. The host-side cause remains uncertain and is tracked by #2373.
 
 ### Links
 
 - Issue: #2369; planner handoff: `.tmp/plan-2369.md` (planning head
   `15c9b78ed4f0082c1b64cf970ae5e11a382f2194`).
 - Prior timing evidence and hosted baseline: #2357, run #37807851576.
+- Runner/DB provisioning I/O follow-up: #2373.
 - Prior tenant setup consolidation reviewed: #1452 / PR #1472.
 - Workflow: `.github/workflows/promotion-quality-gate.yml`.
 - Measurement documentation: `docs/testing/README.md`, Backend Test Matrix Gate.
@@ -27208,6 +27223,10 @@ no explicit dependency on Phase 483 or any earlier phase.
 - Current implementation validation includes `node --check` for the changed helper,
   `node scripts/check-workspace-hygiene.js`, `actionlint`, selector contract tests, and
   `node scripts/check-app-version-bump.js` with `GITHUB_BASE_REF=develop`.
+- `npm run lint:docs`, `npm run check:architecture`, and `node scripts/check-compliance-impact.js
+  --staged` passed. The broader `node scripts/check-pr-quality-workflow.js` still reports its
+  pre-existing `develop` drift (`--detectOpenHandles` marker and unrelated advisory-step IDs); the
+  focused selective-dispatch contract test passes.
 
 ### Completion date
 
