@@ -11,9 +11,9 @@ policy_version: 2026.09.26
 verification_evidence: Registration upload review/ZIP/audit tests 3 suites 9/9, combined registration/legal/materialization/admin-handler tests 14 suites 66/66, API and IMS lint, IMS production build, architecture guardrails, docs/ADR lint
 rollback_note: Revert the admin registration-review UI, admin service wrappers, upload-review use case/routes/controllers, download-audit model/migrations, tenant-list registration reference, tests, and this declaration together; the landlord draft and materialization contracts remain available for a later admin-review implementation.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-26T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-DGFY-REGISTRATION-ADMIN-REVIEW-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-08T09:13:46.750Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-09-26-DGFY-BUSINESS-REGISTRATION-ADMIN-REVIEW
 ---
 
 # 2026-09-26 DGFY business registration admin review and secure downloads
