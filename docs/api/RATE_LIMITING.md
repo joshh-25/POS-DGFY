@@ -166,6 +166,15 @@ the ordinary `posLimiter` still applies per request to every tier.
 `docs/ops/HOSTING_PROFILES.md`. Public tenant registration writes landlord review state and
 queues provisioning; do not loosen this without reading that doc first.
 
+## `companyRegistrationDraftLimiter`
+
+120 requests per 15 minutes in production (240 in development), keyed by the authenticated
+DGFY account. Registration drafts are intentionally separate from `tenantRegistrationLimiter`:
+one draft can legitimately generate several autosave, upload, remove, and submit requests before
+review, while the public tenant-registration limiter protects the legacy auto-provisioning path.
+The production values can be overridden with `RATE_LIMIT_COMPANY_REGISTRATION_DRAFT_WINDOW_MS`
+and `RATE_LIMIT_COMPANY_REGISTRATION_DRAFT_MAX_REQUESTS`.
+
 ## `DynamicStore` — how the Redis/memory split actually behaves
 
 Every limiter above uses its own `DynamicStore` instance (`rateLimiter.js`), which prefers Redis
