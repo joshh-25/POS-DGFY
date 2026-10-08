@@ -34,6 +34,23 @@ issue number, artifact path, planning head, scope summary, and acceptance summar
 file is ignored and must never be force-added merely to make it available to a reviewer. If no
 planner artifact is supplied, the existing Worker workflow remains unchanged.
 
+## Resolving gaps found during implementation
+
+Use `.agents/skills/planner/references/escalation-boundary.md` for the shared routine-versus-blocking
+test; do not duplicate or weaken that test here.
+
+- For a routine gap, resolve it from current code, tests, authoritative docs or ADRs, or an
+  established repository convention, then keep going. Record one line per consequential assumption
+  in the PR's `## Plan Handoff` section under `Assumptions:`.
+- For a blocking decision, or anything that triggers a Checkpoint policy row below, stop before
+  editing further. Append a `## Worker escalation` block to `.tmp/plan-<issue>.md` with the evidence,
+  exact decision needed, and consequence of each option, then report that a Planner refresh is
+  needed. Appending to the existing artifact is the low-friction path: the next Planner refresh can
+  resume from the block instead of requiring a full re-briefing.
+
+This escalation record is in addition to, and does not replace, the existing hard stop for a
+missing, malformed, or materially stale or conflicting handoff.
+
 ## Manual session handoff input
 
 An explicit `/handoff` may resume this role with `/implement @.tmp/handoff-<...>.md`. Validate the
@@ -137,8 +154,9 @@ of these triggers actually firing (or correctly not firing) in practice.
 5. **Open the PR** against `develop`, following `docs/ai/PR.md`'s body format (`## Summary` +
    `## Testing Evidence` at minimum), linking the issue with `Closes #N` or `Refs #N` per
    `docs/process/ISSUE-TAXONOMY.md`'s linkage rule. For an artifact-backed PR, include the compact
-   `## Plan Handoff` provenance section described above. Then set the board card to `For Review` — see
-   "Board transitions" below.
+   `## Plan Handoff` provenance section described above. It may include an `Assumptions:` sub-list
+   for consequential routine gaps resolved during implementation. Then set the board card to
+   `For Review` — see "Board transitions" below.
    When the formatter validates the active session, put its `Opened by (..., worker)` output first
    under `## Summary`; otherwise omit the attribution line.
 6. **Picking up review findings**, if the `pr-reviewer` agent (#331/#366) has already run on this
