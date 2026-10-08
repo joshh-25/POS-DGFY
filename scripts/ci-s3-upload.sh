@@ -30,6 +30,12 @@ fail_aws_operation() {
   local reason
 
   reason="$(aws_failure_reason "$log_file")"
+  # The AWS CLI's non-debug error output for a failed S3 call never includes credential material
+  # -- only the request URL, HTTP status, and the service's response body -- so printing it is
+  # safe and gives the real error code/message instead of just the generic classification above.
+  echo "::group::Raw AWS CLI error output for: $operation"
+  sed -e 's/^/  /' "$log_file" | head -c 4000
+  echo "::endgroup::"
   fail "$operation failed ($reason; AWS CLI exit code $exit_code). Check the SeaweedFS endpoint, bucket, and S3 credential permissions."
 }
 
@@ -41,20 +47,20 @@ write_output() {
 }
 
 if [[ "$#" -ne 2 ]]; then
-  fail "Usage: ci-s3-upload.sh <local-file-path> <artifact-name>"
+  fail "Usage: ci-s3-upload.sh <local-file-or-directory-path> <artifact-name>"
 fi
 
-source_file="$1"
+source_path="$1"
 artifact_name="$2"
 
-if [[ ! -f "$source_file" ]]; then
+if [[ ! -f "$source_path" && ! -d "$source_path" ]]; then
   echo "::warning::S3 upload skipped because the evidence file is missing."
   write_output upload_status missing
   write_output artifact_name "$artifact_name"
   exit 0
 fi
 
-[[ -r "$source_file" ]] || fail "Evidence file is not readable."
+[[ -r "$source_path" ]] || fail "Evidence input is not readable."
 [[ "$artifact_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Artifact name contains unsupported characters."
 [[ -n "${AWS_ACCESS_KEY_ID:-}" ]] || fail "S3 access key ID is unavailable."
 [[ -n "${AWS_SECRET_ACCESS_KEY:-}" ]] || fail "S3 secret access key is unavailable."
@@ -72,6 +78,21 @@ source_sha="${SOURCE_COMMIT_SHA:-${GITHUB_SHA:-}}"
 key_prefix="${S3_KEY_PREFIX:-artifacts}"
 [[ "$key_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ && "$key_prefix" != *..* && "$key_prefix" != */ ]] || fail "S3 key prefix is malformed."
 
+tmp_dir="$(mktemp -d "$RUNNER_TEMP/ci-s3-upload.XXXXXX")"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+if [[ -d "$source_path" ]]; then
+  command -v tar >/dev/null 2>&1 || fail "tar is required to package directory evidence."
+  source_dir_name="$(basename "$source_path")"
+  [[ "$source_dir_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Evidence directory name contains unsupported characters."
+  source_file="$tmp_dir/${source_dir_name}.tar.gz"
+  if ! tar -czf "$source_file" -C "$(dirname "$source_path")" "$source_dir_name" 2>"$tmp_dir/archive.log"; then
+    fail "Could not package directory evidence."
+  fi
+else
+  source_file="$source_path"
+fi
+
 filename="$(basename "$source_file")"
 [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Evidence filename contains unsupported characters."
 
@@ -80,8 +101,6 @@ workflow_slug="$(printf '%s' "$GITHUB_WORKFLOW" | tr '[:upper:]' '[:lower:]' | s
 
 endpoint_url="https://s3.patteruel.dev"
 aws_region="${AWS_DEFAULT_REGION:-us-east-1}"
-tmp_dir="$(mktemp -d "$RUNNER_TEMP/ci-s3-upload.XXXXXX")"
-trap 'rm -rf "$tmp_dir"' EXIT
 
 # Isolate the CLI from persistent self-hosted runner credentials/configuration. This temporary
 # config contains no credentials and fixes the path-style and multipart behavior for SeaweedFS.
@@ -166,14 +185,27 @@ else
   fail_aws_operation "S3 upload" "$tmp_dir/upload.log" "$rc"
 fi
 
-if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
-  --endpoint-url "$endpoint_url" --only-show-errors --no-progress \
-  >"$tmp_dir/download.log" 2>&1; then
-  :
-else
+# Diagnostic retry (#2329): a 100MB+ multipart-completed object returned a 403 on the very next
+# HeadObject (issued internally by `aws s3 cp` before it downloads) immediately after upload --
+# https://github.com/Sieitzz/dgfy-platform/actions/runs/37754268626. Retrying with backoff isolates
+# whether this is SeaweedFS eventual consistency on multipart completion (readback succeeds after a
+# short delay) versus a real, permanent permission/config problem (every attempt 403s the same way).
+readback_attempt=1
+readback_max_attempts=5
+while true; do
+  if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
+    --endpoint-url "$endpoint_url" --only-show-errors --no-progress \
+    >"$tmp_dir/download.log" 2>&1; then
+    break
+  fi
   rc=$?
-  fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
-fi
+  if (( readback_attempt >= readback_max_attempts )); then
+    fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
+  fi
+  echo "::warning::S3 direct readback attempt $readback_attempt/$readback_max_attempts failed ($(aws_failure_reason "$tmp_dir/download.log")); retrying after $((readback_attempt * 10))s."
+  sleep "$((readback_attempt * 10))"
+  readback_attempt=$((readback_attempt + 1))
+done
 
 direct_readback_sha256="$(sha256sum "$tmp_dir/direct-readback" | cut -d ' ' -f1)"
 [[ "$direct_readback_sha256" == "$source_sha256" ]] || fail "S3 direct readback SHA-256 did not match the source."

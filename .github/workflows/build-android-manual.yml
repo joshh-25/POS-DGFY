@@ -1,9 +1,9 @@
 name: Build Android Release (manual)
 
 # Builds a signed release APK of the iMin Android wrapper for the selected
-# product flavor via scripts/build-android-release.sh and uploads it as a
-# workflow artifact. Manual only -- run from the Actions tab when an APK is
-# needed for distribution/testing.
+# product flavor via scripts/build-android-release.sh and uploads it to the
+# configured S3-compatible evidence store. Manual only -- run from the Actions
+# tab when an APK is needed for distribution/testing.
 #
 # workflow_dispatch lets you pick the ref (branch/tag/commit) this runs
 # against, independent of the flavor. That's what makes it possible to
@@ -77,10 +77,99 @@ jobs:
           fi
           bash scripts/build-android-release.sh "${ARGS[@]}"
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: android-${{ inputs.flavor }}-release-${{ github.run_number }}
-          path: releases/android/**
-          if-no-files-found: error
-          retention-days: 30
+      - name: Validate release APK and checksum
+        id: validate_release_files
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apk_files=(releases/android/*.apk)
+          if (( ${#apk_files[@]} != 1 )); then
+            echo "::error::Expected exactly one release APK under releases/android; found ${#apk_files[@]}."
+            exit 1
+          fi
+          apk_file="${apk_files[0]}"
+          checksum_file="${apk_file}.sha256"
+          if [[ ! -f "$apk_file" ]]; then
+            echo "::error::Release APK is missing: $apk_file"
+            exit 1
+          fi
+          if [[ ! -f "$checksum_file" ]]; then
+            echo "::error::Release APK checksum is missing: $checksum_file"
+            exit 1
+          fi
+          echo "apk_file=$apk_file" >> "$GITHUB_OUTPUT"
+          echo "checksum_file=$checksum_file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release APK to S3
+        id: upload_release_apk
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_DEFAULT_REGION: us-east-1
+          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          SOURCE_COMMIT_SHA: ${{ github.sha }}
+          ARTIFACT_NAME: android-${{ inputs.flavor }}-release-${{ github.run_number }}
+          EVIDENCE_FILE: ${{ steps.validate_release_files.outputs.apk_file }}
+        run: bash scripts/ci-s3-upload.sh "$EVIDENCE_FILE" "$ARTIFACT_NAME"
+
+      - name: Upload release APK checksum to S3
+        id: upload_release_checksum
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_DEFAULT_REGION: us-east-1
+          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          SOURCE_COMMIT_SHA: ${{ github.sha }}
+          ARTIFACT_NAME: android-${{ inputs.flavor }}-release-${{ github.run_number }}
+          EVIDENCE_FILE: ${{ steps.validate_release_files.outputs.checksum_file }}
+        run: bash scripts/ci-s3-upload.sh "$EVIDENCE_FILE" "$ARTIFACT_NAME"
+
+      - name: Record release APK S3 evidence
+        if: always()
+        shell: bash
+        env:
+          UPLOAD_OUTCOME: ${{ steps.upload_release_apk.outcome }}
+          CHECKSUM_OUTCOME: ${{ steps.upload_release_checksum.outcome }}
+          APK_URI: ${{ steps.upload_release_apk.outputs.object_uri }}
+          APK_SIZE: ${{ steps.upload_release_apk.outputs.size_bytes }}
+          APK_SHA256: ${{ steps.upload_release_apk.outputs.source_sha256 }}
+          APK_DIRECT_SHA256: ${{ steps.upload_release_apk.outputs.direct_readback_sha256 }}
+          APK_PRESIGNED_SHA256: ${{ steps.upload_release_apk.outputs.presigned_readback_sha256 }}
+          APK_PRESIGNED_HTTP_STATUS: ${{ steps.upload_release_apk.outputs.presigned_http_status }}
+          APK_PRESIGNED_URL: ${{ steps.upload_release_apk.outputs.presigned_url }}
+          CHECKSUM_URI: ${{ steps.upload_release_checksum.outputs.object_uri }}
+          CHECKSUM_SIZE: ${{ steps.upload_release_checksum.outputs.size_bytes }}
+          CHECKSUM_SHA256: ${{ steps.upload_release_checksum.outputs.source_sha256 }}
+          CHECKSUM_DIRECT_SHA256: ${{ steps.upload_release_checksum.outputs.direct_readback_sha256 }}
+          CHECKSUM_PRESIGNED_SHA256: ${{ steps.upload_release_checksum.outputs.presigned_readback_sha256 }}
+          CHECKSUM_PRESIGNED_HTTP_STATUS: ${{ steps.upload_release_checksum.outputs.presigned_http_status }}
+          CHECKSUM_PRESIGNED_URL: ${{ steps.upload_release_checksum.outputs.presigned_url }}
+        run: |
+          {
+            echo "### Android release evidence storage"
+            echo "- APK upload step: ${UPLOAD_OUTCOME:-not run}."
+            echo "- Checksum upload step: ${CHECKSUM_OUTCOME:-not run}."
+            if [[ -n "$APK_URI" ]]; then
+              echo "- APK object URI: ${APK_URI}"
+              echo "- APK size: ${APK_SIZE:-unknown} bytes"
+              echo "- APK SHA-256: source ${APK_SHA256:-unknown}; direct readback ${APK_DIRECT_SHA256:-unknown}; presigned readback ${APK_PRESIGNED_SHA256:-unknown}"
+              echo "- APK presigned readback HTTP status: ${APK_PRESIGNED_HTTP_STATUS:-unknown}"
+              if [[ -n "$APK_PRESIGNED_URL" ]]; then
+                echo "- APK retrieval URL (48-hour bearer link): ${APK_PRESIGNED_URL}"
+              fi
+            fi
+            if [[ -n "$CHECKSUM_URI" ]]; then
+              echo "- Checksum object URI: ${CHECKSUM_URI}"
+              echo "- Checksum file size: ${CHECKSUM_SIZE:-unknown} bytes"
+              echo "- Checksum file SHA-256: source ${CHECKSUM_SHA256:-unknown}; direct readback ${CHECKSUM_DIRECT_SHA256:-unknown}; presigned readback ${CHECKSUM_PRESIGNED_SHA256:-unknown}"
+              echo "- Checksum file presigned readback HTTP status: ${CHECKSUM_PRESIGNED_HTTP_STATUS:-unknown}"
+              if [[ -n "$CHECKSUM_PRESIGNED_URL" ]]; then
+                echo "- Checksum retrieval URL (48-hour bearer link): ${CHECKSUM_PRESIGNED_URL}"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
