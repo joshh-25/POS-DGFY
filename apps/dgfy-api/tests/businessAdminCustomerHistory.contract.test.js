@@ -35,6 +35,7 @@ describe('Business Admin customer history canonical source', () => {
                 customer_name: 'Canonical Customer',
                 customer_email: 'customer@example.test',
                 customer_phone: '09170000000',
+                customer_address: '12 Main Street, Iloilo City',
                 visit_count: 2,
                 total_spend: 250,
                 average_order: 125,
@@ -88,6 +89,43 @@ describe('Business Admin customer history canonical source', () => {
             location_id: 9,
             total_amount: 125
         })]);
+        expect(result.address_line).toBe('12 Main Street, Iloilo City');
         expect(result.meta.source).toBe('business_admin_order_center_customer_history');
+    });
+
+    it('returns the customer contact fields and scoped spend in the customer list', async () => {
+        query
+            .mockResolvedValueOnce([{ total: 1 }])
+            .mockResolvedValueOnce([{
+                customer_key: 'linked:8',
+                customer_id: 8,
+                customer_name: 'Address Customer',
+                customer_email: 'address@example.test',
+                customer_phone: '09171112222',
+                customer_address: '8 Market Road, Iloilo City',
+                visit_count: 3,
+                total_spend: 900,
+                average_order: 300,
+                first_purchase_at: '2026-09-01T01:00:00.000Z',
+                last_purchase_at: '2026-09-21T01:00:00.000Z',
+                purchase_frequency_days: 10
+            }]);
+
+        const result = await businessAdminCustomerRepository.listCustomers({
+            dateFrom: '2026-09-01',
+            dateTo: '2026-09-21',
+            branchId: 9,
+            allowedLocationIds: [9]
+        });
+
+        expect(result.rows).toEqual([expect.objectContaining({
+            name: 'Address Customer',
+            address_line: '8 Market Road, Iloilo City',
+            phone: '09171112222',
+            total_spend: 900
+        })]);
+        expect(result.pagination.total).toBe(1);
+        expect(query.mock.calls[0][0]).toContain('customer_addresses');
+        expect(query.mock.calls[1][0]).toContain('delivery_address');
     });
 });

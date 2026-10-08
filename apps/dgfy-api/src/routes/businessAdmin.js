@@ -27,6 +27,8 @@ router.get('/activity', (req, res) => {
 router.get('/reports', businessAdminHandlers.getReports);
 router.get('/pos-activity-analytics', businessAdminHandlers.getPosActivityAnalytics);
 router.get('/reports/definitions', businessAdminHandlers.listReportDefinitions);
+router.get('/reports/evidence/catalog', businessAdminHandlers.listEvidenceCatalog);
+router.get('/reports/evidence/ejournal', businessAdminHandlers.getEJournalEvidence);
 router.get('/reports/datasets/:reportKey', businessAdminHandlers.getReportDataset);
 router.get('/reports/datasets/:reportKey/export', businessAdminHandlers.exportReportDataset);
 router.get('/inventory/valuation', businessAdminHandlers.getInventoryValuation);

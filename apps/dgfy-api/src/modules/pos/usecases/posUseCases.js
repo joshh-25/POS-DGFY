@@ -75,6 +75,7 @@ import {
 import { calculatePosItemDiscounts } from '../domain/posItemDiscountCalculator.js';
 import { resolvePosItemDiscount } from '../domain/posItemDiscountPolicy.js';
 import { resolvePosVoidFinancialOutcome } from '../domain/posVoidFinancialOutcome.js';
+import { buildAdjustmentEvidenceDocument, buildFiscalReceiptEvidence, buildReadingEvidencePayload, validateFiscalDocumentSnapshot } from '../domain/fiscalEvidenceContract.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
 import { verifyPosDayCloseOperator } from '../domain/posDayClosePinPolicy.js';
 import { authorizePosShiftMutation } from '../domain/posShiftAuthorizationPolicy.js';
@@ -1346,6 +1347,23 @@ const buildPersistedZReadingData = ({
     const zCounterValue = Number.parseInt(snapshot?.z_counter_value || 0, 10);
     const resetCounterValue = Number.parseInt(snapshot?.reset_counter_value || 0, 10);
     const lifetimeGrandTotalCents = Number.parseInt(snapshot?.lifetime_grand_total_cents || 0, 10);
+    const readingEvidence = buildReadingEvidencePayload({
+        readingType: 'Z',
+        businessDate,
+        locationId: parsePositiveInt(snapshot?.location_id) || parsePositiveInt(locationId) || null,
+        terminalId: String(snapshot?.closed_from_terminal_id || '').trim() || null,
+        readingIdentifier: snapshot?.reading_identifier || null,
+        generatedAt: snapshot?.generated_at || snapshot?.created_at || null,
+        summary: normalizedSummary,
+        counters: {
+            z_counter: zCounterValue,
+            reset_counter: resetCounterValue,
+            lifetime_grand_total_cents: lifetimeGrandTotalCents
+        },
+        reconciliation: null,
+        snapshotPersisted: true
+    });
+    readingEvidence.reconciliation = reconciliation || null;
 
     return {
         business_date: businessDate,
@@ -1361,6 +1379,8 @@ const buildPersistedZReadingData = ({
         closed_by_user_id: parsePositiveInt(snapshot?.closed_by_user_id),
         closed_from_terminal_id: String(snapshot?.closed_from_terminal_id || '').trim() || null,
         day_close_pin_confirmed_at: snapshot?.day_close_pin_confirmed_at || null,
+        reading_payload_hash: snapshot?.reading_payload_hash || readingEvidence.payload_hash,
+        reading_evidence: readingEvidence,
         counters: {
             z_counter: zCounterValue,
             reset_counter: resetCounterValue,
@@ -3591,9 +3611,15 @@ const buildFiscalDocumentSnapshot = ({
     buyer,
     lines,
     totals,
-    paymentType
+    paymentType,
+    paymentBreakdown = [],
+    discount = {},
+    charges = {},
+    issuedAt = new Date()
 }) => ({
     template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION,
+    source_timezone: 'Asia/Manila',
+    issued_at: issuedAt instanceof Date ? issuedAt.toISOString() : String(issuedAt || ''),
     document: {
         invoice_number: invoiceNumber,
         document_type: receiptContract.document_type,
@@ -3638,6 +3664,23 @@ const buildFiscalDocumentSnapshot = ({
         restaurant_service_charge_amount: totals.restaurantServiceChargeAmount,
         total_amount: totals.totalAmount,
         payment_type: paymentType
+    },
+    payment_breakdown: Array.isArray(paymentBreakdown) ? paymentBreakdown : [],
+    discount: {
+        amount: discount.amount ?? totals.discountAmount ?? 0,
+        label: discount.label || null,
+        rate: discount.rate ?? null,
+        beneficiaries: Array.isArray(discount.beneficiaries) ? discount.beneficiaries : []
+    },
+    charges: {
+        service_fee_amount: charges.service_fee_amount ?? totals.serviceFeeAmount ?? 0,
+        service_fee_label: charges.service_fee_label || null,
+        restaurant_service_charge_amount: charges.restaurant_service_charge_amount
+            ?? totals.restaurantServiceChargeAmount
+            ?? 0,
+        restaurant_service_charge_label: charges.restaurant_service_charge_label || null,
+        restaurant_service_charge_rate: charges.restaurant_service_charge_rate ?? null,
+        restaurant_service_charge_taxable: charges.restaurant_service_charge_taxable === true
     },
     lines: lines.map((line, index) => ({
         sequence: index + 1,
@@ -5526,6 +5569,7 @@ export const buildCheckoutPosUseCase = ({
             const resolvedFnbTableLabel = fnbTableSnapshot
                 ? String(fnbTableSnapshot.label || fnbTableSnapshot.table_number || '').trim().slice(0, 120) || fnbTableLabelSnapshot
                 : fnbTableLabelSnapshot;
+            const fiscalDocumentIssuedAt = new Date();
             const fiscalDocumentSnapshot = isFiscalReceipt
                 ? buildFiscalDocumentSnapshot({
                     invoiceNumber,
@@ -5545,9 +5589,44 @@ export const buildCheckoutPosUseCase = ({
                         restaurantServiceChargeAmount,
                         totalAmount
                     },
-                    paymentType: payload.payment_type || 'cash'
+                    paymentType: payload.payment_type || 'cash',
+                    paymentBreakdown,
+                    discount: {
+                        amount: discountAmount,
+                        label: [
+                            itemDiscountAmount > 0 ? 'Item Discount' : null,
+                            globalDiscountAmount > 0 ? globalDiscountResolution.discountLabelSnapshot : null
+                        ].filter(Boolean).join(' + ') || null,
+                        rate: globalDiscountResolution.discountRateSnapshot,
+                        beneficiaries: discountBeneficiaries
+                    },
+                    charges: {
+                        service_fee_amount: serviceFeeAmount,
+                        service_fee_label: serviceFeeResolution.serviceFeeLabelSnapshot,
+                        restaurant_service_charge_amount: restaurantServiceChargeAmount,
+                        restaurant_service_charge_label: restaurantServiceChargeResolution.restaurantServiceChargeLabelSnapshot,
+                        restaurant_service_charge_rate: restaurantServiceChargeResolution.restaurantServiceChargeRateSnapshot,
+                        restaurant_service_charge_taxable: restaurantServiceChargeResolution.restaurantServiceChargeTaxable
+                    },
+                    issuedAt: fiscalDocumentIssuedAt
                 })
                 : null;
+            if (fiscalDocumentSnapshot) {
+                const snapshotValidation = validateFiscalDocumentSnapshot(fiscalDocumentSnapshot);
+                if (!snapshotValidation.valid) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Fiscal document snapshot is incomplete',
+                        {
+                            statusCode: 422,
+                            details: {
+                                reason_code: 'FISCAL_DOCUMENT_SNAPSHOT_INCOMPLETE',
+                                missing_fields: snapshotValidation.missing_fields
+                            }
+                        }
+                    );
+                }
+            }
             const fiscalDocumentHash = fiscalDocumentSnapshot ? hashPayload(fiscalDocumentSnapshot) : null;
 
             const posTransactionId = await posRepository.createTransactionWithLines({
@@ -5829,7 +5908,19 @@ export const buildCheckoutPosUseCase = ({
                     payload: {
                         receipt_contract: resolvedReceiptContract,
                         fiscal_document_hash: fiscalDocumentHash,
-                        fiscal_document_template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION
+                        fiscal_document_template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION,
+                        evidence_contract_version: buildFiscalReceiptEvidence({
+                            transaction: {
+                                pos_transaction_id: posTransactionId,
+                                invoice_number: invoiceNumber,
+                                document_type: resolvedReceiptContract.document_type,
+                                document_context: resolvedReceiptContract.document_context,
+                                fiscal_document_hash: fiscalDocumentHash,
+                                fiscal_document_snapshot: fiscalDocumentSnapshot,
+                                terminal_id: normalizedTerminalId || fiscalTerminalRegistration?.terminal_id || null,
+                                location_id: enforcedCheckoutLocationId
+                            }
+                        }).contract_version
                     },
                     actor_user_id: normalizedUserId
                 }, { transaction });
@@ -6061,6 +6152,7 @@ export const buildCheckoutPosUseCase = ({
                 compliance_decision: complianceDecision,
                 terminal_identity_policy: terminalPolicyContext,
                 receipt_contract: resolvedReceiptContract,
+                fiscal_evidence: buildFiscalReceiptEvidence({ transaction: created }),
                 transaction: toSerializable(created)
             });
         } catch (error) {
@@ -6093,6 +6185,21 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
                     DomainErrorCode.VALIDATION_FAILED,
                     'Fiscal print evidence can only be recorded for fiscal invoices',
                     { statusCode: 422 }
+                );
+            }
+            const fiscalEvidence = buildFiscalReceiptEvidence({ transaction: existing });
+            if (fiscalEvidence.snapshot_integrity !== 'verified') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Fiscal print evidence requires an intact server-owned document snapshot',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'FISCAL_DOCUMENT_SNAPSHOT_UNVERIFIED',
+                            snapshot_integrity: fiscalEvidence.snapshot_integrity,
+                            snapshot_validation: fiscalEvidence.snapshot_validation
+                        }
+                    }
                 );
             }
 
@@ -6130,7 +6237,10 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
                         print_type: printType,
                         print_sequence: printSequence,
                         reason,
-                        fiscal_document_hash: existing.fiscal_document_hash || null
+                        fiscal_document_hash: existing.fiscal_document_hash || null,
+                        source_snapshot_hash: fiscalEvidence.snapshot_hash,
+                        snapshot_integrity: fiscalEvidence.snapshot_integrity,
+                        evidence_contract_version: fiscalEvidence.contract_version
                     },
                     actor_user_id: actorUserId
                 }, { transaction })
@@ -6145,7 +6255,8 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
             return ok({
                 ...toSerializable(printEvent),
                 print_type: printType,
-                fiscal_event_hash: fiscalEvent?.event_hash || null
+                fiscal_event_hash: fiscalEvent?.event_hash || null,
+                fiscal_evidence: fiscalEvidence
             });
         } catch (error) {
             if (!transaction.finished) {
@@ -7539,7 +7650,13 @@ export const buildGetPosTransactionByIdUseCase = ({
                 ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedId)
                 : [];
             const adjustmentEvidence = (Array.isArray(adjustments) ? adjustments : [])
-                .map(toPublicPosTransactionAdjustment);
+                .map((adjustment) => ({
+                    ...toPublicPosTransactionAdjustment(adjustment),
+                    adjustment_document: buildAdjustmentEvidenceDocument({
+                        adjustment,
+                        transaction: data
+                    })
+                }));
             const latestFinancialOutcome = [...adjustmentEvidence]
                 .reverse()
                 .find((adjustment) => adjustment.financial_outcome)?.financial_outcome || null;
@@ -7554,6 +7671,7 @@ export const buildGetPosTransactionByIdUseCase = ({
                 : {};
             return ok({
                 ...serialized,
+                fiscal_evidence: buildFiscalReceiptEvidence({ transaction: data }),
                 adjustments: adjustmentEvidence,
                 payment_session: paymentSession ? {
                     pos_payment_session_id: paymentSession.pos_payment_session_id,
@@ -7813,6 +7931,23 @@ export const buildCloseDayZReadingUseCase = ({
                 businessDate,
                 zCounterValue
             });
+            const snapshotGeneratedAt = new Date();
+            const readingEvidence = buildReadingEvidencePayload({
+                readingType: 'Z',
+                businessDate,
+                locationId: resolvedLocationId,
+                terminalId: String(terminalId || '').trim().toUpperCase() || null,
+                readingIdentifier,
+                generatedAt: snapshotGeneratedAt,
+                summary,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents
+                },
+                reconciliation: null,
+                snapshotPersisted: true
+            });
             const snapshot = await posRepository.createZReadingSnapshot({
                 business_date: businessDate,
                 location_id: resolvedLocationId,
@@ -7826,8 +7961,28 @@ export const buildCloseDayZReadingUseCase = ({
                 },
                 closed_by_user_id: userId,
                 closed_from_terminal_id: String(terminalId || '').trim().toUpperCase() || null,
-                day_close_pin_confirmed_at: new Date()
+                day_close_pin_confirmed_at: snapshotGeneratedAt,
+                generated_at: snapshotGeneratedAt,
+                reading_payload_hash: readingEvidence.payload_hash
             }, { transaction });
+
+            if (typeof posRepository.createFiscalEvent === 'function') {
+                await posRepository.createFiscalEvent({
+                    pos_transaction_id: null,
+                    event_type: 'z_reading',
+                    document_type: 'z_reading',
+                    invoice_number: null,
+                    terminal_id: String(terminalId || '').trim().toUpperCase() || null,
+                    payload: {
+                        reading_identifier: readingIdentifier,
+                        business_date: businessDate,
+                        location_id: resolvedLocationId,
+                        reading_payload_hash: readingEvidence.payload_hash,
+                        evidence_contract_version: readingEvidence.contract_version
+                    },
+                    actor_user_id: userId
+                }, { transaction });
+            }
 
             await posRepository.createAuditLog({
                 user_id: userId,
@@ -8078,11 +8233,27 @@ export const buildGetDailyZReadingUseCase = ({
                 businessDate,
                 locationId: resolvedLocationId
             });
+            const generatedAt = new Date();
+            const readingEvidence = buildReadingEvidencePayload({
+                readingType: 'Z',
+                businessDate,
+                locationId: resolvedLocationId,
+                generatedAt,
+                summary,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents
+                },
+                reconciliation: null,
+                snapshotPersisted: false
+            });
+            readingEvidence.reconciliation = reconciliation || null;
 
             return ok({
                 business_date: businessDate,
                 location_id: resolvedLocationId,
-                generated_at: new Date().toISOString(),
+                generated_at: generatedAt.toISOString(),
                 summary,
                 z_reading_reconciliation: reconciliation,
                 snapshot_persisted: false,
@@ -8090,6 +8261,8 @@ export const buildGetDailyZReadingUseCase = ({
                 snapshot_reused: false,
                 idempotent_replay: false,
                 replay_outcome: 'computed_on_demand',
+                reading_payload_hash: readingEvidence.payload_hash,
+                reading_evidence: readingEvidence,
                 counters: {
                     z_counter: zCounterValue,
                     reset_counter: resetCounterValue,
@@ -8185,6 +8358,24 @@ export const buildGetCurrentXReadingUseCase = ({ posRepository }) => {
                 posRepository.getPersistentCounterValue(FISCAL_LIFETIME_COUNTER_KEY)
             ]);
             const generatedAt = new Date();
+            const readingIdentifier = buildXReadingIdentifier({
+                businessDate,
+                generatedAt
+            });
+            const readingEvidence = buildReadingEvidencePayload({
+                readingType: 'X',
+                businessDate,
+                terminalId,
+                readingIdentifier,
+                generatedAt,
+                summary,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents
+                },
+                snapshotPersisted: false
+            });
 
             return ok({
                 business_date: businessDate,
@@ -8192,10 +8383,9 @@ export const buildGetCurrentXReadingUseCase = ({ posRepository }) => {
                 generated_at: generatedAt.toISOString(),
                 summary,
                 snapshot_persisted: false,
-                reading_identifier: buildXReadingIdentifier({
-                    businessDate,
-                    generatedAt
-                }),
+                reading_identifier: readingIdentifier,
+                reading_payload_hash: readingEvidence.payload_hash,
+                reading_evidence: readingEvidence,
                 counters: {
                     z_counter: zCounterValue,
                     reset_counter: resetCounterValue,
@@ -10648,13 +10838,16 @@ const buildShiftCloseCashData = async ({
     shift,
     transaction,
     closingCashAmount,
-    cancelledBy = null
+    cancelledBy = null,
+    blockParkedSales = true
 }) => {
-    await assertNoUnresolvedParkedSalesForShift({
-        posRepository,
-        shiftId,
-        transaction
-    });
+    if (blockParkedSales) {
+        await assertNoUnresolvedParkedSalesForShift({
+            posRepository,
+            shiftId,
+            transaction
+        });
+    }
     await assertNoInFlightOperatorMutationForShift({
         posRepository,
         shiftId,
@@ -10782,7 +10975,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 shift,
                 transaction,
                 closingCashAmount,
-                cancelledBy: normalizedUserId
+                cancelledBy: normalizedUserId,
+                blockParkedSales: false
             });
             const {
                 shiftPayload,

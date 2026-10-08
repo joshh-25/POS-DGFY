@@ -1,0 +1,109 @@
+{
+  "schema_version": "annex-b-items-4-14-section-05-evidence-v1",
+  "section": "05_EJournal_Reports_and_Evidence_Exports",
+  "scope": {
+    "environment": "local",
+    "source_timezone": "Asia/Manila",
+    "plan_document": {
+      "path": "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/05_EJournal_Reports_and_Evidence_Exports.docx",
+      "sha256": "27e05be1dae21b4640249c8581c50ebb6a10f781cdd5c37f62cbc3d37625d7b7"
+    },
+    "internal_grammar_contract": {
+      "path": "docs/compliance/evidence/annex-b-ejournal-readiness-grammar-v0.1.md",
+      "sha256": "ff432f9904a844133e3a323d2e95c682533ce9291f6771261b4ce9dea6b56e88"
+    },
+    "external_review_status": "required_before_external_submission",
+    "approval_claim": "none"
+  },
+  "overall_status": "LOCAL_RUNTIME_VERIFIED_EXTERNAL_REVIEW_REQUIRED",
+  "phase_sequence": [
+    {
+      "phase": 357,
+      "initiative": "report applicability catalog and deterministic report samples",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "dependencies": ["Phase 356", "canonical report registry"],
+      "evidence": ["TEST-450", "TEST-453", "AC-450", "AC-451"],
+      "implementation_paths": [
+        "apps/dgfy-api/src/modules/reports/domain/reportEvidenceCatalog.js",
+        "packages/web-core/src/features/merchantBackOffice/components/EvidencePanel.jsx"
+      ]
+    },
+    {
+      "phase": 358,
+      "initiative": "versioned receipt-complete e-journal evidence export",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "dependencies": ["Phase 357", "Phase 354", "Phase 355", "Phase 356"],
+      "evidence": ["TEST-451", "TEST-452", "TEST-453", "TEST-454", "TEST-455", "AC-452", "AC-453", "AC-454"],
+      "implementation_paths": [
+        "apps/dgfy-api/src/modules/reports/domain/eJournalReadiness.js",
+        "apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminEvidenceUseCase.js",
+        "apps/dgfy-api/src/modules/pos/repositories/posRepository.js"
+      ]
+    }
+  ],
+  "requirement_registry": [
+    { "id": "FR-404", "status": "VERIFIED", "runtime_status": "VERIFIED", "paths": ["apps/dgfy-api/src/modules/reports/domain/eJournalReadiness.js"], "evidence": ["TEST-451", "TEST-452"] },
+    { "id": "FR-405", "status": "VERIFIED", "runtime_status": "VERIFIED", "paths": ["apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminEvidenceUseCase.js"], "evidence": ["TEST-453", "TEST-455"] },
+    { "id": "REP-401", "status": "VERIFIED", "runtime_status": "VERIFIED", "paths": ["apps/dgfy-api/src/modules/reports/domain/reportEvidenceCatalog.js", "packages/web-core/src/features/merchantBackOffice/components/EvidencePanel.jsx"], "evidence": ["TEST-450", "AC-450"] },
+    { "id": "REP-402", "status": "VERIFIED", "runtime_status": "VERIFIED", "paths": ["apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminEvidenceUseCase.js", "packages/web-core/src/features/merchantBackOffice/api/businessAdminReportsApi.js"], "evidence": ["TEST-453", "AC-451"] },
+    { "id": "DATA-404", "status": "VERIFIED", "runtime_status": "VERIFIED", "paths": ["apps/dgfy-api/src/modules/pos/repositories/posRepository.js", "apps/dgfy-api/src/modules/reports/domain/eJournalReadiness.js"], "evidence": ["TEST-451", "TEST-452"] },
+    { "id": "SEC-404", "status": "VERIFIED", "runtime_status": "VERIFIED", "paths": ["apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminEvidenceUseCase.js", "apps/dgfy-api/src/routes/businessAdmin.js"], "evidence": ["TEST-454", "TEST-455"] },
+    { "id": "AUD-401", "status": "VERIFIED", "runtime_status": "VERIFIED", "paths": ["apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminEvidenceUseCase.js", "apps/dgfy-api/src/models/AuditLog.js"], "evidence": ["TEST-453", "AC-454"] }
+  ],
+  "report_catalog": {
+    "runtime_endpoint": "/api/v1/business-admin/reports/evidence/catalog",
+    "registry_source": "apps/dgfy-api/src/modules/reports/domain/reportRegistry.js",
+    "sample_fixture": "docs/compliance/evidence/annex-b-items-4-14-section-05-report-sample-fixtures-v1.json",
+    "required_categories": ["sales_summary", "statutory_and_commercial_discounts", "refunds_voids_adjustments", "tender", "terminal_register", "x_z_readings", "esales_and_books_boundary", "inventory_when_relevant", "audit_activity"]
+  },
+  "e_journal_contract": {
+    "serializer_version": "EJOURNAL-READINESS-0.1",
+    "grammar_path": "docs/compliance/evidence/annex-b-ejournal-readiness-grammar-v0.1.md",
+    "fixture_path": "docs/compliance/evidence/annex-b-ejournal-readiness-fixture-v0.1.txt",
+    "record_types": ["FILE", "DOCUMENT", "LINE", "PAYMENT", "ADJUSTMENT", "READING", "TRAILER"],
+    "formats": ["txt", "hard-copy", "html", "manifest"],
+    "bounds": { "max_source_rows_per_category": 5000, "max_business_date_range_days": 1 },
+    "retry_policy": "read-only deterministic regeneration; source failures are audited and rejected without partial output",
+    "completeness": ["one_document_per_qualifying_fiscal_transaction", "lines_and_payments_link_to_document", "adjustments_link_to_original", "readings_deduplicated", "reprints_do_not_duplicate_sales", "provisional_or_non_fiscal_excluded"]
+  },
+  "test_registry": [
+    { "id": "TEST-450", "status": "PASS", "command": "npm --prefix apps/dgfy-api test -- --runTestsByPath tests/reportRegistry.contract.test.js tests/businessAdminEvidence.transport.test.js" },
+    { "id": "TEST-451", "status": "PASS", "command": "npm --prefix apps/dgfy-api test -- --runTestsByPath tests/eJournalReadiness.unit.test.js" },
+    { "id": "TEST-452", "status": "PASS", "command": "npm --prefix apps/dgfy-api test -- --runTestsByPath tests/eJournalReadiness.unit.test.js -t deterministic" },
+    { "id": "TEST-453", "status": "PASS", "command": "npm --prefix apps/dgfy-api test -- --runTestsByPath tests/businessAdminEvidence.usecase.test.js" },
+    { "id": "TEST-454", "status": "PASS", "command": "npm --prefix apps/dgfy-api test -- --runTestsByPath tests/businessAdminEvidence.usecase.test.js tests/businessAdminEvidence.transport.test.js" },
+    { "id": "TEST-455", "status": "PASS", "command": "npm --prefix apps/dgfy-api test -- --runTestsByPath tests/businessAdminEvidence.usecase.test.js -t 'oversized|source failures'" }
+  ],
+  "acceptance_registry": [
+    { "id": "AC-450", "status": "PASS", "statement": "Report applicability rows are registry-backed and reviewer-visible in POS Business Admin." },
+    { "id": "AC-451", "status": "PASS", "statement": "Report samples declare scope, source, filters, formats, and external-review boundary." },
+    { "id": "AC-452", "status": "PASS", "statement": "E-journal output is deterministic, versioned, escaped, sequenced, and trailer-checksummed." },
+    { "id": "AC-453", "status": "PASS", "statement": "Export completeness links documents, lines, payments, adjustments, readings, and reprints without duplicate sale records." },
+    { "id": "AC-454", "status": "PASS", "statement": "Permissions, branch/date/terminal bounds, audit events, failure rejection, and retry-safe regeneration are verified." }
+  ],
+  "source_register": [
+    { "id": "REPORT-REGISTRY", "path": "apps/dgfy-api/src/modules/reports/domain/reportRegistry.js", "sha256": "3b60e74fd98b9a8b864e79968339d4b3980e862165908d09db609b01daedd099" },
+    { "id": "REPORT-EVIDENCE-CATALOG", "path": "apps/dgfy-api/src/modules/reports/domain/reportEvidenceCatalog.js", "sha256": "1868e5ab0d31217b9de7998d0c4614ddae738346571536478cf5ce80fcb8bcdf" },
+    { "id": "EJOURNAL-SERIALIZER", "path": "apps/dgfy-api/src/modules/reports/domain/eJournalReadiness.js", "sha256": "5c9607ec01628daa58395e67d95d95997352a7b2d9eb28c6fc010c7578627bad" },
+    { "id": "EVIDENCE-USECASE", "path": "apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminEvidenceUseCase.js", "sha256": "5a5eac5171dd227324226212a130d0f21c58e92be787853d163f193bd2db8e8e" },
+    { "id": "EVIDENCE-ROUTES", "path": "apps/dgfy-api/src/routes/businessAdmin.js", "sha256": "d628ed7583f5d00ee3099250ce841bb6068248e7120aa136a3744017bf7b5312" },
+    { "id": "EVIDENCE-REPOSITORY", "path": "apps/dgfy-api/src/modules/pos/repositories/posRepository.js", "sha256": "17e4c8687836b3e3bf5e8d80c68d1419850d556b571d966ae1f809464320d780" },
+    { "id": "EVIDENCE-PANEL", "path": "packages/web-core/src/features/merchantBackOffice/components/EvidencePanel.jsx", "sha256": "1b48224dd46dd45be950249435f09f7cc521bc18a331f5f4b1c0b97b17382f2d" },
+    { "id": "EVIDENCE-API", "path": "packages/web-core/src/features/merchantBackOffice/api/businessAdminReportsApi.js", "sha256": "27ab139ab4e6aea3fd9c34b4878f539499bc59bf1c860c88e5d49492b7a2a96f" },
+    { "id": "EVIDENCE-REPORTS-PAGE", "path": "packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx", "sha256": "2cf34406a2959661ec69a30e972d790d01c0fb8e104fdb909f79caacb94009aa" },
+    { "id": "EVIDENCE-HANDLER", "path": "apps/dgfy-api/src/modules/businessAdmin/controllers/businessAdminHandlers.js", "sha256": "15c02946203ec3212137c297ce72f7ab5931312cf2227f5bafb5460d0d26a744" },
+    { "id": "EVIDENCE-UNIT-TEST", "path": "apps/dgfy-api/tests/eJournalReadiness.unit.test.js", "sha256": "38690f0588d2e4bce655f7e8f30c61301cc26c1b09cb27700feeb251a127d3ca" },
+    { "id": "EVIDENCE-USECASE-TEST", "path": "apps/dgfy-api/tests/businessAdminEvidence.usecase.test.js", "sha256": "1cec065095ac722a346124aed9c61fdfc5c4d813d702fe9fc3b405601a6a2a91" }
+  ],
+  "evidence_outputs": [
+    "docs/compliance/evidence/annex-b-items-4-14-section-05-report-sample-fixtures-v1.json",
+    "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.json",
+    "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.md",
+    "docs/compliance/evidence/annex-b-items-4-14-section-05-report-catalog-v1.json",
+    "docs/compliance/impact-declarations/2026-10-03-pos-bir-annex-b-items-4-14-section-05.md",
+    "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/execution/EXEC-05_EJournal_Reports_and_Evidence_Exports.docx"
+  ],
+  "next_eligible_phase": 359
+}

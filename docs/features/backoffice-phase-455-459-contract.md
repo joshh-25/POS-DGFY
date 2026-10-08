@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: product-and-pos
 date: 2026-09-22
-last_reviewed: 2026-09-22
+last_reviewed: 2026-10-06
 review_by: 2027-03-22
 applies_to: apps/dgfy-pos, packages/web-core, apps/dgfy-api
 topic: backoffice_workflow_consolidation_acceptance
@@ -74,6 +74,15 @@ DGFY identity from guest snapshots. Loyalty is displayed as read-only and
 unimplemented for merchant writes until earning, redemption, refund,
 adjustment, ownership, and accounting treatment are approved as one governed
 contract.
+
+The customer workspace also exposes the tenant-local customer contact record:
+full name, full address, phone number, and calculated total spend. Linked
+profiles prefer the saved default/latest `customer_addresses.address_line`;
+transaction snapshots fall back to the transaction delivery or buyer address.
+New profiles may save a full address through the existing customer-address
+table. Total spend remains a read-time aggregate of completed, in-scope POS
+transactions, and this extension does not merge guest snapshots into global
+DGFY identity or require a new migration.
 
 ## Phase 459 acceptance boundary
 

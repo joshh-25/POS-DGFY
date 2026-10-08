@@ -10,15 +10,13 @@ const readSource = (relativePath) => fs.readFileSync(
 );
 
 describe('POS shift-close parked-sale handoff contract', () => {
-  it('only presents claimed carts as blockers with actionable copy', () => {
+  it('does not block ordinary shift close on parked-sale state', () => {
     const dialogSource = readSource('components/TerminalPageDialogLayer.jsx');
     const pageSource = readSource('pages/TerminalPage.jsx');
 
-    expect(dialogSource).toContain('closeShiftBlocker.claimedParkedSaleCount');
-    expect(dialogSource).toContain('claimed parked sale');
-    expect(dialogSource).not.toContain('active parked sale');
-    expect(pageSource).toContain('resolutionState.claimedParkedSaleCount');
-    expect(pageSource).toContain('Resolve claimed parked sales');
+    expect(dialogSource).not.toContain('closeShiftBlocker.claimedParkedSaleCount');
+    expect(dialogSource).not.toContain('claimed parked sale');
+    expect(pageSource).not.toContain('Resolve claimed parked sales and pending parked-sale syncs before closing this shift.');
   });
 
   it('routes payment-session blockers back to the active split-payment checkout', () => {

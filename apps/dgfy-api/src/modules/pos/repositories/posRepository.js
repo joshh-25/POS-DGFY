@@ -1366,7 +1366,8 @@ const REPORT_ADJUSTMENT_TYPES = new Set([
     'cash_refund',
     'external_refund',
     'provider_refund',
-    'employee_credit_reversal'
+    'employee_credit_reversal',
+    'return'
 ]);
 
 const sumBy = (rows = [], selector = () => 0) => round4((Array.isArray(rows) ? rows : []).reduce((sum, row) => (
@@ -1833,6 +1834,21 @@ const buildReportZReadingReconciliation = ({
         report_net_sales: round4(reportSummary.net_sales),
         report_refunds_voids: round4(reportSummary.refunds_voids),
         report_adjustment_amount: round4(adjustmentSummary.succeeded_amount),
+        report_adjustment_net_sales_impact: round4(adjustmentSummary.net_sales_impact),
+        reconciliation_inputs: {
+            transactions: 'PosTransaction.completed',
+            payments: 'PosTransaction.payment_breakdown',
+            adjustments: 'PosTransactionAdjustment.succeeded_or_reviewable',
+            reading_snapshot: 'PosZReadingSnapshot.summary',
+            closed_shift_gate: 'POS close-day usecase'
+        },
+        adjustment_reconciliation: {
+            status: 'included',
+            adjustment_count: Number(adjustmentSummary.adjustment_count || 0),
+            succeeded_amount: round4(adjustmentSummary.succeeded_amount),
+            net_sales_impact: round4(adjustmentSummary.net_sales_impact),
+            mutates_prior_z_reading: adjustmentSummary.mutates_prior_z_reading === true
+        },
         z_void_transaction_count: null,
         z_void_amount: null,
         message: ''
@@ -2310,6 +2326,8 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 total_amount: round4(transaction.total_amount),
                 gross_sales: round4(summary.gross_sales),
                 net_sales: round4(summary.net_sales),
+                cogs: round4(summary.cogs),
+                pos_profit_loss: round4(summary.net_sales - summary.cogs),
                 discount_amount: round4(summary.discount_amount),
                 vatable_sales: round4(summary.vatable_sales),
                 vat_amount: round4(summary.vat_amount),
@@ -3158,7 +3176,16 @@ const normalizeReportAdjustmentRows = (adjustments = []) => (
                 cash_drawer_event_id: toPositiveInt(adjustment?.cash_drawer_event_id),
                 failure_code: adjustment?.failure_code || null,
                 failure_reason: adjustment?.failure_reason || null,
-                financial_outcome: metadata.financial_outcome || null
+                financial_outcome: metadata.financial_outcome || null,
+                signed_amount: Number.isFinite(Number(metadata.signed_amount))
+                    ? round4(metadata.signed_amount)
+                    : (String(adjustment?.adjustment_type || '').trim().toLowerCase() === 'return'
+                        ? round4(-Number(adjustment?.amount || 0))
+                        : 0),
+                original_document_number: metadata.original_document_number || null,
+                original_document_hash: metadata.original_document_hash || null,
+                evidence_contract_version: metadata.evidence_contract_version || null,
+                inventory_reversal: metadata.inventory_reversal || null
             };
         })
         .sort((left, right) => {
@@ -3187,6 +3214,7 @@ const summarizeReportAdjustments = (rows = []) => {
         if (status === 'succeeded') {
             summary.succeeded_count += 1;
             summary.succeeded_amount = round4(summary.succeeded_amount + amount);
+            summary.net_sales_impact = round4(summary.net_sales_impact + Number(row?.signed_amount || 0));
         } else if (status === 'pending') {
             summary.pending_count += 1;
             summary.pending_amount = round4(summary.pending_amount + amount);
@@ -4154,6 +4182,136 @@ export const posRepository = {
         const rows = await PosFiscalEvent.findAll({
             order: [['event_sequence', 'ASC']],
             limit: Math.min(Number.parseInt(options.limit, 10) || 1000, 5000),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    // Item 8 e-journal exports are deliberately narrower than the general
+    // report queries: one immutable fiscal scope is selected at a time and
+    // every source read is bounded before it reaches the serializer.
+    async listEJournalTransactions({ businessDate, locationId, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosTransaction || !normalizedLocationId || !normalizedTerminalId || !dateValue) return [];
+
+        const startAt = toDateStart(dateValue);
+        const endAtExclusive = new Date(startAt.getTime() + (24 * 60 * 60 * 1000));
+        const rows = await PosTransaction.findAll({
+            where: {
+                document_type: 'fiscal_invoice',
+                document_context: 'fiscal',
+                location_id: normalizedLocationId,
+                terminal_id: normalizedTerminalId,
+                created_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive }
+            },
+            include: buildReportInclude(),
+            order: [['created_at', 'ASC'], ['pos_transaction_id', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async listEJournalAdjustments({ businessDate, locationId, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosTransactionAdjustment = safeGetModel('PosTransactionAdjustment');
+        const PosTransaction = safeGetModel('PosTransaction');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosTransactionAdjustment || !PosTransaction || !normalizedLocationId || !normalizedTerminalId || !dateValue) return [];
+
+        const startAt = toDateStart(dateValue);
+        const endAtExclusive = new Date(startAt.getTime() + (24 * 60 * 60 * 1000));
+        const eventAt = (field) => ({ [field]: { [Op.gte]: startAt, [Op.lt]: endAtExclusive } });
+        const rows = await PosTransactionAdjustment.findAll({
+            where: {
+                adjustment_type: {
+                    [Op.in]: ['void', 'cash_refund', 'external_refund', 'provider_refund', 'employee_credit_reversal', 'return']
+                },
+                [Op.or]: [
+                    eventAt('completed_at'),
+                    eventAt('failed_at'),
+                    eventAt('cancelled_at'),
+                    eventAt('created_at')
+                ],
+                [Op.and]: [
+                    {
+                        [Op.or]: [
+                            { original_location_id: normalizedLocationId },
+                            { actor_location_id: normalizedLocationId }
+                        ]
+                    },
+                    {
+                        [Op.or]: [
+                            { original_terminal_id: normalizedTerminalId },
+                            { actor_terminal_id: normalizedTerminalId }
+                        ]
+                    }
+                ]
+            },
+            include: [{
+                model: PosTransaction,
+                as: 'transaction',
+                required: true,
+                where: { document_type: 'fiscal_invoice' },
+                attributes: [
+                    'pos_transaction_id',
+                    'invoice_number',
+                    'document_type',
+                    'document_context',
+                    'terminal_id',
+                    'location_id',
+                    'shift_id',
+                    'created_at',
+                    'fiscal_document_hash',
+                    'fiscal_document_snapshot'
+                ]
+            }],
+            order: [['created_at', 'ASC'], ['pos_transaction_adjustment_id', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async listEJournalFiscalEvents({ businessDate, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosFiscalEvent = safeGetModel('PosFiscalEvent');
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosFiscalEvent || !normalizedTerminalId || !dateValue) return [];
+
+        const startAt = toDateStart(dateValue);
+        const endAtExclusive = new Date(startAt.getTime() + (24 * 60 * 60 * 1000));
+        const rows = await PosFiscalEvent.findAll({
+            where: {
+                terminal_id: normalizedTerminalId,
+                occurred_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive }
+            },
+            order: [['occurred_at', 'ASC'], ['event_sequence', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async listEJournalZReadingSnapshots({ businessDate, locationId, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosZReadingSnapshot = safeGetModel('PosZReadingSnapshot');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosZReadingSnapshot || !normalizedLocationId || !normalizedTerminalId || !dateValue) return [];
+
+        const rows = await PosZReadingSnapshot.findAll({
+            where: {
+                business_date: dateValue,
+                location_id: normalizedLocationId,
+                closed_from_terminal_id: normalizedTerminalId
+            },
+            order: [['generated_at', 'ASC'], ['pos_z_reading_snapshot_id', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
             transaction: options.transaction
         });
         return rows.map(toPlain);

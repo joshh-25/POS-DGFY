@@ -940,45 +940,31 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogHeader>
             {closeShiftBlocker ? (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-900" role="alert" data-testid="pos-close-shift-blocker">
-                {closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_IN_FLIGHT' || closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED' ? (
-                  <>
-                    <p>{closeShiftBlocker.message || 'An unresolved payment is still open for this shift.'}</p>
-                    <p className="mt-1 font-medium">
-                      Return to Checkout, then open <strong>Split Payment</strong> to finish it or cancel it. Shift close will remain blocked until the payment is resolved.
-                    </p>
-                    {Array.isArray(closeShiftBlocker.sessions) && closeShiftBlocker.sessions.length > 0 && (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
-                        {closeShiftBlocker.sessions.map((session) => (
-                          <li key={session.pos_payment_session_id || session.session_reference}>
-                            {session.session_reference || `Payment session #${session.pos_payment_session_id || 'unknown'}`}
-                            {session.status ? ` · ${String(session.status).replace(/_/g, ' ')}` : ''}
-                            {Number(session.paid_amount || 0) > 0 ? ` · ₱${Number(session.paid_amount).toFixed(2)} already recorded` : ''}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <Button
-                      type="button"
-                      onClick={handleResolveCloseShiftPaymentBlocker}
-                      className="mt-3 h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
-                      data-testid="pos-close-shift-resolve-payment"
-                    >
-                      Return to Checkout
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <p>Resolve the following before closing this shift:</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-5">
-                      {Number(closeShiftBlocker.claimedParkedSaleCount || 0) > 0 && (
-                        <li>{Number(closeShiftBlocker.claimedParkedSaleCount)} claimed parked sale{Number(closeShiftBlocker.claimedParkedSaleCount) === 1 ? '' : 's'} are still in progress on the server. Finish or release each one before closing.</li>
-                      )}
-                      {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
-                        <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
-                      )}
+                <>
+                  <p>{closeShiftBlocker.message || 'An unresolved payment is still open for this shift.'}</p>
+                  <p className="mt-1 font-medium">
+                    Return to Checkout, then open <strong>Split Payment</strong> to finish it or cancel it. Shift close will remain blocked until the payment is resolved.
+                  </p>
+                  {Array.isArray(closeShiftBlocker.sessions) && closeShiftBlocker.sessions.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                      {closeShiftBlocker.sessions.map((session) => (
+                        <li key={session.pos_payment_session_id || session.session_reference}>
+                          {session.session_reference || `Payment session #${session.pos_payment_session_id || 'unknown'}`}
+                          {session.status ? ` · ${String(session.status).replace(/_/g, ' ')}` : ''}
+                          {Number(session.paid_amount || 0) > 0 ? ` · ₱${Number(session.paid_amount).toFixed(2)} already recorded` : ''}
+                        </li>
+                      ))}
                     </ul>
-                  </>
-                )}
+                  )}
+                  <Button
+                    type="button"
+                    onClick={handleResolveCloseShiftPaymentBlocker}
+                    className="mt-3 h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
+                    data-testid="pos-close-shift-resolve-payment"
+                  >
+                    Return to Checkout
+                  </Button>
+                </>
               </div>
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-950">

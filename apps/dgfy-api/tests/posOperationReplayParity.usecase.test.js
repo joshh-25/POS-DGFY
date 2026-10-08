@@ -845,7 +845,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         expect(sequelize.transaction).toHaveBeenCalledTimes(5);
     });
 
-    it('blocks shift close while claimed parked sales remain unresolved', async () => {
+    it('closes the shift while claimed parked sales remain unresolved', async () => {
         const posRepository = buildReplayRepository();
         const openShiftUseCase = buildOpenShiftUseCase(posRepository);
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
@@ -874,15 +874,9 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                 user: { user_id: 17 }
             });
 
-            expect(result.success).toBe(false);
-            expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
-            expect(result.error.details).toEqual(expect.objectContaining({
-                reason_code: 'POS_PARKED_SALES_UNRESOLVED',
-                active_parked_sale_count: 2,
-                claimed_parked_sale_count: 2,
-                shift_id: shiftId
-            }));
-            expect(posRepository.counters.shiftCloses).toBe(0);
+            expect(result.success).toBe(true);
+            expect(result.data.shift.status).toBe('closed');
+            expect(posRepository.counters.shiftCloses).toBe(1);
         });
     });
 
