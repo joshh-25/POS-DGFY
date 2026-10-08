@@ -55,12 +55,21 @@ function readSuiteTimings(chunks) {
     for (const resultsFile of resultsFiles) {
       const results = loadJestResults(resultsFile);
       for (const suite of results?.testResults || []) {
-        const durationMs = Number(suite.perfStats?.end) - Number(suite.perfStats?.start);
+        // Jest 30's JSON reporter uses `name`, `startTime`, and `endTime`. Older Jest
+        // result shapes exposed `testFilePath` and `perfStats.{start,end}`. Accept both
+        // shapes because the summary consumes artifacts produced by the configured Jest
+        // version, and a missing timing table hides the slow suites this report is meant
+        // to identify.
+        const startTime = suite.perfStats?.start ?? suite.startTime;
+        const endTime = suite.perfStats?.end ?? suite.endTime;
+        const durationMs = Number(endTime) - Number(startTime);
         if (!Number.isFinite(durationMs) || durationMs < 0) continue;
+        const testFilePath = suite.testFilePath || suite.name;
+        if (typeof testFilePath !== 'string' || testFilePath.length === 0) continue;
         suites.push({
           tier: chunk.tier || 'unknown',
           group: chunk.tier === 'db' ? chunk.group || 'db' : 'fast_tier',
-          path: path.relative(path.join(ROOT, 'apps/dgfy-api'), suite.testFilePath).replace(/\\/g, '/'),
+          path: path.relative(path.join(ROOT, 'apps/dgfy-api'), testFilePath).replace(/\\/g, '/'),
           durationMs,
           status: suite.status || 'unknown',
         });
