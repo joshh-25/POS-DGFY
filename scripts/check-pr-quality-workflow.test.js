@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   checkPrQualityWorkflow,
   checkOperatorDispatchShape,
+  checkSelectiveDispatchShape,
   checkAllStepsAdvisory,
   checkQualityReporterShape,
   checkQualityJobFailureWiring,
@@ -23,6 +24,22 @@ test('operator dispatch shape permits only workflow_dispatch', () => {
 test('operator dispatch shape rejects pull_request and workflow_call triggers', () => {
   assert.match(checkOperatorDispatchShape(realWorkflow.replace('  workflow_dispatch:', '  pull_request:\n    branches: [main]\n  workflow_dispatch:')).join('\n'), /automatic pull_request/);
   assert.match(checkOperatorDispatchShape(realWorkflow.replace('  workflow_dispatch:', '  workflow_call:\n  workflow_dispatch:')).join('\n'), /workflow_call/);
+});
+
+test('targeted API DB dispatch is opt-in and the default still selects the full suite', () => {
+  assert.deepEqual(checkSelectiveDispatchShape(realWorkflow), []);
+  assert.match(
+    checkSelectiveDispatchShape(realWorkflow.replace('        default: full\n      api_db_runner:', '        default: api_db_chunks\n      api_db_runner:')).join('\n'),
+    /must default to the full quality suite/
+  );
+  assert.match(
+    checkSelectiveDispatchShape(realWorkflow.replace("if: ${{ inputs.test_selection == 'full' }}", 'if: true')).join('\n'),
+    /must be limited to the full selection/
+  );
+  assert.match(
+    checkSelectiveDispatchShape(realWorkflow.replace('          - sieitz-runner\n        default: sieitz-lg', '          - ubuntu-latest\n        default: ubuntu-latest')).join('\n'),
+    /must default to and allow only self-hosted runners/
+  );
 });
 
 test('all workflow steps carry exactly one advisory continuation', () => {

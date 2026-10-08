@@ -122,6 +122,61 @@ function checkOperatorDispatchShape(qualityWorkflowText) {
   return problems;
 }
 
+function checkSelectiveDispatchShape(qualityWorkflowText) {
+  const problems = [];
+  const dispatch = qualityWorkflowText.match(/^on:\n([\s\S]*?)(?=^concurrency:|^jobs:)/m)?.[1] || '';
+  const selection = dispatch.match(/^      test_selection:\n([\s\S]*?)(?=^      [A-Za-z0-9_-]+:|$(?![\s\S]))/m)?.[1] || '';
+  if (!selection.includes('type: choice') || !/^        default: full\s*$/m.test(selection)) {
+    problems.push('promotion-quality-gate.yml: test_selection must default to the full quality suite');
+  }
+  if (!/^          - full\s*$/m.test(selection) || !/^          - api_db_chunks\s*$/m.test(selection)) {
+    problems.push('promotion-quality-gate.yml: test_selection must offer full and api_db_chunks modes');
+  }
+  const runner = dispatch.match(/^      api_db_runner:\n([\s\S]*?)(?=^      [A-Za-z0-9_-]+:|$(?![\s\S]))/m)?.[1] || '';
+  if (!runner.includes('type: choice') || !/^        default: sieitz-lg\s*$/m.test(runner)
+    || !/^          - sieitz-lg\s*$/m.test(runner) || !/^          - sieitz-runner\s*$/m.test(runner)) {
+    problems.push('promotion-quality-gate.yml: api_db_runner must default to and allow only self-hosted runners');
+  }
+  if (!dispatch.includes('api_db_targets:')) {
+    problems.push('promotion-quality-gate.yml: api_db_targets input is required for selective DB dispatch');
+  }
+
+  const targetJob = findJobBlock(qualityWorkflowText, 'dgfy-api-selected-db-tests');
+  if (!targetJob) {
+    problems.push('promotion-quality-gate.yml: dgfy-api-selected-db-tests job is required');
+  } else {
+    if (!targetJob.includes("if: ${{ inputs.test_selection == 'api_db_chunks' }}")) {
+      problems.push('promotion-quality-gate.yml: selected DB job must run only for api_db_chunks');
+    }
+    if (!targetJob.includes("runs-on: ${{ inputs.api_db_runner || 'sieitz-lg' }}")) {
+      problems.push('promotion-quality-gate.yml: selected DB job must default to a self-hosted runner');
+    }
+    if (!targetJob.includes('node scripts/run-backend-test-matrix.js')
+      || !targetJob.includes('--tier db --group')
+      || !targetJob.includes('args+=(--chunk "$chunk")')) {
+      problems.push('promotion-quality-gate.yml: selected DB job must run validated DB group/chunk targets');
+    }
+    if (!targetJob.includes('vmstat 1') || !targetJob.includes('free -h')
+      || !targetJob.includes('actions/upload-artifact@v4')) {
+      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry and upload evidence');
+    }
+  }
+
+  for (const jobName of QUALITY_JOBS) {
+    const block = findJobBlock(qualityWorkflowText, jobName);
+    if (block && !block.includes("if: ${{ inputs.test_selection == 'full' }}")) {
+      problems.push(`promotion-quality-gate.yml: ${jobName} must be limited to the full selection`);
+    }
+  }
+  for (const jobName of ['report-quality-evidence', 'salvage-api-evidence']) {
+    const block = findJobBlock(qualityWorkflowText, jobName);
+    if (!block || !block.includes("inputs.test_selection == 'full'")) {
+      problems.push(`promotion-quality-gate.yml: ${jobName} must be limited to the full selection`);
+    }
+  }
+  return problems;
+}
+
 function checkAllStepsAdvisory(qualityWorkflowText) {
   const lines = qualityWorkflowText.split('\n');
   const problems = [];
@@ -235,6 +290,7 @@ function checkPrQualityWorkflow({ prChecksText, qualityWorkflowText }) {
     ...checkRunnerCacheConsistency(prChecksText),
     ...checkDevelopPrLintJobMapping(prChecksText),
     ...checkOperatorDispatchShape(qualityWorkflowText),
+    ...checkSelectiveDispatchShape(qualityWorkflowText),
     ...checkBackendMatrixResourceGuards(qualityWorkflowText),
     ...checkAllStepsAdvisory(qualityWorkflowText),
     ...checkQualityReporterShape(qualityWorkflowText),
@@ -260,6 +316,7 @@ if (require.main === module) main();
 module.exports = {
   checkPrQualityWorkflow,
   checkOperatorDispatchShape,
+  checkSelectiveDispatchShape,
   checkAllStepsAdvisory,
   checkQualityReporterShape,
   checkQualityJobFailureWiring,
