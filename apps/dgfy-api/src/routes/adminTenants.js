@@ -37,7 +37,13 @@ import {
     adminForceNonCompliant,
     assignTenantOwnerByAdmin,
     createAdminProvisionedAccountAndTenant,
-    createAdminProvisionedTenant
+    createAdminProvisionedTenant,
+    listAdminCompanyRegistrationDrafts,
+    listCompanyRegistrationUploads,
+    downloadCompanyRegistrationUpload,
+    downloadCompanyRegistrationMenuArchive,
+    approveAdminCompanyRegistrationDraft,
+    retryAdminCompanyRegistrationDraftMaterialization
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
@@ -84,6 +90,21 @@ router.post('/register', tenantRegistrationLimiter, authenticateDgfyAccount, reg
 
 // ADMIN: List all tenants (requires admin auth)
 router.get('/', authenticateAdmin, listTenants);
+
+// ADMIN: Review the authenticated Storefront registration-draft flow before
+// tenant materialization. These routes remain under /admin/tenants so the
+// existing admin.tenants permission policy applies.
+router.get('/registration-drafts', authenticateAdmin, listAdminCompanyRegistrationDrafts);
+router.get('/registration-drafts/:draftId/uploads', authenticateAdmin, listCompanyRegistrationUploads);
+router.get('/registration-drafts/:draftId/uploads/download-all', authenticateAdmin, downloadCompanyRegistrationMenuArchive);
+router.get('/registration-drafts/:draftId/uploads/:uploadId/download', authenticateAdmin, downloadCompanyRegistrationUpload);
+router.post('/registration-drafts/:draftId/approve', authenticateAdmin, approveAdminCompanyRegistrationDraft);
+router.post('/registration-drafts/:draftId/retry-materialization', authenticateAdmin, retryAdminCompanyRegistrationDraftMaterialization);
+
+// ADMIN: Review uploads after the draft has been materialized to a tenant.
+router.get('/:id/registration-uploads', authenticateAdmin, listCompanyRegistrationUploads);
+router.get('/:id/registration-uploads/download-all', authenticateAdmin, downloadCompanyRegistrationMenuArchive);
+router.get('/:id/registration-uploads/:uploadId/download', authenticateAdmin, downloadCompanyRegistrationUpload);
 
 // ADMIN: Assisted provisioning and handover
 router.post('/admin-provision', authenticateAdmin, createAdminProvisionedTenant);

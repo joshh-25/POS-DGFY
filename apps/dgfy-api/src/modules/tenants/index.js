@@ -8,6 +8,7 @@ import {
     removeStorefrontDiscoveryIndexForTenant,
     syncStorefrontDiscoveryIndexForTenant
 } from '../../services/storefrontDiscoveryIndexService.js';
+import { syncStorefrontDiscoveryWithReliability } from '../../services/storefrontDiscoverySyncReliabilityService.js';
 import * as landlordService from '../../services/landlordService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
 import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
@@ -32,8 +33,24 @@ import { buildUpdatePricingSettingsUseCase } from './usecases/updatePricingSetti
 import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
 import { buildGetCompanyRegistrationStatusUseCase, buildResubmitCompanyRegistrationUseCase } from './usecases/companyRegistrationStatusUseCase.js';
-import { buildUploadCompanyRegistrationFileUseCase, buildListAdminCompanyRegistrationUseCase, buildDownloadAdminCompanyRegistrationUploadUseCase, buildRevokeAdminCompanyRegistrationUploadUseCase } from './usecases/companyRegistrationUploadUseCases.js';
+import {
+    buildUploadCompanyRegistrationFileUseCase as buildUploadCompanyRegistrationApplicationFileUseCase,
+    buildListAdminCompanyRegistrationUseCase,
+    buildDownloadAdminCompanyRegistrationUploadUseCase,
+    buildRevokeAdminCompanyRegistrationUploadUseCase
+} from './usecases/companyRegistrationUploadUseCases.js';
 import { materializeApprovedCompanyRegistration } from './usecases/materializeApprovedCompanyRegistration.js';
+import {
+    buildCreateCompanyRegistrationDraftUseCase,
+    buildGetCompanyRegistrationDraftUseCase,
+    buildRemoveCompanyRegistrationFileUseCase,
+    buildSubmitCompanyRegistrationDraftUseCase,
+    buildUpdateCompanyRegistrationDraftUseCase,
+    buildUploadCompanyRegistrationFileUseCase
+} from './usecases/companyRegistrationDraftUseCases.js';
+import { companyRegistrationDraftRepository } from './repositories/companyRegistrationDraftRepository.js';
+import { companyRegistrationDownloadAuditRepository } from './repositories/companyRegistrationDownloadAuditRepository.js';
+import * as companyRegistrationStorage from '../../services/companyRegistrationStorage.js';
 import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCapabilitiesUseCase.js';
 import { buildApplyTemplateToTenantUseCase } from './usecases/applyTemplateToTenantUseCase.js';
 import {
@@ -50,6 +67,14 @@ import {
 import { updateSettingsUseCase } from '../settings/index.js';
 import { readTenantCapabilities } from './usecases/tenantCapabilitySettings.js';
 import tenantConnector from '../../utils/TenantConnector.js';
+import { getTenantModels } from '../../utils/tenantModelFactory.js';
+import dbStore from '../../utils/dbStore.js';
+import { storefrontAssetStorage } from '../settings/repositories/storefrontAssetStorage.js';
+import {
+  buildApproveCompanyRegistrationDraftUseCase,
+  buildMaterializeCompanyRegistrationDraftUseCase
+} from './usecases/companyRegistrationDraftMaterializationUseCase.js';
+import { buildCompanyRegistrationUploadReviewUseCases } from './usecases/companyRegistrationUploadReviewUseCases.js';
 
 const shouldAutoCreatePayMongoChildAccounts = () => (
     String(process.env.PAYMONGO_AUTO_CREATE_CHILD_ACCOUNTS || '').toLowerCase() === 'true'
@@ -209,13 +234,80 @@ export const resubmitCompanyRegistrationUseCase = buildResubmitCompanyRegistrati
     emailService,
     logger
 });
-export const uploadCompanyRegistrationFileUseCase = buildUploadCompanyRegistrationFileUseCase({
+export const uploadCompanyRegistrationApplicationFileUseCase = buildUploadCompanyRegistrationApplicationFileUseCase({
     repository: companyRegistrationRepository,
     transaction: tenantAdminRepository.transaction
 });
 export const listAdminCompanyRegistrationUseCase = buildListAdminCompanyRegistrationUseCase({ repository: companyRegistrationRepository });
 export const downloadAdminCompanyRegistrationUploadUseCase = buildDownloadAdminCompanyRegistrationUploadUseCase({ repository: companyRegistrationRepository });
 export const revokeAdminCompanyRegistrationUploadUseCase = buildRevokeAdminCompanyRegistrationUploadUseCase({ repository: companyRegistrationRepository, transaction: tenantAdminRepository.transaction });
+
+export const createCompanyRegistrationDraftUseCase = buildCreateCompanyRegistrationDraftUseCase({
+    repository: companyRegistrationDraftRepository,
+    logger
+});
+export const getCompanyRegistrationDraftUseCase = buildGetCompanyRegistrationDraftUseCase({
+    repository: companyRegistrationDraftRepository,
+    logger
+});
+export const updateCompanyRegistrationDraftUseCase = buildUpdateCompanyRegistrationDraftUseCase({
+    repository: companyRegistrationDraftRepository,
+    logger
+});
+export const uploadCompanyRegistrationFileUseCase = buildUploadCompanyRegistrationFileUseCase({
+    repository: companyRegistrationDraftRepository,
+    storage: {
+        persist: companyRegistrationStorage.persistCompanyRegistrationFile,
+        remove: companyRegistrationStorage.removeCompanyRegistrationFile
+    },
+    logger
+});
+export const removeCompanyRegistrationFileUseCase = buildRemoveCompanyRegistrationFileUseCase({
+    repository: companyRegistrationDraftRepository,
+    logger
+});
+export const submitCompanyRegistrationDraftUseCase = buildSubmitCompanyRegistrationDraftUseCase({
+    repository: companyRegistrationDraftRepository,
+    logger
+});
+
+export const materializeCompanyRegistrationDraftUseCase = buildMaterializeCompanyRegistrationDraftUseCase({
+    repository: companyRegistrationDraftRepository,
+    tenantConnector,
+    getTenantModels,
+    dbStore,
+    companyRegistrationStorage,
+    storefrontAssetStorage,
+    syncStorefrontDiscoveryWithReliability,
+    logger
+});
+
+export const approveCompanyRegistrationDraftUseCase = buildApproveCompanyRegistrationDraftUseCase({
+    repository: companyRegistrationDraftRepository,
+    tenantAdminRepository,
+    companyRegistrationRepository,
+    dgfyAccountRepository,
+    registrationIndustryRepository,
+    provisionTenant,
+    materializeCompanyRegistrationDraft: materializeCompanyRegistrationDraftUseCase,
+    logger
+});
+
+const companyRegistrationUploadReviewUseCases = buildCompanyRegistrationUploadReviewUseCases({
+    repository: companyRegistrationDraftRepository,
+    tenantAdminRepository,
+    companyRegistrationRepository,
+    companyRegistrationDownloadAuditRepository,
+    storage: {
+        pathForKey: companyRegistrationStorage.companyRegistrationStoragePathForKey
+    },
+    logger
+});
+
+export const listAdminCompanyRegistrationDraftsUseCase = companyRegistrationUploadReviewUseCases.listDrafts;
+export const listCompanyRegistrationUploadsUseCase = companyRegistrationUploadReviewUseCases.listUploads;
+export const downloadCompanyRegistrationUploadUseCase = companyRegistrationUploadReviewUseCases.downloadUpload;
+export const downloadCompanyRegistrationMenuArchiveUseCase = companyRegistrationUploadReviewUseCases.downloadMenuArchive;
 
 export * from './contracts/tenantRepository.contract.js';
 export * from './contracts/tenantAdminRepository.contract.js';

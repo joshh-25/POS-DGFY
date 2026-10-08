@@ -27,7 +27,8 @@ import {
     ShoppingCart,
     MapPin,
     Store,
-    LayoutTemplate
+    LayoutTemplate,
+    FileText
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,7 @@ import { WORKFLOW_MODE_LABELS } from '../../../packages/web-core/src/features/se
 import IndustryPicker from '../../../packages/web-core/src/features/registration/IndustryPicker.jsx';
 import StorefrontCustomDomainsModal from '../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
 import TenantRevenueSettlementPanel from '../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
+import RegistrationUploadsModal from './RegistrationUploadsModal.jsx';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -78,6 +80,11 @@ const getTenantRegistrationAction = (tenant) => {
     }
     return { action: 'reconcile', helperText: 'No pending public registration is available for approval.' };
 };
+
+const getRegistrationDraftName = (draft) => draft?.company_name
+    || draft?.payload?.business?.company_name
+    || draft?.payload?.business?.name
+    || 'Company registration';
 
 const COMPLIANCE_MODE_LABELS = {
     non_compliant_active: 'Non-compliant',
@@ -733,6 +740,9 @@ export default function TenantManager() {
     const [registrationReview, setRegistrationReview] = useState(null);
     const [registrationReviewLoading, setRegistrationReviewLoading] = useState(false);
     const [registrationUploadAction, setRegistrationUploadAction] = useState('');
+    const [registrationDrafts, setRegistrationDrafts] = useState([]);
+    const [registrationDraftLoading, setRegistrationDraftLoading] = useState(true);
+    const [selectedRegistrationReview, setSelectedRegistrationReview] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -935,6 +945,29 @@ export default function TenantManager() {
             if (!silent) setLoading(false);
         }
     }
+
+    async function loadRegistrationDrafts() {
+        setRegistrationDraftLoading(true);
+        try {
+            const response = await adminService.listCompanyRegistrationDrafts('pending_review');
+            setRegistrationDrafts(response.data || []);
+        } catch (err) {
+            console.error('[TenantManager] Failed to load registration drafts', err);
+        } finally {
+            setRegistrationDraftLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        void loadRegistrationDrafts();
+    }, []);
+
+    const refreshRegistrationReview = async () => {
+        await Promise.all([
+            loadRegistrationDrafts(),
+            loadTenants({ silent: true })
+        ]);
+    };
 
     const updateAssistForm = (key, value) => {
         setAssistForm((current) => ({ ...current, [key]: value }));
@@ -2015,6 +2048,40 @@ export default function TenantManager() {
                 </div>
             )}
 
+            {registrationDraftLoading ? (
+                <div className="mb-6 flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-800">
+                    <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Checking for submitted Storefront registrations...
+                </div>
+            ) : registrationDrafts.length > 0 ? (
+                <section className="mb-6 rounded-xl border border-blue-200 bg-blue-50/60 p-5" aria-labelledby="registration-review-heading">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+                                <FileText className="h-4 w-4" aria-hidden="true" />
+                                Submitted registrations
+                            </div>
+                            <h2 id="registration-review-heading" className="mt-1 text-lg font-bold text-slate-900">Review before tenant setup</h2>
+                            <p className="mt-1 text-sm text-slate-600">Inspect original files and registration details before approving tenant materialization.</p>
+                        </div>
+                        <span className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-bold text-blue-800">{registrationDrafts.length} awaiting review</span>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                        {registrationDrafts.map((draft) => (
+                            <div key={draft.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white px-4 py-3">
+                                <div className="min-w-0">
+                                    <div className="truncate font-semibold text-slate-900">{getRegistrationDraftName(draft)}</div>
+                                    <div className="mt-1 text-xs text-slate-500">{draft.registration_email || 'No registration email'} · {draft.uploads?.length || 0} uploads · Submitted {formatDate(draft.submitted_at)}</div>
+                                </div>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setSelectedRegistrationReview({ type: 'draft', ...draft })}>
+                                    Review files
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            ) : null}
+
             {/* Tenant List */}
             <div className="space-y-4">
                 {loading ? (
@@ -2477,6 +2544,17 @@ export default function TenantManager() {
                                                         <ShieldCheck className="w-4 h-4 mr-1" />
                                                         Compliance
                                                     </Button>
+                                                    {tenant.registration_draft_id ? (
+                                                        <Button
+                                                            onClick={() => setSelectedRegistrationReview({ type: 'tenant', ...tenant })}
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                                        >
+                                                            <FileText className="mr-1 h-4 w-4" aria-hidden="true" />
+                                                            Registration files
+                                                        </Button>
+                                                    ) : null}
                                                     {(() => {
                                                         const complianceModeAction = deriveAdminComplianceModeAction(tenant);
                                                         return (
@@ -3431,6 +3509,12 @@ export default function TenantManager() {
                     </form>
                 </div>
             )}
+
+            <RegistrationUploadsModal
+                subject={selectedRegistrationReview}
+                onClose={() => setSelectedRegistrationReview(null)}
+                onChanged={refreshRegistrationReview}
+            />
 
             <StorefrontCustomDomainsModal
                 open={showCustomDomainsModal}

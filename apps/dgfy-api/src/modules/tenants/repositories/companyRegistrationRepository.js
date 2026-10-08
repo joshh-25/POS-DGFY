@@ -37,6 +37,59 @@ export const companyRegistrationRepository = {
       return application;
     });
   },
+  async createApprovedProjection({
+    tenant,
+    dgfyAccount,
+    submissionSnapshot,
+    legalTermsSnapshot,
+    workflowMode,
+    industryTag,
+    registrationIndustry = null,
+    storeTemplateKey = null,
+    actor,
+    transaction
+  }) {
+    const options = transactionOptions(transaction);
+    const application = await CompanyRegistrationApplication.create({
+      tenant_id: tenant.id,
+      dgfy_account_id: dgfyAccount.id,
+      registration_email_snapshot: dgfyAccount.email,
+      current_attempt_no: 1,
+      review_status: 'approved',
+      provisioning_status: 'in_progress'
+    }, options);
+
+    await CompanyRegistrationAttempt.create({
+      application_id: application.id,
+      attempt_no: 1,
+      submission_snapshot: {
+        ...submissionSnapshot,
+        company_name: tenant.name,
+        workflow_mode: workflowMode,
+        industry_tag: industryTag,
+        registration_industry: registrationIndustry,
+        store_template_key: storeTemplateKey
+      },
+      legal_terms_snapshot: legalTermsSnapshot,
+      decision: 'approved',
+      actor_admin_id: actor?.id || actor?.admin_id || null,
+      actor_username_snapshot: actor?.username || null,
+      decided_at: new Date()
+    }, options);
+
+    await CompanyRegistrationEvent.create({
+      application_id: application.id,
+      event_type: 'approved',
+      actor_type: 'platform_admin',
+      actor_id: actor?.id || actor?.admin_id || null,
+      details: {
+        source: 'company_registration_draft',
+        registration_draft_id: submissionSnapshot?.registration_draft_id || null
+      }
+    }, options);
+
+    return application;
+  },
   updateEmailDelivery(delivery, payload, transaction) {
     return delivery.update(payload, transactionOptions(transaction));
   },
@@ -112,6 +165,12 @@ export const companyRegistrationRepository = {
   },
   async markUploadPurged(upload, transaction) {
     return upload.update({ storage_key: null, purged_at: new Date(), review_status: upload.review_status === 'revoked' ? 'revoked' : upload.review_status }, transactionOptions(transaction));
+  },
+  findLatestAttempt(applicationId) {
+    return CompanyRegistrationAttempt.findOne({
+      where: { application_id: applicationId },
+      order: [['attempt_no', 'DESC']]
+    });
   },
   async markRejected({ tenantId, actor, reason, transaction }) {
     const application = await CompanyRegistrationApplication.findOne({ where: { tenant_id: tenantId }, ...transactionOptions(transaction) });

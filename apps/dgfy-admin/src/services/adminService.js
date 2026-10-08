@@ -268,6 +268,51 @@ export const getTenants = async (status = 'all') => {
 };
 
 /**
+ * List submitted Storefront registration drafts awaiting platform-admin review.
+ */
+export const listCompanyRegistrationDrafts = async (status = 'pending_review') => (
+    (await adminApi.get('/admin/tenants/registration-drafts', {
+        ...requireAdminAuthConfig(),
+        params: { status }
+    })).data
+);
+
+export const listCompanyRegistrationUploads = async ({ tenantId = null, draftId = null } = {}) => {
+    const path = tenantId
+        ? `/admin/tenants/${tenantId}/registration-uploads`
+        : `/admin/tenants/registration-drafts/${draftId}/uploads`;
+    return (await adminApi.get(path, requireAdminAuthConfig())).data;
+};
+
+export const downloadCompanyRegistrationUpload = async ({ tenantId = null, draftId = null, uploadId }) => {
+    const path = tenantId
+        ? `/admin/tenants/${tenantId}/registration-uploads/${uploadId}/download`
+        : `/admin/tenants/registration-drafts/${draftId}/uploads/${uploadId}/download`;
+    return adminApi.get(path, {
+        ...requireAdminAuthConfig(),
+        responseType: 'blob'
+    });
+};
+
+export const downloadCompanyRegistrationMenuArchive = async ({ tenantId = null, draftId = null }) => {
+    const path = tenantId
+        ? `/admin/tenants/${tenantId}/registration-uploads/download-all`
+        : `/admin/tenants/registration-drafts/${draftId}/uploads/download-all`;
+    return adminApi.get(path, {
+        ...requireAdminAuthConfig(),
+        responseType: 'blob'
+    });
+};
+
+export const approveCompanyRegistrationDraft = async (draftId) => (
+    (await adminApi.post(`/admin/tenants/registration-drafts/${draftId}/approve`, {}, requireAdminAuthConfig())).data
+);
+
+export const retryCompanyRegistrationDraftMaterialization = async (draftId) => (
+    (await adminApi.post(`/admin/tenants/registration-drafts/${draftId}/retry-materialization`, {}, requireAdminAuthConfig())).data
+);
+
+/**
  * Approve a pending tenant
  */
 export const approveTenant = async (tenantId) => {
