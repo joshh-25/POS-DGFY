@@ -12,8 +12,8 @@ verification_evidence: changed-file node --check and git diff --check passed; np
 rollback_note: Revert the DGLaundry attestation, specimen-generation, and staging-only qualification-probe code together with the shared booking-expiry and receipt-confirmation changes and this declaration. Preserve any qualification order and provider records created by the staging-only fixture; no production operation or migration is authorized.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-08T18:18:15+08:00
-preflight_request_ref: NOT-EXECUTED-2306-DGLAUNDRY-RUNTIME-ATTESTATION-QUALIFICATION-PROBES
+preflight_run_at: 2026-10-08T11:19:59.043Z
+preflight_request_ref: PREFLIGHT-37768735501-2026-10-08-DGLAUNDRY-RUNTIME-ATTESTATION-QUALIFICATION-PROBES
 ---
 
 # DGLaundry runtime attestation and qualification probes (#2306)
