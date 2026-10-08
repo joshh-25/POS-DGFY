@@ -172,14 +172,27 @@ else
   fail_aws_operation "S3 upload" "$tmp_dir/upload.log" "$rc"
 fi
 
-if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
-  --endpoint-url "$endpoint_url" --only-show-errors --no-progress \
-  >"$tmp_dir/download.log" 2>&1; then
-  :
-else
+# Diagnostic retry (#2329): a 100MB+ multipart-completed object returned a 403 on the very next
+# HeadObject (issued internally by `aws s3 cp` before it downloads) immediately after upload --
+# https://github.com/Sieitzz/dgfy-platform/actions/runs/37754268626. Retrying with backoff isolates
+# whether this is SeaweedFS eventual consistency on multipart completion (readback succeeds after a
+# short delay) versus a real, permanent permission/config problem (every attempt 403s the same way).
+readback_attempt=1
+readback_max_attempts=5
+while true; do
+  if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
+    --endpoint-url "$endpoint_url" --only-show-errors --no-progress \
+    >"$tmp_dir/download.log" 2>&1; then
+    break
+  fi
   rc=$?
-  fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
-fi
+  if (( readback_attempt >= readback_max_attempts )); then
+    fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
+  fi
+  echo "::warning::S3 direct readback attempt $readback_attempt/$readback_max_attempts failed ($(aws_failure_reason "$tmp_dir/download.log")); retrying after $((readback_attempt * 10))s."
+  sleep "$((readback_attempt * 10))"
+  readback_attempt=$((readback_attempt + 1))
+done
 
 direct_readback_sha256="$(sha256sum "$tmp_dir/direct-readback" | cut -d ' ' -f1)"
 [[ "$direct_readback_sha256" == "$source_sha256" ]] || fail "S3 direct readback SHA-256 did not match the source."
