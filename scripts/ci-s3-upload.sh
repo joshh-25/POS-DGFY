@@ -7,6 +7,32 @@ fail() {
   exit 1
 }
 
+aws_failure_reason() {
+  local log_file="$1"
+  local error_code
+
+  error_code="$(sed -nE 's/.*An error occurred \(([^)]+)\) when calling .*/\1/p' "$log_file" | head -n1)"
+  if [[ "$error_code" =~ ^[A-Za-z0-9]+$ ]]; then
+    printf 'S3 service error %s' "$error_code"
+  elif grep -Eqi 'Could not connect to the endpoint URL|Connect timeout|Connection timed out|Connection refused' "$log_file"; then
+    printf 'S3 endpoint connection failed'
+  elif grep -Eqi 'SSL validation failed|certificate verify failed|SSL: CERTIFICATE_VERIFY_FAILED' "$log_file"; then
+    printf 'S3 endpoint TLS validation failed'
+  else
+    printf 'unclassified S3 client error'
+  fi
+}
+
+fail_aws_operation() {
+  local operation="$1"
+  local log_file="$2"
+  local exit_code="$3"
+  local reason
+
+  reason="$(aws_failure_reason "$log_file")"
+  fail "$operation failed ($reason; AWS CLI exit code $exit_code). Check the SeaweedFS endpoint, bucket, and S3 credential permissions."
+}
+
 write_output() {
   local name="$1"
   local value="$2"
@@ -137,7 +163,7 @@ if "$aws_bin" s3 cp "$source_file" "$object_uri" \
   :
 else
   rc=$?
-  fail "S3 upload failed (AWS CLI exit code $rc)."
+  fail_aws_operation "S3 upload" "$tmp_dir/upload.log" "$rc"
 fi
 
 if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
@@ -146,16 +172,16 @@ if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
   :
 else
   rc=$?
-  fail "S3 direct readback failed (AWS CLI exit code $rc)."
+  fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
 fi
 
 direct_readback_sha256="$(sha256sum "$tmp_dir/direct-readback" | cut -d ' ' -f1)"
 [[ "$direct_readback_sha256" == "$source_sha256" ]] || fail "S3 direct readback SHA-256 did not match the source."
 
-if presigned_url="$("$aws_bin" s3 presign "$object_uri" --endpoint-url "$endpoint_url" --expires-in 172800 2>/dev/null)" && [[ -n "$presigned_url" ]]; then
+if presigned_url="$("$aws_bin" s3 presign "$object_uri" --endpoint-url "$endpoint_url" --expires-in 172800 2>"$tmp_dir/presign.log")" && [[ -n "$presigned_url" ]]; then
   :
 else
-  fail "Could not create the 48-hour presigned retrieval URL."
+  fail_aws_operation "Presigned URL creation" "$tmp_dir/presign.log" "$?"
 fi
 
 if presigned_http_status="$(curl --fail --silent --show-error \
