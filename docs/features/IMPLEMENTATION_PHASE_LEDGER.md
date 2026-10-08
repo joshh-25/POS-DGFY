@@ -27152,3 +27152,72 @@ Not complete; set only after the acceptance evidence above is recorded and all r
 ### Next phase number
 
 Phase 484. No explicit dependency.
+
+## Phase 484 - Selective self-hosted DB-suite runtime investigation (#2369)
+
+### Initiative and release
+
+dgfy-api database test execution and runner-runtime evidence.
+
+### Objective and scope
+
+Measure `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js` on repeated,
+same-SHA `sieitz-lg` runs; capture per-suite Jest duration and contemporaneous runner load, memory,
+and swap observations; document tenant setup and cleanup; and optimize test code only if the evidence
+shows a repeatable suite-attributable cost. Add an opt-in `api_db_chunks` mode to the operator-
+dispatched quality workflow for future targeted DB group/chunk runs, retaining `full` as its default
+selection and keeping the existing full quality run unchanged.
+
+### Status
+
+`in_progress` — selective workflow support is implemented; self-hosted repetitions, test-change
+decision, final evidence, and PR review remain outstanding.
+
+### Dependencies
+
+Issue #2369 and the Phase 482 (#2357) DB-suite timing findings. Phase 482 is context only; there is
+no explicit dependency on Phase 483 or any earlier phase.
+
+### Acceptance and validation evidence
+
+- [ ] Three or more serialized `sieitz-lg` runs against one SHA include at least one idle observation;
+      each records both suite durations and contemporaneous uptime, memory, swap, and load evidence.
+- [ ] Compare repeated self-hosted results with the fixed hosted baseline from run #37807851576;
+      do not dispatch `ubuntu-latest` or the full quality gate for this investigation.
+- [ ] Document the tenant setup and cleanup sequence and the evidence-backed decision to change or
+      leave test code.
+- [x] The operator workflow exposes `full` and opt-in `api_db_chunks` selections; `full` is the
+      default, while the targeted mode accepts DB group/chunk selectors and uses only self-hosted
+      runners.
+- [ ] If test code changes, preserve each suite's assertions, unique DB isolation, and cleanup, and
+      run the affected DB chunks on the exact final SHA.
+- [ ] `actionlint` (with the repository's custom self-hosted-label diagnostic ignored), workspace
+      hygiene, selector contract tests, docs lint, architecture check, and compliance check pass.
+
+### Links
+
+- Issue: #2369; planner handoff: `.tmp/plan-2369.md` (planning head
+  `15c9b78ed4f0082c1b64cf970ae5e11a382f2194`).
+- Prior timing evidence and hosted baseline: #2357, run #37807851576.
+- Prior tenant setup consolidation reviewed: #1452 / PR #1472.
+- Workflow: `.github/workflows/promotion-quality-gate.yml`.
+- Measurement documentation: `docs/testing/README.md`, Backend Test Matrix Gate.
+- Potential test change: `apps/dgfy-api/tests/purchaseOrder.test.js` only if repeated data supports it.
+- Timing instrumentation: `apps/dgfy-api/tests/helpers/testTenantHelper.js`, opt-in via
+  `BACKEND_TEST_TENANT_TIMING=1`.
+- Current implementation validation includes `node --check` for the changed helper,
+  `node scripts/check-workspace-hygiene.js`, `actionlint`, selector contract tests, and
+  `node scripts/check-app-version-bump.js` with `GITHUB_BASE_REF=develop`.
+
+### Completion date
+
+Not complete; set after the scoped implementation validation passes and the PR is merged.
+
+### Post-merge verification
+
+- [ ] operational — dispatch `api_db_chunks` against the merged `develop` SHA and confirm the
+  selected group/chunk result and uploaded evidence artifact; owned by #2369; blocks issue closure.
+
+### Next phase number
+
+Phase 485. No explicit dependency.
