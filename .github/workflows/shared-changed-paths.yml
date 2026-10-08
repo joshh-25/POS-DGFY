@@ -310,6 +310,10 @@ jobs:
         if: inputs.validate_pr_metadata
         run: npm ci --ignore-scripts
 
+      - name: Verify CI S3 artifact workflow configuration
+        if: inputs.validate_pr_metadata
+        run: npm run check:ci-s3-artifact-workflows && npm run test:ci-s3-artifact-workflows
+
       # Shared per-app resolver applies proven version-only manifest filtering before the existing
       # backend filters and frontend reachability oracle. The original Bash filter remains the
       # conservative fallback for unavailable diffs and non-PR/push callers.

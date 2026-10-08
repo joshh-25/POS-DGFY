@@ -7,6 +7,8 @@ fail() {
   exit 1
 }
 
+source "$(dirname "${BASH_SOURCE[0]}")/lib/ci-s3-config.sh"
+
 aws_failure_reason() {
   local log_file="$1"
   local error_code
@@ -36,7 +38,7 @@ fail_aws_operation() {
   echo "::group::Raw AWS CLI error output for: $operation"
   sed -e 's/^/  /' "$log_file" | head -c 4000
   echo "::endgroup::"
-  fail "$operation failed ($reason; AWS CLI exit code $exit_code). Check the SeaweedFS endpoint, bucket, and S3 credential permissions."
+  fail "$operation failed ($reason; AWS CLI exit code $exit_code). Check the configured S3 endpoint, bucket, and credential permissions."
 }
 
 write_output() {
@@ -53,6 +55,11 @@ fi
 source_path="$1"
 artifact_name="$2"
 
+endpoint_url="${ARTIFACT_S3_ENDPOINT:-}"
+[[ -n "$endpoint_url" ]] || fail "S3 endpoint setting is unavailable."
+command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to validate the S3 endpoint."
+ci_s3_endpoint_is_usable "$endpoint_url" || fail "S3 endpoint must be a valid HTTPS URL without credentials, query tokens, or a fragment."
+
 if [[ ! -f "$source_path" && ! -d "$source_path" ]]; then
   echo "::warning::S3 upload skipped because the evidence file is missing."
   write_output upload_status missing
@@ -62,9 +69,9 @@ fi
 
 [[ -r "$source_path" ]] || fail "Evidence input is not readable."
 [[ "$artifact_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Artifact name contains unsupported characters."
-[[ -n "${AWS_ACCESS_KEY_ID:-}" ]] || fail "S3 access key ID is unavailable."
+[[ -n "${ARTIFACT_S3_ACCESS_KEY_ID:-}" ]] || fail "S3 access key ID is unavailable."
 [[ -n "${AWS_SECRET_ACCESS_KEY:-}" ]] || fail "S3 secret access key is unavailable."
-[[ -n "${S3_BUCKET:-}" ]] || fail "S3 bucket setting is unavailable."
+[[ -n "${ARTIFACT_S3_BUCKET:-}" ]] || fail "S3 bucket setting is unavailable."
 [[ -n "${GITHUB_OUTPUT:-}" && -n "${RUNNER_TEMP:-}" ]] || fail "Required GitHub Actions output or runner environment is unavailable."
 [[ -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_WORKFLOW:-}" && -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_RUN_ATTEMPT:-}" && -n "${GITHUB_JOB:-}" ]] || fail "Required GitHub Actions run metadata is unavailable."
 
@@ -99,8 +106,8 @@ filename="$(basename "$source_file")"
 workflow_slug="$(printf '%s' "$GITHUB_WORKFLOW" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g')"
 [[ -n "$workflow_slug" ]] || fail "Workflow metadata is malformed."
 
-endpoint_url="https://s3.patteruel.dev"
 aws_region="${AWS_DEFAULT_REGION:-us-east-1}"
+export AWS_ACCESS_KEY_ID="$ARTIFACT_S3_ACCESS_KEY_ID"
 
 # Isolate the CLI from persistent self-hosted runner credentials/configuration. This temporary
 # config contains no credentials and fixes the path-style and multipart behavior for SeaweedFS.
@@ -163,7 +170,7 @@ fi
 "$aws_bin" --version >/dev/null
 
 object_key="${key_prefix}/repo/${GITHUB_REPOSITORY}/workflow/${workflow_slug}/run/${GITHUB_RUN_ID}/attempt/${GITHUB_RUN_ATTEMPT}/job/${GITHUB_JOB}/artifact/${artifact_name}/sha/${source_sha}/${filename}"
-object_uri="s3://${S3_BUCKET}/${object_key}"
+object_uri="s3://${ARTIFACT_S3_BUCKET}/${object_key}"
 source_sha256="$(sha256sum "$source_file" | cut -d ' ' -f1)"
 size_bytes="$(wc -c < "$source_file" | tr -d '[:space:]')"
 [[ "$size_bytes" =~ ^[0-9]+$ ]] || fail "Could not determine evidence file size."

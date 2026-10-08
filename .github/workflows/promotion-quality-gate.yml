@@ -395,11 +395,12 @@ jobs:
         if: always() && steps.run_test_matrix.outcome != 'skipped'
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           ARTIFACT_NAME: dgfy-api-test-matrix-${{ github.sha }}
           EVIDENCE_DIRECTORY: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}
@@ -1045,11 +1046,12 @@ jobs:
         if: always()
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           ARTIFACT_NAME: fnb-playwright-contract-${{ github.sha }}
         run: |
@@ -1640,11 +1642,12 @@ jobs:
         if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           ARTIFACT_NAME: pos-sales-e2e-${{ github.sha }}
           EVIDENCE_DIRECTORY: apps/dgfy-pos/test-results
@@ -1869,11 +1872,12 @@ jobs:
         if: always()
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           ARTIFACT_NAME: frontend-budgets-report-${{ github.sha }}
           EVIDENCE_FILE: .tmp/frontend-budgets-report.json
@@ -2666,11 +2670,12 @@ jobs:
         if: runner.environment == 'self-hosted' && steps.check_api_quality_envelope.outputs.needs_salvage == 'true'
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           ARTIFACT_NAME: dgfy-api-test-matrix-salvaged-${{ github.sha }}
           EVIDENCE_DIRECTORY: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}
