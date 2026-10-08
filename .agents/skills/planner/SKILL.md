@@ -69,6 +69,20 @@ the issue identity, planning commit, status (`ready` or `needs-decision`), objec
 behavior/evidence, required changes, interfaces/types, affected files or subsystems, tests,
 acceptance criteria, risks, non-goals, and the exact Worker handoff.
 
+`status: ready` means every item in the template's five-item **Ready checklist** is satisfied. It
+does not mean every file or line is prescribed: the Worker is expected to resolve routine
+implementation gaps using the shared test in `references/escalation-boundary.md`.
+
+## Escalation boundary
+
+Planner and Worker use `references/escalation-boundary.md` as their shared test for routine gaps and
+blocking decisions. On a plan refresh, inspect `.tmp/plan-<issue>.md` for a `## Worker escalation`
+block first; the refresh was requested to resume that blocker. Resolve it from repository evidence
+where possible. If evidence does not settle it, use this skill's existing issue-comment path and
+include the evidence, exact decision needed, and consequence of each option. Remove the escalation
+block only after resolving it, and fold the resolution into `Risks, decisions, and non-goals` before
+returning the artifact to `status: ready`. Never silently drop the block.
+
 The repository compatibility contract is documented in
 `docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`. Keep local artifacts compatible with the
 documented global `planner-handoff/v1` format; do not broaden acceptance to unrecognized schema

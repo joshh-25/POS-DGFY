@@ -27008,3 +27008,59 @@ Not complete; implementation validation remains incomplete as noted above.
 Phase 482 is the next phase number (#2357) and has no dependency on Phase 480 or Phase 481. The
 test-inventory baseline overlap for Phase 481's suites is non-blocking; record it as a risk if
 needed, not as a dependency.
+
+## Phase 483 - Reduce avoidable Planner-to-Worker handoff interruptions (#2346)
+
+### Initiative and release
+
+Agent workflow and token-cost control, current release.
+
+### Objective and scope
+
+Define a shared escalation boundary for routine implementation details and genuine blocking
+decisions across the Planner/Worker handoff. Make the `ready` plan minimum inspectable with a short
+checklist and give Workers a low-friction, in-artifact record for implementation blockers. Keep
+existing issue, source-of-truth, stale-plan, and checkpoint safeguards intact.
+
+### Status
+
+`in_progress` — implementation and local documentation checks are underway. Both manual walkthroughs,
+PR review, and merge remain outstanding.
+
+### Dependencies
+
+Issue #2346; Phase 325 (#1842); #442 (canonical role-surface portability). Phases 480, 481, and
+Phase 482 (#2357) are not technical or operational dependencies.
+
+### Acceptance and validation evidence
+
+- [x] Planner and Worker refer to one shared routine-versus-blocking test with illustrative examples
+      in `.agents/skills/planner/references/escalation-boundary.md`.
+- [x] The handoff template has the five-item ready checklist and optional Worker escalation block.
+- [x] Worker instructions preserve the existing hard stop and explain how to record consequential
+      assumptions and genuine blockers.
+- [x] `npm run lint:docs` and `npm run check:agent-surfaces` pass. `node scripts/check-app-version-bump.js`
+      passes with no changed app version requirements.
+- [x] PR evidence demonstrates a routine gap resolved using the plan's stated template structure,
+      and a hypothetical scope conflict with a usable escalation record.
+- [ ] PR review is complete; this phase does not merge or deploy.
+
+### Links
+
+- Contracts: `.agents/skills/planner/`, `.agents/skills/implement/`, and
+  `.agents/skills/planner/references/escalation-boundary.md`.
+- Handoff template: `.agents/skills/planner/references/plan-handoff-template.md`.
+- Issue: #2346; planner handoff: `.tmp/plan-2346.md` (planning head `38b79bbd9`).
+
+### Completion date
+
+Not complete; set only after the acceptance evidence above is recorded and all required gates pass.
+
+### Post-merge verification
+
+- [x] None — docs-only role guidance and ledger update; no deployment, provider, or operational
+      verification applies.
+
+### Next phase number
+
+Phase 484. No explicit dependency.
