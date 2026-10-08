@@ -3,11 +3,13 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { dgfyAccountRepository } from '../../dgfy/repositories/dgfyAccountRepository.js';
-import { resolveSigningKeyMaterial } from '../../shared/utils/oidcSigningKeyResolver.js';
+import { getActiveSigningKey, listVerificationKeys } from './oidcSigningKeyRegistry.js';
 
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const CLIENT_ID = process.env.DGFY_DGLAUNDRY_CLIENT_ID || 'dglaundry-web';
 const REDIRECT_URI = process.env.DGFY_DGLAUNDRY_REDIRECT_URI || 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+const POST_LOGOUT_REDIRECT_URI = String(process.env.DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI || '').trim();
+const DEFAULT_SCOPE = 'openid profile email dglaundry.company_context';
 const MACHINE_CLIENT_ID = String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID || 'dglaundry-machine').trim();
 const MACHINE_ASSERTION_AUDIENCE = String(process.env.DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE || `${ISSUER}/token`).trim();
 const TTL_SECONDS = 120;
@@ -18,10 +20,7 @@ const readFile = (path) => {
     try { return fs.readFileSync(path, 'utf8'); } catch { return ''; }
 };
 const configuredSecret = () => readFile(process.env.DGLAUNDRY_PARTNER_TOKEN_FILE) || String(process.env.DGLAUNDRY_PARTNER_TOKEN || '').trim();
-const privateKey = () => resolveSigningKeyMaterial({ inlineEnvVar: 'DGFY_OIDC_PRIVATE_KEY', fileEnvVar: 'DGFY_OIDC_PRIVATE_KEY_FILE', label: 'OIDC private signing key' }).pem;
-const publicKey = () => resolveSigningKeyMaterial({ inlineEnvVar: 'DGFY_OIDC_PUBLIC_KEY', fileEnvVar: 'DGFY_OIDC_PUBLIC_KEY_FILE', label: 'OIDC public verification key' }).pem;
 const machineClientPublicKey = () => readFile(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE) || String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY || '').trim();
-const keyId = () => String(process.env.DGFY_OIDC_KEY_ID || 'dglaundry-oidc-1').trim();
 
 const useRedis = () => isRedisConnected() && getRedisClient();
 const store = async (key, value, ttlSeconds = TTL_SECONDS) => {
@@ -178,6 +177,8 @@ export const oidcDiscovery = (_req, res) => res.json({
     pushed_authorization_request_endpoint: `${ISSUER}/par`,
     token_endpoint: `${ISSUER}/token`,
     revocation_endpoint: `${ISSUER}/revoke`,
+    introspection_endpoint: `${ISSUER}/introspect`,
+    end_session_endpoint: `${ISSUER}/logout`,
     jwks_uri: `${ISSUER}/jwks`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'client_credentials'],
@@ -188,12 +189,17 @@ export const oidcDiscovery = (_req, res) => res.json({
     token_endpoint_auth_methods_supported: ['client_secret_basic', 'private_key_jwt']
 });
 
-export const oidcJwks = (_req, res) => {
-    const pem = publicKey();
-    if (!pem) return res.status(503).json({ error: 'oidc_keys_not_configured' });
+export const oidcJwks = async (_req, res) => {
     try {
-        const jwk = crypto.createPublicKey(pem).export({ format: 'jwk' });
-        return res.json({ keys: [{ ...jwk, kid: keyId(), use: 'sig', alg: 'RS256', kty: 'RSA' }] });
+        const keys = await listVerificationKeys();
+        if (!keys.length) return res.status(503).json({ error: 'oidc_keys_not_configured' });
+        return res.json({ keys: keys.map(({ kid, publicKeyPem }) => ({
+            ...crypto.createPublicKey(publicKeyPem).export({ format: 'jwk' }),
+            kid,
+            use: 'sig',
+            alg: 'RS256',
+            kty: 'RSA'
+        })) });
     } catch {
         return res.status(503).json({ error: 'oidc_public_key_invalid' });
     }
@@ -212,6 +218,7 @@ export const oidcPar = async (req, res, next) => {
         delete safeInput.client_secret;
         const stored = await store(`dglaundry:oidc:par:${requestUri}`, {
             ...safeInput,
+            scope: input.scope || DEFAULT_SCOPE,
             client_id: input.client_id || basicClientId,
             created_at: Date.now()
         });
@@ -241,6 +248,7 @@ export const buildOidcAuthorizeHandler = ({ chooseCompany }) => async (req, res,
             display_name: `${req.dgfyAccount.first_name || ''} ${req.dgfyAccount.last_name || ''}`.trim() || 'DGFY Account',
             email: req.dgfyAccount.email,
             company: selection.company,
+            scope: params.scope || DEFAULT_SCOPE,
             nonce: params.nonce,
             code_challenge: params.code_challenge,
             client_id: params.client_id,
@@ -277,13 +285,80 @@ export const oidcToken = async (req, res, next) => {
         if (input.grant_type !== 'authorization_code' || !input.code || !input.code_verifier) return res.status(400).json({ error: 'invalid_grant' });
         const grant = await consume(`dglaundry:oidc:code:${input.code}`);
         if (!grant || grant.client_id !== (input.client_id || basicClientId) || grant.redirect_uri !== input.redirect_uri || grant.code_challenge !== crypto.createHash('sha256').update(input.code_verifier).digest('base64url')) return res.status(400).json({ error: 'invalid_grant' });
-        const signingKey = privateKey();
+        const signingKey = await getActiveSigningKey();
         if (!signingKey) return res.status(503).json({ error: 'oidc_keys_not_configured' });
         const now = Math.floor(Date.now() / 1000);
-        const idToken = jwt.sign({ iss: ISSUER, sub: grant.subject, aud: CLIENT_ID, azp: CLIENT_ID, iat: now, exp: now + 300, nonce: grant.nonce, name: grant.display_name, email: grant.email, dglaundry_company_context: { companyId: grant.company.company_id, membershipId: grant.company.membership_id, role: grant.company.role } }, signingKey, { algorithm: 'RS256', keyid: keyId() });
+        const sid = crypto.randomUUID();
+        const idToken = jwt.sign({ iss: ISSUER, sub: grant.subject, aud: CLIENT_ID, azp: CLIENT_ID, iat: now, exp: now + 300, nonce: grant.nonce, sid, name: grant.display_name, email: grant.email, dglaundry_company_context: { companyId: grant.company.company_id, membershipId: grant.company.membership_id, role: grant.company.role } }, signingKey.privateKeyPem, { algorithm: 'RS256', keyid: signingKey.kid });
         const accessToken = crypto.randomBytes(32).toString('base64url');
-        await store(`dglaundry:oidc:access:${accessToken}`, { ...grant, access_token: accessToken, expires_at: Date.now() + 300_000 }, 300);
-        return res.json({ access_token: accessToken, token_type: 'Bearer', expires_in: 300, id_token: idToken, scope: input.scope || 'openid profile email dglaundry.company_context' });
+        const expiresAt = Date.now() + 300_000;
+        const accessStored = await store(`dglaundry:oidc:access:${accessToken}`, { ...grant, access_token: accessToken, expires_at: expiresAt }, 300);
+        if (!accessStored) return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'Redis-backed OIDC state is required.' });
+        const sessionStored = await store(`dglaundry:oidc:session:${sid}`, accessToken, 300);
+        if (!sessionStored) {
+            await consume(`dglaundry:oidc:access:${accessToken}`);
+            return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'Redis-backed OIDC state is required.' });
+        }
+        return res.json({ access_token: accessToken, token_type: 'Bearer', expires_in: 300, id_token: idToken, scope: grant.scope || DEFAULT_SCOPE });
+    } catch (error) { return next(error); }
+};
+
+export const oidcIntrospect = async (req, res, next) => {
+    try {
+        const { clientId: basicClientId, clientSecret } = parseBasic(req);
+        const input = formOrJson(req);
+        requireClient({ clientId: basicClientId || input.client_id, clientSecret: clientSecret || input.client_secret });
+        const token = String(input.token || '').trim();
+        if (!token) return res.status(400).json({ error: 'invalid_request' });
+        const grant = await load(`dglaundry:oidc:access:${token}`);
+        if (!grant || !Number.isFinite(Number(grant.expires_at)) || Number(grant.expires_at) <= Date.now()) {
+            return res.json({ active: false });
+        }
+        const exp = Math.floor(Number(grant.expires_at) / 1000);
+        return res.json({
+            active: true,
+            scope: grant.scope || '',
+            client_id: grant.client_id || CLIENT_ID,
+            sub: grant.subject,
+            token_type: 'Bearer',
+            iat: exp - 300,
+            exp
+        });
+    } catch (error) { return next(error); }
+};
+
+export const oidcLogout = async (req, res, next) => {
+    try {
+        const idTokenHint = String(req.query?.id_token_hint || '').trim();
+        if (!idTokenHint) return res.status(400).json({ error: 'invalid_request' });
+        const keys = await listVerificationKeys();
+        let claims = null;
+        for (const key of keys) {
+            try {
+                claims = jwt.verify(idTokenHint, key.publicKeyPem, {
+                    algorithms: ['RS256'],
+                    issuer: ISSUER,
+                    audience: CLIENT_ID,
+                    ignoreExpiration: true
+                });
+                if (claims && typeof claims === 'object' && claims.sid) break;
+                claims = null;
+            } catch { /* Try each active and retiring verification key. */ }
+        }
+        if (!claims?.sid) return res.status(400).json({ error: 'invalid_id_token_hint' });
+        const redirectUri = String(req.query?.post_logout_redirect_uri || '').trim();
+        let redirect = null;
+        if (redirectUri) {
+            if (!POST_LOGOUT_REDIRECT_URI || redirectUri !== POST_LOGOUT_REDIRECT_URI) {
+                return res.status(400).json({ error: 'invalid_request', error_description: 'post_logout_redirect_uri is not registered.' });
+            }
+            redirect = new URL(redirectUri);
+            if (req.query?.state !== undefined) redirect.searchParams.set('state', String(req.query.state));
+        }
+        const accessToken = await consume(`dglaundry:oidc:session:${claims.sid}`);
+        if (accessToken) await consume(`dglaundry:oidc:access:${accessToken}`);
+        if (redirect) return res.redirect(302, redirect.toString());
+        return res.status(204).end();
     } catch (error) { return next(error); }
 };
 

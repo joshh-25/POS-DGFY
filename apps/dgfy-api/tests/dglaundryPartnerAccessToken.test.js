@@ -41,8 +41,8 @@ describe('issueDglaundryPartnerAccessToken OIDC key resolution', () => {
     process.env.DGFY_DGLAUNDRY_SERVICE_CLIENT_ID = 'dgfy-service-client';
   });
 
-  test('signs from DGFY_OIDC_PRIVATE_KEY_FILE alone', () => {
-    const token = issueDglaundryPartnerAccessToken({
+  test('signs from DGFY_OIDC_PRIVATE_KEY_FILE alone', async () => {
+    const token = await issueDglaundryPartnerAccessToken({
       method: 'POST',
       target: 'https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes',
       payload: { companyId: 'company-1', locationId: 'location-1' },
@@ -56,12 +56,12 @@ describe('issueDglaundryPartnerAccessToken OIDC key resolution', () => {
     });
   });
 
-  test('preserves the required-key error when no source is configured', () => {
+  test('preserves the required-key error when no source is configured', async () => {
     delete process.env.DGFY_OIDC_PRIVATE_KEY_FILE;
-    expect(() => issueDglaundryPartnerAccessToken({
+    await expect(issueDglaundryPartnerAccessToken({
       method: 'POST',
       target: 'https://laundry.surebizcorp.com/api/v1/integrations/dgfy/quotes',
       payload: { companyId: 'company-1', locationId: 'location-1' }
-    })).toThrow('DGFY_OIDC_PRIVATE_KEY_FILE_REQUIRED');
+    })).rejects.toThrow('DGFY_OIDC_PRIVATE_KEY_FILE_REQUIRED');
   });
 });
