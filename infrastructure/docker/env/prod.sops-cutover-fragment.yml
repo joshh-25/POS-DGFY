@@ -283,6 +283,7 @@
 #       DGFY_OIDC_PRIVATE_KEY_FILE: /run/secrets/dgfy-oidc-private.pem
 #       DGFY_OIDC_PUBLIC_KEY_FILE: /run/secrets/dgfy-oidc-public.pem
 #       DGLAUNDRY_INTEGRATION_ENABLED: ${DGLAUNDRY_INTEGRATION_ENABLED:-false}
+#       DGFY_DGLAUNDRY_PARTNER_APP_ID: ${DGFY_DGLAUNDRY_PARTNER_APP_ID:-}
 #       # Client IDs and callback remain intentionally absent until DGLaundry confirms the proposed registrations; add confirmed literals here after the approved exchange.
 #     secrets:
 #       - source: dgfy-oidc-private-key

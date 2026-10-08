@@ -111,6 +111,14 @@ expiry, and one-time `jti`; do not issue or store a long-lived static partner
 bearer token for the production path. Record only client IDs, key IDs, and
 public-key fingerprints in the handoff.
 
+For inbound DGLaundry machine tokens, request exactly the `dglaundry` scope;
+the `dglaundry:*` operation scopes are reserved for DGFY-to-DGLaundry service
+tokens. Configure `DGFY_DGLAUNDRY_PARTNER_APP_ID=dglaundry` (or the separately
+approved environment registration) on the DGFY API. Hosted partner requests
+must present that exact value in the signed `x-dgfy-app-id` header. Production
+must reject the retired `x-dglaundry-partner-token` fallback and must not issue
+an opaque machine token unless its grant was durably stored.
+
 The provider must verify that every company and location mapping is explicit,
 immutable, tenant-scoped, and membership-authorized. Email, name, slug,
 phone, or a caller-supplied company ID must never select a company or grant
