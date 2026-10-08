@@ -6909,7 +6909,8 @@ export default function TerminalOperationsWorkspace({
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
   const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
   const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
-  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView;
+  const isPricelistManagementView = effectiveViewMode === 'settings_pricelists';
+  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView || isPricelistManagementView;
   const workspaceShellClassName = usesOwnPageFrame
     ? 'p-0'
     : isFullBleedCatalogView
