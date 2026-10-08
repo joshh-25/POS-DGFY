@@ -47,20 +47,20 @@ write_output() {
 }
 
 if [[ "$#" -ne 2 ]]; then
-  fail "Usage: ci-s3-upload.sh <local-file-path> <artifact-name>"
+  fail "Usage: ci-s3-upload.sh <local-file-or-directory-path> <artifact-name>"
 fi
 
-source_file="$1"
+source_path="$1"
 artifact_name="$2"
 
-if [[ ! -f "$source_file" ]]; then
+if [[ ! -f "$source_path" && ! -d "$source_path" ]]; then
   echo "::warning::S3 upload skipped because the evidence file is missing."
   write_output upload_status missing
   write_output artifact_name "$artifact_name"
   exit 0
 fi
 
-[[ -r "$source_file" ]] || fail "Evidence file is not readable."
+[[ -r "$source_path" ]] || fail "Evidence input is not readable."
 [[ "$artifact_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Artifact name contains unsupported characters."
 [[ -n "${AWS_ACCESS_KEY_ID:-}" ]] || fail "S3 access key ID is unavailable."
 [[ -n "${AWS_SECRET_ACCESS_KEY:-}" ]] || fail "S3 secret access key is unavailable."
@@ -78,6 +78,21 @@ source_sha="${SOURCE_COMMIT_SHA:-${GITHUB_SHA:-}}"
 key_prefix="${S3_KEY_PREFIX:-artifacts}"
 [[ "$key_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ && "$key_prefix" != *..* && "$key_prefix" != */ ]] || fail "S3 key prefix is malformed."
 
+tmp_dir="$(mktemp -d "$RUNNER_TEMP/ci-s3-upload.XXXXXX")"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+if [[ -d "$source_path" ]]; then
+  command -v tar >/dev/null 2>&1 || fail "tar is required to package directory evidence."
+  source_dir_name="$(basename "$source_path")"
+  [[ "$source_dir_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Evidence directory name contains unsupported characters."
+  source_file="$tmp_dir/${source_dir_name}.tar.gz"
+  if ! tar -czf "$source_file" -C "$(dirname "$source_path")" "$source_dir_name" 2>"$tmp_dir/archive.log"; then
+    fail "Could not package directory evidence."
+  fi
+else
+  source_file="$source_path"
+fi
+
 filename="$(basename "$source_file")"
 [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "Evidence filename contains unsupported characters."
 
@@ -86,8 +101,6 @@ workflow_slug="$(printf '%s' "$GITHUB_WORKFLOW" | tr '[:upper:]' '[:lower:]' | s
 
 endpoint_url="https://s3.patteruel.dev"
 aws_region="${AWS_DEFAULT_REGION:-us-east-1}"
-tmp_dir="$(mktemp -d "$RUNNER_TEMP/ci-s3-upload.XXXXXX")"
-trap 'rm -rf "$tmp_dir"' EXIT
 
 # Isolate the CLI from persistent self-hosted runner credentials/configuration. This temporary
 # config contains no credentials and fixes the path-style and multipart behavior for SeaweedFS.
