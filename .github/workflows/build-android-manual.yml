@@ -143,7 +143,12 @@ jobs:
           APK_PRESIGNED_HTTP_STATUS: ${{ steps.upload_release_apk.outputs.presigned_http_status }}
           APK_PRESIGNED_URL: ${{ steps.upload_release_apk.outputs.presigned_url }}
           CHECKSUM_URI: ${{ steps.upload_release_checksum.outputs.object_uri }}
+          CHECKSUM_SIZE: ${{ steps.upload_release_checksum.outputs.size_bytes }}
           CHECKSUM_SHA256: ${{ steps.upload_release_checksum.outputs.source_sha256 }}
+          CHECKSUM_DIRECT_SHA256: ${{ steps.upload_release_checksum.outputs.direct_readback_sha256 }}
+          CHECKSUM_PRESIGNED_SHA256: ${{ steps.upload_release_checksum.outputs.presigned_readback_sha256 }}
+          CHECKSUM_PRESIGNED_HTTP_STATUS: ${{ steps.upload_release_checksum.outputs.presigned_http_status }}
+          CHECKSUM_PRESIGNED_URL: ${{ steps.upload_release_checksum.outputs.presigned_url }}
         run: |
           {
             echo "### Android release evidence storage"
@@ -160,6 +165,11 @@ jobs:
             fi
             if [[ -n "$CHECKSUM_URI" ]]; then
               echo "- Checksum object URI: ${CHECKSUM_URI}"
-              echo "- Checksum file SHA-256: ${CHECKSUM_SHA256:-unknown}"
+              echo "- Checksum file size: ${CHECKSUM_SIZE:-unknown} bytes"
+              echo "- Checksum file SHA-256: source ${CHECKSUM_SHA256:-unknown}; direct readback ${CHECKSUM_DIRECT_SHA256:-unknown}; presigned readback ${CHECKSUM_PRESIGNED_SHA256:-unknown}"
+              echo "- Checksum file presigned readback HTTP status: ${CHECKSUM_PRESIGNED_HTTP_STATUS:-unknown}"
+              if [[ -n "$CHECKSUM_PRESIGNED_URL" ]]; then
+                echo "- Checksum retrieval URL (48-hour bearer link): ${CHECKSUM_PRESIGNED_URL}"
+              fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
