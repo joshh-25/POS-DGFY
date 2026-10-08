@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FnbCheckoutFulfillmentChoices } from './FnbCheckoutFulfillmentChoices.jsx';
 
@@ -35,19 +35,9 @@ const closedWednesdayStorefrontHours = {
 };
 
 const selectTimePickerOption = (label, option) => {
-  const minuteValue = Number(option);
-  if (label === 'Minute' && Number.isInteger(minuteValue) && minuteValue % 5 !== 0) {
-    const input = screen.getByRole('textbox', { name: 'Minute' });
-    fireEvent.change(input, { target: { value: String(minuteValue) } });
-    fireEvent.blur(input);
-    return;
-  }
-
-  const trigger = screen.getAllByRole('button')
-    .find((button) => button.getAttribute('aria-label')?.startsWith(label + ':'));
-  if (!trigger) throw new Error('Missing ' + label + ' time picker');
-  fireEvent.click(trigger);
-  fireEvent.click(screen.getByRole('option', { name: String(option), exact: true }));
+  const picker = screen.getByRole('listbox', { name: label });
+  expect(picker).toBeTruthy();
+  fireEvent.click(within(picker).getByRole('option', { name: String(option), exact: true }));
 };
 
 // #1217: identical treatment to RetailOrderFulfillmentStep.test.jsx -- a single available
@@ -217,14 +207,11 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     expect(screen.getByRole('button', { name: 'Select September 24, 2026' }).disabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Select September 24, 2026' }));
     selectTimePickerOption('Hour', '10');
-    expect(screen.getByRole('button', { name: /^Minute:/ }).disabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: /^Minute:/ }));
+    expect(screen.getByRole('listbox', { name: 'Minute' })).toBeTruthy();
     expect(screen.getByRole('option', { name: '30', exact: true })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: '17', exact: true })).toBeNull();
-    const minuteInput = screen.getByRole('textbox', { name: 'Minute' });
-    fireEvent.change(minuteInput, { target: { value: '17' } });
-    fireEvent.blur(minuteInput);
-    expect(minuteInput.value).toBe('17');
+    expect(screen.getByRole('option', { name: '17', exact: true }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('option', { name: '17', exact: true }));
+    expect(screen.getByRole('option', { name: '17', exact: true }).getAttribute('aria-selected')).toBe('true');
   });
 
   // #1218: the four delivery-timing-policy combinations. Default keeps today's exact behaviour

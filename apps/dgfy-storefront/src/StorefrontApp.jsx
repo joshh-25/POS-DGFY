@@ -184,6 +184,7 @@ import { StorefrontDropdown } from './features/shared-storefront/components/Stor
 import { useStorefrontClosedNotice } from './shared/hooks/useStorefrontClosedNotice.js';
 import { useStorefrontShareActions } from './shared/hooks/useStorefrontShareActions.js';
 import { StorefrontPaymentUnavailableModal } from './shared/components/storefront/StorefrontPaymentUnavailableModal.jsx';
+import { StorefrontTransactionExpiredModal } from './shared/components/storefront/StorefrontTransactionExpiredModal.jsx';
 import {
   formatFollowersLabel,
   getStorefrontContactIcon,
@@ -373,6 +374,7 @@ const dgfyBusinessOwnerPhoto = '/man.webp';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
+const SWITCHABLE_STOREFRONT_PAYMENT_SESSION_STATUSES = new Set(['awaiting_payment', 'failed', 'expired', 'cancelled']);
 export default function StorefrontApp() {
   const {
     routeSlug,
@@ -554,6 +556,7 @@ export default function StorefrontApp() {
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
 
   const [editingFnbCartLine, setEditingFnbCartLine] = useState(null);
+  const [isTransactionExpiredModalOpen, setIsTransactionExpiredModalOpen] = useState(false);
   const {
     isReviewModalOpen,
     setIsReviewModalOpen,
@@ -777,6 +780,31 @@ export default function StorefrontApp() {
   const requiresOnlinePaymentForCurrentOrder = (expectsDownpaymentCapture && !dineInPayAtStoreAvailable)
     || (orderMethod === 'dine_in' && !allowDineInPayAtStore);
 
+  const handlePaymentTypeChange = useCallback((val) => {
+    const paymentSessionStatus = String(qrphPaymentSession?.status || '').trim().toLowerCase();
+    const canSwitchPaymentSession = SWITCHABLE_STOREFRONT_PAYMENT_SESSION_STATUSES.has(paymentSessionStatus);
+    const paymentMethodChanged = String(fnbPaymentType || '') !== String(val || '');
+    const hasPaymentSession = Boolean(qrphPaymentSession?.payment_session_id);
+    if (hasPaymentSession && paymentMethodChanged && !canSwitchPaymentSession) return;
+    const shouldResetPaymentSession = hasPaymentSession && paymentMethodChanged && canSwitchPaymentSession;
+    if (shouldResetPaymentSession) {
+      // Changing rails abandons only the pending payment session. The cart, customer,
+      // fulfillment, and checkout state remain intact so the shopper can continue without
+      // rebuilding the order.
+      resetQrphPaymentSession();
+    }
+    if (val === 'online') {
+      uiOpenOnlinePaymentModal();
+      setFnbPaymentType(requiresOnlinePaymentForCurrentOrder ? resolveDefaultDownpaymentRail() : 'cash');
+    } else {
+      if (val === 'cash' && orderMethod === 'dine_in' && !allowDineInPayAtStore) {
+        setFnbPaymentType(resolveDefaultDownpaymentRail());
+        return;
+      }
+      if (!isStorefrontOnlinePaymentType(val) && !shouldResetPaymentSession) resetQrphPaymentSession();
+      setFnbPaymentType(val);
+    }
+  }, [allowDineInPayAtStore, fnbPaymentType, orderMethod, qrphPaymentSession?.payment_session_id, qrphPaymentSession?.status, requiresOnlinePaymentForCurrentOrder, resolveDefaultDownpaymentRail, resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
   useEffect(() => {
     if (!requiresOnlinePaymentForCurrentOrder || fnbPaymentType !== 'cash') return;
     setFnbPaymentType(resolveDefaultDownpaymentRail());
@@ -2216,6 +2244,14 @@ export default function StorefrontApp() {
     toast,
     writeCheckoutAuthResumeDraft
   });
+  const handleGuestCheckoutOtpExpired = useCallback(() => {
+    resetQrphPaymentSession();
+    setCheckoutError('');
+    if (isFnbMode) setFnbOrderStep(3);
+    if (isSimpleMode) setSimpleOrderStep(1);
+    setIsTransactionExpiredModalOpen(true);
+  }, [isFnbMode, isSimpleMode, resetQrphPaymentSession, setCheckoutError, setFnbOrderStep, setSimpleOrderStep]);
+
   const {
     guestCheckoutIntentId,
     guestCheckoutOtpCode,
@@ -2232,10 +2268,16 @@ export default function StorefrontApp() {
   } = useGuestCheckoutOtp({
     customerEmail,
     isDgfyCustomerSignedIn,
+    onOtpExpired: handleGuestCheckoutOtpExpired,
     requestJson,
     selectedStore,
     toast,
   });
+  const handleGuestCheckoutOtpExpiredFromCheckout = useCallback(() => {
+    resetGuestCheckoutOtp();
+    handleGuestCheckoutOtpExpired();
+  }, [handleGuestCheckoutOtpExpired, resetGuestCheckoutOtp]);
+
   const handleVerifyGuestCheckoutOtp = useCallback(async () => {
     const verified = await verifyGuestCheckoutOtp();
     if (verified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE) {
@@ -2317,6 +2359,7 @@ export default function StorefrontApp() {
     guestCheckoutIntentId,
     guestCheckoutOtpVerified,
     guestCheckoutProof,
+    onGuestCheckoutOtpExpired: handleGuestCheckoutOtpExpiredFromCheckout,
     handleLoadAccountPanel,
     isDgfyCustomerSignedIn,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
@@ -2820,6 +2863,7 @@ export default function StorefrontApp() {
     guestCheckoutIntentId,
     guestCheckoutOtpVerified,
     guestCheckoutProof,
+    onGuestCheckoutOtpExpired: handleGuestCheckoutOtpExpiredFromCheckout,
     handleFnbCheckout,
     handleLoadAccountPanel,
     hasServiceCart,
@@ -4519,6 +4563,10 @@ export default function StorefrontApp() {
       {customerDashboardDrawerRouteNode}
 
 
+      <StorefrontTransactionExpiredModal
+        open={isTransactionExpiredModalOpen}
+        onClose={() => setIsTransactionExpiredModalOpen(false)}
+      />
       <StorefrontPaymentUnavailableModal
         open={isOnlinePaymentModalOpen}
         onClose={uiCloseOnlinePaymentModal}

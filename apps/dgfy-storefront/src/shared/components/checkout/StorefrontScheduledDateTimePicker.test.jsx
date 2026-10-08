@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StorefrontScheduledDateTimePicker } from './StorefrontScheduledDateTimePicker.jsx';
 
@@ -62,7 +62,7 @@ describe('StorefrontScheduledDateTimePicker responsive layout', () => {
     expect(screen.getByText(/Scheduling is unavailable until branch hours are set/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Apply' }).disabled).toBe(true);
   });
-  it('restricts delivery and pickup to branch hours and offers five-minute dropdown options', () => {
+  it('restricts delivery and pickup to branch hours while exposing every minute in the rollers', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-23T08:00:00'));
     const hours = {
@@ -81,20 +81,20 @@ describe('StorefrontScheduledDateTimePicker responsive layout', () => {
       fireEvent.click(closedDay);
       expect(screen.getByText(/The store is closed on September 23, 2026/)).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Select September 24, 2026' }));
-      fireEvent.click(screen.getByRole('button', { name: /^Hour:/ }));
-      expect(screen.getByRole('option', { name: '10' })).toBeTruthy();
-      expect(screen.queryByRole('option', { name: '9' })).toBeNull();
-      fireEvent.click(screen.getByRole('option', { name: '10' }));
-      fireEvent.click(screen.getByRole('button', { name: /^Minute:/ }));
-      expect(screen.getByRole('option', { name: '15' })).toBeTruthy();
-      expect(screen.getByRole('option', { name: '20' })).toBeTruthy();
-      expect(screen.getByRole('option', { name: '55' })).toBeTruthy();
-      expect(screen.queryByRole('option', { name: '16' })).toBeNull();
-      expect(screen.queryByRole('option', { name: '14' })).toBeNull();
+      const hourWheel = screen.getByRole('listbox', { name: 'Hour' });
+      const minuteWheel = screen.getByRole('listbox', { name: 'Minute' });
+      expect(within(hourWheel).getByRole('option', { name: '10' }).disabled).toBe(false);
+      expect(within(hourWheel).getByRole('option', { name: '9' }).disabled).toBe(true);
+      expect(within(minuteWheel).getByRole('option', { name: '15' }).disabled).toBe(false);
+      expect(within(minuteWheel).getByRole('option', { name: '20' }).disabled).toBe(false);
+      expect(within(minuteWheel).getByRole('option', { name: '55' }).disabled).toBe(false);
+      expect(within(minuteWheel).getByRole('option', { name: '16' }).disabled).toBe(false);
+      expect(within(minuteWheel).getByRole('option', { name: '14' }).disabled).toBe(true);
+      expect(within(minuteWheel).getByRole('option', { name: '59' })).toBeTruthy();
       view.unmount();
     }
   });
-  it('accepts off-step manual minutes and rolls minute 60 into the next available hour', () => {
+  it('selects minute-precision values from the roller and stops at 59', () => {
     vi.useFakeTimers();
     // Absolute instant whose Asia/Manila branch wall is 08:00 on 2026-09-23, so the
     // 10:00 wall-clock value below is in the future on any runner TZ (CI runs UTC).
@@ -109,15 +109,11 @@ describe('StorefrontScheduledDateTimePicker responsive layout', () => {
       />
     );
 
-    const minuteInput = screen.getByRole('textbox', { name: 'Minute' });
-    fireEvent.change(minuteInput, { target: { value: '16' } });
-    fireEvent.blur(minuteInput);
-    expect(screen.getByRole('textbox', { name: 'Minute' }).value).toBe('16');
-
-    fireEvent.change(screen.getByRole('textbox', { name: 'Minute' }), { target: { value: '60' } });
-    fireEvent.blur(screen.getByRole('textbox', { name: 'Minute' }));
-    expect(screen.getByRole('textbox', { name: 'Hour' }).value).toBe('11');
-    expect(screen.getByRole('textbox', { name: 'Minute' }).value).toBe('00');
+    fireEvent.click(screen.getByRole('option', { name: '16' }));
+    expect(screen.getByRole('option', { name: '16' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('option', { name: '60' })).toBeNull();
+    fireEvent.click(screen.getByRole('option', { name: '59' }));
+    expect(screen.getByRole('option', { name: '59' }).getAttribute('aria-selected')).toBe('true');
   });
 
   it('allows keyboard users to reach closed dates and hear why they cannot select them', () => {
@@ -172,7 +168,7 @@ describe('StorefrontScheduledDateTimePicker responsive layout', () => {
     expect(screen.getByRole('button', { name: 'Today' }).style.minHeight).toBe('32px');
     expect(screen.getByRole('button', { name: 'Previous month' }).style.height).toBe('40px');
     expect(screen.getByRole('button', { name: 'Select September 28, 2026' }).style.height).toBe('42px');
-    expect(screen.getByRole('textbox', { name: 'Hour' }).parentElement.style.minHeight).toBe('42px');
+    expect(screen.getByRole('listbox', { name: 'Hour' }).style.height).toBe('132px');
     const header = screen.getByTestId('scheduled-calendar-header');
     expect(header.firstElementChild.getAttribute('aria-label')).toBe('Previous month');
     expect(header.lastElementChild.getAttribute('aria-label')).toBe('Next month');

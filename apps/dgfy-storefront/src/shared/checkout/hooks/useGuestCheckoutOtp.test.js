@@ -130,6 +130,28 @@ describe('useGuestCheckoutOtp delivery handling', () => {
     expect(props.toast.success).toHaveBeenCalledWith('Email verified. You can now place your order.');
   });
 
+  it('resets the guest checkout and notifies the caller when the OTP is expired', async () => {
+    const error = Object.assign(new Error('Email verification code is missing or expired'), {
+      details: { reason_code: 'GUEST_CHECKOUT_OTP_EXPIRED' },
+      errorCode: 'VALIDATION_FAILED'
+    });
+    const requestJson = vi.fn().mockRejectedValue(error);
+    const onOtpExpired = vi.fn();
+    const props = { ...buildProps(requestJson), onOtpExpired };
+    const { result } = renderHook(() => useGuestCheckoutOtp(props));
+
+    act(() => result.current.handleGuestCheckoutOtpCodeChange('528372'));
+    await act(async () => {
+      await result.current.handleVerifyGuestCheckoutOtp();
+    });
+
+    expect(onOtpExpired).toHaveBeenCalledOnce();
+    expect(result.current.guestCheckoutOtpVerified).toBe(false);
+    expect(result.current.guestCheckoutOtpCode).toBe('');
+    expect(result.current.guestCheckoutOtpError).toBe('');
+    expect(result.current.isGuestCheckoutOtpCooldownActive).toBe(false);
+  });
+
   it('keeps a verified proof while the checkout email is temporarily empty during state hydration', async () => {
     const requestJson = vi.fn().mockResolvedValue({ guest_checkout_proof: 'signed-guest-proof-value' });
     const props = buildProps(requestJson);

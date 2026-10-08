@@ -53,6 +53,7 @@ export function PaymentMethodSelectorBlock({
           onChange={(nextValue) => onChange(String(nextValue))}
           options={options}
           emptyMessage={emptyMessage}
+          ariaLabel={label}
           triggerStyle={triggerStyle}
           menuStyle={paymentMenuStyle}
           optionStyle={paymentOptionStyle}
