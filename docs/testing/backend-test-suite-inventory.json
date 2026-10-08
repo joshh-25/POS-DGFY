@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-10-08T07:09:59.364Z",
-  "totalFiles": 785,
+  "generatedAt": "2026-10-08T07:24:49.801Z",
+  "totalFiles": 787,
   "byClassification": {
-    "keep": 720,
+    "keep": 722,
     "delete": 21,
     "consolidate": 36,
     "trim": 3,
@@ -10,7 +10,7 @@
   },
   "bySuffix": {
     "migration": 42,
-    "(none)": 271,
+    "(none)": 273,
     "middleware": 14,
     "handler": 1,
     "transport": 42,
@@ -4407,12 +4407,12 @@
     },
     {
       "path": "tests/checkTenantSchemaRegistryCoverageScript.integration.test.js",
-      "lines": 86,
-      "caseCount": 5,
+      "lines": 112,
+      "caseCount": 7,
       "describeTitles": [
         "check-tenant-schema-registry-coverage script integration"
       ],
-      "expectCount": 12,
+      "expectCount": 17,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -4430,6 +4430,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md",
           "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
@@ -8072,16 +8073,49 @@
       "findings": []
     },
     {
+      "path": "tests/dgfyLaundryMachineTokenAuth.test.js",
+      "lines": 119,
+      "caseCount": 3,
+      "describeTitles": [
+        "DGLaundry machine-token registration"
+      ],
+      "expectCount": 9,
+      "expectResCount": 7,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/dgfyLaundryOidcProvider.keys.test.js",
-      "lines": 270,
-      "caseCount": 5,
+      "lines": 334,
+      "caseCount": 7,
       "describeTitles": [
         "DGFY OIDC provider key resolution"
       ],
-      "expectCount": 22,
-      "expectResCount": 6,
+      "expectCount": 28,
+      "expectResCount": 13,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 0,
+      "readFileSyncCount": 1,
       "textRatio": 0,
       "maxMockStubCount": 0,
       "isSupertest": false,
@@ -8101,6 +8135,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: keys)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dgfyLaundryOrderPartnerScope.test.js",
+      "lines": 83,
+      "caseCount": 4,
+      "describeTitles": [
+        "DGLaundry partner order lookup scope"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -8622,12 +8689,12 @@
     },
     {
       "path": "tests/dglaundryEventSignature.test.js",
-      "lines": 147,
-      "caseCount": 5,
+      "lines": 182,
+      "caseCount": 6,
       "describeTitles": [
         "DGLaundry event signature verification"
       ],
-      "expectCount": 10,
+      "expectCount": 13,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -8726,14 +8793,14 @@
     },
     {
       "path": "tests/dglaundryPartnerAuth.middleware.test.js",
-      "lines": 39,
-      "caseCount": 1,
+      "lines": 88,
+      "caseCount": 4,
       "describeTitles": [
         "DGLaundry partner authentication middleware"
       ],
-      "expectCount": 2,
-      "expectResCount": 1,
-      "toHaveBeenCalledCount": 2,
+      "expectCount": 11,
+      "expectResCount": 4,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -21368,12 +21435,12 @@
     },
     {
       "path": "tests/productionEnvValidation.test.js",
-      "lines": 478,
-      "caseCount": 20,
+      "lines": 502,
+      "caseCount": 21,
       "describeTitles": [
         "production environment validation"
       ],
-      "expectCount": 55,
+      "expectCount": 62,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -21676,12 +21743,12 @@
     },
     {
       "path": "tests/rateLimiter.behavior.test.js",
-      "lines": 548,
-      "caseCount": 22,
+      "lines": 568,
+      "caseCount": 23,
       "describeTitles": [
         "Rate limiter behavior"
       ],
-      "expectCount": 79,
+      "expectCount": 83,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -29062,12 +29129,12 @@
     },
     {
       "path": "tests/tenantSchemaRegistryCoverageScript.unit.test.js",
-      "lines": 245,
-      "caseCount": 17,
+      "lines": 351,
+      "caseCount": 23,
       "describeTitles": [
         "tenant schema registry coverage script contracts"
       ],
-      "expectCount": 32,
+      "expectCount": 47,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -29085,6 +29152,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md",
           "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
@@ -29097,12 +29165,12 @@
     },
     {
       "path": "tests/tenantSchemaSyncScripts.test.js",
-      "lines": 883,
-      "caseCount": 44,
+      "lines": 899,
+      "caseCount": 45,
       "describeTitles": [
         "tenant schema sync script contracts"
       ],
-      "expectCount": 206,
+      "expectCount": 209,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,

@@ -2,7 +2,7 @@
 status: draft_pr
 authority_level: implementation_handoff
 owner: dgfy-platform
-last_reviewed: 2026-09-07
+last_reviewed: 2026-10-08
 applies_to: dglaundry_surebizcorp_provider_setup
 topic: dglaundry_surebizcorp_provider_setup
 ---
@@ -15,10 +15,17 @@ production approval. It supersedes the old `laundry.dgfy.ph` origin for this
 target only. No private credentials, tokens, passwords, or private keys belong
 in this document or in source control.
 
-Related tracking: [#519](https://github.com/Sieitzz/dgfy-platform/issues/519),
-[#521](https://github.com/Sieitzz/dgfy-platform/issues/521),
-[#801](https://github.com/Sieitzz/dgfy-platform/issues/801), and
-[#803](https://github.com/Sieitzz/dgfy-platform/issues/803).
+Related tracking: [#517](https://github.com/Sieitzz/dgfy-platform/issues/517),
+[#519](https://github.com/Sieitzz/dgfy-platform/issues/519),
+[#2306](https://github.com/Sieitzz/dgfy-platform/issues/2306),
+[#2307](https://github.com/Sieitzz/dgfy-platform/issues/2307),
+[#2309](https://github.com/Sieitzz/dgfy-platform/issues/2309),
+[#2310](https://github.com/Sieitzz/dgfy-platform/issues/2310), and the
+Surebizcorp capacity task
+[#2333](https://github.com/Sieitzz/dgfy-platform/issues/2333). DGFY provider
+implementation is in [PR #2334](https://github.com/Sieitzz/dgfy-platform/pull/2334);
+DGLaundry consumer manifest/installer changes are in
+[DGLaundry PR #23](https://github.com/Sieitzz/dglaundry/pull/23).
 
 ## Target topology
 
@@ -26,12 +33,40 @@ Related tracking: [#519](https://github.com/Sieitzz/dgfy-platform/issues/519),
 | --- | --- |
 | DGLaundry staff application | `https://laundry.surebizcorp.com` |
 | DGLaundry OIDC callback | `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` |
-| DGFY provider API | `https://api.dgfy.ph` |
-| DGFY customer storefront | `https://dgfy.ph/tenant-store/<handle>` |
+| DGFY staging issuer/API | `https://api.stage.dgfy.ph/oidc` / `https://api.stage.dgfy.ph` |
+| DGFY production issuer/API | `https://api.dgfy.ph/oidc` / `https://api.dgfy.ph` |
+| DGFY staging storefront | `https://stage.dgfy.ph/tenant-store/<approved-handle>` |
+| DGFY production storefront | `https://dgfy.ph/tenant-store/<approved-handle>` |
 
 The staff origin and callback are exact values. Do not substitute
 `laundry.dgfy.ph`, `skupervisor.surebizcorp.com`, an IP address, an HTTP URL, or
 a trailing-slash variant.
+
+## Current status snapshot (2026-10-08)
+
+The latest read-only evidence is not a connected deployment:
+
+- DGFY staging discovery advertises the staging issuer/endpoints, but staging
+  JWKS returns HTTP 503 `oidc_keys_not_configured`; production JWKS also returns
+  HTTP 503. Do not attempt browser login until staging publishes the registered
+  signing key.
+- `https://laundry.surebizcorp.com/api/v1/integrations/dgfy/health` is healthy
+  but reports `connection: disabled`.
+- DGFY PR #2334 remains open and not merge-ready; its API build and route checks
+  passed, but the security scan's artifact upload failed because GitHub Actions
+  artifact storage is at quota. The scanner itself reported no leaks. This is
+  an artifact-storage CI issue, not a current hosted-run billing failure.
+- DGLaundry PR #23 remains open. Its validation and MySQL persistence/restart
+  checks passed, while docs and rendered-UI jobs failed when artifact uploads
+  hit the same GitHub Actions artifact-storage quota.
+- Surebizcorp's host-capacity task is tracked separately in DGFY #2333; the last
+  recorded read-only result was about 6.29 GiB free against the governed 10 GiB
+  reserve. Only the DGLaundry/Surebizcorp hosting operator owns that host gate.
+
+These are dated observations, not standing guarantees. Recheck each endpoint,
+PR head, CI run, and free-space measurement before an operator acts. No source
+merge, key preparation, JWKS configuration, or health response alone counts as
+hosted connection qualification.
 
 ## Ownership boundary
 
@@ -61,10 +96,10 @@ to the linked issue or PR.
       `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback`.
 - [ ] Confirm the approved launch/logout origins and the post-logout redirect
       before sending them to DGLaundry; do not invent a second staff origin.
-- [ ] Configure `DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI` to that approved exact
-      redirect and register it with the provider owner. Discovery advertises
-      `https://api.dgfy.ph/oidc/logout` as `end_session_endpoint`; logout requires
-      a signed `id_token_hint` and echoes `state` only to the configured URI.
+- [ ] Register the approved exact post-logout redirect in
+      `DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI`; the provider advertises
+      `GET /oidc/logout` as `end_session_endpoint` and echoes `state` only to
+      that exact URI.
 - [ ] Return the client identifier, scopes, audience, and the approved origin
       list through the approved secret/configuration channel. Do not put client
       secrets in GitHub, issue comments, chat, URLs, or logs.
@@ -81,43 +116,32 @@ to the linked issue or PR.
       `S256` support.
 - [ ] Capture the discovery and JWKS response hashes, key IDs, algorithm, and
       rotation/revocation procedure in the linked issue.
-- [ ] For rotation, configure the new private-key file env reference and add
-      its public key:
+- [ ] Use `DGFY_DGLAUNDRY_CLIENT_SECRET` as the browser client's own credential,
+      delivered through the approved secret manager. The OIDC provider no longer
+      accepts `DGLAUNDRY_PARTNER_TOKEN` as a browser client secret.
+- [ ] Apply the landlord `oidc_signing_keys` migration before switching from the
+      legacy environment-key fallback to the DB registry.
+- [ ] For a rotation, add the new public key and its private-key environment
+      reference with `apps/dgfy-api/scripts/rotate-oidc-signing-key.js add --kid
+      <kid> --public-key-file <public.pem> --private-key-env-ref
+      DGFY_OIDC_SIGNING_KEY_<N>_PRIVATE_FILE`, then promote it with
+      `.../rotate-oidc-signing-key.js promote --kid <kid>`. The previous active
+      key becomes `retiring` and remains in JWKS until explicitly retired or
+      revoked after the overlap window.
+- [ ] Keep private key bytes in the approved environment-specific secret path;
+      the registry stores only public PEM and the private-key environment
+      variable name. Use the CLI `list`, `promote`, `retire`, and `revoke`
+      commands for state changes.
+- [ ] The OIDC end-session endpoint requires the current DGFY browser session
+      and a matching signed `id_token_hint` (expired hints are accepted after
+      signature verification). It revokes the linked opaque token and redirects
+      only to the exact configured post-logout URI.
 
-      ```sh
-      node apps/dgfy-api/scripts/rotate-oidc-signing-key.js add \
-        --kid <kid> \
-        --public-key-file <public.pem> \
-        --private-key-env-ref <PRIVATE_KEY_FILE_ENV>
-      ```
-
-      Then promote it. Confirm both active and retiring keys appear in JWKS and
-      validate tokens signed by each; revoke the old key only after the overlap
-      window and downstream verification complete.
-
-While `oidc_signing_keys` is empty, the provider keeps using the existing
-`DGFY_OIDC_PRIVATE_KEY_FILE`, `DGFY_OIDC_PUBLIC_KEY_FILE`, and
-`DGFY_OIDC_KEY_ID` settings. Once registry rows exist, registry status is
-authoritative. Seed and verify the current signing key before rotating so the
-first promotion keeps the existing key in JWKS as `retiring`.
-
-The provider applies a shared Redis-backed limit of 20 requests per 5 minutes
-per IP, client ID, and route by default (`OIDC_RATE_LIMIT_WINDOW_MS` and
-`OIDC_RATE_LIMIT_MAX_REQUESTS` override it). `NODE_ENV=test` bypasses this
-middleware; production requests do not.
-
-For an application-code rollback after registry use begins, keep the table and
-key files in place. Point the legacy `DGFY_OIDC_PRIVATE_KEY_FILE`,
-`DGFY_OIDC_PUBLIC_KEY_FILE`, and `DGFY_OIDC_KEY_ID` settings at the active
-registry key before restoring the older API version. Do not revoke the retiring
-key until its overlap window has elapsed; an older API version publishes only
-its configured legacy key, so ID tokens or DGFY service tokens signed by another
-key may fail verification until they expire (five minutes).
-
-Read-only preflight on 2026-09-07 found discovery reachable with issuer
-`https://api.dgfy.ph/oidc`, but the JWKS endpoint returned
-`oidc_keys_not_configured`. OIDC sign-in must stay disabled until a valid JWKS
-is published and an end-to-end sandbox authorization succeeds.
+Read-only preflight on 2026-10-08 found staging discovery reachable with issuer
+`https://api.stage.dgfy.ph/oidc`, but staging JWKS returned
+`oidc_keys_not_configured`; production JWKS returned the same error. OIDC
+sign-in must stay disabled until staging publishes a valid registered JWKS and
+an end-to-end sandbox authorization succeeds.
 
 ### 3. Expose and authorize the partner contract
 
@@ -147,6 +171,14 @@ expiry, and one-time `jti`; do not issue or store a long-lived static partner
 bearer token for the production path. Record only client IDs, key IDs, and
 public-key fingerprints in the handoff.
 
+For inbound DGLaundry machine tokens, request exactly the `dglaundry` scope;
+the `dglaundry:*` operation scopes are reserved for DGFY-to-DGLaundry service
+tokens. Configure `DGFY_DGLAUNDRY_PARTNER_APP_ID=dglaundry` (or the separately
+approved environment registration) on the DGFY API. Hosted partner requests
+must present that exact value in the signed `x-dgfy-app-id` header. Production
+must reject the retired `x-dglaundry-partner-token` fallback and must not issue
+an opaque machine token unless its grant was durably stored.
+
 The provider must verify that every company and location mapping is explicit,
 immutable, tenant-scoped, and membership-authorized. Email, name, slug,
 phone, or a caller-supplied company ID must never select a company or grant
@@ -172,7 +204,8 @@ did not certify the storefront or provider configuration as complete.
 
 ## Contract package to qualify
 
-The DGLaundry candidate reviewed for this handoff is:
+The DGLaundry candidate fingerprint below is a historical baseline, not the
+current PR #23 head or evidence of the hosted deployment:
 
 - Source SHA: `3d071db124bc528b64e2fbec7388a8a8cd94f217`.
 - Partner OpenAPI SHA-256:

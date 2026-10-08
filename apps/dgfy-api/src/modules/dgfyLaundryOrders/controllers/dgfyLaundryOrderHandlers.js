@@ -1,4 +1,5 @@
 import { dgfyLaundryOrderUseCases } from '../index.js';
+import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
 const run = (useCase, input, res, next, statusCode = 200) => Promise.resolve(useCase(input))
   .then((data) => res.status(data?.statusCode || statusCode).json({ success: true, data }))
@@ -32,16 +33,47 @@ export const getDglaundryOrder = (req, res, next) => run(
   next
 );
 
-export const getDglaundryOrderForPartner = (req, res, next) => run(
-  dgfyLaundryOrderUseCases.getOrderForProvider,
-  {
-    companyId: req.query?.company_id || req.query?.companyId || req.headers['x-dgfy-company-id'],
-    locationId: req.query?.location_id || req.query?.locationId || req.headers['x-dgfy-location-id'],
-    externalOrderReference: req.params.externalOrderReference
-  },
-  res,
-  next
-);
+export const getDglaundryOrderForPartner = (req, res, next) => {
+  let scope;
+  try {
+    scope = resolvePartnerOrderScope(req);
+  } catch (error) {
+    return next(error);
+  }
+  return run(
+    dgfyLaundryOrderUseCases.getOrderForProvider,
+    scope,
+    res,
+    next
+  );
+};
+
+function resolvePartnerOrderScope(req) {
+  const companyId = resolveScopedQuery(req, 'company_id', 'companyId', 'x-dgfy-company-id');
+  const locationId = resolveScopedQuery(req, 'location_id', 'locationId', 'x-dgfy-location-id');
+  return { companyId, locationId, externalOrderReference: req.params.externalOrderReference };
+}
+
+function resolveScopedQuery(req, canonicalName, compatibilityName, unsignedHeaderName) {
+  const canonicalValue = normalizedQueryValue(req.query?.[canonicalName], canonicalName);
+  const compatibilityValue = normalizedQueryValue(req.query?.[compatibilityName], compatibilityName);
+  const unsignedHeaderValue = String(req.headers?.[unsignedHeaderName] || '').trim();
+  if (canonicalValue && compatibilityValue && canonicalValue !== compatibilityValue) {
+    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Conflicting ${canonicalName} and ${compatibilityName} values are not allowed.`);
+  }
+  if (unsignedHeaderValue) {
+    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Use the signed ${canonicalName} query parameter instead of ${unsignedHeaderName}.`);
+  }
+  return canonicalValue || compatibilityValue;
+}
+
+function normalizedQueryValue(value, name) {
+  if (value === undefined) return '';
+  if (typeof value !== 'string') {
+    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `${name} must be supplied once as a string query value.`);
+  }
+  return value.trim();
+}
 
 export const registerDglaundryCustomerActivity = (req, res, next) => run(
   dgfyLaundryOrderUseCases.registerCustomerActivity,

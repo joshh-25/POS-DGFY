@@ -1,24 +1,73 @@
 {
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "1.1.0",
   "contractVersion": "external-runtime-v0.1",
   "laundryModeVersion": "laundry-mode-v1",
   "staffOrigin": "https://laundry.surebizcorp.com",
   "callback": "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback",
+  "contractHashes": {
+    "dgfyPartnerContractSha256": "ab4d8ac83a70fe00d808fac245f06b832b9fd8313305a6991249e02b6e56e468",
+    "dgfyPartnerOpenApiSha256": "0cd1cdc9cdc37fa4c0aff30e951a47531627e25e35fcbb2d415aa9a7c8cef9e2",
+    "dglaundryPartnerOpenApiSha256": "8850efb0bd47fb7a002e8e942421dc62ef672c843a07deb456ec333a14942648",
+    "dglaundryConnectionFixtureSha256": "30b1bf017d772886ee793ce5439af2c7850c65ea636fb71c441632932da6b8ee",
+    "dglaundryIntegrationContractSha256": "8a6a1d535ffc145a8bd60548b33f1c3f1847eff740f7970e0bd5d2698de6b243"
+  },
   "environments": {
     "staging": {
       "issuer": "https://api.stage.dgfy.ph/oidc",
       "partnerApiOrigin": "https://api.stage.dgfy.ph",
-      "storefrontOrigin": "https://dgfy.ph",
+      "apiOrigin": "https://laundry.surebizcorp.com",
+      "storefrontOrigin": "https://stage.dgfy.ph",
       "dglaundryBrowserClientId": "dglaundry-web",
+      "dglaundryMachineClientId": "dglaundry-machine",
       "dglaundryServiceClientId": "dglaundry-service",
+      "dglaundryPartnerAppId": "dglaundry",
+      "registrationStatus": "proposed",
+      "registrationEvidence": "",
+      "keyIds": {
+        "dglaundryMachineAssertion": "dglaundry-machine-stage-rs256",
+        "dglaundryRequestSigning": "dglaundry-request-stage-p256",
+        "dglaundryEventSigning": "dglaundry-event-stage-ed25519",
+        "dgfyOidcSigning": "dgfy-oidc-stage-2026-10",
+        "dgfyRequestSigning": "dgfy-request-stage-p256",
+        "dgfyEventSigning": "dgfy-event-stage-ed25519"
+      },
+      "keyFingerprintsSha256": {
+        "dglaundryMachineAssertion": "",
+        "dglaundryRequestSigning": "",
+        "dglaundryEventSigning": "",
+        "dgfyOidcSigning": "",
+        "dgfyRequestSigning": "",
+        "dgfyEventSigning": ""
+      },
       "paymentMode": "sandbox"
     },
     "production": {
       "issuer": "https://api.dgfy.ph/oidc",
       "partnerApiOrigin": "https://api.dgfy.ph",
+      "apiOrigin": "https://laundry.surebizcorp.com",
       "storefrontOrigin": "https://dgfy.ph",
       "dglaundryBrowserClientId": "dglaundry-web",
+      "dglaundryMachineClientId": "dglaundry-machine",
       "dglaundryServiceClientId": "dglaundry-service",
+      "dglaundryPartnerAppId": "dglaundry",
+      "registrationStatus": "proposed",
+      "registrationEvidence": "",
+      "keyIds": {
+        "dglaundryMachineAssertion": "dglaundry-machine-prod-rs256",
+        "dglaundryRequestSigning": "dglaundry-request-prod-p256",
+        "dglaundryEventSigning": "dglaundry-event-prod-ed25519",
+        "dgfyOidcSigning": "dgfy-oidc-prod-2026-10",
+        "dgfyRequestSigning": "dgfy-request-prod-p256",
+        "dgfyEventSigning": "dgfy-event-prod-ed25519"
+      },
+      "keyFingerprintsSha256": {
+        "dglaundryMachineAssertion": "",
+        "dglaundryRequestSigning": "",
+        "dglaundryEventSigning": "",
+        "dgfyOidcSigning": "",
+        "dgfyRequestSigning": "",
+        "dgfyEventSigning": ""
+      },
       "paymentMode": "live-authorized-separately"
     }
   },
@@ -31,5 +80,5 @@
     "dgfyRequestSigning": { "owner": "dgfy", "privateFile": "keys/dgfy-request-signing.pem", "publicFile": "keys/dgfy-request-signing.pub.pem", "algorithm": "P-256 ieee-p1363" }
   },
   "secretPolicy": "Private keys and client secrets remain on their owning host and are never written to this manifest.",
-  "registrationStatus": "proposed-pending-dglaundry-confirmation"
+  "manifestNote": "Client IDs and DGLaundry-owned key IDs are the agreed proposed identity contract, not evidence of host registration. Key fingerprints and DGFY-owned key IDs remain blank until verified against installed keys."
 }

@@ -22,6 +22,13 @@ const loadPrivateKey = (row) => resolveSigningKeyMaterial({
     fileEnvVar: row.private_key_env_ref,
     label: `OIDC private signing key ${row.kid}`
 }).pem;
+const supportedPublicKey = (pem) => {
+    const key = crypto.createPublicKey(pem);
+    if (key.asymmetricKeyType !== 'rsa' || (key.asymmetricKeyDetails?.modulusLength || 0) < 2048) {
+        throw new Error('OIDC signing keys must be RSA keys of at least 2048 bits.');
+    }
+    return key;
+};
 
 const legacyEntry = () => {
     const privateKeyPem = legacyPrivateKey();
@@ -32,6 +39,13 @@ const legacyEntry = () => {
         } catch {
             publicKeyPem = '';
         }
+    }
+    if (privateKeyPem && publicKeyPem) {
+        try {
+            if (!supportedPublicKey(publicKeyPem).equals(supportedPublicKey(crypto.createPublicKey(privateKeyPem).export({ type: 'spki', format: 'pem' })))) return null;
+        } catch { return null; }
+    } else if (publicKeyPem) {
+        try { supportedPublicKey(publicKeyPem); } catch { return null; }
     }
     return privateKeyPem || publicKeyPem
         ? { kid: legacyKeyId(), privateKeyPem, publicKeyPem }
@@ -48,6 +62,8 @@ export const getActiveSigningKey = async () => {
     if (row) {
         const privateKeyPem = loadPrivateKey(row);
         if (!privateKeyPem) throw new Error(`OIDC private key is not configured for ${row.kid}`);
+        const privatePublicKey = supportedPublicKey(crypto.createPublicKey(privateKeyPem).export({ type: 'spki', format: 'pem' }));
+        if (!privatePublicKey.equals(supportedPublicKey(row.public_key_pem))) throw new Error(`OIDC public/private key mismatch for ${row.kid}`);
         return { kid: row.kid, privateKeyPem, publicKeyPem: row.public_key_pem };
     }
 
@@ -64,9 +80,15 @@ export const listVerificationKeys = async () => {
         return legacy?.publicKeyPem ? [{ kid: legacy.kid, publicKeyPem: legacy.publicKeyPem }] : [];
     }
     const rows = await oidcSigningKeyRepository.findVerificationKeys();
-    if (rows.length) return rows.map(({ kid, public_key_pem: publicKeyPem }) => ({ kid, publicKeyPem }));
+    if (rows.length) {
+        return rows.map(({ kid, public_key_pem: publicKeyPem }) => {
+            supportedPublicKey(publicKeyPem);
+            return { kid, publicKeyPem };
+        });
+    }
     if ((await oidcSigningKeyRepository.count()) > 0) return [];
     const publicKeyPem = legacyPublicKey();
+    if (publicKeyPem) supportedPublicKey(publicKeyPem);
     return publicKeyPem ? [{ kid: legacyKeyId(), publicKeyPem }] : [];
 };
 
@@ -76,9 +98,9 @@ export const promoteKey = async ({ kid }) => {
     if (row.status === 'revoked') throw new Error(`OIDC signing key is revoked: ${kid}`);
     const privateKeyPem = loadPrivateKey(row);
     if (!privateKeyPem || !keyIsConfigured(privateKeyPem)) throw new Error(`OIDC private key is invalid or unavailable for ${kid}`);
-    const derivedPublic = crypto.createPublicKey(privateKeyPem).export({ type: 'spki', format: 'pem' });
-    const configuredPublic = crypto.createPublicKey(row.public_key_pem).export({ type: 'spki', format: 'pem' });
-    if (derivedPublic !== configuredPublic) throw new Error(`OIDC public/private key mismatch for ${kid}`);
+    const derivedPublic = supportedPublicKey(crypto.createPublicKey(privateKeyPem).export({ type: 'spki', format: 'pem' }));
+    const configuredPublic = supportedPublicKey(row.public_key_pem);
+    if (!derivedPublic.equals(configuredPublic)) throw new Error(`OIDC public/private key mismatch for ${kid}`);
     return oidcSigningKeyRepository.promote(kid);
 };
 

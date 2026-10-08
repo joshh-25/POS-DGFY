@@ -19,6 +19,41 @@ if [ "$(id -u)" = '0' ]; then
   # files works regardless of uid ownership as long as the mode bits allow
   # it, which is the common case for a data dump extracted on the host.
   chown -R app:app uploads storage logs 2>/dev/null || true
+
+  # Preserve owner-only host permissions while making staged/provider keys
+  # readable to the unprivileged API process. Host/SOPS files are mounted
+  # read-only; copy them into this container's ephemeral tmpfs before dropping
+  # privileges. A missing file is fatal only when the integration is enabled.
+  if [ "${DGLAUNDRY_INTEGRATION_ENABLED:-false}" = 'true' ]; then
+    connection_secret_source="${DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR:-/run/secrets}"
+    connection_secret_dest='/run/dgfy-secrets'
+    mkdir -p "$connection_secret_dest"
+    for secret_pair in \
+      'keys/dgfy-oidc-signing.pem:dgfy-oidc-private.pem:dgfy-oidc-private.pem' \
+      'keys/dgfy-oidc-signing.pub.pem:dgfy-oidc-public.pem:dgfy-oidc-public.pem' \
+      'dglaundry-oidc-client-secret:dglaundry-oidc-client-secret:dglaundry-oidc-client-secret' \
+      'keys/dgfy-event-signing.pem:dgfy-event-signing.pem:dgfy-event-signing.pem' \
+      'keys/dgfy-request-signing.pem:dgfy-request-signing.pem:dgfy-request-signing.pem' \
+      'keys/dglaundry-machine-assertion.pub.pem:dglaundry-machine-assertion.pub.pem:dglaundry-machine-assertion.pub.pem' \
+      'keys/dglaundry-request-signing.pub.pem:dglaundry-request-signing.pub.pem:dglaundry-request-signing.pub.pem'; do
+      staging_name=${secret_pair%%:*}
+      remaining_pair=${secret_pair#*:}
+      secret_name=${remaining_pair%%:*}
+      sops_name=${remaining_pair#*:}
+      source_path="$connection_secret_source/$staging_name"
+      # Staging mounts the installer-owned directory tree. Production's
+      # SOPS/Compose-secret profile exposes the same reviewed material as
+      # flat files under /run/secrets; support both without changing contents.
+      if [ ! -f "$source_path" ]; then source_path="$connection_secret_source/$sops_name"; fi
+      if [ ! -f "$source_path" ] || [ ! -r "$source_path" ]; then
+        echo "[entrypoint] Missing DGLaundry connection key material: $secret_name" >&2
+        exit 1
+      fi
+      install -o app -g app -m 0400 "$source_path" "$connection_secret_dest/$secret_name"
+    done
+    chown app:app "$connection_secret_dest"
+    chmod 0500 "$connection_secret_dest"
+  fi
   exec su-exec app "$0" "$@"
 fi
 

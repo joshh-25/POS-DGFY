@@ -321,6 +321,15 @@ export const logoutDgfyAccount = async (req, res) => {
         await blacklistToken(token);
     }
     clearSessionCookie(res, SESSION_COOKIE_NAMES.dgfy);
+    if (req.oidcLogoutClientId) {
+        const redirectUri = String(req.oidcPostLogoutRedirectUri || '').trim();
+        if (redirectUri) {
+            const redirect = new URL(redirectUri);
+            if (req.oidcPostLogoutState !== undefined) redirect.searchParams.set('state', req.oidcPostLogoutState);
+            return res.redirect(302, redirect.toString());
+        }
+        return res.status(204).end();
+    }
     return res.status(200).json({
         success: true,
         data: null,

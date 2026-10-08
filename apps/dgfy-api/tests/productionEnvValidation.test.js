@@ -66,6 +66,22 @@ describe('production environment validation', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('DGFY_OIDC_ISSUER must be https://api.stage.dgfy.ph/oidc for staging');
+    expect(result.errors).toContain('Missing required environment value: DGFY_DGLAUNDRY_PARTNER_APP_ID');
+  });
+
+  it('rejects a hosted staging integration that disables production-grade runtime protections', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        NODE_ENV: 'staging',
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
+        DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc'
+      }
+    });
+    expect(result.ok).toBe(false);
+    expect(result.shouldFail).toBe(true);
+    expect(result.errors).toContain('DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory');
   });
 
   it('requires an explicit service client and exact HTTPS partner audience for DGLaundry', () => {
@@ -79,12 +95,15 @@ describe('production environment validation', () => {
         DGFY_OIDC_PRIVATE_KEY_FILE: '/run/secrets/dgfy-oidc-private.pem',
         DGFY_OIDC_PUBLIC_KEY_FILE: '/run/secrets/dgfy-oidc-public.pem',
         DGFY_OIDC_KEY_ID: 'dgfy-oidc-stage-1',
+        DGFY_DGLAUNDRY_CLIENT_SECRET_FILE: '/run/secrets/dglaundry-oidc-client-secret',
         DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: 'dglaundry-machine-stage',
         DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-machine.pub.pem',
+        DGFY_DGLAUNDRY_PARTNER_APP_ID: 'dglaundry',
         DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: 'dgfy-laundry-partner-stage',
         DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: 'dgfy-event-stage-1',
         DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: '/run/secrets/dgfy-event.pem',
-        DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-event.pub.pem',
+        DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON: '{"dglaundry-event-stage-ed25519":"-----BEGIN PUBLIC KEY-----\\nredacted-test-key\\n-----END PUBLIC KEY-----"}',
+        DGLAUNDRY_INTEGRATION_KEY_ID: 'dglaundry-event-stage-ed25519',
         DGLAUNDRY_PARTNER_REQUEST_KEY_ID: 'dgfy-request-stage-1',
         DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: '/run/secrets/dgfy-request.pub.pem',
         DGLAUNDRY_PARTNER_SIGNING_KEY_ID: 'dgfy-request-stage-1',
@@ -96,7 +115,10 @@ describe('production environment validation', () => {
       }
     });
     expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_SERVICE_CLIENT_ID');
+    expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_PARTNER_APP_ID');
     expect(result.errors).not.toContain('DGLAUNDRY_PARTNER_AUDIENCE must exactly match the DGLAUNDRY_PARTNER_BASE_URL origin');
+    expect(result.errors).not.toContain('Missing required environment value: DGFY_OIDC_PUBLIC_KEY_FILE (or DGFY_OIDC_PUBLIC_KEY)');
+    expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_CLIENT_SECRET_FILE (or DGFY_DGLAUNDRY_CLIENT_SECRET)');
   });
 
   it('rejects a DGLaundry partner audience that does not match its HTTPS origin', () => {
@@ -125,10 +147,12 @@ describe('production environment validation', () => {
       DGFY_OIDC_KEY_ID: 'dgfy-oidc-stage-1',
       DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: 'dglaundry-machine-stage',
       DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-machine.pub.pem',
+      DGFY_DGLAUNDRY_PARTNER_APP_ID: 'dglaundry',
       DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: 'dgfy-laundry-partner-stage',
       DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: 'dgfy-event-stage-1',
       DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: '/run/secrets/dgfy-event.pem',
-      DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-event.pub.pem',
+      DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON: '{"dglaundry-event-stage-ed25519":"-----BEGIN PUBLIC KEY-----\\nredacted-test-key\\n-----END PUBLIC KEY-----"}',
+      DGLAUNDRY_INTEGRATION_KEY_ID: 'dglaundry-event-stage-ed25519',
       DGLAUNDRY_PARTNER_REQUEST_KEY_ID: 'dgfy-request-stage-1',
       DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: '/run/secrets/dgfy-request.pub.pem',
       DGLAUNDRY_PARTNER_BASE_URL: 'https://laundry.surebizcorp.com',
