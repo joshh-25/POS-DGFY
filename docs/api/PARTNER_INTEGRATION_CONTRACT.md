@@ -60,6 +60,9 @@ coexist on every signed request/event; none of them alone is sufficient.
 - Client: `client_secret_basic`, registered client id `DGFY_DGLAUNDRY_CLIENT_ID` (default
   `dglaundry-web`), redirect `DGFY_DGLAUNDRY_REDIRECT_URI` (exactly
   `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` for the Surebizcorp deployment).
+- Browser client credentials are separate from the retired `DGLAUNDRY_PARTNER_TOKEN` setting;
+  hosted deployments deliver `DGFY_DGLAUNDRY_CLIENT_SECRET` through SOPS/Compose secrets (or
+  `DGFY_DGLAUNDRY_CLIENT_SECRET_FILE`). Credentials in request bodies are rejected.
 - Flow: PAR mandatory → `authorize` → `token` (`authorization_code` grant). `code_challenge_method`
   must be `S256`; any other value is rejected at `/oidc/par`.
 - Scope requested by DGLaundry: `openid profile email dglaundry.company_context`.
@@ -72,8 +75,10 @@ coexist on every signed request/event; none of them alone is sufficient.
 
 - `DGFY_DGLAUNDRY_MACHINE_CLIENT_ID` (default `dglaundry-machine`) authenticates with a
   `private_key_jwt` assertion (RS256, ≤300s lifetime, replay-protected by one-time `jti`).
-- Grants an **opaque** (non-JWT) DGFY access token, 300s TTL, scoped by whatever the caller sends in
-  `scope` — see "Known gaps" below; DGFY does not currently constrain this value.
+- Grants an **opaque** (non-JWT) DGFY access token, 300s TTL. The required registered scope is the
+  inbound `dglaundry` scope; current-develop enforcement and application-ID registration remain
+  pending the separate provider-auth change. Do not enable the hosted integration until that
+  change is merged and verified.
 - Every DGLaundry→DGFY API request additionally carries its own RFC 9421 HTTP Message Signature —
   see "Request/event signing" below. The bearer token and the signature are both required; neither
   replaces the other.
@@ -151,11 +156,13 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | Method | Path | Caller | Auth |
 |---|---|---|---|
 | GET | `/oidc/.well-known/openid-configuration` | Anyone | none |
-| GET | `/oidc/jwks` | Anyone | none (returns 503 if signing key unconfigured) |
+| GET | `/oidc/jwks` | Anyone | none (returns 503 if signing key unconfigured); publishes the active key and any explicitly configured overlap keys |
 | POST | `/oidc/par` | DGLaundry browser client | client registration check |
 | GET | `/oidc/authorize` | DGFY account holder (browser) | `authenticateDgfyAccount` |
 | POST | `/oidc/token` | DGLaundry browser or machine client | client credentials / `private_key_jwt` |
-| POST | `/oidc/revoke` | DGLaundry browser client | client registration check |
+| GET | `/oidc/logout` | Signed-in DGFY account holder and registered browser client | `authenticateDgfyAccount`, matching signed `id_token_hint`; redirect URIs are rejected until explicitly registered |
+| POST | `/oidc/revoke` | Registered browser or machine client | `client_secret_basic` or `private_key_jwt`; revokes only tokens owned by the authenticated client |
+| POST | `/oidc/introspect` | Registered browser or machine client | `client_secret_basic` or `private_key_jwt`; tokens owned by another client are reported inactive |
 
 ### Partner provider API — mounted at `/api/v1/partners/dglaundry`
 
@@ -260,7 +267,7 @@ flagged for reconciliation, not yet an active contract item.
   currently emit this shape on `/api/v1/partners/dglaundry/*` — recorded as a gap, not a contract
   DGFY already satisfies.
 
-## Known gaps (verified in source, 2026-10-07)
+## Known gaps (verified in source, 2026-10-08)
 
 This table is the document's load-bearing content — it states plainly what is built, what is
 configuration-only, and what does not exist, rather than implying full readiness.
@@ -270,10 +277,9 @@ configuration-only, and what does not exist, rather than implying full readiness
 | Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
 | Browser/machine/service client IDs are proposed in `dglaundry-connection-manifest.json` but await DGLaundry confirmation and hosted registration | ⚠️ proposed config; registration and live callback verification remain open | #2304, partner confirmation in #519 |
 | Signed provider runtime attestation, signed event specimens, payment-lifecycle probe routes | ❌ not built | filed under epic #517 |
-| No `end_session_endpoint`, no userinfo, no introspection; access tokens are opaque; single-key JWKS (no overlap rotation); `/oidc/*` excluded from `generalLimiter` | ❌ not built | filed under epic #517 |
+| OIDC end-session, opaque-token introspection/revocation, public-JWKS overlap rotation, dedicated `/oidc/*` rate limiting, and production Redis fail-closed behavior are implemented on the open provider-hardening candidate; no merge or hosted verification yet | ⚠️ source candidate only; issuer keys, registrations, Redis and real-host behavior remain unverified | #2307 and implementation PR |
 | Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |
-| Legacy `x-dglaundry-partner-token` shared secret still accepted in production when no `Authorization` header is sent | ❌ security gap | filed under epic #517, `security` |
-| Inbound `scope` is never enforced server-side; `x-dgfy-app-id` is required-present but never validated against a registry | ❌ security gap | filed under epic #517, `security` |
+| Legacy `x-dglaundry-partner-token` shared secret and machine scope/app enforcement are being addressed by the separate open provider-auth PR; do not enable the hosted integration until it is merged and deployed | ⚠️ pending review/merge and hosted verification | #2307, #2309 |
 | Outbound delivery is persisted in the landlord MySQL outbox and retried with bounded leases/backoff; scoped dead-letter inspection and audited recovery are mounted; inbound event nonce claims use shared Redis | ✅ implemented locally; migration and deployed verification remain separate rollout gates | #2310 |
 | `ServiceBooking.source` has no external/sibling value and the DGLaundry integration has zero coupling to `ServiceBooking` — it uses parallel projection tables and a parallel `dglaundry_booking` payment target instead | ⚠️ design question, not a build gap | #522's premise should be re-read before implementation |
 

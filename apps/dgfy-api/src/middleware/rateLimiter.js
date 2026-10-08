@@ -22,6 +22,8 @@ const emailOtpWindowMs = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_WINDOW_MS) ||
 const emailOtpMaxRequests = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS) || (isDevelopment ? 12 : 3);
 const adminAuthWindowMs = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const adminAuthMaxRequests = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
+const oidcWindowMs = parseInt(process.env.RATE_LIMIT_OIDC_WINDOW_MS) || 15 * 60 * 1000;
+const oidcMaxRequests = parseInt(process.env.RATE_LIMIT_OIDC_MAX_REQUESTS) || (isDevelopment ? 300 : 120);
 const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeAuthMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_AUTH_MAX_REQUESTS) || (isDevelopment ? 60 : 10);
 const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
@@ -565,6 +567,32 @@ export const generalLimiter = rateLimit({
     if (isAuthenticatedItemOperation(req)) return true;
     return false;
   },
+});
+
+// OIDC endpoints are mounted outside /api, so they need their own explicit
+// abuse boundary. Use Express's trusted-proxy-aware req.ip handling; do not
+// key this security limiter directly on an untrusted X-Forwarded-For value.
+export const oidcLimiter = rateLimit({
+  windowMs: oidcWindowMs,
+  max: oidcMaxRequests,
+  message: createRateLimitError('Too many OIDC requests. Please try again later.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('oidc'),
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many OIDC requests. Please try again later.',
+      'oidc',
+      'ip'
+    );
+    logRateLimitEvent(req, 'oidc', response.retryAfterSeconds, 'ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => process.env.NODE_ENV === 'test'
 });
 
 // Stricter rate limiter for authentication endpoints.

@@ -35,4 +35,20 @@ describe('DGLaundry partner authentication middleware', () => {
     expect(next).toHaveBeenCalledWith(failure);
     expect(res.status).not.toHaveBeenCalled();
   });
+
+  it('rejects the retired static partner-token fallback in hosted production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DGLAUNDRY_PARTNER_TOKEN = 'legacy-static-token';
+    const { requireDglaundryPartner, validateDglaundryMachineToken } = await loadMiddleware();
+    const req = { headers: { 'x-dglaundry-partner-token': 'legacy-static-token' } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    await requireDglaundryPartner(req, res, next);
+
+    expect(validateDglaundryMachineToken).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/Static DGLaundry partner tokens are disabled/) }));
+    expect(next).not.toHaveBeenCalled();
+  });
 });

@@ -114,6 +114,9 @@ export const requireDglaundryPartner = async (req, res, next) => {
             }
             if (process.env.NODE_ENV === 'production') return res.status(401).json({ success: false, message: 'DGLaundry machine access token is invalid or expired.' });
         }
+        if (process.env.NODE_ENV === 'production' || process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1') {
+            return res.status(401).json({ success: false, message: 'Static DGLaundry partner tokens are disabled for hosted signed integration traffic.' });
+        }
         const expected = readSecret();
         const supplied = String(req.headers['x-dglaundry-partner-token'] || '').trim();
         if (!expected || !supplied) return res.status(401).json({ success: false, message: 'DGLaundry partner authentication is required.' });

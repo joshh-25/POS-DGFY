@@ -5,6 +5,7 @@ import request from 'supertest';
 const originalEnv = { ...process.env };
 
 let generalLimiter;
+let oidcLimiter;
 let authLimiter;
 let dgfyTenantSessionLimiter;
 let lookupLimiter;
@@ -22,6 +23,8 @@ let defaultAuthRateLimitWindowMs;
 beforeAll(async () => {
   process.env.NODE_ENV = 'development';
   process.env.RATE_LIMIT_WINDOW_MS = '60000';
+  process.env.RATE_LIMIT_OIDC_WINDOW_MS = '60000';
+  process.env.RATE_LIMIT_OIDC_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_AUTH_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_AUTH_MAX_REQUESTS = '1';
@@ -44,6 +47,7 @@ beforeAll(async () => {
 
   const limiterModule = await import('../src/middleware/rateLimiter.js');
   generalLimiter = limiterModule.generalLimiter;
+  oidcLimiter = limiterModule.oidcLimiter;
   authLimiter = limiterModule.authLimiter;
   defaultAuthRateLimitWindowMs = limiterModule.DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS;
   dgfyTenantSessionLimiter = limiterModule.dgfyTenantSessionLimiter;
@@ -105,6 +109,22 @@ describe('Rate limiter behavior', () => {
         }),
       })
     );
+  });
+
+  it('applies a dedicated request budget to the OIDC issuer routes', async () => {
+    const app = express();
+    app.use('/oidc', oidcLimiter);
+    app.get('/oidc/.well-known/openid-configuration', (_req, res) => res.status(200).json({ issuer: 'test' }));
+
+    await request(app).get('/oidc/.well-known/openid-configuration').expect(200);
+    const limited = await request(app).get('/oidc/.well-known/openid-configuration').expect(429);
+    expect(limited.body).toEqual(expect.objectContaining({
+      success: false,
+      limitScope: 'oidc',
+      limitKeyType: 'ip',
+      retryAfterSeconds: expect.any(Number)
+    }));
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
   });
 
   it('does not apply the public IP bucket to authenticated item operations', async () => {
