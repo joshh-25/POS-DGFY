@@ -51,6 +51,7 @@
 // issues zero DB queries, so it belongs in the fast tier. Re-proved via
 // BACKEND_TEST_MATRIX_FAST_ALLOW_DB=false npm run test:backend:fast.
 module.exports = [
+  'tests/migratedTemplateClone.db.integration.test.js',
   'tests/adminTenantLifecycle.integration.test.js',
   'tests/ai_cost_control_e2e.test.js',
   'tests/ai_export_e2e.test.js',

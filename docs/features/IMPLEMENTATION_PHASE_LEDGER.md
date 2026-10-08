@@ -27009,6 +27009,94 @@ Phase 482 is the next phase number (#2357) and has no dependency on Phase 480 or
 test-inventory baseline overlap for Phase 481's suites is non-blocking; record it as a risk if
 needed, not as a dependency.
 
+## Phase 482 - dgfy-api quality-gate runtime and repeated test setup (#2357)
+
+### Initiative and release
+
+Backend release-quality test execution, setup reuse, and runtime evidence.
+
+### Objective and scope
+
+Measure the `dgfy-api-quality` job across hosted and self-hosted runners, remove repeated full
+migration work for isolated DB suites through an equivalence-verified migrated template, retain the
+F&B open-handle diagnostic while running those suites only once, and report per-suite timings and
+before/after evidence. Preserve every test, assertion, test database isolation, and the existing
+fast-tier worker/memory settings.
+
+### Status
+
+`completed` — implementation, local validation, and corrected-head hosted/self-hosted API matrix
+comparisons completed on 2026-10-09. Both corrected-head API jobs passed all 32 DB files and retained
+the same 8 fast-tier failing suites / 26 failing tests already present in baseline evidence; no new
+failure was attributed to this change. The hosted matrix completed in 11:25 and the default
+`sieitz-lg` matrix in 16:52. These results do not support a claim that the default self-hosted run is
+faster overall. The hosted fast tier still takes 5:35, spread across hundreds of suites. On
+`sieitz-lg`, `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js` varied to
+172.9s and 143.8s, compared with 24.2s and 20.8s on the hosted runner; follow-up #2369 will measure
+whether that gap is in the suites or the runner environment.
+
+### Dependencies
+
+Issue #2357; `promotion-quality-gate.yml`; MySQL 8 test service; the backend DB-tier manifest and
+test cleanup lifecycle. Phases 480 and 481 are not dependencies; Pat explicitly authorized this
+independent work while their external acceptance evidence remains open.
+
+### Acceptance and validation evidence
+
+- [x] Hosted and self-hosted before/after runs report test counts, per-step and per-tier/group
+      duration, and slowest-suite timing evidence; existing 8 suites / 26 tests remain identified
+      separately. Corrected-head API jobs passed on both runner types with the same pre-existing
+      fast-tier failure set; no OOM occurred. Corrected hosted run #37807851576: API 14:31, matrix
+      11:25. Corrected default `sieitz-lg` run #37807271082: API 24:26, matrix 16:52. These are
+      directional cross-runner measurements, not proof of a default-run speedup.
+- [x] The four full-migration DB suites use unique per-test databases cloned from one migrated
+      template; the equivalence test compares columns, indexes, foreign keys, triggers, views,
+      migration history, and row counts against a database migrated for real. All 32 DB files passed
+      on both corrected-head CI runs.
+- [x] The migrated-template name guard rejects malformed names, empty templates fail closed, and
+      absent template configuration retains the real-migration fallback. Each test still owns and
+      drops its own database; matrix-owned template databases are dropped after the DB tier. The
+      standalone real-migration fallback passed 3/3 locally after the final helper change.
+- [x] F&B suites run once in the matrix and retain `--detectOpenHandles` coverage.
+- [x] Jest JSON timing evidence identifies the slowest 15 suites per tier and reports durations
+      for failing suites; textual failure extraction remains visible in CI summaries. The Jest 30
+      `name`/`startTime`/`endTime` reader has a regression test.
+- [x] The F&B QA documentation, workflow outcome recorder, and implementation phase ledger match
+      the new execution path. Architecture, compliance, docs lint, workspace hygiene, and relevant
+      unit/DB checks pass: `npm run check:compliance`, `npm run check:architecture`,
+      `npm run lint:docs`, workspace hygiene, and 11/11 matrix/timing script tests.
+- [x] Historical ~7-minute / ~34-minute estimates are replaced or verified; remaining bottlenecks
+      and the C3-informed follow-up are recorded. The measurements gathered here replace those
+      unverified estimates: corrected hosted API/matrix 14:31/11:25 and corrected default
+      self-hosted API/matrix 24:26/16:52. Follow-up #2369 covers the two highly variable self-hosted
+      DB suites. No safe fast-tier reduction was supported by the suite profile; the slowest fast
+      suite was 17.1s and the top-15 list accounts for little of the 5:35 fast-tier total.
+
+### Links
+
+- Issue: #2357; planner handoff: `.tmp/plan-2357.md` (planning head
+  `bbab2518c5001151902dc9cf6212312171013756`).
+- C3-informed DB timing follow-up: #2369, same-SHA measurement and setup-path investigation for
+  `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js`.
+- Corrected-head hosted job evidence: run #37807851576, API job #113416731803.
+- Corrected-head default self-hosted job evidence: run #37807271082, API job #113414725161.
+- Sequencing: Phase 482 has no dependency on Phases 480 or 481 under the repository's explicit
+  dependency rule. Phase 483 remains independently eligible.
+- Implementation: `scripts/run-backend-test-matrix.js`,
+  `scripts/summarize-backend-test-matrix.js`, and
+  `apps/dgfy-api/tests/helpers/migratedTestDatabase.js`.
+- Tests: `scripts/run-backend-test-matrix.test.js` and
+  `apps/dgfy-api/tests/migratedTemplateClone.db.integration.test.js`.
+
+### Completion date
+
+Completed 2026-10-09. The overall advisory workflow has other jobs outside this API-runtime scope;
+both required `dgfy-api-quality` matrix runs completed successfully.
+
+### Next eligible phase
+
+Phase 484. Phase 483 is already tracked separately and does not depend on Phase 482.
+
 ## Phase 483 - Reduce avoidable Planner-to-Worker handoff interruptions (#2346)
 
 ### Initiative and release

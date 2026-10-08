@@ -346,32 +346,6 @@ jobs:
             pgrep -af 'node|jest' || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run F&B contracts with open-handle diagnostics
-        continue-on-error: true
-        id: run_fnb_contracts
-        if: steps.wait_services.outcome == 'success'
-        working-directory: apps/dgfy-api
-        run: >-
-          npm test -- --detectOpenHandles --runTestsByPath
-          tests/fnbMode.usecases.test.js
-          tests/posCheckoutFnbContracts.usecase.test.js
-          tests/storeFnbModifiers.usecases.test.js
-          tests/fnbModifierCondition.migration.test.js
-          tests/storeValidator.fnbModifiers.test.js
-        timeout-minutes: 10
-        env:
-          NODE_ENV: test
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_NAME: sku_inventory_manager_test
-          DB_NAME_TEST: sku_inventory_manager_test
-          DB_USER: root
-          DB_PASSWORD: testpassword
-          REDIS_URL: redis://127.0.0.1:6379
-          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
-          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
-
       # 2026-09-04 (#1552): root cause confirmed via direct log evidence (run 33540494543, job
       # 99965311245) -- an orphaned `test_tenant_schema-bootstrap-idempotent_*` fixture (sync()-built,
       # not migration-built, so genuinely missing indexes) survives into this step only when the
@@ -509,7 +483,6 @@ jobs:
             Run API lint|${{ steps.run_api_lint.outcome }}
             Run dgfy-api test matrix|${{ steps.run_test_matrix.outcome }}
             Capture post-matrix runner health snapshot|${{ steps.capture_post_matrix_health.outcome }}
-            Run F&B contracts with open-handle diagnostics|${{ steps.run_fnb_contracts.outcome }}
             Audit required indexes|${{ steps.audit_indexes.outcome }}
             Upload API test-matrix evidence|${{ steps.upload_test_matrix_evidence.outcome }}
         run: |
