@@ -11,9 +11,9 @@ policy_version: 2026.09.26
 verification_evidence: Storefront wizard tests 2/2, registration handoff/status contracts 5/5, shared gallery/delivery behavior tests 11/11, Storefront ESLint, Storefront production build, architecture guardrails, docs/ADR lint, git diff check
 rollback_note: Revert the three-step registration wizard, draft API adapter, shared-control compatibility props, Storefront alias, tests, and this declaration together; the existing tenant-backed registration endpoint remains available for its existing consumers.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-26T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-DGFY-REGISTRATION-STOREFRONT-UI-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-08T09:13:46.750Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-09-26-DGFY-BUSINESS-REGISTRATION-STOREFRONT-UI
 ---
 
 # 2026-09-26 DGFY business registration Storefront UI

@@ -11,9 +11,9 @@ policy_version: 2026.09.25
 verification_evidence: focused API/POS/storefront tests,guest checkout OTP expiry contract,scheduled date-time picker tests,affected app builds,architecture checks,local browser verification,git diff --check
 rollback_note: Revert the related application commits and declaration; review tenant data before rolling back the additive dine-in and parked-sale migrations.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-10-07T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2026-10-07-CHECKOUT-DATE-TIME-PAYMENT
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-08T09:13:46.748Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-09-25-POS-DINE-IN-PARKED-SALE-PAYMENT-POLICY
 ---
 
 # POS dine-in, payment policy, and parked-sale lifecycle

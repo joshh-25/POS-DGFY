@@ -11,9 +11,9 @@ policy_version: 2026.10.03
 verification_evidence: npm run check:annex-b-readiness,npm run test:annex-b-readiness,npm run check:annex-b-requirements,npm run test:annex-b-requirements,npm run check:annex-b-architecture,npm run test:annex-b-architecture,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check
 rollback_note: Revert the Annex B baseline JSON, validator, validator tests, compliance declaration, human-readable baseline, package scripts, and Phase 353 ledger entry together. No fiscal transactions, historical snapshots, evidence artifacts, database rows, staging resources, or production resources are changed by this slice.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-10-03T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-POS-BIR-ANNEX-B-PHASE-353-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-08T09:13:46.750Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-10-03-POS-BIR-ANNEX-B-ITEMS-4-14-PHASE-353
 ---
 
 # POS BIR Annex B Items 4 to 14 Phase 353 Source Lock and Requirements Registry

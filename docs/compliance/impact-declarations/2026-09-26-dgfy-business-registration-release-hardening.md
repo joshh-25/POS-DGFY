@@ -11,9 +11,9 @@ policy_version: 2026.09.26
 verification_evidence: Storefront Playwright release gate 3/3, IMS accessibility test 1/1, Storefront focused Vitest 2/2, Storefront and IMS production builds, IMS lint, architecture/docs/compliance checks
 rollback_note: Revert the public registration-industry request policy, admin review accessibility behavior, upload progress semantics, runtime diagnostics helpers, release-gate test, focused tests, documentation, and this declaration together; the underlying registration and admin review contracts remain available.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-26T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-DGFY-REGISTRATION-RELEASE-HARDENING-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-08T09:13:46.750Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-09-26-DGFY-BUSINESS-REGISTRATION-RELEASE-HARDENING
 ---
 
 # 2026-09-26 DGFY business registration release hardening

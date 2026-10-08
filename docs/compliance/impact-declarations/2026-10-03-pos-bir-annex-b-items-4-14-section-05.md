@@ -10,9 +10,9 @@ policy_version: 2026.10.03
 verification_evidence: apps/dgfy-api/tests/eJournalReadiness.unit.test.js -- 5 passing,apps/dgfy-api/tests/businessAdminEvidence.usecase.test.js -- 4 passing,apps/dgfy-api/tests/businessAdminEvidence.transport.test.js -- 1 passing,npm run check:architecture:dgfy-api -- passed,npm --prefix apps/dgfy-pos run build -- passed,npm run check:annex-b-section-05 -- passed,npm run test:annex-b-section-05 -- passed
 rollback_note: Code-only rollback of Section 05 routes/use cases/serializer/reviewer tab and evidence artifacts; no migration or historical-data mutation.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-10-03T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-POS-BIR-ANNEX-B-SECTION-05-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-08T09:13:46.750Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-10-03-POS-BIR-ANNEX-B-ITEMS-4-14-SECTION-05
 ---
 
 # POS BIR Annex B Items 4 to 14 — Section 05

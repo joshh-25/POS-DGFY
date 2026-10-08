@@ -11,9 +11,9 @@ policy_version: 2026.09.26
 verification_evidence: Materialization approval/idempotency/retry tests 4/4, migration tests 2/2, prior draft contract/migration tests 8/8, targeted API ESLint, architecture guardrails, docs/ADR lint, compliance check
 rollback_note: Revert the materialization use case, approval/retry routes, draft state migration/model fields, landlord projection changes, landlord-only model-factory guard, tests, and this declaration together; the existing tenant-backed approval flow and the pre-materialization draft contract remain available.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-26T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-DGFY-REGISTRATION-MATERIALIZATION-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-10-08T09:13:46.750Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-09-26-DGFY-BUSINESS-REGISTRATION-MATERIALIZATION
 ---
 
 # 2026-09-26 DGFY business registration approval-time materialization
