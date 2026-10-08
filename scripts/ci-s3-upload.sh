@@ -30,6 +30,12 @@ fail_aws_operation() {
   local reason
 
   reason="$(aws_failure_reason "$log_file")"
+  # The AWS CLI's non-debug error output for a failed S3 call never includes credential material
+  # -- only the request URL, HTTP status, and the service's response body -- so printing it is
+  # safe and gives the real error code/message instead of just the generic classification above.
+  echo "::group::Raw AWS CLI error output for: $operation"
+  sed -e 's/^/  /' "$log_file" | head -c 4000
+  echo "::endgroup::"
   fail "$operation failed ($reason; AWS CLI exit code $exit_code). Check the SeaweedFS endpoint, bucket, and S3 credential permissions."
 }
 
