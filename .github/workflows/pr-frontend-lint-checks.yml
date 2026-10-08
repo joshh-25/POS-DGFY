@@ -73,12 +73,19 @@ jobs:
           fi
           echo "[workspace-hygiene] tree complete."
 
-      - name: Setup Node.js
+      - name: Setup Node.js with npm cache on GitHub-hosted runners
         uses: actions/setup-node@v4
+        if: contains(fromJSON(inputs.runner_labels_json), 'ubuntu-latest')
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/${{ inputs.app }}/package-lock.json
+
+      - name: Setup Node.js without npm cache on self-hosted runners
+        uses: actions/setup-node@v4
+        if: ${{ !contains(fromJSON(inputs.runner_labels_json), 'ubuntu-latest') }}
+        with:
+          node-version: '24'
 
       - name: Install app dependencies
         working-directory: apps/${{ inputs.app }}
