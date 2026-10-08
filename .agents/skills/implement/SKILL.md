@@ -71,6 +71,9 @@ of these triggers actually firing (or correctly not firing) in practice.
    Never commit directly to a local `develop` — always branch first, even for something small.
    Once branched, set the linked issue's board `Status` to `In progress` — see "Board transitions"
    below.
+   When checking phase eligibility, do not stop because another phase is `in_progress` or because
+   its `### Next eligible phase` text names a later phase; only an explicit dependency blocks work
+   (see `AGENTS.md` and the ledger's "Phase Sequencing and Lifecycle Rules").
 2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
    `feature/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, among others — matching the change's
    actual kind. (`ci/` was previously missing from that file despite being in heavy real use for
