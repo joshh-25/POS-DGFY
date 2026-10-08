@@ -72,6 +72,34 @@ describe('DGLaundry booking payment session', () => {
     expect(persisted.checkout_payload.dglaundry_booking_group.children.every((child) => child.externalOrderReference !== 'order-1')).toBe(true);
   });
 
+  it('reserves the qualification reference only through the staging test-mode operator builder', async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousPaymongoMode = process.env.PAYMONGO_MODE;
+    process.env.NODE_ENV = 'staging';
+    process.env.PAYMONGO_MODE = 'test';
+    try {
+      const commercePaymentRepository = repository();
+      const partnerClient = {
+        prepareBookingGroup: jest.fn(async () => ({ reservation: { id: 'qualification-reservation', quotedAmountCentavos: 500 } }))
+      };
+      const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({
+        commercePaymentRepository,
+        paymongoService: { createQrphPaymentIntent: jest.fn(async () => ({ paymentIntent: { id: 'pi_test_fixture' }, expiresAt: new Date(Date.now() + 60000).toISOString() })) },
+        partnerClient,
+        mappingRepository: mappingRepository(),
+        allowQualificationFixture: true
+      });
+      const result = await useCase({ payload: payload({ mode: 'fixed', __qualification_fixture: true }) });
+
+      expect(result.success).toBe(true);
+      expect(result.data.booking_group.children[0].externalOrderReference).toBe('DGLAUNDRY-QUALIFICATION-SANDBOX-0001');
+      expect(partnerClient.prepareBookingGroup).toHaveBeenCalledWith(expect.objectContaining({ externalOrderReference: 'DGLAUNDRY-QUALIFICATION-SANDBOX-0001' }));
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previousNodeEnv;
+      if (previousPaymongoMode === undefined) delete process.env.PAYMONGO_MODE; else process.env.PAYMONGO_MODE = previousPaymongoMode;
+    }
+  });
+
   it('reuses the persisted booking session and does not prepare another reservation on a caller retry', async () => {
     const commercePaymentRepository = repository();
     const partnerClient = { prepareBookingGroup: jest.fn(async (request) => ({ reservation: { id: `booking-${request.mode}`, quotedAmountCentavos: request.mode === 'fixed' ? 12500 : null } })) };

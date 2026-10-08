@@ -366,6 +366,26 @@ export const buildDgfyLaundryOrderUseCases = ({ repository, partnerClient, opera
     return operation({ repository, partnerClient, operationName: 'cancelOrder', idempotencyKey, payload: ownedPayload, buildEnvelope: (id) => createDgfyOrderEvent({ id, type: 'dgfy.laundry_order.cancelled.v1', data: ownedPayload }) });
   },
 
+  async confirmReceipt({ companyId, locationId, externalOrderReference, idempotencyKey }) {
+    const scope = requireScope({ companyId, locationId });
+    const row = await this.getOrderForProvider({ ...scope, externalOrderReference });
+    const payload = {
+      ...scope,
+      externalOrderReference: toTrimmed(externalOrderReference, 200),
+      externalTrackingReference: row.external_tracking_reference || null,
+      aggregateVersion: Math.max(1, numericVersion(row.aggregate_version)),
+      occurredAt: new Date().toISOString()
+    };
+    return operation({
+      repository,
+      partnerClient,
+      operationName: 'updateOrder',
+      idempotencyKey,
+      payload,
+      buildEnvelope: (id) => createDgfyOrderEvent({ id, type: 'dgfy.laundry_order.receipt_confirmed.v1', data: payload })
+    });
+  },
+
   async listDeadLetters({ limit }) {
     return repository.listDeadLetters({ limit });
   },

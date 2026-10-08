@@ -1,4 +1,5 @@
 import { dgfyLaundryProviderUseCases } from '../index.js';
+import { dglaundryQualificationProbeUseCase } from '../../dgfyLaundryOrders/qualificationProbe.js';
 const run = (useCase, input, res, next) => Promise.resolve(useCase(input))
     .then((data) => res.status(data?.statusCode || 200).json({ success: true, data }))
     .catch(next);
@@ -37,6 +38,24 @@ export const getLaundryCapabilities = (req, res, next) => run(
     res,
     next
 );
+
+export const getLaundryRuntimeAttestation = (req, res, next) => run(
+    dgfyLaundryProviderUseCases.runtimeAttestation,
+    {},
+    res,
+    next
+);
+
+const runQualificationProbe = (kind) => (req, res, next) => Promise.resolve(dglaundryQualificationProbeUseCase({
+    kind,
+    externalOrderReference: req.params.externalOrderReference,
+    idempotencyKey: req.headers['idempotency-key']
+})).then((data) => res.status(200).json(data)).catch(next);
+
+export const cancelLaundryQualificationOrder = runQualificationProbe('cancel');
+export const expireLaundryQualificationOrder = runQualificationProbe('expire');
+export const refundLaundryQualificationOrder = runQualificationProbe('refund');
+export const confirmLaundryQualificationReceipt = runQualificationProbe('receipt');
 
 export const getLaundryCompanyById = (req, res, next) => run(
     dgfyLaundryProviderUseCases.getCompanyById,
