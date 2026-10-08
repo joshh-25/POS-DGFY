@@ -16,11 +16,12 @@ const adminSequelize = new Sequelize('mysql', dbConfig.user, dbConfig.password, 
     logging: false
 });
 const suffix = `${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
-const sourceDbName = `test_mig_template_${suffix}`;
+const localSourceDbName = `test_mig_template_${suffix}`;
 const cloneDbName = `test_mig_equiv_clone_${suffix}`;
 const emptyTemplateDbName = `test_mig_template_empty_${suffix}`;
 const emptyCloneDbName = `test_mig_empty_clone_${suffix}`;
 const originalTemplateDb = process.env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB;
+let sourceDbName = originalTemplateDb || null;
 let locallyOwnedTemplateDb = null;
 
 const rowsForSchema = async (sql, dbName) => {
@@ -80,15 +81,19 @@ const getSchemaSnapshot = async (dbName) => {
 
 describe('migrated test template clone equivalence', () => {
     beforeAll(async () => {
-        await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${sourceDbName}\``);
-        delete process.env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB;
-        await createMigratedTestDatabase(sourceDbName, adminSequelize);
-        if (!originalTemplateDb) {
-            locallyOwnedTemplateDb = sourceDbName;
+        if (originalTemplateDb) {
+            // The matrix has already run the full migration chain to create this source.
+            // Compare the clone against that database instead of migrating a second source
+            // database inside this suite on every CI run.
+            sourceDbName = originalTemplateDb;
         } else {
-            process.env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB = originalTemplateDb;
-        }
-        if (!process.env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB) {
+            // Standalone invocation remains self-contained: create the migrated source, then
+            // use it as the helper's template so the same clone path is exercised locally.
+            sourceDbName = localSourceDbName;
+            await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${sourceDbName}\``);
+            delete process.env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB;
+            await createMigratedTestDatabase(sourceDbName, adminSequelize);
+            locallyOwnedTemplateDb = sourceDbName;
             process.env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB = sourceDbName;
         }
         await createMigratedTestDatabase(cloneDbName, adminSequelize);
@@ -103,8 +108,6 @@ describe('migrated test template clone equivalence', () => {
         await adminSequelize.query(`DROP DATABASE IF EXISTS \`${emptyTemplateDbName}\``).catch(() => null);
         if (locallyOwnedTemplateDb) {
             await adminSequelize.query(`DROP DATABASE IF EXISTS \`${locallyOwnedTemplateDb}\``).catch(() => null);
-        } else {
-            await adminSequelize.query(`DROP DATABASE IF EXISTS \`${sourceDbName}\``).catch(() => null);
         }
         await adminSequelize.close();
     }, 60000);
