@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-26
+last_reviewed: 2026-10-08
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -10969,6 +10969,14 @@ Pat to run by hand — not a fix, since the root cause is unknown until that acc
 `blocked` (2026-08-29) — this side's own deliverable (the diagnostic runbook) is done, PR #1173
 open against `develop`. Still blocked on Pat's own SSH access to `vm-sieitzstaging` for everything
 past that; no role can advance the actual root-cause investigation unattended.
+
+2026-10-08 update: the recurrence on run `37759977686` completed successfully on the self-hosted
+runner after the initial report, so that retry did not reproduce the failure. A hosted-runner trial
+is running as workflow run `37786879649` on current `develop` (`bbab2518c5001151902dc9cf6212312171013756`);
+the original failed SHA no longer has a dispatchable branch ref. A follow-up PR adds a best-effort
+post-matrix runner-health snapshot before the F&B contracts step. These results improve evidence
+for a future recurrence but do not establish root cause; Phase 192 remains `blocked` pending the
+operator's SSH investigation.
 
 ### Dependencies
 
