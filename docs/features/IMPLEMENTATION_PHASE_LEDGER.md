@@ -26726,29 +26726,51 @@ existing commerce payment idempotency/session boundaries.
       retry-cap, and restart evidence passes against real MySQL. 2026-10-07 opt-in harness against
       MySQL 8 passed migration up/re-run, ordered concurrent claims, expired-lease recovery,
       stale-ack protection, separate-process persistence, scoped completion inspection, and
-      completion-only redrive; retry-cap evidence remains.
+      completion-only redrive. On 2026-10-08 the harness additionally passed retry-cap exhaustion
+      and `markExhausted()` recovery against MySQL 8.4.11 at DGFY code SHA
+      `b994317108611c57dbda99050bad500a7e6aaa4a`; this run used a row-level `max_attempts=2`
+      override (`DGLAUNDRY_OUTBOX_MAX_ATTEMPTS` unset). This does not re-run or replace the earlier
+      ordering, stale-ack, or restart evidence.
 - [ ] All outbound operation families persist immutable payload and stable identity before send;
       same-key caller retries recover the same operation/result, while changed payload conflicts.
-      Focused tests cover delayed caller idempotency reconciliation; the full operation-family
-      persistence matrix remains outstanding.
+      Focused Jest tests now deliver all six outbox-routed operation families and prove concurrent
+      double-enqueue sends at most once; `resolveOrder` fallback identity is stable. These tests use
+      a mocked repository. Real-MySQL persistence/idempotency coverage for all six operation
+      families remains outstanding; the full operation-family persistence matrix is not closed.
 - [ ] Foreground and worker delivery share fresh signing, timeout, retry classification, bounded
-      Retry-After, backoff/jitter, and explicit dead-letter behavior.
+      Retry-After, backoff/jitter, and explicit dead-letter behavior. A worker-batch test now proves
+      exhaustion sweep → claim → parallel delivery and contains/logs one failed claim without
+      aborting the tick; signing remains covered by the existing transport suite.
 - [ ] Booking/payment completion and mixed-child compensation recover without duplicate money
       actions or late reservation resurrection. Focused tests cover same-event payment-finalization
       retry, mixed-child partial-failure compensation, and worker local-completion retry; full
-      provider ambiguity/payment lifecycle acceptance remains outstanding.
+      provider ambiguity/payment lifecycle acceptance remains outstanding. This PR adds no
+      post-finalize mixed-child compensation behavior; its business-semantics decision remains a
+      separate follow-up.
 - [ ] Owner/admin dead-letter listing is company/location scoped and redacted; redrive is reasoned,
       audited, and rejects active/delivered/invalid-scope work. Live MySQL check confirms a failed
       paid-session completion is listed in scope and can be requeued without changing the delivered
-      provider operation; HTTP authorization/redrive remains covered by unit tests.
+      provider operation. HTTP tests execute the real controller/use-case authorization decision
+      with repository modules faked, cover owner success, customer-role and inactive-mapping
+      rejection, and prove audit-before-redrive ordering. The harness proves `redriveOutbound`'s
+      company/location/status SQL guards and successful re-claim/delivery against real MySQL.
+      `claimInboundRedrive` remains untested against real MySQL, and there is no single test combining
+      real HTTP, real authorization rows, and a real outbox row; both are explicit remaining gaps.
 - [ ] Two independent API processes sharing real Redis reject identical event bytes; Redis outage
       fails closed; signature/time/lifetime and fresh-signature event-ID dedupe regressions pass.
       2026-10-07 opt-in Redis 7 harness passed atomic parallel claims in separate processes and
-      replay rejection after a new process starts; outage, signature/time/lifetime edge cases, and
-      fresh-signature event-ID dedupe remain outstanding.
+      replay rejection after a new process starts. The 2026-10-08 harness now confirms fail-closed
+      behavior after disconnecting a real Redis 7.4.11 client at DGFY code SHA
+      `b994317108611c57dbda99050bad500a7e6aaa4a`; the harness used
+      `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1` and a test key ID. Jest covers
+      tampered signature bytes and the HTTP route proves same-event-ID/fresh-nonce dedupe without a
+      second projection write.
+      Timestamp/lifetime boundaries remain Jest-only (date validation does not depend on Redis).
 - [ ] Focused behavior suites (12 suites/62 tests), architecture (56 modules/680 code files),
       controller-boundary (104 files), docs/ADR (31 docs/97 ADRs), compliance, develop-base
-      app-version, changed-file syntax, and whitespace checks passed on 2026-10-07. The
+      app-version, changed-file syntax, and whitespace checks passed on 2026-10-07. On 2026-10-08
+      the focused DGLaundry suites (5 suites/31 tests) and repository gates were re-run for this
+      evidence PR; exact outputs/SHA are in its Testing Evidence. The
       repository-wide test-cost inventory check is already stale on unrelated baseline entries
       and also lacks records for the two new suites. The real-service harness passes; paid
       completion/compensation tests and the remaining acceptance cases are outstanding.

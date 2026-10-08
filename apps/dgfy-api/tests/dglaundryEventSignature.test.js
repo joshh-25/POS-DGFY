@@ -123,6 +123,22 @@ describe('DGLaundry event signature verification', () => {
     expect(redis.set.mock.calls[0][2].EX).toBeGreaterThanOrEqual(300);
   });
 
+  it('rejects tampered signature bytes when the registered key ID and signature shape are valid', async () => {
+    process.env.NODE_ENV = 'staging';
+    process.env.DGLAUNDRY_SIGNATURE_PROFILE = 'http-message-signatures-v1';
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+    process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' });
+    const input = signLaundryEvent(privateKey, 'dglaundry', 'tampered-signature-event');
+    const signatureBytes = Buffer.from(input.headers.signature.match(/^sig1=:([^:]+):$/)[1], 'base64');
+    signatureBytes[0] ^= 0xff;
+    input.headers.signature = `sig1=:${signatureBytes.toString('base64')}:`;
+    const redis = makeRedis();
+    const verifier = buildDglaundryEventSignatureVerifier({ redisProvider: () => redis, redisConnected: () => true });
+
+    await expect(verifier(input)).resolves.toEqual({ ok: false, code: 'DGLAUNDRY_SIGNATURE_INVALID' });
+    expect(redis.set).not.toHaveBeenCalled();
+  });
+
   it('rejects expired signatures and fails closed when the shared replay store is unavailable', async () => {
     process.env.NODE_ENV = 'staging';
     process.env.DGLAUNDRY_SIGNATURE_PROFILE = 'http-message-signatures-v1';
