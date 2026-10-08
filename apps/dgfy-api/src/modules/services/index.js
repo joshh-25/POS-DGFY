@@ -22,6 +22,7 @@ import {
     buildUpdateServiceBookingStatusUseCase,
     buildGetServiceBookingByReferenceUseCase,
     buildSettleServiceBookingUseCase,
+    buildRescheduleServiceBookingUseCase,
     buildClaimServiceBookingUseCase,
     buildServiceDashboardUseCase,
     buildListServiceWaitlistUseCase,
@@ -55,6 +56,7 @@ export const settleServiceBookingUseCase = buildSettleServiceBookingUseCase({
     inventoryCommandService: inventoryStockCommandService,
     posRepository
 });
+export const rescheduleServiceBookingUseCase = buildRescheduleServiceBookingUseCase({ serviceRepository });
 export const claimServiceBookingUseCase = buildClaimServiceBookingUseCase({ serviceRepository });
 export const serviceDashboardUseCase = buildServiceDashboardUseCase({ serviceRepository });
 export const listServiceWaitlistUseCase = buildListServiceWaitlistUseCase({ serviceRepository });

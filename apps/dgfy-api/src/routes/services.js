@@ -12,6 +12,7 @@ import {
     createBooking,
     updateBookingStatus,
     settleBooking,
+    rescheduleBooking,
     dashboard,
     listWaitlist,
     createWaitlistEntry,
@@ -49,6 +50,7 @@ import {
     validateServiceBookingIdParam,
     validateUpdateServiceBookingStatus,
     validateSettleServiceBooking,
+    validateRescheduleServiceBooking,
     validateServiceWaitlistQuery,
     validateCreateServiceWaitlistEntry,
     validateServiceWaitlistEntryIdParam,
@@ -82,6 +84,7 @@ router.get('/bookings', modePermission(PERMISSIONS.SERVICES.actions.VIEW_BOOKING
 router.post('/bookings', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_BOOKINGS, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateAdminServiceBooking, createBooking);
 router.patch('/bookings/:booking_id/status', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_BOOKINGS, PERMISSIONS.POS.actions.TRANSACT_POS), validateServiceBookingIdParam, validateUpdateServiceBookingStatus, updateBookingStatus);
 router.post('/bookings/:booking_id/settle', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_BOOKINGS, PERMISSIONS.POS.actions.TRANSACT_POS), validateServiceBookingIdParam, validateSettleServiceBooking, settleBooking);
+router.post('/bookings/:booking_id/reschedule', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_BOOKINGS, PERMISSIONS.POS.actions.TRANSACT_POS), validateServiceBookingIdParam, validateRescheduleServiceBooking, rescheduleBooking);
 
 router.get('/waitlist', modePermission(PERMISSIONS.SERVICES.actions.VIEW_WAITLIST, PERMISSIONS.POS.actions.VIEW_POS), validateServiceWaitlistQuery, listWaitlist);
 router.post('/waitlist', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_WAITLIST, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateServiceWaitlistEntry, createWaitlistEntry);
