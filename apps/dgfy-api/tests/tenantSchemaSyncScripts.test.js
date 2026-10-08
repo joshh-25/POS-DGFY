@@ -102,6 +102,22 @@ describe('tenant schema sync script contracts', () => {
     expect(repairs[1].sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
   });
 
+  // #2335: PR #2322 widened stock_movements.reference_type's ENUM on the landlord DB and the
+  // Sequelize model, but never registered it here -- so no existing tenant's physical table was
+  // ever repaired (confirmed empirically: all 52 production tenants still missing
+  // 'POS_PARKED_SALE' at the time of this fix). This is the regression guard for that gap.
+  it('tracks the POS_PARKED_SALE stock-movement ENUM widening (#2321/#2322/#2335) in the tenant drift registry', () => {
+    const everyLiteralTheAppWrites = ['PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS', 'POS_PARKED_SALE'];
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.stock_movements.reference_type.enumValues)
+      .toEqual(everyLiteralTheAppWrites);
+
+    const repairs = buildTenantSchemaEnumRepairSql([
+      { table: 'stock_movements', column: 'reference_type' }
+    ]);
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0].sql).toContain("ENUM('PO','JO','MANUAL','RETURN','DO','POS','POS_PARKED_SALE')");
+  });
+
   it('repairs the tenant-local Business Admin approval table and indexes', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.business_admin_approval_requests;
     expect(table.sql).toContain('business_admin_approval_requests');

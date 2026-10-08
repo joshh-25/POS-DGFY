@@ -50,6 +50,32 @@ describe('check-tenant-schema-registry-coverage script integration', () => {
         expect(output).toContain('REQUIRED_TENANT_SCHEMA_COLUMNS');
     });
 
+    // #2335 regression guard: PR #2322's migration used queryInterface.changeColumn(...) to
+    // widen stock_movements.reference_type's ENUM, which this checker could not see at all
+    // before the changeColumn detection added here -- it would have reported PASS on this exact
+    // fixture shape. Must fail now.
+    it('fails when a changed migration widens an enum column on a tenant-scoped table with no registry entry', () => {
+        const result = runCoverageScript({
+            changedFiles: ['apps/dgfy-migration-runner/migrations/20990101000004-change-unregistered-enum-column.cjs'],
+            migrationsRoot: 'violating'
+        });
+
+        expect(result.status).toBe(1);
+        const output = `${result.stdout}${result.stderr}`;
+        expect(output).toContain("changeColumn('items', 'fixture_unregistered_enum_column')");
+        expect(output).toContain('REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS');
+    });
+
+    it('passes when a changed migration widens an enum column that is registered in REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS', () => {
+        const result = runCoverageScript({
+            changedFiles: ['apps/dgfy-migration-runner/migrations/20990101000005-change-registered-enum-column.cjs'],
+            migrationsRoot: 'healthy'
+        });
+
+        expect(result.status).toBe(0);
+        expect(`${result.stdout}${result.stderr}`).toContain('PASS');
+    });
+
     it('passes when the same violation is explicitly exempted', () => {
         const result = runCoverageScript({
             changedFiles: ['apps/dgfy-migration-runner/migrations/20990101000002-add-unregistered-column.cjs'],

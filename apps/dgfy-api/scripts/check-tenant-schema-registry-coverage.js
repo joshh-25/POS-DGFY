@@ -5,7 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 import {
     REQUIRED_TENANT_SCHEMA_COLUMNS,
-    REQUIRED_TENANT_SCHEMA_TABLES
+    REQUIRED_TENANT_SCHEMA_TABLES,
+    REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS
 } from './sync-tenant-schemas.js';
 import { NON_TENANT_MODEL_EXPORTS } from '../src/utils/tenantModelFactory.js';
 
@@ -138,19 +139,27 @@ export function buildTableToModelMap(modelFiles) {
     return map;
 }
 
-// --- 3. Migration parsing -- string-literal addColumn/createTable calls
-//    only. A meaningful number of real migrations in this repo drive these
+// --- 3. Migration parsing -- string-literal addColumn/createTable/changeColumn
+//    calls only. A meaningful number of real migrations in this repo drive these
 //    calls from variables/loops (confirmed by grep across all migrations),
 //    which a regex cannot resolve reliably -- those are surfaced as
 //    warnings, never silently skipped and never treated as failures. ------
 
 const CREATE_TABLE_RE = /queryInterface\.createTable\(\s*(['"])([a-zA-Z0-9_]+)\1/g;
 const ADD_COLUMN_RE = /queryInterface\.addColumn\(\s*(['"])([a-zA-Z0-9_]+)\1\s*,\s*(['"])([a-zA-Z0-9_]+)\3/g;
-const NON_LITERAL_CALL_RE = /queryInterface\.(addColumn|createTable)\(\s*(?!['"])([A-Za-z0-9_.]+)/g;
+// #2335: queryInterface.changeColumn() -- e.g. widening an ENUM's accepted values -- was
+// previously invisible to this checker entirely, which is how PR #2322's migration
+// (changeColumn('stock_movements', 'reference_type', ...)) shipped with no registry entry and
+// no CI failure. A changed column may legitimately satisfy either REQUIRED_TENANT_SCHEMA_COLUMNS
+// (a plain type/constraint change) or REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS (an enum widening,
+// the far more common real case in this repo) -- see checkRegistryCoverage below.
+const CHANGE_COLUMN_RE = /queryInterface\.changeColumn\(\s*(['"])([a-zA-Z0-9_]+)\1\s*,\s*(['"])([a-zA-Z0-9_]+)\3/g;
+const NON_LITERAL_CALL_RE = /queryInterface\.(addColumn|createTable|changeColumn)\(\s*(?!['"])([A-Za-z0-9_.]+)/g;
 
 export function extractMigrationSchemaOperations(source) {
     const createdTables = [];
     const addedColumns = [];
+    const changedColumns = [];
     const nonLiteralCalls = [];
 
     let match;
@@ -160,13 +169,16 @@ export function extractMigrationSchemaOperations(source) {
     ADD_COLUMN_RE.lastIndex = 0;
     while ((match = ADD_COLUMN_RE.exec(source)) !== null) addedColumns.push({ table: match[2], column: match[4] });
 
+    CHANGE_COLUMN_RE.lastIndex = 0;
+    while ((match = CHANGE_COLUMN_RE.exec(source)) !== null) changedColumns.push({ table: match[2], column: match[4] });
+
     NON_LITERAL_CALL_RE.lastIndex = 0;
     while ((match = NON_LITERAL_CALL_RE.exec(source)) !== null) {
         const line = source.slice(0, match.index).split('\n').length;
         nonLiteralCalls.push({ fn: match[1], arg: match[2], line });
     }
 
-    return { createdTables, addedColumns, nonLiteralCalls };
+    return { createdTables, addedColumns, changedColumns, nonLiteralCalls };
 }
 
 // --- 4. Classification + exemptions ---------------------------------------
@@ -199,12 +211,13 @@ export function checkRegistryCoverage({
     nonTenantModelExports = NON_TENANT_MODEL_EXPORTS,
     exemptions = new Set(),
     requiredTables = REQUIRED_TENANT_SCHEMA_TABLES,
-    requiredColumns = REQUIRED_TENANT_SCHEMA_COLUMNS
+    requiredColumns = REQUIRED_TENANT_SCHEMA_COLUMNS,
+    requiredEnumContracts = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS
 }) {
     const violations = [];
     const warnings = [];
 
-    for (const { file, createdTables, addedColumns, nonLiteralCalls } of migrations) {
+    for (const { file, createdTables, addedColumns, changedColumns = [], nonLiteralCalls } of migrations) {
         const createdTableSet = new Set(createdTables);
 
         for (const table of createdTables) {
@@ -239,6 +252,25 @@ export function checkRegistryCoverage({
                     column,
                     classification,
                     message: `${file}: addColumn('${table}', '${column}') is ${classification === 'unmapped' ? 'not mapped to any model and' : 'tenant-scoped and'} has no entry in REQUIRED_TENANT_SCHEMA_COLUMNS (apps/dgfy-api/scripts/sync-tenant-schemas.js). Add a registry entry, or exempt it in apps/dgfy-api/src/config/tenantSchemaCoverageExemptions.js with a reason.`
+                });
+            }
+        }
+
+        for (const { table, column } of changedColumns) {
+            if (createdTableSet.has(table)) continue;
+
+            const classification = classifyTable(table, tableToModel, nonTenantModelExports);
+            if (classification === 'landlord') continue;
+            if (isExempt(exemptions, table, column)) continue;
+            const coveredByColumns = Boolean(requiredColumns?.[table]?.[column]);
+            const coveredByEnumContract = Boolean(requiredEnumContracts?.[table]?.[column]);
+            if (!coveredByColumns && !coveredByEnumContract) {
+                violations.push({
+                    file,
+                    table,
+                    column,
+                    classification,
+                    message: `${file}: changeColumn('${table}', '${column}') is ${classification === 'unmapped' ? 'not mapped to any model and' : 'tenant-scoped and'} has no entry in REQUIRED_TENANT_SCHEMA_COLUMNS or REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS (apps/dgfy-api/scripts/sync-tenant-schemas.js). Add a registry entry, or exempt it in apps/dgfy-api/src/config/tenantSchemaCoverageExemptions.js with a reason.`
                 });
             }
         }
