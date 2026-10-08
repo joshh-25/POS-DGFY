@@ -79,15 +79,17 @@ workflow key prefix, with lifecycle rules for current objects and noncurrent ver
 setting. Large evidence test objects are configured for delete-after-verification and are separate
 from the retained Gitleaks report.
 
-Run `scripts/ci-s3-set-artifact-lifecycle.sh` with the S3 environment variables above to preview
-the three 30-day rules. The script reads and preserves unrelated lifecycle rules, replaces only its
-own managed rule IDs, and rejects an overlapping existing expiry rule for a managed prefix. Run it
-with `--apply` to write the rules and read them back for confirmation. SeaweedFS lifecycle APIs
-support prefix filters, expiration, and noncurrent-version expiration; lifecycle processing is
-asynchronous, so a configured 30-day rule does not guarantee deletion at an exact instant. The
-script must be run against the production bucket before the retention requirement is considered
-complete. If the endpoint rejects the lifecycle API or reports a conflicting existing rule, stop
-and resolve that configuration before relying on the stated retention.
+The production bucket's three managed 30-day rules were applied and read back successfully in
+[lifecycle setup run 37757312162](https://github.com/Sieitzz/dgfy-platform/actions/runs/37757312162).
+The reusable workflow `.github/workflows/ci-s3-artifact-lifecycle.yml` supports manual preview
+(`apply: false`) and apply (`apply: true`). The script reads and preserves unrelated lifecycle
+rules, replaces only its own managed rule IDs, and rejects an overlapping existing expiry rule for
+a managed prefix. SeaweedFS lifecycle APIs support prefix filters, expiration, and noncurrent-
+version expiration; lifecycle processing is asynchronous, so a configured 30-day rule does not
+guarantee deletion at an exact instant. The actual expiry of a 30-day object has not yet been
+observed; enforcement was verified by reading back the configured rules. If the endpoint reports a
+conflicting rule in a future configuration, stop and resolve that configuration before relying on
+the stated retention.
 
 SeaweedFS lifecycle references: [S3 Lifecycle](https://github.com/seaweedfs/seaweedfs/wiki/S3-Lifecycle)
 and [S3 Lifecycle Recipes](https://github.com/seaweedfs/seaweedfs/wiki/S3-Lifecycle-Recipes).
