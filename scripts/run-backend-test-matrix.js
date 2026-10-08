@@ -12,6 +12,7 @@ const JEST_BIN = path.join(APP_DIR, 'node_modules', 'jest', 'bin', 'jest.js');
 const JEST_CONFIG = path.join(APP_DIR, 'jest.config.cjs');
 const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
+const DEFAULT_FAST_WINDOWS_CHUNK_SIZE = 100;
 // Landlord test databases accepted by the API defaults and repository's test workflow.
 // Keep this an exact list: a substring like "contest" must never authorize migrations.
 const SUPPORTED_LANDLORD_TEST_DATABASE_NAMES = new Set([
@@ -171,6 +172,18 @@ function chunk(array, size) {
     chunks.push(array.slice(index, index + size));
   }
   return chunks;
+}
+
+function getFastTierTestChunks(tests, platform = process.platform) {
+  if (platform !== 'win32') return [tests];
+  const configuredSize = Number.parseInt(
+    process.env.BACKEND_TEST_MATRIX_FAST_CHUNK_SIZE || String(DEFAULT_FAST_WINDOWS_CHUNK_SIZE),
+    10,
+  );
+  const size = Number.isInteger(configuredSize) && configuredSize > 0
+    ? configuredSize
+    : DEFAULT_FAST_WINDOWS_CHUNK_SIZE;
+  return tests.length > size ? chunk(tests, size) : [tests];
 }
 
 function ensureDir(dirPath) {
@@ -534,8 +547,10 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, lan
   };
 }
 
-// The fast tier: one Jest invocation covering every non-DB test, real worker parallelism (no
-// --runInBand, no domain chunking -- Jest's own scheduler fans these out), no schema preflight.
+// The fast tier: one Jest invocation covering every non-DB test on Unix, with bounded invocations
+// on Windows when the path list would exceed the Windows process command-line limit. Every
+// invocation keeps real worker parallelism (no --runInBand, no domain chunking), and there is no
+// schema preflight.
 // DB_HOST/DB_PORT are deliberately pointed nowhere reachable unless FAST_ALLOW_DB is set -- see
 // the FAST_ALLOW_DB comment above for why this is a permanent guardrail, not a one-time check.
 function runFastTier(tests, evidenceDir) {
@@ -553,33 +568,69 @@ function runFastTier(tests, evidenceDir) {
   const workerMemoryArgs = process.env.BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT
     ? [`--workerIdleMemoryLimit=${process.env.BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT}`]
     : [];
-  const args = [
-    '--experimental-vm-modules',
-    JEST_BIN,
-    '--config',
-    JEST_CONFIG,
-    ...maxWorkersArgs,
-    ...workerMemoryArgs,
-    '--ci',
-    '--runTestsByPath',
-    ...tests.map(relativeTestPath),
-  ];
   const env = { ...process.env, NODE_ENV: 'test' };
   if (!FAST_ALLOW_DB) {
     env.DB_HOST = '127.0.0.1';
     env.DB_PORT = '1';
   }
-  const started = Date.now();
-  const result = run(process.execPath, args, {
-    cwd: APP_DIR,
-    timeout: DEFAULT_CHUNK_TIMEOUT_MS,
-    env,
-  });
-  const durationMs = Date.now() - started;
-  writeLog(logFile, result);
-  const timedOut = result.error && result.error.code === 'ETIMEDOUT';
-  const shouldSummarize = !timedOut && result.status !== 0;
-  if (shouldSummarize) printFailureSummary('tier=fast', result);
+  const testChunks = getFastTierTestChunks(tests);
+  const results = [];
+  for (const [chunkIndex, testChunk] of testChunks.entries()) {
+    const args = [
+      '--experimental-vm-modules',
+      JEST_BIN,
+      '--config',
+      JEST_CONFIG,
+      ...maxWorkersArgs,
+      ...workerMemoryArgs,
+      '--ci',
+      '--runTestsByPath',
+      ...testChunk.map(relativeTestPath),
+    ];
+    const started = Date.now();
+    const result = run(process.execPath, args, {
+      cwd: APP_DIR,
+      timeout: DEFAULT_CHUNK_TIMEOUT_MS,
+      env,
+    });
+    const durationMs = Date.now() - started;
+    const chunkLogFile = testChunks.length === 1
+      ? logFile
+      : path.join(evidenceDir, `fast-tier-${String(chunkIndex + 1).padStart(2, '0')}.log`);
+    writeLog(chunkLogFile, result);
+    const timedOut = result.error && result.error.code === 'ETIMEDOUT';
+    const shouldSummarize = !timedOut && result.status !== 0;
+    if (shouldSummarize) printFailureSummary(`tier=fast chunk=${chunkIndex + 1}/${testChunks.length}`, result);
+    results.push({
+      chunk: testChunk,
+      result,
+      durationMs,
+      timedOut,
+      logFile: chunkLogFile,
+    });
+    console.log(`[backend-test-matrix] ${timedOut ? 'TIMEOUT' : result.status === 0 ? 'PASS' : 'FAIL'} tier=fast chunk=${chunkIndex + 1}/${testChunks.length} tests=${testChunk.length} duration_ms=${durationMs} log=${path.relative(ROOT, chunkLogFile).replace(/\\/g, '/')}`);
+  }
+
+  if (testChunks.length > 1) {
+    const combinedLog = results.map(({ chunk, result, logFile: chunkLogFile }, index) => [
+      `===== fast tier chunk ${index + 1}/${testChunks.length} (${chunk.length} tests) =====`,
+      `log_file=${path.relative(ROOT, chunkLogFile).replace(/\\/g, '/')}`,
+      '',
+      result.stdout || '',
+      result.stderr || '',
+    ].join('\n')).join('\n\n');
+    fs.writeFileSync(logFile, combinedLog);
+  }
+
+  const durationMs = Date.now() - startedAt.getTime();
+  const timedOut = results.some((entry) => entry.timedOut);
+  const failedResults = results.filter((entry) => !entry.timedOut && entry.result.status !== 0);
+  const firstNonPassing = results.find((entry) => entry.timedOut || entry.result.status !== 0);
+  const failingSuites = [...new Set(results.flatMap((entry) => (
+    !entry.timedOut && entry.result.status !== 0
+      ? extractFailureSummary(entry.result).failLines
+      : []
+  )))];
   return {
     tier: 'fast',
     group: 'fast_tier',
@@ -588,15 +639,16 @@ function runFastTier(tests, evidenceDir) {
     started_at: startedAt.toISOString(),
     duration_ms: durationMs,
     timeout_ms: DEFAULT_CHUNK_TIMEOUT_MS,
-    status: timedOut ? 'timeout' : result.status === 0 ? 'pass' : 'fail',
-    exit_status: result.status,
-    signal: result.signal || null,
+    chunk_count: testChunks.length,
+    status: timedOut ? 'timeout' : failedResults.length > 0 ? 'fail' : 'pass',
+    exit_status: firstNonPassing ? firstNonPassing.result.status : 0,
+    signal: firstNonPassing ? firstNonPassing.result.signal || null : null,
     db_pinned_unreachable: !FAST_ALLOW_DB,
     log_file: path.relative(ROOT, logFile).replace(/\\/g, '/'),
     // #1157: same extraction printed to the console above, persisted here too so
     // summarize-backend-test-matrix.js can render the failing suite names on
     // $GITHUB_STEP_SUMMARY without re-parsing the raw log itself.
-    failing_suites: shouldSummarize ? extractFailureSummary(result).failLines : [],
+    failing_suites: failingSuites,
   };
 }
 
@@ -826,4 +878,8 @@ if (require.main === module) {
   }
 }
 
-module.exports = { prepareLandlordTestDatabase, SUPPORTED_LANDLORD_TEST_DATABASE_NAMES };
+module.exports = {
+  getFastTierTestChunks,
+  prepareLandlordTestDatabase,
+  SUPPORTED_LANDLORD_TEST_DATABASE_NAMES,
+};

@@ -32,6 +32,7 @@ export function StorefrontCartDrawerShellContainer(props) {
     selectedStore,
     isFnbMode,
     isServicesMode,
+    isLaundryMode,
     isMobileViewport,
     isAccountDrawerOpen,
     isServicesCartDrawerMode,
@@ -82,7 +83,7 @@ export function StorefrontCartDrawerShellContainer(props) {
   // Any industry that isn't F&B/Services/Simple (retail, hospitality, healthcare, etc.) — the
   // mode DefaultProductCartFab/DefaultProductCartDrawer serve, replacing StorefrontCartFab's
   // default branch for this mode only.
-  const isDefaultCartSurfaceMode = !isFnbMode && !isServicesMode && !isSimpleMode;
+  const isDefaultCartSurfaceMode = !isFnbMode && !isServicesMode && !isSimpleMode && !isLaundryMode;
   // Retail's own /order page already shows cart contents/totals in its own summary panels
   // (RetailOrderSummaryContent/RetailOrderMobileSummaryPanel), so the floating cart
   // button+drawer are redundant there. Product details keep the drawer mounted so Add to Cart
@@ -129,7 +130,7 @@ export function StorefrontCartDrawerShellContainer(props) {
           <DefaultProductCartDrawer {...defaultProductCartDrawerProps.drawerSurfaceProps} />
         </>
       )}
-      {!isDefaultCartSurfaceMode && (
+      {!isDefaultCartSurfaceMode && !isLaundryMode && (
       <StorefrontCartFab
         serviceCartFabRef={serviceCartFabRef}
         isFnbMode={isFnbMode}

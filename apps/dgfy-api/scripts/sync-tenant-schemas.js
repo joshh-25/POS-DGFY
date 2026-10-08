@@ -322,6 +322,15 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         delivery_fee_waiver_label_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver_label_snapshot` VARCHAR(255) NULL"
         }),
+        customer_processing_fee_amount: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `customer_processing_fee_amount` DECIMAL(14,4) NOT NULL DEFAULT 0 COMMENT 'Item-processing fee captured in the storefront order total; legacy column name retained'"
+        }),
+        customer_processing_fee_label_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `customer_processing_fee_label_snapshot` VARCHAR(80) NULL COMMENT 'Immutable item-processing fee label snapshot; legacy column name retained'"
+        }),
+        customer_processing_fee_breakdown: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `customer_processing_fee_breakdown` JSON NULL COMMENT 'Immutable item-processing fee calculation snapshot; legacy column name retained'"
+        }),
         // #1931: two nullable, additive evidence columns for Retail's accept-time goods-issue
         // (issued once at acceptance, reversed at most once on post-acceptance cancel/reject).
         // Kept in lockstep with migration 20260916000001-add-retail-acceptance-inventory-evidence.cjs.
@@ -3162,7 +3171,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-01.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-06.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

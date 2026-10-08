@@ -55,4 +55,9 @@ export const bodyDeclaresCurrentStock = (req) => (
     && req.body.current_stock !== ''
 );
 
+export const bodyDeclaresStockMutation = (req) => (
+    bodyDeclaresCurrentStock(req)
+    || (Array.isArray(req?.body?.stock_allocations) && req.body.stock_allocations.length > 0)
+);
+
 export default requireLocalInventoryLedgerOwnership;

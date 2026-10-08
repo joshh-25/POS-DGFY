@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useSignedInCheckoutAddresses } from '../modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js';
 
@@ -75,5 +75,36 @@ describe('useSignedInCheckoutAddresses (#1219)', () => {
     }));
     expect(result.current.canUpdateSavedAddress).toBe(false);
     expect(result.current.deliveryLocationDisplayAddress).toBe('Diversion Road, Mandurriao, Iloilo City');
+  });
+
+  it('returns save success and blocks a concurrent duplicate location request', async () => {
+    let resolveRequest;
+    const requestJson = vi.fn(() => new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    const { result } = renderHook(() => useSignedInCheckoutAddresses({
+      ...baseProps(),
+      customerAddress: 'Jaro Plaza, Jaro, Iloilo City',
+      customerPin: { latitude: 14.5995, longitude: 120.9842 },
+      deliveryLocationAction: 'map',
+      requestJson,
+      refreshAccountAddresses: vi.fn().mockResolvedValue([]),
+      selectedSavedLocationId: ''
+    }));
+
+    expect(result.current.canAddPinnedLocation).toBe(true);
+
+    let firstResult;
+    let secondResult;
+    await act(async () => {
+      const firstRequest = result.current.handleAddPinnedLocation();
+      secondResult = await result.current.handleAddPinnedLocation();
+      resolveRequest({ address_id: 7 });
+      firstResult = await firstRequest;
+    });
+
+    expect(firstResult).toBe(true);
+    expect(secondResult).toBe(false);
+    expect(requestJson).toHaveBeenCalledTimes(1);
   });
 });

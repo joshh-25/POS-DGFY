@@ -98,10 +98,11 @@ is the input to that step, not a replacement for it.
   drift repair stops running and only a WARNING banner appears in the container log.
   Present in neither the fragment nor Appendix A's 19-secret list today.
 
-## Full production runtime surface (314 vars)
+## Full production runtime surface (320 vars)
 
 Grouped by prefix for scanability. `**bold**` = one of the boot-required/conditional
-vars above. `[SECRET]` = already in Appendix A's 19-secret bucket. Everything else needs
+vars above. `[SECRET]` = secret value. `[SECRET-FILE]` = non-secret path whose target file is
+secret. Everything else needs
 the bucket-B sensitivity call against the live Phase 0 capture.
 
 <details><summary><code>ADMIN_*</code> (7)</summary>
@@ -242,9 +243,13 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 
 </details>
 
-<details><summary><code>DGFY_*</code> (13)</summary>
+<details><summary><code>DGFY_*</code> (23)</summary>
 
 - `DGFY_BUSINESS_STEP_UP_WINDOW_MINUTES`
+- `DGFY_DGLAUNDRY_CLIENT_ID`
+- `DGFY_DGLAUNDRY_MACHINE_CLIENT_ID` **[required]**
+- `DGFY_DGLAUNDRY_REDIRECT_URI` **[required]**
+- `DGFY_DGLAUNDRY_SERVICE_CLIENT_ID` **[required]**
 - `DGFY_DIRECT_INVITE_ACCEPTANCE_ENABLED`
 - `DGFY_HANDOFF_JWT_EXPIRY`
 - `DGFY_HISTORICAL_BACKFILL_ORDER_BATCH_SIZE`
@@ -252,6 +257,12 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 - `DGFY_JWT_EXPIRY`
 - `DGFY_LEGACY_TENANT_REGISTRATION_ENABLED`
 - `DGFY_LEGACY_USER_INVITES_ENABLED`
+- `DGFY_OIDC_ISSUER` **[required]**
+- `DGFY_OIDC_KEY_ID` **[required]**
+- `DGFY_OIDC_PRIVATE_KEY` `[SECRET]`
+- `DGFY_OIDC_PRIVATE_KEY_FILE` **[required]** `[SECRET-FILE]`
+- `DGFY_OIDC_PUBLIC_KEY`
+- `DGFY_OIDC_PUBLIC_KEY_FILE` **[required]**
 - `DGFY_REVIEW_INVITE_TTL_HOURS`
 - `DGFY_TENANT_USER_EMAIL_REPAIR_ENABLED`
 - `DGFY_TRACKING_RECOVERY_COOLDOWN_SECONDS`
@@ -770,4 +781,3 @@ nothing from the raw grep is silently unaccounted for — **do not** carry these
 bucket for the cutover.
 
 `COMMIT_SHA`, `DEPLOYED_COMMIT`, `GITHUB_SHA`, `GIT_COMMIT`, `GIT_SHA`, `RELEASE_SHA`, `RELEASE_TARGET_SHA`, `RENDER_GIT_COMMIT`, `RUNTIME_SHA_DEPLOY_STATE_FALLBACK`, `SOURCE_VERSION`, `VERCEL_GIT_COMMIT_SHA`
-

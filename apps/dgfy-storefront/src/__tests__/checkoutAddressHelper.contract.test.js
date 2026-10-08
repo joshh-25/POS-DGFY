@@ -16,4 +16,32 @@ describe('checkout delivery address helper', () => {
       expect(readSource(relativePath)).not.toContain('This is the address where your order will be delivered.');
     });
   });
+
+  it('renders address search in every expanded map flow', () => {
+    [
+      '../modes/simple/checkout/components/SimpleCheckoutFulfillmentStep.jsx',
+      '../modes/retail/checkout/components/RetailOrderFulfillmentStep.jsx',
+      '../modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx',
+      '../modes/services/booking/components/ServiceBookingLocationSection.jsx'
+    ].forEach((relativePath) => {
+      const source = readSource(relativePath);
+      expect(source).toContain('DeliveryAddressSearchField');
+      expect(source).toContain('onSelectResult=');
+      expect(source).toContain('placeholder="Search an address or landmark"');
+    });
+  });
+
+  it('keeps full-clear and add-location actions wired in every expanded map flow', () => {
+    [
+      '../modes/simple/checkout/components/SimpleCheckoutFulfillmentStep.jsx',
+      '../modes/retail/checkout/components/RetailOrderFulfillmentStep.jsx',
+      '../modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx',
+      '../modes/services/booking/components/ServiceBookingLocationSection.jsx'
+    ].forEach((relativePath) => {
+      const source = readSource(relativePath);
+      expect(source).toContain('onClear=');
+      expect(source).toContain('handleAddLocationFromMap');
+      expect(source).toContain('Add Location');
+    });
+  });
 });

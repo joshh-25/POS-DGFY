@@ -26503,3 +26503,276 @@ Not complete; set only after all acceptance gates above pass.
 
 Phase 476 only after Phase 475's acceptance gates pass and then-current ledger eligibility is
 reconciled.
+
+## Phase 476 - Owner-configured item-processing fee for Storefront checkout
+
+### Initiative and release
+
+Configurable Item Processing Fee, local UpdatePOS verification.
+
+### Objective and scope
+
+Allow an authenticated tenant Owner to enable an item-processing fee as either a fixed PHP amount
+or a percentage of the discounted item subtotal. Calculate it authoritatively on the server,
+independent of the payment method and provider, snapshot it on orders and hosted payment sessions,
+display it as a separate Storefront checkout/tracking line, and expose it in OPIS order
+detail/receipt totals. Keep the existing provider-fee fallback policy and DGFY settlement fields
+separate. IMS is explicitly excluded.
+
+### Status
+
+`in_progress` — Pat explicitly approved this local-only implementation while Phase 473 remains
+open; no staging, production, or IMS work is authorized by this phase.
+
+### Dependencies
+
+Approved local execution of the Configurable Item Processing Fee plan; ADR 0052's
+item-processing-fee amendment; landlord policy migration; tenant schema capability
+registration; local UpdatePOS API, OPIS, POS, and Storefront services.
+
+### Acceptance and validation evidence
+
+- [x] Local landlord migration and tenant-schema capability report pass against all 15 local
+      tenant databases at capability `2026-10-06.1`.
+- [x] Policy/domain tests cover fixed and percentage modes, centavo rounding, invalid mixed modes,
+      and a ₱1,000 quote with a 3% fee producing ₱30 and a ₱1,030 total.
+- [x] Existing tenant-revenue security/use-case contracts pass with the new Owner field.
+- [x] Storefront breakdown/tracked-total tests pass; OPIS contract tests pass.
+- [x] Storefront and OPIS production builds pass locally.
+- [x] Computer-use verification confirms Owner configuration and Storefront quote/order display on
+      the local stack; the resulting tenant transaction snapshot records the separate item-processing
+      item-processing amount, label, breakdown, and total. Direct Masu OPIS order-detail browser verification is
+      blocked by the existing Masu Back Office access denial; OPIS order-detail contract coverage
+      and the server-side snapshot pass.
+- [ ] Local rollback/data-integrity evidence and final execution summary are recorded. Data-integrity
+      evidence is recorded in the local transaction snapshot and compliance declaration; rollback
+      is documented but was not exercised so the local test order remains available for inspection.
+
+### Links
+
+- Plan: `output/plans/Configurable_Payment_Processing_Fee/00_Configurable_Payment_Processing_Fee_Index.docx`
+  and `EXECUTION_MANIFEST.md`.
+- Architecture: `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`.
+- Implementation: `apps/dgfy-api/src/modules/tenantRevenue/domain/customerProcessingFeePolicy.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-opis/src/features/businessAdmin/ProcessingFeePolicyEditor.jsx`, and
+  `apps/dgfy-storefront/src/shared/model/storefrontOrderBreakdownPresentation.js`.
+- Tests: `apps/dgfy-api/tests/customerProcessingFeePolicy.unit.test.js`,
+  `apps/dgfy-storefront/src/shared/model/storefrontOrderBreakdownPresentation.test.js`,
+  `apps/dgfy-storefront/src/__tests__/trackedTotals.test.js`, and
+  `apps/dgfy-opis/tests/unit/businessAdminProcessingFees.contract.test.js`.
+
+### Completion date
+
+Not complete; the implementation and local verification gates pass except for direct Masu OPIS
+order-detail browser access and an unexercised rollback. Set only after those remaining gates are
+resolved or explicitly waived.
+
+### Next eligible phase
+
+Phase 477 only after Phase 476's local acceptance gates pass and the ledger is rechecked.
+
+## Phase 477 - DGFY <-> DGLaundry partner integration contract of record and governance ratification (#519)
+
+### Initiative and release
+
+Epic #517 (Sibling operational apps on the DGFY commerce engine), issue #519 (Define what DGFY must
+expose to the Laundry App). First ledger entry for this initiative -- the DGLaundry/OIDC/partner-API
+line of work (DGFY PRs #1721, #1772, #1818, #1920, #1972, #2004) landed entirely outside the phase
+ledger, tracked only through `docs/integrations/*` handoffs and 53 comments on #519.
+
+### Objective and scope
+
+Write the authoritative, DGFY-owned partner integration contract #519 itself requires ("write the
+contract down... not tribal knowledge") from verified source on both repositories, rather than from
+any single operational handoff. Ratify the governance that implementation front-ran: move ADR 0079
+from `proposed` to `amended`, recording `laundry`'s `WORKFLOW_MODE_VALUES`/`WORKFLOW_MODE_ENGINE`
+classification as the ratified answer to #518, and reconcile
+`docs/development/MODE_DEVELOPMENT_PLAYBOOK.md`'s "no new hard-coded verticals" rule with the
+shipped code via a dated exception. File the DGFY-side work items this initiative never put on the
+board. No feature code; no key material; no deploy.
+
+### Status
+
+`completed` for the documentation and governance deliverable itself (this phase's own scope). The
+underlying integration remains unqualified -- staging JWKS still returns `503
+oidc_keys_not_configured`, client registrations are still blank, and customer-facing ordering is
+still architecturally blocked (see the new contract's "Known gaps" table). Those remain tracked as
+separate, newly filed issues under #517, not as open items of this phase.
+
+### Dependencies
+
+ADR 0079 (now amended), ADR 0039 (amendment-path rule used to amend 0079 in place -- it carries 0
+binding clauses, so a same-document amendment is the correct, cheapest path), #517/#518/#519/#523.
+
+### Acceptance and validation evidence
+
+- [x] `npm run lint:docs` (chains `check:adr`) passes against the new/edited docs.
+- [x] `npm run check:architecture` passes (no app source touched).
+- [x] `node scripts/check-app-version-bump.js` reports no change required (docs-only diff).
+- [x] Every endpoint in the new contract doc and OpenAPI fragment verified against the actual route
+      files (`apps/dgfy-api/src/routes/{dgfyLaundry,dgfyLaundryOidc,dgfyLaundryOrders}.js`), not
+      copied from any handoff doc.
+- [x] `docs/_meta/document-registry.json` updated and `lint:docs` confirms a single authoritative
+      doc per topic.
+
+### Links
+
+- Contract: `docs/api/PARTNER_INTEGRATION_CONTRACT.md`, `docs/api/partner-dglaundry-openapi.yaml`.
+- Architecture: `docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md`
+  (2026-10-07 amendment), `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md` (dated exception).
+- Issues: #517, #518, #519, #523, #796, #803 (see the filed-issue list posted to #517 and the
+  comments posted to #519/#796/#803 the same session).
+
+### Completion date
+
+2026-10-07.
+
+### Next eligible phase
+
+Phase 478.
+
+## Phase 478 - POS cashier customer-display synchronization
+
+### Initiative and release
+
+POS Customer Display Synchronization, approved local same-workstation MVP.
+
+### Objective and scope
+
+Add an optional POS customer-facing window that synchronizes the active cashier cart, line
+quantities, display-safe pricing, discounts, fees, payment state, and total. Keep the cashier
+cart as the only source of truth; keep the customer route read-only; support explicit waiting,
+active, payment, completed, disconnected, and ended states; and exclude backend persistence,
+separate-LAN discovery/pairing, and multi-display management.
+
+### Status
+
+`completed` — Pat explicitly approved implementation from the plan while unrelated Phase 476
+remains open. The local MVP implementation and automated acceptance gates are complete; physical
+operator acceptance and any production release decision remain follow-up work.
+
+### Dependencies
+
+Existing POS checkout/cart view-model contracts, POS-owned route boundaries, the approved customer
+display plan, and local POS-DGFY services. No backend, database, migration, IMS, or Storefront
+dependency was introduced.
+
+### Acceptance and validation evidence
+
+- [x] Customer-display route, read-only UI, cashier open/status/end controls, and completion/clear
+      lifecycle are implemented.
+- [x] Session-scoped protocol validates message type, session, terminal, revision, timestamp,
+      and display-safe snapshot payloads; stale and malformed messages are rejected.
+- [x] Focused POS tests pass: 2 files, 4 tests; full POS unit suite passes: 6 files, 18 tests.
+- [x] Shared public-route and checkout-shell contract tests pass: 2 files, 22 tests.
+- [x] Playwright same-origin two-window E2E passes for initial snapshot, stale revision rejection,
+      close, and runtime/HTTP 5xx diagnostics.
+- [x] Changed-file lint has no errors, the POS production build passes, and architecture and
+      controller-boundary checks pass.
+- [x] Local POS-DGFY stack is healthy and the rendered customer-display route was visually checked.
+- [ ] Authenticated cashier plus physical second-monitor operator acceptance remains a release
+      follow-up; separate-LAN pairing is explicitly deferred.
+
+### Links
+
+- Plan: `output/plans/POS_Customer_Display_Synchronization/00_POS_Customer_Display_Synchronization_Index.docx`
+  through `06_Implementation_Phases_Rollout_and_Acceptance.docx`.
+- Execution records: `output/plans/POS_Customer_Display_Synchronization/execution/`.
+- Architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, and ADRs 0001, 0025, 0031, 0044, and 0055.
+- Implementation: `apps/dgfy-pos/src/main.jsx`, `packages/web-core/src/features/pos/`, and
+  `packages/web-core/src/services/publicRoutePolicy.js`.
+- Tests: `apps/dgfy-pos/src/__tests__/CustomerDisplaySynchronization.test.js`,
+  `apps/dgfy-pos/src/__tests__/CustomerDisplayPage.behavior.test.jsx`,
+  `apps/dgfy-pos/tests/e2e/pos/customer-display.spec.js`, and the updated shared contract tests.
+
+### Completion date
+
+2026-10-07.
+
+### Next eligible phase
+
+Phase 479 only after Phase 478's release-follow-up decision is recorded and the authoritative
+ledger is rechecked.
+
+## Phase 479 - Durable DGLaundry outbound delivery and scoped recovery (#2310)
+
+### Initiative and release
+
+Epic #517, DGFY-side partner integration durability work, issue #2310.
+
+### Objective and scope
+
+Persist DGFY-to-DGLaundry operation identity before transport, deliver through a landlord MySQL
+outbox with bounded retries and recoverable dead letters, expose owner/admin-scoped dead-letter
+inspection and audited redrive, and claim inbound signed-event nonces in shared Redis. Preserve
+customer ownership, company/location mapping, verified-payment gates, and caller-owned payment
+finalization. No production enablement, deployment, or sibling-repository change.
+
+### Status
+
+`in_progress` — implementation and evidence are not complete. No completion claim is made.
+
+### Dependencies
+
+Issue #2310; ADR 0079 Decision 6; ADR 0039's in-place amendment path; the authoritative
+`docs/api/PARTNER_INTEGRATION_CONTRACT.md`; Phase 477's ratified contract; landlord migration and
+existing commerce payment idempotency/session boundaries.
+
+### Acceptance and validation evidence
+
+- [ ] Additive landlord outbox migration is repeat-safe; MySQL claim/lease, stale-ack, ordering,
+      retry-cap, and restart evidence passes against real MySQL. 2026-10-07 opt-in harness against
+      MySQL 8 passed migration up/re-run, ordered concurrent claims, expired-lease recovery,
+      stale-ack protection, separate-process persistence, scoped completion inspection, and
+      completion-only redrive; retry-cap evidence remains.
+- [ ] All outbound operation families persist immutable payload and stable identity before send;
+      same-key caller retries recover the same operation/result, while changed payload conflicts.
+      Focused tests cover delayed caller idempotency reconciliation; the full operation-family
+      persistence matrix remains outstanding.
+- [ ] Foreground and worker delivery share fresh signing, timeout, retry classification, bounded
+      Retry-After, backoff/jitter, and explicit dead-letter behavior.
+- [ ] Booking/payment completion and mixed-child compensation recover without duplicate money
+      actions or late reservation resurrection. Focused tests cover same-event payment-finalization
+      retry, mixed-child partial-failure compensation, and worker local-completion retry; full
+      provider ambiguity/payment lifecycle acceptance remains outstanding.
+- [ ] Owner/admin dead-letter listing is company/location scoped and redacted; redrive is reasoned,
+      audited, and rejects active/delivered/invalid-scope work. Live MySQL check confirms a failed
+      paid-session completion is listed in scope and can be requeued without changing the delivered
+      provider operation; HTTP authorization/redrive remains covered by unit tests.
+- [ ] Two independent API processes sharing real Redis reject identical event bytes; Redis outage
+      fails closed; signature/time/lifetime and fresh-signature event-ID dedupe regressions pass.
+      2026-10-07 opt-in Redis 7 harness passed atomic parallel claims in separate processes and
+      replay rejection after a new process starts; outage, signature/time/lifetime edge cases, and
+      fresh-signature event-ID dedupe remain outstanding.
+- [ ] Focused behavior suites (12 suites/62 tests), architecture (56 modules/680 code files),
+      controller-boundary (104 files), docs/ADR (31 docs/97 ADRs), compliance, develop-base
+      app-version, changed-file syntax, and whitespace checks passed on 2026-10-07. The
+      repository-wide test-cost inventory check is already stale on unrelated baseline entries
+      and also lacks records for the two new suites. The real-service harness passes; paid
+      completion/compensation tests and the remaining acceptance cases are outstanding.
+- [ ] Migration rollback and deployment ordering are documented; final hardening closes replay,
+      conflict, persistence, ordering, and compensation risks.
+- [ ] PR review completed; this phase does not merge, deploy, or claim deployed verification.
+
+### Links
+
+- Issue: #2310; planner handoff: `.tmp/plan-2310.md` (planning head
+  `2de28c724baa96b3da1d518b682b7ce0661b3fb4`).
+- Architecture: [ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+  [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+  [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md).
+- Contract: [DGLaundry partner contract](../api/PARTNER_INTEGRATION_CONTRACT.md) and
+  [OpenAPI fragment](../api/partner-dglaundry-openapi.yaml).
+- Migration: `apps/dgfy-migration-runner/migrations/20261007000001-add-dglaundry-outbound-outbox.cjs`.
+- Implementation: `apps/dgfy-api/src/modules/dgfyLaundryOrders/` and
+  `apps/dgfy-api/src/workers/dglaundryOutboxWorker.js`.
+
+### Completion date
+
+Not complete; set only after every required acceptance gate and evidence item passes.
+
+### Next eligible phase
+
+Phase 480 only after Phase 479's acceptance gates pass and the live ledger is rechecked.

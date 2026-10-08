@@ -83,6 +83,44 @@ describe('ConfirmActionDialog', () => {
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('Item unavailable'));
   });
 
+  it('supports a compact horizontal mobile action row when requested', () => {
+    render(
+      <ConfirmActionDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Pause voucher"
+        description="This changes the voucher status immediately."
+        confirmLabel="Pause"
+        mobileHorizontalActions
+        onConfirm={vi.fn()}
+      />
+    );
+
+    const footer = screen.getByRole('button', { name: 'Pause' }).parentElement;
+    expect(footer?.className).toContain('max-sm:flex-row');
+    expect(screen.getByRole('button', { name: 'Cancel' }).className).toContain('flex-none');
+  });
+
+  it('supports stacked mobile actions without changing the desktop footer mode', () => {
+    render(
+      <ConfirmActionDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Pause voucher"
+        description="This changes the voucher status immediately."
+        confirmLabel="Pause"
+        mobileStackedActions
+        onConfirm={vi.fn()}
+      />
+    );
+
+    const footer = screen.getByRole('button', { name: 'Pause' }).parentElement;
+    expect(footer?.className).toContain('max-sm:items-stretch');
+    const pauseButtonClasses = screen.getByRole('button', { name: 'Pause' }).className.split(/\s+/);
+    expect(pauseButtonClasses).toContain('max-sm:w-full');
+    expect(pauseButtonClasses).not.toContain('w-full');
+  });
+
   it('removes browser-native confirms from the governed flows', () => {
     [
       [appRoot, 'Pages/Settings.jsx'],

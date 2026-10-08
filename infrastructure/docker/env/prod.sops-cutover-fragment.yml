@@ -276,10 +276,29 @@
 #       SMTP_USER: ${SMTP_USER}
 #       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
 #       TENANT_PAYOUT_ENCRYPTION_KEY: ${TENANT_PAYOUT_ENCRYPTION_KEY}
+#       # Compose secrets use host environment values and expose them as
+#       # files under /run/secrets/ inside dgfy-api. deploy-sops.sh decrypts
+#       # the SOPS ciphertext into its process environment without writing
+#       # plaintext key files to the host.
+#       DGFY_OIDC_PRIVATE_KEY_FILE: /run/secrets/dgfy-oidc-private.pem
+#       DGFY_OIDC_PUBLIC_KEY_FILE: /run/secrets/dgfy-oidc-public.pem
+#       DGLAUNDRY_INTEGRATION_ENABLED: ${DGLAUNDRY_INTEGRATION_ENABLED:-false}
+#       # Client IDs and callback remain intentionally absent until DGLaundry confirms the proposed registrations; add confirmed literals here after the approved exchange.
+#     secrets:
+#       - source: dgfy-oidc-private-key
+#         target: dgfy-oidc-private.pem
+#       - source: dgfy-oidc-public-key
+#         target: dgfy-oidc-public.pem
 #     volumes:
 #       - ./data/dgfy-api/uploads:/app/uploads
 #       - ./data/dgfy-api/storage:/app/storage
 #       - ./data/dgfy-api/logs:/app/logs
+#
+# secrets:
+#   dgfy-oidc-private-key:
+#     environment: DGFY_OIDC_PRIVATE_KEY
+#   dgfy-oidc-public-key:
+#     environment: DGFY_OIDC_PUBLIC_KEY
 #     depends_on:
 #       mysql:
 #         condition: service_healthy

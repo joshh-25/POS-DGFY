@@ -1,11 +1,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 
 const profile = () => String(process.env.DGLAUNDRY_SIGNATURE_PROFILE || (process.env.NODE_ENV === 'production' ? 'http-message-signatures-v1' : 'hmac-local-v1')).trim();
 const keyId = () => String(process.env.DGLAUNDRY_INTEGRATION_KEY_ID || 'dglaundry').trim();
 const eventKeyId = () => String(process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID || 'dgfy-event-ed25519').trim();
-const maxSkewSeconds = () => Math.max(30, Number(process.env.DGLAUNDRY_INTEGRATION_MAX_SKEW_SECONDS || 300));
-const seenNonces = new Map();
+const maxSkewSeconds = () => {
+  const configuredSkew = Number(process.env.DGLAUNDRY_INTEGRATION_MAX_SKEW_SECONDS || 300);
+  return Number.isFinite(configuredSkew) ? Math.max(30, Math.min(600, configuredSkew)) : 300;
+};
 const publicKey = () => {
   const direct = String(process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY || '').trim();
   if (direct) return direct;
@@ -44,7 +47,7 @@ const parseStandardSignature = (signatureValue, inputValue) => {
     return { signature: signatureMatch[1], created, expires, nonce: parameters.nonce, keyId: parameters.keyid, algorithm: parameters.alg, tag: parameters.tag, components, signatureParams: `${inputMatch[1]};${inputMatch[2]}` };
 };
 
-export const verifyDglaundryEventSignature = ({ headers = {}, method = 'POST', authority = '', path = '', rawBody = '' }) => {
+export const buildDglaundryEventSignatureVerifier = ({ redisProvider = getRedisClient, redisConnected = isRedisConnected, now = () => Date.now() } = {}) => async ({ headers = {}, method = 'POST', authority = '', path = '', rawBody = '' }) => {
   const activeProfile = profile();
   if (activeProfile === 'http-message-signatures-v1') {
     if (!publicKey()) return { ok: false, code: 'DGLAUNDRY_PUBLIC_KEY_REQUIRED' };
@@ -52,8 +55,10 @@ export const verifyDglaundryEventSignature = ({ headers = {}, method = 'POST', a
     const digest = String(headers['content-digest'] || '').trim();
     if (!parsed || !digest || parsed.algorithm !== 'ed25519' || parsed.tag !== 'dglaundry-dgfy-v1') return { ok: false, code: 'DGLAUNDRY_SIGNATURE_REQUIRED' };
     if (JSON.stringify(parsed.components) !== JSON.stringify(['@method', '@authority', '@path', 'content-digest', 'content-type'])) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_COMPONENTS_INVALID' };
-    const now = Math.floor(Date.now() / 1000);
-    if (!Number.isInteger(parsed.created) || !Number.isInteger(parsed.expires) || parsed.created - maxSkewSeconds() > now || parsed.expires + maxSkewSeconds() < now) return { ok: false, code: 'DGLAUNDRY_TIMESTAMP_INVALID' };
+    const nowSeconds = Math.floor(now() / 1000);
+    if (!Number.isInteger(parsed.created) || !Number.isInteger(parsed.expires)
+      || parsed.expires <= parsed.created || parsed.expires - parsed.created > 300
+      || parsed.created > nowSeconds + maxSkewSeconds() || parsed.expires < nowSeconds) return { ok: false, code: 'DGLAUNDRY_TIMESTAMP_INVALID' };
     const expectedDigest = `sha-256=:${crypto.createHash('sha256').update(rawBody).digest('base64')}:`;
     if (digest !== expectedDigest) return { ok: false, code: 'DGLAUNDRY_CONTENT_DIGEST_INVALID' };
     const signatureBase = [
@@ -68,13 +73,19 @@ export const verifyDglaundryEventSignature = ({ headers = {}, method = 'POST', a
       try { return crypto.verify(null, Buffer.from(signatureBase), publicKey(), Buffer.from(parsed.signature, 'base64')); } catch { return false; }
     })();
     if (!valid) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_INVALID' };
-    const nonceKey = `${parsed.keyId}:${parsed.nonce}`;
-    for (const [entry, expiresAt] of seenNonces) if (expiresAt <= now) seenNonces.delete(entry);
-    if (seenNonces.has(nonceKey)) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_REPLAY' };
-    // Keep the expiry in the same epoch-second unit used by the pruning clock.
-    // Storing milliseconds here would prevent expired entries from ever being
-    // evicted and would grow the in-memory replay cache without bound.
-    seenNonces.set(nonceKey, parsed.expires);
+    let redis;
+    try {
+      if (!redisConnected()) return { ok: false, code: 'DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE' };
+      redis = redisProvider();
+      if (!redis?.set) return { ok: false, code: 'DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE' };
+      const nonceKey = crypto.createHash('sha256').update(`${parsed.keyId}\0${parsed.nonce}`).digest('hex');
+      const ttl = Math.max(1, parsed.expires - nowSeconds + 1);
+      const claimed = await redis.set(`dglaundry:event:nonce:${nonceKey}`, '1', { NX: true, EX: ttl });
+      if (claimed === null) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_REPLAY' };
+      if (claimed !== 'OK') return { ok: false, code: 'DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE' };
+    } catch {
+      return { ok: false, code: 'DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE' };
+    }
     return { ok: true, keyId: parsed.keyId };
   }
 
@@ -89,6 +100,8 @@ export const verifyDglaundryEventSignature = ({ headers = {}, method = 'POST', a
   const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
   return timingSafeHexEqual(signature, expected) ? { ok: true, keyId: suppliedKeyId } : { ok: false, code: 'DGLAUNDRY_SIGNATURE_INVALID' };
 };
+
+export const verifyDglaundryEventSignature = buildDglaundryEventSignatureVerifier();
 
 export const signDgfyRequest = ({ method = 'POST', authority, path, body }) => {
   const rawBody = JSON.stringify(body ?? {});

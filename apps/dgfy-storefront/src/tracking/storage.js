@@ -113,6 +113,10 @@ export const normalizeTrackedOrderEntry = (entry, fallback = {}) => {
     service_fee: Number.isFinite(Number(entry.service_fee ?? entry.serviceFee ?? entry.service_fee_amount ?? entry.serviceFeeAmount))
       ? Number(entry.service_fee ?? entry.serviceFee ?? entry.service_fee_amount ?? entry.serviceFeeAmount)
       : null,
+    customer_processing_fee: Number.isFinite(Number(entry.customer_processing_fee ?? entry.customerProcessingFee ?? entry.customer_processing_fee_amount ?? entry.customerProcessingFeeAmount))
+      ? Number(entry.customer_processing_fee ?? entry.customerProcessingFee ?? entry.customer_processing_fee_amount ?? entry.customerProcessingFeeAmount)
+      : null,
+    customer_processing_fee_label: String(entry.customer_processing_fee_label || entry.customerProcessingFeeLabel || '').trim(),
     total_amount: Number.isFinite(Number(entry.total_amount ?? entry.totalAmount))
       ? Number(entry.total_amount ?? entry.totalAmount)
       : null,

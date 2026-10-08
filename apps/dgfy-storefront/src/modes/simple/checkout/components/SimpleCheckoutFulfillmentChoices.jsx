@@ -1,4 +1,4 @@
-import { CalendarDays, Zap } from 'lucide-react';
+import { CalendarDays, Clock, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { SimpleOrderMethodSelector } from './SimpleOrderMethodSelector.jsx';
@@ -94,6 +94,31 @@ export function SimpleCheckoutFulfillmentChoices({
             label="Schedule"
             icon={({ size }) => <CalendarDays size={size} />}
             active={fnbScheduleMode === 'schedule'}
+            activeBorderColor={SIMPLE_BRAND}
+            activeBackground="#FFF8E7"
+            activeTextColor={SIMPLE_BRAND}
+            activeIconBackground="#FFF7E6"
+            activeIconColor={SIMPLE_BRAND}
+            inactiveBorderColor="#dbe5ee"
+            inactiveTextColor="#334155"
+            minHeight={isMobileViewport ? 52 : 64}
+            padding={isMobileViewport ? '10px 12px' : '12px 14px'}
+            gap={isMobileViewport ? 10 : 12}
+            borderRadius={14}
+            fontSize={14}
+            fontWeight={700}
+            iconBoxSize={isMobileViewport ? 34 : 40}
+            iconSize={isMobileViewport ? 18 : 20}
+            fontFamily={CHECKOUT_FONT_FAMILY}
+          />
+          <SelectableOptionCard
+            onClick={() => {
+              setDateTimePickerOpen(false);
+              onScheduleModeChange('anytime');
+            }}
+            label="Anytime"
+            icon={({ size }) => <Clock size={size} />}
+            active={fnbScheduleMode === 'anytime'}
             activeBorderColor={SIMPLE_BRAND}
             activeBackground="#FFF8E7"
             activeTextColor={SIMPLE_BRAND}

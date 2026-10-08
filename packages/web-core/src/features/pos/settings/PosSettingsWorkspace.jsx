@@ -301,6 +301,13 @@ export default function PosSettingsWorkspace({
   incomingOrdersState,
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
+  customerDisplayEnabled = true,
+  customerDisplayCanOpen = false,
+  customerDisplayStatus = 'closed',
+  customerDisplayStatusLabel = 'Not connected',
+  onCustomerDisplayEnabledChange = () => {},
+  onOpenCustomerDisplay = () => null,
+  onEndCustomerDisplay = () => {},
   locked,
   sectionId,
   initialTab = 'pos_setup',
@@ -332,7 +339,8 @@ export default function PosSettingsWorkspace({
   printersDetected = 0,
   onTestPrinter = async () => false,
   onSelectTerminal = async () => false,
-  workspacePaneRef = null
+  workspacePaneRef = null,
+  processingFeePane = null
   // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
   // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
   // here.
@@ -573,6 +581,9 @@ export default function PosSettingsWorkspace({
     // not on any of the other tabs' permissions.
     ...(canViewDownpayment
       ? [{ id: 'payments', label: 'Payments', icon: Banknote }]
+      : []),
+    ...(processingFeePane
+      ? [{ id: 'processing_fees', label: 'Preparation Fee', icon: BadgePercent }]
       : []),
     // Phase 233b (#1341, epic #1321): hidden entirely (not merely disabled) for a POS role
     // without settings:edit -- matches #1341's acceptance evidence ("a POS role without the
@@ -2030,7 +2041,8 @@ export default function PosSettingsWorkspace({
     onTestPrinter,
     onSelectTerminal,
     showPosDefaultsEditor, showAttendanceEditor, showTeamAccessEditor,
-    onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, handleTerminalRegistrySave, handleTerminalAdvancedSettingsSave, canManageCashiers, cashiersLoading,
+    onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, customerDisplayEnabled, customerDisplayCanOpen, customerDisplayStatus, customerDisplayStatusLabel,
+    onCustomerDisplayEnabledChange, onOpenCustomerDisplay, onEndCustomerDisplay, handleTerminalRegistrySave, handleTerminalAdvancedSettingsSave, canManageCashiers, cashiersLoading,
     getCashiersForLocation, setCashierInvitationOpen, canRemoveCashiers, setCashierRemoveUser, cashiersLoaded, activeCashierUsers,
     cashierVoidAccessSavingUserId, updateCashierVoidAccess, updateCashierDrawerAccess, loadCashierAccounts,
     canManageDiscountApprovalPins, discountApprovers, discountApproversLoading, loadDiscountApprovers,
@@ -2132,6 +2144,7 @@ export default function PosSettingsWorkspace({
         </Suspense>
       );
     }
+    if (renderedTab === 'processing_fees' && processingFeePane) return processingFeePane;
     if (renderedTab === 'delivery_pricing' && canEditSettings) {
       return (
         <PosDeliveryPricingSettingsCard

@@ -419,6 +419,12 @@ authoritative copy — the one CI and the server actually trust — remains
 `Sieitzz/dgfy-secrets/.sops.yaml`; this repo's copy is a convenience mirror,
 not a second source of truth, and must be kept identical to it.
 
+DGLaundry's file-shaped OIDC signing keys use the environment-backed Compose
+secret path documented in [`dglaundry-oidc-key-provisioning.md`](dglaundry-oidc-key-provisioning.md).
+That runbook records the required `dgfy-secrets/.sops.yaml` path rule and ciphertext filenames;
+the private repository update and human key installation must happen before enabling the
+integration on PROD.
+
 ## Verification checklist for whoever executes this
 
 - [ ] The rehearsal (see "Rehearsal" above) has passed end to end, including

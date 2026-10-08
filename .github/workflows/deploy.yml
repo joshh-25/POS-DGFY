@@ -157,6 +157,13 @@ on:
           leave this false and use ad-hoc tags.
         type: boolean
         default: false
+      runner_labels_json:
+        description: >-
+          Runner labels for image builds and SSH publish. Defaults to the self-hosted staging host;
+          select ["ubuntu-latest"] for a hosted promotion build/deploy (the workflow enables VPN
+          automatically for DEV/STAGING targets).
+        type: string
+        default: '["sieitz-runner"]'
 
 concurrency:
   group: deploy-${{ github.ref_name }}
@@ -232,17 +239,17 @@ jobs:
       revisioned_dev_dispatch: ${{ needs.resolve-environment.outputs.revisioned_dev_dispatch == 'true' }}
       image_tag_override: ${{ needs.resolve-environment.outputs.image_tag_override }}
       publish: ${{ inputs.deploy }}
-      # The self-hosted runner already sits on the DEV/STAGING network and,
-      # for DEV/STAGING, IS the deploy target -- the OpenVPN hop hosted
-      # runners needed would have it tunnel into itself.
-      vpn_required: false
+      # Hosted DEV/STAGING runs need OpenVPN to reach the private target. Keep
+      # that requirement derived from the explicit runner selection so it
+      # cannot be accidentally omitted on a hosted dispatch.
+      vpn_required: ${{ contains(fromJSON(inputs.runner_labels_json), 'ubuntu-latest') }}
       build_api: ${{ inputs.build_api }}
       build_frontend_ims: ${{ inputs.build_frontend_ims }}
       build_frontend_pos: ${{ inputs.build_frontend_pos }}
       build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
       build_frontend_opis: ${{ inputs.build_frontend_opis }}
       build_frontend_admin: ${{ inputs.build_frontend_admin }}
-      runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
+      runner_labels_json: ${{ inputs.runner_labels_json }}  # #923: default self-hosted; hosted dispatches use VPN
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision_api: ${{ inputs.release_revision_api }}
       release_revision_migration_runner: ${{ inputs.release_revision_migration_runner }}

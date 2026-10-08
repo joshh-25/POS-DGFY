@@ -91,6 +91,38 @@ const activeFolderWhere = (where = {}) => ({
 
 const hasOwn = (obj, key) => Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
 
+const normalizeStockAllocations = (rows = []) => {
+    if (rows === undefined || rows === null) return [];
+    if (!Array.isArray(rows)) {
+        const error = new Error('stock_allocations must be an array');
+        error.statusCode = 422;
+        throw error;
+    }
+
+    const seenLocationIds = new Set();
+    return rows.map((row) => {
+        const locationId = Number.parseInt(row?.location_id, 10);
+        const quantity = Number.parseFloat(row?.quantity);
+        if (!Number.isInteger(locationId) || locationId <= 0 || !Number.isFinite(quantity) || quantity <= 0) {
+            const error = new Error('stock_allocations must contain positive location_id and quantity values');
+            error.statusCode = 422;
+            throw error;
+        }
+        if (seenLocationIds.has(locationId)) {
+            const error = new Error('stock_allocations must contain each location_id only once');
+            error.statusCode = 422;
+            throw error;
+        }
+        seenLocationIds.add(locationId);
+        return { location_id: locationId, quantity };
+    });
+};
+
+const hasPositiveStockValue = (value) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0;
+};
+
 // Phase 257 (#1318) — belt-and-braces against a tenant whose schema hasn't
 // picked up item_folder_memberships yet (R1 incomplete on some tenant); see
 // docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md. Degrades instead of
@@ -1797,6 +1829,7 @@ export const itemRepository = {
                 regulatory_compliance,
                 manufacturer_barcode,
                 internal_barcode,
+                stock_allocations,
                 ...dbFields
             } = itemData;
 
@@ -1829,10 +1862,24 @@ export const itemRepository = {
             }
 
             const isServiceItem = String(dbFields.category || '').trim().toLowerCase() === 'service';
+            const normalizedStockAllocations = normalizeStockAllocations(stock_allocations);
+            const hasStockAllocations = normalizedStockAllocations.length > 0;
+            if (hasStockAllocations && (isServiceItem || itemData.status === 'draft')) {
+                const error = new Error(isServiceItem
+                    ? 'Pure service items are stock-exempt and cannot have stock allocations.'
+                    : 'Draft items cannot receive stock allocations until they are finalized.');
+                error.statusCode = 422;
+                throw error;
+            }
+            if (hasStockAllocations && hasPositiveStockValue(dbFields.current_stock)) {
+                const error = new Error('Use stock_allocations or current_stock, not both.');
+                error.statusCode = 422;
+                throw error;
+            }
             const dataToCreate = { ...dbFields };
-            const initialStock = isServiceItem ? 0 : parseFloat(dbFields.current_stock || 0);
+            const initialStock = isServiceItem || hasStockAllocations ? 0 : parseFloat(dbFields.current_stock || 0);
             const movementLocationId = Number.parseInt(dbFields.location_id, 10) || null;
-            if (isServiceItem || initialStock > 0) {
+            if (isServiceItem || hasStockAllocations || initialStock > 0) {
                 dataToCreate.current_stock = 0;
             }
             delete dataToCreate.location_id;
@@ -1923,7 +1970,18 @@ export const itemRepository = {
                 await ServiceItemDetail.create({ item_id: item.item_id }, { transaction });
             }
 
-            if (initialStock > 0) {
+            if (hasStockAllocations) {
+                for (const allocation of normalizedStockAllocations) {
+                    await inventoryRepositoryDependencies.createStockMovement({
+                        item_id: item.item_id,
+                        quantity: allocation.quantity,
+                        movement_type: 'adjustment',
+                        notes: `Initial stock entry from Item Editor @ location ${allocation.location_id}`,
+                        reference_type: 'MANUAL',
+                        location_id: allocation.location_id
+                    }, userId, transaction);
+                }
+            } else if (initialStock > 0) {
                 await inventoryRepositoryDependencies.createStockMovement({
                     item_id: item.item_id,
                     quantity: initialStock,
@@ -2143,6 +2201,7 @@ export const itemRepository = {
                 packaging_info,
                 quality_control,
                 regulatory_compliance,
+                stock_allocations,
                 ...dbFields
             } = itemData;
 
@@ -2177,10 +2236,26 @@ export const itemRepository = {
             dbFields.updated_by = userId;
 
             const nextCategory = String(dbFields.category || item.category || '').trim().toLowerCase();
-            if (nextCategory === 'service') {
+            const normalizedStockAllocations = normalizeStockAllocations(stock_allocations);
+            const hasStockAllocations = normalizedStockAllocations.length > 0;
+            if (hasStockAllocations && (nextCategory === 'service' || item.status === 'draft')) {
+                const error = new Error(nextCategory === 'service'
+                    ? 'Pure service items are stock-exempt and cannot have stock allocations.'
+                    : 'Draft items cannot receive stock allocations until they are finalized.');
+                error.statusCode = 422;
+                throw error;
+            }
+            if (hasStockAllocations && hasPositiveStockValue(itemData.current_stock)) {
+                const error = new Error('Use stock_allocations or current_stock, not both.');
+                error.statusCode = 422;
+                throw error;
+            }
+            if (hasStockAllocations) {
+                delete dbFields.current_stock;
+            } else if (nextCategory === 'service') {
                 dbFields.current_stock = 0;
             }
-            const newStockValue = nextCategory === 'service'
+            const newStockValue = hasStockAllocations || nextCategory === 'service'
                 ? null
                 : (dbFields.current_stock !== undefined
                 ? parseFloat(dbFields.current_stock || 0)
@@ -2215,6 +2290,19 @@ export const itemRepository = {
                 }, userId, transaction);
             } else {
                 await item.update(dbFields, { transaction });
+            }
+
+            if (hasStockAllocations) {
+                for (const allocation of normalizedStockAllocations) {
+                    await inventoryRepositoryDependencies.createStockMovement({
+                        item_id: itemId,
+                        quantity: allocation.quantity,
+                        movement_type: 'adjustment',
+                        notes: `Stock addition from Item Editor @ location ${allocation.location_id}`,
+                        reference_type: 'MANUAL',
+                        location_id: allocation.location_id
+                    }, userId, transaction);
+                }
             }
 
             const clearManufacturingProperties = workflowMode === 'fnb';
@@ -2312,6 +2400,18 @@ export const itemRepository = {
                 production_notes: item.production_notes,
                 ...itemData
             };
+            const normalizedStockAllocations = normalizeStockAllocations(mergedData.stock_allocations);
+            const hasStockAllocations = normalizedStockAllocations.length > 0;
+            if (hasStockAllocations && String(mergedData.category || '').trim().toLowerCase() === 'service') {
+                const error = new Error('Pure service items are stock-exempt and cannot have stock allocations.');
+                error.statusCode = 422;
+                throw error;
+            }
+            if (hasStockAllocations && hasPositiveStockValue(itemData.current_stock)) {
+                const error = new Error('Use stock_allocations or current_stock, not both.');
+                error.statusCode = 422;
+                throw error;
+            }
             if (Object.prototype.hasOwnProperty.call(mergedData, 'sku_code')) {
                 mergedData.sku_code = String(mergedData.sku_code || '').trim();
             }
@@ -2380,6 +2480,11 @@ export const itemRepository = {
             delete itemFields.packaging_info;
             delete itemFields.quality_control;
             delete itemFields.regulatory_compliance;
+            delete itemFields.stock_allocations;
+            if (hasStockAllocations) {
+                delete itemFields.current_stock;
+                delete itemFields.location_id;
+            }
 
             const updateData = {
                 ...itemFields,
@@ -2389,6 +2494,18 @@ export const itemRepository = {
             };
 
             await item.update(updateData, { transaction });
+            if (hasStockAllocations) {
+                for (const allocation of normalizedStockAllocations) {
+                    await inventoryRepositoryDependencies.createStockMovement({
+                        item_id: itemId,
+                        quantity: allocation.quantity,
+                        movement_type: 'adjustment',
+                        notes: `Initial stock entry from Item Editor @ location ${allocation.location_id}`,
+                        reference_type: 'MANUAL',
+                        location_id: allocation.location_id
+                    }, userId, transaction);
+                }
+            }
             await auditInventoryEvent({
                 userId,
                 entityId: item.item_id,

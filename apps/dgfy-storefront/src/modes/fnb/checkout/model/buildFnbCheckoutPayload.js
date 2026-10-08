@@ -44,7 +44,9 @@ export const buildFnbCheckoutPayload = ({
   delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
   // Dine-in is always scheduled. The route keeps fnbScheduleMode in sync for presentation,
   // but the payload remains defensive so a restored/stale mode cannot silently drop the
-  // required handover time.
+  // required handover time. Anytime is intentionally represented by a null timestamp because
+  // the current storefront checkout contract stores only an exact scheduled_for value; the
+  // selected mode remains available to the checkout summary and guest draft.
   scheduled_for: (fnbScheduleMode === 'schedule' || orderMethod === 'dine_in') && fnbScheduledFor
     ? branchScheduleToIso(fnbScheduledFor, selectedStore?.storefront_hours)
     : null,

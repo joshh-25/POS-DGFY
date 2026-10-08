@@ -79,6 +79,7 @@ import {
   startPosBulkImageImportWorker,
   stopPosBulkImageImportWorker
 } from './workers/posBulkImageImportWorker.js';
+import { startDglaundryOutboxWorker, stopDglaundryOutboxWorker } from './workers/dglaundryOutboxWorker.js';
 import { ITEM_IMAGE_GENERATION_ENABLED, requireItemImageGenerationConfig } from './config/itemImageFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
@@ -999,6 +1000,7 @@ const startServer = async () => {
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
     startPosBulkImageImportWorker();
+    if (process.env.DGLAUNDRY_OUTBOX_ENABLED !== 'false') startDglaundryOutboxWorker();
 
     // Batch menu import worker — gated on its own flag (like geo inventory
     // above, its tick() no-ops whenever Redis isn't connected, so it's safe
@@ -1095,6 +1097,7 @@ const startServer = async () => {
       }
       stopCatalogImageUploadWorker();
       stopPosBulkImageImportWorker();
+      await stopDglaundryOutboxWorker();
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection

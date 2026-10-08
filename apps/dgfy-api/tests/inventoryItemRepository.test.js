@@ -1397,6 +1397,68 @@ describe('inventory itemRepository', () => {
     expect(result).toEqual({ item_id: 1001, name: 'Milk' });
   });
 
+  it('creates one transactional stock movement per Item Editor branch allocation', async () => {
+    const itemRecord = { item_id: 1005 };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const transaction = {
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 1005, name: 'Milk' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 1 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-create-allocations' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    const result = await itemRepository.createItem({
+      status: 'active',
+      category: 'raw_material',
+      sku_code: 'MILK-ALLOC-001',
+      name: 'Milk',
+      fifo_enabled: true,
+      stock_allocations: [
+        { location_id: 11, quantity: 100 },
+        { location_id: 12, quantity: 100 }
+      ]
+    }, 5);
+
+    expect(Item.create).toHaveBeenCalledWith(
+      expect.not.objectContaining({ stock_allocations: expect.anything() }),
+      { transaction }
+    );
+    expect(Item.create).toHaveBeenCalledWith(
+      expect.objectContaining({ current_stock: 0 }),
+      { transaction }
+    );
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ item_id: 1005, quantity: 100, location_id: 11, movement_type: 'adjustment' }),
+      5,
+      transaction
+    );
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ item_id: 1005, quantity: 100, location_id: 12, movement_type: 'adjustment' }),
+      5,
+      transaction
+    );
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+    expect(result).toEqual({ item_id: 1005, name: 'Milk' });
+  });
+
   it('persists an explicitly POS-scoped manufacturer GTIN in the item transaction', async () => {
     const itemRecord = { item_id: 1004, name: 'POS GTIN Item', sku_code: 'POS-GTIN-001', status: 'active', category: 'product' };
     const Item = {
@@ -1866,6 +1928,90 @@ describe('inventory itemRepository', () => {
     expect(result).toBe(finalized);
   });
 
+  it('applies branch allocations while finalizing a draft item', async () => {
+    const draftItem = {
+      item_id: 3004,
+      status: 'draft',
+      wizard_metadata: {},
+      sku_code: 'DRF-3004',
+      name: 'Draft Flour',
+      category: 'raw_material',
+      description: 'desc',
+      product_folder: null,
+      max_capacity: 100,
+      min_threshold: 20,
+      purchase_allowance: 10,
+      unit_of_measure: 'kg',
+      cost_per_unit: 1.5,
+      current_stock: 0,
+      fifo_enabled: true,
+      update: jest.fn().mockResolvedValue(true)
+    };
+    const finalized = { item_id: 3004, status: 'active', productCompositions: [] };
+    const Item = {
+      findOne: jest.fn()
+        .mockResolvedValueOnce(draftItem)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(finalized)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 125 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-finalize-allocations' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      if (name === 'ItemNutrition') return {};
+      if (name === 'ItemAllergen') return {};
+      if (name === 'ItemPhysicalProperties') return {};
+      if (name === 'ItemShelfLife') return {};
+      if (name === 'ItemPackaging') return {};
+      if (name === 'ItemQualityControl') return {};
+      if (name === 'ItemRegulatoryCompliance') return {};
+      if (name === 'ItemCostBreakdown') return {};
+      if (name === 'FIFOBatch') return {};
+      if (name === 'ProductComposition') return {};
+      return {};
+    });
+
+    const result = await itemRepository.finalizeItem(3004, {
+      stock_allocations: [
+        { location_id: 11, quantity: 100 },
+        { location_id: 12, quantity: 100 }
+      ]
+    }, 6);
+
+    const updatePayload = draftItem.update.mock.calls[0][0];
+    expect(updatePayload.current_stock).toBeUndefined();
+    expect(updatePayload.location_id).toBeUndefined();
+    expect(updatePayload.stock_allocations).toBeUndefined();
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenCalledTimes(2);
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ item_id: 3004, quantity: 100, location_id: 11, movement_type: 'adjustment' }),
+      6,
+      transaction
+    );
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ item_id: 3004, quantity: 100, location_id: 12, movement_type: 'adjustment' }),
+      6,
+      transaction
+    );
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+    expect(result).toBe(finalized);
+  });
+
   it('clears manufacturing-only side-table rows when finalizing an F&B product draft', async () => {
     inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
       ops_workflow_mode: { value: 'fnb' }
@@ -2089,6 +2235,70 @@ describe('inventory itemRepository', () => {
     expect(transaction.commit).toHaveBeenCalled();
     expect(transaction.rollback).not.toHaveBeenCalled();
     expect(result).toEqual({ item_id: 15, name: 'Flour' });
+  });
+
+  it('adds stock to each requested branch without overwriting the aggregate balance', async () => {
+    const updateSpy = jest.fn().mockResolvedValue(true);
+    const itemRecord = {
+      item_id: 16,
+      sku_code: 'SKU-016',
+      current_stock: 40,
+      fifo_enabled: true,
+      status: 'active',
+      category: 'raw_material',
+      wizard_metadata: null,
+      update: updateSpy
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 16, name: 'Flour' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 124 });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-update-allocations' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    const result = await itemRepository.updateItem(16, {
+      name: 'Flour',
+      stock_allocations: [
+        { location_id: 11, quantity: 100 },
+        { location_id: 12, quantity: 100 }
+      ]
+    }, 7);
+
+    const updatePayload = updateSpy.mock.calls[0][0];
+    expect(updatePayload).toEqual(expect.objectContaining({ name: 'Flour', updated_by: 7 }));
+    expect(updatePayload.current_stock).toBeUndefined();
+    expect(updatePayload.stock_allocations).toBeUndefined();
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenCalledTimes(2);
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ item_id: 16, quantity: 100, location_id: 11, movement_type: 'adjustment' }),
+      7,
+      transaction
+    );
+    expect(inventoryRepositoryDependencies.createStockMovement).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ item_id: 16, quantity: 100, location_id: 12, movement_type: 'adjustment' }),
+      7,
+      transaction
+    );
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+    expect(result).toEqual({ item_id: 16, name: 'Flour' });
   });
 
   it('clears manufacturing-only side-table rows when updating an F&B product with empty wizard fields', async () => {

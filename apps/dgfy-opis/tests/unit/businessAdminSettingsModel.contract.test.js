@@ -24,12 +24,13 @@ describe('Business Admin settings navigation model', () => {
         team: { view: true, edit: true, scope: 'branch' },
         attendance: { view: false, edit: false, scope: 'branch' },
         payments: { view: true, edit: false, scope: 'tenant' },
+        processing_fees: { view: true, edit: false, scope: 'tenant' },
         registers: { view: false, edit: false, scope: 'branch' }
     };
 
     it('declares one canonical Business Admin owner and scope for every settings section', () => {
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.map((definition) => definition.key)).toEqual([
-            'profile', 'pos', 'taxes', 'discounts', 'storefront', 'delivery', 'branches', 'team', 'attendance', 'payments', 'registers'
+            'profile', 'pos', 'taxes', 'discounts', 'storefront', 'delivery', 'branches', 'team', 'attendance', 'payments', 'processing_fees', 'registers'
         ]);
         expect(Object.fromEntries(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.map((definition) => [definition.key, definition.scope]))).toEqual({
             profile: 'tenant',
@@ -42,9 +43,14 @@ describe('Business Admin settings navigation model', () => {
             team: 'branch',
             attendance: 'branch',
             payments: 'tenant',
+            processing_fees: 'tenant',
             registers: 'branch'
         });
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'pos').description).toContain('discount rules');
+        expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'processing_fees')).toMatchObject({
+            hidden: true,
+            redirectTo: 'pos'
+        });
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'registers').description).toContain('Device enrollment remains POS-owned');
     });
 
@@ -80,6 +86,14 @@ describe('Business Admin settings navigation model', () => {
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'discounts', 'edit')).toBe(true);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'storefront', 'view')).toBe(false);
         expect(canAccessBusinessAdminSettingsSection(capabilities, 'delivery', 'view')).toBe(true);
+    });
+
+    it('routes the legacy processing-fee settings path into POS configuration', () => {
+        expect(parseBusinessAdminPath('/backoffice/settings/processing_fees', '/backoffice')).toMatchObject({
+            activeSection: 'settings',
+            settingsSection: 'pos'
+        });
+        expect(buildBusinessAdminSettingsPath('/backoffice', 'processing_fees')).toBe('/backoffice/settings/pos');
     });
 
     it('normalizes branch context to the authenticated visible scope', () => {

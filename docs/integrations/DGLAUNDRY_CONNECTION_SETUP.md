@@ -15,11 +15,13 @@ fingerprints only through the approved secret-management channel. Never put a
 private key, client secret, token, or database credential in a PR, ticket,
 shell argument, log, or handoff archive.
 
-The checked-in manifest intentionally leaves the browser-client and inbound
-service-client IDs empty until the DGFY owner registers the separate clients.
-`inspect` may report that blocker; `prepare` must remain blocked until the
-reviewed manifest contains the real IDs. Do not copy the synthetic values from
-a test fixture into either hosted environment.
+The checked-in manifest carries proposed browser-client and inbound
+service-client IDs (`dglaundry-web` and `dglaundry-service`) in both environment
+sections. They are proposals pending DGLaundry's confirmation, not evidence that
+either client is registered. `prepare` remains gated on the real registration
+environment variables and key IDs from the approved exchange; manifest values
+do not bypass that gate. Do not copy synthetic values from a test fixture into
+either hosted environment.
 
 The qualification environment must use:
 

@@ -10,12 +10,16 @@ const RESULTS = [
   { addressLine: 'Jaro Cathedral, Jaro, Iloilo City', latitude: 10.7251, longitude: 122.5573, precision: 'poi' }
 ];
 
-function Harness({ searchAddresses, onSelectResult = () => {}, initialValue = '' }) {
+function Harness({ searchAddresses, onClear = () => {}, onSelectResult = () => {}, initialValue = '' }) {
   const [value, setValue] = useState(initialValue);
   return (
     <DeliveryAddressSearchField
       value={value}
       onValueChange={setValue}
+      onClear={() => {
+        setValue('');
+        onClear();
+      }}
       onSelectResult={(result) => {
         setValue(result.addressLine);
         onSelectResult(result);
@@ -127,6 +131,28 @@ describe('#759 DeliveryAddressSearchField -- type an address, choose a suggestio
     expect(screen.queryByRole('option')).toBeNull();
     expect(onSelectResult).not.toHaveBeenCalled();
     expect(input.value).toBe('Jaro');
+  });
+
+  it('clears the controlled value through the full-clear callback when X is clicked', () => {
+    const onClear = vi.fn();
+    render(<Harness searchAddresses={vi.fn()} initialValue="Jaro" onClear={onClear} />);
+    const input = screen.getByRole('combobox', { name: 'Delivery address' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear delivery address' }));
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe('');
+  });
+
+  it('uses the full-clear callback when deleting the final character', () => {
+    const onClear = vi.fn();
+    render(<Harness searchAddresses={vi.fn()} initialValue="Jaro" onClear={onClear} />);
+    const input = screen.getByRole('combobox', { name: 'Delivery address' });
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe('');
   });
 
   it('says so when nothing matches, and points to the map instead', async () => {

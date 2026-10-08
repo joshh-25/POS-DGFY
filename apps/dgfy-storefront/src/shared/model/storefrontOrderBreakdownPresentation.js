@@ -1,6 +1,7 @@
 export const STOREFRONT_ORDER_BREAKDOWN_LABELS = Object.freeze({
   subtotal: 'Subtotal',
   discount: 'Discount',
+  customerProcessingFee: 'Item processing fee',
   deliveryFee: 'Delivery Fee',
   total: 'Total',
 });
@@ -38,6 +39,13 @@ export const buildStorefrontOrderBreakdownRows = ({
       label: String(totals.discount_label || STOREFRONT_ORDER_BREAKDOWN_LABELS.discount).trim(),
       value: `- ${money(totals.discount_amount)}`,
       color: '#15803d',
+    });
+  }
+
+  if (hasAmount(totals.customer_processing_fee_amount) && Number(totals.customer_processing_fee_amount) > 0) {
+    rows.push({
+      label: String(totals.customer_processing_fee_label || STOREFRONT_ORDER_BREAKDOWN_LABELS.customerProcessingFee).trim(),
+      value: money(totals.customer_processing_fee_amount),
     });
   }
 

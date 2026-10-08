@@ -24,9 +24,11 @@ import { classifyStoreCatalogError } from '../model/storefrontErrorMessages.js';
 import { buildStorefrontLoadFailureState } from '../model/storefrontLoadState.js';
 import { useStorefrontStore } from '../../store/useStorefrontStore.js';
 
-export const buildCatalogRequestUrl = ({ isServicesMode = false, locationId = null } = {}) => {
-  const basePath = isServicesMode ? '/api/v1/store/services/catalog' : '/api/v1/store/catalog';
-  const query = new URLSearchParams({ limit: '120' });
+export const buildCatalogRequestUrl = ({ isServicesMode = false, isLaundryMode = false, locationId = null } = {}) => {
+  const basePath = isLaundryMode
+    ? '/api/v1/store/laundry/catalog'
+    : (isServicesMode ? '/api/v1/store/services/catalog' : '/api/v1/store/catalog');
+  const query = new URLSearchParams(isLaundryMode ? {} : { limit: '120' });
   if (locationId != null) query.set('location_id', String(locationId));
   return `${basePath}?${query.toString()}`;
 };
@@ -133,7 +135,19 @@ export function useStoreCatalogLoader({
       setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch, ...paymentModePatch } : prev));
     }
     setCatalog(
-      Array.isArray(catalogData?.items)
+      Array.isArray(catalogData?.payload?.entries)
+        ? catalogData.payload.entries.map((entry) => ({
+          id: entry.variantId || entry.id,
+          name: entry.name || entry.label || 'Laundry item',
+          description: entry.description || '',
+          descriptionPreview: entry.description || '',
+          pricingMode: entry.pricingMode || entry.pricing_mode || 'per_kilo',
+          unitAmountCentavos: Number(entry.unitAmountCentavos ?? entry.unit_amount_centavos ?? 0),
+          unitLabel: entry.unitLabel || entry.unit_label || (entry.pricingMode === 'per_kilo' ? 'per kg' : 'each'),
+          image_url: entry.media?.find((media) => media.isPrimary)?.url || entry.media?.[0]?.url || null,
+          externalLineReference: entry.externalLineReference || entry.external_line_reference || entry.id
+        }))
+        : Array.isArray(catalogData?.items)
         ? catalogData.items
         : (Array.isArray(catalogData?.services) ? catalogData.services : [])
     );
@@ -284,9 +298,12 @@ export function useStoreCatalogLoader({
       // against the scoped one that follows. Wrapped so it never rejects
       // (tagged result instead) -- nothing may ever await it if the
       // locations fetch itself throws before reaching the branch below.
-      const speculativeCatalogPromise = requestJson(withVoucherCodeParam(buildCatalogRequestUrl({
-        isServicesMode: isServicesStorefront
-      }), voucherCodeRef.current), { storeSlug: profile.slug, signal })
+      const isLaundryStorefront = normalizeBusinessMode(profile?.workflow_mode || profile?.ops_workflow_mode) === 'laundry';
+      const catalogUrl = (locationId = null) => {
+        const base = buildCatalogRequestUrl({ isServicesMode: isServicesStorefront, isLaundryMode: isLaundryStorefront, locationId });
+        return isLaundryStorefront ? base : withVoucherCodeParam(base, voucherCodeRef.current);
+      };
+      const speculativeCatalogPromise = requestJson(catalogUrl(), { storeSlug: profile.slug, signal })
         .then((data) => ({ data }))
         .catch((error) => ({ error }));
 
@@ -364,10 +381,7 @@ export function useStoreCatalogLoader({
         // No `cache: 'no-store'` (issue #282, Phase B) -- see the profile
         // fetch above for why.
         catalogData = await requestJson(
-          withVoucherCodeParam(buildCatalogRequestUrl({
-            isServicesMode: isServicesStorefront,
-            locationId: resolvedCatalogLocationId
-          }), voucherCodeRef.current),
+          catalogUrl(resolvedCatalogLocationId),
           { storeSlug: profile.slug, signal }
         );
       }
@@ -436,12 +450,13 @@ export function useStoreCatalogLoader({
       setLoadingCatalog(true);
       setCatalogError('');
       try {
-        const catalogQuery = withVoucherCodeParam(buildCatalogRequestUrl({
-          isServicesMode: normalizeBusinessMode(
-            selectedStore?.workflow_mode || selectedStore?.ops_workflow_mode
-          ) === 'services',
+        const mode = normalizeBusinessMode(selectedStore?.workflow_mode || selectedStore?.ops_workflow_mode);
+        const catalogBase = buildCatalogRequestUrl({
+          isServicesMode: mode === 'services',
+          isLaundryMode: mode === 'laundry',
           locationId: selectedLocationId
-        }), voucherCode);
+        });
+        const catalogQuery = mode === 'laundry' ? catalogBase : withVoucherCodeParam(catalogBase, voucherCode);
         // No `cache: 'no-store'` (issue #282, Phase B) -- see openStoreBySlug's
         // profile fetch above for why.
         const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug, signal: abortController.signal });

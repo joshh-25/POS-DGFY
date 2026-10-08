@@ -104,6 +104,7 @@ describe('SimpleCheckoutFulfillmentChoices', () => {
     expect(screen.getByText('2. When would you like your order?')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'NOW' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Schedule' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Anytime' })).toBeTruthy();
     expect(screen.queryByTestId('order-timing-expectation')).toBeNull();
   });
 

@@ -73,6 +73,13 @@ describe('Back Office canonical manifest contract', () => {
         });
     });
 
+    it('names the OPIS catalog surface Item Editor', () => {
+        expect(BACKOFFICE_MANIFEST.catalog).toMatchObject({
+            label: 'Item Editor',
+            title: 'Item Editor'
+        });
+    });
+
     it('derives migrated component ownership without a second component registry', () => {
         const migratedKeys = Object.keys(MERCHANT_BACKOFFICE_MODULE_META);
         expect(migratedKeys.sort()).toEqual([
@@ -133,6 +140,7 @@ describe('Back Office canonical manifest contract', () => {
             'team',
             'attendance',
             'payments',
+            'processing_fees',
             'registers'
         ]);
     });

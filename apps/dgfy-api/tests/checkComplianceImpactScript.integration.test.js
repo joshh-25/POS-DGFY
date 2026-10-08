@@ -256,7 +256,7 @@ describe('check-compliance-impact script integration', () => {
         try {
             const result = runCheck({
                 changedFiles: [
-                    'packages/web-core/src/services/adminService.js',
+                    'apps/dgfy-admin/src/services/adminService.js',
                     declaration.relativePath
                 ]
             });

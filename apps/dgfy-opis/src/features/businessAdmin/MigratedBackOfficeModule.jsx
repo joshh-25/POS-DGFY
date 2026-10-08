@@ -30,7 +30,7 @@ export default function MigratedBackOfficeModule({ section }) {
         </div>
       ) : null}
       <Suspense fallback={<ModuleLoading />}>
-        {isCatalog || isFnb || isSales ? <Module embedded /> : <Module />}
+        {isCatalog ? <Module embedded editorLabel="Item Editor" itemEditorMode /> : isFnb || isSales ? <Module embedded /> : <Module />}
       </Suspense>
     </section>
   );

@@ -45,6 +45,19 @@ const internalBarcodeSchema = Joi.object({
   })
 }).allow(null).optional();
 
+const stockAllocationSchema = Joi.array().items(Joi.object({
+  location_id: Joi.number().integer().positive().required(),
+  quantity: Joi.number().positive().required()
+})).max(100).custom((rows, helpers) => {
+  const locationIds = rows.map((row) => row.location_id);
+  if (new Set(locationIds).size !== locationIds.length) {
+    return helpers.error('any.invalid');
+  }
+  return rows;
+}).messages({
+  'any.invalid': 'stock_allocations must contain each location_id only once'
+});
+
 export const createItemSchema = Joi.object({
   sku_code: Joi.string().min(1).max(50).required().messages({
     'string.min': 'SKU code must be at least 1 character',
@@ -205,6 +218,7 @@ export const createItemSchema = Joi.object({
   }).allow(null),
   current_stock: Joi.number().min(0).allow(null, ''),
   location_id: Joi.number().integer().positive().allow(null),
+  stock_allocations: stockAllocationSchema,
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft', 'active', 'inactive').default('active'),
   manufacturer_barcode: manufacturerBarcodeSchema,
@@ -322,6 +336,7 @@ export const createItemDraftSchema = Joi.object({
   }).allow(null),
   current_stock: Joi.number().min(0).allow(null, ''),
   location_id: Joi.number().integer().positive().allow(null, ''),
+  stock_allocations: stockAllocationSchema,
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft').default('draft'),
   manufacturer_barcode: manufacturerBarcodeSchema,
@@ -438,6 +453,7 @@ export const updateItemSchema = Joi.object({
   }).allow(null),
   current_stock: Joi.number().min(0).allow(null, ''),
   location_id: Joi.number().integer().positive().allow(null),
+  stock_allocations: stockAllocationSchema,
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft', 'active', 'inactive')
 }).unknown(true); // Allow unknown properties (e.g., from getItemById associations)

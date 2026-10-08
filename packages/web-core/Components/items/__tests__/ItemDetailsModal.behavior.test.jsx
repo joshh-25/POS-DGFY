@@ -5,7 +5,9 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ItemDetailsModal from '../ItemDetailsModal.jsx';
 
-vi.mock('../FIFOBatchViewer', () => ({ default: () => null }));
+vi.mock('../FIFOBatchViewer', () => ({
+  default: () => <div data-testid="fifo-batch-viewer">FIFO Batches</div>
+}));
 vi.mock('../BarcodeManager', () => ({ default: () => null }));
 vi.mock('../details/BasicInfoSection', () => ({ default: () => null }));
 vi.mock('../details/StockInventorySection', () => ({ default: () => null }));
@@ -45,7 +47,14 @@ const baseItem = {
   description: 'Fresh brewed tea'
 };
 
-const renderDetails = (item) => {
+const fifoItem = {
+  ...baseItem,
+  fifo_enabled: true,
+  shelf_life_days: 30,
+  opened_shelf_life_days: 7
+};
+
+const renderDetails = (item, { itemEditorMode = false } = {}) => {
   const onClose = vi.fn();
 
   render(
@@ -55,6 +64,7 @@ const renderDetails = (item) => {
         open
         onClose={onClose}
         onRefresh={vi.fn()}
+        itemEditorMode={itemEditorMode}
         workflowMode="fnb"
       />
     </MemoryRouter>
@@ -75,5 +85,34 @@ describe('ItemDetailsModal behavior', () => {
     fireEvent.click(closeButton);
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes stock changes to Stock Movements in Item Editor mode', () => {
+    renderDetails(baseItem, { itemEditorMode: true });
+
+    expect(screen.getByRole('button', { name: 'View Movement History' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Manage Stock' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Create Stock Movement' })).toBeNull();
+  });
+
+  it('keeps stock movement actions for non-Item Editor callers', () => {
+    renderDetails(baseItem);
+
+    expect(screen.getByRole('button', { name: 'View Movement History' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Create Stock Movement' })).toBeTruthy();
+  });
+
+  it('hides FIFO batch and expiry presentation in Item Editor mode', () => {
+    renderDetails(fifoItem, { itemEditorMode: true });
+
+    expect(screen.queryByTestId('fifo-batch-viewer')).toBeNull();
+    expect(screen.queryByText('Shelf Life Information')).toBeNull();
+  });
+
+  it('keeps FIFO batch presentation for non-Item Editor callers', () => {
+    renderDetails(fifoItem);
+
+    expect(screen.getByTestId('fifo-batch-viewer')).toBeTruthy();
+    expect(screen.getByText('Shelf Life Information')).toBeTruthy();
   });
 });

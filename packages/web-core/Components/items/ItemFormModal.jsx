@@ -29,6 +29,11 @@ import { useLocations } from '@/hooks/useLocations.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
+import {
+  buildStockAllocationDraft,
+  buildStockAllocations,
+  getStockAllocationTotal
+} from '@/src/features/inventory/utils/stockAllocations.js';
 import { resolveBusinessModeItemDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import {
   findItemPresetForValues,
@@ -207,6 +212,8 @@ export default function ItemFormModal({
   workflowMode = 'manufacturing',
   msmeMode = false,
   createPreset = MSME_ITEM_PRESET.INVENTORY_ONLY,
+  hideUnitOfMeasure = false,
+  hideStockControls = false,
   posConfig = null,
   storefrontConfig = null,
   showStorefrontCatalogControls = true,
@@ -388,6 +395,7 @@ export default function ItemFormModal({
     serviceCostTrackingEnabled: trackServiceCost
   }), [currentItemPreset, formData, posConfig?.pos_visible, resolvedModeItemPresetKey, storefrontConfig?.storefront_visible, trackServiceCost, workflowMode]);
   const [stockBaseline, setStockBaseline] = useState(0);
+  const [stockAllocationDraft, setStockAllocationDraft] = useState({});
   const itemLocationStockMap = useMemo(() => {
     const rows = Array.isArray(item?.item_location_stocks) ? item.item_location_stocks : [];
     const map = new Map();
@@ -403,6 +411,10 @@ export default function ItemFormModal({
     const normalized = String(locationId);
     return itemLocationStockMap.has(normalized) ? (itemLocationStockMap.get(normalized) || 0) : null;
   };
+  const stockAllocations = useMemo(
+    () => (hideStockControls ? [] : buildStockAllocations(stockAllocationDraft, activeLocations)),
+    [activeLocations, hideStockControls, stockAllocationDraft]
+  );
 
   const [initialFormData, setInitialFormData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -652,6 +664,7 @@ export default function ItemFormModal({
       setFormData(initialData);
       setInitialFormData(initialData);
       setStockBaseline(initialLocationStock);
+      setStockAllocationDraft(buildStockAllocationDraft(activeLocations));
       setIsDirty(false);
       setChannelVisibilityTouched({ pos: false, storefront: false });
       setSkuManuallyEdited(Boolean(String(item.sku_code || '').trim()));
@@ -742,6 +755,7 @@ export default function ItemFormModal({
       setFormData(initialData);
       setInitialFormData(initialData);
       setStockBaseline(Number(initialData.current_stock) || 0);
+      setStockAllocationDraft(buildStockAllocationDraft(activeLocations));
       setIsDirty(false);
       setChannelVisibilityTouched({ pos: false, storefront: false });
       setSkuManuallyEdited(false);
@@ -765,10 +779,12 @@ export default function ItemFormModal({
   // Track dirty state
   useEffect(() => {
     if (initialFormData && !item) {
-      const hasChanged = JSON.stringify(formData) !== JSON.stringify(initialFormData) || selectedStorefrontImageFiles.length > 0;
+      const hasChanged = JSON.stringify(formData) !== JSON.stringify(initialFormData)
+        || selectedStorefrontImageFiles.length > 0
+        || stockAllocations.length > 0;
       setIsDirty(hasChanged);
     }
-  }, [formData, initialFormData, item, selectedStorefrontImageFiles.length]);
+  }, [formData, initialFormData, item, selectedStorefrontImageFiles.length, stockAllocations.length]);
 
   const handleSelectStorefrontImageFiles = (selectedFiles, existingGalleryCount = 0) => {
     const remainingSlots = Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount - selectedStorefrontImageFiles.length, 0);
@@ -902,6 +918,13 @@ export default function ItemFormModal({
 
       return updated;
     });
+  };
+
+  const handleStockAllocationChange = (locationId, value) => {
+    setStockAllocationDraft((previous) => ({
+      ...previous,
+      [String(locationId)]: value
+    }));
   };
 
   const handleChannelVisibilityChange = (channel, checked) => {
@@ -1218,15 +1241,9 @@ export default function ItemFormModal({
       return;
     }
 
-    const normalizedCurrentStock = Number(cleanedData.current_stock) || 0;
-    const previousCurrentStock = item ? (Number(stockBaseline) || 0) : 0;
-    const hasStockAdjustment = item
-      ? normalizedCurrentStock !== previousCurrentStock
-      : normalizedCurrentStock > 0;
-    if (hasStockAdjustment && activeLocations.length > 1 && !cleanedData.location_id) {
-      toast.error('Please select a location when setting current stock.');
-      return;
-    }
+    const stockAllocations = !hideStockControls && !isDraft && !isStockExemptItem
+      ? buildStockAllocations(stockAllocationDraft, activeLocations)
+      : [];
 
     // Filter out fields that aren't in the backend schema
     // Only send fields that the backend validator expects
@@ -1264,8 +1281,6 @@ export default function ItemFormModal({
       max_capacity: Number(cleanedData.max_capacity) || null, // Allow null for drafts
       min_threshold: toNumberOrNull(cleanedData.min_threshold),
       purchase_allowance: toNumberOrNull(cleanedData.purchase_allowance),
-      current_stock: toNumberOrNull(cleanedData.current_stock),
-      location_id: hasStockAdjustment ? toNumberOrNull(cleanedData.location_id) : null,
       fifo_enabled: cleanedData.fifo_enabled || false,
       product_folder: cleanedData.product_folder || null,
       batch_size: toNumberOrNull(cleanedData.batch_size),
@@ -1343,6 +1358,9 @@ export default function ItemFormModal({
       return;
     }
 
+    const stockPayload = stockAllocations.length > 0
+      ? { stock_allocations: stockAllocations }
+      : {};
     const submitPayload = (msmeMode && item)
       ? buildMsmeVisibleUpdatePatch({
         payload: validFields,
@@ -1356,6 +1374,7 @@ export default function ItemFormModal({
     const finalPayload = msmeMode
       ? {
         ...submitPayload,
+        ...stockPayload,
         pos_always_available: cleanedData.pos_always_available === true,
         ...(item || channelVisibilityTouched.pos ? { pos_visible: cleanedData.pos_visible === true } : {}),
         ...(item || channelVisibilityTouched.storefront ? { storefront_visible: cleanedData.storefront_visible === true } : {}),
@@ -1366,6 +1385,7 @@ export default function ItemFormModal({
       }
       : {
         ...submitPayload,
+        ...stockPayload,
         pos_always_available: cleanedData.pos_always_available === true,
         ...(item || channelVisibilityTouched.pos ? { pos_visible: cleanedData.pos_visible === true } : {}),
         ...(item || channelVisibilityTouched.storefront ? { storefront_visible: cleanedData.storefront_visible === true } : {}),
@@ -1668,16 +1688,18 @@ export default function ItemFormModal({
                   )}
                 </div>
               )}
-              <div className="space-y-2">
-                <Label>Unit of Measure</Label>
-                <UomSelect
-                  value={formData.unit_of_measure || modeItemDefaults.unit_of_measure || ''}
-                  onValueChange={(v) => handleChange('unit_of_measure', v)}
-                  placeholder="Select unit..."
-                  allowedGroups={currentItemPreset?.allowed_uom_groups || []}
-                  allowedUnits={currentItemPreset?.allowed_uoms || []}
-                />
-              </div>
+              {!hideUnitOfMeasure && (
+                <div className="space-y-2">
+                  <Label>Unit of Measure</Label>
+                  <UomSelect
+                    value={formData.unit_of_measure || modeItemDefaults.unit_of_measure || ''}
+                    onValueChange={(v) => handleChange('unit_of_measure', v)}
+                    placeholder="Select unit..."
+                    allowedGroups={currentItemPreset?.allowed_uom_groups || []}
+                    allowedUnits={currentItemPreset?.allowed_uoms || []}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -1912,52 +1934,53 @@ export default function ItemFormModal({
                   )}
                 </div>
               </div>
-              <div className="space-y-2 lg:col-span-6">
-                <Label htmlFor="stock">Current Stock</Label>
-                <div className="relative">
-                  <Input
-                    id="stock"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={isStockExemptItem ? 0 : (formData.current_stock ?? '')}
-                    onChange={(e) => handleChange('current_stock', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    className="pr-20"
-                    disabled={isStockExemptItem}
-                  />
-                  {formData.unit_of_measure && (
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium uppercase text-slate-400">
-                      {formData.unit_of_measure}
-                    </span>
+              {!hideStockControls && (
+                <div className="space-y-3 lg:col-span-6">
+                  <div>
+                    <Label>Optional stock additions by branch</Label>
+                    <p className="text-xs text-slate-500">
+                      Enter stock to add at each branch. Existing balances are shown for reference and are never replaced.
+                    </p>
+                  </div>
+                  {isStockExemptItem ? (
+                    <p className="text-xs text-slate-500">This item type is stock-exempt and does not create inventory movements.</p>
+                  ) : loadingLocations ? (
+                    <p className="text-xs text-slate-500">Loading active branches...</p>
+                  ) : activeLocations.length === 0 ? (
+                    <p className="text-xs text-amber-700">Add an active branch before assigning stock.</p>
+                  ) : (
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                      {activeLocations.map((location) => {
+                        const locationKey = String(location.location_id);
+                        const currentBalance = itemLocationStockMap.get(locationKey) || 0;
+                        return (
+                          <div key={`item-stock-allocation-${locationKey}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,8rem)] sm:items-center">
+                            <div>
+                              <p className="text-sm font-medium text-slate-800">{location.name}</p>
+                              <p className="text-xs text-slate-500">On hand: {currentBalance} {formData.unit_of_measure || 'units'}</p>
+                            </div>
+                            <span className="hidden text-xs text-slate-400 sm:inline">Add</span>
+                            <Input
+                              aria-label={`Add stock at ${location.name}`}
+                              type="number"
+                              min={0}
+                              step="any"
+                              placeholder="0"
+                              value={stockAllocationDraft[locationKey] ?? ''}
+                              onChange={(event) => handleStockAllocationChange(location.location_id, event.target.value)}
+                            />
+                          </div>
+                        );
+                      })}
+                      {stockAllocations.length > 0 && (
+                        <p className="border-t border-slate-100 pt-2 text-xs font-medium text-teal-700">
+                          Pending addition: {getStockAllocationTotal(stockAllocations)} {formData.unit_of_measure || 'units'} across {stockAllocations.length} branch{stockAllocations.length === 1 ? '' : 'es'}.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
-                {!isStockExemptItem ? (
-                <div className="space-y-2 pt-2">
-                  <Label>Stock Location</Label>
-                  <Select
-                    value={formData.location_id || ''}
-                    onValueChange={(value) => handleChange('location_id', value)}
-                    disabled={loadingLocations || activeLocations.length === 0}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeLocations.map((location) => (
-                        <SelectItem key={`item-location-${location.location_id}`} value={String(location.location_id)}>
-                          {location.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {activeLocations.length > 1 && !formData.location_id && Number(formData.current_stock || 0) > 0 && (
-                    <p className="text-xs text-red-600">Required when setting stock in a multi-location tenant.</p>
-                  )}
-                </div>
-                ) : (
-                  <p className="text-xs text-slate-500">This item type is stock-exempt and does not create inventory batches.</p>
-                )}
-              </div>
+              )}
             </div>
 
             {/* Auto-calculated fields - values set by backend based on system settings */}

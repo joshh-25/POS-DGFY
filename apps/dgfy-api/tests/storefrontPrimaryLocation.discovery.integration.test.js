@@ -130,6 +130,7 @@ describe('storefront primary location integration', () => {
         // the model and migration so a persisted snapshot exercises the current
         // schema instead of failing on a missing column.
         await ensureDiscoveryIndexColumn('storefront_vouchers', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('delivery_fee_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'fixed' });
         await ensureDiscoveryIndexColumn('customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });
         await ensureDiscoveryIndexColumn('effective_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'transaction' });
         await ensureDiscoveryIndexColumn('max_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });

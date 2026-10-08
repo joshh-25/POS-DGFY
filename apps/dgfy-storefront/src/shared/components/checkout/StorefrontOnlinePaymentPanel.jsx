@@ -90,7 +90,9 @@ export function StorefrontOnlinePaymentPanel({
   balanceNote = null,
   billing = {},
   onConfirmTestPayment,
+  onCancelPaymentSession,
   onChooseAnotherPaymentMethod,
+  cancellingPaymentSession = false,
   paymentEnvironment = null,
   paymentSession,
   qrAmountNote = null,
@@ -146,6 +148,9 @@ export function StorefrontOnlinePaymentPanel({
     && !paymentReturnPending;
   const canChooseAnotherPaymentMethod = retryablePayment
     || (directCard && Boolean(cardError) && !cardSubmitting && !cardAuthorizationSubmitted && !paymentReturnPending);
+  const canCancelPaymentSession = paymentSession.status === 'awaiting_payment'
+    && Boolean(paymentSession.provider_payment_intent_id)
+    && typeof onCancelPaymentSession === 'function';
 
   const handleCardSubmit = async () => {
     if (cardSubmitting || cardAuthorizationSubmitted) return;
@@ -432,7 +437,28 @@ export function StorefrontOnlinePaymentPanel({
             {hosted ? `Open PayMongo ${paymentLabel} payment` : `Open PayMongo${isTestEnvironment ? ' test' : ''} payment`}
           </a>
         ) : null}
-        {canChooseAnotherPaymentMethod ? (
+        {canCancelPaymentSession ? (
+          <button
+            type="button"
+            onClick={async () => {
+              if (cancellingPaymentSession || refreshing) return;
+              await onCancelPaymentSession();
+            }}
+            disabled={cancellingPaymentSession || refreshing}
+            style={{
+              minHeight: 38,
+              borderRadius: 10,
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              color: '#334155',
+              padding: '0 12px',
+              fontWeight: 800,
+              cursor: cancellingPaymentSession ? 'wait' : 'pointer'
+            }}
+          >
+            {cancellingPaymentSession ? 'Cancelling payment...' : 'Cancel'}
+          </button>
+        ) : canChooseAnotherPaymentMethod ? (
           <button
             type="button"
             onClick={onChooseAnotherPaymentMethod}

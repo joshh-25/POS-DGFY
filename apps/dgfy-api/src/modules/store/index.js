@@ -85,7 +85,11 @@ export const createStoreCustomerAddressUseCase = buildCreateStoreCustomerAddress
 export const updateStoreCustomerAddressUseCase = buildUpdateStoreCustomerAddressUseCase({ storeRepository });
 export const setDefaultStoreCustomerAddressUseCase = buildSetDefaultStoreCustomerAddressUseCase({ storeRepository });
 export const deleteStoreCustomerAddressUseCase = buildDeleteStoreCustomerAddressUseCase({ storeRepository });
-export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository, downpaymentSettingsRepository });
+export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({
+    storeRepository,
+    downpaymentSettingsRepository,
+    tenantRevenueRepository
+});
 const emailOtpService = { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp };
 export const requestStoreGuestCheckoutOtpUseCase = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
 export const verifyStoreGuestCheckoutOtpUseCase = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
@@ -112,9 +116,21 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository
 });
+const cancelDglaundryBookingReservationLazy = async (input) => {
+    const [{ cancelDglaundryBookingReservations }, { dglaundryDurableDelivery: dglaundryPartnerClient }] = await Promise.all([
+        import('../commercePayments/usecases/finalizeDglaundryBookingSession.js'),
+        import('../dgfyLaundryOrders/index.js')
+    ]);
+    return cancelDglaundryBookingReservations({
+        ...input,
+        commercePaymentRepository,
+        partnerClient: dglaundryPartnerClient
+    });
+};
 export const cancelStoreCheckoutPaymentSessionUseCase = buildCancelStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository,
-    paymongoService
+    paymongoService,
+    cancelDglaundryReservation: cancelDglaundryBookingReservationLazy
 });
 // Keep the commerce-payment dependency lazy: finalization resolves Storefront checkout and the
 // two modules already have a deliberate cycle. This mirrors the existing order-lifecycle seam.
@@ -134,7 +150,8 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
 export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
     storeRepository,
     downpaymentSettingsRepository,
-    inventoryReservationService
+    inventoryReservationService,
+    tenantRevenueRepository
 });
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });

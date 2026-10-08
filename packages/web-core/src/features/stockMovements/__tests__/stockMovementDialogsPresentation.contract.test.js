@@ -24,9 +24,16 @@ describe('Stock Movement dialog presentation contract', () => {
     expect(createModalSource).toContain('id="movement-details-step-heading"');
     expect(createModalSource).toContain('Fast item lookup');
     expect(createModalSource).toContain('aria-label="Close record stock movement"');
-    expect(createModalSource).toContain('max-h-[92vh]');
-    expect(createModalSource).toContain('overflow-hidden overflow-y-hidden');
+    expect(createModalSource).toContain('h-[min(92vh,52rem)]');
+    expect(createModalSource).toContain('max-h-[calc(100vh-1rem)]');
+    expect(createModalSource).toContain('overscroll-contain');
     expect(createModalSource).toContain('min-h-0 flex-1 overflow-y-auto');
+    expect(createModalSource).toContain('portal');
+    expect(createModalSource).toContain('matchTriggerWidth');
+    expect(createModalSource).toContain('const [itemPickerOpen, setItemPickerOpen]');
+    expect(createModalSource).toContain('setItemPickerOpen(false)');
+    expect(createModalSource).toContain('filteredItems.length === 0');
+    expect(createModalSource).toContain('max-h-none flex-1');
     expect(createModalSource).toContain('id="movement-scan-code"');
     expect(createModalSource).toContain('id="movement-item"');
     expect(createModalSource).toContain('id="movement-quantity"');

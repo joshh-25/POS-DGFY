@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
+  getFastTierTestChunks,
   prepareLandlordTestDatabase,
   SUPPORTED_LANDLORD_TEST_DATABASE_NAMES,
 } = require('./run-backend-test-matrix.js');
@@ -17,6 +18,26 @@ test('all-tier migration completes before fast tier and schema preflight', () =>
   assert.ok(migration >= 0 && fastTier > migration, 'test DB migration must precede fast tier');
   assert.ok(dbTier > fastTier, 'fast tier must finish before db tier schema preflight');
   assert.ok(matrixSource.includes('const schemaPreflight = runSchemaPreflight(evidenceRoot)', matrixSource.indexOf('function runDbTier')));
+});
+
+test('windows fast tier bounds a long Jest path list without forcing in-band execution', () => {
+  const tests = Array.from({ length: 201 }, (_, index) => `tests/test-${index}.test.js`);
+  const chunks = getFastTierTestChunks(tests, 'win32');
+
+  assert.equal(chunks.length, 3);
+  assert.equal(chunks[0].length, 100);
+  assert.equal(chunks[1].length, 100);
+  assert.equal(chunks[2].length, 1);
+  assert.equal(chunks.flat().length, tests.length);
+  assert.deepEqual(chunks.flat(), tests);
+});
+
+test('non-Windows fast tier keeps Jest scheduler ownership of the full test list', () => {
+  const tests = Array.from({ length: 201 }, (_, index) => `tests/test-${index}.test.js`);
+  const chunks = getFastTierTestChunks(tests, 'linux');
+
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0], tests);
 });
 
 test('landlord migration accepts only the repository-supported test database names', () => {
