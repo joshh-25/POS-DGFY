@@ -2,7 +2,7 @@ import { paymongoService } from '../../services/paymongoService.js';
 import {
   commercePaymentRepository,
   createCommercePaymentRefundUseCase
-} from '../../commercePayments/index.js';
+} from '../commercePayments/index.js';
 import { dgfyLaundryOrderRepository } from './repositories/dgfyLaundryOrderRepository.js';
 import { dgfyLaundryOrderUseCases, dglaundryDurableDelivery } from './index.js';
 import { buildDglaundryQualificationProbeUseCase } from './usecases/dglaundryQualificationProbeUseCase.js';
