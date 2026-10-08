@@ -4,7 +4,7 @@
 # remains accurate after this file is added. It covers exactly the routes mounted at /oidc and
 # /api/v1/partners/dglaundry, plus the inbound event receiver and the customer-facing laundry
 # routes, as they exist in apps/dgfy-api/src/routes/{dgfyLaundry,dgfyLaundryOidc,dgfyLaundryOrders}.js
-# as of 2026-10-07. See docs/api/PARTNER_INTEGRATION_CONTRACT.md for the prose contract and the
+# as of 2026-10-08. See docs/api/PARTNER_INTEGRATION_CONTRACT.md for the prose contract and the
 # "Known gaps" table -- some routes declared by DGLaundry's own proposal
 # (docs/integrations/dgfy/partner-openapi.yaml in the dglaundry repo) were absent from the original
 # DGFY source and have since been added; the prose contract records the remaining gaps.
@@ -202,13 +202,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [issuer, authorization_endpoint, token_endpoint, jwks_uri]
+                required: [issuer, authorization_endpoint, token_endpoint, jwks_uri, introspection_endpoint, end_session_endpoint]
                 properties:
                   issuer: { type: string, format: uri }
                   authorization_endpoint: { type: string, format: uri }
                   pushed_authorization_request_endpoint: { type: string, format: uri }
                   token_endpoint: { type: string, format: uri }
                   revocation_endpoint: { type: string, format: uri }
+                  introspection_endpoint: { type: string, format: uri }
+                  end_session_endpoint: { type: string, format: uri }
                   jwks_uri: { type: string, format: uri }
                   response_types_supported: { type: array, items: { type: string } }
                   grant_types_supported: { type: array, items: { type: string } }
@@ -335,6 +337,73 @@ paths:
       responses:
         "200":
           description: Revoked (or already invalid; RFC 7009 semantics)
+  /oidc/introspect:
+    post:
+      tags: [oidc]
+      summary: Opaque access-token introspection (RFC 7662)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+                token_type_hint: { type: string }
+                client_id: { type: string }
+                client_secret: { type: string }
+      responses:
+        "200":
+          description: Active-token claims or inactive response containing only active=false
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [active, scope, client_id, sub, token_type, iat, exp]
+                    properties:
+                      active: { type: boolean, const: true }
+                      scope: { type: string }
+                      client_id: { type: string }
+                      sub: { type: string }
+                      token_type: { type: string, const: Bearer }
+                      iat: { type: integer }
+                      exp: { type: integer }
+                  - type: object
+                    required: [active]
+                    properties:
+                      active: { type: boolean, const: false }
+        "400":
+          description: Missing token
+        "401":
+          description: Client authentication failed
+  /oidc/logout:
+    get:
+      tags: [oidc]
+      summary: End a browser session using its signed ID token hint
+      security: []
+      parameters:
+        - name: id_token_hint
+          in: query
+          required: true
+          schema: { type: string }
+        - name: post_logout_redirect_uri
+          in: query
+          required: false
+          schema: { type: string, format: uri }
+        - name: state
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "204":
+          description: Session ended without redirect
+        "302":
+          description: Session ended and redirected to the exact configured post-logout URI
+        "400":
+          description: Invalid ID token hint or unregistered post-logout redirect
   /api/v1/partners/dglaundry/account/companies:
     get:
       tags: [partner-provider]

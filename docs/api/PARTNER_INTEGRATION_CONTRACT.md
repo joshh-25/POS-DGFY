@@ -3,7 +3,7 @@ status: authoritative
 authority_level: authoritative
 owner: dgfy-platform
 date: 2026-10-07
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 review_by: 2027-04-07
 applies_to: dgfy_dglaundry_integration
 topic: partner_integration_contract
@@ -156,6 +156,24 @@ legitimately call the route; "Auth" is the middleware that actually gates it tod
 | GET | `/oidc/authorize` | DGFY account holder (browser) | `authenticateDgfyAccount` |
 | POST | `/oidc/token` | DGLaundry browser or machine client | client credentials / `private_key_jwt` |
 | POST | `/oidc/revoke` | DGLaundry browser client | client registration check |
+| POST | `/oidc/introspect` | DGLaundry browser client | client registration check |
+| GET | `/oidc/logout` | DGLaundry browser client | signed `id_token_hint`; optional exact redirect allowlist |
+
+Every `/oidc/*` route uses a Redis-backed shared limiter. Defaults are 20 requests per 5 minutes
+per IP, client ID (or `anonymous`), and route path; development defaults to 100 per 5 minutes.
+Operators can override these with `OIDC_RATE_LIMIT_WINDOW_MS` and
+`OIDC_RATE_LIMIT_MAX_REQUESTS`. A `429` includes the standard DGFY error body and `Retry-After`.
+
+`/oidc/introspect` accepts a form or JSON `token` and requires the browser client's existing
+`client_secret_basic` authentication. Active opaque access tokens return `active`, `scope`,
+`client_id`, `sub`, `token_type`, `iat`, and `exp`; unknown, expired, and revoked tokens return only
+`{ "active": false }`.
+
+`/oidc/logout` requires an `id_token_hint`. The provider verifies its RS256 signature against every
+active and retiring JWKS key, then consumes the session's opaque access token. An optional
+`post_logout_redirect_uri` must exactly match `DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI`; `state` is
+echoed only on that allowed redirect. The browser client must register the same redirect with the
+provider owner.
 
 ### Partner provider API — mounted at `/api/v1/partners/dglaundry`
 
@@ -270,7 +288,7 @@ configuration-only, and what does not exist, rather than implying full readiness
 | Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
 | Browser/machine/service client IDs are proposed in `dglaundry-connection-manifest.json` but await DGLaundry confirmation and hosted registration | ⚠️ proposed config; registration and live callback verification remain open | #2304, partner confirmation in #519 |
 | Signed provider runtime attestation, signed event specimens, payment-lifecycle probe routes | ❌ not built | filed under epic #517 |
-| No `end_session_endpoint`, no userinfo, no introspection; access tokens are opaque; single-key JWKS (no overlap rotation); `/oidc/*` excluded from `generalLimiter` | ❌ not built | filed under epic #517 |
+| Opaque-token introspection, RP-initiated logout, active/retiring key overlap, and a Redis-backed `/oidc/*` limiter are implemented locally; hosted key installation and the staging rotation drill remain unverified. `userinfo_endpoint` is still not built. | ⚠️ implementation is local; hosted verification remains | #2307; staging key provisioning #2303 |
 | Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |
 | Legacy `x-dglaundry-partner-token` shared secret still accepted in production when no `Authorization` header is sent | ❌ security gap | filed under epic #517, `security` |
 | Inbound `scope` is never enforced server-side; `x-dgfy-app-id` is required-present but never validated against a registry | ❌ security gap | filed under epic #517, `security` |

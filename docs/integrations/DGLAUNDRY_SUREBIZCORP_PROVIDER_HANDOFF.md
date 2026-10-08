@@ -61,6 +61,10 @@ to the linked issue or PR.
       `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback`.
 - [ ] Confirm the approved launch/logout origins and the post-logout redirect
       before sending them to DGLaundry; do not invent a second staff origin.
+- [ ] Configure `DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI` to that approved exact
+      redirect and register it with the provider owner. Discovery advertises
+      `https://api.dgfy.ph/oidc/logout` as `end_session_endpoint`; logout requires
+      a signed `id_token_hint` and echoes `state` only to the configured URI.
 - [ ] Return the client identifier, scopes, audience, and the approved origin
       list through the approved secret/configuration channel. Do not put client
       secrets in GitHub, issue comments, chat, URLs, or logs.
@@ -77,6 +81,38 @@ to the linked issue or PR.
       `S256` support.
 - [ ] Capture the discovery and JWKS response hashes, key IDs, algorithm, and
       rotation/revocation procedure in the linked issue.
+- [ ] For rotation, configure the new private-key file env reference and add
+      its public key:
+
+      ```sh
+      node apps/dgfy-api/scripts/rotate-oidc-signing-key.js add \
+        --kid <kid> \
+        --public-key-file <public.pem> \
+        --private-key-env-ref <PRIVATE_KEY_FILE_ENV>
+      ```
+
+      Then promote it. Confirm both active and retiring keys appear in JWKS and
+      validate tokens signed by each; revoke the old key only after the overlap
+      window and downstream verification complete.
+
+While `oidc_signing_keys` is empty, the provider keeps using the existing
+`DGFY_OIDC_PRIVATE_KEY_FILE`, `DGFY_OIDC_PUBLIC_KEY_FILE`, and
+`DGFY_OIDC_KEY_ID` settings. Once registry rows exist, registry status is
+authoritative. Seed and verify the current signing key before rotating so the
+first promotion keeps the existing key in JWKS as `retiring`.
+
+The provider applies a shared Redis-backed limit of 20 requests per 5 minutes
+per IP, client ID, and route by default (`OIDC_RATE_LIMIT_WINDOW_MS` and
+`OIDC_RATE_LIMIT_MAX_REQUESTS` override it). `NODE_ENV=test` bypasses this
+middleware; production requests do not.
+
+For an application-code rollback after registry use begins, keep the table and
+key files in place. Point the legacy `DGFY_OIDC_PRIVATE_KEY_FILE`,
+`DGFY_OIDC_PUBLIC_KEY_FILE`, and `DGFY_OIDC_KEY_ID` settings at the active
+registry key before restoring the older API version. Do not revoke the retiring
+key until its overlap window has elapsed; an older API version publishes only
+its configured legacy key, so ID tokens or DGFY service tokens signed by another
+key may fail verification until they expire (five minutes).
 
 Read-only preflight on 2026-09-07 found discovery reachable with issuer
 `https://api.dgfy.ph/oidc`, but the JWKS endpoint returned
