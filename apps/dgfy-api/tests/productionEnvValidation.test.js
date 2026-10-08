@@ -79,6 +79,8 @@ describe('production environment validation', () => {
         DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc'
       }
     });
+    expect(result.ok).toBe(false);
+    expect(result.shouldFail).toBe(true);
     expect(result.errors).toContain('DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory');
   });
 

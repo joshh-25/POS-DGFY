@@ -49,8 +49,13 @@ const toPatternRegex = (pattern) => {
 };
 
 const mockRedisClient = {
-    get: jest.fn(async (key) => getValue(key)),
-    set: jest.fn(async (key, value, options = undefined) => {
+  get: jest.fn(async (key) => getValue(key)),
+  getDel: jest.fn(async (key) => {
+    const value = getValue(key);
+    redisStore.delete(key);
+    return value;
+  }),
+  set: jest.fn(async (key, value, options = undefined) => {
         const opts = options && typeof options === 'object' ? options : {};
         const ttl = typeof opts.EX === 'number' ? opts.EX : null;
         return setValue(key, value, ttl, { NX: opts.NX === true });

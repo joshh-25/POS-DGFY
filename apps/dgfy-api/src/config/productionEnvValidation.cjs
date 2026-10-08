@@ -441,6 +441,19 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
 
   if (!isProduction && !strictProduction) {
     validateSecrets(env, warnings);
+    if (isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) {
+      errors.push('DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory');
+    }
+    if (errors.length > 0) {
+      return {
+        ok: false,
+        shouldFail: true,
+        errors,
+        warnings,
+        profile: normalizedProfile,
+        isProduction: false
+      };
+    }
     if (BASE_REQUIRED_KEYS.some((key) => !hasValue(env, key))) {
       warnings.push('Production environment validation is warning-only outside NODE_ENV=production');
     }
