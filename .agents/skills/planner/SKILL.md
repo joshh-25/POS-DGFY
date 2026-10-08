@@ -18,6 +18,9 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>` (Claude) or
 - Read the issue, its comments, relevant code/tests, and authoritative repository documentation.
   Follow `docs/START_HERE.md` → architecture boundaries/governance → relevant accepted/amended ADRs
   → domain documents. Read only the relevant tail/entries of the phase ledger, not the whole file.
+- When reading the ledger, treat only an explicit dependency under `### Dependencies` as blocking;
+  `### Next eligible phase` prose alone is not a prerequisite. Follow `AGENTS.md` and the ledger's
+  "Phase Sequencing and Lifecycle Rules" section.
 - Do not edit tracked files, create branches, change labels/fields/status, file children, open PRs,
   merge, deploy, or invoke `orca`.
 - Explicit invocation establishes handoff-only intent that survives a host Plan-mode exit, plan

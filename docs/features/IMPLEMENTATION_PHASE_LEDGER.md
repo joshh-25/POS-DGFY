@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-26
+last_reviewed: 2026-10-08
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -11,6 +11,40 @@ topic: implementation_phase_ledger
 # Implementation Phase Ledger
 
 This is the repository source of truth for continuous implementation phase numbering. Releases and initiatives group phases but never reset the sequence. Historical Phase 0 is retained because it predates the continuous-numbering rule; no future initiative may create another Phase 0.
+
+## Phase Sequencing and Lifecycle Rules
+
+### Numbering and eligibility
+
+Phase numbers continue from the highest number in this ledger. Numbering does not determine work
+order: a phase may start while any earlier phase is `planned`, `approved`, `in_progress`, `blocked`,
+or `deferred`. Only an explicit dependency under that phase's `### Dependencies` heading can block
+it; the dependency must name the phase or issue and state the technical or operational reason.
+`### Next eligible phase` prose, other narrative, and sequencing overrides do not create a
+prerequisite by themselves.
+
+A phase number is claimed when its ledger entry lands on `develop`. If concurrent unmerged branches
+claim the same number, the later entry takes the next free number before merge. Merged phases are
+never renumbered.
+
+### Status and post-merge verification
+
+`completed` means the scoped implementation is merged to its target branch and its named
+implementation validation has passed. Record the completion date and PR/merge SHAs. Deployment,
+provider, and operational verification that remains due belongs in a required `### Post-merge
+verification` checklist. Tag each item `deployment`, `provider`, or `operational`, name its owning
+issue or gate, and state what it blocks. Open post-merge items do not keep a phase `in_progress` or
+block unrelated phases; they are not waived and retain the authority of their applicable release,
+deployment, migration-rehearsal, tenant-schema, provider, and production gates (including
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` and `AGENTS.md`).
+
+Use `in_progress` or `blocked` while scoped work is unmerged or implementation validation is
+incomplete. The status enum remains `planned`, `approved`, `in_progress`, `completed`, `blocked`,
+and `deferred`.
+
+Keep the existing `### Next eligible phase` headings in historical entries; new entries should use
+`### Next phase number` and state only the next number (`highest + 1`) and any explicit dependency.
+Do not retroactively rewrite other historical phases.
 
 ## Phase Register
 
@@ -26817,8 +26851,8 @@ fiscal or production acceptance.
 
 ### Status
 
-`in_progress` — implementation and local validation are underway. Migration rehearsal,
-authenticated end-to-end acceptance, PR review, merge, and deployed QA remain outstanding.
+`completed` — implementation merged to `develop` and implementation validation passed. PR #2341
+merged 2026-10-08 as `dd8bffe439522a1dc2893b9b42755f2ac9a5871d`.
 
 ### Dependencies
 
@@ -26837,8 +26871,7 @@ Storefront, and OPIS ownership contracts.
       reports, parked-sale, shift, and customer/terminal workflow changes are included.
 - [x] POS-to-OPIS boundaries are preserved; obsolete POS Back Office handoffs are not
       reintroduced while OPIS retains the administrative review surface.
-- [ ] Disposable migration rehearsal, authenticated full-flow browser acceptance, PR review,
-      merge, and deployed QA remain outstanding.
+- [x] PR review and merge completed in PR #2341.
 
 ### Links
 
@@ -26854,13 +26887,21 @@ Storefront, and OPIS ownership contracts.
 
 ### Completion date
 
-Not complete; set only after every required acceptance gate and evidence item passes.
+2026-10-08 — implementation complete; see post-merge verification below.
+
+### Post-merge verification
+
+- [ ] `operational` — Disposable migration rehearsal; owned by #343/#2067 and the applicable
+      migration/release gate. Blocks promotion containing these migrations until it passes.
+- [ ] `operational` — Authenticated full-flow browser acceptance; owned by #343/#2067. Blocks
+      closure of the corresponding acceptance work.
+- [ ] `deployment` — Deployed QA; owned by #343/#2067 and the applicable QA/deployment gate.
+      Blocks production acceptance of this scope.
 
 ### Next eligible phase
 
-Phase 481 (#2306) is explicitly authorized to proceed independently of Phase 480's open
-acceptance gates (2026-10-08; see Phase 481's sequencing override). Phase 482 is eligible only
-after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is rechecked.
+Phase 482 is the next phase number (#2357) and has no dependency on Phase 480 or Phase 481. Any
+other blocker must be recorded as an explicit dependency with its technical or operational reason.
 
 ## Phase 481 - DGLaundry runtime attestation and qualification probes (#2306)
 
@@ -26879,22 +26920,22 @@ probe contract without corresponding evidence.
 
 ### Status
 
-`in_progress` — implementation and local governance/architecture checks are in progress. Focused
-Jest suites could not run because the API workspace's Jest executable is not installed. Provider
-confirmation, staging execution, and DGLaundry hosted-validator acceptance remain outstanding.
+`in_progress` — PRs #2349 and #2351 are merged to `develop`, but implementation validation is
+incomplete: the focused attestation, specimen, and probe Jest suites have no passing CI evidence.
+The PR check runs passed the API build and workflow checks, but did not run those suites; the PR
+bodies also record that they were not run locally.
 
-**Explicit sequencing override (2026-10-08):** Pat authorized #2306 to proceed and prepare a PR
-while Phase 480 remains `in_progress`. Phase 480's acceptance criteria remain open and are not
-waived, completed, or replaced by this override. This authorization applies only to this
-independent DGLaundry qualification-evidence scope.
+**Historical sequencing override (2026-10-08):** Pat authorized #2306 to proceed while Phase 480
+remained `in_progress`. The general sequencing rule above now governs: an explicit dependency is
+required for one phase to block another. This historical authorization did not waive any acceptance
+or verification gates.
 
 ### Dependencies
 
-Issue #2306; Pat's 2026-10-08 authorization to proceed independently of Phase 480; ADR 0079 and its
-existing DGLaundry partner contract decisions; the authoritative
+Issue #2306; ADR 0079 and its existing DGLaundry partner contract decisions; the authoritative
 `docs/api/PARTNER_INTEGRATION_CONTRACT.md`; the staging-only qualification-order safeguards and
-existing commerce payment idempotency/session boundaries. Phase 480 is not a technical dependency;
-its open gates remain independently tracked.
+existing commerce payment idempotency/session boundaries. Phase 480 is not a technical or
+operational dependency.
 
 ### Acceptance and validation evidence
 
@@ -26907,20 +26948,14 @@ its open gates remain independently tracked.
       company/location/order-state readback.
 - [ ] Sandbox-identity mismatch rejection and the focused attestation, specimen, and probe Jest
       suites pass. These suites were added but could not run locally because
-      `apps/dgfy-api/node_modules/jest/bin/jest.js` is not installed.
+      `apps/dgfy-api/node_modules/jest/bin/jest.js` was not installed, and PR check runs 37763079990
+      (#2349) and 37767674234 (#2351) contain no Jest job for them.
 - [x] Changed JavaScript/MJS syntax checks and `git diff --check` pass; `npm run check:architecture`
       passes (56 modules/698 code files, controller boundaries 105 files); `npm run lint:docs` and
       `npm run check:adr --strict` pass (31 governed docs/97 ADRs); `npm run check:compliance` passes
       (3 sensitive files and 10 API contract rules); `node scripts/check-app-version-bump.js`
       passes with no version bump required.
-- [ ] DGLaundry confirms the proposed route/method/request/response contract posted on #2306, or
-      the implementation is updated to match provider feedback.
-- [ ] Staging qualification produces sanitized evidence bound to the deployed DGFY SHA and
-      configuration revision; DGLaundry's hosted validators accept the signed attestation and
-      event specimens and stop reporting required probes as missing. Staging JWKS currently
-      returns 503, so hosted acceptance remains blocked pending its separate remediation.
-- [ ] PR review is complete. This phase does not merge, deploy, perform live payment operations,
-      or claim deployed verification.
+- [x] PR review and merges completed in PRs #2349 and #2351.
 
 ### Links
 
@@ -26943,9 +26978,20 @@ its open gates remain independently tracked.
 
 ### Completion date
 
-Not complete; set only after every acceptance gate and required hosted qualification evidence passes.
+Not complete; implementation validation remains incomplete as noted above.
+
+### Post-merge verification
+
+- [ ] `provider` — DGLaundry confirms the proposed route/method/request/response contract posted on
+      #2306, or the implementation is updated to match provider feedback. Owned by #2306; blocks
+      provider acceptance of the integration contract.
+- [ ] `deployment` — Staging qualification produces sanitized evidence bound to the deployed DGFY
+      SHA and configuration revision; DGLaundry's hosted validators accept the signed attestation
+      and event specimens and stop reporting required probes as missing. Owned by #2306 and the
+      staging qualification gate; currently blocked while staging JWKS returns 503.
 
 ### Next eligible phase
 
-Phase 482 only after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is
-rechecked.
+Phase 482 is the next phase number (#2357) and has no dependency on Phase 480 or Phase 481. The
+test-inventory baseline overlap for Phase 481's suites is non-blocking; record it as a risk if
+needed, not as a dependency.
