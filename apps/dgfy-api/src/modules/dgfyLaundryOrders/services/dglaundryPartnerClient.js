@@ -13,14 +13,14 @@ const configured = (name) => {
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 };
 
-export const signDglaundryPartnerRequest = ({ method, target, rawBody, idempotencyKey }) => {
+export const signDglaundryPartnerRequest = async ({ method, target, rawBody, idempotencyKey }) => {
   const signingKey = configured('DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY');
   const signingKeyId = configured('DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
   const appId = configured('DGFY_DGLAUNDRY_SERVICE_CLIENT_ID');
   const contractVersion = configured('DGLAUNDRY_PARTNER_CONTRACT_VERSION') || 'external-runtime-v0.1';
   if (!signingKey || !signingKeyId || !appId) throw new Error('DGLAUNDRY_PARTNER_ASYMMETRIC_CREDENTIALS_REQUIRED');
   const payload = rawBody ? JSON.parse(rawBody) : {};
-  const token = issueDglaundryPartnerAccessToken({ method, target, payload });
+  const token = await issueDglaundryPartnerAccessToken({ method, target, payload });
   const created = Math.floor(Date.now() / 1000);
   const expires = created + 300;
   const nonce = crypto.randomUUID();
@@ -62,7 +62,7 @@ const request = async (path, body, { method = 'POST', idempotencyKey = null, pro
     : profile === 'public'
       ? { accept: 'application/json' }
       : process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1'
-      ? signDglaundryPartnerRequest({ method, target, rawBody, idempotencyKey })
+      ? await signDglaundryPartnerRequest({ method, target, rawBody, idempotencyKey })
       : signDgfyRequest({ method, authority: target.host, path: `${target.pathname}${target.search}`, body }).headers;
   if (idempotencyKey && !headers['idempotency-key']) headers['idempotency-key'] = idempotencyKey;
   if (process.env.DGLAUNDRY_SIGNATURE_PROFILE !== 'http-message-signatures-v1' && process.env.NODE_ENV !== 'production' && process.env.DGLAUNDRY_PARTNER_TOKEN && !headers['x-dglaundry-partner-token']) {

@@ -2,8 +2,8 @@
 status: reference
 authority_level: reference
 owner: dgfy-platform
-date: 2026-10-07
-last_reviewed: 2026-10-07
+date: 2026-10-08
+last_reviewed: 2026-10-08
 review_by: 2027-04-07
 applies_to: dgfy_dglaundry_integration, staging_deployment, production_deployment
 topic: dglaundry_oidc_key_provisioning
@@ -11,44 +11,60 @@ topic: dglaundry_oidc_key_provisioning
 
 # DGLaundry OIDC signing key delivery
 
-This runbook documents how an operator can deliver the DGFY OIDC keypair to `dgfy-api`. It does
-not generate or install real key material as part of this repository change. Key generation,
-registration, and installation remain human-run operations.
+This runbook describes staging delivery of the DGFY OIDC keypair as part of the DGLaundry
+connection package. The reviewed setup utility generates only DGFY-owned keypairs in the
+environment's host-owned configuration directory. Registration, secret-manager delivery, review,
+and hosted verification remain operator actions.
 
-Both `dgfyLaundryOidcProvider.js` and `dglaundryPartnerAccessToken.js` resolve signing material
-with `DGFY_OIDC_PRIVATE_KEY` first and `DGFY_OIDC_PRIVATE_KEY_FILE` second. The public JWKS reader
-uses the matching `DGFY_OIDC_PUBLIC_KEY` / `DGFY_OIDC_PUBLIC_KEY_FILE` pair. Inline values are
-supported for existing deployments; file paths are the documented deployment configuration.
+Both `dgfyLaundryOidcProvider.js` and `dglaundryPartnerAccessToken.js` use the shared OIDC signing
+key registry. While `oidc_signing_keys` is empty, both retain the legacy `DGFY_OIDC_PRIVATE_KEY`
+or `DGFY_OIDC_PRIVATE_KEY_FILE` fallback, and JWKS uses the matching public-key setting. After
+the first registry row is added, the registry becomes authoritative: both signers use its active
+row, and JWKS publishes active plus retiring public keys. The registry stores public PEM and the
+private-key environment variable name only; private key bytes stay in the approved secret files.
 
-## Staging, DEV, and QA
+## Protected staging profile
 
-The generic Compose template bind-mounts the OIDC pair read-only:
+The connection Compose profile mounts the host-owned configuration directory read-only, then the
+root entrypoint copies required files into `/run/dgfy-secrets` on an app-owned tmpfs before
+dropping privileges. The app process never reads the host key directory directly:
 
-| Compose project directory | Host source | Container path |
+| Host source | Container source mount | App-readable ephemeral file |
 |---|---|---|
-| `<compose-dir>` | `secrets/keys/dgfy-oidc-signing.pem` | `/run/secrets/dgfy-oidc-private.pem` |
-| `<compose-dir>` | `secrets/keys/dgfy-oidc-signing.pub.pem` | `/run/secrets/dgfy-oidc-public.pem` |
+| `/etc/dgfy/dglaundry/staging/keys/dgfy-oidc-signing.pem` | `/run/dgfy-connection-source/keys/dgfy-oidc-signing.pem` (read-only) | `/run/dgfy-secrets/dgfy-oidc-private.pem` |
+| `/etc/dgfy/dglaundry/staging/keys/dgfy-oidc-signing.pub.pem` | `/run/dgfy-connection-source/keys/dgfy-oidc-signing.pub.pem` (read-only) | `/run/dgfy-secrets/dgfy-oidc-public.pem` |
 
-Set these non-secret paths in that environment's `.env` (or use the defaults in
-`docker-compose.api.yml`):
+The setup utility renders these container paths into the candidate environment file:
 
 ```dotenv
-DGFY_OIDC_PRIVATE_KEY_FILE=/run/secrets/dgfy-oidc-private.pem
-DGFY_OIDC_PUBLIC_KEY_FILE=/run/secrets/dgfy-oidc-public.pem
+DGFY_OIDC_PRIVATE_KEY_FILE=/run/dgfy-secrets/dgfy-oidc-private.pem
+DGFY_OIDC_PUBLIC_KEY_FILE=/run/dgfy-secrets/dgfy-oidc-public.pem
 ```
 
-Run `scripts/dglaundry-connection-setup.mjs prepare` and `apply` with
-`--config-dir <compose-dir>/secrets`. The tool creates the OIDC pair under `keys/`, matching the
-mount sources above, and writes a host-path-based candidate env file. When copying that candidate
-into the Compose `.env`, set its two OIDC `*_FILE` values to the **container paths** shown above;
-host paths from the candidate cannot be read from inside the container. Review the candidate and
-the environment-specific issuer before `apply --confirm`.
+After applying the landlord `oidc_signing_keys` migration, register the initial active key and
+confirm `/oidc/jwks` returns it before enabling partner sign-in. For later rotations, stage the new
+private key file under an environment-specific variable such as
+`DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE`, then run:
 
-Run `prepare` before the first `docker compose up` that references these mounts. Docker may create
-a missing file bind source as a directory; touching empty placeholders first is not compatible
-with the setup tool, which correctly refuses to overwrite an incomplete keypair. Do not copy a
-private key into this repository checkout. The generated `infrastructure/docker/secrets/` path is
-git-ignored.
+```sh
+node apps/dgfy-api/scripts/rotate-oidc-signing-key.js add --kid <kid> --public-key-file <public.pem> --private-key-env-ref DGFY_OIDC_SIGNING_KEY_2_PRIVATE_FILE
+node apps/dgfy-api/scripts/rotate-oidc-signing-key.js promote --kid <kid>
+```
+
+Promotion moves the previous active key to `retiring`; leave it in the JWKS overlap until all
+issued tokens have expired and relying parties have refreshed their key cache. Use `list`, `retire`,
+and `revoke` to inspect and complete the lifecycle. The `add` and `promote` commands must be run
+sequentially; signing pauses after the first registry row is inserted until an active key exists.
+
+Run `scripts/dglaundry-connection-setup.mjs inspect` and `prepare` with
+`--config-dir /etc/dgfy/dglaundry/staging` and the reviewed manifest. The tool creates missing
+DGFY-owned key pairs under `keys/` and a candidate env file; it refuses to replace partial pairs.
+Install the browser client secret with the approved secret manager at the configured host path.
+Apply only after the candidate, registration evidence, and public-key fingerprints are reviewed.
+Compose must receive the generated env file as interpolation input and as the service env file, as
+documented in `docs/integrations/DGLAUNDRY_CONNECTION_SETUP.md`. Create the configuration
+directory before starting the compose profile so Docker does not create it with unexpected
+ownership. Do not copy a private key into the repository or release artifact.
 
 ## Production
 
@@ -84,11 +100,10 @@ The ciphertext files must be deployed to the server as
 The `dgfy-secrets` repository change and the operator's key installation remain prerequisites to
 enabling the integration. No PEM or ciphertext is present in this `dgfy-platform` change.
 
-This delivery follows ADR 0060 Decision 6: decrypted material stays in the deploy process
-environment and is not written to a plaintext file or sourced as shell code. The mounted file has
-the same running-container exposure as other live secrets described in ADR 0060's threat model.
-It does not change the binding rule or require a superseding ADR. It also does not authorize a
-production cutover; follow the SOPS runbook's rehearsal and approval gates before any live change.
+The staging profile uses a host-owned key directory and an ephemeral in-container tmpfs; it does
+not change the DGFY-wide SOPS policy or authorize a production cutover. Production material
+delivery remains governed by ADR 0060 and the SOPS runbook, with separate rehearsal and approval
+gates. The staging setup utility refuses production mutation actions.
 
 The production Compose fragment documenting the service environment and secret sources is
 `infrastructure/docker/env/prod.sops-cutover-fragment.yml`.

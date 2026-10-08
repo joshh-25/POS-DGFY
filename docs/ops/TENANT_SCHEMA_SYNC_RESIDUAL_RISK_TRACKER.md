@@ -2,12 +2,71 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-09-22
+last_reviewed: 2026-10-08
 applies_to: deploy_operations
 topic: tenant_schema_sync_residual_risk
 ---
 
 # Tenant Schema Sync Residual Risk Tracker
+
+## 2026-10-08 finding and fix: changeColumn ENUM widening never reached existing tenants (#2335)
+
+Production error "Data truncated for column 'reference_type' at row 1" (#2321) recurred on
+2026-10-08, one day after PR #2322 had merged to `main` and deployed what looked like the fix.
+Empirically confirmed before this fix shipped: **all 52 production tenant databases** were still
+running `stock_movements.reference_type` as `enum('PO','JO','MANUAL','RETURN','DO','POS')` — none
+had `'POS_PARKED_SALE'` — despite the non-blocking `repair-apply` step reporting `status: "ok"` for
+every one of them on every restart since the deploy.
+
+### Root cause
+
+PR #2322's migration (`20261007000001-add-pos-parked-sale-reference-type.cjs`) used
+`queryInterface.changeColumn('stock_movements', 'reference_type', ...)` to widen the ENUM. Per
+`apps/dgfy-migration-runner/README.md`, that package "only ever touches the **landlord**
+database" — the migration never reaches a tenant's own physically separate schema. The *only*
+mechanism that repairs an already-existing tenant's drift is
+`apps/dgfy-api/scripts/sync-tenant-schemas.js`'s `REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS` registry,
+applied automatically and non-blocking on every API container start/restart via
+`infrastructure/docker/dgfy-api/entrypoint.sh`'s `repair-apply` step (ADR-level precedent: this is
+the same path that already retrofitted `pos_transactions.payment_type`'s `'cheque'` widening onto
+every pre-existing tenant). PR #2322 added `POS_PARKED_SALE` to the migration and the
+`StockMovement` Sequelize model, but never added a corresponding entry to
+`REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS` — so the one mechanism capable of reaching an
+already-existing tenant never ran for this column at all. That's why the `repair-apply` report
+showed `status: "ok"` for every tenant: the registry had nothing to check here, so there was
+nothing to flag as drift.
+
+A tenant provisioned *after* #2322 merged was unaffected, because new-tenant provisioning
+(`tenantSchemaBootstrap.js`) builds the schema via `Sequelize.sync()`, which reads the model file
+directly — and the model *was* correctly updated. The asymmetry (new tenants fine, every
+pre-existing tenant still broken) is what produced the recurrence.
+
+A second, independent gap let this ship with a clean CI run:
+`apps/dgfy-api/scripts/check-tenant-schema-registry-coverage.js` (`check:tenant-schema-coverage`)
+exists specifically to flag a migration that touches a tenant-scoped table with no matching
+registry entry, but it only parsed `queryInterface.createTable(...)` and
+`queryInterface.addColumn(...)` out of changed migration files — it had no detection for
+`queryInterface.changeColumn(...)` at all, so an ENUM-widening migration was structurally
+invisible to the one gate meant to catch exactly this.
+
+### Fix
+
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`: added the missing
+  `stock_movements.reference_type` entry to `REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS`
+  (`enumValues: ['PO','JO','MANUAL','RETURN','DO','POS','POS_PARKED_SALE']`), bumped
+  `TENANT_SCHEMA_CAPABILITY_VERSION`. This is the actual production fix — the next container
+  restart's existing `repair-apply` step propagates it to every active tenant automatically, no
+  separate manual DB command needed.
+- `apps/dgfy-api/scripts/check-tenant-schema-registry-coverage.js`: added `changeColumn(...)`
+  detection (`extractMigrationSchemaOperations`, `checkRegistryCoverage`), checked against either
+  `REQUIRED_TENANT_SCHEMA_COLUMNS` or `REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS` — so a future
+  enum-widening (or any type-changing) migration with no registry entry now fails CI instead of
+  shipping silently.
+- Regression coverage: `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js` gained a case
+  asserting the registry's `stock_movements.reference_type` enum values match every literal the
+  app writes; `apps/dgfy-api/tests/tenantSchemaRegistryCoverageScript.unit.test.js` and
+  `checkTenantSchemaRegistryCoverageScript.integration.test.js` gained unit/CLI coverage proving
+  an unregistered `changeColumn` enum widening is now flagged, and a registered one passes.
 
 ## 2026-09-22 finding and fix: Eagle Spoon activated without full schema parity (#2027)
 

@@ -4,13 +4,19 @@ on:
   pull_request:
     branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      large_object_poc_bytes:
+        description: 'One-time multipart POC size in bytes (100,000,001 through 134,217,728)'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   security-scan:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ['sieitz-runner']
     timeout-minutes: 45
     steps:
@@ -64,6 +70,7 @@ jobs:
           echo "[workspace-hygiene] tree complete."
 
       - name: Scan PR diff with gitleaks
+        if: github.event_name == 'pull_request'
         shell: bash
         continue-on-error: true
         timeout-minutes: 15
@@ -80,32 +87,118 @@ jobs:
             -v "$RUNNER_TEMP/security-scan:/reports" \
             -w /repo \
             zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            --redact=100 \
             git --config=.gitleaks.toml \
               --log-opts="$MERGE_BASE..$PR_HEAD_SHA" \
               --report-format=json \
               --report-path=/reports/gitleaks-report.json \
               /repo
 
-      - name: Upload gitleaks report
-        id: upload_gitleaks_report
-        if: always()
-        uses: actions/upload-artifact@v7
-        # Artifact storage outages/quota exhaustion must not prevent the independent
-        # Semgrep scan from running. The report remains best-effort evidence; the
-        # step outcome is surfaced by the warning step below.
+      - name: Upload gitleaks report to S3
+        if: always() && github.event_name == 'pull_request'
+        id: s3_upload
         continue-on-error: true
-        timeout-minutes: 5
-        with:
-          name: gitleaks-report
-          path: ${{ runner.temp }}/security-scan/gitleaks-report.json
-          if-no-files-found: warn
-
-      - name: Report gitleaks artifact upload failure
-        if: steps.upload_gitleaks_report.outcome == 'failure'
         shell: bash
-        run: echo "::warning::Gitleaks completed, but its report artifact could not be uploaded. Review Actions artifact storage/quota before relying on the report as retained evidence."
+        timeout-minutes: 5
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_DEFAULT_REGION: us-east-1
+          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/ci-s3-upload.sh "$RUNNER_TEMP/security-scan/gitleaks-report.json" gitleaks-report
+
+      - name: Upload and verify large multipart POC object
+        if: github.event_name == 'workflow_dispatch' && inputs.large_object_poc_bytes != ''
+        id: large_s3_upload
+        shell: bash
+        timeout-minutes: 10
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_DEFAULT_REGION: us-east-1
+          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          SOURCE_COMMIT_SHA: ${{ github.sha }}
+          LARGE_OBJECT_POC_BYTES: ${{ inputs.large_object_poc_bytes }}
+          S3_KEY_PREFIX: poc-large
+          S3_DELETE_AFTER_VERIFY: "true"
+        run: |
+          set -euo pipefail
+          if [[ ! "$LARGE_OBJECT_POC_BYTES" =~ ^[1-9][0-9]{0,8}$ ]] || \
+            (( 10#$LARGE_OBJECT_POC_BYTES <= 100000000 || 10#$LARGE_OBJECT_POC_BYTES > 134217728 )); then
+            echo "::error::large_object_poc_bytes must be between 100,000,001 and 134,217,728 bytes."
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/security-scan"
+          payload="$RUNNER_TEMP/security-scan/large-object-poc.bin"
+          trap 'rm -f "$payload"' EXIT
+          head -c "$LARGE_OBJECT_POC_BYTES" /dev/urandom > "$payload"
+          bash scripts/ci-s3-upload.sh "$payload" large-object-poc
+
+      - name: Record S3 evidence results
+        if: always()
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          UPLOAD_OUTCOME: ${{ steps.s3_upload.outcome }}
+          UPLOAD_STATUS: ${{ steps.s3_upload.outputs.upload_status }}
+          UPLOAD_URI: ${{ steps.s3_upload.outputs.object_uri }}
+          UPLOAD_SIZE: ${{ steps.s3_upload.outputs.size_bytes }}
+          SOURCE_SHA256: ${{ steps.s3_upload.outputs.source_sha256 }}
+          DIRECT_SHA256: ${{ steps.s3_upload.outputs.direct_readback_sha256 }}
+          PRESIGNED_SHA256: ${{ steps.s3_upload.outputs.presigned_readback_sha256 }}
+          PRESIGNED_HTTP_STATUS: ${{ steps.s3_upload.outputs.presigned_http_status }}
+          PRESIGNED_URL: ${{ steps.s3_upload.outputs.presigned_url }}
+          LARGE_POC_BYTES: ${{ inputs.large_object_poc_bytes }}
+          LARGE_UPLOAD_OUTCOME: ${{ steps.large_s3_upload.outcome }}
+          LARGE_UPLOAD_STATUS: ${{ steps.large_s3_upload.outputs.upload_status }}
+          LARGE_UPLOAD_URI: ${{ steps.large_s3_upload.outputs.object_uri }}
+          LARGE_UPLOAD_SIZE: ${{ steps.large_s3_upload.outputs.size_bytes }}
+          LARGE_SOURCE_SHA256: ${{ steps.large_s3_upload.outputs.source_sha256 }}
+          LARGE_DIRECT_SHA256: ${{ steps.large_s3_upload.outputs.direct_readback_sha256 }}
+          LARGE_PRESIGNED_SHA256: ${{ steps.large_s3_upload.outputs.presigned_readback_sha256 }}
+          LARGE_HTTP_STATUS: ${{ steps.large_s3_upload.outputs.presigned_http_status }}
+          LARGE_CLEANUP_STATUS: ${{ steps.large_s3_upload.outputs.cleanup_status }}
+        run: |
+          {
+            echo "### S3 evidence storage"
+            if [[ "$EVENT_NAME" == "pull_request" ]]; then
+              echo "- Gitleaks report upload step: ${UPLOAD_OUTCOME:-not run} (${UPLOAD_STATUS:-no verified result})."
+              if [[ -n "$UPLOAD_URI" ]]; then
+                echo "- Object URI: ${UPLOAD_URI}"
+                echo "- Size: ${UPLOAD_SIZE:-unknown} bytes"
+                echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}; presigned readback ${PRESIGNED_SHA256:-unknown}"
+                echo "- Presigned readback HTTP status: ${PRESIGNED_HTTP_STATUS:-unknown}"
+                if [[ -n "$PRESIGNED_URL" && "$UPLOAD_STATUS" == "verified" ]]; then
+                  echo "- Retrieval URL (48-hour bearer link; anyone who can view this run can retrieve the report before expiry): ${PRESIGNED_URL}"
+                fi
+              fi
+              echo "- Gitleaks report generation uses 100% redaction."
+              if [[ "$UPLOAD_OUTCOME" == "failure" ]]; then
+                echo "- Upload failure is visible in this run; the step is continue-on-error so Semgrep can still run."
+              fi
+            elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              if [[ -z "$LARGE_POC_BYTES" ]]; then
+                echo "- Large multipart POC skipped; set large_object_poc_bytes to 100,000,001–134,217,728 for the one-time proof."
+              else
+                echo "- Large multipart POC step: ${LARGE_UPLOAD_OUTCOME:-not run} (${LARGE_UPLOAD_STATUS:-no verified result})."
+                echo "- Requested size: ${LARGE_POC_BYTES} bytes"
+                if [[ -n "$LARGE_UPLOAD_URI" ]]; then
+                  echo "- Object URI: ${LARGE_UPLOAD_URI}"
+                  echo "- Size: ${LARGE_UPLOAD_SIZE:-unknown} bytes"
+                  echo "- SHA-256: source ${LARGE_SOURCE_SHA256:-unknown}; direct readback ${LARGE_DIRECT_SHA256:-unknown}; presigned readback ${LARGE_PRESIGNED_SHA256:-unknown}"
+                  echo "- Presigned readback HTTP status: ${LARGE_HTTP_STATUS:-unknown}"
+                  echo "- Cleanup: ${LARGE_CLEANUP_STATUS:-not confirmed}; if verification or cleanup failed, inspect this object before removing it."
+                fi
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Scan with Semgrep
+        if: github.event_name == 'pull_request'
         shell: bash
         continue-on-error: true
         timeout-minutes: 20
