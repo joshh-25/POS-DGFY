@@ -27,6 +27,7 @@ describe('POS mobile focus zoom contracts', () => {
     const posHtml = readSource('../../apps/dgfy-pos/index.html');
 
     expect(css).toContain('body[data-pos-surface="pos"] {\n  touch-action: manipulation;\n}');
+    expect(css).toMatch(/}\s*\/\* Keep browser double-tap zoom[\s\S]*?\*\/\s*body\[data-pos-surface="pos"\] \{\s*touch-action: manipulation;\s*\}/);
     expect(posEntry).toContain("document.body.setAttribute('data-pos-surface', 'pos');");
     expect(posHtml).not.toMatch(/user-scalable\s*=\s*["']no["']/i);
     expect(posHtml).not.toMatch(/maximum-scale\s*=\s*["']1(?:\.0)?["']/i);

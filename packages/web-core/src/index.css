@@ -117,6 +117,9 @@ body {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* Keep browser double-tap zoom from firing across every POS view. The
  * manipulation value preserves normal panning and pinch zoom; it only removes
  * the browser gesture that competes with taps on controls and cards. The POS
@@ -124,9 +127,6 @@ body {
  * covered without changing IMS or Storefront behavior. */
 body[data-pos-surface="pos"] {
   touch-action: manipulation;
-}
-
-  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
