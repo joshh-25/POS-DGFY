@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 
+const MOBILE_GRID_CLASSES = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4'
+};
+
 export default function PosLineTabNavigation({
   tabs,
   activeTab,
@@ -8,11 +15,13 @@ export default function PosLineTabNavigation({
   idPrefix = 'pos-tab',
   panelId,
   showIcons = true,
-  hideScrollbar = false
+  hideScrollbar = false,
+  mobileGridColumns = null
 }) {
   const availableTabs = Array.isArray(tabs) ? tabs : [];
   const tabsViewportRef = useRef(null);
   const activeTabIndex = availableTabs.findIndex((tab) => tab.id === activeTab);
+  const mobileGridClass = MOBILE_GRID_CLASSES[mobileGridColumns] || '';
   const getTabId = useCallback((tabId) => (
     typeof idPrefix === 'function' ? idPrefix(tabId) : `${idPrefix}-${tabId}`
   ), [idPrefix]);
@@ -66,18 +75,27 @@ export default function PosLineTabNavigation({
     <nav
       ref={tabsViewportRef}
       aria-label={ariaLabel}
-      className={`-mx-1 overflow-x-auto min-[1024px]:mx-0 ${hideScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`}
+      className={`-mx-1 border-b border-slate-200 ${mobileGridClass ? 'overflow-x-hidden' : 'overflow-x-auto'} overflow-y-hidden min-[1024px]:mx-0 ${hideScrollbar || mobileGridClass ? 'dgfy-pos-scrollbar-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''}`}
     >
-      <div role="tablist" aria-orientation="horizontal" className="flex min-w-max items-end gap-3 px-1 min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0">
+      <div
+        role="tablist"
+        aria-label={ariaLabel}
+        aria-orientation="horizontal"
+        className={`${mobileGridClass
+          ? `grid ${mobileGridClass} min-w-0 w-full items-stretch gap-2 px-1`
+          : 'flex min-w-max items-end gap-3 px-1'} -mb-px min-[1024px]:flex min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0`}
+      >
         {availableTabs.map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
+          const mobileLabel = tab.mobileLabel;
           return (
             <button
               key={tab.id}
               id={getTabId(tab.id)}
               type="button"
               role="tab"
+              aria-label={mobileLabel ? tab.label : undefined}
               data-testid={tab.testId || undefined}
               aria-selected={active}
               aria-controls={panelId}
@@ -85,8 +103,9 @@ export default function PosLineTabNavigation({
               onClick={() => onTabChange(tab.id)}
               onKeyDown={(event) => handleKeyDown(event, tab.id)}
               className={[
-                'relative inline-flex min-h-12 shrink-0 items-center gap-1.5 border-b-2',
-                'px-2 py-3 text-[14px] font-bold whitespace-nowrap text-[#0F172A] transition-colors',
+                'relative inline-flex min-h-12 items-center gap-1.5 border-b-2',
+                mobileGridClass ? 'w-full min-w-0 justify-center whitespace-normal px-2 text-center' : 'shrink-0 px-2 whitespace-nowrap',
+                'py-3 text-[14px] font-bold text-[#0F172A] transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]',
                 'focus-visible:ring-offset-[-2px] sm:px-3 min-[1024px]:flex-1 min-[1024px]:justify-center min-[1024px]:px-2 xl:px-3',
                 active
@@ -95,7 +114,12 @@ export default function PosLineTabNavigation({
               ].join(' ')}
             >
               {showIcons && Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
-              <span>{tab.label}</span>
+              {mobileLabel ? (
+                <>
+                  <span className="min-w-0 min-[1024px]:hidden">{mobileLabel}</span>
+                  <span className="hidden min-[1024px]:inline">{tab.label}</span>
+                </>
+              ) : <span className="min-w-0">{tab.label}</span>}
             </button>
           );
         })}
