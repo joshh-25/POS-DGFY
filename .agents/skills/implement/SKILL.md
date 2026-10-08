@@ -18,16 +18,27 @@ human's call — see the checkpoint policy below for the full boundary.
 
 An invocation may include a repository-relative path in the form
 `/implement @.tmp/plan-<issue>.md`. When present, read and validate that artifact before branching
-or planning further. It must use the `dgfy-planner-handoff/v1` schema, identify the same open issue
-being implemented, and have `status: ready`. A missing, malformed, `needs-decision`, or materially
-stale/conflicting handoff is a hard stop: report the discrepancy and return to `/planner` or the
-operator instead of silently replanning around it.
+or planning further. Accept only `dgfy-planner-handoff/v1` and the compatible global
+`planner-handoff/v1` schema, normalizing either in memory to the repository handoff contract in
+`docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`. A schema-label difference by itself is not a
+blocker. The artifact must identify the same open issue, identify this repository when a
+`repository` field is present, have `status: ready`, and contain the required substantive plan
+content. Reject unrecognized schemas, malformed content, `needs-decision`, identity mismatches, or
+materially stale/conflicting plans before editing.
 
 The handoff is a planning snapshot, not a replacement for the issue or authoritative repository
 documentation. Re-validate the issue and relevant docs at implementation time; those sources win
-over the artifact if they changed, and the Worker must surface the conflict before editing. The
-artifact's `planning_head` is provenance, not an automatic failure when the current checkout has
-advanced.
+over the artifact if they changed, and the Worker must surface a material conflict before editing.
+The artifact's `planning_head` is provenance, not an automatic failure when the current checkout
+has advanced.
+
+Resolve routine implementation details and gaps from the live issue, current code and tests,
+authoritative docs, and repository conventions, then continue. Record consequential assumptions or
+findings in the implementation/PR report. Pause for a genuine unresolved product or scope decision,
+authoritative-source conflict, material scope change, or safety/compliance checkpoint without a
+repository-defined answer. When pausing, state the evidence, exact decision needed, and consequence
+of each option; request a Planner refresh only when the plan or issue needs a real decision or scope
+correction.
 
 For an artifact-backed PR, add a compact `## Plan Handoff` section to the PR body containing the
 issue number, artifact path, planning head, scope summary, and acceptance summary. The local `.tmp`
@@ -88,6 +99,9 @@ of these triggers actually firing (or correctly not firing) in practice.
    Never commit directly to a local `develop` — always branch first, even for something small.
    Once branched, set the linked issue's board `Status` to `In progress` — see "Board transitions"
    below.
+   When checking phase eligibility, do not stop because another phase is `in_progress` or because
+   its `### Next eligible phase` text names a later phase; only an explicit dependency blocks work
+   (see `AGENTS.md` and the ledger's "Phase Sequencing and Lifecycle Rules").
 2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
    `feature/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, among others — matching the change's
    actual kind. (`ci/` was previously missing from that file despite being in heavy real use for

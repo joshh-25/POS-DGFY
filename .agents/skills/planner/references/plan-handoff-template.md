@@ -5,6 +5,7 @@ policy into it when a source document can be cited.
 
 ```yaml
 schema: dgfy-planner-handoff/v1
+repository: Sieitzz/dgfy-platform
 issue: <number>
 issue_type: issue | epic
 planning_head: <commit sha>
