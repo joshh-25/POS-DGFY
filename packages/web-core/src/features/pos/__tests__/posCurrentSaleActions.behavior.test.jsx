@@ -44,7 +44,7 @@ describe('PosCurrentSaleActions', () => {
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Cash Drawer')).toBeDefined();
     const drawerButton = screen.getByTestId('pos-open-cash-drawer-button');
-    expect(drawerButton.className).not.toContain('h-auto');
+    expect(drawerButton.className).toContain('h-auto');
     expect(drawerButton.querySelector('span').className).toContain('line-clamp-2');
     expect(screen.queryByText('Apply Discount')).toBeNull();
     fireEvent.click(parkButton);
@@ -143,7 +143,9 @@ describe('PosCurrentSaleActions', () => {
     expect(screen.getByTestId('pos-current-sale-split-payment').className).toContain('order-3 col-span-2');
     expect(screen.getByTestId('pos-open-cash-drawer-button').getAttribute('aria-label')).toBe('Open Cash Drawer');
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
-    expect(screen.getByText('Open Cash Drawer').className).toContain('whitespace-nowrap');
+    expect(screen.getByText('Open Cash Drawer').className).toContain('break-words');
+    expect(screen.getByText('Open Cash Drawer').className).toContain('line-clamp-2');
+    expect(screen.getByText('Open Cash Drawer').className).not.toContain('whitespace-nowrap');
   });
 
   it('keeps the tablet cash-drawer accessible name aligned with its loading label', () => {
