@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-08
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1970,3 +1970,27 @@ conversion; absent evidence is a hard stop, never a guessed baseline.
 release-note template, and Phase 474 in the implementation ledger.
 
 PR: (this PR). Closes #2266.
+
+### 2026-10-08: Reduce ordinary PR app checks for version-only manifests (#2356)
+
+`pr-checks.yml` may omit an app's Docker build and frontend lint routing when the complete
+app-local diff changes only that app's top-level `package.json` `version`, and the resolver can
+read and compare both committed manifests. It removes only that proven manifest from the routing
+input, then applies the existing app filters and frontend shared-code reachability rules. Any other
+app-local change, malformed or unavailable comparison, missing branch context, or failed whole-diff
+resolution retains normal routing or fails detection. The full original diff continues to feed
+version-floor checks, PR metadata, compliance settings, independent security scanning, release/docs
+validation, and artifact selection.
+
+The reduction applies to ordinary PRs, including staging repairs and main hotfixes, when explicitly
+enabled by the ordinary PR-check caller. Aggregate promotion PRs (`develop`/`to-staging` or
+`to-staging/*` into `staging`; `staging` or `release/*` into `main`) keep their existing routing.
+Promotion-time quality evidence and deploy artifact builds are unchanged. Skipped frontend builds
+receive a dependency-free assertion that the manifest fallback, HTML version/floor tags, emitted
+`version.json`, and environment override precedence remain aligned. ADR 0081's per-app floor check
+and all release-note, compliance, security, and immutable-artifact obligations remain in force.
+
+`[snapshot]` CI scheduling detail; no release-control clause changes. See issue #2356 and
+`scripts/resolve-pr-app-check-triggers.js` for the fail-safe resolver contract.
+
+PR: (this PR). Closes #2356.
