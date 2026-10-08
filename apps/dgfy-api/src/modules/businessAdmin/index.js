@@ -19,6 +19,7 @@ import { buildGetBusinessAdminOrderDetailUseCase, buildListBusinessAdminOrdersUs
 import { businessAdminShiftHistoryRepository } from './repositories/businessAdminShiftHistoryRepository.js';
 import { buildListBusinessAdminShiftsUseCase } from './usecases/businessAdminShiftHistoryUseCase.js';
 import { buildGetBusinessAdminCommerceMonitoringUseCase } from './usecases/businessAdminCommerceMonitoringUseCase.js';
+import { buildGetBusinessAdminEJournalEvidenceUseCase, buildListBusinessAdminEvidenceCatalogUseCase } from './usecases/businessAdminEvidenceUseCase.js';
 import { businessAdminWorkforceRepository } from './repositories/businessAdminWorkforceRepository.js';
 import { businessAdminInventoryReportRepository } from './repositories/businessAdminInventoryReportRepository.js';
 import { businessAdminFinancialReportRepository } from './repositories/businessAdminFinancialReportRepository.js';
@@ -110,6 +111,11 @@ export const getBusinessAdminPosActivityAnalyticsUseCase = buildGetBusinessAdmin
 export const listBusinessAdminReportDefinitionsUseCase = buildListBusinessAdminReportDefinitionsUseCase();
 export const getBusinessAdminReportDatasetUseCase = buildGetBusinessAdminReportDatasetUseCase(businessAdminReportDependencies);
 export const exportBusinessAdminReportUseCase = buildExportBusinessAdminReportUseCase(businessAdminReportDependencies);
+export const listBusinessAdminEvidenceCatalogUseCase = buildListBusinessAdminEvidenceCatalogUseCase({ posRepository });
+export const getBusinessAdminEJournalEvidenceUseCase = buildGetBusinessAdminEJournalEvidenceUseCase({
+    businessAdminOverviewRepository,
+    posRepository
+});
 
 export const getBusinessAdminInventoryValuationUseCase = buildGetBusinessAdminInventoryValuationUseCase({
     businessAdminOverviewRepository,

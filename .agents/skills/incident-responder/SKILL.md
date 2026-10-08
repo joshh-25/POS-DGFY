@@ -94,6 +94,11 @@ statement ADR 0082 Decision 6 requires for this path. `production_commit` stays 
 lifecycle Decision 8 defines for an ordinary promotion, since the real `main` merge-commit SHA does
 not exist until after this PR merges.
 
+If the pre-dispatch check below reports `floor-alias-collision` for the paired backend, bump that
+app's package floor in this hotfix and list its new version alongside the app you intentionally
+changed. If it reports `floor-alias-content-equivalent`, keep the paired app's current production
+version in the table, consistent with ADR 0082 Decision 4.
+
 A hotfix branch does not match `check:release-notes`'s `release/<candidate_id>-rN` pattern (Phase
 296), so it exits 0 ("not applicable") for this PR — this procedural step is what actually satisfies
 ADR 0082 Decision 3's binding no-record rule here today, not a script gate, until ADR 0082 Follow-up
@@ -181,6 +186,28 @@ remains actively-incident-only.
      instead of jumping the queue.
    - If genuinely unclear which applies, ask — this is a judgment call, not something to guess
      silently.
+
+   **`build_api` pairing consequence for a `main` hotfix with no staging leg.** `build_api` always
+   rebuilds `dgfy-api` and `dgfy-migration-runner` as one paired unit, even when this hotfix only
+   touches one of them. On the ordinary `develop → staging → main` flow this is invisible — the
+   untouched partner reuses its STAGING-built revision. A direct `main` hotfix has no STAGING leg, so
+   there is nothing to reuse: if the untouched app's tracked build inputs have drifted at all since
+   its floor alias was published, `resolve-build-plan`'s floor-alias preflight
+   (`scripts/resolve-build-skip-plan.js`) will correctly halt the dispatch, asking you to bump that
+   app's `package.json` patch version first.
+
+   **Prerequisite: GHCR read access.** The command below inspects GHCR tags directly (`docker
+   buildx imagetools inspect`), which needs an authenticated session with `read:packages` scope. On
+   an auth/403 error, run `gh auth refresh -h github.com -s read:packages` once, then retry.
+   **Run the same check locally before dispatching:**
+   ```bash
+   node scripts/resolve-build-skip-plan.js --revision <hotfix-sha> --environment PROD \
+     --apps dgfy-api,dgfy-migration-runner \
+     --release-revisions-json '{"dgfy-api":"<api-rN>","dgfy-migration-runner":"<migration-runner-rN>"}'
+   ```
+   If `dgfy-migration-runner` resolves to `floor-alias-collision`, bump its `package.json` patch
+   version in this same hotfix PR (ADR 0081 Decision 6's hotfix-is-patch-only rule) before opening it.
+
 3. **Hand off to `implement`** to branch off the chosen base (never off `develop` for a direct-main
    prod fix — `develop` doesn't reach `main` on this timeline), fix, commit, and open the PR — same
    as the monitor path. If the base is `main`, this PR also carries the release-note obligation

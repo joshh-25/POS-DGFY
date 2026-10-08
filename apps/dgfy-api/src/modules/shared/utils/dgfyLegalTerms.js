@@ -200,3 +200,37 @@ export const assertDgfyLegalAcknowledgement = ({ flow, body = {} }) => {
 
     throw buildError('DGFY terms acknowledgement is required.', { field: 'flow' });
 };
+
+export const assertDgfyStorefrontRegistrationLegalConsents = ({ body = {} }) => {
+    const snapshot = getDgfyLegalTermSnapshot(DGFY_LEGAL_TERM_FLOWS.COMPANY_REGISTRATION);
+
+    if (!isTrue(body.accepted_company_terms ?? body.acceptedCompanyTerms)) {
+        throw buildError('Accept the DGFY company registration terms before submitting.', {
+            field: 'accepted_company_terms'
+        });
+    }
+
+    if (!isTrue(body.accepted_marketplace_terms ?? body.acceptedMarketplaceTerms)) {
+        throw buildError('Accept the DGFY marketplace terms before submitting.', {
+            field: 'accepted_marketplace_terms'
+        });
+    }
+
+    requireVersion({
+        provided: body.company_terms_version ?? body.companyTermsVersion,
+        expected: snapshot.company_terms_version,
+        field: 'company_terms_version'
+    });
+    requireVersion({
+        provided: body.marketplace_terms_version ?? body.marketplaceTermsVersion,
+        expected: snapshot.marketplace_terms_version,
+        field: 'marketplace_terms_version'
+    });
+
+    return {
+        ...snapshot,
+        acknowledgement_fields: ['accepted_company_terms', 'accepted_marketplace_terms'],
+        accepted_company_terms: true,
+        accepted_marketplace_terms: true
+    };
+};

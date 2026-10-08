@@ -42,11 +42,17 @@ export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proo
         ) {
             throw new Error('Guest checkout proof does not match this order.');
         }
-    } catch {
+    } catch (error) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
             'Verify the Gmail code before placing this guest order.',
-            { statusCode: 422 }
+            {
+                statusCode: 422,
+                details: error?.name === 'TokenExpiredError'
+                    ? { reason_code: 'GUEST_CHECKOUT_OTP_EXPIRED' }
+                    : null,
+                cause: error
+            }
         );
     }
 };

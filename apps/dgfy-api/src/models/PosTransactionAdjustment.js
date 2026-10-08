@@ -58,7 +58,8 @@ const PosTransactionAdjustment = sequelize.define('PosTransactionAdjustment', {
             'cash_refund',
             'external_refund',
             'provider_refund',
-            'employee_credit_reversal'
+            'employee_credit_reversal',
+            'return'
         ),
         allowNull: false
     },

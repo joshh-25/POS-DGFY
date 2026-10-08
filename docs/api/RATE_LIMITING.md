@@ -70,8 +70,20 @@ key — see [#972](https://github.com/Sieitzz/dgfy-platform/issues/972).
 
 ## Auth / identity limiters
 
+### OIDC provider limiter
+
+`oidcLimiter` is mounted around `/oidc/*` because the DGLaundry issuer endpoints are outside the
+general `/api` limiter. It applies to discovery, JWKS, PAR, authorize, token, logout, revocation,
+and introspection routes. The default budget is 20 requests per 5 minutes in production and 100 in
+development; `OIDC_RATE_LIMIT_MAX_REQUESTS` and `OIDC_RATE_LIMIT_WINDOW_MS` override those values.
+Its key combines the trusted-proxy-aware client IP, OIDC client ID, and route, with a `DynamicStore`
+under the `oidc` Redis prefix. As with the other dynamic stores, an unavailable Redis store falls
+back to per-process memory; hosted operations must monitor `getRateLimiterStoreMode()` and keep
+shared Redis healthy rather than treating local fallback as distributed protection.
+
 | Limiter | Budget (prod) | Window | Key | Mount |
 |---|---|---|---|---|
+| `oidcLimiter` | 20 | 5 min | `ip:client_id:path` | `/oidc/*` |
 | `authLimiter` | 5 | 5 min | `auth:<login\|register>:<ip>:<email>` | `/auth/{login,register}` plus ~18 other DGFY auth/account/affiliate routes -- see note below |
 | `emailOtpLimiter` | 3 | 10 min | `email_otp:<purpose>:<tenant>:<ip>:<email\|invite-token>` | `/auth/email-otp/request`, `/users/me/email-otp/request` |
 | `adminAuthLimiter` | 5 | 15 min | `admin_auth:<ip>:<username>` | `/admin/login` |
@@ -165,6 +177,15 @@ the ordinary `posLimiter` still applies per request to every tier.
 5/hour, pure IP. **This one is a governed floor, not a tuning knob** — see
 `docs/ops/HOSTING_PROFILES.md`. Public tenant registration writes landlord review state and
 queues provisioning; do not loosen this without reading that doc first.
+
+## `companyRegistrationDraftLimiter`
+
+120 requests per 15 minutes in production (240 in development), keyed by the authenticated
+DGFY account. Registration drafts are intentionally separate from `tenantRegistrationLimiter`:
+one draft can legitimately generate several autosave, upload, remove, and submit requests before
+review, while the public tenant-registration limiter protects the legacy auto-provisioning path.
+The production values can be overridden with `RATE_LIMIT_COMPANY_REGISTRATION_DRAFT_WINDOW_MS`
+and `RATE_LIMIT_COMPANY_REGISTRATION_DRAFT_MAX_REQUESTS`.
 
 ## `DynamicStore` — how the Redis/memory split actually behaves
 

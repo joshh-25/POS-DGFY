@@ -14,7 +14,7 @@ import {
   mapRefundStatusToLedgerStatus,
   updateTenantOrderPaymentEntryStatus
 } from '../repositories/tenantOrderPaymentLedgerRepository.js';
-import { cancelDglaundryBookingReservations, notifyDglaundryBookingRefund } from './finalizeDglaundryBookingSession.js';
+import { cancelDglaundryBookingReservations, expireDglaundryBookingSession, notifyDglaundryBookingRefund } from './finalizeDglaundryBookingSession.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 
@@ -477,16 +477,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       }
 
       if (eventType === 'qrph.expired') {
-        const expired = await commercePaymentRepository.updateSessionById(session.session_id, {
-          status: 'expired',
-          provider_event_id: providerEventId || session.provider_event_id,
-          provider_payload: paymentResource,
-          failure_code: 'QRPH_EXPIRED',
-          failure_reason: 'PayMongo QR Ph code expired before payment.'
-        });
-        if (session.target_type === 'dglaundry_booking') {
-          await cancelDglaundryBookingReservations({ session: expired, reason: 'QRPH_EXPIRED', providerEventId, commercePaymentRepository, partnerClient });
-        }
+        const expired = await expireDglaundryBookingSession({ session, resource: paymentResource, providerEventId, commercePaymentRepository, partnerClient });
         await writeWebhookAudit({
           eventType,
           providerEventId,

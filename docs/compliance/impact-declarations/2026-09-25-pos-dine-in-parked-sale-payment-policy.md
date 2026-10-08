@@ -1,19 +1,19 @@
 ---
 status: draft_pr
 owner: DGFY POS/checkout
-last_reviewed: 2026-09-25
+last_reviewed: 2026-10-07
 related_adr: docs/architecture/adr/0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md
 declaration_id: 2026-09-25-pos-dine-in-parked-sale-payment-policy
 classification: major
 surfaces: pos,terminal,payments,inventory,settings,store
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.25
-verification_evidence: focused API/POS/storefront tests,affected app builds,architecture checks,local browser verification,git diff --check
+verification_evidence: focused API/POS/storefront tests,guest checkout OTP expiry contract,scheduled date-time picker tests,affected app builds,architecture checks,local browser verification,git diff --check
 rollback_note: Revert the related application commits and declaration; review tenant data before rolling back the additive dine-in and parked-sale migrations.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-26T04:48:35.618Z
-preflight_request_ref: PREFLIGHT-36218725662-2026-09-25-POS-DINE-IN-PARKED-SALE-PAYMENT-POLICY
+preflight_run_at: 2026-10-08T09:13:46.748Z
+preflight_request_ref: PREFLIGHT-37754614808-2026-09-25-POS-DINE-IN-PARKED-SALE-PAYMENT-POLICY
 ---
 
 # POS dine-in, payment policy, and parked-sale lifecycle
@@ -35,6 +35,8 @@ permission, inventory-authority, and payment settlement boundaries.
   movement/approval handling.
 - `settings` and `store` — location fulfillment capabilities and storefront
   dine-in/payment choices.
+- Storefront scheduled date/time selection and guest-checkout verification
+  failure handling.
 
 ## Compliance Preconditions
 
@@ -45,6 +47,8 @@ permission, inventory-authority, and payment settlement boundaries.
 - Payment timing and settlement validation remain server-authoritative, with
   client-side action availability treated only as a guard against invalid UI
   submissions.
+- An expired guest-checkout email OTP is returned as a validation failure; it
+  does not issue a checkout proof/token or weaken payment settlement controls.
 - No production deployment, live-tenant migration, or payment collection is
   claimed by this declaration.
 
@@ -64,3 +68,5 @@ permission, inventory-authority, and payment settlement boundaries.
   honor UserLocationGrant access without relying on an undefined permission group.
 - The aggregate staging merge restores the canonical POS downpayment-settings contract mocks and removes a stale unused import from the older staging tree; no product behavior changes in these integration cleanups.
 - The aggregate staging merge binds the dine-in cash idempotency-key branch to the existing `isDineInOrder` helper; this preserves the staged dine-in cash-collection behavior and resolves the integrated file's missing helper reference.
+- Guest-checkout OTP expiry, scheduled date/time selection, and payment-step
+  regression tests remain part of the focused local validation set.

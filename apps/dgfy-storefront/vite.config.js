@@ -48,6 +48,8 @@ const devSecurityHeaders = {
 // (`@/components/ui/input`, `button`, `label`) that live in packages/web-core/Components.
 const sharedAliases = [
   { find: '@/components', replacement: path.resolve(webCoreRoot, 'Components') },
+  // Shared web-core settings components use the historical @/src import prefix.
+  { find: '@/src', replacement: path.resolve(webCoreRoot, 'src') },
   // Bare packages web-core's own source imports -- it has no node_modules of its own,
   // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
   ...buildWebCoreRuntimeDepAliases(appNodeModules)

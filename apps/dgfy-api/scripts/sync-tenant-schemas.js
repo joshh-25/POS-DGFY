@@ -124,6 +124,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         day_close_pin_confirmed_at: Object.freeze({
             sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `day_close_pin_confirmed_at` DATETIME NULL"
+        }),
+        reading_payload_hash: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `reading_payload_hash` VARCHAR(64) NULL COMMENT 'SHA-256 of the immutable serialized X/Z reading payload'"
         })
     }),
     pos_transaction_lines: Object.freeze({
@@ -2221,7 +2224,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `actor_shift_id` int DEFAULT NULL,\n"
             + "  `actor_terminal_id` varchar(100) DEFAULT NULL,\n"
             + "  `actor_location_id` int DEFAULT NULL,\n"
-            + "  `adjustment_type` enum('void','cash_refund','external_refund','provider_refund','employee_credit_reversal') NOT NULL,\n"
+            + "  `adjustment_type` enum('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return') NOT NULL,\n"
             + "  `tender_type` varchar(40) NOT NULL,\n"
             + "  `amount` decimal(14,4) NOT NULL,\n"
             + "  `currency` varchar(3) NOT NULL DEFAULT 'PHP',\n"
@@ -3132,6 +3135,12 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
         payment_method: Object.freeze({
             enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit']),
             sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque','employee_credit') NOT NULL"
+        })
+    }),
+    pos_transaction_adjustments: Object.freeze({
+        adjustment_type: Object.freeze({
+            enumValues: Object.freeze(['void', 'cash_refund', 'external_refund', 'provider_refund', 'employee_credit_reversal', 'return']),
+            sql: "ALTER TABLE `pos_transaction_adjustments` MODIFY COLUMN `adjustment_type` ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return') NOT NULL"
         })
     }),
     employee_credit_ledger_entries: Object.freeze({

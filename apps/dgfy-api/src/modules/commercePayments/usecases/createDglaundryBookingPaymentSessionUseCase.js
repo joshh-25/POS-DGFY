@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { DGLAUNDRY_QUALIFICATION_ORDER_REFERENCE } from '../../dgfyLaundryOrders/qualificationConstants.js';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { createDgfyOrderEvent, toTrimmed } from '../../dgfyLaundryOrders/contracts.js';
 
@@ -49,7 +50,8 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
   commercePaymentRepository,
   paymongoService,
   partnerClient,
-  mappingRepository
+  mappingRepository,
+  allowQualificationFixture = false
 }) => async ({ payload = {} } = {}) => {
   try {
     if (!enabled()) throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'DGLaundry booking payments are dark-disabled.', { statusCode: 503 });
@@ -80,7 +82,13 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
 
     const identityHash = crypto.createHash('sha256').update(`${companyId}\0${locationId}\0${idempotencyKey}`).digest();
     const stableReference = (prefix, offset = 0) => `${prefix}-${identityHash.subarray(offset, offset + 18).toString('hex').toUpperCase()}`;
-    const externalOrderReference = stableReference('DGL');
+    const qualificationFixture = allowQualificationFixture
+      && payload.__qualification_fixture === true
+      && process.env.NODE_ENV === 'staging'
+      && process.env.PAYMONGO_MODE === 'test';
+    const externalOrderReference = qualificationFixture
+      ? DGLAUNDRY_QUALIFICATION_ORDER_REFERENCE
+      : stableReference('DGL');
     const externalTrackingReference = crypto.createHash('sha256').update(Buffer.concat([Buffer.from('tracking\0'), identityHash])).digest().toString('base64url');
     const group = {
       externalOrderGroupReference: stableReference('DGLG', 4),

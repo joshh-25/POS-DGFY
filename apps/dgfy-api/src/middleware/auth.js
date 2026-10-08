@@ -710,6 +710,7 @@ export const resolvePlatformAdminRoutePolicy = (req) => {
   // master-only, not a delegable permission: a published template shapes
   // what every future tenant provisions with, platform-wide.
   if (/^\/api\/v1\/admin\/templates(?:\/|$)/.test(path)) return { masterOnly: true };
+  if (/^\/api\/v1\/registration\/drafts\/[^/]+\/(approve|retry-materialization)$/.test(path)) return { permissions: ['admin.tenants'] };
   // Protected legacy admin endpoints without a visible page are deliberately
   // master-only until they are added to the checked-in permission matrix.
   return { masterOnly: true };

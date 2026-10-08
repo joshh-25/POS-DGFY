@@ -14,7 +14,11 @@ import {
 // `develop` (import elided there since #844 owns the widened extraction) -- this branch's own
 // copy supersedes that inline one; no functional loss, since this is a strict superset.
 import { resolveTrackedTotals } from '../model/trackedTotals.js';
-import { GUEST_CHECKOUT_DISABLED_MESSAGE, GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE } from '../checkout/model/guestCheckoutOtp.js';
+import {
+  GUEST_CHECKOUT_DISABLED_MESSAGE,
+  GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE,
+  isGuestCheckoutOtpExpiredError
+} from '../checkout/model/guestCheckoutOtp.js';
 import { isGuestCheckoutAllowed } from '../model/customerAccess.js';
 import { requiresBillingEmail } from '../../checkout/checkoutValidation.js';
 import { writeGuestDeliveryAddress } from '../model/storefrontGuestDeliveryAddressStorage.js';
@@ -61,6 +65,7 @@ export function useCheckoutSubmission({
   guestCheckoutIntentId,
   guestCheckoutOtpVerified,
   guestCheckoutProof,
+  onGuestCheckoutOtpExpired,
   handleFnbCheckout,
   handleLoadAccountPanel,
   hasServiceCart,
@@ -638,6 +643,10 @@ export function useCheckoutSubmission({
         has_mixed_cart: hasMixedCart
       });
     } catch (error) {
+      if (isGuestCheckoutOtpExpiredError(error)) {
+        onGuestCheckoutOtpExpired?.();
+        return;
+      }
       const violation = extractStockViolation(error);
       if (violation) {
         const message = buildStockExceededMessage(violation);

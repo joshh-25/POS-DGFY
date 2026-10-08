@@ -1,4 +1,4 @@
-import { getCompanyRegistrationStatusUseCase, resubmitCompanyRegistrationUseCase, uploadCompanyRegistrationFileUseCase, listAdminCompanyRegistrationUseCase, downloadAdminCompanyRegistrationUploadUseCase, revokeAdminCompanyRegistrationUploadUseCase } from '../index.js';
+import { getCompanyRegistrationStatusUseCase, resubmitCompanyRegistrationUseCase, uploadCompanyRegistrationApplicationFileUseCase, listAdminCompanyRegistrationUseCase, downloadAdminCompanyRegistrationUploadUseCase, revokeAdminCompanyRegistrationUploadUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
 export const getCompanyRegistrationStatus = async (req, res) => sendUseCaseResult(res, await getCompanyRegistrationStatusUseCase({
@@ -12,7 +12,7 @@ export const resubmitCompanyRegistration = async (req, res) => sendUseCaseResult
   body: req.body
 }));
 
-export const uploadCompanyRegistrationFile = async (req, res) => sendUseCaseResult(res, await uploadCompanyRegistrationFileUseCase({
+export const uploadCompanyRegistrationFile = async (req, res) => sendUseCaseResult(res, await uploadCompanyRegistrationApplicationFileUseCase({
   applicationId: req.params.applicationId,
   dgfyAccountId: req.dgfyAccount?.id,
   kind: req.params.kind,

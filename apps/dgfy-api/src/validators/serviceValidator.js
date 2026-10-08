@@ -331,6 +331,14 @@ const settleBookingSchema = Joi.object({
     location_id: Joi.number().integer().positive().required()
 });
 
+const rescheduleBookingSchema = Joi.object({
+    start_at: Joi.date().iso().optional(),
+    provider_user_id: Joi.number().integer().positive().allow(null).optional(),
+    resource_id: Joi.number().integer().positive().allow(null).optional(),
+    end_at: Joi.forbidden().messages({ 'any.unknown': 'end_at is derived from the booking duration' }),
+    status: Joi.forbidden().messages({ 'any.unknown': 'status is changed through the booking status endpoint' })
+}).or('start_at', 'provider_user_id', 'resource_id');
+
 const waitlistQuerySchema = Joi.object({
     status: Joi.string().valid(...WAITLIST_STATUSES).optional(),
     limit: Joi.number().integer().min(1).max(300).default(100)
@@ -411,6 +419,7 @@ export const validateServiceBookingIdParam = validateSchema(bookingIdParamSchema
 export const validateServiceBookingReferenceParam = validateSchema(bookingReferenceParamSchema, 'params', 'validatedParams');
 export const validateUpdateServiceBookingStatus = validateSchema(bookingStatusSchema, 'body', 'validatedData');
 export const validateSettleServiceBooking = validateSchema(settleBookingSchema, 'body', 'validatedData');
+export const validateRescheduleServiceBooking = validateSchema(rescheduleBookingSchema, 'body', 'validatedData');
 export const validateClaimServiceBooking = validateSchema(claimBookingSchema, 'body', 'validatedData');
 export const validateServiceWaitlistQuery = validateSchema(waitlistQuerySchema, 'query', 'validatedQuery');
 export const validateCreateServiceWaitlistEntry = validateSchema(serviceWaitlistSchema, 'body', 'validatedData');

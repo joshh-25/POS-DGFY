@@ -33,6 +33,13 @@ describe('admin assisted provisioning route contracts', () => {
   it('keeps public company registration on the DGFY-authenticated registration route', () => {
     expect(routeSource).toContain("router.post('/register', tenantRegistrationLimiter, authenticateDgfyAccount, registerCompanyRequest)");
   });
+
+  it('keeps registration review, download, and draft approval routes behind admin auth', () => {
+    expect(routeSource).toContain("router.get('/registration-drafts', authenticateAdmin, listAdminCompanyRegistrationDrafts)");
+    expect(routeSource).toContain("router.get('/registration-drafts/:draftId/uploads/:uploadId/download', authenticateAdmin, downloadCompanyRegistrationUpload)");
+    expect(routeSource).toContain("router.get('/:id/registration-uploads/download-all', authenticateAdmin, downloadCompanyRegistrationMenuArchive)");
+    expect(routeSource).toContain("router.post('/registration-drafts/:draftId/approve', authenticateAdmin, approveAdminCompanyRegistrationDraft)");
+  });
 });
 
 describe('POS setup cashier route', () => {

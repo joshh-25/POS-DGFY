@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import dbStore from '../src/utils/dbStore.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import { hashFiscalEvidence } from '../src/modules/pos/domain/fiscalEvidenceContract.js';
 
 const mockGetAllSettingsUseCase = jest.fn(async () => ({
     success: true,
@@ -275,7 +276,7 @@ describe('POS historical parked-sale settlement', () => {
         expect(harness.repository.findSellableItemsByIds).toHaveBeenCalledWith([72], expect.any(Object));
     });
 
-    it('settles from the parked snapshot when the catalog row is physically missing', async () => {
+    it('settles from the parked snapshot when the catalog row is physically missing and the marker is omitted', async () => {
         const parkedLine = {
             line_key: 'parked-line-missing',
             item_id: 73,
@@ -289,11 +290,12 @@ describe('POS historical parked-sale settlement', () => {
         const harness = buildHistoricalRepository({
             parkedLine,
             checkoutLine: {
-                line_ref: 'parked-line-missing',
+                // Legacy/stale clients may omit the marker after resuming a
+                // parked sale. The matching snapshot line is still payable.
+                line_ref: 'rebuilt-line-ref-missing',
                 item_id: 73,
                 quantity: 1,
-                sale_price: 125,
-                parked_snapshot_line: true
+                sale_price: 125
             },
             item: null
         });
@@ -2521,6 +2523,34 @@ describe('POS checkout F&B contracts', () => {
     });
 
     it('records original and reprint fiscal print events with chained fiscal events', async () => {
+        const fiscalSnapshot = {
+            template_version: 'fiscal-receipt-v1',
+            source_timezone: 'Asia/Manila',
+            issued_at: '2026-10-03T12:00:00.000Z',
+            document: {
+                invoice_number: 'INV-000001',
+                document_type: 'fiscal_invoice',
+                document_context: 'fiscal'
+            },
+            seller: {
+                taxpayer_type: 'VAT_REGISTERED',
+                software_name: 'DGFY POS'
+            },
+            terminal: { terminal_id: 'TERM-01' },
+            buyer: { name: null },
+            totals: {
+                subtotal_amount: 100,
+                vatable_sales: 89.29,
+                vat_amount: 10.71,
+                vat_exempt_sales: 0,
+                zero_rated_sales: 0,
+                discount_amount: 0,
+                total_amount: 100,
+                payment_type: 'cash'
+            },
+            payment_breakdown: [{ payment_type: 'cash', amount: 100 }],
+            lines: [{ line_id: '1', item_id: 1, quantity: 1, line_total: 100 }]
+        };
         const fiscalTransaction = {
             pos_transaction_id: 177,
             invoice_number: 'INV-000001',
@@ -2528,7 +2558,8 @@ describe('POS checkout F&B contracts', () => {
             document_context: 'fiscal',
             status: 'completed',
             terminal_id: 'TERM-01',
-            fiscal_document_hash: 'a'.repeat(64),
+            fiscal_document_hash: hashFiscalEvidence(fiscalSnapshot),
+            fiscal_document_snapshot: fiscalSnapshot,
             fiscal_lifecycle_state: 'original',
             fiscal_reprint_count: 0
         };

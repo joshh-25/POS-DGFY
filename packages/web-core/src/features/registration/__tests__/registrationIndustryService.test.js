@@ -35,7 +35,11 @@ describe('registrationIndustryService', () => {
       ...liveIndustries[0],
       niches: ['Supermarket', 'Grocery store']
     }]);
-    expect(apiMock.get).toHaveBeenCalledWith('/registration/industries', { skipTenantAuthHeaders: true });
+    expect(apiMock.get).toHaveBeenCalledWith('/registration/industries', {
+      skipTenantAuthHeaders: true,
+      skipAuthRefresh: true,
+      skipGlobalErrorToast: true
+    });
   });
 
   it('uses an empty niches array for malformed live catalog values', async () => {

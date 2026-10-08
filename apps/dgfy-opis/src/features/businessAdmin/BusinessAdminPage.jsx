@@ -65,6 +65,10 @@ import SettingsWorkspace from '../../../../../packages/web-core/src/features/pos
 import { resolveAppAssetUrl } from '../../../../../packages/web-core/src/utils/assetUrl.js';
 import { publishBusinessAdminSettingsUpdated } from '../../../../../packages/web-core/src/features/pos/utils/businessAdminSettingsSync.js';
 import { DGFY_COMPANY_SELECT_ROUTE } from '../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
+import {
+    isPosLocationContextForTenant,
+    subscribeToPosLocationContext
+} from '../../../../../packages/web-core/src/features/pos/utils/posLocationContext.js';
 import { useWorkflowMode } from '../../../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import UserManagementModal from '../../../../../packages/web-core/Components/users/UserManagementModal.jsx';
 import {
@@ -954,7 +958,7 @@ function OrdersWorkspace({ data, onSelect, selected, onClose, dateFrom, dateTo, 
 
 function CustomersWorkspace({ data, onSelect, selected, onClose, onOrderSelect, selectedOrder, onOrderClose, onCreate, creating = false }) {
     const [isAdding, setIsAdding] = useState(false);
-    const [form, setForm] = useState({ name: '', email: '', phone: '' });
+    const [form, setForm] = useState({ name: '', email: '', phone: '', address_line: '' });
     const [formError, setFormError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
 
@@ -962,7 +966,7 @@ function CustomersWorkspace({ data, onSelect, selected, onClose, onOrderSelect, 
         if (creating) return;
         setIsAdding(false);
         setFormError('');
-        setForm({ name: '', email: '', phone: '' });
+        setForm({ name: '', email: '', phone: '', address_line: '' });
     };
 
     const handleSubmit = async (event) => {
@@ -1018,6 +1022,10 @@ function CustomersWorkspace({ data, onSelect, selected, onClose, onOrderSelect, 
                                 <label htmlFor="business-admin-customer-phone">Phone <span className="business-admin-muted">(optional)</span></label>
                                 <input id="business-admin-customer-phone" type="tel" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} maxLength={50} />
                             </div>
+                            <div className="business-admin-field business-admin-customer-address-field">
+                                <label htmlFor="business-admin-customer-address">Full address <span className="business-admin-muted">(optional)</span></label>
+                                <textarea id="business-admin-customer-address" value={form.address_line} onChange={(event) => setForm((current) => ({ ...current, address_line: event.target.value }))} maxLength={4000} rows={2} placeholder="House/building, street, barangay, city, province, postal code" />
+                            </div>
                             <div className="business-admin-customer-form-actions">
                                 <button type="submit" className="business-admin-button primary" disabled={creating}>{creating ? 'Saving…' : 'Save customer'}</button>
                             </div>
@@ -1031,20 +1039,24 @@ function CustomersWorkspace({ data, onSelect, selected, onClose, onOrderSelect, 
                 subtitle={`${number(data?.pagination?.total)} customer profiles`}
                 action={<button type="button" className="business-admin-button primary" onClick={() => { setSuccessMessage(''); setFormError(''); setIsAdding(true); }} disabled={creating}><Plus size={14} /> Add customer</button>}
             >
-                <DataTable
-                    rows={data?.rows || []}
-                    rowKey={(row) => row.profile_ref}
-                    onRowClick={onSelect}
-                    emptyMessage="No customer activity matches the selected period."
-                    columns={[
-                        { key: 'name', label: 'Customer', render: (row) => <button className="business-admin-link" type="button">{row.name}</button> },
-                        { key: 'identity_source', label: 'Identity source', render: (row) => humanize(row.identity_source) },
-                        { key: 'visit_count', label: 'Visits', render: (row) => number(row.visit_count) },
-                        { key: 'total_spend', label: 'Total spend', render: (row) => money(row.total_spend) },
-                        { key: 'average_order', label: 'Average order', render: (row) => money(row.average_order) },
-                        { key: 'last_purchase_at', label: 'Last purchase', render: (row) => dateTime(row.last_purchase_at) }
-                    ]}
-                />
+                <div className="business-admin-customer-table">
+                    <DataTable
+                        rows={data?.rows || []}
+                        rowKey={(row) => row.profile_ref}
+                        onRowClick={onSelect}
+                        emptyMessage="No customer activity matches the selected period."
+                        columns={[
+                            { key: 'name', label: 'Full name', render: (row) => <button className="business-admin-link" type="button">{row.name}</button> },
+                            { key: 'address_line', label: 'Full address', render: (row) => <span className="business-admin-customer-address" title={row.address_line || ''}>{row.address_line || 'No address recorded'}</span> },
+                            { key: 'phone', label: 'Phone', render: (row) => <span className="business-admin-customer-phone">{row.phone || 'No phone recorded'}</span> },
+                            { key: 'identity_source', label: 'Identity source', render: (row) => humanize(row.identity_source) },
+                            { key: 'visit_count', label: 'Visits', render: (row) => number(row.visit_count) },
+                            { key: 'total_spend', label: 'Total spend', render: (row) => money(row.total_spend) },
+                            { key: 'average_order', label: 'Average order', render: (row) => money(row.average_order) },
+                            { key: 'last_purchase_at', label: 'Last purchase', render: (row) => dateTime(row.last_purchase_at) }
+                        ]}
+                    />
+                </div>
             </SectionCard>
             {selected ? <CustomerDetailPanel customer={selected} onClose={onClose} onOrderSelect={onOrderSelect} /> : null}
             {selectedOrder ? <BusinessAdminReceiptModal order={selectedOrder} onClose={onOrderClose} /> : null}
@@ -1056,12 +1068,17 @@ function CustomerDetailPanel({ customer, onClose, onOrderSelect }) {
     return (
         <div className="business-admin-detail-panel">
             <div className="flex items-start justify-between gap-3">
-                <div><div className="business-admin-kicker">Customer profile</div><h2 className="mt-1 text-lg font-black text-[#173e58]">{customer.name}</h2><p className="mt-1 text-xs text-slate-500">{customer.email || customer.phone || 'No contact snapshot'} · {humanize(customer.identity_source)}</p></div>
+                <div><div className="business-admin-kicker">Customer profile</div><h2 className="mt-1 text-lg font-black text-[#173e58]">{customer.name}</h2><p className="mt-1 text-xs text-slate-500">{customer.email || 'No email recorded'} · {humanize(customer.identity_source)}</p></div>
                 <button type="button" className="business-admin-button" onClick={onClose}>Close</button>
             </div>
             <div className="business-admin-customer-detail-contract" role="note">
                 <strong>Read-only tenant history</strong>
                 <span>This profile uses the selected business scope. Loyalty earning, redemption, refunds, and adjustments are not editable from this screen.</span>
+            </div>
+            <div className="business-admin-customer-contact-grid">
+                <div><div className="business-admin-kicker">Full name</div><div className="business-admin-customer-contact-value">{customer.name || 'Unnamed customer'}</div></div>
+                <div><div className="business-admin-kicker">Phone</div><div className="business-admin-customer-contact-value">{customer.phone || 'No phone recorded'}</div></div>
+                <div className="business-admin-customer-contact-address"><div className="business-admin-kicker">Full address</div><div className="business-admin-customer-contact-value">{customer.address_line || 'No address recorded'}</div></div>
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3"><div><div className="business-admin-kicker">Visits</div><div className="mt-1 text-sm font-black text-slate-800">{number(customer.visit_count)}</div></div><div><div className="business-admin-kicker">Spend</div><div className="mt-1 text-sm font-black text-slate-800">{money(customer.total_spend)}</div></div><div><div className="business-admin-kicker">Frequency</div><div className="mt-1 text-sm text-slate-700">{customer.purchase_frequency_days == null ? 'Not enough history' : `${number(customer.purchase_frequency_days)} days`}</div></div></div>
             {(customer.favorite_products || []).length ? <div className="mt-4"><div className="business-admin-kicker mb-1">Favorite products</div><DataTable rows={customer.favorite_products} columns={[{ key: 'item_name', label: 'Item' }, { key: 'quantity', label: 'Quantity', render: (row) => number(row.quantity) }, { key: 'net_spend', label: 'Spend', render: (row) => money(row.net_spend) }]} /></div> : null}
@@ -1705,7 +1722,10 @@ const buildApprovedVoidHistoryRows = ({ approvals = [], orders = [] } = {}) => {
             requested_by: approval?.requested_by || '—',
             approved_by: approval?.approved_by || '—',
             source: approval ? 'Approved workflow' : 'Direct/admin void',
-            reason: order.void_reason || approval?.reason || '—'
+            reason: order.void_reason || approval?.reason || '—',
+            branch: order.branch_name || (approval?.branch_id ? `Branch #${approval.branch_id}` : '—'),
+            terminal: order.terminal_id || approval?.terminal_id || '—',
+            status: order.transaction_status || approval?.status || 'voided'
         };
     });
 
@@ -1721,7 +1741,10 @@ const buildApprovedVoidHistoryRows = ({ approvals = [], orders = [] } = {}) => {
             requested_by: approval.requested_by || '—',
             approved_by: approval.approved_by || '—',
             source: 'Approved workflow',
-            reason: approval.reason || '—'
+            reason: approval.reason || '—',
+            branch: approval.branch_id ? `Branch #${approval.branch_id}` : '—',
+            terminal: approval.terminal_id || '—',
+            status: approval.status || 'executed'
         });
     });
 
@@ -1775,12 +1798,20 @@ function ApprovalsWorkspace({ data, onDecision, actionLoading, voidHistoryOpen, 
         setVoidHistoryPage(1);
         onRefreshVoidHistory();
     };
+    const targetLabel = (row) => {
+        const payload = row.payload || {};
+        const reference = payload.invoice_number || payload.park_reference
+            || `${humanize(row.entity_type)} #${row.entity_id}`;
+        const amount = payload.amount == null ? '' : ` · ${money(payload.amount)}`;
+        const branch = row.branch_id == null ? '' : ` · Branch #${row.branch_id}`;
+        return `${reference}${amount}${branch}`;
+    };
     const approvalColumns = [
         { key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) },
-        { key: 'entity_id', label: 'Entity' },
+        { key: 'target', label: 'Target', render: (row) => targetLabel(row) },
         { key: 'requested_by', label: 'Requested by' },
         { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) },
-        { key: 'reason', label: 'Reason', render: (row) => row.reason || '—' },
+        { key: 'reason', label: 'Reason', render: (row) => <span title={row.reason || ''}>{row.reason || '—'}</span> },
         { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> },
         {
             key: 'actions',
@@ -1805,7 +1836,7 @@ function ApprovalsWorkspace({ data, onDecision, actionLoading, voidHistoryOpen, 
         {!voidHistoryOpen ? (
             <SectionCard
                 title="Approval queue"
-                subtitle="Review high-risk POS requests here; POS remains the canonical execution owner"
+                subtitle="Review the reason and target before deciding. POS and Inventory perform approved changes; rejected requests leave the sale and stock unchanged."
                 action={<button type="button" className="business-admin-button" data-testid="approved-void-history-toggle" onClick={handleHistoryToggle}><Receipt size={14} /> Approved Void History</button>}
             >
                 <DataTable rows={rows} rowKey={(row) => row.approval_request_id} emptyMessage="No approval requests are pending." columns={approvalColumns} />
@@ -2745,7 +2776,9 @@ export default function BusinessAdminPage() {
     const [dateRangePreset, setDateRangePreset] = useState(initialDateRangePreset);
     const [dateFrom, setDateFrom] = useState(initialDateRange.dateFrom);
     const [dateTo, setDateTo] = useState(initialDateRange.dateTo);
-    const [branchId, setBranchId] = useState('');
+    const [branchId, setBranchId] = useState(() => (
+        String(new URLSearchParams(location.search).get('branch_id') || '').trim()
+    ));
     const [search, setSearch] = useState('');
     const [receiptType, setReceiptType] = useState('');
     const [ordersPage, setOrdersPage] = useState(1);
@@ -2878,6 +2911,28 @@ export default function BusinessAdminPage() {
     );
     const branches = useMemo(() => bootstrap?.business?.branches || [], [bootstrap]);
 
+    useEffect(() => {
+        const requestedBranchId = String(new URLSearchParams(location.search).get('branch_id') || '').trim();
+        if (requestedBranchId !== branchId) setBranchId(requestedBranchId);
+    }, [branchId, location.search]);
+
+    useEffect(() => {
+        if (!bootstrap || typeof window === 'undefined') return undefined;
+        const tenantId = bootstrap?.business?.tenant_id;
+        return subscribeToPosLocationContext((payload) => {
+            if (!isPosLocationContextForTenant(payload, tenantId)) return;
+            const candidateLocationId = Number(payload?.operatingLocationId || payload?.viewingLocationId || 0);
+            if (!Number.isInteger(candidateLocationId) || candidateLocationId <= 0) return;
+            const isAllowedLocation = branches.some((branch) => Number(branch?.branch_id) === candidateLocationId);
+            if (!isAllowedLocation) return;
+            const normalizedBranchId = String(candidateLocationId);
+            setBranchId(normalizedBranchId);
+            if (activeSection === 'settings' && settingsDefinition?.scope === 'branch') {
+                setSettingsBranchId(normalizedBranchId);
+            }
+        });
+    }, [activeSection, bootstrap, branches, settingsDefinition?.scope]);
+
     const navigateBusinessAdmin = useCallback((target, options) => {
         if (shouldBlockSettingsNavigation(settingsDirty)) {
             const confirmed = typeof window === 'undefined'
@@ -2902,6 +2957,22 @@ export default function BusinessAdminPage() {
             search: nextSearch ? `?${nextSearch}` : ''
         }, { replace: true });
     }, [location.pathname, location.search, navigate]);
+
+    const handleGlobalLocationChange = useCallback((nextBranchId) => {
+        const normalizedBranchId = String(nextBranchId || '').trim();
+        setBranchId(normalizedBranchId);
+        if (activeSection === 'settings' && settingsDefinition?.scope === 'branch') {
+            setSettingsBranchId(normalizedBranchId);
+        }
+        const searchParams = new URLSearchParams(location.search);
+        if (normalizedBranchId) searchParams.set('branch_id', normalizedBranchId);
+        else searchParams.delete('branch_id');
+        const nextSearch = searchParams.toString();
+        navigate({
+            pathname: location.pathname,
+            search: nextSearch ? `?${nextSearch}` : ''
+        }, { replace: true });
+    }, [activeSection, location.pathname, location.search, navigate, settingsDefinition?.scope]);
 
     const handleOverviewOrderClick = useCallback((order) => {
         const id = extractId(order, ['transaction_id', 'pos_transaction_id']);
@@ -3563,7 +3634,28 @@ export default function BusinessAdminPage() {
                             {activeSection !== 'settings' && meta.description ? <p className="business-admin-description">{meta.description}</p> : null}
                         </div>
                     </div>
-                    <div className="business-admin-top-actions"><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
+                    <div className="business-admin-top-actions">
+                        {branches.length > 0 ? (
+                            <div className="business-admin-field business-admin-location-switcher" data-testid="business-admin-location-scope">
+                                <label htmlFor="business-admin-location-scope"><MapPin size={12} className="inline mr-1" /> Location scope</label>
+                                <select
+                                    id="business-admin-location-scope"
+                                    aria-label="Location scope"
+                                    value={branchId}
+                                    onChange={(event) => handleGlobalLocationChange(event.target.value)}
+                                >
+                                    <option value="">All visible locations</option>
+                                    {branches.map((branch) => (
+                                        <option value={branch.branch_id} key={branch.branch_id}>{branch.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : null}
+                        <span className="business-admin-chip"><UserRound size={13} /> {bootstrap.user?.username || bootstrap.user?.email || 'User'}</span>
+                        <button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button>
+                        <GuardedLink href={buildPosTerminalUrl({ path: '/terminal', search: '?view=shift_controls' })} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button"><MapPin size={14} /> Switch location</GuardedLink>
+                        <GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink>
+                    </div>
                 </div>
                 {showDateFilters ? (
                     <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''}`}>

@@ -4,6 +4,13 @@ import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { validateDglaundryMachineToken } from '../services/dgfyLaundryOidcProvider.js';
 
 const REQUEST_NONCE_PREFIX = 'dgfy:dglaundry:partner-request-nonce:v1';
+const MACHINE_CLIENT_ID = String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID || 'dglaundry-machine').trim();
+// This is the one inbound DGLaundry machine scope used by the existing client.
+// The dglaundry:* operation scopes belong to the opposite (DGFY -> DGLaundry) direction.
+const MACHINE_PARTNER_SCOPE = 'dglaundry';
+const EXPECTED_PARTNER_APP_ID = String(
+    process.env.DGFY_DGLAUNDRY_PARTNER_APP_ID || (process.env.NODE_ENV === 'production' ? '' : 'dglaundry')
+).trim();
 // This memory cache is only for non-production local tests; production must use shared Redis.
 const localRequestNonces = new Map();
 
@@ -102,17 +109,31 @@ export const requireDglaundryPartner = async (req, res, next) => {
         if (bearer.toLowerCase().startsWith('bearer ')) {
             const grant = await validateDglaundryMachineToken(bearer.replace(/^Bearer\s+/i, ''));
             if (grant) {
+                if (grant.client_id !== MACHINE_CLIENT_ID || grant.scope !== MACHINE_PARTNER_SCOPE) {
+                    return res.status(403).json({ success: false, message: 'DGLaundry machine token is not authorized for this partner API.', error_code: 'DGLAUNDRY_PARTNER_SCOPE_FORBIDDEN' });
+                }
+                if (!EXPECTED_PARTNER_APP_ID || String(req.headers['x-dgfy-app-id'] || '').trim() !== EXPECTED_PARTNER_APP_ID) {
+                    return res.status(403).json({ success: false, message: 'DGLaundry application identity is not registered for this environment.', error_code: 'DGLAUNDRY_PARTNER_APP_FORBIDDEN' });
+                }
                 if (process.env.NODE_ENV === 'production' || process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1') {
                     const replayKey = await verifyAsymmetricRequest({ req, rawBody: String(req.rawBody || '') });
                     if (replayKey === 'DGLAUNDRY_REQUEST_REPLAY_STORE_UNAVAILABLE') return res.status(503).json({ success: false, message: 'DGLaundry request replay protection is temporarily unavailable.', error_code: replayKey });
                     if (!replayKey || replayKey.startsWith('DGLAUNDRY_')) return res.status(401).json({ success: false, message: 'DGLaundry request signature is invalid.', error_code: replayKey || 'DGLAUNDRY_REQUEST_SIGNATURE_REQUIRED' });
                     req.dglaundryRequestReplayKey = replayKey;
                 }
-                req.partnerIdentity = 'dglaundry-machine';
-                req.partnerScope = grant.scope || 'dglaundry';
+                req.partnerIdentity = grant.client_id;
+                req.partnerScope = grant.scope;
                 return next();
             }
-            if (process.env.NODE_ENV === 'production') return res.status(401).json({ success: false, message: 'DGLaundry machine access token is invalid or expired.' });
+            return res.status(401).json({ success: false, message: 'DGLaundry machine access token is invalid or expired.' });
+        }
+        // Hosted deployments must never downgrade to the retired shared-secret path, including
+        // requests which omit Authorization entirely. Keep the fallback only for local tests.
+        if (process.env.NODE_ENV === 'production') {
+            return res.status(401).json({ success: false, message: 'DGLaundry machine authentication is required.', error_code: 'DGLAUNDRY_MACHINE_AUTHENTICATION_REQUIRED' });
+        }
+        if (process.env.NODE_ENV === 'production' || process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1') {
+            return res.status(401).json({ success: false, message: 'Static DGLaundry partner tokens are disabled for hosted signed integration traffic.' });
         }
         const expected = readSecret();
         const supplied = String(req.headers['x-dglaundry-partner-token'] || '').trim();

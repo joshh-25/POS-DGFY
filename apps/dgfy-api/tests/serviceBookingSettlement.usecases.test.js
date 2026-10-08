@@ -119,6 +119,7 @@ describe('buildSettleServiceBookingUseCase', () => {
     it('is idempotent -- settling an already-settled booking replays the existing transaction instead of creating a new one', async () => {
         const tx = transaction();
         const createSettlementTransaction = jest.fn();
+        const createBookingStatusEvents = jest.fn();
         const getPosTransactionSnapshotById = jest.fn(async () => ({
             pos_transaction_id: 900,
             invoice_number: 'SVC-000001',
@@ -131,6 +132,7 @@ describe('buildSettleServiceBookingUseCase', () => {
                 beginTransaction: jest.fn(async () => tx),
                 getBookingById: jest.fn(async () => baseBooking({ pos_transaction_id: 900 })),
                 createSettlementTransaction,
+                createBookingStatusEvents,
                 getPosTransactionSnapshotById
             },
             inventoryCommandService: { issueStockForPosSale: jest.fn() },
@@ -143,6 +145,46 @@ describe('buildSettleServiceBookingUseCase', () => {
         expect(result.data.idempotency.idempotent_replay).toBe(true);
         expect(result.data.pos_transaction.pos_transaction_id).toBe(900);
         expect(createSettlementTransaction).not.toHaveBeenCalled();
+        expect(createBookingStatusEvents).not.toHaveBeenCalled();
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('records the completed transition on a real settlement', async () => {
+        const tx = transaction();
+        const createBookingStatusEvents = jest.fn();
+        const createSettlementTransaction = jest.fn(async () => ({ transactionId: 900, lines: [{ line_id: 5000 }] }));
+        const getBookingById = jest.fn()
+            .mockResolvedValueOnce(baseBooking({ status: 'requested' }))
+            .mockResolvedValueOnce(baseBooking({ status: 'completed', pos_transaction_id: 900, payment_status: 'paid' }));
+        const useCase = buildSettleServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getBookingById,
+                nextSettlementInvoiceNumber: jest.fn(async () => 'SVC-000001'),
+                createSettlementTransaction,
+                updateBookingLineById: jest.fn(),
+                updateBookingById: jest.fn(),
+                createBookingStatusEvents,
+                getPosTransactionSnapshotById: jest.fn(async () => ({ pos_transaction_id: 900, total_amount: 750 }))
+            },
+            inventoryCommandService: { issueStockForPosSale: jest.fn() },
+            posRepository: openShiftRepository()
+        });
+
+        const result = await useCase({ bookingId: 1, payload: settlementPayload(), user: { user_id: 7 } });
+
+        expect(result.success).toBe(true);
+        expect(createBookingStatusEvents).toHaveBeenCalledWith([expect.objectContaining({
+            booking_id: 1,
+            from_status: 'requested',
+            to_status: 'completed',
+            actor_type: 'staff',
+            actor_user_id: 7,
+            source: 'pos',
+            handoff_leg_id: null,
+            reason: null,
+            occurred_at: expect.any(Date)
+        })], { transaction: tx });
         expect(tx.commit).toHaveBeenCalled();
     });
 
@@ -236,9 +278,8 @@ describe('buildSettleServiceBookingUseCase', () => {
     // Phase 100 of #482 (ADR 0064). Payment collection is confirmed orthogonal to fulfillment
     // progression (docs/proposals/2026-08-15-liempyo-laundry-discover-flow-and-gap-analysis.md) --
     // settlement must be reachable (not blocked by SETTLEABLE_BOOKING_STATUSES) while a booking is
-    // mid-handoff, and settlement itself must not touch handoff legs or write a status event
-    // (that is buildUpdateServiceBookingStatusUseCase's job, not settlement's -- unaffected by
-    // settlement's own pre-existing, unrelated "finalize to completed" behavior below).
+    // mid-handoff, and settlement itself must not touch handoff legs. Its actual transition to
+    // completed is recorded as a booking status event independently of leg progress.
     it.each(['for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'])(
         'settles a booking while status is %s (fulfillment and payment are orthogonal)',
         async (status) => {
@@ -288,7 +329,11 @@ describe('buildSettleServiceBookingUseCase', () => {
             expect(result.success).toBe(true);
             expect(updateBookingById).toHaveBeenCalledWith(1, expect.objectContaining({ pos_transaction_id: 900 }), expect.anything());
             expect(updateBookingHandoffLegById).not.toHaveBeenCalled();
-            expect(createBookingStatusEvents).not.toHaveBeenCalled();
+            expect(createBookingStatusEvents).toHaveBeenCalledWith([expect.objectContaining({
+                from_status: status,
+                to_status: 'completed',
+                source: 'pos'
+            })], expect.anything());
             expect(tx.commit).toHaveBeenCalled();
         }
     );

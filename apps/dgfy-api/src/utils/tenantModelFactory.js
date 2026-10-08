@@ -86,7 +86,9 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'CompanyRegistrationAttempt',
     'CompanyRegistrationEvent',
     'CompanyRegistrationEmailDelivery',
+    'CompanyRegistrationDraft',
     'CompanyRegistrationUpload',
+    'CompanyRegistrationDownloadAudit',
     'PlatformInvoice',
     'PlatformInvoicePayment',
     'PlatformInvoiceSequence',
@@ -94,6 +96,9 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'PlatformInvoiceDelivery',
     'PlatformInvoiceAdjustment',
     'PlatformInvoiceEvent',
+    // Global OIDC verification/signing metadata belongs to the landlord database;
+    // private key bytes stay in mounted files and this registry must not be cloned.
+    'OidcSigningKey',
     'TenantPayout',
     'TenantRevenueAdjustment',
     'TenantRevenueFeePolicy',

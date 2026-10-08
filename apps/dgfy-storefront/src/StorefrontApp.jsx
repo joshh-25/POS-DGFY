@@ -184,6 +184,7 @@ import { StorefrontDropdown } from './features/shared-storefront/components/Stor
 import { useStorefrontClosedNotice } from './shared/hooks/useStorefrontClosedNotice.js';
 import { useStorefrontShareActions } from './shared/hooks/useStorefrontShareActions.js';
 import { StorefrontPaymentUnavailableModal } from './shared/components/storefront/StorefrontPaymentUnavailableModal.jsx';
+import { StorefrontTransactionExpiredModal } from './shared/components/storefront/StorefrontTransactionExpiredModal.jsx';
 import {
   formatFollowersLabel,
   getStorefrontContactIcon,
@@ -554,6 +555,7 @@ export default function StorefrontApp() {
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
 
   const [editingFnbCartLine, setEditingFnbCartLine] = useState(null);
+  const [isTransactionExpiredModalOpen, setIsTransactionExpiredModalOpen] = useState(false);
   const {
     isReviewModalOpen,
     setIsReviewModalOpen,
@@ -2216,6 +2218,14 @@ export default function StorefrontApp() {
     toast,
     writeCheckoutAuthResumeDraft
   });
+  const handleGuestCheckoutOtpExpired = useCallback(() => {
+    resetQrphPaymentSession();
+    setCheckoutError('');
+    if (isFnbMode) setFnbOrderStep(3);
+    if (isSimpleMode) setSimpleOrderStep(1);
+    setIsTransactionExpiredModalOpen(true);
+  }, [isFnbMode, isSimpleMode, resetQrphPaymentSession, setCheckoutError, setFnbOrderStep, setSimpleOrderStep]);
+
   const {
     guestCheckoutIntentId,
     guestCheckoutOtpCode,
@@ -2232,10 +2242,16 @@ export default function StorefrontApp() {
   } = useGuestCheckoutOtp({
     customerEmail,
     isDgfyCustomerSignedIn,
+    onOtpExpired: handleGuestCheckoutOtpExpired,
     requestJson,
     selectedStore,
     toast,
   });
+  const handleGuestCheckoutOtpExpiredFromCheckout = useCallback(() => {
+    resetGuestCheckoutOtp();
+    handleGuestCheckoutOtpExpired();
+  }, [handleGuestCheckoutOtpExpired, resetGuestCheckoutOtp]);
+
   const handleVerifyGuestCheckoutOtp = useCallback(async () => {
     const verified = await verifyGuestCheckoutOtp();
     if (verified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE) {
@@ -2317,6 +2333,7 @@ export default function StorefrontApp() {
     guestCheckoutIntentId,
     guestCheckoutOtpVerified,
     guestCheckoutProof,
+    onGuestCheckoutOtpExpired: handleGuestCheckoutOtpExpiredFromCheckout,
     handleLoadAccountPanel,
     isDgfyCustomerSignedIn,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
@@ -2820,6 +2837,7 @@ export default function StorefrontApp() {
     guestCheckoutIntentId,
     guestCheckoutOtpVerified,
     guestCheckoutProof,
+    onGuestCheckoutOtpExpired: handleGuestCheckoutOtpExpiredFromCheckout,
     handleFnbCheckout,
     handleLoadAccountPanel,
     hasServiceCart,
@@ -4519,6 +4537,10 @@ export default function StorefrontApp() {
       {customerDashboardDrawerRouteNode}
 
 
+      <StorefrontTransactionExpiredModal
+        open={isTransactionExpiredModalOpen}
+        onClose={() => setIsTransactionExpiredModalOpen(false)}
+      />
       <StorefrontPaymentUnavailableModal
         open={isOnlinePaymentModalOpen}
         onClose={uiCloseOnlinePaymentModal}

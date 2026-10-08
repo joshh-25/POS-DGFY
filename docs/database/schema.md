@@ -1828,11 +1828,11 @@ pending, failed, cancelled, and reversed money is excluded. Migration:
 
 ### pos_transaction_adjustments
 
-Tenant-local, append-only evidence for POS void and refund lifecycle events.
+Tenant-local, append-only evidence for POS void, refund, and return lifecycle events.
 Rows retain the original transaction/cashier/shift/terminal/location and record
 the authenticated actor context independently. Adjustment types cover internal
-void, cash refund, external refund, provider refund, and Employee Credit
-reversal. Status, idempotency/request hash, provider or external references,
+void, cash refund, external refund, provider refund, Employee Credit reversal,
+and explicit return evidence. Status, idempotency/request hash, provider or external references,
 retry/failure evidence, and the optional linked cash-drawer event are stored
 without rewriting the original transaction or any saved Z-reading snapshot.
 
@@ -1840,8 +1840,10 @@ Migration `20260819000001-create-pos-transaction-adjustments.cjs` creates the
 table and its tenant-scoped indexes/foreign keys. Migration
 `20260819000002-add-pos-split-allocation-reversal-state.cjs` links adjustment
 rows to split allocations and adds server-maintained allocation
-`reversed_amount` and `reversal_status` fields. Both migrations are registered
-in runtime schema auditing and additive tenant repair.
+`reversed_amount` and `reversal_status` fields. Migration
+`20261003000001-add-annex-b-item-4-6-evidence-contract.cjs` adds the `return`
+enum value and the append-only Z-reading `reading_payload_hash`. Both migration
+surfaces are registered in runtime schema auditing and additive tenant repair.
 
 ### pos_transactions: partial-payment columns (Phase 137)
 

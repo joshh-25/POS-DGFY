@@ -1,0 +1,84 @@
+{
+  "schema_version": "annex-b-items-4-14-section-04-fixtures-v1",
+  "environment": "local",
+  "purpose": "Deterministic sanitized fixture registry for local readiness verification; not an external BIR approval artifact.",
+  "renderer": {
+    "browser_component": "ReceiptPrintView",
+    "package": "@sieitzz/pos-receipt",
+    "paper_widths": ["80mm", "57mm"],
+    "source_projection": "server_owned_snapshot"
+  },
+  "receipt_fixtures": [
+    {
+      "id": "R4-REGULAR",
+      "document_type": "fiscal_invoice",
+      "buyer_profile": "regular",
+      "expected": ["invoice_number", "seller", "terminal", "lines", "totals", "payment_breakdown", "sha256"],
+      "runtime_status": "VERIFIED"
+    },
+    {
+      "id": "R4-SENIOR",
+      "document_type": "fiscal_invoice",
+      "buyer_profile": "senior",
+      "expected": ["invoice_number", "discount", "seller", "lines", "totals", "sha256"],
+      "runtime_status": "VERIFIED"
+    },
+    {
+      "id": "R4-PWD",
+      "document_type": "fiscal_invoice",
+      "buyer_profile": "pwd",
+      "expected": ["invoice_number", "discount", "seller", "lines", "totals", "sha256"],
+      "runtime_status": "VERIFIED"
+    },
+    {
+      "id": "R4-ATHLETE",
+      "document_type": "fiscal_invoice",
+      "buyer_profile": "athlete",
+      "expected": ["policy_fixture_required_before_runtime_claim"],
+      "runtime_status": "REVIEW_REQUIRED"
+    },
+    {
+      "id": "R4-SOLO",
+      "document_type": "fiscal_invoice",
+      "buyer_profile": "solo_parent",
+      "expected": ["policy_fixture_required_before_runtime_claim"],
+      "runtime_status": "REVIEW_REQUIRED"
+    },
+    {
+      "id": "R4-CHARGES",
+      "document_type": "fiscal_invoice",
+      "buyer_profile": "regular_with_service_charge",
+      "expected": ["charges", "vatable_sales", "vat_amount", "total_amount", "sha256"],
+      "runtime_status": "VERIFIED"
+    },
+    {
+      "id": "R4-NONFISCAL",
+      "document_type": "non_fiscal_slip",
+      "buyer_profile": "regular",
+      "expected": ["document_context", "lines", "totals"],
+      "runtime_status": "VERIFIED"
+    }
+  ],
+  "adjustment_fixtures": [
+    {"id": "R5-VOID", "adjustment_type": "void", "original_immutable": true, "runtime_status": "VERIFIED"},
+    {"id": "R5-CASH-REFUND", "adjustment_type": "cash_refund", "original_immutable": true, "runtime_status": "VERIFIED"},
+    {"id": "R5-EXTERNAL-REFUND", "adjustment_type": "external_refund", "original_immutable": true, "runtime_status": "VERIFIED"},
+    {"id": "R5-PROVIDER-REFUND", "adjustment_type": "provider_refund", "original_immutable": true, "runtime_status": "VERIFIED"},
+    {"id": "R5-RETURN", "adjustment_type": "return", "original_immutable": true, "payment_refund": "separate", "inventory_reversal": "separate", "runtime_status": "VERIFIED"},
+    {"id": "R5-REPRINT", "adjustment_type": "reprint", "original_immutable": true, "runtime_status": "VERIFIED"},
+    {"id": "R5-REVERSAL", "adjustment_type": "reversal", "original_immutable": true, "runtime_status": "REVIEW_REQUIRED"}
+  ],
+  "reading_fixtures": [
+    {"id": "R6-X", "reading_type": "X", "timezone": "Asia/Manila", "persisted": false, "hash": "required", "runtime_status": "VERIFIED"},
+    {"id": "R6-Z", "reading_type": "Z", "timezone": "Asia/Manila", "persisted": true, "hash": "required", "runtime_status": "VERIFIED"},
+    {"id": "R6-Z-VARIANCE", "reading_type": "Z", "reconciliation": "variance_review_required", "runtime_status": "VERIFIED"}
+  ],
+  "negative_cases": [
+    "tampered fiscal snapshot",
+    "missing snapshot hash",
+    "return quantity exceeds original",
+    "return idempotency conflict",
+    "open shift blocks Z-reading",
+    "filtered report is not comparable to full-day Z-reading"
+  ]
+}

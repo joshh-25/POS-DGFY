@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-10-07T11:05:38.830Z",
-  "totalFiles": 776,
+  "generatedAt": "2026-10-08T07:24:49.801Z",
+  "totalFiles": 787,
   "byClassification": {
-    "keep": 712,
-    "delete": 20,
+    "keep": 722,
+    "delete": 21,
     "consolidate": 36,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
     "migration": 42,
-    "(none)": 266,
+    "(none)": 273,
     "middleware": 14,
     "handler": 1,
     "transport": 42,
@@ -20,8 +20,8 @@
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
     "storeTemplateKey": 1,
-    "usecase": 67,
-    "contract": 49,
+    "usecase": 68,
+    "contract": 50,
     "ratelimit.e2e": 1,
     "hardening": 1,
     "phoneCompletionGate.middleware": 1,
@@ -45,6 +45,7 @@
     "invitationSchema": 1,
     "slotEnforcement.unit": 1,
     "historyScope": 1,
+    "keys": 1,
     "phase355": 1,
     "redis": 1,
     "deliveryLog": 1,
@@ -111,6 +112,7 @@
     "singleSettingArray": 1,
     "storefrontPromoDates": 1,
     "terminalRegistry": 1,
+    "referenceType.schema.contract": 1,
     "serviceMode": 1,
     "dgfyFallback": 1,
     "canonical": 1,
@@ -4405,12 +4407,12 @@
     },
     {
       "path": "tests/checkTenantSchemaRegistryCoverageScript.integration.test.js",
-      "lines": 86,
-      "caseCount": 5,
+      "lines": 112,
+      "caseCount": 7,
       "describeTitles": [
         "check-tenant-schema-registry-coverage script integration"
       ],
-      "expectCount": 12,
+      "expectCount": 17,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -4428,6 +4430,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md",
           "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
@@ -8070,15 +8073,114 @@
       "findings": []
     },
     {
+      "path": "tests/dgfyLaundryMachineTokenAuth.test.js",
+      "lines": 119,
+      "caseCount": 3,
+      "describeTitles": [
+        "DGLaundry machine-token registration"
+      ],
+      "expectCount": 9,
+      "expectResCount": 7,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dgfyLaundryOidcProvider.keys.test.js",
+      "lines": 334,
+      "caseCount": 7,
+      "describeTitles": [
+        "DGFY OIDC provider key resolution"
+      ],
+      "expectCount": 28,
+      "expectResCount": 13,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 1,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "keys",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: keys)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dgfyLaundryOrderPartnerScope.test.js",
+      "lines": 83,
+      "caseCount": 4,
+      "describeTitles": [
+        "DGLaundry partner order lookup scope"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/dgfyLaundryOrderUseCases.test.js",
-      "lines": 235,
-      "caseCount": 10,
+      "lines": 331,
+      "caseCount": 14,
       "describeTitles": [
         "DGFY DGLaundry storefront/order projections"
       ],
-      "expectCount": 41,
+      "expectCount": 61,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 14,
+      "toHaveBeenCalledCount": 20,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -8142,6 +8244,39 @@
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dgfyLaundryStoreRoute.contract.test.js",
+      "lines": 22,
+      "caseCount": 2,
+      "describeTitles": [
+        "DGLaundry public storefront route contract"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 2,
+      "textRatio": 1,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "delete",
+      "reason": "source-text-only (text_ratio=1)",
+      "rule": "R3-source-text-only",
       "findings": []
     },
     {
@@ -8451,14 +8586,14 @@
     },
     {
       "path": "tests/dglaundryBookingPayment.usecase.test.js",
-      "lines": 79,
-      "caseCount": 3,
+      "lines": 146,
+      "caseCount": 6,
       "describeTitles": [
         "DGLaundry booking payment session"
       ],
-      "expectCount": 16,
+      "expectCount": 34,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 8,
+      "toHaveBeenCalledCount": 12,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -8466,7 +8601,7 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 1,
+      "srcImportCount": 2,
       "deadImportCount": 0,
       "suffix": "usecase",
       "conditionalSkip": false,
@@ -8487,15 +8622,81 @@
       "findings": []
     },
     {
-      "path": "tests/dglaundryEventSignature.test.js",
-      "lines": 131,
+      "path": "tests/dglaundryDeadLetters.usecase.test.js",
+      "lines": 78,
       "caseCount": 5,
+      "describeTitles": [
+        "DGLaundry scoped dead-letter recovery"
+      ],
+      "expectCount": 15,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dglaundryDurableDelivery.test.js",
+      "lines": 116,
+      "caseCount": 5,
+      "describeTitles": [
+        "DGLaundry durable outbound delivery"
+      ],
+      "expectCount": 18,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 6,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dglaundryEventSignature.test.js",
+      "lines": 182,
+      "caseCount": 6,
       "describeTitles": [
         "DGLaundry event signature verification"
       ],
-      "expectCount": 8,
+      "expectCount": 13,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
+      "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -8525,15 +8726,81 @@
       "findings": []
     },
     {
+      "path": "tests/dglaundryOutboxWorker.test.js",
+      "lines": 45,
+      "caseCount": 2,
+      "describeTitles": [
+        "DGLaundry outbox caller completion worker"
+      ],
+      "expectCount": 7,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dglaundryPartnerAccessToken.test.js",
+      "lines": 68,
+      "caseCount": 2,
+      "describeTitles": [
+        "issueDglaundryPartnerAccessToken OIDC key resolution"
+      ],
+      "expectCount": 2,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/dglaundryPartnerAuth.middleware.test.js",
-      "lines": 39,
-      "caseCount": 1,
+      "lines": 88,
+      "caseCount": 4,
       "describeTitles": [
         "DGLaundry partner authentication middleware"
       ],
-      "expectCount": 2,
-      "expectResCount": 1,
-      "toHaveBeenCalledCount": 2,
+      "expectCount": 11,
+      "expectResCount": 4,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -9963,14 +10230,14 @@
     },
     {
       "path": "tests/finalizeDglaundryBookingSession.test.js",
-      "lines": 65,
-      "caseCount": 3,
+      "lines": 93,
+      "caseCount": 5,
       "describeTitles": [
         "DGLaundry payment lifecycle bridge"
       ],
-      "expectCount": 8,
+      "expectCount": 17,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 4,
+      "toHaveBeenCalledCount": 8,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -14276,6 +14543,72 @@
       "findings": []
     },
     {
+      "path": "tests/oidcRateLimiter.test.js",
+      "lines": 30,
+      "caseCount": 1,
+      "describeTitles": [
+        "OIDC rate limiter"
+      ],
+      "expectCount": 5,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": true,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/oidcSigningKeyResolver.test.js",
+      "lines": 72,
+      "caseCount": 5,
+      "describeTitles": [
+        "resolveSigningKeyMaterial"
+      ],
+      "expectCount": 9,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/onboardingHandlers.transport.test.js",
       "lines": 195,
       "caseCount": 5,
@@ -18375,14 +18708,14 @@
     },
     {
       "path": "tests/posParkedSale.usecases.test.js",
-      "lines": 827,
-      "caseCount": 19,
+      "lines": 869,
+      "caseCount": 20,
       "describeTitles": [
         "parked sale use cases"
       ],
-      "expectCount": 79,
+      "expectCount": 84,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 38,
+      "toHaveBeenCalledCount": 42,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -21102,12 +21435,12 @@
     },
     {
       "path": "tests/productionEnvValidation.test.js",
-      "lines": 478,
-      "caseCount": 20,
+      "lines": 502,
+      "caseCount": 21,
       "describeTitles": [
         "production environment validation"
       ],
-      "expectCount": 55,
+      "expectCount": 62,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -21410,12 +21743,12 @@
     },
     {
       "path": "tests/rateLimiter.behavior.test.js",
-      "lines": 548,
-      "caseCount": 22,
+      "lines": 568,
+      "caseCount": 23,
       "describeTitles": [
         "Rate limiter behavior"
       ],
-      "expectCount": 79,
+      "expectCount": 83,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -24253,6 +24586,39 @@
       "findings": []
     },
     {
+      "path": "tests/stockMovement.referenceType.schema.contract.test.js",
+      "lines": 44,
+      "caseCount": 2,
+      "describeTitles": [
+        "stock_movements.reference_type schema contract"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 1,
+      "textRatio": 1,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "referenceType.schema.contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: referenceType.schema.contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/stockMovementHandlers.transport.test.js",
       "lines": 234,
       "caseCount": 5,
@@ -24550,14 +24916,14 @@
     },
     {
       "path": "tests/storeCancelPaymentSession.usecase.test.js",
-      "lines": 223,
-      "caseCount": 12,
+      "lines": 244,
+      "caseCount": 13,
       "describeTitles": [
         "buildCancelStoreCheckoutPaymentSessionUseCase"
       ],
-      "expectCount": 43,
+      "expectCount": 45,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 18,
+      "toHaveBeenCalledCount": 19,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -28142,12 +28508,12 @@
     },
     {
       "path": "tests/tenantModelFactory.contract.test.js",
-      "lines": 133,
+      "lines": 134,
       "caseCount": 3,
       "describeTitles": [
         "tenantModelFactory contract"
       ],
-      "expectCount": 20,
+      "expectCount": 21,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -28763,12 +29129,12 @@
     },
     {
       "path": "tests/tenantSchemaRegistryCoverageScript.unit.test.js",
-      "lines": 245,
-      "caseCount": 17,
+      "lines": 351,
+      "caseCount": 23,
       "describeTitles": [
         "tenant schema registry coverage script contracts"
       ],
-      "expectCount": 32,
+      "expectCount": 47,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -28786,6 +29152,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md",
           "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
@@ -28798,12 +29165,12 @@
     },
     {
       "path": "tests/tenantSchemaSyncScripts.test.js",
-      "lines": 883,
-      "caseCount": 44,
+      "lines": 899,
+      "caseCount": 45,
       "describeTitles": [
         "tenant schema sync script contracts"
       ],
-      "expectCount": 206,
+      "expectCount": 209,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,

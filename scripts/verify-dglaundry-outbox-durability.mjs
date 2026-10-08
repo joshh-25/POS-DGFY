@@ -37,6 +37,13 @@ const verifyRedisAcrossProcesses = async () => {
     headers: { 'content-digest': digest, 'content-type': 'application/json', 'signature-input': `sig1=${parameters}`, signature: `sig1=:${crypto.sign(null, Buffer.from(base), privateKey).toString('base64')}:` },
     method: 'POST', authority: 'test.local', path: '/api/v1/integrations/dglaundry/events', rawBody
   };
+  const redisVersionCode = `
+    import { createClient } from 'redis';
+    const redis = createClient({ url: process.env.DGLAUNDRY_TEST_REDIS_URL });
+    try { await redis.connect(); const info = await redis.info('server'); console.log(info.match(/^redis_version:([^\\r\\n]+)/m)?.[1] || 'unknown'); }
+    finally { if (redis.isOpen) await redis.quit(); }
+  `;
+  const redisVersion = await runChild(redisVersionCode, [], { ...process.env, DGLAUNDRY_TEST_REDIS_URL: redisUrl });
   const childCode = `
     import { createClient } from 'redis';
     import { buildDglaundryEventSignatureVerifier } from ${JSON.stringify(pathToFileURL(verifierPath).href)};
@@ -53,6 +60,7 @@ const verifyRedisAcrossProcesses = async () => {
     DGLAUNDRY_TEST_REDIS_URL: redisUrl,
     DGLAUNDRY_TEST_SIGNED_REQUEST: Buffer.from(JSON.stringify(request)).toString('base64'),
     DGLAUNDRY_SIGNATURE_PROFILE: 'http-message-signatures-v1',
+    DGLAUNDRY_INTEGRATION_KEY_ID: 'integration-test',
     DGLAUNDRY_INTEGRATION_PUBLIC_KEY: publicKey.export({ type: 'spki', format: 'pem' })
   };
   const results = await Promise.all([runChild(childCode, [], childEnv), runChild(childCode, [], childEnv)]);
@@ -61,7 +69,31 @@ const verifyRedisAcrossProcesses = async () => {
   assert(parsed.filter((result) => result.code === 'DGLAUNDRY_SIGNATURE_REPLAY').length === 1, 'Redis must reject the concurrent replay.');
   const afterRestart = JSON.parse(await runChild(childCode, [], childEnv));
   assert(afterRestart.code === 'DGLAUNDRY_SIGNATURE_REPLAY', 'A new API process must reject the already-claimed signature.');
-  console.log('PASS Redis 7: parallel cross-process nonce claim and replay rejection after process restart.');
+  const outageRequest = { ...request, headers: { ...request.headers } };
+  const outageNonce = crypto.randomUUID();
+  const outageParameters = `("@method" "@authority" "@path" "content-digest" "content-type");created=${now};expires=${now + 300};nonce="${outageNonce}";keyid="integration-test";alg="ed25519";tag="dglaundry-dgfy-v1"`;
+  const outageBase = [`"@method": POST`, `"@authority": test.local`, `"@path": /api/v1/integrations/dglaundry/events`, `"content-digest": ${digest}`, '"content-type": application/json', `"@signature-params": ${outageParameters}`].join('\n');
+  outageRequest.headers['signature-input'] = `sig1=${outageParameters}`;
+  outageRequest.headers.signature = `sig1=:${crypto.sign(null, Buffer.from(outageBase), privateKey).toString('base64')}:`;
+  const outageCode = `
+    import { createClient } from 'redis';
+    import { buildDglaundryEventSignatureVerifier } from ${JSON.stringify(pathToFileURL(verifierPath).href)};
+    const redis = createClient({ url: process.env.DGLAUNDRY_TEST_REDIS_URL });
+    await redis.connect();
+    const info = await redis.info('server');
+    await redis.quit();
+    const verifier = buildDglaundryEventSignatureVerifier({ redisProvider: () => redis, redisConnected: () => redis.isReady });
+    const result = await verifier(JSON.parse(Buffer.from(process.env.DGLAUNDRY_TEST_SIGNED_REQUEST, 'base64').toString('utf8')));
+    console.log(JSON.stringify({ result, redisVersion: info.match(/^redis_version:([^\\r\\n]+)/m)?.[1] || 'unknown', disconnected: !redis.isReady }));
+  `;
+  const outage = JSON.parse(await runChild(outageCode, [], {
+    ...childEnv,
+    DGLAUNDRY_TEST_SIGNED_REQUEST: Buffer.from(JSON.stringify(outageRequest)).toString('base64')
+  }));
+  assert(outage.disconnected && outage.result.code === 'DGLAUNDRY_EVENT_REPLAY_STORE_UNAVAILABLE',
+    `A disconnected real Redis client must fail signature verification closed: ${JSON.stringify(outage)}`);
+  assert(outage.redisVersion === redisVersion, 'Redis version must be stable across the harness scenarios.');
+  console.log(`PASS Redis ${redisVersion}: cross-process nonce contention, restart replay rejection, and fail-closed verification after disconnect.`);
 };
 
 const verifyMySqlOutbox = async () => {
@@ -76,6 +108,8 @@ const verifyMySqlOutbox = async () => {
   const admin = new Sequelize('mysql', user, password, { host, port, dialect: 'mysql', logging: false });
   let appDb = null;
   try {
+    const [versionRows] = await admin.query('SELECT VERSION() AS version');
+    const mysqlVersion = versionRows[0]?.version || 'unknown';
     await admin.query(`CREATE DATABASE \`${dbName}\``);
     Object.assign(process.env, { NODE_ENV: 'test', DB_HOST: host, DB_PORT: String(port), DB_USER: user, DB_PASSWORD: password, DB_NAME: dbName, DB_NAME_TEST: dbName, DB_DIALECT: 'mysql' });
     appDb = (await import(pathToFileURL(path.join(apiRoot, 'src/config/database.js')).href)).default;
@@ -84,6 +118,7 @@ const verifyMySqlOutbox = async () => {
     await migration.up(appDb.getQueryInterface(), Sequelize);
     const outbox = (await import(pathToFileURL(outboxPath).href)).dgfyLaundryOutboxRepository;
     const orderRepository = (await import(pathToFileURL(orderRepositoryPath).href)).dgfyLaundryOrderRepository;
+    const { buildDglaundryDurableDelivery } = await import(pathToFileURL(path.join(apiRoot, 'src/modules/dgfyLaundryOrders/services/dglaundryDurableDelivery.js')).href);
     const scope = { companyId: 'company-test', locationId: 'location-test' };
     for (const [index, operation] of ['updateOrder', 'cancelOrder'].entries()) {
       await outbox.enqueue({ ...scope, operation, idempotencyKey: `ordered-${index}`, requestHash: crypto.randomBytes(32).toString('hex'), payload: scope, orderReference: 'order-test' });
@@ -116,7 +151,51 @@ const verifyMySqlOutbox = async () => {
     `;
     const restarted = await runChild(restartCode, [], { ...process.env, DGLAUNDRY_TEST_ROW: oldClaim.row.id });
     assert(restarted === 'persisted', 'A separate process must read persisted delivery state.');
-    console.log('PASS MySQL 8: migration up/re-run, two-worker ordering, lease recovery, stale-ack protection, completion-only recovery, and restart persistence.');
+
+    const retryPayload = { id: 'retry-cap-event', type: 'dgfy.laundry_order.updated.v1', data: { companyId: scope.companyId, locationId: scope.locationId } };
+    const retryRecord = await outbox.enqueue({
+      ...scope, operation: 'updateOrder', idempotencyKey: 'retry-cap-real-mysql', eventId: retryPayload.id,
+      requestHash: crypto.randomBytes(32).toString('hex'), payload: retryPayload, maxAttempts: 2
+    });
+    const retryTransport = { updateOrder: async () => { throw Object.assign(new Error('simulated provider outage'), { statusCode: 503 }); } };
+    const retryDelivery = buildDglaundryDurableDelivery({ repository: outbox, transportClient: retryTransport });
+    const firstRetryClaim = await outbox.claim(retryRecord.row.id);
+    assert(firstRetryClaim?.row.attempts === 1, 'First retry-cap attempt must be leased and counted.');
+    await retryDelivery.processClaim(firstRetryClaim).then(() => { throw new Error('The first retryable failure must remain queued.'); }, (error) => {
+      assert(error.statusCode === 503 && error.details?.delivery_status === 'retry_wait', 'The first retryable failure must be reported as retry_wait.');
+    });
+    await appDb.query('UPDATE dgfy_dglaundry_outbox SET next_attempt_at=DATE_SUB(NOW(),INTERVAL 1 SECOND) WHERE id=?', { replacements: [retryRecord.row.id] });
+    const finalRetryClaim = await outbox.claim(retryRecord.row.id);
+    assert(finalRetryClaim?.row.attempts === 2, 'The final retry-cap attempt must be leased and counted.');
+    await retryDelivery.processClaim(finalRetryClaim).then(() => { throw new Error('The exhausted retry must throw the terminal provider error.'); }, (error) => {
+      assert(error.message === 'simulated provider outage' && !error.details?.delivery_status, 'The exhausted retry must throw the terminal provider error directly.');
+    });
+    const exhausted = await outbox.findById(retryRecord.row.id);
+    assert(exhausted.status === 'dead_letter' && exhausted.attempts === exhausted.max_attempts, 'The retry cap must persist the row as dead_letter.');
+
+    assert(!(await orderRepository.redriveOutbound({ id: exhausted.id, companyId: 'other-company', locationId: scope.locationId, maxAttempts: 2 })), 'Outbound redrive must reject the wrong company in SQL.');
+    assert(!(await orderRepository.redriveOutbound({ id: exhausted.id, companyId: scope.companyId, locationId: 'other-location', maxAttempts: 2 })), 'Outbound redrive must reject the wrong location in SQL.');
+    const redriveScope = { companyId: 'redrive-company', locationId: 'redrive-location' };
+    const redriveRow = await outbox.enqueue({
+      ...redriveScope, operation: 'updateOrder', idempotencyKey: 'redrive-real-mysql',
+      requestHash: crypto.randomBytes(32).toString('hex'), payload: { id: 'redrive-event', data: redriveScope }, maxAttempts: 1
+    });
+    const stuckClaim = await outbox.claim(redriveRow.row.id);
+    assert(stuckClaim?.row.attempts === 1, 'The markExhausted scenario must begin with a real lease.');
+    await appDb.query('UPDATE dgfy_dglaundry_outbox SET attempts=max_attempts,lease_expires_at=DATE_SUB(NOW(),INTERVAL 1 SECOND) WHERE id=?', { replacements: [redriveRow.row.id] });
+    await outbox.markExhausted();
+    const swept = await outbox.findById(redriveRow.row.id);
+    assert(swept.status === 'dead_letter' && swept.attempts === swept.max_attempts, 'markExhausted must dead-letter an expired exhausted lease.');
+    assert(await orderRepository.redriveOutbound({ id: swept.id, ...redriveScope, maxAttempts: 2 }), 'A valid owner/location-scoped outbound redrive must succeed.');
+    const redriven = await outbox.findById(swept.id);
+    assert(redriven.status === 'pending' && redriven.attempts === 0, 'A valid real-MySQL redrive must reset the row to pending with attempts zero.');
+    const reClaim = await outbox.claim(swept.id);
+    assert(reClaim, 'A validly redriven row must be claimable again.');
+    const successfulDelivery = buildDglaundryDurableDelivery({ repository: outbox, transportClient: { updateOrder: async () => ({ accepted: true }) } });
+    await successfulDelivery.processClaim(reClaim);
+    assert((await outbox.findById(swept.id)).status === 'delivered', 'The re-claimed real-MySQL row must be deliverable.');
+    assert(!(await orderRepository.redriveOutbound({ id: swept.id, ...redriveScope, maxAttempts: 2 })), 'Outbound redrive must reject a row after it is no longer dead_letter.');
+    console.log(`PASS MySQL ${mysqlVersion}: migration, FIFO/lease/stale-ack, restart, retry-cap exhaustion, expired-lease sweep, and scope-guarded outbound redrive/re-delivery (scenario max_attempts=2).`);
   } finally {
     if (appDb) await appDb.close();
     await admin.query(`DROP DATABASE IF EXISTS \`${dbName}\``);

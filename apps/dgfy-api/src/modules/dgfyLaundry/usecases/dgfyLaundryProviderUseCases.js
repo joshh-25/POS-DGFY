@@ -1,4 +1,5 @@
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { buildDglaundryRuntimeAttestationUseCase } from './dglaundryRuntimeAttestationUseCase.js';
 
 const LAUNDRY_ORIGIN = 'https://laundry.surebizcorp.com';
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
@@ -33,7 +34,7 @@ const chooseCompany = async ({ repository, dgfyAccount, companyId }) => {
     return { companies, company };
 };
 
-export const buildDgfyLaundryProviderUseCases = ({ repository }) => ({
+export const buildDgfyLaundryProviderUseCases = ({ repository, runtimeAttestation = null }) => ({
     async health() {
         return { status: 'ok', provider: 'dgfy', contractVersion: contractVersion(), time: new Date().toISOString() };
     },
@@ -48,8 +49,25 @@ export const buildDgfyLaundryProviderUseCases = ({ repository }) => ({
             ],
             enforcedProfile: process.env.NODE_ENV === 'production'
                 ? 'http-message-signatures-v1'
-                : (process.env.DGLAUNDRY_SIGNATURE_PROFILE || 'hmac-local-v1')
+                : (process.env.DGLAUNDRY_SIGNATURE_PROFILE || 'hmac-local-v1'),
+            paymentLifecycleProbes: ['cancel', 'expire', 'refund', 'receipt'].map((kind) => ({
+                kind,
+                method: 'POST',
+                path: `/api/v1/partners/dglaundry/orders/{externalOrderReference}/${kind}`,
+                statePath: '/state',
+                orderReferencePath: '/externalOrderReference',
+                paymentModePath: '/paymentMode',
+                companyIdPath: '/companyId',
+                locationIdPath: '/locationId'
+            }))
         };
+    },
+
+    async runtimeAttestation() {
+        if (!runtimeAttestation) {
+            return buildDglaundryRuntimeAttestationUseCase({ repository })();
+        }
+        return runtimeAttestation();
     },
 
     async getCompanyById({ companyId }) {
