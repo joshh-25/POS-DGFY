@@ -202,13 +202,36 @@ jobs:
             echo "--- free -h ---"
             free -h || true
           } > "$HEALTH_FILE"
+          VMSTAT_PID=""
           if command -v vmstat >/dev/null 2>&1; then
             vmstat 1 > "$VMSTAT_FILE" &
             VMSTAT_PID=$!
-            trap 'kill "$VMSTAT_PID" 2>/dev/null || true; wait "$VMSTAT_PID" 2>/dev/null || true; { echo "finished_at=$(date -Is)"; echo "--- uptime ---"; uptime || true; echo "--- free -h ---"; free -h || true; } >> "$HEALTH_FILE"' EXIT
           else
-            echo "vmstat=unavailable" >> "$HEALTH_FILE"
+            echo "vmstat=unavailable" > "$VMSTAT_FILE"
           fi
+          finish_telemetry() {
+              if [ -n "$VMSTAT_PID" ]; then
+              kill "$VMSTAT_PID" 2>/dev/null || true
+              wait "$VMSTAT_PID" 2>/dev/null || true
+              fi
+              {
+                echo "finished_at=$(date -Is)"
+                echo "--- uptime ---"
+                uptime || true
+                echo "--- free -h ---"
+                free -h || true
+              } >> "$HEALTH_FILE"
+              echo "### Selected DB runner health"
+              cat "$HEALTH_FILE" | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "### Selected DB vmstat samples"
+              cat "$VMSTAT_FILE" | tee -a "$GITHUB_STEP_SUMMARY"
+              MATRIX_DIR="$RELEASE_GATES_EVIDENCE_ROOT/$RELEASE_TARGET_SHA/backend-test-matrix"
+              echo "### Tenant setup and cleanup timings"
+              if ! grep -h '\[TestTenantTiming\]' "$MATRIX_DIR"/*.log | tee -a "$GITHUB_STEP_SUMMARY"; then
+                echo "No tenant phase timing lines were recorded." | tee -a "$GITHUB_STEP_SUMMARY"
+              fi
+          }
+          trap finish_telemetry EXIT
 
           if [ -z "$API_DB_TARGETS" ]; then
             echo "::error::api_db_targets must be set when test_selection=api_db_chunks."
@@ -233,19 +256,76 @@ jobs:
             echo "[selected-db-tests] target=$target"
             node scripts/run-backend-test-matrix.js "${args[@]}" || overall_status=1
           done
-          node scripts/summarize-backend-test-matrix.js >> "$GITHUB_STEP_SUMMARY" || true
+          node scripts/summarize-backend-test-matrix.js | tee -a "$GITHUB_STEP_SUMMARY" || true
+          MATRIX_FILE="$RELEASE_GATES_EVIDENCE_ROOT/$RELEASE_TARGET_SHA/backend-test-matrix/backend_test_matrix.json"
+          if [ -f "$MATRIX_FILE" ]; then
+            node - "$MATRIX_FILE" <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const matrixFile = process.argv[2];
+          const root = process.cwd();
+          const matrix = JSON.parse(fs.readFileSync(matrixFile, 'utf8'));
+          console.log('### All selected DB suite timings\n');
+          console.log('| Group | Chunk | Suite | Status | Duration |');
+          console.log('|---|---:|---|---|---:|');
+          for (const chunk of matrix.chunks || []) {
+            if (chunk.tier !== 'db' || !chunk.jest_results_file) continue;
+            const resultPath = path.resolve(root, chunk.jest_results_file);
+            if (!fs.existsSync(resultPath)) continue;
+            const results = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+            for (const suite of results.testResults || []) {
+              const start = Number(suite.perfStats?.start ?? suite.startTime);
+              const end = Number(suite.perfStats?.end ?? suite.endTime);
+              const duration = Number.isFinite(end - start) ? `${((end - start) / 1000).toFixed(1)}s` : 'n/a';
+              const suitePath = path.relative(path.join(root, 'apps/dgfy-api'), suite.name || suite.testFilePath || 'unknown');
+              console.log(`| ${chunk.group || '-'} | ${chunk.chunk_index ?? '-'} | \`${suitePath}\` | \`${suite.status || 'unknown'}\` | ${duration} |`);
+            }
+          }
+          NODE
+          fi
           exit "$overall_status"
 
       - name: Upload selected DB test evidence
         continue-on-error: true
         id: upload_selected_db_evidence
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-db-runtime-probe-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .tmp/api-db-runtime-probe/
-          if-no-files-found: error
-          retention-days: 30
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_DEFAULT_REGION: us-east-1
+          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          SOURCE_COMMIT_SHA: ${{ github.sha }}
+          ARTIFACT_NAME: api-db-runtime-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          EVIDENCE_DIRECTORY: ${{ github.workspace }}/.tmp/api-db-runtime-probe
+        run: |
+          set -euo pipefail
+          bash scripts/ci-s3-upload.sh "$EVIDENCE_DIRECTORY" "$ARTIFACT_NAME"
+
+      - name: Record selected DB evidence storage
+        continue-on-error: true
+        id: record_selected_db_evidence
+        if: always()
+        shell: bash
+        env:
+          UPLOAD_OUTCOME: ${{ steps.upload_selected_db_evidence.outcome }}
+          UPLOAD_STATUS: ${{ steps.upload_selected_db_evidence.outputs.upload_status }}
+          UPLOAD_URI: ${{ steps.upload_selected_db_evidence.outputs.object_uri }}
+          UPLOAD_SIZE: ${{ steps.upload_selected_db_evidence.outputs.size_bytes }}
+          SOURCE_SHA256: ${{ steps.upload_selected_db_evidence.outputs.source_sha256 }}
+          DIRECT_SHA256: ${{ steps.upload_selected_db_evidence.outputs.direct_readback_sha256 }}
+          PRESIGNED_SHA256: ${{ steps.upload_selected_db_evidence.outputs.presigned_readback_sha256 }}
+        run: |
+          {
+            echo "### Selected DB evidence storage"
+            echo "- Upload step: ${UPLOAD_OUTCOME:-not run} (${UPLOAD_STATUS:-no verified result})."
+            if [[ -n "${UPLOAD_URI:-}" ]]; then
+              echo "- Object URI: ${UPLOAD_URI}"
+              echo "- Size: ${UPLOAD_SIZE:-unknown} bytes"
+              echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Remove test service containers
         continue-on-error: true

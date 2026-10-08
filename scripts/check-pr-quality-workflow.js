@@ -157,8 +157,9 @@ function checkSelectiveDispatchShape(qualityWorkflowText) {
       problems.push('promotion-quality-gate.yml: selected DB job must run validated DB group/chunk targets');
     }
     if (!targetJob.includes('vmstat 1') || !targetJob.includes('free -h')
-      || !targetJob.includes('actions/upload-artifact@v4')) {
-      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry and upload evidence');
+      || !targetJob.includes('scripts/ci-s3-upload.sh')
+      || !targetJob.includes("tee -a \"$GITHUB_STEP_SUMMARY\"")) {
+      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry and persist evidence to S3 and the run summary');
     }
   }
 
