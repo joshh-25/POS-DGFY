@@ -21,6 +21,17 @@ Evidence and submission packet:
 - `docs/compliance/evidence/open-controls-matrix.md`
 - `docs/compliance/evidence/residual-risk-closure-matrix.md`
 - `docs/compliance/evidence/rbac-sensitive-action-matrix.md`
+- `docs/compliance/evidence/annex-b-items-4-14-readiness-baseline.md`
+- `docs/compliance/evidence/annex-b-items-4-14-readiness-baseline.json`
+- `docs/compliance/evidence/annex-b-items-4-14-requirements-registry.json`
+- `scripts/validate-annex-b-items-4-14-requirements.cjs`
+- `docs/compliance/evidence/annex-b-items-4-14-architecture-contract-v1.md`
+- `docs/compliance/evidence/annex-b-items-4-14-architecture-contract-v1.json`
+- `scripts/validate-annex-b-items-4-14-architecture.cjs`
+- `scripts/validate-annex-b-items-4-14-architecture.test.cjs`
+- `docs/compliance/evidence/annex-b-ejournal-readiness-grammar-v0.1.md`
+- `docs/compliance/evidence/annex-b-ejournal-readiness-fixture-v0.1.txt`
+- `docs/compliance/evidence/annex-b-return-readiness-contract-v0.1.md`
 - `docs/compliance/evidence/drills/`
 - `docs/compliance/submission/`
 

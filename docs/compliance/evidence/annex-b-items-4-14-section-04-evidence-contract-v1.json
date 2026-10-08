@@ -1,0 +1,175 @@
+{
+  "schema_version": "annex-b-items-4-14-section-04-evidence-v1",
+  "section": "04_Fiscal_Documents_Adjustments_and_Readings",
+  "scope": {
+    "items": [4, 5, 6],
+    "environment": "local",
+    "source_timezone": "Asia/Manila",
+    "external_review_status": "required_before_external_submission",
+    "approval_claim": "none",
+    "plan_document": {
+      "path": "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/04_Fiscal_Documents_Adjustments_and_Readings.docx",
+      "sha256": "99d0283fe3b5dd8da32a2d18359d3ef08d529f3b5ae07768becb7b7362c0809d"
+    },
+    "return_semantics_contract": {
+      "path": "docs/compliance/evidence/annex-b-return-readiness-contract-v0.1.md",
+      "sha256": "4b77a87a96585acf081f242a5b918c74ab5b0833143ae8a8c2583b70cf11f8a2"
+    }
+  },
+  "phase_sequence": [
+    {
+      "phase": 354,
+      "initiative": "Annex B Items 4-14",
+      "objective": "Fiscal receipt and invoice evidence completeness",
+      "status": "VERIFIED",
+      "dependencies": [353],
+      "runtime_status": "VERIFIED",
+      "external_review": "R4-ATHLETE and R4-SOLO remain review-required unless the merchant has a governing policy and source data.",
+      "evidence": ["TEST-440", "TEST-441", "AC-440", "AC-441"]
+    },
+    {
+      "phase": 355,
+      "initiative": "Annex B Items 4-14",
+      "objective": "Adjustment documents and return semantics",
+      "status": "VERIFIED",
+      "dependencies": [354],
+      "runtime_status": "VERIFIED",
+      "external_review": "The implementation records explicit return evidence; tax treatment and authority remain external review items.",
+      "evidence": ["TEST-442", "TEST-443", "AC-442", "AC-443"]
+    },
+    {
+      "phase": 356,
+      "initiative": "Annex B Items 4-14",
+      "objective": "X/Z readings, immutable payload hashes, and reconciliation",
+      "status": "VERIFIED",
+      "dependencies": [354, 355],
+      "runtime_status": "VERIFIED",
+      "external_review": "Reading format and retention remain subject to authorized fiscal/provider review.",
+      "evidence": ["TEST-444", "AC-444"]
+    }
+  ],
+  "requirement_registry": [
+    {
+      "id": "FR-401",
+      "item": 4,
+      "statement": "Generate and reprint fiscal and non-fiscal documents from one server-owned immutable snapshot.",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "paths": ["apps/dgfy-api/src/modules/pos/domain/fiscalEvidenceContract.js", "apps/dgfy-api/src/modules/pos/usecases/posUseCases.js", "packages/web-core/src/features/pos/components/ReceiptPrintView.jsx", "packages/pos-receipt/src/index.js"]
+    },
+    {
+      "id": "FR-402",
+      "item": 5,
+      "statement": "Record linked adjustment evidence without mutating the original fiscal document.",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "paths": ["apps/dgfy-api/src/modules/pos/usecases/returnUseCases.js", "apps/dgfy-api/src/modules/pos/usecases/posUseCases.js", "apps/dgfy-api/src/models/PosTransactionAdjustment.js"]
+    },
+    {
+      "id": "FR-403",
+      "item": 6,
+      "statement": "Produce X/Z readings with Asia/Manila scope, counters, reconciliation metadata, and serialized payload hashes.",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "paths": ["apps/dgfy-api/src/modules/pos/usecases/posUseCases.js", "apps/dgfy-api/src/modules/pos/repositories/posRepository.js", "apps/dgfy-api/src/models/PosZReadingSnapshot.js"]
+    },
+    {
+      "id": "BR-402",
+      "item": 5,
+      "statement": "Keep void, refund, return, reprint, and reversal labels distinct and linked to original evidence.",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "paths": ["apps/dgfy-api/src/modules/pos/domain/fiscalEvidenceContract.js", "docs/compliance/evidence/annex-b-return-readiness-contract-v0.1.md"]
+    },
+    {
+      "id": "DATA-402",
+      "item": 6,
+      "statement": "Preserve append-only snapshots, counters, source scope, and reconciliation evidence.",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "paths": ["apps/dgfy-migration-runner/migrations/20261003000001-add-annex-b-item-4-6-evidence-contract.cjs", "apps/dgfy-api/src/models/PosZReadingSnapshot.js"]
+    },
+    {
+      "id": "SEC-402",
+      "item": 5,
+      "statement": "Enforce operator, shift, terminal, location, idempotency, and audit controls for returns.",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "paths": ["apps/dgfy-api/src/routes/pos.js", "apps/dgfy-api/src/validators/posValidator.js", "apps/dgfy-api/src/modules/pos/controllers/posHandlers.js", "apps/dgfy-api/src/modules/pos/usecases/returnUseCases.js"]
+    },
+    {
+      "id": "UI-401",
+      "item": 4,
+      "statement": "Use the established POS receipt renderer and preserve the same evidence for browser and thermal widths.",
+      "status": "VERIFIED",
+      "runtime_status": "VERIFIED",
+      "paths": ["packages/web-core/src/features/pos/components/ReceiptPrintView.jsx", "packages/pos-receipt/src/index.js"]
+    }
+  ],
+  "receipt_fixture_registry": [
+    {"id": "R4-REGULAR", "document_context": "fiscal", "runtime_status": "VERIFIED"},
+    {"id": "R4-SENIOR", "document_context": "fiscal", "runtime_status": "VERIFIED"},
+    {"id": "R4-PWD", "document_context": "fiscal", "runtime_status": "VERIFIED"},
+    {"id": "R4-ATHLETE", "document_context": "fiscal", "runtime_status": "REVIEW_REQUIRED", "reason": "No authoritative athlete policy/source fixture supplied."},
+    {"id": "R4-SOLO", "document_context": "fiscal", "runtime_status": "REVIEW_REQUIRED", "reason": "No authoritative solo-parent policy/source fixture supplied."},
+    {"id": "R4-CHARGES", "document_context": "fiscal", "runtime_status": "VERIFIED"},
+    {"id": "R4-NONFISCAL", "document_context": "non_fiscal", "runtime_status": "VERIFIED"}
+  ],
+  "adjustment_contract": {
+    "record_type": "ADJUSTMENT",
+    "supported_labels": ["CANCEL", "VOID", "REFUND", "RETURN", "REPRINT", "REVERSAL"],
+    "adjustment_types": ["cancel", "void", "cash_refund", "external_refund", "provider_refund", "return", "reprint", "reversal"],
+    "return_policy": {
+      "contract_version": "RETURN-READINESS-0.1",
+      "original_document_immutable": true,
+      "payment_refund_automatic": false,
+      "inventory_reversal_automatic": false,
+      "requires_idempotency": true,
+      "requires_audit": true,
+      "external_tax_treatment": "review_required"
+    }
+  },
+  "reading_contract": {
+    "reading_types": ["X", "Z"],
+    "timezone": "Asia/Manila",
+    "hash_algorithm": "SHA-256",
+    "z_snapshot_append_only": true,
+    "reconciliation_scope": ["completed_transactions", "payment_breakdown", "adjustments", "z_snapshot", "closed_shift_gate"],
+    "fiscal_event_type_for_close": "z_reading"
+  },
+  "test_registry": [
+    {"id": "TEST-440", "description": "Fiscal/non-fiscal receipt evidence uses a validated server snapshot and stable hash.", "command": "npm run test:backend -- --runTestsByPath tests/fiscalEvidenceContract.unit.test.js tests/posCheckoutFnbContracts.usecase.test.js", "status": "PASS"},
+    {"id": "TEST-441", "description": "Receipt renderer contract names the shared renderer and 80mm/57mm projections.", "command": "npm run test:annex-b-section-04", "status": "PASS"},
+    {"id": "TEST-442", "description": "Return adjustment preserves original evidence and records explicit linked return metadata.", "command": "npm run test:backend -- --runTestsByPath tests/posReturn.usecase.test.js", "status": "PASS"},
+    {"id": "TEST-443", "description": "Return idempotency and quantity-overrun rejection are enforced.", "command": "npm run test:backend -- --runTestsByPath tests/posReturn.usecase.test.js", "status": "PASS"},
+    {"id": "TEST-444", "description": "X/Z readings expose Asia/Manila scope, serialized payload hashes, and adjustment reconciliation metadata.", "command": "npm run test:backend -- --runTestsByPath tests/posReadings.usecase.test.js tests/posReports.repository.test.js", "status": "PASS"}
+  ],
+  "acceptance_registry": [
+    {"id": "AC-440", "statement": "All receipt evidence is sourced from the validated immutable snapshot.", "status": "PASS"},
+    {"id": "AC-441", "statement": "Receipt/reprint output exposes a stable renderer contract for browser and thermal widths.", "status": "PASS"},
+    {"id": "AC-442", "statement": "Adjustment documents link original number/hash/date-time and preserve the original.", "status": "PASS"},
+    {"id": "AC-443", "statement": "Returns are distinct from voids/refunds and remain reviewable for external fiscal treatment.", "status": "PASS_WITH_EXTERNAL_REVIEW_REQUIRED"},
+    {"id": "AC-444", "statement": "X/Z readings record counters, source scope, reconciliation inputs, and payload hashes.", "status": "PASS_WITH_EXTERNAL_REVIEW_REQUIRED"}
+  ],
+  "source_register": [
+    {"id": "FISCAL-EVIDENCE-CONTRACT", "path": "apps/dgfy-api/src/modules/pos/domain/fiscalEvidenceContract.js", "sha256": "42761af1319d88c9d46fe47ee02626bcd642aa43ac5b5ba217f9935e94d2e886"},
+    {"id": "POS-USECASES", "path": "apps/dgfy-api/src/modules/pos/usecases/posUseCases.js", "sha256": "7266cccdadd81fda4a886ed1c49ed0e79696786fab4c6f611a10964660ff8d14"},
+    {"id": "RETURN-USECASE", "path": "apps/dgfy-api/src/modules/pos/usecases/returnUseCases.js", "sha256": "5e9696491288fc6274c06344480aea14466b1909164e2113cb51adc89770d1cd"},
+    {"id": "POS-REPOSITORY", "path": "apps/dgfy-api/src/modules/pos/repositories/posRepository.js", "sha256": "17e4c8687836b3e3bf5e8d80c68d1419850d556b571d966ae1f809464320d780"},
+    {"id": "POS-ROUTES", "path": "apps/dgfy-api/src/routes/pos.js", "sha256": "150b06626c010348545d0b43ba40de0d0b86ae77a256e18b3a7e23344eb405c6"},
+    {"id": "POS-HANDLERS", "path": "apps/dgfy-api/src/modules/pos/controllers/posHandlers.js", "sha256": "2f5a3943c1c0b3911ca79964884beaa8ec7130782d5c536144d94049a1c97f7d"},
+    {"id": "POS-VALIDATOR", "path": "apps/dgfy-api/src/validators/posValidator.js", "sha256": "ab9272d75791efb36134f75f534bfc46c7a9813fad5c4cefda9485cf7acd260c"},
+    {"id": "ADJUSTMENT-MODEL", "path": "apps/dgfy-api/src/models/PosTransactionAdjustment.js", "sha256": "b77b9ca4ba95c640227506bb7208177c48e066d54f456e8ad2b3d408c702c4a9"},
+    {"id": "Z-READING-MODEL", "path": "apps/dgfy-api/src/models/PosZReadingSnapshot.js", "sha256": "f1a5f4a5aa1d13a2f3ea688f30dfb94794a85a9991a9accd46696b6bf230f736"},
+    {"id": "ITEM-4-6-MIGRATION", "path": "apps/dgfy-migration-runner/migrations/20261003000001-add-annex-b-item-4-6-evidence-contract.cjs", "sha256": "14ea57350aaa4e726d59a6a2f97f0655ac70c9ded716ac1ddf9fbc7e2aa4e359"},
+    {"id": "RECEIPT-UI", "path": "packages/web-core/src/features/pos/components/ReceiptPrintView.jsx", "sha256": "3cf44dbffda503d88d42f51064600dad3ece79849074cdfb556b7facc915aad9"},
+    {"id": "RECEIPT-PACKAGE", "path": "packages/pos-receipt/src/index.js", "sha256": "773c07a225b84060fa8303da125ba7a4b9e01da7393b564b90da53c4f3bad803"
+    }
+  ],
+  "evidence_outputs": [
+    "docs/compliance/evidence/annex-b-items-4-14-section-04-fixture-manifest-v1.json",
+    "docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.md",
+    "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/execution/EXEC-04_Fiscal_Documents_Adjustments_and_Readings.docx"
+  ],
+  "overall_status": "LOCAL_RUNTIME_VERIFIED_EXTERNAL_REVIEW_REQUIRED"
+}

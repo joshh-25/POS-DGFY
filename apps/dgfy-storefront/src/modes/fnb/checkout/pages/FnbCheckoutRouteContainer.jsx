@@ -201,6 +201,7 @@ export function FnbCheckoutRouteContainer({
   // Phase 142 (#823): quote-sourced (this container renders before a payment session exists).
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
   const isDineInOrder = orderMethod === 'dine_in';
+  const fnbGuestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
   const downpaymentHandoverLabel = resolveDownpaymentBalanceLabel(orderMethod)
     .replace(/^Balance due /, '');
   // #963: see RetailOrderPaymentStep.jsx for the rationale -- same gate, same shared helper.
@@ -765,15 +766,17 @@ export function FnbCheckoutRouteContainer({
         >
           <FnbCheckoutPaymentStep
             brandColor={fnbOrderBrand}
-            canSubmit={checkoutAllowed && !qrphPaymentSession && !fnbBillingEmailRequired}
+            canSubmit={checkoutAllowed && !qrphPaymentSession && !fnbBillingEmailRequired && !fnbGuestCheckoutVerificationRequired}
             cart={cart}
             cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             closedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' }) : null}
+            guestCheckoutVerificationRequired={fnbGuestCheckoutVerificationRequired}
             isMobileViewport={isMobileViewport}
             isResponsive={isFnbOrderResponsiveFlow}
             money={money}
             onBack={() => setFnbOrderStep(2)}
+            onBackToAccount={() => setFnbOrderStep(3)}
             onImageError={(itemId) => {
               const normalizedLineItemId = Number(itemId);
               if (!Number.isFinite(normalizedLineItemId)) return;
@@ -900,6 +903,7 @@ export function FnbCheckoutRouteContainer({
           cartImageErrors={cartImageErrors}
           checkoutAllowed={checkoutAllowed}
           checkoutLoading={checkoutLoading}
+          checkoutPrimaryLocked={fnbGuestCheckoutVerificationRequired}
           fnbCustomerStepComplete={fnbCustomerStepComplete}
           fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
           isDeliveryOrder={isDeliveryOrder}

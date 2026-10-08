@@ -678,14 +678,16 @@ describe('tenant schema sync script contracts', () => {
       { table: 'pos_z_reading_snapshots', column: 'location_id' },
       { table: 'pos_z_reading_snapshots', column: 'closed_by_user_id' },
       { table: 'pos_z_reading_snapshots', column: 'closed_from_terminal_id' },
-      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' }
+      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' },
+      { table: 'pos_z_reading_snapshots', column: 'reading_payload_hash' }
     ]);
 
-    expect(repairs).toHaveLength(4);
+    expect(repairs).toHaveLength(5);
     expect(repairs[0].sql).toContain('ADD COLUMN `location_id`');
     expect(repairs[1].sql).toContain('ADD COLUMN `closed_by_user_id`');
     expect(repairs[2].sql).toContain('ADD COLUMN `closed_from_terminal_id`');
     expect(repairs[3].sql).toContain('ADD COLUMN `day_close_pin_confirmed_at`');
+    expect(repairs[4].sql).toContain('ADD COLUMN `reading_payload_hash`');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
       .toHaveProperty('uq_pos_z_reading_snapshots_business_date_location');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
@@ -702,6 +704,17 @@ describe('tenant schema sync script contracts', () => {
 
     expect(repair.sql).toContain("'grab_pay'");
     expect(repair.sql).toContain("'shopeepay'");
+  });
+
+  it('registers the return adjustment enum value for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transaction_adjustments.adjustment_type;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['return']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transaction_adjustments', column: 'adjustment_type', missing_values: ['return'] }
+    ]);
+
+    expect(repair.sql).toContain("ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return')");
   });
 
   // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).

@@ -1,6 +1,5 @@
 'use strict';
 
-const tableExists = async (queryInterface, table) => Boolean(await queryInterface.describeTable(table).catch(() => null));
 const addIndexIfMissing = async (queryInterface, table, fields, options) => {
   const indexes = await queryInterface.showIndex(table).catch(() => []);
   if (!indexes.some((index) => index.name === options.name)) await queryInterface.addIndex(table, fields, options);
@@ -8,7 +7,8 @@ const addIndexIfMissing = async (queryInterface, table, fields, options) => {
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    if (!(await tableExists(queryInterface, 'company_registration_uploads'))) {
+    const existingTable = await queryInterface.describeTable('company_registration_uploads').catch(() => null);
+    if (!existingTable) {
       await queryInterface.createTable('company_registration_uploads', {
         id: { type: Sequelize.UUID, primaryKey: true, allowNull: false },
         application_id: { type: Sequelize.UUID, allowNull: false, references: { model: 'company_registration_applications', key: 'id' }, onDelete: 'RESTRICT' },
@@ -29,6 +29,11 @@ module.exports = {
         created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
         updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') }
       });
+    } else if (!existingTable.application_id) {
+      // A pre-release storefront migration used this table name for draft
+      // uploads. The later extension migration owns reconciliation of that
+      // shape; do not create application indexes against its missing columns.
+      return;
     }
     await addIndexIfMissing(queryInterface, 'company_registration_uploads', ['application_id', 'attempt_id'], { name: 'idx_company_registration_upload_application_attempt' });
     await addIndexIfMissing(queryInterface, 'company_registration_uploads', ['application_id', 'asset_kind', 'sha256'], { name: 'idx_company_registration_upload_dedupe' });

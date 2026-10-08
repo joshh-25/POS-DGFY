@@ -121,6 +121,7 @@ import {
     buildGetPosBranchDirectoryUseCase,
     buildRecordPosBranchViewEventUseCase
 } from './usecases/posBranchDirectoryUseCases.js';
+import { buildReturnPosTransactionUseCase } from './usecases/returnUseCases.js';
 import {
     buildCreatePosDiscountRuleUseCase,
     buildDeletePosDiscountRuleUseCase,
@@ -392,6 +393,7 @@ export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     employeeCreditService,
     publishCatalogChange
 });
+export const returnPosTransactionUseCase = buildReturnPosTransactionUseCase({ posRepository });
 export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApprovalUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,

@@ -87,6 +87,25 @@ describe('StorefrontOnlinePaymentPanel card states', () => {
     resolvePayment({ status: 'awaiting_next_action', redirectUrl: null });
   });
 
+  it('allows an unsubmitted card payment to be cancelled without touching checkout state', () => {
+    const onChooseAnotherPaymentMethod = vi.fn();
+
+    render(
+      <StorefrontOnlinePaymentPanel
+        billing={{ email: 'customer@example.com' }}
+        onChooseAnotherPaymentMethod={onChooseAnotherPaymentMethod}
+        paymentEnvironment="test"
+        paymentSession={paymentSession}
+        paymentType="card"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel payment' }));
+
+    expect(onChooseAnotherPaymentMethod).toHaveBeenCalledOnce();
+    expect(screen.queryByText('Payment processing')).toBeNull();
+  });
+
   // #963: the panel is the only thing standing between a caller's `billing` prop and PayMongo.
   // Retail omitted the prop entirely and nothing caught it, so assert the forwarding directly.
   it('forwards the caller billing contact into the card payment call', () => {

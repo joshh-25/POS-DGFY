@@ -17,7 +17,7 @@ export const STOREFRONT_DELIVERY_PARTNER_OPTIONS = [
 
 const supportedPartnerIds = new Set(STOREFRONT_DELIVERY_PARTNER_OPTIONS.map(({ id }) => id));
 
-const normalizePartners = (value) => {
+const normalizePartners = (value, maxPartners = MAX_STOREFRONT_DELIVERY_PARTNERS) => {
   const source = Array.isArray(value) ? value : [];
   const seen = new Set();
   return source.map((entry) => {
@@ -30,7 +30,7 @@ const normalizePartners = (value) => {
     if (!isLegacyString && !label && !url) return null;
     seen.add(partner);
     return { partner, label, url };
-  }).filter(Boolean).slice(0, MAX_STOREFRONT_DELIVERY_PARTNERS);
+  }).filter(Boolean).slice(0, maxPartners);
 };
 
 const getDefinition = (partner) => STOREFRONT_DELIVERY_PARTNER_OPTIONS.find(({ id }) => id === partner) || STOREFRONT_DELIVERY_PARTNER_OPTIONS[3];
@@ -158,15 +158,15 @@ function PartnerForm({ mode, draft, setDraft, partners, onCancel, onSubmit }) {
   );
 }
 
-export default function StorefrontDeliveryPartnersSettings({ partners = [], onChange, disabled = false }) {
-  const entries = useMemo(() => normalizePartners(partners), [partners]);
+export default function StorefrontDeliveryPartnersSettings({ partners = [], onChange, disabled = false, maxPartners = MAX_STOREFRONT_DELIVERY_PARTNERS }) {
+  const entries = useMemo(() => normalizePartners(partners, maxPartners), [partners, maxPartners]);
   const [menuIndex, setMenuIndex] = useState(null);
   const [modal, setModal] = useState(null);
   const [draft, setDraft] = useState({ partner: '', label: '', url: '' });
   const [announcement, setAnnouncement] = useState('');
-  const atMaximum = entries.length >= MAX_STOREFRONT_DELIVERY_PARTNERS;
+  const atMaximum = entries.length >= maxPartners;
 
-  const emit = (nextEntries) => onChange?.(normalizePartners(nextEntries));
+  const emit = (nextEntries) => onChange?.(normalizePartners(nextEntries, maxPartners));
   const openAdd = () => { if (!disabled && !atMaximum) { setMenuIndex(null); setDraft({ partner: '', label: '', url: '' }); setModal('add'); } };
   const openEdit = (index) => { setMenuIndex(null); setDraft({ ...entries[index] }); setModal({ type: 'edit', index }); };
   const openRemove = (index) => { setMenuIndex(null); setModal({ type: 'remove', index }); };
@@ -200,12 +200,12 @@ export default function StorefrontDeliveryPartnersSettings({ partners = [], onCh
         title="Delivery Partners"
         titleId="storefront-delivery-partners-heading"
         description="Show the delivery partners available for your store."
-        info={atMaximum ? <><p className="font-extrabold text-[#0F172A]">You have reached the maximum of {MAX_STOREFRONT_DELIVERY_PARTNERS} delivery partners.</p><p className="mt-1">Remove a partner to add a new one.</p></> : <><p className="font-extrabold text-[#0F172A]">You can add up to {MAX_STOREFRONT_DELIVERY_PARTNERS} delivery partners.</p><p className="mt-1">Added partners are automatically shown on your storefront.</p></>}
+        info={atMaximum ? <><p className="font-extrabold text-[#0F172A]">You have reached the maximum of {maxPartners} delivery partners.</p><p className="mt-1">Remove a partner to add a new one.</p></> : <><p className="font-extrabold text-[#0F172A]">You can add up to {maxPartners} delivery partners.</p><p className="mt-1">Added partners are automatically shown on your storefront.</p></>}
         infoLabel="Delivery Partners"
         infoPanelId="storefront-delivery-partners-guidance"
         hasData={entries.length > 0}
-        action={<Button type="button" onClick={openAdd} disabled={disabled || atMaximum} aria-label={atMaximum ? `Add delivery partner (maximum of ${MAX_STOREFRONT_DELIVERY_PARTNERS} reached)` : 'Add delivery partner'} title={atMaximum ? `Maximum of ${MAX_STOREFRONT_DELIVERY_PARTNERS} delivery partners reached` : 'Add delivery partner'} className="min-h-9 w-full gap-1.5 rounded-lg bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-[#143F73] sm:w-auto sm:text-[13px]"><Plus className="h-4 w-4" aria-hidden="true" />Add Delivery Partner</Button>}
-        actionNote={atMaximum ? <span className="text-right text-[11px] font-semibold text-[#64748B]">Maximum of {MAX_STOREFRONT_DELIVERY_PARTNERS} delivery partners reached.</span> : null}
+        action={<Button type="button" onClick={openAdd} disabled={disabled || atMaximum} aria-label={atMaximum ? `Add delivery partner (maximum of ${maxPartners} reached)` : 'Add delivery partner'} title={atMaximum ? `Maximum of ${maxPartners} delivery partners reached` : 'Add delivery partner'} className="min-h-9 w-full gap-1.5 rounded-lg bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-[#143F73] sm:w-auto sm:text-[13px]"><Plus className="h-4 w-4" aria-hidden="true" />Add Delivery Partner</Button>}
+        actionNote={atMaximum ? <span className="text-right text-[11px] font-semibold text-[#64748B]">Maximum of {maxPartners} delivery partners reached.</span> : null}
       />
 
       {entries.length > 0 ? (

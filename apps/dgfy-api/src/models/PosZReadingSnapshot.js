@@ -37,6 +37,10 @@ const PosZReadingSnapshot = sequelize.define('PosZReadingSnapshot', {
         allowNull: false,
         defaultValue: {}
     },
+    reading_payload_hash: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
     closed_by_user_id: {
         type: DataTypes.INTEGER,
         allowNull: true

@@ -1,6 +1,7 @@
 export const GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT = '/api/v1/store/checkout/guest-otp/request';
 export const GUEST_CHECKOUT_OTP_VERIFY_ENDPOINT = '/api/v1/store/checkout/guest-otp/verify';
 export const RESEND_COOLDOWN_SECONDS = 60;
+export const GUEST_CHECKOUT_OTP_EXPIRED_REASON = 'GUEST_CHECKOUT_OTP_EXPIRED';
 export const GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE = 'Guest checkout needs a separate 6-digit email code. If your DGFY email is already verified, sign in or verify this guest email in Step 1.';
 // #622: distinct from the OTP message above -- this store has disabled guest checkout entirely,
 // not just gated it behind email verification.
@@ -18,6 +19,17 @@ export const normalizeGuestCheckoutEmail = (email) => (
 
 export const normalizeGuestCheckoutOtpCode = (code) => (
   String(code || '').replace(/\D/g, '').slice(0, 6)
+);
+
+export const isGuestCheckoutOtpExpiredError = (error) => (
+  String(
+    error?.details?.reason_code
+      || error?.details?.reasonCode
+      || error?.errorCode
+      || error?.code
+      || ''
+  ).trim().toUpperCase() === GUEST_CHECKOUT_OTP_EXPIRED_REASON
+    || String(error?.errorCode || error?.code || '').trim().toUpperCase() === 'EMAIL_OTP_EXPIRED'
 );
 
 export const formatGuestCheckoutCooldown = (seconds) => {

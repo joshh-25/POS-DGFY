@@ -26776,3 +26776,65 @@ Not complete; set only after every required acceptance gate and evidence item pa
 ### Next eligible phase
 
 Phase 480 only after Phase 479's acceptance gates pass and the live ledger is rechecked.
+
+## Phase 480 - Registration, scheduled checkout, and POS fiscal workflow consolidation (#343, #2067)
+
+### Initiative and release
+
+DGFY registration, scheduled checkout, POS fiscal evidence, and cashier workflow consolidation.
+This phase rebases the four approved local feature slices onto current `develop` while
+preserving OPIS back-office ownership and POS terminal operational ownership.
+
+### Objective and scope
+
+Carry forward the approved registration draft/upload, Storefront wizard, approval-time
+materialization, admin review, scheduled checkout time-wheel, POS fiscal evidence, returns,
+X/Z readings, e-Journal/report evidence, parked-sale, shift, and customer-workflow changes.
+The implementation is local and PR-scoped; it does not merge, deploy, or claim external
+fiscal or production acceptance.
+
+### Status
+
+`in_progress` — implementation and local validation are underway. Migration rehearsal,
+authenticated end-to-end acceptance, PR review, merge, and deployed QA remain outstanding.
+
+### Dependencies
+
+Current `develop` through Phase 479; `docs/START_HERE.md`; architecture boundaries and
+governance; ADRs 0020, 0039, 0042, 0065, 0081, and 0087; existing landlord, tenant, POS,
+Storefront, and OPIS ownership contracts.
+
+### Acceptance and validation evidence
+
+- [x] Registration draft/upload migrations are reconciled for both fresh and upgrade paths;
+      approval materialization, admin review/download, Storefront wizard, and legal-consent
+      contracts remain covered by focused tests.
+- [x] Scheduled checkout retains the exact time-wheel behavior, one-minute choices, AM/PM
+      selection, and payment-session hardening.
+- [x] POS fiscal evidence, append-only returns, X/Z reconciliation, e-Journal readiness,
+      reports, parked-sale, shift, and customer/terminal workflow changes are included.
+- [x] POS-to-OPIS boundaries are preserved; obsolete POS Back Office handoffs are not
+      reintroduced while OPIS retains the administrative review surface.
+- [ ] Disposable migration rehearsal, authenticated full-flow browser acceptance, PR review,
+      merge, and deployed QA remain outstanding.
+
+### Links
+
+- Registration: `apps/dgfy-api/src/modules/tenants/`, `apps/dgfy-storefront/`,
+  `apps/dgfy-opis/`, and `apps/dgfy-migration-runner/migrations/`.
+- POS fiscal/workflow runtime: `apps/dgfy-api/src/modules/pos/`,
+  `apps/dgfy-api/src/modules/reports/`, `packages/web-core/src/features/pos/`,
+  and `apps/dgfy-opis/src/features/businessAdmin/`.
+- Evidence and compliance: `docs/compliance/evidence/`,
+  `docs/compliance/impact-declarations/`, and `scripts/validate-annex-b-items-4-14-*.cjs`.
+- Focused tests: registration, scheduled checkout, fiscal evidence, returns, readings,
+  reports, parked sales, shifts, and POS/OPIS boundary contracts.
+
+### Completion date
+
+Not complete; set only after every required acceptance gate and evidence item passes.
+
+### Next eligible phase
+
+Phase 481 only after Phase 480's acceptance gates pass and the authoritative ledger is
+rechecked.

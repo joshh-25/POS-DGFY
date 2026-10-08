@@ -9,7 +9,6 @@ import { StorefrontTimePickerSelect } from './StorefrontTimePickerSelect.jsx';
 const DAY_KEYS = Object.freeze(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']);
 const DAY_LABELS = Object.freeze(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
 const TIME_PRECISION_MINUTES = 1;
-const DROPDOWN_MINUTE_INTERVAL = 5;
 const MAX_SELECTABLE_DAYS = 90;
 const CALENDAR_SWIPE_CAPTURE_DISTANCE = 12;
 const CALENDAR_SWIPE_NAVIGATION_DISTANCE = 48;
@@ -308,11 +307,6 @@ export function StorefrontScheduledDateTimePicker({
       ? buildStorefrontTimeSlots({ date: selectedDate, storefrontHours: schedule, now, intervalMinutes: TIME_PRECISION_MINUTES })
       : []
   ), [now, schedule, selectedDate]);
-  const dropdownSlots = useMemo(() => (
-    selectedDate
-      ? buildStorefrontTimeSlots({ date: selectedDate, storefrontHours: schedule, now, intervalMinutes: DROPDOWN_MINUTE_INTERVAL })
-      : []
-  ), [now, schedule, selectedDate]);
   const [closedDateMessage, setClosedDateMessage] = useState('');
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const branchNow = getBranchWallDate(now, getScheduleTimezone(schedule));
@@ -352,11 +346,24 @@ export function StorefrontScheduledDateTimePicker({
 
   const selectedPeriod = timeParts.period || availableSlots[0]?.period || '';
   const slotsForPeriod = availableSlots.filter((slot) => slot.period === selectedPeriod);
-  const dropdownSlotsForPeriod = dropdownSlots.filter((slot) => slot.period === selectedPeriod);
-  const hourValues = [...new Set(slotsForPeriod.map((slot) => hour12ForMinutes(slot.minutes)))];
-  const minuteValues = [...new Set(dropdownSlotsForPeriod
-    .filter((slot) => hour12ForMinutes(slot.minutes) === timeParts.hour)
-    .map((slot) => pad(slot.minutes % 60)))];
+  const hourValues = Array.from({ length: 12 }, (_, index) => {
+    const hour = String(index + 1);
+    return {
+      disabled: !slotsForPeriod.some((slot) => hour12ForMinutes(slot.minutes) === hour),
+      label: hour,
+      value: hour
+    };
+  });
+  const minuteValues = Array.from({ length: 60 }, (_, minute) => {
+    const value = pad(minute);
+    return {
+      disabled: !slotsForPeriod.some((slot) => (
+        hour12ForMinutes(slot.minutes) === timeParts.hour && pad(slot.minutes % 60) === value
+      )),
+      label: value,
+      value
+    };
+  });
   const draftValue = valueFromParts(selectedDate, timeParts);
   const draftDateTime = parseDateTimeValue(draftValue);
   const canApply = Boolean(draftDateTime)
@@ -387,8 +394,12 @@ export function StorefrontScheduledDateTimePicker({
     setClosedDateMessage('');
     const nextDate = startOfDay(date);
     const dateKey = formatDateKey(nextDate);
-    const firstSlot = buildStorefrontTimeSlots({ date: nextDate, storefrontHours: schedule, now, intervalMinutes: DROPDOWN_MINUTE_INTERVAL })[0]
-      || buildStorefrontTimeSlots({ date: nextDate, storefrontHours: schedule, now, intervalMinutes: TIME_PRECISION_MINUTES })[0];
+    const firstSlot = buildStorefrontTimeSlots({
+      date: nextDate,
+      storefrontHours: schedule,
+      now,
+      intervalMinutes: TIME_PRECISION_MINUTES
+    })[0];
     focusDateKeyRef.current = dateKey;
     setDraft((current) => ({
       ...current,
@@ -405,7 +416,7 @@ export function StorefrontScheduledDateTimePicker({
       hour12ForMinutes(slot.minutes) === timeParts.hour
       && pad(slot.minutes % 60) === timeParts.minute
     ));
-    const nextSlot = matchingCurrent || matchingSlots.find((slot) => slot.minutes % DROPDOWN_MINUTE_INTERVAL === 0) || matchingSlots[0];
+    const nextSlot = matchingCurrent || matchingSlots[0];
     setDraft((current) => ({
       ...current,
       timeParts: nextSlot ? getTimeParts(parseDateTimeValue(nextSlot.value)) : EMPTY_TIME
@@ -415,7 +426,7 @@ export function StorefrontScheduledDateTimePicker({
   const handleHourChange = (hour) => {
     const matchingSlots = slotsForPeriod.filter((slot) => hour12ForMinutes(slot.minutes) === hour);
     const matchingCurrent = matchingSlots.find((slot) => pad(slot.minutes % 60) === timeParts.minute);
-    const nextSlot = matchingCurrent || matchingSlots.find((slot) => slot.minutes % DROPDOWN_MINUTE_INTERVAL === 0) || matchingSlots[0];
+    const nextSlot = matchingCurrent || matchingSlots[0];
     setDraft((current) => ({
       ...current,
       timeParts: nextSlot ? getTimeParts(parseDateTimeValue(nextSlot.value)) : EMPTY_TIME
@@ -424,10 +435,9 @@ export function StorefrontScheduledDateTimePicker({
 
   const handleMinuteChange = (minute) => {
     const numericMinute = Number(minute);
-    if (!selectedDate || !timeParts.hour || !timeParts.period || !Number.isInteger(numericMinute) || numericMinute < 0 || numericMinute > 60) return;
-    const normalizedMinute = numericMinute === 60 ? '00' : pad(numericMinute);
+    if (!selectedDate || !timeParts.hour || !timeParts.period || !Number.isInteger(numericMinute) || numericMinute < 0 || numericMinute > 59) return;
+    const normalizedMinute = pad(numericMinute);
     const candidate = parseDateTimeValue(valueFromParts(selectedDate, { ...timeParts, minute: normalizedMinute }));
-    if (candidate && numericMinute === 60) candidate.setHours(candidate.getHours() + 1);
 
     if (candidate
       && isDateWithinBookingRange(startOfDay(candidate))
@@ -649,6 +659,7 @@ export function StorefrontScheduledDateTimePicker({
       role="dialog"
       aria-labelledby={titleId}
       data-testid="scheduled-date-time-popover"
+      className="scrollbar-hide"
       style={{
         background: '#fff',
         border: '1px solid #dbe4f0',
@@ -659,7 +670,7 @@ export function StorefrontScheduledDateTimePicker({
         display: 'grid',
         gap: 10,
         left: popoverPosition?.left ?? 12,
-        maxHeight: 'min(80vh, 560px)',
+        maxHeight: 'min(80vh, 620px)',
         overflowY: 'auto',
         padding: 12,
         position: 'fixed',
@@ -999,10 +1010,10 @@ export function StorefrontScheduledDateTimePicker({
             cursor: 'pointer',
             flex: 1,
             fontFamily: CHECKOUT_FONT_FAMILY,
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: 600,
-            minHeight: 42,
-            padding: '0 12px'
+            minHeight: 32,
+            padding: '0 8px'
           }}
         >
           Cancel
@@ -1020,11 +1031,11 @@ export function StorefrontScheduledDateTimePicker({
             cursor: canApply ? 'pointer' : 'not-allowed',
             flex: 1,
             fontFamily: CHECKOUT_FONT_FAMILY,
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: 700,
-            minHeight: 42,
+            minHeight: 32,
             opacity: canApply ? 1 : 0.55,
-            padding: '0 12px'
+            padding: '0 8px'
           }}
         >
           Apply

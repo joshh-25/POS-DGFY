@@ -102,6 +102,7 @@ import {
     validatePosDrawerAuthorization,
     validateFiscalPrintEvent,
     validateVoidPosTransaction,
+    validateReturnPosTransaction,
     validateOverrideDeliveryFee,
     validateCashRefundPosTransaction,
     validateExternalRefundPosTransaction,
@@ -386,6 +387,7 @@ router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUS
 router.post('/device/authorize-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, posDrawerAuthorizationLimiter, validatePosDrawerAuthorization, posController.requireActiveOperatorForMutation, posController.authorizeDeviceDrawer);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.requireActiveOperatorForMutation, posController.voidTransaction);
+router.post('/transactions/:id/return', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateReturnPosTransaction, posController.requireActiveOperatorForMutation, posController.returnTransaction);
 // Phase 238 (#1330): not gated on a paired terminal/active shift, unlike void/refund above --
 // same class of guard as PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS (a permissioned order-level
 // edit, not a terminal cash-handling action), so it works from a back-office screen too.

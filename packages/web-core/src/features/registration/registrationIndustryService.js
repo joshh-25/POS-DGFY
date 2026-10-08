@@ -36,7 +36,11 @@ export const fetchRegistrationIndustries = async ({ force = false } = {}) => {
   if (cachedIndustries && !force) return cachedIndustries;
   if (inFlightRequest && !force) return inFlightRequest;
 
-  inFlightRequest = api.get('/registration/industries', { skipTenantAuthHeaders: true })
+  inFlightRequest = api.get('/registration/industries', {
+    skipTenantAuthHeaders: true,
+    skipAuthRefresh: true,
+    skipGlobalErrorToast: true
+  })
     .then((response) => {
       const industries = response.data?.data?.industries;
       cachedIndustries = Array.isArray(industries) && industries.length > 0

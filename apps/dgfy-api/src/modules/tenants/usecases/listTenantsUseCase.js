@@ -88,12 +88,16 @@ const buildForceNonCompliantEligibility = (tenant) => {
 
 const enrichTenant = (tenant, capabilities = null) => {
     const baseTenant = toPlainTenant(tenant);
+    const registrationDraftId = baseTenant.settings?.registration_draft_id || null;
+    const safeTenant = { ...baseTenant };
+    delete safeTenant.settings;
     const eligibility = buildForceNonCompliantEligibility(baseTenant);
     const adminComplianceModeAction = buildAdminComplianceModeAction(baseTenant);
     const effectivePlan = resolveTenantEffectivePlan(baseTenant);
 
     return {
-        ...baseTenant,
+        ...safeTenant,
+        registration_draft_id: registrationDraftId,
         effective_plan: effectivePlan,
         plan_policy: effectivePlan !== baseTenant.plan ? 'registered_tenant_premium_capable' : 'stored_plan',
         capabilities,

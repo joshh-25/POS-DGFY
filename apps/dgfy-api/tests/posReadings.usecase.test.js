@@ -262,6 +262,12 @@ describe('POS readings usecases', () => {
             business_date: '2026-08-07',
             location_id: 7,
             generated_at: '2026-08-07T16:00:00.000Z',
+            reading_payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+            reading_evidence: expect.objectContaining({
+                reading_type: 'Z',
+                source_timezone: 'Asia/Manila',
+                payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/)
+            }),
             z_reading_reconciliation: expect.objectContaining({
                 status: 'matched',
                 report_recognized_sales: 250,
@@ -439,6 +445,11 @@ describe('POS readings usecases', () => {
             business_date: '2026-08-07',
             location_id: 7,
             snapshot_persisted: false,
+            reading_payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+            reading_evidence: expect.objectContaining({
+                reading_type: 'Z',
+                source_timezone: 'Asia/Manila'
+            }),
             z_reading_reconciliation: expect.objectContaining({
                 status: 'not_generated',
                 report_recognized_sales: 480,
@@ -604,6 +615,13 @@ describe('POS readings usecases', () => {
             business_date: '2026-04-08',
             terminal_id: 'WEB-POS-01',
             snapshot_persisted: false,
+            reading_identifier: expect.stringMatching(/^XR-/),
+            reading_payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+            reading_evidence: expect.objectContaining({
+                reading_type: 'X',
+                source_timezone: 'Asia/Manila',
+                payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/)
+            }),
             counters: expect.objectContaining({
                 z_counter: 3,
                 reset_counter: 9,

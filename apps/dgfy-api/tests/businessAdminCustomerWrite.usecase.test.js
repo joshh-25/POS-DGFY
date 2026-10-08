@@ -35,7 +35,8 @@ describe('Business Admin customer creation', () => {
             body: {
                 name: ' Maria Customer ',
                 email: 'MARIA@EXAMPLE.TEST ',
-                phone: '09170000000'
+                phone: '09170000000',
+                address_line: '12 Main Street, Iloilo City'
             }
         });
 
@@ -43,7 +44,8 @@ describe('Business Admin customer creation', () => {
         expect(repository.createCustomer).toHaveBeenCalledWith({
             name: 'Maria Customer',
             email: 'maria@example.test',
-            phone: '09170000000'
+            phone: '09170000000',
+            addressLine: '12 Main Street, Iloilo City'
         });
         expect(result).toEqual({
             success: true,
@@ -82,6 +84,18 @@ describe('Business Admin customer creation', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
+        expect(repository.createCustomer).not.toHaveBeenCalled();
+    });
+
+    it('rejects an overlong address before touching the repository', async () => {
+        const result = await createCustomer({
+            user: adminUser,
+            body: { name: 'Long Address', email: 'long@example.test', address_line: 'A'.repeat(4001) }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(repository.findCustomerByEmail).not.toHaveBeenCalled();
         expect(repository.createCustomer).not.toHaveBeenCalled();
     });
 });
