@@ -26836,5 +26836,94 @@ Not complete; set only after every required acceptance gate and evidence item pa
 
 ### Next eligible phase
 
-Phase 481 only after Phase 480's acceptance gates pass and the authoritative ledger is
+Phase 481 (#2306) is explicitly authorized to proceed independently of Phase 480's open
+acceptance gates (2026-10-08; see Phase 481's sequencing override). Phase 482 is eligible only
+after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is rechecked.
+
+## Phase 481 - DGLaundry runtime attestation and qualification probes (#2306)
+
+### Initiative and release
+
+Epic #517, DGFY-side partner integration runtime-evidence work, issue #2306.
+
+### Objective and scope
+
+Provide a signed runtime-readiness attestation derived from live deployment/configuration state,
+signed normal/payment/duplicate-payment event specimens using DGFY's existing Ed25519 event signer,
+and four staging-only payment-lifecycle probes bound to a dedicated qualification order. Reuse the
+existing booking cancellation, payment expiry, refund, and receipt-confirmation domain paths. Do not
+claim hosted DGLaundry qualification, production readiness, or provider approval of the proposed
+probe contract without corresponding evidence.
+
+### Status
+
+`in_progress` — implementation and local governance/architecture checks are in progress. Focused
+Jest suites could not run because the API workspace's Jest executable is not installed. Provider
+confirmation, staging execution, and DGLaundry hosted-validator acceptance remain outstanding.
+
+**Explicit sequencing override (2026-10-08):** Pat authorized #2306 to proceed and prepare a PR
+while Phase 480 remains `in_progress`. Phase 480's acceptance criteria remain open and are not
+waived, completed, or replaced by this override. This authorization applies only to this
+independent DGLaundry qualification-evidence scope.
+
+### Dependencies
+
+Issue #2306; Pat's 2026-10-08 authorization to proceed independently of Phase 480; ADR 0079 and its
+existing DGLaundry partner contract decisions; the authoritative
+`docs/api/PARTNER_INTEGRATION_CONTRACT.md`; the staging-only qualification-order safeguards and
+existing commerce payment idempotency/session boundaries. Phase 480 is not a technical dependency;
+its open gates remain independently tracked.
+
+### Acceptance and validation evidence
+
+- [ ] Runtime attestation signs canonical readiness data derived from live configuration and
+      readiness checks, failing closed on unavailable prerequisites.
+- [ ] Event-specimen generation emits independently verifiable normal/payment/duplicate-payment
+      artifacts; the duplicate reuses the payment event's exact signed bytes and nonce.
+- [ ] Each expiry/cancellation/refund/receipt probe is restricted to the reserved qualification
+      order and staging/test payment mode, and exercises the existing domain path with exact
+      company/location/order-state readback.
+- [ ] Sandbox-identity mismatch rejection and the focused attestation, specimen, and probe Jest
+      suites pass. These suites were added but could not run locally because
+      `apps/dgfy-api/node_modules/jest/bin/jest.js` is not installed.
+- [x] Changed JavaScript/MJS syntax checks and `git diff --check` pass; `npm run check:architecture`
+      passes (56 modules/698 code files, controller boundaries 105 files); `npm run lint:docs` and
+      `npm run check:adr --strict` pass (31 governed docs/97 ADRs); `npm run check:compliance` passes
+      (3 sensitive files and 10 API contract rules); `node scripts/check-app-version-bump.js`
+      passes with no version bump required.
+- [ ] DGLaundry confirms the proposed route/method/request/response contract posted on #2306, or
+      the implementation is updated to match provider feedback.
+- [ ] Staging qualification produces sanitized evidence bound to the deployed DGFY SHA and
+      configuration revision; DGLaundry's hosted validators accept the signed attestation and
+      event specimens and stop reporting required probes as missing. Staging JWKS currently
+      returns 503, so hosted acceptance remains blocked pending its separate remediation.
+- [ ] PR review is complete. This phase does not merge, deploy, perform live payment operations,
+      or claim deployed verification.
+
+### Links
+
+- Issue: #2306; planner handoff: `.tmp/plan-2306.md` (planning head
+  `df8ed90b3aaf9980c32aff0a78d7c804a02412e6`).
+- Architecture: [ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+  [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+  [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md).
+- Contract: [DGLaundry partner contract](../api/PARTNER_INTEGRATION_CONTRACT.md) and
+  [OpenAPI fragment](../api/partner-dglaundry-openapi.yaml).
+- Compliance: `docs/compliance/impact-declarations/2026-10-08-dglaundry-runtime-attestation-qualification-probes.md`.
+- Implementation: `apps/dgfy-api/src/modules/dgfyLaundry/`,
+  `apps/dgfy-api/src/modules/dgfyLaundryOrders/`,
+  `apps/dgfy-api/src/modules/commercePayments/`, and
+  `apps/dgfy-api/scripts/{generate-dglaundry-event-specimens,prepare-dglaundry-qualification-fixture}.mjs`.
+- Tests: `apps/dgfy-api/tests/dglaundryRuntimeAttestation.test.js`,
+  `apps/dgfy-api/tests/dglaundryEventSpecimens.test.js`,
+  `apps/dgfy-api/tests/dglaundryQualificationProbeUseCase.test.js`, and
+  `apps/dgfy-api/tests/dglaundryBookingPayment.usecase.test.js`.
+
+### Completion date
+
+Not complete; set only after every acceptance gate and required hosted qualification evidence passes.
+
+### Next eligible phase
+
+Phase 482 only after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is
 rechecked.

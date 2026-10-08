@@ -191,6 +191,11 @@ client ID, and route; see [RATE_LIMITING.md](RATE_LIMITING.md).
 | GET | `/capabilities` | DGLaundry machine client | `requireDglaundryPartner` |
 | GET | `/companies/{companyId}` | DGLaundry machine client | `requireDglaundryPartner` |
 | GET | `/orders/{externalOrderReference}` | DGLaundry machine client | `requireDglaundryPartner` |
+| GET | `/admin/attestation` | DGFY administrator | `authenticateAdmin`; no-store response |
+| POST | `/orders/{externalOrderReference}/cancel` | DGLaundry machine client | `requireDglaundryPartner`; staging fixture only; `Idempotency-Key` |
+| POST | `/orders/{externalOrderReference}/expire` | DGLaundry machine client | `requireDglaundryPartner`; staging test-mode fixture only; `Idempotency-Key` |
+| POST | `/orders/{externalOrderReference}/refund` | DGLaundry machine client | `requireDglaundryPartner`; staging test-mode fixture only; `Idempotency-Key` |
+| POST | `/orders/{externalOrderReference}/receipt` | DGLaundry machine client | `requireDglaundryPartner`; staging fixture only; `Idempotency-Key` |
 | POST | `/customer-activities` | DGLaundry machine client | `requireDglaundryPartner` |
 | GET | `/dead-letters?company_id=&location_id=&direction=&limit=` | DGFY laundry company owner/admin | `authenticateDgfyAccount`, accepted membership + active mapping |
 | POST | `/dead-letters/{id}/redrive` | DGFY laundry company owner/admin | `authenticateDgfyAccount`, accepted membership + active mapping + CSRF for cookie sessions |
@@ -200,6 +205,33 @@ query-only `companyId` and `locationId` aliases remain temporarily compatible be
 target URI is signed; conflicting or repeated values are rejected. Unsigned
 `X-DGFY-Company-Id` / `X-DGFY-Location-Id` header aliases are rejected rather than used as scope.
 The DGLaundry joint harness sends only the canonical snake_case parameters.
+
+The runtime attestation endpoint returns `{ attestation, signature, keyId, algorithm, details }`.
+`signature` is base64 Ed25519 over the canonical JSON encoding of `attestation`; the envelope is
+not an RFC 9421 HTTP signature. Client readiness remains false until actual client registrations
+can be inspected. The `publicAdmission` and `testAdmission` mappings are implementation estimates
+and still need confirmation against DGLaundry's private validator. This source-side contract does
+not establish hosted readiness.
+
+`GET /capabilities` advertises the four lifecycle probes in `paymentLifecycleProbes`. Each entry
+contains `kind`, `method`, `path`, `statePath`, `orderReferencePath`, `paymentModePath`,
+`companyIdPath`, and `locationIdPath`. All probe responses use this flat shape:
+
+```json
+{
+  "externalOrderReference": "DGLAUNDRY-QUALIFICATION-SANDBOX-0001",
+  "state": "...",
+  "paymentMode": "test",
+  "companyId": "...",
+  "locationId": "..."
+}
+```
+
+The paths were proposed to DGLaundry on #2306 and remain pending provider confirmation. The probe
+routes reject every reference except the reserved qualification order and are restricted to
+`NODE_ENV=staging`; payment probes also fail closed unless `PAYMONGO_MODE=test`. The fixture
+operator command creates its reservation through the existing booking flow and writes a DGFY
+projection from the returned provider reservation. It does not seed a parallel order state machine.
 
 Outbound delivery failures and failed paid-session completion reconciliation appear in the scoped
 dead-letter listing. Redriving a failed completion retries only the local session reconciliation;
@@ -289,7 +321,7 @@ configuration-only, and what does not exist, rather than implying full readiness
 |---|---|---|
 | Staging/production JWKS returns `503 oidc_keys_not_configured` until a real keypair is installed — shared key resolution, staging bind mounts, and production SOPS-to-Compose-secret delivery are implemented, but no live key installation or deployment has been verified | ⚠️ operator key provisioning and deployment remain | #2303 |
 | Browser/machine/service client IDs (`dglaundry-web`, `dglaundry-machine`, `dglaundry-service`) and app ID (`dglaundry`) are agreed in the shared manifest; environment registrations and live callback verification remain outstanding | ⚠️ contract agreed; host registration and verification remain open | #2304, #519 |
-| Signed provider runtime attestation, signed event specimens, and persisted sandbox payment-lifecycle probe routes | ❌ not built; source/runtime evidence remains required | #2306 |
+| Signed runtime attestation, signed event specimen generator, and reserved sandbox payment-lifecycle probes | ⚠️ source implementation is present on this candidate; provider validator compatibility, fixture setup, and staging execution remain outstanding | #2306 |
 | OIDC end-session, opaque-token introspection/revocation, DB-backed signing-key overlap rotation, dedicated `/oidc/*` rate limiting, and production Redis fail-closed behavior are implemented on PR #2337; the source is not merged and hosted issuer configuration/verification remain outstanding | ⚠️ source candidate only; staging/production keys, registrations, Redis and real-host behavior remain unverified | #2307, #2337 |
 | Customer-facing laundry ordering: catalog, quote and per-kilo submission are callable from the laundry storefront; fixed/mixed submission uses verified payment finalization but remains dark-disabled while the DGLaundry booking-payment feature flag is off | ⚠️ partially shipped; fixed-price checkout is not available until its payment gate is enabled | #2308 |
 | Hosted legacy `x-dglaundry-partner-token` fallback, inbound-scope enforcement, and registered app-ID binding | ⚠️ source hardening is implemented on the current candidate; hosted behavior and exact environment registrations remain to verify | #2309 |
