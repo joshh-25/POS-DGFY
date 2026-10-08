@@ -173,7 +173,7 @@ jobs:
                 echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}; presigned readback ${PRESIGNED_SHA256:-unknown}"
                 echo "- Presigned readback HTTP status: ${PRESIGNED_HTTP_STATUS:-unknown}"
                 if [[ -n "$PRESIGNED_URL" && "$UPLOAD_STATUS" == "verified" ]]; then
-                  echo "- Retrieval URL (48-hour bearer link): ${PRESIGNED_URL}"
+                  echo "- Retrieval URL (48-hour bearer link; anyone who can view this run can retrieve the report before expiry): ${PRESIGNED_URL}"
                 fi
               fi
               echo "- Gitleaks report generation uses 100% redaction."
