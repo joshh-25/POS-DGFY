@@ -52,6 +52,12 @@ const configured = (name) => {
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 };
 
+export const getDgfyEventSigningKey = () => {
+  const privateKeyPem = configured('DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY');
+  if (!privateKeyPem) throw new Error('DGFY_EVENT_SIGNING_PRIVATE_KEY_REQUIRED');
+  return { privateKeyPem, keyId: eventKeyId() };
+};
+
 const timingSafeHexEqual = (left, right) => {
   try {
     const a = Buffer.from(String(left).replace(/^sha256=/i, ''), 'hex');
@@ -174,13 +180,12 @@ export const signDgfyRequest = ({ method = 'POST', authority, path, body }) => {
  */
 export const signDgfyEvent = ({ method = 'POST', authority, path, body }) => {
   const rawBody = JSON.stringify(body ?? {});
-  const privateKey = configured('DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY');
-  if (!privateKey) throw new Error('DGFY_EVENT_SIGNING_PRIVATE_KEY_REQUIRED');
+  const { privateKeyPem, keyId: signingKeyId } = getDgfyEventSigningKey();
   const created = Math.floor(Date.now() / 1000);
   const expires = created + 300;
   const nonce = crypto.randomUUID();
   const digest = `sha-256=:${crypto.createHash('sha256').update(rawBody).digest('base64')}:`;
-  const signatureParams = `("@method" "@authority" "@path" "content-digest" "content-type");created=${created};expires=${expires};nonce="${nonce}";keyid="${eventKeyId()}";alg="ed25519";tag="dglaundry-dgfy-v1"`;
+  const signatureParams = `("@method" "@authority" "@path" "content-digest" "content-type");created=${created};expires=${expires};nonce="${nonce}";keyid="${signingKeyId}";alg="ed25519";tag="dglaundry-dgfy-v1"`;
   const signatureBase = [
     `"@method": ${String(method).toUpperCase()}`,
     `"@authority": ${authority}`,
@@ -189,11 +194,28 @@ export const signDgfyEvent = ({ method = 'POST', authority, path, body }) => {
     `"content-type": application/json`,
     `"@signature-params": ${signatureParams}`
   ].join('\n');
-  const signature = crypto.sign(null, Buffer.from(signatureBase), privateKey).toString('base64');
+  const signature = crypto.sign(null, Buffer.from(signatureBase), privateKeyPem).toString('base64');
   return {
     'content-type': 'application/json',
     'content-digest': digest,
     'signature-input': `sig1=${signatureParams}`,
     signature: `sig1=:${signature}:`
   };
+};
+
+const canonicalValue = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])]));
+  }
+  return value;
+};
+
+export const canonicalJson = (value) => JSON.stringify(canonicalValue(value));
+
+export const signDgfyJsonDocument = (value) => {
+  const { privateKeyPem, keyId } = getDgfyEventSigningKey();
+  const serialized = canonicalJson(value);
+  const signature = crypto.sign(null, Buffer.from(serialized), privateKeyPem).toString('base64');
+  return { serialized, signature, keyId };
 };
