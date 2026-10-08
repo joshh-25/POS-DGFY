@@ -8,6 +8,10 @@ const legacyPublicKey = () => resolveSigningKeyMaterial({
     fileEnvVar: 'DGFY_OIDC_PUBLIC_KEY_FILE',
     label: 'OIDC public verification key'
 }).pem;
+const legacyPublicKeyConfigured = () => Boolean(
+    String(process.env.DGFY_OIDC_PUBLIC_KEY || '').trim()
+    || String(process.env.DGFY_OIDC_PUBLIC_KEY_FILE || '').trim()
+);
 const legacyPrivateKey = () => resolveSigningKeyMaterial({
     inlineEnvVar: 'DGFY_OIDC_PRIVATE_KEY',
     fileEnvVar: 'DGFY_OIDC_PRIVATE_KEY_FILE',
@@ -21,8 +25,17 @@ const loadPrivateKey = (row) => resolveSigningKeyMaterial({
 
 const legacyEntry = () => {
     const privateKeyPem = legacyPrivateKey();
-    const publicKeyPem = legacyPublicKey();
-    return privateKeyPem && publicKeyPem ? { kid: legacyKeyId(), privateKeyPem, publicKeyPem } : null;
+    let publicKeyPem = legacyPublicKey();
+    if (!publicKeyPem && privateKeyPem && !legacyPublicKeyConfigured()) {
+        try {
+            publicKeyPem = crypto.createPublicKey(privateKeyPem).export({ type: 'spki', format: 'pem' });
+        } catch {
+            publicKeyPem = '';
+        }
+    }
+    return privateKeyPem || publicKeyPem
+        ? { kid: legacyKeyId(), privateKeyPem, publicKeyPem }
+        : null;
 };
 
 const keyIsConfigured = (pem) => {
@@ -48,7 +61,7 @@ export const getActiveSigningKey = async () => {
 export const listVerificationKeys = async () => {
     if (process.env.NODE_ENV === 'test' && process.env.OIDC_SIGNING_KEY_REGISTRY_TEST_MODE !== 'true') {
         const legacy = legacyEntry();
-        return legacy ? [{ kid: legacy.kid, publicKeyPem: legacy.publicKeyPem }] : [];
+        return legacy?.publicKeyPem ? [{ kid: legacy.kid, publicKeyPem: legacy.publicKeyPem }] : [];
     }
     const rows = await oidcSigningKeyRepository.findVerificationKeys();
     if (rows.length) return rows.map(({ kid, public_key_pem: publicKeyPem }) => ({ kid, publicKeyPem }));

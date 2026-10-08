@@ -4,7 +4,8 @@ const TABLE_NAME = 'oidc_signing_keys';
 const normalizeTableName = (table) => (typeof table === 'string' ? table : table?.tableName || table?.TABLE_NAME || '');
 
 // This is a landlord/platform registry. The migration runner's connection is the landlord DB;
-// this table is deliberately not cloned into tenant schemas.
+// this table is deliberately not cloned into tenant schemas. It has no deploy-order dependency
+// on the open entries in docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md.
 module.exports = {
   async up(queryInterface, Sequelize) {
     const tables = await queryInterface.showAllTables();
