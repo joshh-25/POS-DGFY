@@ -22,6 +22,11 @@ const mockUpdateTenantPosMetadataUseCase = jest.fn();
 const mockGetTenantAffiliateSlotsUseCase = jest.fn();
 const mockUpdateTenantAffiliateSlotsUseCase = jest.fn();
 const mockListTenantAffiliateSlotsAuditLogsUseCase = jest.fn();
+const mockApproveCompanyRegistrationDraftUseCase = jest.fn();
+const mockListAdminCompanyRegistrationDraftsUseCase = jest.fn();
+const mockListCompanyRegistrationUploadsUseCase = jest.fn();
+const mockDownloadCompanyRegistrationUploadUseCase = jest.fn();
+const mockDownloadCompanyRegistrationMenuArchiveUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 const mockSetupPayPalRecurringUseCase = jest.fn();
 const mockChangePlanUseCase = jest.fn();
@@ -49,6 +54,11 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   getTenantAffiliateSlotsUseCase: mockGetTenantAffiliateSlotsUseCase,
   updateTenantAffiliateSlotsUseCase: mockUpdateTenantAffiliateSlotsUseCase,
   listTenantAffiliateSlotsAuditLogsUseCase: mockListTenantAffiliateSlotsAuditLogsUseCase,
+  approveCompanyRegistrationDraftUseCase: mockApproveCompanyRegistrationDraftUseCase,
+  listAdminCompanyRegistrationDraftsUseCase: mockListAdminCompanyRegistrationDraftsUseCase,
+  listCompanyRegistrationUploadsUseCase: mockListCompanyRegistrationUploadsUseCase,
+  downloadCompanyRegistrationUploadUseCase: mockDownloadCompanyRegistrationUploadUseCase,
+  downloadCompanyRegistrationMenuArchiveUseCase: mockDownloadCompanyRegistrationMenuArchiveUseCase,
   tenantAdminRepository: {
     findTenantById: jest.fn(),
     updateTenant: jest.fn()

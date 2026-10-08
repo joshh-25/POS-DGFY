@@ -38,9 +38,9 @@ export const tenantAdminRepository = {
         return Tenant.sequelize.transaction(callback);
     },
 
-    findTenantByName(name) {
+    findTenantByName(name, options = {}) {
         const Tenant = getTenantModel();
-        return Tenant.findOne({ where: { name } });
+        return Tenant.findOne({ where: { name }, ...options });
     },
     createTenant(payload, options = {}) {
         const Tenant = getTenantModel();
@@ -66,6 +66,7 @@ export const tenantAdminRepository = {
                 'owner_dgfy_account_id',
                 'provisioning_source',
                 'ownership_status',
+                'settings',
                 'createdAt',
                 'compliance_mode_state',
                 'compliance_mode_choice_required',

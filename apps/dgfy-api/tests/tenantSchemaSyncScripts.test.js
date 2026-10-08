@@ -102,6 +102,22 @@ describe('tenant schema sync script contracts', () => {
     expect(repairs[1].sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
   });
 
+  // #2335: PR #2322 widened stock_movements.reference_type's ENUM on the landlord DB and the
+  // Sequelize model, but never registered it here -- so no existing tenant's physical table was
+  // ever repaired (confirmed empirically: all 52 production tenants still missing
+  // 'POS_PARKED_SALE' at the time of this fix). This is the regression guard for that gap.
+  it('tracks the POS_PARKED_SALE stock-movement ENUM widening (#2321/#2322/#2335) in the tenant drift registry', () => {
+    const everyLiteralTheAppWrites = ['PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS', 'POS_PARKED_SALE'];
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.stock_movements.reference_type.enumValues)
+      .toEqual(everyLiteralTheAppWrites);
+
+    const repairs = buildTenantSchemaEnumRepairSql([
+      { table: 'stock_movements', column: 'reference_type' }
+    ]);
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0].sql).toContain("ENUM('PO','JO','MANUAL','RETURN','DO','POS','POS_PARKED_SALE')");
+  });
+
   it('repairs the tenant-local Business Admin approval table and indexes', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.business_admin_approval_requests;
     expect(table.sql).toContain('business_admin_approval_requests');
@@ -662,14 +678,16 @@ describe('tenant schema sync script contracts', () => {
       { table: 'pos_z_reading_snapshots', column: 'location_id' },
       { table: 'pos_z_reading_snapshots', column: 'closed_by_user_id' },
       { table: 'pos_z_reading_snapshots', column: 'closed_from_terminal_id' },
-      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' }
+      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' },
+      { table: 'pos_z_reading_snapshots', column: 'reading_payload_hash' }
     ]);
 
-    expect(repairs).toHaveLength(4);
+    expect(repairs).toHaveLength(5);
     expect(repairs[0].sql).toContain('ADD COLUMN `location_id`');
     expect(repairs[1].sql).toContain('ADD COLUMN `closed_by_user_id`');
     expect(repairs[2].sql).toContain('ADD COLUMN `closed_from_terminal_id`');
     expect(repairs[3].sql).toContain('ADD COLUMN `day_close_pin_confirmed_at`');
+    expect(repairs[4].sql).toContain('ADD COLUMN `reading_payload_hash`');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
       .toHaveProperty('uq_pos_z_reading_snapshots_business_date_location');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
@@ -686,6 +704,17 @@ describe('tenant schema sync script contracts', () => {
 
     expect(repair.sql).toContain("'grab_pay'");
     expect(repair.sql).toContain("'shopeepay'");
+  });
+
+  it('registers the return adjustment enum value for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transaction_adjustments.adjustment_type;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['return']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transaction_adjustments', column: 'adjustment_type', missing_values: ['return'] }
+    ]);
+
+    expect(repair.sql).toContain("ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return')");
   });
 
   // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).

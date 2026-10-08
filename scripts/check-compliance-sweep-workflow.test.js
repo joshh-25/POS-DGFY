@@ -302,16 +302,17 @@ test('both upload steps have stable IDs and continue-on-error: true', () => {
   assert.match(handoffBlock, /continue-on-error: true/);
 });
 
-test('upload steps keep their artifact names, paths, retention, and no-files behavior', () => {
+test('upload steps keep their IDs and route the existing evidence files through the S3 uploader', () => {
   const resultsBlock = getStepBlock(workflowText, 'Upload results artifact');
-  assert.match(resultsBlock, /name: compliance-preflight-sweep-results/);
-  assert.match(resultsBlock, /path: \/tmp\/results\.json/);
-  assert.match(resultsBlock, /retention-days: 30/);
+  assert.match(resultsBlock, /id: upload_results/);
+  assert.match(resultsBlock, /run: bash scripts\/ci-s3-upload\.sh \/tmp\/results\.json compliance-preflight-sweep-results/);
+  assert.match(resultsBlock, /SOURCE_COMMIT_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
   const handoffBlock = getStepBlock(workflowText, 'Upload handoff artifact');
-  assert.match(handoffBlock, /name: compliance-preflight-sweep-handoff/);
-  assert.match(handoffBlock, /path: \/tmp\/compliance-preflight-sweep-handoff\.json/);
-  assert.match(handoffBlock, /if-no-files-found: warn/);
-  assert.match(handoffBlock, /retention-days: 30/);
+  assert.match(handoffBlock, /id: upload_handoff/);
+  assert.match(handoffBlock, /run: bash scripts\/ci-s3-upload\.sh \/tmp\/compliance-preflight-sweep-handoff\.json compliance-preflight-sweep-handoff/);
+  assert.match(handoffBlock, /SOURCE_COMMIT_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
+  assert.match(getStepBlock(workflowText, 'Record results S3 evidence'), /if: always\(\)/);
+  assert.match(getStepBlock(workflowText, 'Record handoff S3 evidence'), /if: always\(\)/);
 });
 
 test('explicit warning steps are keyed to each upload step\'s outcome == \'failure\'', () => {

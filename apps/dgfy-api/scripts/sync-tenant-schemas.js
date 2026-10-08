@@ -124,6 +124,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         day_close_pin_confirmed_at: Object.freeze({
             sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `day_close_pin_confirmed_at` DATETIME NULL"
+        }),
+        reading_payload_hash: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `reading_payload_hash` VARCHAR(64) NULL COMMENT 'SHA-256 of the immutable serialized X/Z reading payload'"
         })
     }),
     pos_transaction_lines: Object.freeze({
@@ -2221,7 +2224,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `actor_shift_id` int DEFAULT NULL,\n"
             + "  `actor_terminal_id` varchar(100) DEFAULT NULL,\n"
             + "  `actor_location_id` int DEFAULT NULL,\n"
-            + "  `adjustment_type` enum('void','cash_refund','external_refund','provider_refund','employee_credit_reversal') NOT NULL,\n"
+            + "  `adjustment_type` enum('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return') NOT NULL,\n"
             + "  `tender_type` varchar(40) NOT NULL,\n"
             + "  `amount` decimal(14,4) NOT NULL,\n"
             + "  `currency` varchar(3) NOT NULL DEFAULT 'PHP',\n"
@@ -3134,6 +3137,12 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque','employee_credit') NOT NULL"
         })
     }),
+    pos_transaction_adjustments: Object.freeze({
+        adjustment_type: Object.freeze({
+            enumValues: Object.freeze(['void', 'cash_refund', 'external_refund', 'provider_refund', 'employee_credit_reversal', 'return']),
+            sql: "ALTER TABLE `pos_transaction_adjustments` MODIFY COLUMN `adjustment_type` ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return') NOT NULL"
+        })
+    }),
     employee_credit_ledger_entries: Object.freeze({
         entry_type: Object.freeze({
             enumValues: Object.freeze(['grant', 'debit', 'charge', 'repayment', 'reversal', 'adjustment', 'expiration']),
@@ -3166,12 +3175,25 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             enumValues: Object.freeze(['pos_refund', 'force_close_shift', 'pos_void', 'pos_parked_sale_cancel']),
             sql: "ALTER TABLE `business_admin_approval_requests` MODIFY COLUMN `action_type` ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel') NOT NULL"
         })
+    }),
+    // #2335: migration 20261007000001 (PR #2322) widened this enum on the landlord DB only --
+    // queryInterface.changeColumn() never reaches tenant databases (see
+    // apps/dgfy-migration-runner/README.md). This entry is what actually propagates the fix to
+    // every existing tenant, via entrypoint.sh's non-blocking repair-apply step on next restart --
+    // same drift-repair class as pos_transactions.payment_type's 'cheque' widening above. Verified
+    // empirically against every production tenant (52/52) before this fix: all still missing
+    // 'POS_PARKED_SALE'.
+    stock_movements: Object.freeze({
+        reference_type: Object.freeze({
+            enumValues: Object.freeze(['PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS', 'POS_PARKED_SALE']),
+            sql: "ALTER TABLE `stock_movements` MODIFY COLUMN `reference_type` ENUM('PO','JO','MANUAL','RETURN','DO','POS','POS_PARKED_SALE') DEFAULT 'MANUAL'"
+        })
     })
 });
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-06.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-08.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

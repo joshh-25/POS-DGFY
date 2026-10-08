@@ -417,7 +417,8 @@ node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/<c
 # #1007-gated exception instead (RF-2, PR #1590 review) -- this path never cuts to-staging/<label>
 # and so never produces a candidate manifest for --manifest to point at; --source-sha compares
 # PROD's own label directly against the develop SHA release/<label> was cut from:
-node scripts/check-image-version-parity.js --source-sha <the develop SHA release/<label> was cut from>
+node scripts/check-image-version-parity.js --source-sha <the develop SHA release/<label> was cut from> --apps <touched-app>
+# For a multi-app exception, run once per app; see the promotion runbook.
 ```
 
 `PASS` covers two distinct, both-fine outcomes on either invocation: a real label match, and a

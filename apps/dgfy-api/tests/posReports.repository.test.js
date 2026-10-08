@@ -1396,6 +1396,11 @@ describe('posRepository reports analytics', () => {
             report_recognized_sales: 90,
             z_total_amount: 90,
             variance: 0,
+            adjustment_reconciliation: expect.objectContaining({
+                status: 'included',
+                adjustment_count: 0,
+                net_sales_impact: 0
+            }),
             z_void_transaction_count: 1,
             z_void_amount: 20
         }));

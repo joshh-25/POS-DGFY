@@ -5,6 +5,7 @@ import {
   GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT,
   GUEST_CHECKOUT_OTP_VERIFY_ENDPOINT,
   formatGuestCheckoutCooldown,
+  isGuestCheckoutOtpExpiredError,
   normalizeGuestCheckoutEmail,
   normalizeGuestCheckoutOtpCode,
   RESEND_COOLDOWN_SECONDS,
@@ -16,6 +17,7 @@ export function useGuestCheckoutOtp({
   requestJson,
   selectedStore,
   toast,
+  onOtpExpired,
 }) {
   const [guestCheckoutIntentId, setGuestCheckoutIntentId] = useState(() => createGuestCheckoutIntentId());
   const [guestCheckoutOtpCode, setGuestCheckoutOtpCode] = useState('');
@@ -150,6 +152,11 @@ export function useGuestCheckoutOtp({
       toast.success('Email verified. You can now place your order.');
       return true;
     } catch (error) {
+      if (isGuestCheckoutOtpExpiredError(error)) {
+        resetGuestCheckoutOtp();
+        onOtpExpired?.();
+        return false;
+      }
       setGuestCheckoutOtpError(error?.message || 'Unable to verify code.');
       return false;
     } finally {
@@ -160,7 +167,9 @@ export function useGuestCheckoutOtp({
     guestCheckoutOtpCode,
     isDgfyCustomerSignedIn,
     normalizedEmail,
+    onOtpExpired,
     requestJson,
+    resetGuestCheckoutOtp,
     selectedStore?.slug,
     toast,
   ]);

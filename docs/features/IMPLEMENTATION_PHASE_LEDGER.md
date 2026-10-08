@@ -26726,29 +26726,51 @@ existing commerce payment idempotency/session boundaries.
       retry-cap, and restart evidence passes against real MySQL. 2026-10-07 opt-in harness against
       MySQL 8 passed migration up/re-run, ordered concurrent claims, expired-lease recovery,
       stale-ack protection, separate-process persistence, scoped completion inspection, and
-      completion-only redrive; retry-cap evidence remains.
+      completion-only redrive. On 2026-10-08 the harness additionally passed retry-cap exhaustion
+      and `markExhausted()` recovery against MySQL 8.4.11 at DGFY code SHA
+      `b994317108611c57dbda99050bad500a7e6aaa4a`; this run used a row-level `max_attempts=2`
+      override (`DGLAUNDRY_OUTBOX_MAX_ATTEMPTS` unset). This does not re-run or replace the earlier
+      ordering, stale-ack, or restart evidence.
 - [ ] All outbound operation families persist immutable payload and stable identity before send;
       same-key caller retries recover the same operation/result, while changed payload conflicts.
-      Focused tests cover delayed caller idempotency reconciliation; the full operation-family
-      persistence matrix remains outstanding.
+      Focused Jest tests now deliver all six outbox-routed operation families and prove concurrent
+      double-enqueue sends at most once; `resolveOrder` fallback identity is stable. These tests use
+      a mocked repository. Real-MySQL persistence/idempotency coverage for all six operation
+      families remains outstanding; the full operation-family persistence matrix is not closed.
 - [ ] Foreground and worker delivery share fresh signing, timeout, retry classification, bounded
-      Retry-After, backoff/jitter, and explicit dead-letter behavior.
+      Retry-After, backoff/jitter, and explicit dead-letter behavior. A worker-batch test now proves
+      exhaustion sweep → claim → parallel delivery and contains/logs one failed claim without
+      aborting the tick; signing remains covered by the existing transport suite.
 - [ ] Booking/payment completion and mixed-child compensation recover without duplicate money
       actions or late reservation resurrection. Focused tests cover same-event payment-finalization
       retry, mixed-child partial-failure compensation, and worker local-completion retry; full
-      provider ambiguity/payment lifecycle acceptance remains outstanding.
+      provider ambiguity/payment lifecycle acceptance remains outstanding. This PR adds no
+      post-finalize mixed-child compensation behavior; its business-semantics decision remains a
+      separate follow-up.
 - [ ] Owner/admin dead-letter listing is company/location scoped and redacted; redrive is reasoned,
       audited, and rejects active/delivered/invalid-scope work. Live MySQL check confirms a failed
       paid-session completion is listed in scope and can be requeued without changing the delivered
-      provider operation; HTTP authorization/redrive remains covered by unit tests.
+      provider operation. HTTP tests execute the real controller/use-case authorization decision
+      with repository modules faked, cover owner success, customer-role and inactive-mapping
+      rejection, and prove audit-before-redrive ordering. The harness proves `redriveOutbound`'s
+      company/location/status SQL guards and successful re-claim/delivery against real MySQL.
+      `claimInboundRedrive` remains untested against real MySQL, and there is no single test combining
+      real HTTP, real authorization rows, and a real outbox row; both are explicit remaining gaps.
 - [ ] Two independent API processes sharing real Redis reject identical event bytes; Redis outage
       fails closed; signature/time/lifetime and fresh-signature event-ID dedupe regressions pass.
       2026-10-07 opt-in Redis 7 harness passed atomic parallel claims in separate processes and
-      replay rejection after a new process starts; outage, signature/time/lifetime edge cases, and
-      fresh-signature event-ID dedupe remain outstanding.
+      replay rejection after a new process starts. The 2026-10-08 harness now confirms fail-closed
+      behavior after disconnecting a real Redis 7.4.11 client at DGFY code SHA
+      `b994317108611c57dbda99050bad500a7e6aaa4a`; the harness used
+      `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1` and a test key ID. Jest covers
+      tampered signature bytes and the HTTP route proves same-event-ID/fresh-nonce dedupe without a
+      second projection write.
+      Timestamp/lifetime boundaries remain Jest-only (date validation does not depend on Redis).
 - [ ] Focused behavior suites (12 suites/62 tests), architecture (56 modules/680 code files),
       controller-boundary (104 files), docs/ADR (31 docs/97 ADRs), compliance, develop-base
-      app-version, changed-file syntax, and whitespace checks passed on 2026-10-07. The
+      app-version, changed-file syntax, and whitespace checks passed on 2026-10-07. On 2026-10-08
+      the focused DGLaundry suites (5 suites/31 tests) and repository gates were re-run for this
+      evidence PR; exact outputs/SHA are in its Testing Evidence. The
       repository-wide test-cost inventory check is already stale on unrelated baseline entries
       and also lacks records for the two new suites. The real-service harness passes; paid
       completion/compensation tests and the remaining acceptance cases are outstanding.
@@ -26776,3 +26798,154 @@ Not complete; set only after every required acceptance gate and evidence item pa
 ### Next eligible phase
 
 Phase 480 only after Phase 479's acceptance gates pass and the live ledger is rechecked.
+
+## Phase 480 - Registration, scheduled checkout, and POS fiscal workflow consolidation (#343, #2067)
+
+### Initiative and release
+
+DGFY registration, scheduled checkout, POS fiscal evidence, and cashier workflow consolidation.
+This phase rebases the four approved local feature slices onto current `develop` while
+preserving OPIS back-office ownership and POS terminal operational ownership.
+
+### Objective and scope
+
+Carry forward the approved registration draft/upload, Storefront wizard, approval-time
+materialization, admin review, scheduled checkout time-wheel, POS fiscal evidence, returns,
+X/Z readings, e-Journal/report evidence, parked-sale, shift, and customer-workflow changes.
+The implementation is local and PR-scoped; it does not merge, deploy, or claim external
+fiscal or production acceptance.
+
+### Status
+
+`in_progress` — implementation and local validation are underway. Migration rehearsal,
+authenticated end-to-end acceptance, PR review, merge, and deployed QA remain outstanding.
+
+### Dependencies
+
+Current `develop` through Phase 479; `docs/START_HERE.md`; architecture boundaries and
+governance; ADRs 0020, 0039, 0042, 0065, 0081, and 0087; existing landlord, tenant, POS,
+Storefront, and OPIS ownership contracts.
+
+### Acceptance and validation evidence
+
+- [x] Registration draft/upload migrations are reconciled for both fresh and upgrade paths;
+      approval materialization, admin review/download, Storefront wizard, and legal-consent
+      contracts remain covered by focused tests.
+- [x] Scheduled checkout retains the exact time-wheel behavior, one-minute choices, AM/PM
+      selection, and payment-session hardening.
+- [x] POS fiscal evidence, append-only returns, X/Z reconciliation, e-Journal readiness,
+      reports, parked-sale, shift, and customer/terminal workflow changes are included.
+- [x] POS-to-OPIS boundaries are preserved; obsolete POS Back Office handoffs are not
+      reintroduced while OPIS retains the administrative review surface.
+- [ ] Disposable migration rehearsal, authenticated full-flow browser acceptance, PR review,
+      merge, and deployed QA remain outstanding.
+
+### Links
+
+- Registration: `apps/dgfy-api/src/modules/tenants/`, `apps/dgfy-storefront/`,
+  `apps/dgfy-opis/`, and `apps/dgfy-migration-runner/migrations/`.
+- POS fiscal/workflow runtime: `apps/dgfy-api/src/modules/pos/`,
+  `apps/dgfy-api/src/modules/reports/`, `packages/web-core/src/features/pos/`,
+  and `apps/dgfy-opis/src/features/businessAdmin/`.
+- Evidence and compliance: `docs/compliance/evidence/`,
+  `docs/compliance/impact-declarations/`, and `scripts/validate-annex-b-items-4-14-*.cjs`.
+- Focused tests: registration, scheduled checkout, fiscal evidence, returns, readings,
+  reports, parked sales, shifts, and POS/OPIS boundary contracts.
+
+### Completion date
+
+Not complete; set only after every required acceptance gate and evidence item passes.
+
+### Next eligible phase
+
+Phase 481 (#2306) is explicitly authorized to proceed independently of Phase 480's open
+acceptance gates (2026-10-08; see Phase 481's sequencing override). Phase 482 is eligible only
+after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is rechecked.
+
+## Phase 481 - DGLaundry runtime attestation and qualification probes (#2306)
+
+### Initiative and release
+
+Epic #517, DGFY-side partner integration runtime-evidence work, issue #2306.
+
+### Objective and scope
+
+Provide a signed runtime-readiness attestation derived from live deployment/configuration state,
+signed normal/payment/duplicate-payment event specimens using DGFY's existing Ed25519 event signer,
+and four staging-only payment-lifecycle probes bound to a dedicated qualification order. Reuse the
+existing booking cancellation, payment expiry, refund, and receipt-confirmation domain paths. Do not
+claim hosted DGLaundry qualification, production readiness, or provider approval of the proposed
+probe contract without corresponding evidence.
+
+### Status
+
+`in_progress` — implementation and local governance/architecture checks are in progress. Focused
+Jest suites could not run because the API workspace's Jest executable is not installed. Provider
+confirmation, staging execution, and DGLaundry hosted-validator acceptance remain outstanding.
+
+**Explicit sequencing override (2026-10-08):** Pat authorized #2306 to proceed and prepare a PR
+while Phase 480 remains `in_progress`. Phase 480's acceptance criteria remain open and are not
+waived, completed, or replaced by this override. This authorization applies only to this
+independent DGLaundry qualification-evidence scope.
+
+### Dependencies
+
+Issue #2306; Pat's 2026-10-08 authorization to proceed independently of Phase 480; ADR 0079 and its
+existing DGLaundry partner contract decisions; the authoritative
+`docs/api/PARTNER_INTEGRATION_CONTRACT.md`; the staging-only qualification-order safeguards and
+existing commerce payment idempotency/session boundaries. Phase 480 is not a technical dependency;
+its open gates remain independently tracked.
+
+### Acceptance and validation evidence
+
+- [ ] Runtime attestation signs canonical readiness data derived from live configuration and
+      readiness checks, failing closed on unavailable prerequisites.
+- [ ] Event-specimen generation emits independently verifiable normal/payment/duplicate-payment
+      artifacts; the duplicate reuses the payment event's exact signed bytes and nonce.
+- [ ] Each expiry/cancellation/refund/receipt probe is restricted to the reserved qualification
+      order and staging/test payment mode, and exercises the existing domain path with exact
+      company/location/order-state readback.
+- [ ] Sandbox-identity mismatch rejection and the focused attestation, specimen, and probe Jest
+      suites pass. These suites were added but could not run locally because
+      `apps/dgfy-api/node_modules/jest/bin/jest.js` is not installed.
+- [x] Changed JavaScript/MJS syntax checks and `git diff --check` pass; `npm run check:architecture`
+      passes (56 modules/698 code files, controller boundaries 105 files); `npm run lint:docs` and
+      `npm run check:adr --strict` pass (31 governed docs/97 ADRs); `npm run check:compliance` passes
+      (3 sensitive files and 10 API contract rules); `node scripts/check-app-version-bump.js`
+      passes with no version bump required.
+- [ ] DGLaundry confirms the proposed route/method/request/response contract posted on #2306, or
+      the implementation is updated to match provider feedback.
+- [ ] Staging qualification produces sanitized evidence bound to the deployed DGFY SHA and
+      configuration revision; DGLaundry's hosted validators accept the signed attestation and
+      event specimens and stop reporting required probes as missing. Staging JWKS currently
+      returns 503, so hosted acceptance remains blocked pending its separate remediation.
+- [ ] PR review is complete. This phase does not merge, deploy, perform live payment operations,
+      or claim deployed verification.
+
+### Links
+
+- Issue: #2306; planner handoff: `.tmp/plan-2306.md` (planning head
+  `df8ed90b3aaf9980c32aff0a78d7c804a02412e6`).
+- Architecture: [ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md),
+  [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+  [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md).
+- Contract: [DGLaundry partner contract](../api/PARTNER_INTEGRATION_CONTRACT.md) and
+  [OpenAPI fragment](../api/partner-dglaundry-openapi.yaml).
+- Compliance: `docs/compliance/impact-declarations/2026-10-08-dglaundry-runtime-attestation-qualification-probes.md`.
+- Implementation: `apps/dgfy-api/src/modules/dgfyLaundry/`,
+  `apps/dgfy-api/src/modules/dgfyLaundryOrders/`,
+  `apps/dgfy-api/src/modules/commercePayments/`, and
+  `apps/dgfy-api/scripts/{generate-dglaundry-event-specimens,prepare-dglaundry-qualification-fixture}.mjs`.
+- Tests: `apps/dgfy-api/tests/dglaundryRuntimeAttestation.test.js`,
+  `apps/dgfy-api/tests/dglaundryEventSpecimens.test.js`,
+  `apps/dgfy-api/tests/dglaundryQualificationProbeUseCase.test.js`, and
+  `apps/dgfy-api/tests/dglaundryBookingPayment.usecase.test.js`.
+
+### Completion date
+
+Not complete; set only after every acceptance gate and required hosted qualification evidence passes.
+
+### Next eligible phase
+
+Phase 482 only after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is
+rechecked.

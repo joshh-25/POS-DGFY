@@ -73,6 +73,22 @@ review but never proves hosted or production readiness.
 
 ## Amendments
 
+### 2026-10-08 — Runtime attestation and qualification probes (#2306)
+
+Issue [#2306](https://github.com/Sieitzz/dgfy-platform/issues/2306) adds an admin-gated signed
+runtime attestation, operator-generated signed event specimens, and staging-only payment-lifecycle
+probes for one reserved DGLaundry booking. Readiness fields are derived from current runtime
+configuration and checks; client-registration readiness fails closed while registration state
+cannot be queried. The probes require the reserved order identity, active mapped company/location,
+and test-mode PayMongo for expiry/refund. Fixture creation uses the existing booking/payment flow,
+and probe delivery reuses existing DGLaundry outbox, expiry, and refund behavior.
+
+The attestation signs canonical JSON bytes directly with the existing DGFY Ed25519 event key.
+This is a proposed document-signature envelope pending confirmation against DGLaundry's validator.
+The probe route and response contract was posted to #2306 for provider confirmation and is also
+pending. `publicAdmission` and `testAdmission` are best-effort mappings pending validator review.
+Local implementation does not establish deployed readiness or hosted validator acceptance.
+
 ### 2026-10-07 — Persist DGFY-origin delivery and operator recovery
 
 Issue [#2310](https://github.com/Sieitzz/dgfy-platform/issues/2310) implements Decision 6's

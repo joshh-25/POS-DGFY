@@ -850,8 +850,9 @@ CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID
 # built from the frozen develop SHA. For a staging repair, allocate only rebuilt apps:
 #   node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/<app> \
 #     --floor "$(node -p "require('./apps/<app>/package.json').version")" --revision <repair-sha>
-# (Same-source retry reuses its own N -- idempotent, not a new allocation. Docker login is
-# required to inspect GHCR revision tags.)
+# (Same-source retry reuses its own N -- idempotent, not a new allocation. Docker login is required
+# to inspect GHCR revision tags -- on an auth/403 error from `allocate-artifact-revision.js` or
+# `promote-image-alias.js`, run `gh auth refresh -h github.com -s read:packages` once, then retry.)
 REV_API=<rN-for-dgfy-api>
 REV_MIGRATION_RUNNER=<independent-rN-for-dgfy-migration-runner>
 REV_IMS=<rN-for-dgfy-ims>
@@ -966,8 +967,8 @@ gh workflow run deploy-main.yml -f deploy=true \
 On the #1007 path there is no manifest, so each app-group's revision is allocated here, at
 release-cut time — one `allocate-artifact-revision.js` call per touched app-group (a direct
 production hotfix increments the patch and uses the same paired revision/canonical tags
-without a staging predecessor — it still threads a revision here). Untouched groups stay
-empty (their builds skip, their artifacts stand):
+without a staging predecessor — it still threads a revision here). Other untouched groups stay
+empty (their builds skip, their artifacts stand); `build_api` selects both backends as shown below:
 
 ```bash
 # Per touched app (example: dgfy-pos at its bumped floor):
@@ -975,8 +976,19 @@ REV_POS="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dg
   --floor "$(node -p "require('./apps/dgfy-pos/package.json').version")" \
   --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
 REV_POS="r$REV_POS"
-# ... repeat per touched app into REV_API / REV_MIGRATION_RUNNER / REV_IMS / REV_POS / REV_STOREFRONT / REV_OPIS,
-# leaving untouched groups empty.
+# Backend pair (dgfy-api/dgfy-migration-runner) -- build_api always rebuilds BOTH; on this
+# exception path (no staging leg) BOTH must get their own allocated revision even if only
+# one app's source actually changed -- see deploy-main.yml's release_revision_migration_runner
+# input description and incident-responder/SKILL.md's "build_api pairing consequence" note.
+REV_API="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dgfy-api \
+  --floor "$(node -p "require('./apps/dgfy-api/package.json').version")" \
+  --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
+REV_API="r$REV_API"
+REV_MIGRATION_RUNNER="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dgfy-migration-runner \
+  --floor "$(node -p "require('./apps/dgfy-migration-runner/package.json').version")" \
+  --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
+REV_MIGRATION_RUNNER="r$REV_MIGRATION_RUNNER"
+# ... allocate each other selected app-group the same way, leaving unselected groups empty.
 ```
 
 ```bash
@@ -1008,8 +1020,10 @@ node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/$C
 # the develop SHA release/<label> was cut from (the same $CANDIDATE_SOURCE_SHA captured in that
 # section), plus the paired bare alias when a revision was threaded (one --revision per
 # touched app is NOT supported here -- thread the single touched app's revision; a multi-app
-# #1007 release verifies each app in its own --source-sha run):
-node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA" --revision "$REV_POS"
+# #1007 release verifies each app in its own --source-sha run). Pass `--apps <that-app>` on each
+# run so the other six apps' expected `no-candidate-identity` state does not print as a
+# false-positive `mismatch`:
+node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA" --revision "$REV_POS" --apps dgfy-pos
 ```
 
 `PASS` includes both a real label match and a documented "no predecessor"/"no candidate identity"

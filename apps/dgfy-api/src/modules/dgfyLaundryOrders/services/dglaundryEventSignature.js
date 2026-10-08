@@ -16,12 +16,46 @@ const publicKey = () => {
   if (!file) return '';
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 };
+const publicEventKeys = () => {
+  const registryText = String(process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON || '').trim();
+  const source = new Map();
+  if (registryText) {
+    let registry;
+    try { registry = JSON.parse(registryText); }
+    catch { return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' }; }
+    if (!registry || typeof registry !== 'object' || Array.isArray(registry) || !Object.keys(registry).length) return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' };
+    for (const [kid, pem] of Object.entries(registry)) {
+      if (!/^[A-Za-z0-9._:-]{3,96}$/.test(kid) || typeof pem !== 'string' || !pem.startsWith('-----BEGIN PUBLIC KEY-----')) return { keys: new Map(), error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' };
+      try {
+        const parsed = crypto.createPublicKey(pem);
+        if (parsed.asymmetricKeyType !== 'ed25519') return { keys: new Map(), error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' };
+        source.set(kid, parsed);
+      } catch { return { keys: new Map(), error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' }; }
+    }
+    return { keys: source, error: null };
+  }
+  const configuredKid = keyId();
+  const pem = publicKey();
+  if (!pem || !configuredKid) return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_REQUIRED' };
+  try {
+    const parsed = crypto.createPublicKey(pem);
+    if (parsed.asymmetricKeyType !== 'ed25519') return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_INVALID' };
+    source.set(configuredKid, parsed);
+    return { keys: source, error: null };
+  } catch { return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_INVALID' }; }
+};
 const configured = (name) => {
   const direct = String(process.env[name] || '').trim();
   if (direct) return direct;
   const file = String(process.env[`${name}_FILE`] || '').trim();
   if (!file) return '';
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
+};
+
+export const getDgfyEventSigningKey = () => {
+  const privateKeyPem = configured('DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY');
+  if (!privateKeyPem) throw new Error('DGFY_EVENT_SIGNING_PRIVATE_KEY_REQUIRED');
+  return { privateKeyPem, keyId: eventKeyId() };
 };
 
 const timingSafeHexEqual = (left, right) => {
@@ -50,10 +84,13 @@ const parseStandardSignature = (signatureValue, inputValue) => {
 export const buildDglaundryEventSignatureVerifier = ({ redisProvider = getRedisClient, redisConnected = isRedisConnected, now = () => Date.now() } = {}) => async ({ headers = {}, method = 'POST', authority = '', path = '', rawBody = '' }) => {
   const activeProfile = profile();
   if (activeProfile === 'http-message-signatures-v1') {
-    if (!publicKey()) return { ok: false, code: 'DGLAUNDRY_PUBLIC_KEY_REQUIRED' };
+    const publicKeys = publicEventKeys();
+    if (publicKeys.error) return { ok: false, code: publicKeys.error };
     const parsed = parseStandardSignature(headers.signature, headers['signature-input']);
     const digest = String(headers['content-digest'] || '').trim();
     if (!parsed || !digest || parsed.algorithm !== 'ed25519' || parsed.tag !== 'dglaundry-dgfy-v1') return { ok: false, code: 'DGLAUNDRY_SIGNATURE_REQUIRED' };
+    const verificationKey = publicKeys.keys.get(parsed.keyId);
+    if (!verificationKey) return { ok: false, code: 'DGLAUNDRY_KEY_ID_UNKNOWN' };
     if (JSON.stringify(parsed.components) !== JSON.stringify(['@method', '@authority', '@path', 'content-digest', 'content-type'])) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_COMPONENTS_INVALID' };
     const nowSeconds = Math.floor(now() / 1000);
     if (!Number.isInteger(parsed.created) || !Number.isInteger(parsed.expires)
@@ -70,7 +107,7 @@ export const buildDglaundryEventSignatureVerifier = ({ redisProvider = getRedisC
       `"@signature-params": ${parsed.signatureParams}`
     ].join('\n');
     const valid = (() => {
-      try { return crypto.verify(null, Buffer.from(signatureBase), publicKey(), Buffer.from(parsed.signature, 'base64')); } catch { return false; }
+      try { return crypto.verify(null, Buffer.from(signatureBase), verificationKey, Buffer.from(parsed.signature, 'base64')); } catch { return false; }
     })();
     if (!valid) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_INVALID' };
     let redis;
@@ -143,13 +180,12 @@ export const signDgfyRequest = ({ method = 'POST', authority, path, body }) => {
  */
 export const signDgfyEvent = ({ method = 'POST', authority, path, body }) => {
   const rawBody = JSON.stringify(body ?? {});
-  const privateKey = configured('DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY');
-  if (!privateKey) throw new Error('DGFY_EVENT_SIGNING_PRIVATE_KEY_REQUIRED');
+  const { privateKeyPem, keyId: signingKeyId } = getDgfyEventSigningKey();
   const created = Math.floor(Date.now() / 1000);
   const expires = created + 300;
   const nonce = crypto.randomUUID();
   const digest = `sha-256=:${crypto.createHash('sha256').update(rawBody).digest('base64')}:`;
-  const signatureParams = `("@method" "@authority" "@path" "content-digest" "content-type");created=${created};expires=${expires};nonce="${nonce}";keyid="${eventKeyId()}";alg="ed25519";tag="dglaundry-dgfy-v1"`;
+  const signatureParams = `("@method" "@authority" "@path" "content-digest" "content-type");created=${created};expires=${expires};nonce="${nonce}";keyid="${signingKeyId}";alg="ed25519";tag="dglaundry-dgfy-v1"`;
   const signatureBase = [
     `"@method": ${String(method).toUpperCase()}`,
     `"@authority": ${authority}`,
@@ -158,11 +194,28 @@ export const signDgfyEvent = ({ method = 'POST', authority, path, body }) => {
     `"content-type": application/json`,
     `"@signature-params": ${signatureParams}`
   ].join('\n');
-  const signature = crypto.sign(null, Buffer.from(signatureBase), privateKey).toString('base64');
+  const signature = crypto.sign(null, Buffer.from(signatureBase), privateKeyPem).toString('base64');
   return {
     'content-type': 'application/json',
     'content-digest': digest,
     'signature-input': `sig1=${signatureParams}`,
     signature: `sig1=:${signature}:`
   };
+};
+
+const canonicalValue = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])]));
+  }
+  return value;
+};
+
+export const canonicalJson = (value) => JSON.stringify(canonicalValue(value));
+
+export const signDgfyJsonDocument = (value) => {
+  const { privateKeyPem, keyId } = getDgfyEventSigningKey();
+  const serialized = canonicalJson(value);
+  const signature = crypto.sign(null, Buffer.from(serialized), privateKeyPem).toString('base64');
+  return { serialized, signature, keyId };
 };

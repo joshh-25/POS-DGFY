@@ -117,6 +117,26 @@ describe('Storefront guest checkout OTP', () => {
     expect(dgfyCustomerRepository.findDgfyAccountByEmail).not.toHaveBeenCalled();
   });
 
+  it('returns a public expiry reason when the guest OTP is expired', async () => {
+    const emailOtpService = {
+      EMAIL_OTP_PURPOSES: { STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout' },
+      verifyEmailOtp: async () => {
+        const error = new Error('Email verification code is missing or expired');
+        error.statusCode = 422;
+        error.code = 'EMAIL_OTP_EXPIRED';
+        throw error;
+      }
+    };
+    const verify = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
+
+    const result = await verify({ tenantId, payload: { email, code: '123456', idempotency_key: idempotencyKey } });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.details).toEqual({ reason_code: 'GUEST_CHECKOUT_OTP_EXPIRED' });
+  });
+
   it('fails closed when the OTP service records a local or failed delivery', async () => {
     const emailOtpService = {
       EMAIL_OTP_PURPOSES: { STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout' },
@@ -199,5 +219,26 @@ describe('Storefront guest checkout OTP', () => {
       proof: expiredProof,
       allowExpired: true
     })).not.toThrow();
+  });
+
+  it('exposes the same expiry reason when the signed guest proof expires during checkout', () => {
+    const guestProofSecret = process.env.STORE_GUEST_CHECKOUT_PROOF_SECRET
+      || `${process.env.JWT_SECRET || 'store-fallback-secret-change-me'}:store:guest-checkout-proof`;
+    const expiredProof = jwt.sign({
+      type: 'store_guest_checkout_proof',
+      tenant_id: tenantId,
+      email,
+      idempotency_key: idempotencyKey
+    }, guestProofSecret, { expiresIn: '-1s' });
+
+    let thrownError;
+    try {
+      assertGuestCheckoutProof({ tenantId, email, idempotencyKey, proof: expiredProof });
+    } catch (error) {
+      thrownError = error;
+    }
+    expect(thrownError).toMatchObject({
+      details: { reason_code: 'GUEST_CHECKOUT_OTP_EXPIRED' }
+    });
   });
 });

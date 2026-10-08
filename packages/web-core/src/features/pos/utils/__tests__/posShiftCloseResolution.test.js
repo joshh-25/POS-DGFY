@@ -18,14 +18,14 @@ const baseInput = {
 };
 
 describe('POS shift-close parked-sale resolution', () => {
-  it('counts only claimed server carts as shift-close blockers', async () => {
+  it('counts only claimed server carts for guarded stale-shift recovery', async () => {
     await expect(loadShiftCloseResolution(baseInput)).resolves.toEqual({
       claimedParkedSaleCount: 1,
       pendingParkedSaleCount: 0
     });
   });
 
-  it('continues blocking close for pending offline parked-sale syncs while offline', async () => {
+  it('continues blocking guarded stale-shift recovery for pending offline parked-sale syncs', async () => {
     const result = await loadShiftCloseResolution({
       ...baseInput,
       isOnline: false,

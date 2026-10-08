@@ -56,7 +56,7 @@ const submissionFor = (session) => {
 
 export const submitPaidDglaundryBooking = async ({ session, resource, providerEventId, commercePaymentRepository, partnerClient }) => {
   const plain = session?.get ? session.get({ plain: true }) : session;
-  if (!plain || plain.target_type !== 'dglaundry_booking') return null;
+  if (!plain) return null;
   if (plain.status === 'finalized') return plain;
   const paymentReference = paymentId(resource) || plain.provider_payment_id || plain.provider_payment_intent_id || null;
   const submission = submissionFor(plain);
@@ -130,6 +130,29 @@ export const cancelDglaundryBookingReservations = async ({ session, reason, prov
     failure_code: reason === 'PAYMENT_FAILED' ? 'PAYMENT_FAILED' : 'QRPH_EXPIRED',
     failure_reason: reason
   });
+};
+
+export const expireDglaundryBookingSession = async ({ session, resource = null, providerEventId = null, commercePaymentRepository, partnerClient }) => {
+  const plain = session?.get ? session.get({ plain: true }) : session;
+  if (!plain) return null;
+  if (plain.status === 'expired') return plain;
+  const expired = await commercePaymentRepository.updateSessionById(plain.session_id, {
+    status: 'expired',
+    provider_event_id: providerEventId || plain.provider_event_id,
+    provider_payload: resource || plain.provider_payload || null,
+    failure_code: 'QRPH_EXPIRED',
+    failure_reason: 'PayMongo QR Ph code expired before payment.'
+  });
+  if (plain.target_type === 'dglaundry_booking') {
+    await cancelDglaundryBookingReservations({
+      session: expired,
+      reason: 'QRPH_EXPIRED',
+      providerEventId: `dglaundry-expired-${plain.public_reference}`,
+      commercePaymentRepository,
+      partnerClient
+    });
+  }
+  return expired;
 };
 
 export const notifyDglaundryBookingRefund = async ({ session, refund, providerEventId = null, partnerClient }) => {

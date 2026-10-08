@@ -17,7 +17,7 @@ describe('Business Admin approval queue contract', () => {
         expect(businessAdminPage).toContain("activeSection === 'approvals'");
         expect(businessAdminPage).toContain("businessAdminApi.approvals({ status: 'pending', limit: 100 })");
         expect(businessAdminPage).toContain("businessAdminApi.decideApproval(id, decision, `${decision} requested from Back Office.`)");
-        expect(businessAdminPage).toContain('Review high-risk POS requests here; POS remains the canonical execution owner');
+        expect(businessAdminPage).toContain('Review the reason and target before deciding. POS and Inventory perform approved changes');
         expect(businessAdminPage).toContain("{ key: 'reason', label: 'Reason'");
         expect(businessAdminPage).toContain('data-testid="approved-void-history-toggle"');
         expect(businessAdminPage).toContain('Approved Void History');

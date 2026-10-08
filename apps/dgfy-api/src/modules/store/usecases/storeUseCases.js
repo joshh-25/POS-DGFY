@@ -4011,6 +4011,17 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
                 verification_grant_expires_in: 86400
             });
         } catch (error) {
+            if (error?.code === 'EMAIL_OTP_EXPIRED') {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Email verification code is missing or expired.',
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'GUEST_CHECKOUT_OTP_EXPIRED' },
+                        cause: error
+                    }
+                ));
+            }
             return fail(mapStoreUseCaseError(error, 'Failed to verify guest checkout code'));
         }
     };

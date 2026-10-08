@@ -81,6 +81,18 @@ originating shift closes. Pending offline parked-sale syncs remain blocking,
 and claimed carts remain exclusive work that must be completed or released
 before their current owner's shift can close. `[default]`
 
+### 2026-10-06: Parked sales do not block ordinary shift close
+
+Ordinary cashier shift close no longer rejects an open register because a
+parked-sale row is `parked`, `claimed`, or `cancel_pending`. The row is kept
+unchanged, remains location-scoped and auditable, and stays available through
+the shared parked-sale queue. A `cancel_pending` row remains pending until
+Back Office approves or rejects the request; approval still performs the
+canonical inventory reversal and cancellation transition, while rejection
+restores the prior lifecycle state. Payment-session and active-operation
+guards remain separate shift-close controls because they protect in-flight
+financial or operator mutations. `[default]`
+
 ## Validation
 
 1. Backend tests prove same-location cross-cashier listing and resume,

@@ -1356,6 +1356,19 @@ const voidPosTransactionSchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
 
+const returnPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    returned_lines: Joi.array().items(Joi.object({
+        line_id: Joi.number().integer().positive().required(),
+        quantity: Joi.number().positive().precision(4).required()
+    }).unknown(false)).min(1).max(100).required()
+});
+
 // Phase 238 (#1330): staff delivery-fee override, unsettled payment only. delivery_fee is the new
 // absolute value to charge (not a delta) -- resending the same value on a retry is a no-op at the
 // use-case layer, so no separate idempotency_key is required here the way void/refund need one.
@@ -1782,6 +1795,7 @@ export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema
 export const validatePosDrawerAuthorization = validateSchema(deviceDrawerAuthorizationSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
 export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');
+export const validateReturnPosTransaction = validateSchema(returnPosTransactionSchema, 'body', 'validatedData');
 export const validateOverrideDeliveryFee = validateSchema(overrideDeliveryFeeSchema, 'body', 'validatedData');
 export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');

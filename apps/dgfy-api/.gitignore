@@ -85,4 +85,8 @@ Thumbs.db
 # Runtime uploads (generated at runtime; keep directory scaffold only)
 uploads/*
 !uploads/.gitkeep
+# Private landlord-side registration uploads are created at runtime and must
+# never be served by the public /uploads static route.
+private-uploads/*
+!private-uploads/.gitkeep
 

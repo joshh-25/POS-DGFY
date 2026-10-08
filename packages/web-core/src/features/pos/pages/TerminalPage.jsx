@@ -173,6 +173,7 @@ import {
 } from '../utils/customerDisplayPreference.js';
 import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
+import { publishPosLocationContext } from '../utils/posLocationContext.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -1079,6 +1080,20 @@ export default function TerminalPage() {
       || formData.dgfyTenantId
       || ''
   ).trim();
+  const locationContextVersionRef = useRef(0);
+
+  useEffect(() => {
+    if (!activeTenantId) return;
+    locationContextVersionRef.current += 1;
+    publishPosLocationContext({
+      tenantId: activeTenantId,
+      operatingLocationId: shiftState?.shift?.location_id || operatingLocationId,
+      viewingLocationId,
+      queueLocationScopeId,
+      contextVersion: locationContextVersionRef.current,
+      source: 'pos-terminal'
+    });
+  }, [activeTenantId, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, viewingLocationId]);
   const offlinePosScope = useMemo(() => ({
     tenantId: activeTenantId,
     terminalId: activeTerminalId,
@@ -5936,19 +5951,6 @@ export default function TerminalPage() {
       return;
     }
 
-    let resolutionState;
-    try {
-      resolutionState = await getShiftCloseResolutionState({ shiftId: activeShiftId });
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Unable to verify parked sales. Reconnect and try again before closing the shift.');
-      return;
-    }
-    if (resolutionState.claimedParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
-      setCloseShiftBlocker(resolutionState);
-      toast.error('Resolve claimed parked sales and pending parked-sale syncs before closing this shift.');
-      return;
-    }
-
     const payload = {
       terminal_id: sanitizeTerminalId(activeTerminalId) || sanitizeTerminalId(shiftState.shift?.terminal_id) || resolveSelectedLoginTerminalId() || undefined,
       closing_cash_amount: closingCashAmount,
@@ -6072,17 +6074,6 @@ export default function TerminalPage() {
       });
     } catch (error) {
       const errorDetails = error?.response?.data?.errors || error?.response?.data?.details || {};
-      if (String(errorDetails?.reason_code || '').trim() === 'POS_PARKED_SALES_UNRESOLVED') {
-        const claimedParkedSaleCount = Number(
-          errorDetails?.claimed_parked_sale_count ?? errorDetails?.active_parked_sale_count ?? 0
-        );
-        setCloseShiftBlocker({
-          claimedParkedSaleCount,
-          pendingParkedSaleCount: 0
-        });
-        toast.error(error?.response?.data?.message || 'Resolve claimed parked sales before closing this shift.');
-        return;
-      }
       if (['POS_PAYMENT_SESSIONS_IN_FLIGHT', 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED'].includes(String(errorDetails?.reason_code || '').trim())) {
         setCloseShiftBlocker({
           reasonCode: String(errorDetails.reason_code).trim(),

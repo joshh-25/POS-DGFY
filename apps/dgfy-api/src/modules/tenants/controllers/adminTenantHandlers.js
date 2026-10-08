@@ -21,6 +21,11 @@ import {
     updateTenantAffiliateSlotsUseCase,
     listTenantAffiliateSlotsAuditLogsUseCase,
     deleteTenantUseCase,
+    approveCompanyRegistrationDraftUseCase,
+    listAdminCompanyRegistrationDraftsUseCase,
+    listCompanyRegistrationUploadsUseCase,
+    downloadCompanyRegistrationUploadUseCase,
+    downloadCompanyRegistrationMenuArchiveUseCase,
     tenantAdminRepository
 } from '../index.js';
 import { setupPayPalRecurringUseCase, changePlanUseCase } from '../../payments/index.js';
@@ -117,6 +122,91 @@ export const listTenants = async (req, res) => {
         })
     });
     return sendUseCaseResult(res, result);
+};
+
+export const listAdminCompanyRegistrationDrafts = async (req, res) => {
+    const result = await listAdminCompanyRegistrationDraftsUseCase({
+        status: req.query?.status || 'pending_review',
+        limit: req.query?.limit
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to load company registration drafts.'
+    });
+};
+
+export const listCompanyRegistrationUploads = async (req, res) => {
+    const result = await listCompanyRegistrationUploadsUseCase({
+        draftId: req.params?.draftId,
+        tenantId: req.params?.id
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to load registration uploads.'
+    });
+};
+
+const sendRegistrationDownload = (res, result, fallbackErrorMessage) => {
+    if (!result?.success) {
+        return sendUseCaseResult(res, result, { fallbackErrorMessage });
+    }
+    const file = result.data?.file;
+    if (!file?.buffer || !Buffer.isBuffer(file.buffer)) {
+        return res.status(503).json({ success: false, message: fallbackErrorMessage });
+    }
+    const filename = String(file.filename || 'registration-file')
+        .replace(/[^a-zA-Z0-9._ -]/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim() || 'registration-file';
+    res.set({
+        'Content-Type': file.contentType || 'application/octet-stream',
+        'Content-Length': String(file.buffer.length),
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'private, no-store'
+    });
+    return res.status(200).send(file.buffer);
+};
+
+export const downloadCompanyRegistrationUpload = async (req, res) => {
+    const result = await downloadCompanyRegistrationUploadUseCase({
+        draftId: req.params?.draftId,
+        tenantId: req.params?.id,
+        uploadId: req.params?.uploadId,
+        actor: req.admin,
+        requestMetadata: buildRequestMetadata(req)
+    });
+    return sendRegistrationDownload(res, result, 'Failed to download registration upload.');
+};
+
+export const downloadCompanyRegistrationMenuArchive = async (req, res) => {
+    const result = await downloadCompanyRegistrationMenuArchiveUseCase({
+        draftId: req.params?.draftId,
+        tenantId: req.params?.id,
+        actor: req.admin,
+        requestMetadata: buildRequestMetadata(req)
+    });
+    return sendRegistrationDownload(res, result, 'Failed to create the registration menu archive.');
+};
+
+export const approveAdminCompanyRegistrationDraft = async (req, res) => {
+    const result = await approveCompanyRegistrationDraftUseCase({
+        draftId: req.params?.draftId,
+        actor: req.admin,
+        background: true
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to approve company registration.'
+    });
+};
+
+export const retryAdminCompanyRegistrationDraftMaterialization = async (req, res) => {
+    const result = await approveCompanyRegistrationDraftUseCase({
+        draftId: req.params?.draftId,
+        actor: req.admin,
+        retry: true,
+        background: true
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to retry company registration materialization.'
+    });
 };
 
 /**

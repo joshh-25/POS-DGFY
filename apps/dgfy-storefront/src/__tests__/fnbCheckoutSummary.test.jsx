@@ -113,6 +113,12 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();
       expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
     });
+
+    it('locks the mobile payment action when guest verification is no longer valid', () => {
+      render(<FnbCheckoutMobileSummaryPanel {...mobileBaseProps} checkoutPrimaryLocked totals={totals} />);
+
+      expect(screen.getByRole('button', { name: /Place Order/ }).disabled).toBe(true);
+    });
   });
 
   describe('legacy fee payload -- customer fee remains hidden', () => {

@@ -159,6 +159,11 @@ History reports the later adjustment against the original cashier/shift while
 also showing the acting user/shift. Daily reports group adjustments by their
 own event timestamp and do not subtract the original void twice.
 
+Ordinary shift close is not blocked by parked-sale state. Parked rows are not
+deleted or auto-cancelled when the shift closes; they remain in the
+location-scoped shared queue, and a `cancel_pending` row remains visible until
+Back Office approves or rejects its cancellation request.
+
 ## Login behavior with multiple companies
 
 The cashier uses one DGFY account identity, but that account can have access to more than one company. Access can come from ownership, founder/admin membership, or an accepted invitation such as `cashier`.
