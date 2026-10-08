@@ -8277,7 +8277,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 }
 
 @media (max-width: 639.98px) {
-  .pos-vouchers-workspace-shell {
+  .pos-catalog-workspace-shell {
     --pos-items-mobile-gutter: 0.5rem;
     padding: 0 var(--pos-items-mobile-gutter) 1rem;
     padding-inline: var(--pos-items-mobile-gutter) !important;
@@ -8285,7 +8285,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     background: #fff;
     box-shadow: none;
   }
-  .pos-vouchers-workspace-shell .dgfy-pos-history-pagination-footer { margin-top: 0 !important; }
+  .pos-catalog-workspace-shell .dgfy-pos-history-pagination-footer { margin-top: 0 !important; }
 }
 
 @media screen and (min-width: 1280px) and (orientation: landscape) {
