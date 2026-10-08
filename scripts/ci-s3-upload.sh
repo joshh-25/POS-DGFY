@@ -88,7 +88,29 @@ else
   curl --fail --silent --show-error \
     "https://awscli.amazonaws.com/awscli-exe-linux-${aws_arch}.zip" \
     --output "$tmp_dir/awscliv2.zip"
-  unzip -q "$tmp_dir/awscliv2.zip" -d "$install_root"
+  # Persistent self-hosted runners may not have the `unzip` package installed. Use Python's
+  # standard library to extract the official bundle without needing root or changing the runner.
+  command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to unpack the AWS CLI installer bundle."
+  python3 - "$tmp_dir/awscliv2.zip" "$install_root" <<'PY'
+import os
+from pathlib import Path
+import stat
+import sys
+from zipfile import ZipFile
+
+archive_path = Path(sys.argv[1])
+destination = Path(sys.argv[2]).resolve()
+
+with ZipFile(archive_path) as archive:
+    for member in archive.infolist():
+        target = (destination / member.filename).resolve()
+        if target != destination and destination not in target.parents:
+            raise SystemExit(f"Unsafe path in AWS CLI installer archive: {member.filename}")
+        archive.extract(member, destination)
+        mode = (member.external_attr >> 16) & 0o777
+        if mode and stat.S_ISREG(member.external_attr >> 16):
+            os.chmod(target, mode)
+PY
   "$install_root/aws/install" --install-dir "$install_root/aws-cli" --bin-dir "$bin_dir" >/dev/null
   aws_bin="$bin_dir/aws"
 fi
