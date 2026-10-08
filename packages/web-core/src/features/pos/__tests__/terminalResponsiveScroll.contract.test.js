@@ -119,8 +119,8 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain("? 'flex min-h-0 flex-1 flex-col overflow-hidden'");
     expect(terminalLayoutContent).toContain('dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y');
     expect(terminalLayoutContent).toContain("hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''");
-    expect(terminalLayoutContent).toContain('const checkoutWorkspaceRowsClassName = isBranchReadOnlyView');
-    expect(terminalLayoutContent).toContain("'grid-rows-[auto_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain("const checkoutWorkspaceRowsClassName = 'grid-rows-[minmax(0,1fr)]'");
+    expect(terminalLayoutContent).not.toContain('grid-rows-[auto_minmax(0,1fr)]');
     expect(terminalLayoutContent).toContain("'grid-rows-[minmax(0,1fr)]'");
     expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden');
     expect(terminalLayoutContent).toContain("usesStandardPosPageFrame ? 'p-0'");
@@ -136,10 +136,20 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).not.toContain('workspaceDesktopOverflowClassName');
   });
 
-  it('keeps the branch-view banner intrinsic so History retains the flexible workspace row', () => {
+  it('keeps the branch-view notice floating and out of the workspace layout', () => {
     expect(terminalLayoutContent).toContain('data-testid="pos-branch-view-banner"');
-    expect(terminalLayoutContent).toContain("const checkoutWorkspaceRowsClassName = isBranchReadOnlyView");
-    expect(terminalLayoutContent).toContain("? 'grid-rows-[auto_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain('role="status"');
+    expect(terminalLayoutContent).toContain('fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-[60]');
+    expect(terminalLayoutContent).toContain('sm:inset-x-auto sm:bottom-4 sm:right-4');
+    expect(terminalLayoutContent.match(/Exit branch view/gi)).toHaveLength(1);
+    expect(terminalOperationsWorkspaceContent).not.toContain('Read-only branch view');
+    expect(terminalOperationsWorkspaceContent).not.toContain('Exit Branch View');
+    expect(terminalLayoutContent).toContain("const checkoutWorkspaceRowsClassName = 'grid-rows-[minmax(0,1fr)]'");
+  });
+
+  it('announces POS and shift-context loading feedback to assistive technology', () => {
+    expect(terminalLayoutContent).toContain('role="status" aria-live="polite" aria-busy="true">Loading operations workspace...');
+    expect(terminalOperationsWorkspaceContent).toContain('role="status" aria-live="polite" aria-busy="true">Loading shift context...');
   });
 
   it('keeps checkout split into catalog and current-sale panes', () => {

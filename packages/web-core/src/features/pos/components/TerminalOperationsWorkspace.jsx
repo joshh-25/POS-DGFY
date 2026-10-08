@@ -1,7 +1,30 @@
 import SettingsWorkspace from '../settings/PosSettingsWorkspace.jsx';
 import StorefrontSectionInfo from '../settings/StorefrontSectionInfo.jsx';
 import PosFnbSelect from './PosFnbSelect.jsx';
+import PosDropdownSelect from './PosDropdownSelect.jsx';
 import PosSearchField from './PosSearchField.jsx';
+import AdminBranchOrdersMonitor from './AdminBranchOrdersMonitor.jsx';
+import AdminBranchShiftMonitor from './AdminBranchShiftMonitor.jsx';
+import AdminOpenShiftOverview from './AdminOpenShiftOverview.jsx';
+import ShiftSessionSummary from './ShiftSessionSummary.jsx';
+import MerchantTenderReconciliationPanel from './MerchantTenderReconciliationPanel.jsx';
+import { BranchDayClosePanel, CashierShiftClosePanel } from './ShiftSessionCloseoutPanels.jsx';
+import PosShiftStateNotice from './PosShiftStateNotice.jsx';
+import PosShiftRefreshButton from './PosShiftRefreshButton.jsx';
+import { formatCashierHistoryDateTime } from '../utils/cashierHistoryFormatters.js';
+import {
+  POS_SHIFT_PRIMARY_BUTTON_CLASS,
+  POS_SHIFT_SECONDARY_BUTTON_CLASS
+} from './posShiftButtonStyles.js';
+import CashDrawerClosedState from './CashDrawerClosedState.jsx';
+import CashDrawerEventForm from './CashDrawerEventForm.jsx';
+import PosLineTabNavigation from './PosLineTabNavigation.jsx';
+import PosSubtabNavigation from './PosSubtabNavigation.jsx';
+import PosPageFrame from './PosPageFrame.jsx';
+import {
+  POS_MOBILE_STICKY_TAB_ROW_CLASS,
+  POS_PAGE_CONTENT_STACK_CLASS
+} from './PosPageSpacing.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -29,12 +52,11 @@ import {
   CircleSlash,
   CircleDollarSign,
   ClipboardList,
-  Barcode,
   Eye,
   Filter,
   History,
   ImagePlus,
-  Info,
+  LogIn,
   Monitor,
   Pencil,
   MapPinned,
@@ -146,9 +168,7 @@ const IncomingQueueWorkspace = lazyWithChunkRetry(loadIncomingQueueWorkspace);
 const PosServicesOperationsWorkspace = lazyWithChunkRetry(() => import('./PosServicesOperationsWorkspace.jsx'));
 const PosFnbModifiersWorkspace = lazyWithChunkRetry(() => import('./PosFnbModifiersWorkspace.jsx'));
 import {
-  fetchPosCatalogPage,
-  fetchMerchantTenderReconciliation,
-  reviewMerchantTenderReconciliation
+  fetchPosCatalogPage
 } from '../services/posService.js';
 const PosReportsAnalyticsWorkspace = lazyWithChunkRetry(() => import('./PosReportsAnalyticsWorkspace.jsx'));
 import CashierHistoryPanel from './CashierHistoryPanel.jsx';
@@ -189,6 +209,13 @@ const SETTINGS_VIEW_MODES = new Set([
   'settings_storefront',
   'terminal_setup'
 ]);
+const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);
+const SHIFT_TAB_ORDER = ['shift_location', 'close_shift', 'cash_drawer', 'cashier_history'];
+
+const resolveShiftTabIndex = (tabId) => {
+  const index = SHIFT_TAB_ORDER.indexOf(tabId);
+  return index >= 0 ? index : 0;
+};
 
 const MODE_META = {
   incoming_queue: {
@@ -340,126 +367,10 @@ const isValidOpeningCashAmount = (value) => {
 
 const parseIsoDateTime = (value) => {
   if (!value) return '-';
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return '-';
-  return date.toLocaleString();
+  const formattedDateTime = formatCashierHistoryDateTime(value);
+  return formattedDateTime === 'Not recorded' ? '-' : formattedDateTime;
 };
 
-const MERCHANT_TENDER_METHODS = [
-  { key: 'gcash', label: 'GCash' },
-  { key: 'maya', label: 'Maya' },
-  { key: 'card', label: 'Card terminal' },
-  { key: 'bank_transfer', label: 'Bank transfer' }
-];
-
-function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disabled = false }) {
-  const emptyObserved = { gcash: '', maya: '', card: '', bank_transfer: '' };
-  const [state, setState] = useState({ loading: true, saving: false, data: null, error: '' });
-  const [observed, setObserved] = useState(emptyObserved);
-  const [reviewNote, setReviewNote] = useState('');
-  const employeeCredit = (Array.isArray(salesSummary?.payment_breakdown) ? salesSummary.payment_breakdown : [])
-    .find((entry) => String(entry?.payment_type || '').trim().toLowerCase() === 'employee_credit') || {};
-  const employeeCreditCount = Number(employeeCredit.count || 0);
-
-  const load = useCallback(async () => {
-    if (!shiftId) return;
-    setState((previous) => ({ ...previous, loading: true, error: '' }));
-    try {
-      const data = await fetchMerchantTenderReconciliation(shiftId);
-      const latestObserved = data?.latest_reconciliation?.observed_breakdown;
-      setObserved(Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [
-        key,
-        latestObserved?.[key] != null
-          ? String(Number(latestObserved[key]).toFixed(2))
-          : String(Number(data?.expected?.breakdown?.[key]?.amount || 0).toFixed(2))
-      ])));
-      setReviewNote(data?.latest_reconciliation?.review_note || '');
-      setState({ loading: false, saving: false, data, error: '' });
-    } catch (error) {
-      setState({ loading: false, saving: false, data: null, error: error?.response?.data?.message || 'Unable to load merchant tender totals.' });
-    }
-  }, [shiftId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const variances = Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [
-    key,
-    Number(observed[key] || 0) - Number(state.data?.expected?.breakdown?.[key]?.amount || 0)
-  ]));
-  const hasVariance = MERCHANT_TENDER_METHODS.some(({ key }) => Math.abs(variances[key]) > 0.0001);
-
-  const save = async () => {
-    if (hasVariance && reviewNote.trim().length < 8) {
-      toast.error('Add a manager note of at least 8 characters for the variance.');
-      return;
-    }
-    setState((previous) => ({ ...previous, saving: true, error: '' }));
-    try {
-      const data = await reviewMerchantTenderReconciliation(shiftId, {
-        idempotency_key: `merchant-tender:${shiftId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
-        observed_breakdown: Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [key, Number(observed[key] || 0)])),
-        review_note: reviewNote.trim() || undefined
-      });
-      setState({ loading: false, saving: false, data, error: '' });
-      toast.success(hasVariance ? 'Tender variance reviewed and recorded.' : 'Merchant tenders reconciled with no variance.');
-    } catch (error) {
-      setState((previous) => ({ ...previous, saving: false, error: error?.response?.data?.message || 'Unable to save the reconciliation.' }));
-    }
-  };
-
-  return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3" data-testid="merchant-tender-reconciliation">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-[12px] font-black text-[#0F172A]">Store-owned tender reconciliation</p>
-          <p className="mt-1 text-[11px] leading-4 text-[#475569]">Compare the POS ledger with the store QR, card terminal, and bank account. Employee Credit is shown read-only because it is an internal receivable. This review never calls PayMongo or changes sales.</p>
-        </div>
-        <Button type="button" variant="outline" className="h-8 bg-white px-3 text-[11px] font-bold" onClick={() => void load()} disabled={state.loading || state.saving || disabled}>
-          <RefreshCcw className={`mr-1.5 h-3.5 w-3.5 ${state.loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
-      </div>
-      {state.error ? <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">{state.error}</p> : null}
-      {state.loading ? <p className="mt-3 text-[11px] text-slate-600">Loading expected tender totals...</p> : (
-        <>
-          {state.data?.is_stale ? <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] font-semibold text-amber-800">New tender activity exists since the last review. Submit a new review; the old record will remain in the audit trail.</p> : null}
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-left text-[11px]">
-              <thead><tr className="text-slate-500"><th className="pb-2">Tender</th><th className="pb-2">POS expected</th><th className="pb-2">Observed</th><th className="pb-2 text-right">Variance</th></tr></thead>
-              <tbody>
-                {MERCHANT_TENDER_METHODS.map(({ key, label }) => (
-                  <tr key={key} className="border-t border-blue-100">
-                    <td className="py-2 font-bold text-slate-800">{label}</td>
-                    <td className="py-2">PHP {money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
-                    <td className="py-2"><Input aria-label={`${label} observed total`} type="number" min="0" step="0.01" className="h-8 w-32 bg-white text-[11px]" value={observed[key]} onChange={(event) => setObserved((previous) => ({ ...previous, [key]: event.target.value }))} disabled={state.saving || disabled} /></td>
-                    <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>PHP {money(variances[key])}</td>
-                  </tr>
-                ))}
-                <tr className="border-t border-blue-200 bg-white/60" data-testid="employee-credit-reconciliation-row">
-                  <td className="py-2 font-bold text-slate-800">
-                    Employee Credit <span className="block text-[10px] font-medium text-slate-500">Internal receivable · {employeeCreditCount} transaction{employeeCreditCount === 1 ? '' : 's'}</span>
-                  </td>
-                  <td className="py-2 font-bold text-[#1A4E8D]">PHP {money(employeeCredit.amount)}</td>
-                  <td className="py-2 text-slate-500">Not applicable</td>
-                  <td className="py-2 text-right text-slate-500">Not applicable</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <Label className="mt-3 block text-[11px] font-bold text-slate-700">Manager review note {hasVariance ? '(required)' : '(optional)'}</Label>
-          <Input className="mt-1 h-9 bg-white text-[11px]" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="Explain any difference from the POS ledger" disabled={state.saving || disabled} />
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[11px] text-slate-600">Latest: {state.data?.latest_reconciliation ? `${String(state.data.latest_reconciliation.status || '').replace(/_/g, ' ')} · ${parseIsoDateTime(state.data.latest_reconciliation.reviewed_at)}` : 'Not reviewed yet'}</p>
-            <Button type="button" className="h-9 !bg-[#1A4E8D] px-4 text-[11px] font-extrabold text-white" onClick={() => void save()} disabled={state.saving || disabled || (hasVariance && reviewNote.trim().length < 8)}>
-              <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> {state.saving ? 'Recording...' : 'Record Manager Review'}
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 function ShiftControlsWorkspace({
   shiftState,
   terminalMeta,
@@ -501,6 +412,7 @@ function ShiftControlsWorkspace({
   adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
   branchDirectoryState = { loading: false, locations: [], scope: '', errorMessage: '' },
   branchViewLocationId = null,
+  branchViewTransitionLoading = false,
   canViewBranchLocations = false,
   onViewBranch = async () => false,
   onExitBranchView = async () => {},
@@ -536,6 +448,7 @@ function ShiftControlsWorkspace({
     closingCashAmount: '',
     reason: ''
   });
+  const [adminShiftLocationTab, setAdminShiftLocationTab] = useState('terminals');
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -546,7 +459,6 @@ function ShiftControlsWorkspace({
   const animationTimersRef = useRef([]);
   const previousInitialTabRef = useRef(initialTab);
   const isIminRuntime = isIminWrapperRuntime();
-  const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
   const shiftCashierLabel = activeShift?.cashier?.username
     || activeShift?.cashier?.email
@@ -597,14 +509,30 @@ function ShiftControlsWorkspace({
     selectedTerminalShift,
     operatorUserId
   );
+  const branchMonitorLocationId = Number(viewingLocationId || operatingLocationId || 0) || null;
+  const branchMonitorLocationName = locations.find(
+    (location) => Number(location?.location_id || 0) === branchMonitorLocationId
+  )?.name || (branchMonitorLocationId ? `Branch #${branchMonitorLocationId}` : 'Selected branch');
   const branchMonitorOrders = Array.isArray(adminLocationMonitorState?.orders)
-    && Number(adminLocationMonitorState?.locationId || 0) === Number(viewingLocationId || operatingLocationId || 0)
+    && Number(adminLocationMonitorState?.locationId || 0) === branchMonitorLocationId
     ? adminLocationMonitorState.orders
     : [];
+  const branchMonitorStateMatchesLocation = branchMonitorLocationId > 0
+    && Number(adminLocationMonitorState?.locationId || 0) === branchMonitorLocationId;
+  const branchMonitorLoading = !branchMonitorStateMatchesLocation || Boolean(adminLocationMonitorState?.loading);
+  const branchMonitorErrorMessage = branchMonitorStateMatchesLocation
+    ? String(adminLocationMonitorState?.errorMessage || '')
+    : '';
   const branchTerminalShifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
-    && Number(adminLocationMonitorState?.locationId || 0) === Number(viewingLocationId || operatingLocationId || 0)
+    && Number(adminLocationMonitorState?.locationId || 0) === branchMonitorLocationId
     ? adminLocationMonitorState.terminalShifts
     : [];
+  const branchOrdersTabCount = Number(adminLocationMonitorState?.locationId || 0) > 0
+    && Number(adminLocationMonitorState?.locationId || 0) === branchMonitorLocationId
+    && !adminLocationMonitorState?.loading
+    && !adminLocationMonitorState?.errorMessage
+    ? branchMonitorOrders.length
+    : null;
   const isBranchReadOnlyView = Boolean(branchViewLocationId);
   const switchTargetLocation = activeLocations.find(
     (location) => Number(location?.location_id || 0) === Number(switchTargetLocationId || 0)
@@ -614,18 +542,41 @@ function ShiftControlsWorkspace({
   );
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
-    { id: 'close_shift', label: 'Close Shift', icon: ShieldCheck },
+    { id: 'close_shift', label: 'Shift Session', icon: ShieldCheck },
     { id: 'cash_drawer', label: 'Cash Drawer', icon: Banknote },
     { id: 'cashier_history', label: 'Cashier History', icon: History }
+  ];
+  const ADMIN_SHIFT_LOCATION_TABS = [
+    {
+      id: 'terminals',
+      label: 'Branch Terminals',
+      mobileLabel: 'Terminals',
+      icon: Monitor,
+      testId: 'pos-admin-shift-location-terminals-tab'
+    },
+    {
+      id: 'shift_monitor',
+      label: 'Shift Monitor',
+      mobileLabel: 'Monitor',
+      icon: History,
+      testId: 'pos-admin-shift-location-shifts-tab'
+    },
+    {
+      id: 'orders',
+      label: branchOrdersTabCount === null ? 'Branch Orders' : `Branch Orders (${branchOrdersTabCount})`,
+      mobileLabel: branchOrdersTabCount === null ? 'Orders' : `Orders (${branchOrdersTabCount})`,
+      icon: ClipboardList,
+      testId: 'pos-admin-shift-location-orders-tab'
+    }
   ];
   const visibleShiftTabs = isBranchReadOnlyView
     ? SHIFT_TABS.filter((tab) => tab.id === 'shift_location')
     : SHIFT_TABS;
-  const resolveTabIndex = (tabId) => {
-    const index = SHIFT_TABS.findIndex((tab) => tab.id === tabId);
-    return index >= 0 ? index : 0;
-  };
-
+  const shiftTabIdPrefix = `${sectionId || 'pos-shift-controls'}-tab`;
+  const shiftPanelId = `${sectionId || 'pos-shift-controls'}-panel`;
+  const selectedShiftTabId = visibleShiftTabs.some((tab) => tab.id === activeTab)
+    ? activeTab
+    : (visibleShiftTabs[0]?.id || activeTab);
   const clearAnimationTimers = useCallback(() => {
     animationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
     animationTimersRef.current = [];
@@ -675,7 +626,7 @@ function ShiftControlsWorkspace({
       return;
     }
 
-    const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);
+    const movingForward = resolveShiftTabIndex(nextTab) > resolveShiftTabIndex(activeTab);
     const exitOffset = movingForward ? -28 : 28;
     const enterOffset = movingForward ? 28 : -28;
 
@@ -706,62 +657,72 @@ function ShiftControlsWorkspace({
     }, 150);
 
     animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers, isIminRuntime]);
+  }, [activeTab, clearAnimationTimers, isBranchReadOnlyView, isIminRuntime]);
 
   const summaryRows = activeShift ? [
     {
       icon: ClipboardList,
-      label: 'Shift ID:',
+      label: 'Shift ID',
       value: `#${activeShift.pos_terminal_shift_id}`,
-      valueClassName: 'text-[18px] font-black text-[#2563EB]'
+      group: 'details'
     },
     {
       icon: UserRound,
-      label: 'Opened By:',
+      label: 'Cashier',
       value: shiftCashierLabel,
-      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
+      group: 'details'
     },
     {
       icon: CalendarDays,
-      label: 'Business Date:',
+      label: 'Business date',
       value: activeShift.business_date || '-',
-      valueClassName: 'text-[18px] font-black text-[#2563EB]'
+      group: 'details'
     },
     {
       icon: AlertCircle,
-      label: 'Opened At:',
+      label: 'Opened at',
       value: parseIsoDateTime(activeShift.opened_at),
-      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
-    },
-    {
-      icon: CircleDollarSign,
-      label: 'Opening/Petty Cash:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
-      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
-    },
-    {
-      icon: Receipt,
-      label: 'Total Sales (excluding opening cash):',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.salesSummary?.total_amount)}`,
-      valueClassName: 'text-[13px] font-extrabold text-[#1A4E8D]'
-    },
-    {
-      icon: Banknote,
-      label: 'Expected Cash in Drawer:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
-      valueClassName: 'text-[13px] font-extrabold text-emerald-700'
-    },
-    {
-      icon: Banknote,
-      label: 'Cash Sales:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.cash_sales_amount)}`,
-      valueClassName: 'text-[13px] font-extrabold text-emerald-700'
+      group: 'details',
+      mobileSpan: 'full'
     },
     {
       icon: MapPinned,
-      label: 'Shift location:',
+      label: 'Branch',
       value: shiftLocationLabel,
-      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
+      group: 'details'
+    },
+    {
+      icon: Monitor,
+      label: 'Register',
+      value: activeShift.terminal_id || activeTerminalId || 'Unassigned',
+      group: 'details'
+    },
+    {
+      icon: CircleDollarSign,
+      label: 'Opening float',
+      value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
+      group: 'financial'
+    },
+    {
+      icon: Receipt,
+      label: 'Shift cash sales',
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.cash_sales_amount)}`,
+      group: 'financial'
+    },
+    {
+      icon: Receipt,
+      label: 'Total gross sales',
+      value: shiftState.salesSummary?.subtotal_amount == null
+        ? '—'
+        : `${terminalMeta.pettyCashSymbol} ${money(shiftState.salesSummary.subtotal_amount)}`,
+      group: 'financial'
+    },
+    {
+      icon: Banknote,
+      label: 'Expected in drawer',
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
+      group: 'financial',
+      highlight: true
     }
   ] : [];
 
@@ -798,266 +759,178 @@ function ShiftControlsWorkspace({
     }
   };
 
-  const renderAdminBranchContext = () => {
+  const renderAdminBranchContext = (section = 'terminals', refreshAction = null) => {
     if (!canAdminBypassShiftPrompt) return null;
 
     return (
       <>
-        <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-          {canViewBranchLocations ? (
-            <p className="text-[11px] leading-4 text-[#475569]">
-              Choose a branch from the Location directory above. Terminal selection remains an advanced device operation.
-            </p>
-          ) : (
+        {section === 'open_shift' ? (
+          <>
+        <section
+          aria-labelledby="pos-admin-open-shift-terminal-heading"
+          data-testid="pos-admin-open-shift-terminal"
+          className="min-w-0 space-y-3"
+        >
+          <div className="space-y-1">
+            <h2 id="pos-admin-open-shift-terminal-heading" className="text-base font-extrabold tracking-tight text-[#0F172A]">
+              Select a terminal
+            </h2>
+            {canViewBranchLocations ? (
+              <p className="text-xs leading-4 text-[#475569]">
+                Check availability in Branch Terminals, then confirm the terminal here.
+              </p>
+            ) : null}
+          </div>
+          {!canViewBranchLocations ? (
             <>
-          <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
-            Register Branch
-          </Label>
-          <select
-            id="admin-operating-location"
-            aria-label="Register Branch"
-            className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-            value={operatingLocationId || ''}
-            onChange={(event) => {
-              const nextValue = event.target.value ? Number(event.target.value) : null;
-              setRequestedAdminTerminalId('');
-              setPendingAdminTerminalId('');
-              setOperatingLocationId(nextValue);
-            }}
-          >
-            {activeLocations.map((location) => (
-              <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-          <p className="mt-2 text-[11px] leading-4 text-[#475569]">
-            Admin navigation can use this location without a shift for read-only monitoring. Select an available terminal below before opening a shift or transacting.
-          </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="admin-operating-location" className="block text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
+                  Register Branch
+                </Label>
+                <PosDropdownSelect
+                  id="admin-operating-location"
+                  ariaLabel="Register Branch"
+                  value={operatingLocationId || ''}
+                  onChange={(nextValue) => {
+                    const selectedLocationId = nextValue ? Number(nextValue) : null;
+                    setRequestedAdminTerminalId('');
+                    setPendingAdminTerminalId('');
+                    setOperatingLocationId(selectedLocationId);
+                  }}
+                  options={activeLocations.map((location) => ({
+                    value: location.location_id,
+                    label: location.name
+                  }))}
+                  listboxLabel="Register Branch options"
+                />
+                <p className="text-[11px] leading-4 text-[#475569]">
+                  Monitor only. Selecting a terminal won’t open or grant access to another cashier’s shift.
+                </p>
+              </div>
             </>
-          )}
+          ) : null}
 
-          <div className="mt-4 border-t border-blue-100 pt-3">
-            <Label htmlFor="admin-operating-terminal" className="block text-[12px] font-black text-[#0F172A]">
-              Branch Terminal
-            </Label>
-            <select
-              id="admin-operating-terminal"
-              className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={selectedAdminTerminalId}
-              onChange={(event) => setRequestedAdminTerminalId(event.target.value)}
-              disabled={adminTerminalSwitching || !isOnline || locationTerminals.length === 0}
-            >
-              <option value="">Select an available terminal</option>
-              {locationTerminals.map((entry) => {
-                const terminalId = String(entry?.terminal_id || '').trim();
-                const occupiedShift = openTerminalShiftById.get(terminalId);
-                const ownedByCurrentUser = isShiftOwnedByUserId(occupiedShift, operatorUserId);
-                const cashier = occupiedShift?.cashier?.username
-                  || occupiedShift?.cashier?.email
-                  || (occupiedShift?.cashier_id ? `Cashier #${occupiedShift.cashier_id}` : 'cashier');
-                const occupancyLabel = occupiedShift
-                  ? (
-                    ownedByCurrentUser
-                      ? `Your active shift since ${parseIsoDateTime(occupiedShift.opened_at)}`
-                      : `In use by ${cashier} since ${parseIsoDateTime(occupiedShift.opened_at)}`
-                  )
-                  : 'Available';
-                return (
-                  <option
-                    key={`admin-terminal-${terminalId}`}
-                    value={terminalId}
-                    disabled={Boolean(occupiedShift) && !ownedByCurrentUser}
-                  >
-                    {entry?.label ? `${entry.label} (${terminalId})` : terminalId} - {occupancyLabel}
-                  </option>
-                );
-              })}
-            </select>
           {canViewAdminLocationMonitor && !canViewBranchLocations ? (
-            <div className="mt-4 border-t border-blue-100 pt-3">
-              <Label htmlFor="admin-viewing-location" className="block text-[12px] font-black text-[#0F172A]">
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-viewing-location" className="block text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
                 Viewing Branch
               </Label>
-              <select
+              <PosDropdownSelect
                 id="admin-viewing-location"
-                aria-label="Viewing Branch"
-                className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                ariaLabel="Viewing Branch"
                 value={viewingLocationId || operatingLocationId || ''}
-                onChange={(event) => setViewingLocationId(event.target.value ? Number(event.target.value) : null)}
-              >
-                {activeLocations.map((location) => (
-                  <option key={`admin-viewing-location-${location.location_id}`} value={location.location_id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-[11px] leading-4 text-[#475569]">
-                Read-only orders and shift monitoring for the selected branch. This does not change the register branch.
+                onChange={(nextValue) => setViewingLocationId(nextValue ? Number(nextValue) : null)}
+                options={activeLocations.map((location) => ({
+                  value: location.location_id,
+                  label: location.name
+                }))}
+                listboxLabel="Viewing Branch options"
+              />
+              <p className="text-[11px] leading-4 text-[#475569]">
+                View orders and shifts only; the register branch stays unchanged.
               </p>
             </div>
           ) : null}
-            {locationTerminals.length === 0 ? (
-              <p className="mt-2 text-[11px] text-amber-700">
-                No active terminal is assigned to this branch. Configure one in POS Setup.
-              </p>
-            ) : null}
-            {!activeTerminalMatchesOperatingLocation ? (
-              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-4 text-amber-800">
-                The current terminal belongs to another branch. Confirm a terminal for this branch before opening a shift.
-              </p>
-            ) : (
-              <p className="mt-2 text-[11px] text-emerald-700">
-                Current terminal: {String(activeTerminalId || '').trim() || 'Not selected'}
-              </p>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-3 h-10 rounded-lg border-blue-300 bg-white px-4 text-[13px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
-              disabled={
-                adminTerminalSwitching
-                || !isOnline
-                || !selectedAdminTerminalId
-                || (Boolean(selectedTerminalShift) && !selectedTerminalShiftOwnedByCurrentUser)
-                || (
-                  activeTerminalMatchesOperatingLocation
-                  && String(selectedAdminTerminalId) === String(activeTerminalId || '').trim()
-                )
-              }
-              onClick={() => setPendingAdminTerminalId(selectedAdminTerminalId)}
-            >
-              <Monitor className="mr-2 h-4 w-4" />
-              {adminTerminalSwitching ? 'Selecting Terminal...' : 'Use Selected Terminal'}
-            </Button>
-          </div>
-        </div>
 
-        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-[12px] font-black text-[#0F172A]">Branch Shift Monitor</p>
-              <p className="mt-1 text-[11px] text-[#64748B]">
-                Active shift owner and opening time for each terminal in this branch.
-              </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-operating-terminal" className="block text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
+              Branch Terminal
+            </Label>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <PosDropdownSelect
+                id="admin-operating-terminal"
+                ariaLabel="Branch Terminal"
+                value={selectedAdminTerminalId}
+                onChange={setRequestedAdminTerminalId}
+                disabled={adminTerminalSwitching || !isOnline || locationTerminals.length === 0}
+                placeholder="Select an available terminal"
+                listboxLabel="Branch Terminal options"
+                options={locationTerminals.map((entry) => {
+                  const terminalId = String(entry?.terminal_id || '').trim();
+                  const occupiedShift = openTerminalShiftById.get(terminalId);
+                  const ownedByCurrentUser = isShiftOwnedByUserId(occupiedShift, operatorUserId);
+                  const cashier = occupiedShift?.cashier?.username
+                    || occupiedShift?.cashier?.email
+                    || (occupiedShift?.cashier_id ? `Cashier #${occupiedShift.cashier_id}` : 'cashier');
+                  const occupancyLabel = occupiedShift
+                    ? (
+                      ownedByCurrentUser
+                        ? `Your active shift since ${parseIsoDateTime(occupiedShift.opened_at)}`
+                        : `In use by ${cashier} since ${parseIsoDateTime(occupiedShift.opened_at)}`
+                    )
+                    : 'Available';
+                  return {
+                    value: terminalId,
+                    label: `${entry?.label ? `${entry.label} (${terminalId})` : terminalId} - ${occupancyLabel}`,
+                    disabled: Boolean(occupiedShift) && !ownedByCurrentUser
+                  };
+                })}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className={`min-h-11 w-full rounded-lg px-4 text-[13px] font-extrabold sm:w-auto ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+                disabled={
+                  adminTerminalSwitching
+                  || !isOnline
+                  || !selectedAdminTerminalId
+                  || (Boolean(selectedTerminalShift) && !selectedTerminalShiftOwnedByCurrentUser)
+                  || (
+                    activeTerminalMatchesOperatingLocation
+                    && String(selectedAdminTerminalId) === String(activeTerminalId || '').trim()
+                  )
+                }
+                onClick={() => setPendingAdminTerminalId(selectedAdminTerminalId)}
+              >
+                <Monitor className="mr-2 h-4 w-4" aria-hidden="true" />
+                {adminTerminalSwitching ? 'Selecting Terminal...' : 'Use Selected Terminal'}
+              </Button>
             </div>
           </div>
-          {branchTerminalShifts.length === 0 ? (
-            <p className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
-              No active terminal shifts for this branch.
+
+          {locationTerminals.length === 0 ? (
+            <p className="text-[11px] text-amber-700">
+              No active terminal here. Add one in POS Setup.
+            </p>
+          ) : null}
+          {!activeTerminalMatchesOperatingLocation ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-4 text-amber-800">
+              Select and confirm a terminal in this branch before opening a shift.
             </p>
           ) : (
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {branchTerminalShifts.map((shift) => {
-                const shiftOwner = shift?.cashier?.username
-                  || shift?.cashier?.email
-                  || (shift?.cashier_id ? `Operator #${shift.cashier_id}` : 'Unknown operator');
-                const staleStatus = shift?.stale_recovery || {};
-                const ageMinutes = Number(staleStatus?.age_minutes || 0);
-                const ageHours = Number.isFinite(ageMinutes) ? Math.floor(ageMinutes / 60) : 0;
-                return (
-                  <div
-                    key={`admin-branch-shift-${shift.pos_terminal_shift_id}`}
-                    className={`rounded-lg border bg-white p-3 ${
-                      staleStatus?.is_stale ? 'border-amber-300' : 'border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-[12px] font-black text-[#0F172A]">
-                          {shift.terminal_id || `Shift #${shift.pos_terminal_shift_id}`}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-600">Opened by {shiftOwner}</p>
-                      </div>
-                      <span className={`rounded-md border px-2 py-1 text-[10px] font-extrabold ${
-                        staleStatus?.is_stale
-                          ? 'border-amber-200 bg-amber-50 text-amber-800'
-                          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                      }`}>
-                        {staleStatus?.is_stale ? 'Stale' : 'Active'}
-                      </span>
-                    </div>
-                    <div className="mt-2 space-y-1 text-[11px] text-slate-600">
-                      <p>Opened: {parseIsoDateTime(shift.opened_at)}</p>
-                      <p>Shift ID: #{shift.pos_terminal_shift_id}</p>
-                      {staleStatus?.is_stale ? <p>Open for approximately {ageHours} hour(s)</p> : null}
-                    </div>
-                    {canRecoverStaleShifts && staleStatus?.is_stale ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-3 h-9 w-full rounded-lg border-amber-300 bg-amber-50 px-3 text-[12px] font-extrabold text-amber-900 hover:bg-amber-100"
-                        onClick={() => openStaleRecoveryDialog(shift)}
-                        disabled={!isOnline || shiftActionLoading?.staleRecovery}
-                      >
-                        <AlertTriangle className="mr-2 h-3.5 w-3.5" />
-                        Recover Stale Shift
-                      </Button>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
+              Current terminal: {String(activeTerminalId || '').trim() || 'Not selected'}
+            </p>
           )}
-        </div>
+        </section>
+          </>
+        ) : null}
 
-        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-[12px] font-black text-[#0F172A]">Branch Order Monitor</p>
-              <p className="mt-1 text-[11px] text-[#64748B]">Read-only active online orders for the selected branch.</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 rounded-lg border-slate-300 bg-white px-3 text-[12px] font-extrabold text-[#0F172A] hover:bg-slate-100"
-              onClick={() => refreshAdminLocationMonitor?.()}
-              disabled={adminLocationMonitorState?.loading || !isOnline}
-            >
-              <RefreshCcw className="mr-2 h-3.5 w-3.5" />
-              {adminLocationMonitorState?.loading ? 'Refreshing...' : 'Refresh'}
-            </Button>
-          </div>
-          {adminLocationMonitorState?.errorMessage ? (
-            <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
-              {adminLocationMonitorState.errorMessage}
-            </p>
-          ) : adminLocationMonitorState?.loading && branchMonitorOrders.length === 0 ? (
-            <p className="mt-3 text-[11px] text-slate-500">Loading branch orders...</p>
-          ) : branchMonitorOrders.length === 0 ? (
-            <p className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
-              No active online orders for this branch.
-            </p>
-          ) : (
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {branchMonitorOrders.map((order) => (
-                <div
-                  key={`admin-branch-order-${order.pos_transaction_id}`}
-                  className="rounded-lg border border-slate-200 bg-white p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-[12px] font-black text-[#0F172A]">
-                        {order.customer_name || 'Guest Buyer'}
-                      </p>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {order.tracking_pin || `Order #${order.pos_transaction_id}`}
-                      </p>
-                    </div>
-                    <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
-                      {String(order.fulfillment_status || 'placed').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
-                    <span>{String(order.order_method || '-').replace(/_/g, ' ')}</span>
-                    <span className="text-right">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
-                    <span className="col-span-2">{parseIsoDateTime(order.created_at)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {section === 'shift_monitor' ? (
+          <AdminBranchShiftMonitor
+            shifts={branchTerminalShifts}
+            loading={adminLocationMonitorState?.loading}
+            errorMessage={adminLocationMonitorState?.errorMessage}
+            canRecoverStaleShifts={canRecoverStaleShifts}
+            isOnline={isOnline}
+            recoveryLoading={shiftActionLoading?.staleRecovery}
+            onRecoverShift={openStaleRecoveryDialog}
+            formatDateTime={parseIsoDateTime}
+            refreshAction={refreshAction}
+          />
+        ) : null}
+
+        {section === 'orders' ? (
+          <AdminBranchOrdersMonitor
+            orders={branchMonitorOrders}
+            branchName={branchMonitorLocationName}
+            loading={adminLocationMonitorState?.loading}
+            errorMessage={adminLocationMonitorState?.errorMessage}
+            formatDateTime={parseIsoDateTime}
+            refreshAction={refreshAction}
+          />
+        ) : null}
       </>
     );
   };
@@ -1068,6 +941,12 @@ function ShiftControlsWorkspace({
     const branchLocations = Array.isArray(branchDirectoryState?.locations)
       ? branchDirectoryState.locations
       : [];
+    const branchViewMonitorRefreshing = Boolean(
+      branchViewLocationId
+      && Number(adminLocationMonitorState?.locationId || 0) === Number(branchViewLocationId)
+      && adminLocationMonitorState?.loading
+    );
+    const isRefreshing = Boolean(branchDirectoryState?.loading || branchViewMonitorRefreshing);
     const branchViewOrders = branchViewLocationId
       ? branchMonitorOrders.slice(0, 6)
       : [];
@@ -1075,46 +954,39 @@ function ShiftControlsWorkspace({
     return (
       <section
         data-testid="pos-branch-directory"
-        className={compact ? 'mt-4' : 'mt-4 rounded-xl border border-blue-100 bg-blue-50/30 p-3'}
+        className={compact ? 'mt-4' : (branchViewLocationId ? 'space-y-3' : 'mt-4 rounded-xl border border-blue-100 bg-blue-50/30 p-3')}
       >
         {!compact ? (
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-start gap-2.5">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-[#1A4E8D]">
                 <MapPinned className="h-4.5 w-4.5" aria-hidden="true" />
               </div>
               <div className="min-w-0">
                 <p className="text-[13px] font-black text-[#0F172A]">Locations</p>
                 <p className="mt-1 text-[11px] leading-4 text-[#475569]">
-                  View authorized branches and their current cashier/terminal occupancy. Branch viewing is read-only.
+                  Authorized branches · View-only.
                 </p>
               </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 rounded-lg border-blue-200 bg-white px-3 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
-              onClick={() => refreshBranchDirectory?.()}
-              disabled={branchDirectoryState?.loading || !isOnline}
-            >
-              <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
-              {branchDirectoryState?.loading ? 'Refreshing...' : 'Refresh'}
-            </Button>
+            <PosShiftRefreshButton
+              label="Refresh branch locations"
+              onClick={() => {
+                void refreshBranchDirectory?.();
+                if (branchViewLocationId) void refreshAdminLocationMonitor?.({ silent: false });
+              }}
+              disabled={isRefreshing || !isOnline}
+              loading={isRefreshing}
+            />
           </div>
         ) : null}
 
         {branchDirectoryState?.errorMessage ? (
-          <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
-            {branchDirectoryState.errorMessage}
-          </p>
+          <PosShiftStateNotice variant="error" message={branchDirectoryState.errorMessage} compact className="mt-3" />
         ) : branchDirectoryState?.loading && branchLocations.length === 0 ? (
-          <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-500">
-            Loading branch availability...
-          </p>
+          <PosShiftStateNotice variant="loading" message="Loading branches…" compact className="mt-3" />
         ) : branchLocations.length === 0 ? (
-          <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
-            No authorized active branches are available for this account.
-          </p>
+          <PosShiftStateNotice variant="empty" message="No authorized branches available." compact className="mt-3" />
         ) : (
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             {branchLocations.map((location) => {
@@ -1130,7 +1002,7 @@ function ShiftControlsWorkspace({
               return (
                 <article
                   key={`pos-branch-directory-${locationId}`}
-                  className={`rounded-lg border bg-white p-3 ${isViewing ? 'border-[#1A4E8D] ring-1 ring-blue-100' : 'border-slate-200'}`}
+                  className={`rounded-xl border bg-white p-3 sm:p-3.5 ${isViewing ? 'border-blue-300 shadow-sm shadow-blue-100/70' : 'border-slate-200'}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -1140,10 +1012,10 @@ function ShiftControlsWorkspace({
                         {' · '}{location.is_open === false ? 'Closed' : 'Open'}
                       </p>
                     </div>
-                    <span className={`rounded-md border px-2 py-1 text-[10px] font-extrabold ${
+                    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-extrabold ${
                       isViewing
-                        ? 'border-blue-200 bg-blue-50 text-[#1A4E8D]'
-                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                        ? 'border-blue-200 bg-blue-700 text-white'
+                        : 'border-slate-200 bg-slate-50 text-slate-700'
                     }`}>
                       {isViewing ? 'Viewing' : 'Authorized'}
                     </span>
@@ -1151,8 +1023,8 @@ function ShiftControlsWorkspace({
 
                   <div className="mt-3 space-y-2">
                     {terminals.length === 0 ? (
-                      <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-                        No active terminal is registered at this branch.
+                      <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-[11px] text-amber-800">
+                        No active terminal here.
                       </p>
                     ) : terminals.map((terminal) => {
                       const shiftOwner = terminal?.shift?.cashier?.display_name || 'No shift owner';
@@ -1164,8 +1036,11 @@ function ShiftControlsWorkspace({
                         ? 'Stale'
                         : (terminal.status === 'occupied' ? 'In use' : 'Available');
                       return (
-                        <div key={`${locationId}-${terminal.terminal_id}`} className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
-                          <div className="flex items-start justify-between gap-2">
+                        <div key={`${locationId}-${terminal.terminal_id}`} className="flex items-start justify-between gap-3 rounded-lg bg-[#F1F2FF] px-3 py-2.5">
+                          <div className="flex min-w-0 items-start gap-2.5">
+                            <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/80 text-[#1A4E8D]" aria-hidden="true">
+                              <Monitor className="h-3.5 w-3.5" />
+                            </span>
                             <div className="min-w-0">
                               <p className="truncate text-[11px] font-black text-[#0F172A]">
                                 {terminal.label || terminal.terminal_id}
@@ -1175,60 +1050,71 @@ function ShiftControlsWorkspace({
                               </p>
                               {currentOperator ? (
                                 <p className={`mt-0.5 truncate text-[10px] ${terminal?.current_operator_status === 'unavailable' ? 'text-amber-700' : 'text-slate-600'}`}>
-                                  Current operator: {currentOperator}
+                                  Operator: {currentOperator}
+                                </p>
+                              ) : null}
+                              {terminal.reason_code ? (
+                                <p className="mt-0.5 text-[10px] text-slate-500">
+                                  {String(terminal.reason_code).replace(/^POS_/, '').replace(/_/g, ' ').toLowerCase()}
                                 </p>
                               ) : null}
                             </div>
-                            <span className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-extrabold ${
-                              terminal.status === 'stale'
-                                ? 'bg-amber-100 text-amber-900'
-                                : (terminal.status === 'occupied'
-                                  ? 'bg-amber-50 text-amber-800'
-                                  : 'bg-emerald-50 text-emerald-700')
-                            }`}>
-                              {terminalStatus}
-                            </span>
                           </div>
-                          {terminal.reason_code ? (
-                            <p className="mt-1 text-[10px] text-slate-500">
-                              {String(terminal.reason_code).replace(/^POS_/, '').replace(/_/g, ' ').toLowerCase()}
-                            </p>
-                          ) : null}
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-extrabold ${
+                            terminal.status === 'stale'
+                              ? 'bg-rose-100 text-rose-800'
+                              : (terminal.status === 'occupied'
+                                ? 'bg-amber-100 text-amber-900'
+                                : 'bg-emerald-100 text-emerald-800')
+                          }`}>
+                            {terminalStatus}
+                          </span>
                         </div>
                       );
                     })}
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 rounded-lg border-blue-200 bg-white px-3 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
-                      onClick={() => onViewBranch?.({ locationId })}
-                      disabled={!location.can_view || !isOnline}
-                      data-testid={`pos-view-branch-${locationId}`}
-                    >
-                      <Eye className="mr-1.5 h-3.5 w-3.5" />
-                      {isViewing ? 'Viewing Branch' : 'View Branch'}
-                    </Button>
-                    {location.can_open && canOpenShift && firstAvailableTerminal && canUseCurrentTerminal && !activeShift ? (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {isViewing ? (
+                      <span
+                        className={`inline-flex min-h-10 w-full items-center justify-center rounded-lg px-3 text-xs font-extrabold ${POS_SHIFT_PRIMARY_BUTTON_CLASS}`}
+                        aria-current="location"
+                        data-testid={`pos-view-branch-${locationId}`}
+                      >
+                        <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                        Viewing this branch
+                      </span>
+                    ) : (
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-9 rounded-lg border-emerald-200 bg-emerald-50 px-3 text-[11px] font-extrabold text-emerald-800 hover:bg-emerald-100"
+                        className={`h-10 w-full justify-center rounded-lg px-3 text-xs font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+                        onClick={() => onViewBranch?.({ locationId })}
+                        disabled={!location.can_view || !isOnline}
+                        data-testid={`pos-view-branch-${locationId}`}
+                      >
+                        <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                        View Branch
+                      </Button>
+                    )}
+                    {location.can_open && canOpenShift && firstAvailableTerminal && canUseCurrentTerminal && !activeShift ? (
+                      <Button
+                        type="button"
+                        className={`h-10 w-full justify-center rounded-lg px-3 text-xs font-extrabold ${POS_SHIFT_PRIMARY_BUTTON_CLASS}`}
                         onClick={async () => {
                           if (branchViewLocationId) await onExitBranchView?.({ returnMode: 'shift_controls' });
                           setOperatingLocationId(locationId);
                           setViewingLocationId(null);
                           setRequestedAdminTerminalId(String(firstAvailableTerminal.terminal_id || '').trim());
+                          handleTabChange('close_shift');
                         }}
                         data-testid={`pos-prepare-open-shift-${locationId}`}
                       >
-                        <Monitor className="mr-1.5 h-3.5 w-3.5" />
+                        <Monitor className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                         Open Shift
                       </Button>
                     ) : location.can_open && canOpenShift && firstAvailableTerminal && !activeShift ? (
-                      <p className="w-full rounded-md border border-blue-100 bg-blue-50 px-2.5 py-2 text-[10px] leading-4 text-blue-800">
+                      <p className="w-full rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 text-[10px] leading-4 text-blue-800">
                         Select terminal {firstAvailableTerminal.label || firstAvailableTerminal.terminal_id} in Terminal Setup before opening this branch.
                       </p>
                     ) : null}
@@ -1240,216 +1126,416 @@ function ShiftControlsWorkspace({
         )}
 
         {branchViewLocationId ? (
-          <div className="mt-3 rounded-lg border border-blue-200 bg-white p-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="text-[12px] font-black text-[#0F172A]">Read-only branch view</p>
-                <p className="mt-1 text-[11px] leading-4 text-slate-600">
-                  Selling, checkout, shift takeover, cash movement, and settings changes are disabled while viewing this branch.
-                </p>
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"
+            aria-busy={branchMonitorLoading || undefined}
+            aria-labelledby="pos-branch-view-orders-heading"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-[#1A4E8D]" aria-hidden="true">
+                  <ClipboardList className="h-4 w-4" />
+                </span>
+                <h3 id="pos-branch-view-orders-heading" className="text-xs font-black text-slate-800">Active online orders</h3>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-9 rounded-lg border-slate-300 bg-white px-3 text-[11px] font-extrabold text-slate-700 hover:bg-slate-50"
-                onClick={() => onExitBranchView?.()}
-              >
-                Exit Branch View
-              </Button>
+              {!branchMonitorLoading && !branchMonitorErrorMessage ? (
+                <span className="shrink-0 text-xs font-semibold text-slate-500">
+                  {branchMonitorOrders.length} active
+                </span>
+              ) : null}
             </div>
-            <div className="mt-3 border-t border-slate-200 pt-3">
-              <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Active online orders</p>
-              {branchMonitorOrders.length === 0 ? (
-                <p className="mt-2 text-[11px] text-slate-600">No active online orders for this branch.</p>
-              ) : (
-                <div className="mt-2 space-y-1.5">
-                  {branchViewOrders.map((order) => (
-                    <div key={`branch-view-order-${order.pos_transaction_id}`} className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2.5 py-2 text-[11px]">
-                      <span className="truncate font-semibold text-slate-700">{order.customer_name || 'Guest Buyer'}</span>
-                      <span className="shrink-0 text-slate-500">{String(order.fulfillment_status || 'placed').replace(/_/g, ' ')}</span>
+            {!branchMonitorErrorMessage && branchMonitorLoading && branchMonitorOrders.length > 0 ? (
+              <PosShiftStateNotice variant="loading" message="Refreshing orders…" compact className="mt-3" />
+            ) : null}
+            {branchMonitorErrorMessage ? (
+              <PosShiftStateNotice
+                variant="error"
+                title={branchMonitorOrders.length > 0 ? 'Refresh failed — showing last results' : ''}
+                message={branchMonitorErrorMessage}
+                actionLabel="Try again"
+                onAction={() => void refreshAdminLocationMonitor?.({ silent: false })}
+                actionDisabled={!isOnline || locked}
+                compact
+                className="mt-3"
+              />
+            ) : branchMonitorLoading && branchMonitorOrders.length === 0 ? (
+              <PosShiftStateNotice variant="loading" message="Loading orders…" compact className="mt-3" />
+            ) : branchMonitorOrders.length === 0 ? (
+              <PosShiftStateNotice variant="empty" message="No active online orders." compact className="mt-3" />
+            ) : (
+              <div className="mt-3 space-y-2">
+                {branchViewOrders.map((order) => (
+                  <div key={`branch-view-order-${order.pos_transaction_id}`} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 sm:px-4">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D]" aria-hidden="true">
+                        <UserRound className="h-4 w-4" />
+                      </span>
+                      <span className="truncate text-xs font-bold text-slate-800">{order.customer_name || 'Guest Buyer'}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                    <span className="shrink-0 rounded-full bg-slate-200/70 px-2.5 py-1 text-[10px] font-bold capitalize text-slate-700">
+                      {String(order.fulfillment_status || 'placed').replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         ) : null}
       </section>
     );
   };
 
+  const renderOpeningShiftControls = () => (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="shift-opening-float-amount" className="text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
+          Opening Float ({terminalMeta.pettyCashSymbol})
+        </Label>
+        <div className="relative">
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-bold text-slate-400" aria-hidden="true">
+            {terminalMeta.pettyCashSymbol}
+          </span>
+          <Input
+            id="shift-opening-float-amount"
+            className="h-11 rounded-lg border-slate-200 bg-[#F1F2FF] pl-14 text-[15px] font-extrabold tabular-nums text-[#0F172A] placeholder:text-slate-500 focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
+            type="number"
+            min="0"
+            step="0.01"
+            required
+            value={openShiftForm.openingFloatAmount}
+            onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
+            placeholder="0.00"
+          />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="shift-opening-note" className="text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
+          Opening Note (Optional)
+        </Label>
+        <Input
+          id="shift-opening-note"
+          className="h-11 rounded-lg border-slate-200 bg-[#F1F2FF] text-[13px] font-medium text-[#0F172A] placeholder:text-slate-500 focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
+          value={openShiftForm.openingNote}
+          onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
+          placeholder="Opening shift cash note"
+        />
+      </div>
+      <Button
+        type="button"
+        className={`h-11 w-full rounded-lg px-5 text-[13px] font-extrabold sm:w-auto ${POS_SHIFT_PRIMARY_BUTTON_CLASS}`}
+        onClick={handleOpenShift}
+        disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
+        aria-busy={shiftActionLoading.open || undefined}
+      >
+        <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
+        {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
+      </Button>
+      {!canRenderAdminShiftOpen && canAdminBypassShiftPrompt ? (
+        <p className="text-[11px] text-slate-500">Admin view only. POS transact permission is required to open a shift.</p>
+      ) : !canRenderAdminShiftOpen ? (
+        <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
+      ) : null}
+      {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation ? (
+        <p className="text-[11px] text-amber-700">Confirm a terminal in this branch to open a shift.</p>
+      ) : null}
+      {!isOnline ? <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p> : null}
+    </div>
+  );
+
+  const renderOpeningShiftPanel = ({ canOpen = true, blockingMessage = null, testId } = {}) => (
+    <section
+      aria-labelledby="pos-open-shift-form-heading"
+      data-testid={testId || 'pos-open-shift-form'}
+      className="min-w-0 border-t border-slate-200 pt-5"
+    >
+      <h3 id="pos-open-shift-form-heading" className="sr-only">Start Shift</h3>
+      {canOpen ? renderOpeningShiftControls() : (
+        <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
+          {blockingMessage}
+        </p>
+      )}
+    </section>
+  );
+
+  const refreshAdminShiftLocationData = (tab = adminShiftLocationTab) => {
+    if (tab === 'terminals') {
+      void refreshBranchDirectory?.();
+      if (!locked) void refreshOperationalContext?.();
+      return;
+    }
+    void refreshAdminLocationMonitor?.();
+  };
+
+  const renderAdminShiftLocationTabs = (branchTerminalsContent) => {
+    const isTerminalsTab = adminShiftLocationTab === 'terminals';
+    const refreshLoading = isTerminalsTab
+      ? Boolean(branchDirectoryState?.loading || (!locked && shiftState?.loading))
+      : Boolean(adminLocationMonitorState?.loading);
+    const refreshAction = (
+      <PosShiftRefreshButton
+        label={isTerminalsTab ? 'Refresh terminal and shift data' : 'Refresh branch activity'}
+        dataTestId="pos-admin-shift-location-refresh"
+        onClick={() => refreshAdminShiftLocationData(adminShiftLocationTab)}
+        disabled={!isOnline}
+        loading={refreshLoading}
+      />
+    );
+    const activeContent = adminShiftLocationTab === 'terminals'
+      ? branchTerminalsContent
+      : adminShiftLocationTab === 'orders'
+        ? renderAdminBranchContext('orders', refreshAction)
+        : renderAdminBranchContext('shift_monitor', refreshAction);
+    return (
+      <div className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}>
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="min-w-0">
+            <PosSubtabNavigation
+              tabs={ADMIN_SHIFT_LOCATION_TABS}
+              activeTab={adminShiftLocationTab}
+              onTabChange={setAdminShiftLocationTab}
+              ariaLabel="Admin shift location sections"
+              idPrefix="pos-admin-shift-location"
+              panelId="pos-admin-shift-location-panel"
+              desktopColumns={3}
+              mobileGridColumns={3}
+              compactMobile
+            />
+          </div>
+          {isTerminalsTab && !canViewBranchLocations ? (
+            <div className="flex justify-end">
+              {refreshAction}
+            </div>
+          ) : null}
+        </div>
+        <section
+          id="pos-admin-shift-location-panel"
+          role="tabpanel"
+          aria-labelledby={`pos-admin-shift-location-${adminShiftLocationTab}`}
+          tabIndex={0}
+          data-testid="pos-admin-shift-location-tabpanel"
+          className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]"
+        >
+          {activeContent}
+        </section>
+      </div>
+    );
+  };
+
   const renderShiftLocationPane = () => {
     if (branchViewLocationId) {
+      if (branchViewTransitionLoading) {
+        return (
+          <div
+            className="min-w-0 rounded-xl bg-[#F7F7FF] p-3 sm:p-4"
+            data-testid="pos-branch-view-loading"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="flex items-center gap-2.5 text-sm font-extrabold text-[#1A4E8D]">
+              <RefreshCcw className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              Loading branch view…
+            </div>
+            <div aria-hidden="true" className="mt-4 grid gap-3 md:grid-cols-2">
+              {[0, 1].map((placeholder) => (
+                <div key={`branch-view-skeleton-${placeholder}`} className="rounded-xl border border-slate-200 bg-white p-3.5">
+                  <div className="h-4 w-2/5 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
+                  <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
+                  <div className="mt-4 h-12 animate-pulse rounded-lg bg-[#F1F2FF] motion-reduce:animate-none" />
+                  <div className="mt-3 h-10 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />
+                </div>
+              ))}
+            </div>
+            <div aria-hidden="true" className="mt-3 h-14 animate-pulse rounded-xl bg-white motion-reduce:animate-none" />
+          </div>
+        );
+      }
+
       return (
-        <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm shadow-blue-100/70">
+        <div className="min-w-0">
           {renderBranchDirectory()}
         </div>
       );
     }
     if (!activeShift) {
+      const closedShiftNotice = shiftState?.loading ? (
+        <PosShiftStateNotice variant="loading" message="Checking current shift status..." compact />
+      ) : shiftState?.errorMessage ? (
+        <PosShiftStateNotice
+          variant="error"
+          title="Shift status is unavailable"
+          message={shiftState.errorMessage}
+          actionLabel="Try again"
+          onAction={() => void refreshOperationalContext()}
+          actionDisabled={locked || !isOnline}
+          compact
+        />
+      ) : (
+        <PosShiftStateNotice
+          variant="warning"
+          message="No shift open. Open one to use the POS."
+          compact
+        />
+      );
+
+      if (canAdminBypassShiftPrompt) {
+        const operatingBranchLabel = activeLocations.find(
+          (location) => Number(location?.location_id || 0) === Number(operatingLocationId || 0)
+        )?.name || 'Unassigned';
+
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 flex-1">{closedShiftNotice}</div>
+              <Button
+                type="button"
+                variant="outline"
+                className={`h-10 shrink-0 rounded-lg px-4 text-[13px] font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+                onClick={() => handleTabChange('close_shift')}
+              >
+                Go to Shift Session
+              </Button>
+            </div>
+            {renderAdminShiftLocationTabs(
+              canViewBranchLocations ? (
+            <AdminOpenShiftOverview
+                  activeShift={null}
+                  initialLocationId={operatingLocationId}
+                  showOpenShiftSummary={false}
+                  branchLabel={operatingBranchLabel}
+                  branchDirectoryState={branchDirectoryState}
+                  canViewBranchLocations={canViewBranchLocations}
+                  isOnline={isOnline}
+                  refreshLoading={shiftState?.loading}
+                  onRefreshShiftData={refreshOperationalContext}
+                  onRefreshBranchTerminals={() => refreshAdminShiftLocationData('terminals')}
+                  onViewBranch={onViewBranch}
+                  formatDateTime={parseIsoDateTime}
+                />
+              ) : (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+                  Branch monitoring isn’t available for this account.
+                </p>
+              )
+            )}
+          </div>
+        );
+      }
+
       return (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-            Shift Closed. Please open your shift before using the POS.
-          </p>
-          {renderBranchDirectory()}
-          {renderAdminBranchContext()}
-          <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-              value={openShiftForm.openingFloatAmount}
-              onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
-              placeholder="0.00"
-            />
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Note (Optional)</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={openShiftForm.openingNote}
-              onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
-              placeholder="Opening shift cash note"
-            />
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">{closedShiftNotice}</div>
             <Button
               type="button"
-              className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
-              onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
+              variant="outline"
+              className={`h-10 shrink-0 rounded-lg px-4 text-[13px] font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+              onClick={() => handleTabChange('close_shift')}
             >
-              {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
+              Go to Shift Session
             </Button>
-            {!canRenderAdminShiftOpen && canAdminBypassShiftPrompt ? (
-              <p className="text-[11px] text-slate-500">Administrator navigation is read-only. A cashier must open the shift.</p>
-            ) : !canRenderAdminShiftOpen ? (
-              <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
-            ) : null}
-            {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
-              <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
-            )}
-            {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
+          {renderBranchDirectory()}
         </div>
       );
     }
 
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <div className="flex items-start gap-3">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-50 text-[#2563EB]">
-            <MapPinned className="h-4.5 w-4.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            {renderBranchDirectory({ compact: true })}
-            <p className="text-[13px] font-black text-[#0F172A]">Shift Location</p>
-            <p className="mt-1 text-[12px] leading-5 text-[#475569]">
-              Current location used by catalog, checkout, and dashboard for this terminal.
-            </p>
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Current Shift Location</p>
-              <p className="mt-1 text-[13px] font-extrabold text-[#0F172A]">{shiftLocationLabel}</p>
-            </div>
+    const showAdminOpenShiftOverview = canAdminBypassShiftPrompt;
 
-            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 md:hidden">
-              <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                {summaryRows.map((row) => (
-                  <div key={`shift-summary-mobile-${row.label}`} className="flex flex-col gap-0.5">
-                    <span className="text-[12px] font-medium text-[#5B6B86]">{row.label}</span>
-                    <span className={`${row.valueClassName} break-words leading-6`}>{row.value}</span>
+    const activeShiftLocationContent = (
+      <>
+        {showAdminOpenShiftOverview ? (
+          <AdminOpenShiftOverview
+            activeShift={activeShift}
+            showOpenShiftSummary={false}
+            branchLabel={shiftLocationLabel}
+            branchDirectoryState={branchDirectoryState}
+            canViewBranchLocations={canViewBranchLocations}
+            isOnline={isOnline}
+            locked={locked}
+            shiftActionLoading={shiftActionLoading}
+            refreshLoading={shiftState?.loading}
+            onViewShiftSummary={handleViewShiftSummary}
+            onRefreshShiftData={refreshOperationalContext}
+            onRefreshBranchTerminals={() => refreshAdminShiftLocationData('terminals')}
+            onViewBranch={onViewBranch}
+            formatDateTime={parseIsoDateTime}
+          />
+        ) : null}
+        <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 ${showAdminOpenShiftOverview ? 'mt-6' : ''}`}>
+          <div className={showAdminOpenShiftOverview ? 'min-w-0' : 'flex items-start gap-3'}>
+            {!showAdminOpenShiftOverview ? (
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-50 text-[#2563EB]">
+                <MapPinned className="h-4.5 w-4.5" />
+              </div>
+            ) : null}
+            <div className="min-w-0 flex-1">
+              {showAdminOpenShiftOverview ? (
+                <div>
+                  <h2 className="text-base font-black text-[#0F172A]">Shift Management</h2>
+                </div>
+              ) : (
+                <>
+                  {renderBranchDirectory({ compact: true })}
+                  <p className="text-[13px] font-black text-[#0F172A]">Shift Location</p>
+                  <p className="mt-1 text-[12px] leading-5 text-[#475569]">
+                    Used for catalog, checkout, and dashboard.
+                  </p>
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Current Shift Location</p>
+                    <p className="mt-1 text-[13px] font-extrabold text-[#0F172A]">{shiftLocationLabel}</p>
                   </div>
-                ))}
-              </div>
-            </div>
+                </>
+              )}
 
-            <div className="mt-4 hidden border-t border-slate-200 pt-4 md:block">
-              <div className="grid gap-0 md:grid-cols-2">
-                <div className="space-y-0 md:border-r md:border-slate-200 md:pr-4">
-                  {summaryRows.slice(0, 4).map((row, index) => {
-                    const RowIcon = row.icon;
-                    return (
-                      <div key={`shift-summary-left-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 3 ? 'border-b border-slate-100' : ''}`}>
-                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
-                          <RowIcon className="h-4.5 w-4.5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-medium text-[#5B6B86]">{row.label}</p>
-                          <p className={`${row.valueClassName} mt-0.5 break-words leading-6`}>{row.value}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="space-y-0 md:pl-4">
-                  {summaryRows.slice(4).map((row, index) => {
-                    const RowIcon = row.icon;
-                    return (
-                      <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 3 ? 'border-b border-slate-100' : ''}`}>
-                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
-                          <RowIcon className="h-4.5 w-4.5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-medium text-[#5B6B86]">{row.label}</p>
-                          <p className={`${row.valueClassName} mt-0.5 break-words leading-6`}>{row.value}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 border-t border-slate-200 pt-4">
-              <p className="text-[12px] font-black text-[#0F172A]">Change Active Shift Location</p>
+              <div className="mt-4 border-t border-slate-200 pt-4">
+              <p className="text-[12px] font-black text-[#0F172A]">Change Shift Location</p>
               <p className="mt-1 text-[12px] leading-5 text-[#475569]">
-                Close this drawer with a counted cash amount, then open the replacement shift at an authorized terminal with an explicit opening float.
+                Count and close this drawer, then open a shift at the new terminal.
               </p>
               {canSwitchPosLocation ? (
                 <>
                   <Label htmlFor="pos-switch-target-location" className="mt-3 block text-[12px] font-black text-[#0F172A]">New Shift Location</Label>
-                  <select
+                  <PosDropdownSelect
                     id="pos-switch-target-location"
-                    className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                    aria-label="New Shift Location"
+                    ariaLabel="New Shift Location"
+                    className="mt-2"
                     value={switchTargetLocationId}
                     disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
-                    onChange={(event) => {
-                      setSwitchTargetLocationId(event.target.value || '');
+                    onChange={(nextValue) => {
+                      setSwitchTargetLocationId(nextValue || '');
                       setSwitchTargetTerminalId('');
                       setSwitchOpeningFloatAmount('');
                       setSwitchConflict(null);
                     }}
-                  >
-                    <option value="">Select a target location</option>
-                    {activeLocations.map((location) => (
-                      <option key={`switch-location-${location.location_id}`} value={location.location_id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Select a target location"
+                    listboxLabel="New Shift Location options"
+                    options={activeLocations.map((location) => ({
+                      value: location.location_id,
+                      label: location.name
+                    }))}
+                  />
                   <Label htmlFor="pos-switch-target-terminal" className="mt-3 block text-[12px] font-black text-[#0F172A]">Destination Terminal</Label>
-                  <select
+                  <PosDropdownSelect
                     id="pos-switch-target-terminal"
-                    aria-label="Destination Terminal"
-                    className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                    ariaLabel="Destination Terminal"
+                    className="mt-2"
                     value={switchTargetTerminalId}
                     disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation || !switchTargetLocationId}
-                    onChange={(event) => {
-                      setSwitchTargetTerminalId(event.target.value);
+                    onChange={(nextValue) => {
+                      setSwitchTargetTerminalId(nextValue);
                       setSwitchConflict(null);
                     }}
-                  >
-                    <option value="">Select an active destination terminal</option>
-                    {switchLocationTerminals.map((entry) => {
+                    placeholder="Select an active destination terminal"
+                    listboxLabel="Destination Terminal options"
+                    options={switchLocationTerminals.map((entry) => {
                       const terminalId = String(entry?.terminal_id || '').trim();
-                      return (
-                        <option key={`switch-terminal-${terminalId}`} value={terminalId}>
-                          {entry?.label ? `${entry.label} (${terminalId})` : terminalId}
-                        </option>
-                      );
+                      return {
+                        value: terminalId,
+                        label: entry?.label ? `${entry.label} (${terminalId})` : terminalId
+                      };
                     })}
-                  </select>
+                  />
                   {switchTargetLocationId && switchLocationTerminals.length === 0 ? (
                     <p className="mt-2 text-[11px] text-amber-700">
                       No active terminal is registered at this location.
@@ -1493,7 +1579,7 @@ function ShiftControlsWorkspace({
                   <Button
                     type="button"
                     variant="outline"
-                    className="mt-3 h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+                    className={`mt-3 h-10 rounded-lg px-4 text-[13px] font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
                     disabled={
                       locked
                       || !isOnline
@@ -1534,18 +1620,15 @@ function ShiftControlsWorkspace({
                         Requested: {switchTargetTerminal?.label || switchConflict.targetTerminalId || 'Destination terminal'} · {switchTargetLocation?.name || 'Destination branch'}
                       </p>
                       <p className="mt-2 font-semibold">No takeover, cash transfer, or automatic close was performed.</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-3 h-9 rounded-lg border-amber-300 bg-white px-3 text-[11px] font-extrabold text-amber-900 hover:bg-amber-100"
+                      <PosShiftRefreshButton
+                        label="Refresh shift and terminal availability"
+                        className="mt-3"
                         onClick={async () => {
                           await refreshOperationalContext?.();
                           await refreshAdminLocationMonitor?.();
                         }}
                         disabled={shiftActionLoading.switchLocation || !isOnline}
-                      >
-                        Refresh shift and terminal availability
-                      </Button>
+                      />
                     </div>
                   ) : null}
                 </>
@@ -1556,220 +1639,139 @@ function ShiftControlsWorkspace({
               )}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-              <div>
-                <p className="text-[12px] font-black text-[#0F172A]">Shift Actions</p>
-                <p className="mt-1 text-[12px] leading-5 text-[#475569]">
-                  Refresh the active shift context from this same card.
-                </p>
-              </div>
-              <Button
-                type="button"
-                onClick={refreshOperationalContext}
-                className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
-              >
-                <RefreshCcw className="mr-2 h-4 w-4" />
-                Refresh Shift Data
-              </Button>
-            </div>
-
           </div>
         </div>
-      </div>
+        </div>
+      </>
     );
+
+    if (!showAdminOpenShiftOverview) return activeShiftLocationContent;
+    return renderAdminShiftLocationTabs(activeShiftLocationContent);
   };
 
-  const renderCloseShiftPane = () => {
-    const dayCloseReadiness = dayCloseReadinessState?.readiness || null;
-    const dayCloseOpenShiftCount = Number(dayCloseReadiness?.open_shift_count || 0);
-    const dayCloseReady = !activeShift && dayCloseReadiness?.ready === true;
-    const dayCloseActionDisabled = shiftActionLoading.zReading
-      || dayCloseReadinessState?.loading
-      || locked
-      || !isOnline
-      || !activeTerminalMatchesOperatingLocation
-      || !dayCloseReady;
-    const closeDayAction = canCloseDay ? (
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <p className="text-[12px] font-black text-[#0F172A]">Day-end Z-reading</p>
-        <p className="mt-1 text-[12px] leading-5 text-[#475569]">
-          Closes the branch day report using financially recognized sales from all cashiers, then sends the Z-reading to the configured printer.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            data-testid="pos-close-day-button"
-            className="h-10 rounded-lg !bg-[#1A4E8D] px-4 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#143F73] disabled:!bg-slate-300 disabled:text-slate-600"
-            onClick={handleCloseDay}
-            disabled={dayCloseActionDisabled}
-          >
-            <Receipt className="mr-2 h-4 w-4" />
-            {shiftActionLoading.zReading
-              ? 'Closing Day...'
-              : (dayCloseReadiness?.already_closed ? 'Print Z-reading' : 'Close Day & Print Z-reading')}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            data-testid="pos-close-day-refresh"
-            className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-            onClick={() => void refreshDayCloseReadiness()}
-            disabled={dayCloseReadinessState?.loading || shiftActionLoading.zReading || locked || !isOnline || !activeTerminalMatchesOperatingLocation}
-          >
-            <RefreshCcw className={`mr-2 h-4 w-4 ${dayCloseReadinessState?.loading ? 'animate-spin' : ''}`} />
-            {dayCloseReadinessState?.loading ? 'Checking...' : 'Refresh Status'}
-          </Button>
-        </div>
-        <div className="mt-2" data-testid="pos-close-day-readiness">
-          {activeShift ? (
-            <p className="text-[11px] font-semibold text-amber-700">
-              Close this cashier shift before generating the branch Z-reading.
-            </p>
-          ) : dayCloseReadinessState?.loading ? (
-            <p className="text-[11px] text-slate-600">Checking whether every cashier shift is closed...</p>
-          ) : dayCloseReadinessState?.errorMessage ? (
-            <p className="text-[11px] text-rose-700">{dayCloseReadinessState.errorMessage}</p>
-          ) : dayCloseReadiness && !dayCloseReadiness.ready ? (
-            <div className="text-[11px] text-amber-700">
-              <p className="font-semibold">
-                Close every cashier shift in this branch before generating the Z-reading. {dayCloseOpenShiftCount} shift{dayCloseOpenShiftCount === 1 ? '' : 's'} remain open.
-              </p>
-              {Array.isArray(dayCloseReadiness.open_shifts) && dayCloseReadiness.open_shifts.length > 0 ? (
-                <ul className="mt-1 space-y-0.5 pl-4">
-                  {dayCloseReadiness.open_shifts.map((shift) => (
-                    <li key={shift.shift_id || `${shift.terminal_id}-${shift.cashier_name}`} className="list-disc">
-                      {shift.terminal_id || 'Terminal'} — {shift.cashier_name || 'Cashier'}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : dayCloseReady ? (
-            <p className="text-[11px] font-semibold text-emerald-700">
-              {dayCloseReadiness?.already_closed
-                ? 'The branch Z-reading is already generated and ready to print again.'
-                : 'All cashier shifts are closed. The branch Z-reading is ready to generate.'}
-            </p>
-          ) : (
-            <p className="text-[11px] text-slate-600">Check Day Close status before generating the Z-reading.</p>
-          )}
-        </div>
-        {!isOnline ? <p className="mt-2 text-[11px] text-amber-700">Reconnect before closing the day.</p> : null}
-      </div>
-    ) : null;
+  const renderShiftSessionPane = () => {
+    if (!activeShift && shiftState?.loading) {
+      return (
+        <section className="space-y-3 px-4 py-4 sm:px-5 sm:py-5" aria-labelledby="pos-shift-session-state-heading">
+          <h2 id="pos-shift-session-state-heading" className="text-sm font-black tracking-tight text-[#0F172A]">Shift Session</h2>
+          <PosShiftStateNotice variant="loading" message="Checking current shift…" />
+        </section>
+      );
+    }
+
+    if (!activeShift && shiftState?.errorMessage) {
+      return (
+        <section className="space-y-3 px-4 py-4 sm:px-5 sm:py-5" aria-labelledby="pos-shift-session-state-heading">
+          <h2 id="pos-shift-session-state-heading" className="text-sm font-black tracking-tight text-[#0F172A]">Shift Session</h2>
+          <PosShiftStateNotice
+            variant="error"
+            title="Shift status could not be loaded"
+            message={shiftState.errorMessage}
+            actionLabel="Try again"
+            onAction={() => void refreshOperationalContext()}
+            actionDisabled={locked || !isOnline}
+          />
+        </section>
+      );
+    }
 
     if (!activeShift) {
+      const adminCanOpenShiftInCurrentContext = canRenderAdminShiftOpen
+        && !locked
+        && isOnline
+        && activeTerminalMatchesOperatingLocation;
+      const adminTerminalNeedsConfirmation = canRenderAdminShiftOpen
+        && !locked
+        && isOnline
+        && !activeTerminalMatchesOperatingLocation;
+      const adminOpenShiftBlockingMessage = !canRenderAdminShiftOpen
+        ? 'Admin view only. POS transact permission is required to open a shift.'
+        : locked
+          ? 'Unlock the terminal before opening a shift.'
+          : !isOnline
+            ? 'Reconnect before opening a shift.'
+            : 'Select and confirm a terminal in this branch before opening a shift.';
+
       return (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-          <p className="text-[13px] font-black text-[#0F172A]">Open Shift</p>
-          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-            No active shift is open. Start a shift here before using cashier-only actions.
-          </p>
-          <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({terminalMeta.pettyCashSymbol})</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              type="number"
-              min="0"
-              step="0.01"
-              value={openShiftForm.openingFloatAmount}
-              onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
-              placeholder="0.00"
-            />
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Note (Optional)</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={openShiftForm.openingNote}
-              onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
-              placeholder="Opening shift cash note"
-            />
-            <Button
-              type="button"
-              className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
-              onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
-            >
-              {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
-            </Button>
-            {!canRenderAdminShiftOpen && canAdminBypassShiftPrompt ? (
-              <p className="text-[11px] text-slate-500">Administrator navigation is read-only. A cashier must open the shift.</p>
-            ) : !canRenderAdminShiftOpen ? (
-              <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
-            ) : null}
-            {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
-              <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
-            )}
-            {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
-          </div>
-          {closeDayAction}
-        </div>
+        <section
+          data-testid="pos-shift-session-empty"
+          aria-label="Shift session"
+          className="min-w-0 space-y-4"
+        >
+          <PosShiftStateNotice
+            variant="warning"
+            message="No shift open. Open one to use the POS."
+            compact
+          />
+          {canAdminBypassShiftPrompt ? renderAdminBranchContext('open_shift') : null}
+          {canAdminBypassShiftPrompt ? (
+            adminCanOpenShiftInCurrentContext
+              ? renderOpeningShiftPanel({ testId: 'pos-admin-open-shift-panel' })
+              : adminTerminalNeedsConfirmation
+                ? null
+                : <PosShiftStateNotice variant="warning" message={adminOpenShiftBlockingMessage} compact className="mt-3" />
+          ) : renderOpeningShiftPanel()}
+          <BranchDayClosePanel
+            layout="flat"
+            activeShift={activeShift}
+            canCloseDay={canCloseDay}
+            shiftActionLoading={shiftActionLoading}
+            locked={locked}
+            isOnline={isOnline}
+            activeTerminalMatchesOperatingLocation={activeTerminalMatchesOperatingLocation}
+            shiftState={shiftState}
+            dayCloseReadinessState={dayCloseReadinessState}
+            refreshDayCloseReadiness={refreshDayCloseReadiness}
+            handleCloseDay={handleCloseDay}
+          />
+        </section>
       );
     }
 
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <p className="text-[13px] font-black text-[#0F172A]">Close Shift</p>
-        {!canCloseShift ? (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            You need shift-close or close-day permission to close shifts.
-          </p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-              <span className="text-xs font-semibold text-slate-600">Total Sales (excluding opening cash)</span>
-              <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState.salesSummary?.total_amount)}</span>
-            </div>
-            <p className="text-xs text-slate-600">
-              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
-            </p>
-            {canCloseDay ? (
-              <MerchantTenderReconciliationPanel
-                shiftId={activeShift.pos_terminal_shift_id}
-                salesSummary={shiftState.salesSummary}
-                disabled={locked || !isOnline}
-              />
-            ) : null}
-            <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              type="number"
-              min="0"
-              step="0.01"
-              value={closeShiftForm.closingCashAmount}
-              onChange={(event) => setCloseShiftForm((prev) => ({ ...prev, closingCashAmount: event.target.value }))}
-              placeholder={money(shiftState.cashSummary?.expected_cash_amount || 0)}
-            />
-            <Label className="text-[12px] font-black text-[#0F172A]">Closing Note (Optional)</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={closeShiftForm.closingNote}
-              onChange={(event) => setCloseShiftForm((prev) => ({ ...prev, closingNote: event.target.value }))}
-              placeholder="End-of-shift note"
-            />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-                onClick={handleViewShiftSummary}
-                disabled={shiftActionLoading.close || shiftActionLoading.summary || locked}
-              >
-                {shiftActionLoading.summary ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <BarChart3 className="mr-2 h-4 w-4" />}
-                {shiftActionLoading.summary ? 'Refreshing Summary...' : 'View Shift Summary'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-                onClick={handleCloseShift}
-                disabled={shiftActionLoading.close || locked}
-              >
-                {shiftActionLoading.close ? 'Closing Shift...' : 'Close Shift'}
-              </Button>
-            </div>
-          </div>
-        )}
-        {closeDayAction}
+      <div className="space-y-3.5">
+        <ShiftSessionSummary
+          summaryRows={summaryRows}
+          onViewSummary={handleViewShiftSummary}
+          onRefresh={refreshOperationalContext}
+          summaryLoading={shiftActionLoading.summary}
+          refreshLoading={shiftState?.loading}
+          refreshErrorMessage={shiftState?.errorMessage}
+          closeLoading={shiftActionLoading.close}
+          locked={locked}
+          isOnline={isOnline}
+        />
+        {canCloseDay ? (
+          <MerchantTenderReconciliationPanel
+            shiftId={activeShift.pos_terminal_shift_id}
+            salesSummary={shiftState.salesSummary}
+            disabled={locked || !isOnline}
+          />
+        ) : null}
+        <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-start gap-3">
+          <CashierShiftClosePanel
+            currencySymbol={terminalMeta.pettyCashSymbol}
+            expectedCashAmount={money(shiftState.cashSummary?.expected_cash_amount)}
+            closeShiftForm={closeShiftForm}
+            setCloseShiftForm={setCloseShiftForm}
+            canCloseShift={canCloseShift}
+            shiftActionLoading={shiftActionLoading}
+            locked={locked}
+            handleCloseShift={handleCloseShift}
+          />
+          <BranchDayClosePanel
+            activeShift={activeShift}
+            canCloseDay={canCloseDay}
+            shiftActionLoading={shiftActionLoading}
+            locked={locked}
+            isOnline={isOnline}
+            activeTerminalMatchesOperatingLocation={activeTerminalMatchesOperatingLocation}
+            shiftState={shiftState}
+            dayCloseReadinessState={dayCloseReadinessState}
+            refreshDayCloseReadiness={refreshDayCloseReadiness}
+            handleCloseDay={handleCloseDay}
+          />
+        </div>
       </div>
     );
   };
@@ -1777,79 +1779,31 @@ function ShiftControlsWorkspace({
   const renderCashDrawerPane = () => {
     if (!activeShift) {
       return (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-700 shadow-sm shadow-amber-100/70">
-          <p>Open a shift first before recording cash drawer events.</p>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-3 h-9 rounded-lg border-amber-300 bg-white px-3 text-xs font-extrabold text-amber-900 hover:bg-amber-100"
-            onClick={() => handleTabChange('cashier_history')}
-          >
-            <History className="mr-1.5 h-3.5 w-3.5" />
-            Cashier History
-          </Button>
-        </div>
+        <CashDrawerClosedState
+          terminalId={activeTerminalId}
+          locationId={operatingLocationId}
+          state={cashierHistoryState}
+          onRefresh={refreshCashierHistory}
+          onOpenShiftSession={() => handleTabChange('close_shift')}
+          shiftStatusLoading={shiftState?.loading}
+          locked={locked}
+          isOnline={isOnline}
+          currency={terminalMeta.pettyCashSymbol}
+        />
       );
     }
 
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <p className="text-[13px] font-black text-[#0F172A]">Cash Drawer Event</p>
-        {!canAdjustCashDrawer ? (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            You need cash drawer adjustment permission to use this section.
-          </p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Event Type</Label>
-            <select
-              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={cashEventForm.eventType}
-              onChange={(event) => setCashEventForm((prev) => ({ ...prev, eventType: event.target.value }))}
-            >
-              <option value="cash_in">Cash In</option>
-              <option value="cash_out">Cash Out</option>
-              <option value="opening_adjustment">Opening Adjustment</option>
-              <option value="closing_adjustment">Closing Adjustment</option>
-            </select>
-            <Label className="text-[12px] font-black text-[#0F172A]">Amount ({terminalMeta.pettyCashSymbol})</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={cashEventForm.amount}
-              onChange={(event) => setCashEventForm((prev) => ({ ...prev, amount: event.target.value }))}
-              placeholder="0.00"
-            />
-            <Label className="text-[12px] font-black text-[#0F172A]">Reason</Label>
-            <Input
-              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-              value={cashEventForm.reason}
-              onChange={(event) => setCashEventForm((prev) => ({ ...prev, reason: event.target.value }))}
-              placeholder="Reason for adjustment"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-              onClick={handleRecordCashEvent}
-              disabled={shiftActionLoading.cashEvent || locked}
-            >
-              {shiftActionLoading.cashEvent ? 'Saving Event...' : 'Record Cash Event'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-              onClick={() => handleTabChange('cashier_history')}
-            >
-              <History className="mr-1.5 h-3.5 w-3.5" />
-              Cashier History
-            </Button>
-          </div>
-        )}
-      </div>
+      <CashDrawerEventForm
+        currencySymbol={terminalMeta.pettyCashSymbol}
+        canAdjustCashDrawer={canAdjustCashDrawer}
+        cashEventForm={cashEventForm}
+        setCashEventForm={setCashEventForm}
+        saving={shiftActionLoading.cashEvent}
+        locked={locked}
+        onRecord={handleRecordCashEvent}
+        onOpenCashierHistory={() => handleTabChange('cashier_history')}
+      />
     );
   };
 
@@ -1867,7 +1821,7 @@ function ShiftControlsWorkspace({
 
   const renderActivePane = () => {
     if (isBranchReadOnlyView) return renderShiftLocationPane();
-    if (renderedTab === 'close_shift') return renderCloseShiftPane();
+    if (renderedTab === 'close_shift') return renderShiftSessionPane();
     if (renderedTab === 'cash_drawer') return renderCashDrawerPane();
     if (renderedTab === 'cashier_history') return renderCashierHistoryPane();
     return renderShiftLocationPane();
@@ -1875,64 +1829,43 @@ function ShiftControlsWorkspace({
 
   return (
     <>
-    <div id={sectionId} className="space-y-4">
-      <h2 className="sr-only">Shift Controls</h2>
-      <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70">
-        <div className="hidden gap-2 sm:grid md:grid-cols-4">
-          {visibleShiftTabs.map((tab) => {
-            const TabIcon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => handleTabChange(tab.id)}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black transition ${
-                  active
-                    ? 'bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
-                    : 'bg-slate-50 text-[#0F172A] hover:bg-slate-100'
-                }`}
-              >
-                <TabIcon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            );
-          })}
+    <PosPageFrame
+      id={sectionId}
+      page="shift"
+      className="max-[767px]:overflow-x-clip"
+    >
+      <div className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}>
+        <h2 className="sr-only">Shift Controls</h2>
+        <div
+          data-testid="pos-shift-sticky-tabs"
+          className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}
+        >
+          <PosLineTabNavigation
+            tabs={visibleShiftTabs}
+            activeTab={selectedShiftTabId}
+            onTabChange={handleTabChange}
+            ariaLabel="Shift sections"
+            idPrefix={shiftTabIdPrefix}
+            panelId={shiftPanelId}
+            mobileGridColumns={visibleShiftTabs.length > 1 ? 2 : 1}
+          />
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:hidden">
-          {visibleShiftTabs.map((tab) => {
-            const TabIcon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={`mobile-${tab.id}`}
-                type="button"
-                onClick={() => handleTabChange(tab.id)}
-                className={`inline-flex min-h-14 min-w-0 w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black transition ${
-                  active
-                    ? 'bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
-                    : 'bg-slate-50 text-[#0F172A] hover:bg-slate-100'
-                }`}
-              >
-                <TabIcon className="h-4 w-4 shrink-0" />
-                <span className="text-center leading-tight">{tab.label}</span>
-              </button>
-            );
-          })}
+        <div
+          id={shiftPanelId}
+          role="tabpanel"
+          aria-labelledby={`${shiftTabIdPrefix}-${selectedShiftTabId}`}
+          tabIndex={0}
+          className={shiftState.loading ? undefined : 'overflow-x-clip overflow-y-visible'}
+        >
+          {shiftState.loading ? (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600" role="status" aria-live="polite" aria-busy="true">Loading shift context...</p>
+          ) : (
+            <div style={paneInlineStyle}>{renderActivePane()}</div>
+          )}
         </div>
       </div>
-
-      {shiftState.loading ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading shift context...</p>
-      ) : (
-        <div className="overflow-hidden">
-          <div style={paneInlineStyle}>
-            {renderActivePane()}
-          </div>
-        </div>
-      )}
-    </div>
+    </PosPageFrame>
     <ConfirmActionDialog
       open={Boolean(pendingAdminTerminalId)}
       onOpenChange={(open) => {
@@ -6854,6 +6787,7 @@ export default function TerminalOperationsWorkspace({
   adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
   branchDirectoryState = { loading: false, locations: [], scope: '', errorMessage: '' },
   branchViewLocationId = null,
+  branchViewTransitionLoading = false,
   canViewBranchLocations = false,
   onViewBranch = async () => false,
   onExitBranchView = async () => {},
@@ -6907,7 +6841,9 @@ export default function TerminalOperationsWorkspace({
   const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
-  const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
+  const usesOwnPageFrame = isSettingsView
+    || effectiveViewMode === 'reports'
+    || SHIFT_WORKSPACE_MODES.has(effectiveViewMode);
   const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
   const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView;
   const workspaceShellClassName = usesOwnPageFrame
@@ -7078,6 +7014,7 @@ export default function TerminalOperationsWorkspace({
           adminLocationMonitorState={adminLocationMonitorState}
           branchDirectoryState={branchDirectoryState}
           branchViewLocationId={branchViewLocationId}
+          branchViewTransitionLoading={branchViewTransitionLoading}
           canViewBranchLocations={canViewBranchLocations}
           onViewBranch={onViewBranch}
           onExitBranchView={onExitBranchView}
@@ -7135,6 +7072,7 @@ export default function TerminalOperationsWorkspace({
           adminLocationMonitorState={adminLocationMonitorState}
           branchDirectoryState={branchDirectoryState}
           branchViewLocationId={branchViewLocationId}
+          branchViewTransitionLoading={branchViewTransitionLoading}
           canViewBranchLocations={canViewBranchLocations}
           onViewBranch={onViewBranch}
           onExitBranchView={onExitBranchView}
@@ -7261,6 +7199,7 @@ export default function TerminalOperationsWorkspace({
     canViewAdminLocationMonitor,
     branchDirectoryState,
     branchViewLocationId,
+    branchViewTransitionLoading,
     isBranchReadOnlyView,
     workspaceLocationId,
     canViewBranchLocations,

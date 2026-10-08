@@ -35,6 +35,8 @@ transaction/shift data.
 ## Atomic Commit Scope
 
 1. Shared POS dropdown, pagination, text-size, and tab controls plus their responsive contracts.
+2. Shift workspace layout, branch-monitor loading, shift-state feedback, cash-drawer UI, and refresh
+   behavior plus their tests.
 
 ## Compliance Preconditions
 
@@ -65,4 +67,6 @@ transaction/shift data.
 - The existing `terminalViewModeContracts.test.js` has five inherited checkout-source contract
   failures on the current base; those expectations target code already extracted before this
   branch and are outside the Shift frontend scope.
+- The isolated MapLibre picker test could not collect because Vite could not resolve its worker URL
+  import (`maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url`); this is outside the Shift UI batch.
 - No Phase 2 work or backend/server-side device-bridge changes are included in the frontend commits.

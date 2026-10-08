@@ -766,7 +766,8 @@ export default function TerminalPage() {
     loading: false,
     shift: null,
     cashSummary: null,
-    salesSummary: null
+    salesSummary: null,
+    errorMessage: ''
   });
   const [operatorAuthorityState, setOperatorAuthorityState] = useState({
     scopeKey: '',
@@ -919,6 +920,8 @@ export default function TerminalPage() {
     errorMessage: ''
   });
   const [branchViewLocationId, setBranchViewLocationId] = useState(null);
+  const [branchViewTransitionLocationId, setBranchViewTransitionLocationId] = useState(null);
+  const branchViewTransitionLocationIdRef = useRef(null);
   const branchViewReturnModeRef = useRef('shift_controls');
   const [adminTerminalSwitching, setAdminTerminalSwitching] = useState(false);
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
@@ -1701,7 +1704,14 @@ export default function TerminalPage() {
       return { shift: null, cashSummary: null, salesSummary: null };
     }
     if (!terminalId) {
-      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
+      setShiftState((prev) => ({
+        ...prev,
+        loading: false,
+        shift: null,
+        cashSummary: null,
+        salesSummary: null,
+        errorMessage: ''
+      }));
       setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
       return { shift: null, cashSummary: null, salesSummary: null };
     }
@@ -1746,7 +1756,7 @@ export default function TerminalPage() {
         salesSummary: preservedShiftState.salesSummary || null
       };
     }
-    setShiftState((prev) => ({ ...prev, loading: true }));
+    setShiftState((prev) => ({ ...prev, loading: true, errorMessage: '' }));
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
       const currentShiftParams = scopedOperatingLocationId
@@ -1779,7 +1789,8 @@ export default function TerminalPage() {
         loading: false,
         shift: activeShift,
         cashSummary: activeShiftSummary,
-        salesSummary: shiftSalesSummary
+        salesSummary: shiftSalesSummary,
+        errorMessage: ''
       });
       const activeShiftLocationId = Number(activeShift?.location_id);
       const resolvedOperationalLocationId = Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0
@@ -1804,10 +1815,11 @@ export default function TerminalPage() {
       return { shift: activeShift, cashSummary: activeShiftSummary };
     } catch (error) {
       if (!isCurrentRequest()) return null;
-      setShiftState((prev) => ({ ...prev, loading: false }));
+      const errorMessage = error?.response?.data?.message || 'Failed to load terminal operational context.';
+      setShiftState((prev) => ({ ...prev, loading: false, errorMessage }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
       if (!suppressGlobalErrors && error?.response?.status !== 403) {
-        toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
+        toast.error(errorMessage);
       }
       return null;
     }
@@ -2166,6 +2178,15 @@ export default function TerminalPage() {
     if (!branchViewLocationId) {
       branchViewReturnModeRef.current = posViewMode || 'shift_controls';
     }
+    branchViewTransitionLocationIdRef.current = normalizedLocationId;
+    setBranchViewTransitionLocationId(normalizedLocationId);
+    setAdminLocationMonitorState({
+      loading: true,
+      orders: [],
+      terminalShifts: [],
+      locationId: normalizedLocationId,
+      errorMessage: ''
+    });
     setBranchViewLocationId(normalizedLocationId);
     setViewingLocationId(normalizedLocationId);
     commitViewModeSelection('shift_controls');
@@ -2197,6 +2218,8 @@ export default function TerminalPage() {
       }
     }
     setBranchViewLocationId(null);
+    branchViewTransitionLocationIdRef.current = null;
+    setBranchViewTransitionLocationId(null);
     setViewingLocationId(null);
     const nextMode = returnMode || branchViewReturnModeRef.current || 'shift_controls';
     branchViewReturnModeRef.current = 'shift_controls';
@@ -2224,13 +2247,23 @@ export default function TerminalPage() {
 
     if (locked || !canViewBranchLocations || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
       if (!isCurrentRequest()) return;
+      const scopedLocationId = Number.isInteger(locationId) && locationId > 0 ? locationId : null;
+      const unavailableMessage = !canViewBranchLocations
+        ? 'You no longer have permission to view this branch.'
+        : (locked
+          ? 'Unlock the terminal to load branch activity.'
+          : (!isOnline ? 'Reconnect to load branch activity.' : 'Select a branch to load activity.'));
       setAdminLocationMonitorState({
         loading: false,
         orders: [],
         terminalShifts: [],
-        locationId: null,
-        errorMessage: ''
+        locationId: scopedLocationId,
+        errorMessage: scopedLocationId ? unavailableMessage : ''
       });
+      if (Number(branchViewTransitionLocationIdRef.current || 0) === scopedLocationId) {
+        branchViewTransitionLocationIdRef.current = null;
+        setBranchViewTransitionLocationId(null);
+      }
       return;
     }
 
@@ -2258,6 +2291,10 @@ export default function TerminalPage() {
         locationId,
         errorMessage: ''
       });
+      if (Number(branchViewTransitionLocationIdRef.current || 0) === locationId) {
+        branchViewTransitionLocationIdRef.current = null;
+        setBranchViewTransitionLocationId(null);
+      }
     } catch (error) {
       if (!isCurrentRequest()) return;
       const message = error?.response?.data?.message || 'Failed to load the selected branch monitor.';
@@ -2268,6 +2305,10 @@ export default function TerminalPage() {
         locationId,
         errorMessage: message
       });
+      if (Number(branchViewTransitionLocationIdRef.current || 0) === locationId) {
+        branchViewTransitionLocationIdRef.current = null;
+        setBranchViewTransitionLocationId(null);
+      }
       if (!silent) toast.error(message);
     }
   }, [activeTenantId, activeTerminalId, canViewBranchLocations, isOnline, locked, operatingLocationId, shiftState?.shift?.pos_terminal_shift_id, viewingLocationId]);
@@ -7677,6 +7718,7 @@ function PosRestorationLoadingScreen() {
           adminLocationMonitorState={adminLocationMonitorState}
           branchDirectoryState={branchDirectoryState}
           branchViewLocationId={branchViewLocationId}
+          branchViewTransitionLoading={Number(branchViewTransitionLocationId || 0) === Number(branchViewLocationId || 0) && Number(branchViewTransitionLocationId || 0) > 0}
           canViewBranchLocations={canViewBranchLocations}
           onViewBranch={handleViewBranch}
           onExitBranchView={handleExitBranchView}

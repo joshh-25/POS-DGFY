@@ -97,7 +97,7 @@ test.describe('POS opening-shift flow', () => {
 
       if (currentShift) {
         await page.getByRole('button', { name: /^Shift/ }).click();
-        await expect(page.getByRole('button', { name: 'Close Shift', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Shift Session', exact: true })).toBeVisible();
         return;
       }
 

@@ -43,4 +43,12 @@ describe('POS read-only branch viewer navigation contracts', () => {
     expect(operationsPanelsSource).toContain('const isAdminBranchMonitor = Boolean(branchViewLocationId) || (!hasActiveShift && canViewAdminLocationMonitor);');
     expect(operationsPanelsSource).toContain('<AdminBranchOrdersPanel');
   });
+
+  it('shows a branch-entry loading state until the selected monitor request settles', () => {
+    expect(terminalPageSource).toContain('setBranchViewTransitionLocationId(normalizedLocationId)');
+    expect(terminalPageSource).toContain('branchViewTransitionLoading={Number(branchViewTransitionLocationId || 0) === Number(branchViewLocationId || 0)');
+    expect(terminalLayoutSource).toContain('branchViewTransitionLoading={branchViewTransitionLoading}');
+    expect(operationsWorkspaceSource).toContain('if (branchViewTransitionLoading)');
+    expect(operationsWorkspaceSource).toContain('data-testid="pos-branch-view-loading"');
+  });
 });

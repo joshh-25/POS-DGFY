@@ -59,7 +59,7 @@ describe('POS Day Close PIN contract', () => {
       readSource('src/features/pos/components/TerminalPageDialogLayer.jsx')
     ].join('\n');
     const layoutSource = readSource('src/features/pos/components/TerminalPageLayout.jsx');
-    const workspaceSource = readSource('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const closeoutSource = readSource('src/features/pos/components/ShiftSessionCloseoutPanels.jsx');
 
     expect(terminalPageSource).toContain('const [dayCloseReadinessState, setDayCloseReadinessState] = useState({');
     expect(terminalPageSource).toContain('const refreshDayCloseReadiness = useCallback(async ({ silent = false } = {}) => {');
@@ -74,10 +74,10 @@ describe('POS Day Close PIN contract', () => {
     expect(terminalPageSource).toContain('data-testid="pos-close-day-confirm"');
     expect(layoutSource).toContain('dayCloseReadinessState={dayCloseReadinessState}');
     expect(layoutSource).toContain('refreshDayCloseReadiness={refreshDayCloseReadiness}');
-    expect(workspaceSource).toContain('const dayCloseReady = !activeShift && dayCloseReadiness?.ready === true;');
-    expect(workspaceSource).toContain('disabled={dayCloseActionDisabled}');
-    expect(workspaceSource).toContain('Close this cashier shift before generating the branch Z-reading.');
-    expect(workspaceSource).toContain('Close every cashier shift in this branch before generating the Z-reading.');
-    expect(workspaceSource).toContain('data-testid="pos-close-day-readiness"');
+    expect(closeoutSource).toContain('const dayCloseReady = !activeShift && dayCloseReadiness?.ready === true;');
+    expect(closeoutSource).toContain('disabled={dayCloseActionDisabled}');
+    expect(closeoutSource).toContain('Close this cashier shift before generating the branch Z-reading.');
+    expect(closeoutSource).toContain('Close every cashier shift in this branch before generating the Z-reading.');
+    expect(closeoutSource).toContain('data-testid="pos-close-day-readiness"');
   });
 });
