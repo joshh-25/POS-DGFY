@@ -28,6 +28,15 @@ const readFile = (path) => {
 const configuredSecret = () => readFile(process.env.DGFY_DGLAUNDRY_CLIENT_SECRET_FILE) || String(process.env.DGFY_DGLAUNDRY_CLIENT_SECRET || '').trim();
 const machineClientPublicKey = () => readFile(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE) || String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY || '').trim();
 
+// Keep the attestation check aligned with the same browser-client and PAR
+// prerequisites enforced by authenticateOidcClient() and oidcPar(). Runtime
+// state storage is checked separately by the attestation's Redis PING.
+export const isDglaundryParPkceConfigured = () => Boolean(
+    CLIENT_ID
+    && configuredSecret()
+    && /^https:\/\//i.test(REDIRECT_URI)
+);
+
 const useRedis = () => isRedisConnected() && getRedisClient();
 const stateStoreUnavailable = () => Object.assign(new Error('Redis-backed OIDC state is required.'), { statusCode: 503 });
 const store = async (key, value, ttlSeconds = TTL_SECONDS) => {
