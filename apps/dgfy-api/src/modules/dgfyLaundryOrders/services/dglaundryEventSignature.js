@@ -16,6 +16,34 @@ const publicKey = () => {
   if (!file) return '';
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 };
+const publicEventKeys = () => {
+  const registryText = String(process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON || '').trim();
+  const source = new Map();
+  if (registryText) {
+    let registry;
+    try { registry = JSON.parse(registryText); }
+    catch { return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' }; }
+    if (!registry || typeof registry !== 'object' || Array.isArray(registry) || !Object.keys(registry).length) return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' };
+    for (const [kid, pem] of Object.entries(registry)) {
+      if (!/^[A-Za-z0-9._:-]{3,96}$/.test(kid) || typeof pem !== 'string' || !pem.startsWith('-----BEGIN PUBLIC KEY-----')) return { keys: new Map(), error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' };
+      try {
+        const parsed = crypto.createPublicKey(pem);
+        if (parsed.asymmetricKeyType !== 'ed25519') return { keys: new Map(), error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' };
+        source.set(kid, parsed);
+      } catch { return { keys: new Map(), error: 'DGLAUNDRY_PUBLIC_KEY_REGISTRY_INVALID' }; }
+    }
+    return { keys: source, error: null };
+  }
+  const configuredKid = keyId();
+  const pem = publicKey();
+  if (!pem || !configuredKid) return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_REQUIRED' };
+  try {
+    const parsed = crypto.createPublicKey(pem);
+    if (parsed.asymmetricKeyType !== 'ed25519') return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_INVALID' };
+    source.set(configuredKid, parsed);
+    return { keys: source, error: null };
+  } catch { return { keys: source, error: 'DGLAUNDRY_PUBLIC_KEY_INVALID' }; }
+};
 const configured = (name) => {
   const direct = String(process.env[name] || '').trim();
   if (direct) return direct;
@@ -50,10 +78,13 @@ const parseStandardSignature = (signatureValue, inputValue) => {
 export const buildDglaundryEventSignatureVerifier = ({ redisProvider = getRedisClient, redisConnected = isRedisConnected, now = () => Date.now() } = {}) => async ({ headers = {}, method = 'POST', authority = '', path = '', rawBody = '' }) => {
   const activeProfile = profile();
   if (activeProfile === 'http-message-signatures-v1') {
-    if (!publicKey()) return { ok: false, code: 'DGLAUNDRY_PUBLIC_KEY_REQUIRED' };
+    const publicKeys = publicEventKeys();
+    if (publicKeys.error) return { ok: false, code: publicKeys.error };
     const parsed = parseStandardSignature(headers.signature, headers['signature-input']);
     const digest = String(headers['content-digest'] || '').trim();
     if (!parsed || !digest || parsed.algorithm !== 'ed25519' || parsed.tag !== 'dglaundry-dgfy-v1') return { ok: false, code: 'DGLAUNDRY_SIGNATURE_REQUIRED' };
+    const verificationKey = publicKeys.keys.get(parsed.keyId);
+    if (!verificationKey) return { ok: false, code: 'DGLAUNDRY_KEY_ID_UNKNOWN' };
     if (JSON.stringify(parsed.components) !== JSON.stringify(['@method', '@authority', '@path', 'content-digest', 'content-type'])) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_COMPONENTS_INVALID' };
     const nowSeconds = Math.floor(now() / 1000);
     if (!Number.isInteger(parsed.created) || !Number.isInteger(parsed.expires)
@@ -70,7 +101,7 @@ export const buildDglaundryEventSignatureVerifier = ({ redisProvider = getRedisC
       `"@signature-params": ${parsed.signatureParams}`
     ].join('\n');
     const valid = (() => {
-      try { return crypto.verify(null, Buffer.from(signatureBase), publicKey(), Buffer.from(parsed.signature, 'base64')); } catch { return false; }
+      try { return crypto.verify(null, Buffer.from(signatureBase), verificationKey, Buffer.from(parsed.signature, 'base64')); } catch { return false; }
     })();
     if (!valid) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_INVALID' };
     let redis;

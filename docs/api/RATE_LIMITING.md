@@ -70,8 +70,20 @@ key — see [#972](https://github.com/Sieitzz/dgfy-platform/issues/972).
 
 ## Auth / identity limiters
 
+### OIDC provider limiter
+
+`oidcLimiter` is mounted around `/oidc/*` because the DGLaundry issuer endpoints are outside the
+general `/api` limiter. It applies to discovery, JWKS, PAR, authorize, token, logout, revocation,
+and introspection routes. The default budget is 120 requests per IP per 15 minutes in production
+and 300 in development; `RATE_LIMIT_OIDC_MAX_REQUESTS` and `RATE_LIMIT_OIDC_WINDOW_MS` override
+those values. It uses the standard trusted-proxy-aware `req.ip` key and a `DynamicStore` with the
+`oidc` Redis prefix. As with the other dynamic stores, an unavailable Redis store falls back to
+per-process memory; hosted operations must monitor `getRateLimiterStoreMode()` and keep shared
+Redis healthy rather than treating local fallback as distributed protection.
+
 | Limiter | Budget (prod) | Window | Key | Mount |
 |---|---|---|---|---|
+| `oidcLimiter` | 120 | 15 min | `req.ip` | `/oidc/*` |
 | `authLimiter` | 5 | 5 min | `auth:<login\|register>:<ip>:<email>` | `/auth/{login,register}` plus ~18 other DGFY auth/account/affiliate routes -- see note below |
 | `emailOtpLimiter` | 3 | 10 min | `email_otp:<purpose>:<tenant>:<ip>:<email\|invite-token>` | `/auth/email-otp/request`, `/users/me/email-otp/request` |
 | `adminAuthLimiter` | 5 | 15 min | `admin_auth:<ip>:<username>` | `/admin/login` |

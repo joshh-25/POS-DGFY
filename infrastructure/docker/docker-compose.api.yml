@@ -20,7 +20,13 @@ services:
   dgfy-api:
     image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
+      # The connection installer writes a separate staging file outside the
+      # checkout. Operators pass it as a second --env-file so Compose can
+      # resolve DGLAUNDRY_CONNECTION_CONFIG_DIR for this optional env file.
+      - path: ${DGLAUNDRY_CONNECTION_CONFIG_DIR:-./secrets}/dglaundry-connection.env
+        required: false
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
@@ -31,12 +37,9 @@ services:
       # backend compares its own pool budget against this at boot and
       # warns on a mismatch instead of failing later under load.
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
-      DGFY_OIDC_PRIVATE_KEY_FILE: ${DGFY_OIDC_PRIVATE_KEY_FILE:-/run/secrets/dgfy-oidc-private.pem}
-      DGFY_OIDC_PUBLIC_KEY_FILE: ${DGFY_OIDC_PUBLIC_KEY_FILE:-/run/secrets/dgfy-oidc-public.pem}
-      DGFY_DGLAUNDRY_CLIENT_ID: ${DGFY_DGLAUNDRY_CLIENT_ID:-dglaundry-web}
-      DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: ${DGFY_DGLAUNDRY_MACHINE_CLIENT_ID:-dglaundry-machine}
-      DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: ${DGFY_DGLAUNDRY_SERVICE_CLIENT_ID:-dglaundry-service}
-      DGFY_DGLAUNDRY_REDIRECT_URI: ${DGFY_DGLAUNDRY_REDIRECT_URI:-https://laundry.surebizcorp.com/api/v1/session/dgfy/callback}
+      # Keep integration settings in the reviewed connection env file. Do not
+      # duplicate them here: Compose `environment` overrides `env_file` and
+      # would otherwise replace the installer-rendered tmpfs key paths/IDs.
       SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
@@ -48,10 +51,14 @@ services:
       - ./data/dgfy-api/uploads:/app/uploads
       - ./data/dgfy-api/storage:/app/storage
       - ./data/dgfy-api/logs:/app/logs
-      # Run dglaundry-connection-setup.mjs prepare/apply first. Docker can
-      # create a missing file bind source as a directory, causing EISDIR.
-      - ./secrets/keys/dgfy-oidc-signing.pem:/run/secrets/dgfy-oidc-private.pem:ro
-      - ./secrets/keys/dgfy-oidc-signing.pub.pem:/run/secrets/dgfy-oidc-public.pem:ro
+      # Mount one pre-created, read-only host directory. Individual file binds
+      # make Docker create missing key paths as directories and can strand the
+      # setup utility with incomplete key pairs. Root copies the required files
+      # into the app-owned tmpfs before dropping privileges; the app process
+      # never reads the host key directory directly.
+      - ${DGLAUNDRY_CONNECTION_CONFIG_DIR:-./secrets}:/run/dgfy-connection-source:ro
+    tmpfs:
+      - /run/dgfy-secrets
     depends_on:
       mysql:
         condition: service_healthy

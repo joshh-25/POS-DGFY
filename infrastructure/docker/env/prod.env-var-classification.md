@@ -243,11 +243,39 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 
 </details>
 
-<details><summary><code>DGFY_*</code> (23)</summary>
+<details><summary><code>DGLAUNDRY_*</code> (17)</summary>
+
+- `DGLAUNDRY_CONNECTION_CONFIG_DIR`
+- `DGLAUNDRY_CONNECTION_MANIFEST_SHA256`
+- `DGLAUNDRY_CONNECTION_PRIVATE_VALUES`
+- `DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR`
+- `DGLAUNDRY_CONNECTION_ENVIRONMENT` **[required when integration is enabled]**
+- `DGLAUNDRY_INTEGRATION_ENABLED`
+- `DGLAUNDRY_INTEGRATION_ENVIRONMENT` **[required when integration is enabled]**
+- `DGLAUNDRY_INTEGRATION_KEY_ID` **[required when integration is enabled]**
+- `DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON` **[required when integration is enabled; public Ed25519 keys only]**
+- `DGLAUNDRY_PARTNER_AUDIENCE` **[required when integration is enabled]**
+- `DGLAUNDRY_PARTNER_BASE_URL` **[required when integration is enabled]**
+- `DGLAUNDRY_PARTNER_CONTRACT_VERSION`
+- `DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE` **[required when integration is enabled]**
+- `DGLAUNDRY_PARTNER_REQUEST_KEY_ID` **[required when integration is enabled]**
+- `DGLAUNDRY_PARTNER_SIGNING_KEY_ID` **[required when integration is enabled]**
+- `DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE` **[required when integration is enabled]** `[SECRET-FILE]`
+- `DGLAUNDRY_SIGNATURE_PROFILE` **[required when integration is enabled]**
+
+</details>
+
+<details><summary><code>DGFY_*</code> (30)</summary>
 
 - `DGFY_BUSINESS_STEP_UP_WINDOW_MINUTES`
 - `DGFY_DGLAUNDRY_CLIENT_ID`
+- `DGFY_DGLAUNDRY_CLIENT_SECRET` `[SECRET]`
+- `DGFY_DGLAUNDRY_CLIENT_SECRET_FILE` **[required]** `[SECRET-FILE]`
 - `DGFY_DGLAUNDRY_MACHINE_CLIENT_ID` **[required]**
+- `DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE` **[required when integration is enabled]**
+- `DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID` **[required when integration is enabled]**
+- `DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE` **[required when integration is enabled]** `[SECRET-FILE]`
+- `DGFY_DGLAUNDRY_PARTNER_APP_ID` **[required when DGLAUNDRY_INTEGRATION_ENABLED]**
 - `DGFY_DGLAUNDRY_REDIRECT_URI` **[required]**
 - `DGFY_DGLAUNDRY_SERVICE_CLIENT_ID` **[required]**
 - `DGFY_DIRECT_INVITE_ACCEPTANCE_ENABLED`
@@ -258,11 +286,12 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 - `DGFY_LEGACY_TENANT_REGISTRATION_ENABLED`
 - `DGFY_LEGACY_USER_INVITES_ENABLED`
 - `DGFY_OIDC_ISSUER` **[required]**
+- `DGFY_OIDC_JWKS_KEYS_JSON` [PUBLIC CONFIG; public RSA JWKs only]
 - `DGFY_OIDC_KEY_ID` **[required]**
 - `DGFY_OIDC_PRIVATE_KEY` `[SECRET]`
 - `DGFY_OIDC_PRIVATE_KEY_FILE` **[required]** `[SECRET-FILE]`
 - `DGFY_OIDC_PUBLIC_KEY`
-- `DGFY_OIDC_PUBLIC_KEY_FILE` **[required]**
+- `DGFY_OIDC_PUBLIC_KEY_FILE`
 - `DGFY_REVIEW_INVITE_TTL_HOURS`
 - `DGFY_TENANT_USER_EMAIL_REPAIR_ENABLED`
 - `DGFY_TRACKING_RECOVERY_COOLDOWN_SECONDS`
@@ -569,6 +598,8 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 - `RATE_LIMIT_MOBILE_POS_FREE_SYNC_WINDOW_MS`
 - `RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS`
 - `RATE_LIMIT_ONBOARDING_EVENTS_WINDOW_MS`
+- `RATE_LIMIT_OIDC_MAX_REQUESTS`
+- `RATE_LIMIT_OIDC_WINDOW_MS`
 - `RATE_LIMIT_POS_DRAWER_AUTH_MAX_REQUESTS`
 - `RATE_LIMIT_POS_DRAWER_AUTH_WINDOW_MS`
 - `RATE_LIMIT_POS_MAX_REQUESTS`

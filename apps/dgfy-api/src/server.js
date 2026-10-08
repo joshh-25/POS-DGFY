@@ -30,7 +30,7 @@ import requestOutcomeLogger from './middleware/requestOutcomeLogger.js';
 import { metricsMiddleware } from './middleware/metricsMiddleware.js';
 import csrfProtection from './middleware/csrfProtection.js';
 import logger from './config/logger.js';
-import { generalLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
+import { generalLimiter, oidcLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
 import { initCleanupJob } from './services/cleanupService.js';
 import { verifyConnection as verifyEmailConnection, isEmailConfigured } from './services/emailService.js';
@@ -763,7 +763,7 @@ app.use(csrfProtection);
 app.use(dgfyLaundryOrderRoutes);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/partners/dglaundry', dgfyLaundryRoutes);
-app.use('/oidc', dgfyLaundryOidcRoutes);
+app.use('/oidc', oidcLimiter, dgfyLaundryOidcRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
 app.use('/api/v1/geo', routeCalculatorRoutes);
 // Public - no tenant context needed, called before any tenant exists (all

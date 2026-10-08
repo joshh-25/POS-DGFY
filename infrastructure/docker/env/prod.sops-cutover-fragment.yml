@@ -280,15 +280,52 @@
 #       # files under /run/secrets/ inside dgfy-api. deploy-sops.sh decrypts
 #       # the SOPS ciphertext into its process environment without writing
 #       # plaintext key files to the host.
-#       DGFY_OIDC_PRIVATE_KEY_FILE: /run/secrets/dgfy-oidc-private.pem
-#       DGFY_OIDC_PUBLIC_KEY_FILE: /run/secrets/dgfy-oidc-public.pem
+#       # Compose secrets are mounted as flat files here; the entrypoint copies
+#       # only these files to the app-owned tmpfs before dropping privileges.
+#       DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR: /run/secrets
+#       DGFY_OIDC_ISSUER: https://api.dgfy.ph/oidc
+#       DGFY_OIDC_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-oidc-private.pem
+#       DGFY_OIDC_PUBLIC_KEY_FILE: /run/dgfy-secrets/dgfy-oidc-public.pem
+#       # Optional public-only overlap JWKS (active key plus previous key during rotation).
+#       DGFY_OIDC_JWKS_KEYS_JSON: ${DGFY_OIDC_JWKS_KEYS_JSON:-}
+#       DGFY_OIDC_KEY_ID: ${DGFY_OIDC_KEY_ID}
+#       DGFY_DGLAUNDRY_CLIENT_ID: dglaundry-web
+#       DGFY_DGLAUNDRY_CLIENT_SECRET_FILE: /run/dgfy-secrets/dglaundry-oidc-client-secret
+#       DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: dglaundry-machine
+#       DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: dglaundry-service
+#       DGFY_DGLAUNDRY_REDIRECT_URI: https://laundry.surebizcorp.com/api/v1/session/dgfy/callback
+#       DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: ${DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID}
+#       DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-event-signing.pem
+#       DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: /run/dgfy-secrets/dglaundry-machine-assertion.pub.pem
+#       DGFY_DGLAUNDRY_PARTNER_APP_ID: dglaundry
+#       DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: /run/dgfy-secrets/dglaundry-request-signing.pub.pem
+#       DGLAUNDRY_PARTNER_REQUEST_KEY_ID: ${DGLAUNDRY_PARTNER_REQUEST_KEY_ID}
+#       DGLAUNDRY_INTEGRATION_KEY_ID: ${DGLAUNDRY_INTEGRATION_KEY_ID}
+#       DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON: ${DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON}
+#       DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-request-signing.pem
+#       DGLAUNDRY_PARTNER_SIGNING_KEY_ID: ${DGLAUNDRY_PARTNER_SIGNING_KEY_ID}
+#       DGLAUNDRY_INTEGRATION_ENVIRONMENT: production
+#       DGLAUNDRY_PARTNER_BASE_URL: https://laundry.surebizcorp.com
+#       DGLAUNDRY_PARTNER_AUDIENCE: https://laundry.surebizcorp.com
+#       DGLAUNDRY_SIGNATURE_PROFILE: http-message-signatures-v1
 #       DGLAUNDRY_INTEGRATION_ENABLED: ${DGLAUNDRY_INTEGRATION_ENABLED:-false}
-#       # Client IDs and callback remain intentionally absent until DGLaundry confirms the proposed registrations; add confirmed literals here after the approved exchange.
+#     tmpfs:
+#       - /run/dgfy-secrets
 #     secrets:
 #       - source: dgfy-oidc-private-key
 #         target: dgfy-oidc-private.pem
 #       - source: dgfy-oidc-public-key
 #         target: dgfy-oidc-public.pem
+#       - source: dglaundry-oidc-client-secret
+#         target: dglaundry-oidc-client-secret
+#       - source: dgfy-event-signing-key
+#         target: dgfy-event-signing.pem
+#       - source: dgfy-request-signing-key
+#         target: dgfy-request-signing.pem
+#       - source: dglaundry-machine-assertion-public-key
+#         target: dglaundry-machine-assertion.pub.pem
+#       - source: dglaundry-request-signing-public-key
+#         target: dglaundry-request-signing.pub.pem
 #     volumes:
 #       - ./data/dgfy-api/uploads:/app/uploads
 #       - ./data/dgfy-api/storage:/app/storage
@@ -299,6 +336,16 @@
 #     environment: DGFY_OIDC_PRIVATE_KEY
 #   dgfy-oidc-public-key:
 #     environment: DGFY_OIDC_PUBLIC_KEY
+#   dglaundry-oidc-client-secret:
+#     environment: DGFY_DGLAUNDRY_CLIENT_SECRET
+#   dgfy-event-signing-key:
+#     environment: DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY
+#   dgfy-request-signing-key:
+#     environment: DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY
+#   dglaundry-machine-assertion-public-key:
+#     environment: DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY
+#   dglaundry-request-signing-public-key:
+#     environment: DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY
 #     depends_on:
 #       mysql:
 #         condition: service_healthy
