@@ -3203,6 +3203,20 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
             status: 'completed'
         }, { transaction, lock: true });
 
+        if (typeof serviceRepository.createBookingStatusEvents === 'function') {
+            await serviceRepository.createBookingStatusEvents([{
+                booking_id: normalizedBookingId,
+                from_status: booking.status,
+                to_status: 'completed',
+                handoff_leg_id: null,
+                actor_type: 'staff',
+                actor_user_id: normalizedUserId,
+                source: 'pos',
+                reason: null,
+                occurred_at: new Date()
+            }], { transaction });
+        }
+
         const updatedBooking = await serviceRepository.getBookingById(normalizedBookingId, { transaction });
         const settlementTransaction = await serviceRepository.getPosTransactionSnapshotById(transactionId, { transaction });
         await transaction.commit();
