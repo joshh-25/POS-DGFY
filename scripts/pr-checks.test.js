@@ -122,10 +122,10 @@ test('a to-staging/* PR is evaluated as minor-floor through pr-checks.js\'s own 
   assert.equal(resolveMode(env.GITHUB_BASE_REF, env.GITHUB_HEAD_REF), 'minor-floor');
 
   // And the pre-fix failure mode, for contrast: an unresolved head silently
-  // downgrades the very same base to the less-strict patch-only mode.
+  // downgrades the very same base to the unchanged-floor mode required outside a promotion.
   const unresolvedHeadEnv = buildCheckEnv({ base: 'staging', headRefName: null });
   delete unresolvedHeadEnv.GITHUB_HEAD_REF; // simulate no ambient process.env.GITHUB_HEAD_REF either
-  assert.equal(resolveMode(unresolvedHeadEnv.GITHUB_BASE_REF, unresolvedHeadEnv.GITHUB_HEAD_REF), 'patch-only');
+  assert.equal(resolveMode(unresolvedHeadEnv.GITHUB_BASE_REF, unresolvedHeadEnv.GITHUB_HEAD_REF), 'unchanged');
 });
 
 // --- detectComponents ----------------------------------------------------
@@ -137,17 +137,19 @@ test('detectComponents flags only the components a change actually touches', () 
     frontend_pos: false,
     frontend_storefront: false,
     frontend_opis: false,
+    frontend_admin: false,
     dgfy_api: true,
     migration_runner: false,
   });
 });
 
-test('detectComponents flags all four frontend apps for a shared-constants change', () => {
+test('detectComponents flags all five frontend apps for a shared-constants change', () => {
   const components = detectComponents(['packages/shared-constants/index.js']);
   assert.equal(components.frontend_ims, true);
   assert.equal(components.frontend_pos, true);
   assert.equal(components.frontend_storefront, true);
   assert.equal(components.frontend_opis, true);
+  assert.equal(components.frontend_admin, true);
   assert.equal(components.dgfy_api, true);
 });
 
@@ -175,6 +177,7 @@ test('detectComponents flags nothing for a docs-only change', () => {
     frontend_pos: false,
     frontend_storefront: false,
     frontend_opis: false,
+    frontend_admin: false,
     dgfy_api: false,
     migration_runner: false,
   });
