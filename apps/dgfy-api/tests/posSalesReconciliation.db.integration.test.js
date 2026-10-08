@@ -1,10 +1,7 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { spawnSync } from 'child_process';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { Op, Sequelize } from 'sequelize';
+import { createMigratedTestDatabase } from './helpers/migratedTestDatabase.js';
 import dbStore from '../src/utils/dbStore.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import {
@@ -31,12 +28,6 @@ import {
 } from '../src/modules/store/utils/storeJwtToken.js';
 import { sequelize as landlordSequelize } from '../src/models/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const backendRoot = path.join(__dirname, '..');
-const migrationRunnerRoot = path.join(backendRoot, '..', 'dgfy-migration-runner');
-const sequelizeCliPath = path.join(migrationRunnerRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
-
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
@@ -49,76 +40,6 @@ const createIsolatedDbName = () => (
 );
 const STORE_TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const createPublicTrackingPin = () => `SK-${crypto.randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase()}`;
-
-const runMigrationsForDb = (dbName) => {
-  if (!dbName || typeof dbName !== 'string') {
-    throw new Error('runMigrationsForDb requires a non-empty dbName');
-  }
-  if (!process.execPath) {
-    throw new Error('Node executable path is unavailable for migration runner');
-  }
-  if (!path.isAbsolute(sequelizeCliPath)) {
-    throw new Error(`Expected absolute sequelize CLI path, got: ${sequelizeCliPath}`);
-  }
-  if (!fs.existsSync(sequelizeCliPath)) {
-    throw new Error(`Sequelize CLI entrypoint not found at: ${sequelizeCliPath}`);
-  }
-
-  const args = [
-    sequelizeCliPath,
-    'db:migrate',
-    '--env',
-    'development',
-    '--config',
-    'src/config/sequelize.config.cjs',
-    '--migrations-path',
-    'migrations'
-  ];
-
-  const migrationResult = spawnSync(
-    process.execPath,
-    args,
-    {
-      cwd: migrationRunnerRoot,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        DB_NAME: dbName,
-        DB_HOST: dbConfig.host,
-        DB_USER: dbConfig.user,
-        DB_PASSWORD: dbConfig.password,
-        DB_PORT: String(dbConfig.port)
-      }
-    }
-  );
-
-  if (migrationResult.error) {
-    throw new Error(
-      [
-        `Migration process error for ${dbName}`,
-        `command: ${process.execPath} ${args.join(' ')}`,
-        `cwd: ${migrationRunnerRoot}`,
-        `error: ${migrationResult.error.message}`
-      ].join('\n')
-    );
-  }
-
-  if (migrationResult.status !== 0) {
-    throw new Error(
-      [
-        `Migration failed for ${dbName}`,
-        `command: ${process.execPath} ${args.join(' ')}`,
-        `cwd: ${migrationRunnerRoot}`,
-        `exit_status: ${migrationResult.status}`,
-        `signal: ${migrationResult.signal || 'none'}`,
-        `stdout:`,
-        migrationResult.stdout || '(empty)',
-        `stderr:`,
-        migrationResult.stderr || '(empty)'
-      ].join('\n')
-    );
-  }
-};
 
 const money4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const checkoutPosUseCase = buildCheckoutPosUseCase({
@@ -478,7 +399,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
   beforeAll(async () => {
     try {
       await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
-      runMigrationsForDb(dbName);
+      await createMigratedTestDatabase(dbName, landlordSequelize);
 
       tenantSequelize = new Sequelize(
         dbName,

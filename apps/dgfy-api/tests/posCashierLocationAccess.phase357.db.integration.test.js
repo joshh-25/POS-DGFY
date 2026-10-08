@@ -1,9 +1,6 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { spawnSync } from 'child_process';
 import { Sequelize } from 'sequelize';
+import { createMigratedTestDatabase } from './helpers/migratedTestDatabase.js';
 import {
     afterAll,
     beforeAll,
@@ -26,12 +23,6 @@ import posOperatorAuthorityService from '../src/modules/pos/services/posOperator
 
 jest.setTimeout(180000);
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const backendRoot = path.join(__dirname, '..');
-const migrationRunnerRoot = path.join(backendRoot, '..', 'dgfy-migration-runner');
-const sequelizeCliPath = path.join(migrationRunnerRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
-
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
@@ -49,44 +40,6 @@ const adminSequelize = new Sequelize('mysql', dbConfig.user, dbConfig.password, 
 const createIsolatedDbName = () => (
     `test_pos_cashier_location_phase357_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`
 );
-
-const runMigrationsForDb = (dbName) => {
-    if (!fs.existsSync(sequelizeCliPath)) {
-        throw new Error(`Sequelize CLI entrypoint not found at: ${sequelizeCliPath}`);
-    }
-
-    const migrationResult = spawnSync(
-        process.execPath,
-        [
-            sequelizeCliPath,
-            'db:migrate',
-            '--env',
-            'development',
-            '--config',
-            'src/config/sequelize.config.cjs',
-            '--migrations-path',
-            'migrations'
-        ],
-        {
-            cwd: migrationRunnerRoot,
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                DB_NAME: dbName,
-                DB_HOST: dbConfig.host,
-                DB_USER: dbConfig.user,
-                DB_PASSWORD: dbConfig.password,
-                DB_PORT: String(dbConfig.port)
-            }
-        }
-    );
-
-    if (migrationResult.status !== 0) {
-        throw new Error(
-            `Migration failed for ${dbName}\n${migrationResult.stdout}\n${migrationResult.stderr}`
-        );
-    }
-};
 
 const lifecyclePermissions = [
     'pos:attendance:view',
@@ -207,7 +160,7 @@ describe('Phase 357 cashier location access acceptance on a disposable migrated 
 
     beforeAll(async () => {
         await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
-        runMigrationsForDb(dbName);
+        await createMigratedTestDatabase(dbName, adminSequelize);
 
         tenantSequelize = new Sequelize(dbName, dbConfig.user, dbConfig.password, {
             host: dbConfig.host,
