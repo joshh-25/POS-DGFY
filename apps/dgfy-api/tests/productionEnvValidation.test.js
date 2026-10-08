@@ -66,6 +66,7 @@ describe('production environment validation', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('DGFY_OIDC_ISSUER must be https://api.stage.dgfy.ph/oidc for staging');
+    expect(result.errors).toContain('Missing required environment value: DGFY_DGLAUNDRY_PARTNER_APP_ID');
   });
 
   it('rejects a hosted staging integration that disables production-grade runtime protections', () => {
@@ -112,6 +113,7 @@ describe('production environment validation', () => {
       }
     });
     expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_SERVICE_CLIENT_ID');
+    expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_PARTNER_APP_ID');
     expect(result.errors).not.toContain('DGLAUNDRY_PARTNER_AUDIENCE must exactly match the DGLAUNDRY_PARTNER_BASE_URL origin');
     expect(result.errors).not.toContain('Missing required environment value: DGFY_OIDC_PUBLIC_KEY_FILE (or DGFY_OIDC_PUBLIC_KEY or DGFY_OIDC_JWKS_KEYS_JSON)');
     expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_CLIENT_SECRET_FILE (or DGFY_DGLAUNDRY_CLIENT_SECRET)');

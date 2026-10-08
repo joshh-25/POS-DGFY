@@ -5,8 +5,8 @@
   "staffOrigin": "https://laundry.surebizcorp.com",
   "callback": "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback",
   "contractHashes": {
-    "dgfyPartnerContractSha256": "d77ed41b99a6de958ad3b11f65a01a420d149812f4c39f85084c6a06001d5d5f",
-    "dgfyPartnerOpenApiSha256": "e78efdb8e4d0c09b06184fdec45a57cded407c06104ec7e5e5193ce5a7c1d195",
+    "dgfyPartnerContractSha256": "ab4d8ac83a70fe00d808fac245f06b832b9fd8313305a6991249e02b6e56e468",
+    "dgfyPartnerOpenApiSha256": "0cd1cdc9cdc37fa4c0aff30e951a47531627e25e35fcbb2d415aa9a7c8cef9e2",
     "dglaundryPartnerOpenApiSha256": "8850efb0bd47fb7a002e8e942421dc62ef672c843a07deb456ec333a14942648",
     "dglaundryConnectionFixtureSha256": "30b1bf017d772886ee793ce5439af2c7850c65ea636fb71c441632932da6b8ee",
     "dglaundryIntegrationContractSha256": "8a6a1d535ffc145a8bd60548b33f1c3f1847eff740f7970e0bd5d2698de6b243"

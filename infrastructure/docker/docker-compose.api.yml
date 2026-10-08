@@ -37,6 +37,9 @@ services:
       # backend compares its own pool budget against this at boot and
       # warns on a mismatch instead of failing later under load.
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
+      # Keep integration settings in the reviewed connection env file. Do not
+      # duplicate them here: Compose `environment` overrides `env_file` and
+      # would otherwise replace the installer-rendered tmpfs key paths/IDs.
       SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}

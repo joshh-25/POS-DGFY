@@ -263,7 +263,7 @@ test("prepare rejects a matching but non-P-256 provider request key pair", () =>
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("container stages private key files from one read-only host directory into app-owned tmpfs", () => {
+test("container stages key files from staging or SOPS mounts into app-owned tmpfs", () => {
   const compose = readFileSync(join(process.cwd(), "infrastructure/docker/docker-compose.api.yml"), "utf8");
   const entrypoint = readFileSync(join(process.cwd(), "infrastructure/docker/dgfy-api/entrypoint.sh"), "utf8");
   assert.match(compose, /\$\{DGLAUNDRY_CONNECTION_CONFIG_DIR:-\.\/secrets\}:\/run\/dgfy-connection-source:ro/);
@@ -278,6 +278,8 @@ test("container stages private key files from one read-only host directory into 
     "keys/dglaundry-machine-assertion.pub.pem",
     "keys/dglaundry-request-signing.pub.pem",
   ]) assert.ok(entrypoint.includes(sourceName), `entrypoint must stage ${sourceName}`);
+  assert.match(entrypoint, /source_path="\$connection_secret_source\/\$sops_name"/);
   assert.match(entrypoint, /install -o app -g app -m 0400/);
   assert.match(entrypoint, /chmod 0500 "\$connection_secret_dest"/);
+  assert.doesNotMatch(compose, /^\s+DGFY_OIDC_PRIVATE_KEY_FILE:/m, "the reviewed env file must own integration key paths because Compose environment overrides env_file");
 });

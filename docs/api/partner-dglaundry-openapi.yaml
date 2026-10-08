@@ -117,31 +117,30 @@ paths:
           schema: { type: string }
         - name: company_id
           in: query
-          description: Snake_case query alias; takes precedence over companyId and the header.
+          description: Canonical company scope. This signed query value must agree with any compatibility alias.
           schema: { type: string }
         - name: companyId
           in: query
-          description: CamelCase query alias used by the joint qualification harness.
+          description: Query-only compatibility alias; conflicting values are rejected. The target URI is covered by the request signature.
           schema: { type: string }
         - name: location_id
           in: query
-          description: Snake_case query alias; takes precedence over locationId and the header.
+          description: Canonical location scope. This signed query value must agree with any compatibility alias.
           schema: { type: string }
         - name: locationId
           in: query
-          description: CamelCase query alias used by the joint qualification harness.
-          schema: { type: string }
-        - name: X-DGFY-Company-Id
-          in: header
-          schema: { type: string }
-        - name: X-DGFY-Location-Id
-          in: header
+          description: Query-only compatibility alias; conflicting values are rejected. The target URI is covered by the request signature.
           schema: { type: string }
       responses:
         "200":
           description: Order projection
         "403":
           description: Company/location has no active DGLaundry mapping
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "400":
+          description: Missing, repeated, or conflicting company/location scope values; unsigned header scope aliases are rejected
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -257,7 +256,11 @@ paths:
                 response_type: { type: string, enum: [code] }
                 code_challenge: { type: string }
                 code_challenge_method: { type: string, enum: [S256] }
-                scope: { type: string }
+                scope:
+                  type: string
+                  description: >
+                    For client_credentials, request exactly the registered inbound scope dglaundry.
+                    The dglaundry:* operation scopes are for DGFY-to-DGLaundry service tokens.
                 state: { type: string }
                 nonce: { type: string }
       responses:
@@ -296,7 +299,11 @@ paths:
                 client_id: { type: string }
                 client_assertion_type: { type: string }
                 client_assertion: { type: string }
-                scope: { type: string }
+                scope:
+                  type: string
+                  description: >
+                    For client_credentials, request exactly the registered inbound scope dglaundry.
+                    The dglaundry:* operation scopes are for DGFY-to-DGLaundry service tokens.
       responses:
         "200":
           description: Token response
@@ -311,12 +318,12 @@ paths:
                   expires_in: { type: integer }
                   scope: { type: string }
         "400":
-          description: invalid_grant / invalid_request
+          description: invalid_grant / invalid_request / invalid_scope
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OAuthError" }
         "503":
-          description: Signing key not configured, or Redis-backed state unavailable
+          description: Signing key not configured, or durable Redis-backed state/token storage unavailable
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OAuthError" }
@@ -718,8 +725,9 @@ components:
       in: header
       name: Authorization
       description: >
-        requireDglaundryPartner -- bearer machine token + RFC 9421 P-256 request signature in
-        production, or the legacy shared-secret header as a fallback (see Known gaps).
+        Registered DGLaundry machine bearer token with exact inbound scope dglaundry plus the
+        RFC 9421 P-256 request signature. Hosted environments reject the retired shared-secret
+        fallback. The signed x-dgfy-app-id must match the environment's registered DGLaundry app ID.
     ed25519EventSignature:
       type: apiKey
       in: header

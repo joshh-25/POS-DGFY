@@ -275,7 +275,7 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 - `DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE` **[required when integration is enabled]**
 - `DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID` **[required when integration is enabled]**
 - `DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE` **[required when integration is enabled]** `[SECRET-FILE]`
-- `DGFY_DGLAUNDRY_PARTNER_APP_ID` **[required when integration is enabled]**
+- `DGFY_DGLAUNDRY_PARTNER_APP_ID` **[required when DGLAUNDRY_INTEGRATION_ENABLED]**
 - `DGFY_DGLAUNDRY_REDIRECT_URI` **[required]**
 - `DGFY_DGLAUNDRY_SERVICE_CLIENT_ID` **[required]**
 - `DGFY_DIRECT_INVITE_ACCEPTANCE_ENABLED`

@@ -9,6 +9,9 @@ const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const CLIENT_ID = process.env.DGFY_DGLAUNDRY_CLIENT_ID || 'dglaundry-web';
 const REDIRECT_URI = process.env.DGFY_DGLAUNDRY_REDIRECT_URI || 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
 const MACHINE_CLIENT_ID = String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID || 'dglaundry-machine').trim();
+// The existing DGLaundry machine registration uses one inbound API scope.
+// The dglaundry:* scopes are issued in the reverse DGFY -> DGLaundry direction.
+const MACHINE_PARTNER_SCOPE = 'dglaundry';
 const MACHINE_ASSERTION_AUDIENCE = String(process.env.DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE || `${ISSUER}/token`).trim();
 const TTL_SECONDS = 120;
 const memoryTransactions = new Map();
@@ -114,8 +117,9 @@ export const authenticateDglaundryMachineToken = async (req, res, next) => {
         const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
         const grant = await validateDglaundryMachineToken(token);
         if (!grant) return res.status(401).json({ success: false, message: 'DGLaundry machine access token is invalid or expired.' });
+        if (grant.scope !== MACHINE_PARTNER_SCOPE) return res.status(403).json({ success: false, message: 'DGLaundry machine token scope is not authorized.', error_code: 'DGLAUNDRY_PARTNER_SCOPE_FORBIDDEN' });
         req.partnerIdentity = MACHINE_CLIENT_ID;
-        req.partnerScope = grant.scope || 'dglaundry';
+        req.partnerScope = grant.scope;
         return next();
     } catch (error) { return next(error); }
 };
@@ -370,20 +374,28 @@ export const oidcToken = async (req, res, next) => {
         const input = postBody(req);
         if (input.grant_type === 'client_credentials') {
             await requireMachineClient(input);
+            const requestedScope = String(input.scope || '').trim();
+            if (requestedScope !== MACHINE_PARTNER_SCOPE) {
+                return res.status(400).json({ error: 'invalid_scope', error_description: 'The registered DGLaundry machine client may request only the dglaundry scope.' });
+            }
             const token = crypto.randomBytes(32).toString('base64url');
             const now = Date.now();
-            const stored = await store(`dglaundry:oidc:access:${token}`, {
-                account_id: null,
-                issuer: ISSUER,
-                subject: MACHINE_CLIENT_ID,
-                client_id: MACHINE_CLIENT_ID,
-                scope: input.scope || 'dglaundry',
-                access_token: token,
-                issued_at: now,
-                expires_at: now + 300_000
-            }, 300);
-            if (!stored) return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'Redis-backed OIDC state is required.' });
-            return res.json({ access_token: token, token_type: 'Bearer', expires_in: 300, scope: input.scope || 'dglaundry' });
+            let stored = false;
+            try {
+                stored = await store(`dglaundry:oidc:access:${token}`, {
+                    account_id: null,
+                    issuer: ISSUER,
+                    subject: MACHINE_CLIENT_ID,
+                    client_id: MACHINE_CLIENT_ID,
+                    scope: requestedScope,
+                    access_token: token,
+                    expires_at: now + 300_000
+                }, 300);
+            } catch {
+                stored = false;
+            }
+            if (!stored) return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'Durable machine-token storage is required.' });
+            return res.json({ access_token: token, token_type: 'Bearer', expires_in: 300, scope: requestedScope });
         }
         const authenticatedClientId = await authenticateOidcClient(req, input);
         if (authenticatedClientId !== CLIENT_ID) return res.status(400).json({ error: 'unauthorized_client' });
