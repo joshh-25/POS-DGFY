@@ -163,6 +163,7 @@ test('candidate history accepts pre-cut refreshes with no release PR to supersed
     `| Initial | ${'a'.repeat(40)} | ${'b'.repeat(40)} | #2384 | — |`,
     `| 1 | ${'c'.repeat(40)} | ${'d'.repeat(40)} | #2389 | — |`,
     `| 2 | ${'e'.repeat(40)} | ${'f'.repeat(40)} | #2391 | — |`,
+    `| 3 | ${'1'.repeat(40)} | ${'2'.repeat(40)} | #2396 | — |`,
   ].join('\n');
 
   assert.deepEqual(validateCandidateHistory(body), []);
