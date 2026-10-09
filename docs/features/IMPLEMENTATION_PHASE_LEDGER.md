@@ -27240,3 +27240,87 @@ Not complete; set after the scoped implementation validation passes and the PR i
 ### Next phase number
 
 Phase 485. No explicit dependency.
+
+## Phase 485 - Tenant intake backend proposals and human confirmation (#2372)
+
+### Initiative and release
+
+LLM-assisted OFFICIAL/DEMO tenant and owner-account onboarding, backend PR 1 of the #2372 sequence.
+Ordinary develop feature work; no deployment or app-version floor change.
+
+### Objective and scope
+
+Add landlord proposals, OpenAI text/CSV/PDF extraction, deterministic shared provisioning-field
+validation, combined Platform Admin authority, single-use hash-bound confirmation, DEMO guard and
+persisted `is_demo` classification. Only confirmation invokes the existing bundled account/tenant
+provisioning use case. UI review and the local MCP proposer remain later PRs under #2372.
+
+### Status
+
+`in_progress` — backend implementation and focused validation passed; Pat approved the migration
+and regulatory declaration before committing on 2026-10-09. PR review/merge and post-merge
+verification remain outstanding.
+
+### Dependencies
+
+Existing admin-assisted provisioning and ADR 0047 Platform Admin authority. No explicit dependency
+on Phase 484 or any earlier unfinished phase. Future dgfy-admin/MCP work depends on this API.
+
+### Acceptance and validation evidence
+
+- [x] Proposal creation/extraction does not provision; confirmation requires explicit approval and
+  the hash of the canonical payload plus target.
+- [x] Shared field validators preserve existing provisioning behavior; injected privileges are
+  dropped, credential-bearing input rejected and passwords absent from proposals/audit.
+- [x] Row-locked claims/edits reject replay, concurrent duplicate approval, stale or tampered hashes,
+  expired and terminal proposals.
+- [x] DEMO guard runs at creation, confirmation and existing provisioning entry points; all required
+  environmental denial cases have focused tests. Missing NODE_ENV also fails closed.
+- [x] Combined tenant/account grants apply to every intake route; unlisted routes retain master-only
+  policy. Use cases independently enforce actor authority.
+- [x] Disposable MySQL migration up/re-run and OFFICIAL/DEMO full existing tenant-schema provisioning
+  passed via `scripts/verify-tenant-intake.mjs`: both targets created 157-table tenant schemas, real
+  accounts/users/membership, persisted DEMO classification and approval audit; concurrent/replay,
+  stale/PATCH/expired/rejected paths and all three DEMO enforcement points passed.
+- [x] Five focused Jest suites passed (83 tests), including HTTP/multipart/no-store transport.
+- [x] Architecture (57 modules/705 code files, 106 controllers), docs lint/98 ADRs, compliance
+  declaration shape/API contract, landlord-only migration coverage, changed-file syntax and targeted
+  ESLint passed. Develop-base version-floor checks passed for API 1.39.0 and migration-runner 1.28.0
+  unchanged. Seven compliance-rule regression tests pass; future isolated intake/guard/rule changes
+  retain the regulatory floor. Live provider, deployed-session and full release-matrix checks were
+  not run. No architecture allowlist/exception introduced.
+- [x] Migration correctness and regulatory classification/declaration approved by Pat before
+  commit on 2026-10-09 (implementation-session reply: `approve`), per Worker checkpoint policy.
+
+### Links
+
+- Issue: #2372; local handoff `.tmp/plan-2372.md`, planning head
+  `e0522eae1a63fe0afca90c0554770f077973e01b`.
+- [ADR 0090](../architecture/adr/0090-tenant-intake-proposal-confirmation.md).
+- [API and recovery contract](../api/tenant-intake.md).
+- [Compliance declaration](../compliance/impact-declarations/2026-10-09-tenant-intake-backend.md).
+- Implementation: `apps/dgfy-api/src/modules/tenantIntake/`, shared provisioning rules and DEMO guard.
+- Migration: `apps/dgfy-migration-runner/migrations/20261009000001-create-tenant-intake-proposals.cjs`.
+- Tests: `tenantIntake.usecases.test.js`, `tenantIntake.extraction.test.js`, existing provisioning
+  and Platform Admin route-classification suites, transport suite, compliance-floor script tests; `scripts/verify-tenant-intake.mjs` for real MySQL.
+
+### Completion date
+
+Not complete. Set only after scoped implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] operational — landlord migration applies before API rollout; no proposal table enters tenant
+  schemas; owner #2372; blocks deployment qualification.
+- [ ] provider — verify approved OpenAI configuration, extraction limits/PII handling and safe logs
+  in a controlled environment; owner #2372; blocks extraction rollout qualification.
+- [ ] deployment — live admin-cookie/CSRF/combined-grant transport proof; owner #2372; blocks issue
+  closure with the later UI/MCP acceptance work.
+- [ ] product — dgfy-admin editable review, explicit approval and one-time password display; local
+  MCP tool-list proof with no confirm tool; owner #2372; later PRs required before issue closure.
+- [ ] operational — reconcile NOT-EXECUTED compliance preflight before promotion; owner #2372.
+
+### Next phase number
+
+Phase 486. No earlier-phase dependency blocks a separate initiative; later #2372 UI/MCP phases
+require the backend contract above.
