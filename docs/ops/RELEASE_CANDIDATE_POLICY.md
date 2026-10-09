@@ -2037,8 +2037,10 @@ refresh to candidate history and cumulative `## Included` scope. A successor has
 and note. Its `## Included` section states its own scope and identifies any predecessor scope
 carried into it. The successor's version floors are checked against then-current `origin/staging`;
 an app changed again after predecessor content was promoted takes the next minor floor from that
-staging baseline. Each refresh allocates fresh per-app immutable `rN` artifacts. Never overwrite a
-published tag or reuse an archived artifact for different contents.
+staging baseline. Each refresh allocates fresh per-app immutable `rN` artifacts only for apps
+selected by the content-equivalence build plan; untouched apps retain their earlier artifact and
+per-app source-SHA lineage. Never overwrite a published tag or reuse an archived artifact for
+different contents.
 
 All compliance, ordinary PR checks, Merge Safety, no-squash, tenant-schema reporting, immutable-tag,
 alias, and production authorization controls remain unchanged. This amendment supersedes the
@@ -2050,3 +2052,19 @@ ADR 0082 Decision 3, the #1007 override, or automatic/continuous staging synchro
 promoter skill, runbook, validator tests, release-note template, and Phase 486 ledger entry.
 
 PR: (this PR). Closes #2381. Refs #1542.
+
+### 2026-10-09: No-app-change staging refresh (#1610, Phase 487)
+
+A refresh whose content-equivalence build plan selects no app records both `apps_touched: []` and
+`artifacts: []`. This advances staging history and `current_staging_sha` without claiming that
+untouched apps were rebuilt or changing their existing artifacts and per-app source-SHA lineage.
+The manifest `reason` must link the skipped-build-plan evidence. After the refresh, repeat
+observation and required qualification at the new staging SHA before cutting a release; older
+SHA-bound evidence is stale. Refresh SHA uniqueness, source advancement, parent-chain integrity,
+API/migration-runner pairing when apps are selected, immutable tags, and all other release gates
+remain unchanged. This does not change ADR 0081 Decision 7's `[binding]` rule.
+
+`[default]` tier under ADR 0039; amends ADR 0081 Decision 8. See the promoter runbook and Phase 487
+in the implementation ledger.
+
+PR: (this PR). Refs #1610.

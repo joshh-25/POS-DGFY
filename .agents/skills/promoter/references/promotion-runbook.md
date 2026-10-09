@@ -560,16 +560,18 @@ optional `base_staging_sha` to its initial revision for compatibility with exist
 The refresh sequence is independent of staging repair sequences and artifact `rN` values.
 
 Set `refresh_in_progress` with no release selection before the refresh begins. Build changed
-apps with fresh per-app immutable STAGING revisions; preserve valid untouched artifacts and include
-the complete selected/carry-forward set. The refreshed artifact origin is `staging_refresh` and
-parity requires the ordinary STAGING predecessor. Once merge and builds succeed, clear the active
-refresh marker, set status to `staging_soak`, and repeat observation and required qualification at
-the actual staging SHA. Store a passing `staging_observation` record with the exact SHA, run ID or
-URL, observation time, and result before cutting a new release. The v4 validator keeps this field
-optional for older in-flight manifests, but it must be present and match
-`release_revision.source_staging_sha` for every new cut. Archived observation, parity, or optional
-quality-suite evidence cannot qualify the refreshed SHA. A failed refresh remains unqualified and
-cannot silently restore the archived selection.
+apps with fresh per-app immutable STAGING revisions and record artifacts only for apps selected by
+the content-equivalence build plan; preserve untouched apps' prior artifacts and per-app source-SHA
+lineage. If no app inputs changed, record `apps_touched: []` and `artifacts: []` together, and put
+the skipped-build-plan evidence link in the manifest `reason`. The refreshed artifact origin is
+`staging_refresh` and parity requires the ordinary STAGING predecessor for any app rebuilt. Once
+merge and builds succeed, clear the active refresh marker, set status to `staging_soak`, and repeat
+observation and required qualification at the actual staging SHA even when no app was rebuilt. Store
+a passing `staging_observation` record with the exact SHA, run ID or URL, observation time, and result
+before cutting a new release. The v4 validator keeps this field optional for older in-flight
+manifests, but it must be present and match `release_revision.source_staging_sha` for every new cut.
+Archived observation, parity, or optional quality-suite evidence cannot qualify the refreshed SHA. A
+failed refresh remains unqualified and cannot silently restore the archived selection.
 
 After a release cut, staging can advance under a successor candidate with a new `YYYY-MM-DD-NN` ID,
 its own manifest and release note, and a `predecessor_candidate_id` link. Do not cut the successor's

@@ -27396,3 +27396,65 @@ Not complete. Set only after scoped implementation is merged and implementation 
 ### Next phase number
 
 Phase 487. No explicit dependency.
+
+## Phase 487 - No-app-change staging refresh manifests (#1610)
+
+### Initiative and release
+
+Release-candidate lifecycle: represent a valid staging refresh that advances the staging SHA while
+the content-equivalence build plan selects no applications.
+
+### Objective and scope
+
+Allow v4 `staging_refresh` entries to record empty `apps_touched` and `artifacts` arrays together.
+Preserve existing per-app artifact and source-SHA lineage, keep staging history and release
+qualification bound to the new SHA, and amend the validator tests and governed release guidance.
+Do not change Decision 7, workflow behavior, or the per-app identity model.
+
+### Status
+
+`in_progress` — implementation is unmerged; focused and governed-document validation remain due.
+
+### Dependencies
+
+Issue #1610 and ADR 0081 Decisions 6 and 8, the v4 candidate validator, and the release policy.
+No earlier phase dependency blocks this initiative.
+
+### Acceptance and validation evidence
+
+- [x] A refresh with both arrays empty validates and advances `current_staging_sha` while every
+      app retains its prior source SHA, including apps touched by earlier repairs.
+- [x] A release cut after an empty refresh validates only at the new staging SHA; an old-SHA
+      observation is rejected or reported stale.
+- [x] Empty/non-empty array mismatches, empty initial revisions, empty repairs, duplicate/unknown
+      apps, and one-sided API/migration-runner selections remain rejected.
+- [x] ADR 0081, release policy, promoter guidance, and this ledger describe the no-app-change shape
+      and preserve post-refresh observation/qualification requirements.
+- [x] Focused validator/parity/evidence tests, architecture and ADR/doc checks, compliance, and
+      Worker Tier 0 checks pass and are recorded in the PR.
+
+### Links
+
+- Issue: #1610; planner handoff `.tmp/plan-1610.md`, planning head
+  `fad763bd92014589f89cba9253f201bdf25e4bcd`.
+- ADR: 0081 dated 2026-10-09 amendment; ADR 0039 default-tier procedure.
+- Policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md` 2026-10-09 amendment.
+- Implementation: `scripts/check-promotion-candidate.js` and
+  `scripts/check-promotion-candidate.test.js`.
+- Procedure: `.agents/skills/promoter/SKILL.md` and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+
+### Completion date
+
+Not complete. Set only after the change is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — validate and finalize candidate `2026-10-09-01` after its refresh manifest
+      records empty `apps_touched`/`artifacts`, then repeat observation and qualification at
+      `a6e297aca19a3f2bf51e6b2cda4de10ca4537bd`; owner: promoter; blocks release qualification and
+      closure of #1610.
+
+### Next phase number
+
+Phase 488. No explicit dependency.
