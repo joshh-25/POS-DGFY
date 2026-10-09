@@ -10,6 +10,15 @@ const args = process.argv.slice(2);
 const action = args[0] || "inspect";
 const environment = option("environment") || "staging";
 const configDir = option("config-dir") || process.env.DGLAUNDRY_CONNECTION_CONFIG_DIR || "";
+// Optional: the host's actual Compose .env file (e.g. /opt/dgfy-stage/.env). When set, `apply`
+// also merges its generated connection variables into this file, using the same preserve-unmanaged
+// merge as the connection-env file itself. This closes the drift that caused dgfy-api to crash-loop
+// after an ordinary promotion restart (#2303) -- the standard deploy path only ever passes
+// `--env-file .env`, never the separate connection-env file, so without this the two files silently
+// diverge the next time `apply` runs (e.g. a future key rotation) even though this run's fix is
+// already live on the host.
+const composeEnvFile = option("compose-env-file") || process.env.DGLAUNDRY_CONNECTION_COMPOSE_ENV_FILE || "";
+const composeEnvPath = composeEnvFile ? resolve(composeEnvFile) : null;
 
 if (!ACTIONS.has(action)) fail("SETUP_ACTION_INVALID", `Use one of: ${[...ACTIONS].join(", ")}`);
 if (!["staging", "production"].includes(environment)) fail("SETUP_ENVIRONMENT_INVALID", "Use staging or production.");
@@ -146,7 +155,8 @@ if (action === "inspect") {
   await writeAtomic(envPath, candidate, 0o600);
   const applied = { ...applying, status: "applied", envSha256: digest(candidate) };
   await writeState(applied);
-  console.log(JSON.stringify({ action, environment, status: "applied", manifestSha256: manifestDigest, previous: applied.previous, privateValues: "not-reported" }, null, 2));
+  const composeEnvSynced = composeEnvPath ? await syncComposeEnv(composeEnvPath, candidate) : false;
+  console.log(JSON.stringify({ action, environment, status: "applied", manifestSha256: manifestDigest, previous: applied.previous, composeEnvFile: composeEnvPath, composeEnvSynced, privateValues: "not-reported" }, null, 2));
 } else if (action === "verify") {
   const state = await loadState();
   const appliedEnv = await readText(envPath);
@@ -243,6 +253,14 @@ function mergeEnv(previous, generated) {
   }
   const kept = preserved.join("\n").replace(/\n+$/, "");
   return (kept ? `${kept}\n` : "") + generatedLines.join("\n") + "\n";
+}
+async function syncComposeEnv(targetPath, candidate) {
+  if (!(await exists(targetPath))) fail("COMPOSE_ENV_FILE_MISSING", `--compose-env-file does not exist: ${targetPath}. Refusing to create the deploy-owned Compose environment file from scratch.`);
+  const existingMode = (await stat(targetPath)).mode & 0o777;
+  const existing = await readManagedEnv(targetPath);
+  const merged = mergeEnv(existing, candidate);
+  await writeAtomic(targetPath, merged, existingMode);
+  return true;
 }
 function envValue(source, name) {
   const prefix = `${name}=`;
