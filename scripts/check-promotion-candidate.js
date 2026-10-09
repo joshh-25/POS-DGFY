@@ -69,8 +69,8 @@ function assertDigest(value, label) {
 // comment), so a repair that touches either always lists both. This is what
 // resolveCandidateSourceShaByApp below walks to answer "which SHA is THIS app's candidate source
 // identity" per app, instead of assuming every app advanced to the same current_staging_sha.
-function assertAppsTouched(value, position) {
-  assert(Array.isArray(value) && value.length > 0, `Repair revision ${position} must declare a non-empty apps_touched array`, 'MISSING_APPS_TOUCHED');
+function assertAppsTouched(value, position, { allowEmpty = false } = {}) {
+  assert(Array.isArray(value) && (allowEmpty || value.length > 0), `Repair revision ${position} must declare a non-empty apps_touched array`, 'MISSING_APPS_TOUCHED');
   const seen = new Set();
   for (const app of value) {
     assert(typeof app === 'string' && APPS.includes(app), `Repair revision ${position}'s apps_touched contains an unrecognized app: ${app}`, 'INVALID_APPS_TOUCHED');
@@ -512,9 +512,9 @@ function validatePromotionCandidateV4(manifest) {
     assert(entry.branch === `to-staging/${manifest.candidate_id}-refresh-${seq}`, `Refresh ${seq} must use to-staging/${manifest.candidate_id}-refresh-${seq}`, 'INVALID_REFRESH_BRANCH');
     assert(Number.isInteger(entry.pr) && entry.pr > 0, `Refresh ${seq} must identify its PR`, 'MISSING_REFRESH_PR');
     assert(typeof entry.reason === 'string' && entry.reason.trim(), `Refresh ${seq} reason must be non-empty`, 'MISSING_REFRESH_REASON');
-    assertAppsTouched(entry.apps_touched, `staging refresh ${seq}`);
+    assertAppsTouched(entry.apps_touched, `staging refresh ${seq}`, { allowEmpty: true });
     for (const app of entry.apps_touched) refreshApps.add(app);
-    assert(Array.isArray(entry.artifacts) && entry.artifacts.length > 0, `Refresh ${seq} artifacts must be a non-empty array`, 'INVALID_REFRESH_ARTIFACTS');
+    assert(Array.isArray(entry.artifacts), `Refresh ${seq} artifacts must be an array`, 'INVALID_REFRESH_ARTIFACTS');
     const artifactApps = new Set();
     for (const artifact of entry.artifacts) {
       assertReleaseAppEntry(artifact.app, artifact, ['staging_refresh']);
