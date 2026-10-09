@@ -980,3 +980,14 @@ lineage. Observation and release qualification remain bound to the new staging S
 manifest reason records the skipped-build-plan evidence. This does not change Decision 7's
 `[binding]` immutable-tag rule. `[default]` — amends Decision 8. See #1610 and
 `RELEASE_CANDIDATE_POLICY.md`'s 2026-10-09 amendment.
+
+### 2026-10-09 — Bind live staging runtime evidence to the physical staging head (#2399)
+
+For live staging observation, `observation.candidate_sha` remains bound to the candidate's
+`current_staging_sha` identity, while `observation.runtime_sha` must equal the manifest's required
+`staging_head_sha`, the physical Git head at `origin/staging`. These values can differ because
+candidate source identity and physical staging history serve separate purposes. Per-app candidate
+source resolution, immutable artifact revisions, and promotion parity continue to use their
+existing provenance rules; this change affects only the identity used to verify the running
+staging deployment. `[default]` — amends Decision 8's staging observation contract; Decision 7's
+`[binding]` immutable-tag rule and existing per-app provenance semantics are unchanged. See #2399.
