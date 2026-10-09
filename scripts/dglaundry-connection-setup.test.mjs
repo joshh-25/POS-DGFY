@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -171,6 +171,52 @@ test("apply and verify require a non-empty owner-only browser-client secret file
     assert.equal(blocked.status, 2);
     assert.match(blocked.output, /BROWSER_CLIENT_SECRET_REQUIRED/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("apply syncs its generated variables into an external --compose-env-file without disturbing unmanaged settings or permissions", () => {
+  const root = mkdtempSync(join(tmpdir(), "dglaundry-setup-compose-sync-"));
+  const composeDir = mkdtempSync(join(tmpdir(), "dglaundry-compose-env-"));
+  const composeEnvPath = join(composeDir, ".env");
+  try {
+    assert.equal(run("prepare", root).status, 0);
+    // Mirrors the real incident (#2303): the deploy-owned .env already has this key, but stale
+    // (false), plus an unrelated app setting that must survive the merge untouched. 0o640 mirrors
+    // this file's real-world ownership/perms on the host -- the sync must not force them to 0o600.
+    writeFileSync(composeEnvPath, "UNRELATED_APP_SETTING=keep-me\nDGLAUNDRY_INTEGRATION_ENABLED=false\n", { mode: 0o640 });
+    const applied = run("apply", root, ["--confirm", "--compose-env-file", composeEnvPath]);
+    assert.equal(applied.status, 0);
+    const report = JSON.parse(applied.output);
+    assert.equal(report.composeEnvFile, composeEnvPath);
+    assert.equal(report.composeEnvSynced, true);
+    const merged = readFileSync(composeEnvPath, "utf8");
+    assert.match(merged, /UNRELATED_APP_SETTING=keep-me/);
+    assert.match(merged, /DGLAUNDRY_INTEGRATION_ENABLED=true/);
+    assert.doesNotMatch(merged, /DGLAUNDRY_INTEGRATION_ENABLED=false/);
+    // The exact variable missing in the real incident -- entrypoint.sh had no path to copy from.
+    assert.match(merged, /DGFY_OIDC_PRIVATE_KEY_FILE=\/run\/dgfy-secrets\/dgfy-oidc-private\.pem/);
+    assert.equal(statSync(composeEnvPath).mode & 0o777, 0o640);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(composeDir, { recursive: true, force: true });
+  }
+});
+
+test("apply refuses to create a missing --compose-env-file from scratch", () => {
+  const root = mkdtempSync(join(tmpdir(), "dglaundry-setup-compose-sync-missing-"));
+  const composeDir = mkdtempSync(join(tmpdir(), "dglaundry-compose-env-missing-"));
+  const composeEnvPath = join(composeDir, ".env");
+  try {
+    assert.equal(run("prepare", root).status, 0);
+    const blocked = run("apply", root, ["--confirm", "--compose-env-file", composeEnvPath]);
+    assert.equal(blocked.status, 2);
+    assert.match(blocked.output, /COMPOSE_ENV_FILE_MISSING/);
+    assert.equal(existsSync(composeEnvPath), false);
+    // The connection-env file itself still applied successfully -- only the optional sync failed.
+    assert.equal(JSON.parse(readFileSync(join(root, "dglaundry-connection-state.json"), "utf8")).status, "applied");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(composeDir, { recursive: true, force: true });
+  }
 });
 
 test("verify detects applied environment and registration ID drift", () => {
