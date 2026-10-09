@@ -140,6 +140,13 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'regulatory'
   },
   {
+    // #2372: the intake confirmation boundary must retain its floor even when a future diff
+    // changes only the new module/guard and no longer touches the existing tenant repository.
+    pattern: /^apps\/dgfy-api\/src\/(modules\/tenantIntake\/|routes\/adminTenantIntake\.js$|config\/demoProvisioningGuard\.js$|modules\/tenants\/usecases\/(adminAssistedProvisioningUseCase|provisioningInputRules)\.js$)/,
+    surfaces: ['settings', 'compliance'],
+    minimumClassification: 'regulatory'
+  },
+  {
     pattern: /^apps\/dgfy-api\/src\/validators\/complianceValidator\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'

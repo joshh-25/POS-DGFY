@@ -59,6 +59,7 @@ export const tenantAdminRepository = {
             attributes: [
                 'id',
                 'name',
+                'is_demo',
                 'domain',
                 'status',
                 'admin_email',
