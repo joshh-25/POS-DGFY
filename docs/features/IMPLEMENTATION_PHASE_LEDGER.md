@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-26
+last_reviewed: 2026-10-08
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -11,6 +11,40 @@ topic: implementation_phase_ledger
 # Implementation Phase Ledger
 
 This is the repository source of truth for continuous implementation phase numbering. Releases and initiatives group phases but never reset the sequence. Historical Phase 0 is retained because it predates the continuous-numbering rule; no future initiative may create another Phase 0.
+
+## Phase Sequencing and Lifecycle Rules
+
+### Numbering and eligibility
+
+Phase numbers continue from the highest number in this ledger. Numbering does not determine work
+order: a phase may start while any earlier phase is `planned`, `approved`, `in_progress`, `blocked`,
+or `deferred`. Only an explicit dependency under that phase's `### Dependencies` heading can block
+it; the dependency must name the phase or issue and state the technical or operational reason.
+`### Next eligible phase` prose, other narrative, and sequencing overrides do not create a
+prerequisite by themselves.
+
+A phase number is claimed when its ledger entry lands on `develop`. If concurrent unmerged branches
+claim the same number, the later entry takes the next free number before merge. Merged phases are
+never renumbered.
+
+### Status and post-merge verification
+
+`completed` means the scoped implementation is merged to its target branch and its named
+implementation validation has passed. Record the completion date and PR/merge SHAs. Deployment,
+provider, and operational verification that remains due belongs in a required `### Post-merge
+verification` checklist. Tag each item `deployment`, `provider`, or `operational`, name its owning
+issue or gate, and state what it blocks. Open post-merge items do not keep a phase `in_progress` or
+block unrelated phases; they are not waived and retain the authority of their applicable release,
+deployment, migration-rehearsal, tenant-schema, provider, and production gates (including
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` and `AGENTS.md`).
+
+Use `in_progress` or `blocked` while scoped work is unmerged or implementation validation is
+incomplete. The status enum remains `planned`, `approved`, `in_progress`, `completed`, `blocked`,
+and `deferred`.
+
+Keep the existing `### Next eligible phase` headings in historical entries; new entries should use
+`### Next phase number` and state only the next number (`highest + 1`) and any explicit dependency.
+Do not retroactively rewrite other historical phases.
 
 ## Phase Register
 
@@ -10970,6 +11004,18 @@ Pat to run by hand — not a fix, since the root cause is unknown until that acc
 open against `develop`. Still blocked on Pat's own SSH access to `vm-sieitzstaging` for everything
 past that; no role can advance the actual root-cause investigation unattended.
 
+2026-10-08 update: the recurrence on run `37759977686` completed successfully on the self-hosted
+runner after the initial report, so that retry did not reproduce the failure. The hosted-runner
+trial (run `37786879649`, current `develop` SHA
+`bbab2518c5001151902dc9cf6212312171013756`) ended `cancelled` during the
+`compliance_pos_fiscal` DB group, after the fast tier reported 767 passed and 26 failed tests across
+8 suites; the F&B contracts step was skipped. The API lint step also reported four errors. This is
+inconclusive for the runner-class hypothesis and does not reproduce the original step-boundary
+failure shape. The original failed SHA no longer has a dispatchable branch ref. PR #2362 adds a
+best-effort post-matrix runner-health snapshot before the F&B contracts step; it will be available
+on the next occurrence after merge. These results do not establish root cause; Phase 192 remains
+`blocked` pending the operator's SSH investigation.
+
 ### Dependencies
 
 None from this repo's side; blocked on infrastructure access outside any agent role.
@@ -10988,6 +11034,7 @@ None from this repo's side; blocked on infrastructure access outside any agent r
 ### Implementation links
 
 - Issue #1168, Refs #1124, #1165, #1063
+- PR #2362 (workflow snapshot and hosted-runner trial follow-up)
 
 ### Next eligible phase
 
@@ -26817,8 +26864,8 @@ fiscal or production acceptance.
 
 ### Status
 
-`in_progress` — implementation and local validation are underway. Migration rehearsal,
-authenticated end-to-end acceptance, PR review, merge, and deployed QA remain outstanding.
+`completed` — implementation merged to `develop` and implementation validation passed. PR #2341
+merged 2026-10-08 as `dd8bffe439522a1dc2893b9b42755f2ac9a5871d`.
 
 ### Dependencies
 
@@ -26837,8 +26884,7 @@ Storefront, and OPIS ownership contracts.
       reports, parked-sale, shift, and customer/terminal workflow changes are included.
 - [x] POS-to-OPIS boundaries are preserved; obsolete POS Back Office handoffs are not
       reintroduced while OPIS retains the administrative review surface.
-- [ ] Disposable migration rehearsal, authenticated full-flow browser acceptance, PR review,
-      merge, and deployed QA remain outstanding.
+- [x] PR review and merge completed in PR #2341.
 
 ### Links
 
@@ -26854,13 +26900,21 @@ Storefront, and OPIS ownership contracts.
 
 ### Completion date
 
-Not complete; set only after every required acceptance gate and evidence item passes.
+2026-10-08 — implementation complete; see post-merge verification below.
+
+### Post-merge verification
+
+- [ ] `operational` — Disposable migration rehearsal; owned by #343/#2067 and the applicable
+      migration/release gate. Blocks promotion containing these migrations until it passes.
+- [ ] `operational` — Authenticated full-flow browser acceptance; owned by #343/#2067. Blocks
+      closure of the corresponding acceptance work.
+- [ ] `deployment` — Deployed QA; owned by #343/#2067 and the applicable QA/deployment gate.
+      Blocks production acceptance of this scope.
 
 ### Next eligible phase
 
-Phase 481 (#2306) is explicitly authorized to proceed independently of Phase 480's open
-acceptance gates (2026-10-08; see Phase 481's sequencing override). Phase 482 is eligible only
-after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is rechecked.
+Phase 482 is the next phase number (#2357) and has no dependency on Phase 480 or Phase 481. Any
+other blocker must be recorded as an explicit dependency with its technical or operational reason.
 
 ## Phase 481 - DGLaundry runtime attestation and qualification probes (#2306)
 
@@ -26879,22 +26933,22 @@ probe contract without corresponding evidence.
 
 ### Status
 
-`in_progress` — implementation and local governance/architecture checks are in progress. Focused
-Jest suites could not run because the API workspace's Jest executable is not installed. Provider
-confirmation, staging execution, and DGLaundry hosted-validator acceptance remain outstanding.
+`in_progress` — PRs #2349 and #2351 are merged to `develop`, but implementation validation is
+incomplete: the focused attestation, specimen, and probe Jest suites have no passing CI evidence.
+The PR check runs passed the API build and workflow checks, but did not run those suites; the PR
+bodies also record that they were not run locally.
 
-**Explicit sequencing override (2026-10-08):** Pat authorized #2306 to proceed and prepare a PR
-while Phase 480 remains `in_progress`. Phase 480's acceptance criteria remain open and are not
-waived, completed, or replaced by this override. This authorization applies only to this
-independent DGLaundry qualification-evidence scope.
+**Historical sequencing override (2026-10-08):** Pat authorized #2306 to proceed while Phase 480
+remained `in_progress`. The general sequencing rule above now governs: an explicit dependency is
+required for one phase to block another. This historical authorization did not waive any acceptance
+or verification gates.
 
 ### Dependencies
 
-Issue #2306; Pat's 2026-10-08 authorization to proceed independently of Phase 480; ADR 0079 and its
-existing DGLaundry partner contract decisions; the authoritative
+Issue #2306; ADR 0079 and its existing DGLaundry partner contract decisions; the authoritative
 `docs/api/PARTNER_INTEGRATION_CONTRACT.md`; the staging-only qualification-order safeguards and
-existing commerce payment idempotency/session boundaries. Phase 480 is not a technical dependency;
-its open gates remain independently tracked.
+existing commerce payment idempotency/session boundaries. Phase 480 is not a technical or
+operational dependency.
 
 ### Acceptance and validation evidence
 
@@ -26907,20 +26961,14 @@ its open gates remain independently tracked.
       company/location/order-state readback.
 - [ ] Sandbox-identity mismatch rejection and the focused attestation, specimen, and probe Jest
       suites pass. These suites were added but could not run locally because
-      `apps/dgfy-api/node_modules/jest/bin/jest.js` is not installed.
+      `apps/dgfy-api/node_modules/jest/bin/jest.js` was not installed, and PR check runs 37763079990
+      (#2349) and 37767674234 (#2351) contain no Jest job for them.
 - [x] Changed JavaScript/MJS syntax checks and `git diff --check` pass; `npm run check:architecture`
       passes (56 modules/698 code files, controller boundaries 105 files); `npm run lint:docs` and
       `npm run check:adr --strict` pass (31 governed docs/97 ADRs); `npm run check:compliance` passes
       (3 sensitive files and 10 API contract rules); `node scripts/check-app-version-bump.js`
       passes with no version bump required.
-- [ ] DGLaundry confirms the proposed route/method/request/response contract posted on #2306, or
-      the implementation is updated to match provider feedback.
-- [ ] Staging qualification produces sanitized evidence bound to the deployed DGFY SHA and
-      configuration revision; DGLaundry's hosted validators accept the signed attestation and
-      event specimens and stop reporting required probes as missing. Staging JWKS currently
-      returns 503, so hosted acceptance remains blocked pending its separate remediation.
-- [ ] PR review is complete. This phase does not merge, deploy, perform live payment operations,
-      or claim deployed verification.
+- [x] PR review and merges completed in PRs #2349 and #2351.
 
 ### Links
 
@@ -26943,9 +26991,336 @@ its open gates remain independently tracked.
 
 ### Completion date
 
-Not complete; set only after every acceptance gate and required hosted qualification evidence passes.
+Not complete; implementation validation remains incomplete as noted above.
+
+### Post-merge verification
+
+- [ ] `provider` — DGLaundry confirms the proposed route/method/request/response contract posted on
+      #2306, or the implementation is updated to match provider feedback. Owned by #2306; blocks
+      provider acceptance of the integration contract.
+- [ ] `deployment` — Staging qualification produces sanitized evidence bound to the deployed DGFY
+      SHA and configuration revision; DGLaundry's hosted validators accept the signed attestation
+      and event specimens and stop reporting required probes as missing. Owned by #2306 and the
+      staging qualification gate; currently blocked while staging JWKS returns 503.
 
 ### Next eligible phase
 
-Phase 482 only after Phase 480 and Phase 481 acceptance gates pass and the authoritative ledger is
-rechecked.
+Phase 482 is the next phase number (#2357) and has no dependency on Phase 480 or Phase 481. The
+test-inventory baseline overlap for Phase 481's suites is non-blocking; record it as a risk if
+needed, not as a dependency.
+
+## Phase 482 - dgfy-api quality-gate runtime and repeated test setup (#2357)
+
+### Initiative and release
+
+Backend release-quality test execution, setup reuse, and runtime evidence.
+
+### Objective and scope
+
+Measure the `dgfy-api-quality` job across hosted and self-hosted runners, remove repeated full
+migration work for isolated DB suites through an equivalence-verified migrated template, retain the
+F&B open-handle diagnostic while running those suites only once, and report per-suite timings and
+before/after evidence. Preserve every test, assertion, test database isolation, and the existing
+fast-tier worker/memory settings.
+
+### Status
+
+`completed` — implementation, local validation, and corrected-head hosted/self-hosted API matrix
+comparisons completed on 2026-10-09. Both corrected-head API jobs passed all 32 DB files and retained
+the same 8 fast-tier failing suites / 26 failing tests already present in baseline evidence; no new
+failure was attributed to this change. The hosted matrix completed in 11:25 and the default
+`sieitz-lg` matrix in 16:52. These results do not support a claim that the default self-hosted run is
+faster overall. The hosted fast tier still takes 5:35, spread across hundreds of suites. On
+`sieitz-lg`, `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js` varied to
+172.9s and 143.8s, compared with 24.2s and 20.8s on the hosted runner; follow-up #2369 will measure
+whether that gap is in the suites or the runner environment.
+
+### Dependencies
+
+Issue #2357; `promotion-quality-gate.yml`; MySQL 8 test service; the backend DB-tier manifest and
+test cleanup lifecycle. Phases 480 and 481 are not dependencies; Pat explicitly authorized this
+independent work while their external acceptance evidence remains open.
+
+### Acceptance and validation evidence
+
+- [x] Hosted and self-hosted before/after runs report test counts, per-step and per-tier/group
+      duration, and slowest-suite timing evidence; existing 8 suites / 26 tests remain identified
+      separately. Corrected-head API jobs passed on both runner types with the same pre-existing
+      fast-tier failure set; no OOM occurred. Corrected hosted run #37807851576: API 14:31, matrix
+      11:25. Corrected default `sieitz-lg` run #37807271082: API 24:26, matrix 16:52. These are
+      directional cross-runner measurements, not proof of a default-run speedup.
+- [x] The four full-migration DB suites use unique per-test databases cloned from one migrated
+      template; the equivalence test compares columns, indexes, foreign keys, triggers, views,
+      migration history, and row counts against a database migrated for real. All 32 DB files passed
+      on both corrected-head CI runs.
+- [x] The migrated-template name guard rejects malformed names, empty templates fail closed, and
+      absent template configuration retains the real-migration fallback. Each test still owns and
+      drops its own database; matrix-owned template databases are dropped after the DB tier. The
+      standalone real-migration fallback passed 3/3 locally after the final helper change.
+- [x] F&B suites run once in the matrix and retain `--detectOpenHandles` coverage.
+- [x] Jest JSON timing evidence identifies the slowest 15 suites per tier and reports durations
+      for failing suites; textual failure extraction remains visible in CI summaries. The Jest 30
+      `name`/`startTime`/`endTime` reader has a regression test.
+- [x] The F&B QA documentation, workflow outcome recorder, and implementation phase ledger match
+      the new execution path. Architecture, compliance, docs lint, workspace hygiene, and relevant
+      unit/DB checks pass: `npm run check:compliance`, `npm run check:architecture`,
+      `npm run lint:docs`, workspace hygiene, and 11/11 matrix/timing script tests.
+- [x] Historical ~7-minute / ~34-minute estimates are replaced or verified; remaining bottlenecks
+      and the C3-informed follow-up are recorded. The measurements gathered here replace those
+      unverified estimates: corrected hosted API/matrix 14:31/11:25 and corrected default
+      self-hosted API/matrix 24:26/16:52. Follow-up #2369 covers the two highly variable self-hosted
+      DB suites. No safe fast-tier reduction was supported by the suite profile; the slowest fast
+      suite was 17.1s and the top-15 list accounts for little of the 5:35 fast-tier total.
+
+### Links
+
+- Issue: #2357; planner handoff: `.tmp/plan-2357.md` (planning head
+  `bbab2518c5001151902dc9cf6212312171013756`).
+- C3-informed DB timing follow-up: #2369, same-SHA measurement and setup-path investigation for
+  `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js`.
+- Corrected-head hosted job evidence: run #37807851576, API job #113416731803.
+- Corrected-head default self-hosted job evidence: run #37807271082, API job #113414725161.
+- Sequencing: Phase 482 has no dependency on Phases 480 or 481 under the repository's explicit
+  dependency rule. Phase 483 remains independently eligible.
+- Implementation: `scripts/run-backend-test-matrix.js`,
+  `scripts/summarize-backend-test-matrix.js`, and
+  `apps/dgfy-api/tests/helpers/migratedTestDatabase.js`.
+- Tests: `scripts/run-backend-test-matrix.test.js` and
+  `apps/dgfy-api/tests/migratedTemplateClone.db.integration.test.js`.
+
+### Completion date
+
+Completed 2026-10-09. The overall advisory workflow has other jobs outside this API-runtime scope;
+both required `dgfy-api-quality` matrix runs completed successfully.
+
+### Next eligible phase
+
+Phase 484. Phase 483 is already tracked separately and does not depend on Phase 482.
+
+## Phase 483 - Reduce avoidable Planner-to-Worker handoff interruptions (#2346)
+
+### Initiative and release
+
+Agent workflow and token-cost control, current release.
+
+### Objective and scope
+
+Define a shared escalation boundary for routine implementation details and genuine blocking
+decisions across the Planner/Worker handoff. Make the `ready` plan minimum inspectable with a short
+checklist and give Workers a low-friction, in-artifact record for implementation blockers. Keep
+existing issue, source-of-truth, stale-plan, and checkpoint safeguards intact.
+
+### Status
+
+`in_progress` — implementation and local documentation checks are underway. Both manual walkthroughs,
+PR review, and merge remain outstanding.
+
+### Dependencies
+
+Issue #2346; Phase 325 (#1842); #442 (canonical role-surface portability). Phases 480, 481, and
+Phase 482 (#2357) are not technical or operational dependencies.
+
+### Acceptance and validation evidence
+
+- [x] Planner and Worker refer to one shared routine-versus-blocking test with illustrative examples
+      in `.agents/skills/planner/references/escalation-boundary.md`.
+- [x] The handoff template has the five-item ready checklist and optional Worker escalation block.
+- [x] Worker instructions preserve the existing hard stop and explain how to record consequential
+      assumptions and genuine blockers.
+- [x] `npm run lint:docs` and `npm run check:agent-surfaces` pass. `node scripts/check-app-version-bump.js`
+      passes with no changed app version requirements.
+- [x] PR evidence demonstrates a routine gap resolved using the plan's stated template structure,
+      and a hypothetical scope conflict with a usable escalation record.
+- [ ] PR review is complete; this phase does not merge or deploy.
+
+### Links
+
+- Contracts: `.agents/skills/planner/`, `.agents/skills/implement/`, and
+  `.agents/skills/planner/references/escalation-boundary.md`.
+- Handoff template: `.agents/skills/planner/references/plan-handoff-template.md`.
+- Issue: #2346; planner handoff: `.tmp/plan-2346.md` (planning head `38b79bbd9`).
+
+### Completion date
+
+Not complete; set only after the acceptance evidence above is recorded and all required gates pass.
+
+### Post-merge verification
+
+- [x] None — docs-only role guidance and ledger update; no deployment, provider, or operational
+      verification applies.
+
+### Next phase number
+
+Phase 484. No explicit dependency.
+
+## Phase 484 - Selective self-hosted DB-suite runtime investigation (#2369)
+
+### Initiative and release
+
+dgfy-api database test execution and runner-runtime evidence.
+
+### Objective and scope
+
+Measure `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js` on repeated,
+same-SHA `sieitz-lg` runs; capture per-suite Jest duration and contemporaneous runner load, memory,
+and swap observations; document tenant setup and cleanup; and optimize test code only if the evidence
+shows a repeatable suite-attributable cost. Add an opt-in `api_db_chunks` mode to the operator-
+dispatched quality workflow for future targeted DB group/chunk runs, retaining `full` as its default
+selection and keeping the existing full quality run unchanged.
+
+### Status
+
+`in_progress` — selective workflow support and all three same-SHA self-hosted measurements are
+complete; the evidence supports no test-code optimization. PR review and post-merge verification
+remain outstanding.
+
+### Dependencies
+
+Issue #2369 and the Phase 482 (#2357) DB-suite timing findings. Phase 482 is context only; there is
+no explicit dependency on Phase 483 or any earlier phase.
+
+### Acceptance and validation evidence
+
+- [x] Three serialized `sieitz-lg` runs against SHA
+      `aadf28110d540c2b40f6ca99963ab4c9fea60670` include an idle-runner observation and capture both
+      suite durations plus contemporaneous uptime, memory, swap, load, and vmstat samples.
+- [x] Compare repeated self-hosted results with the fixed hosted baseline from run #37807851576;
+      no `ubuntu-latest` or full quality-gate run was dispatched for this investigation.
+- [x] Document the tenant setup and cleanup sequence in `docs/testing/README.md`; variable clone/drop
+      phases explain the suite-time swings, so no test-code optimization is justified.
+- [x] The operator workflow exposes `full` and opt-in `api_db_chunks` selections; `full` is the
+      default, while the targeted mode accepts DB group/chunk selectors and uses only self-hosted
+      runners.
+- [x] No test-code changes were justified. Both target chunks passed three times on the measured
+      SHA, preserving assertions, per-test database isolation, and cleanup.
+- [x] `actionlint` (with the repository's custom self-hosted-label diagnostic ignored), workspace
+      hygiene, selector contract tests, docs lint, architecture check, and compliance check pass.
+
+| Runner/run | `purchaseOrder.test.js` | `tenantSchemaBootstrap.integration.test.js` | Load avg start → end (1/5/15 min) | Swap used start → end |
+|---|---:|---:|---|---:|
+| Hosted #37807851576 (fixed baseline) | 24.2s | 20.8s | n/a | n/a |
+| `sieitz-lg` [#37828223391](https://github.com/Sieitzz/dgfy-platform/actions/runs/37828223391) | 26.3s | 45.4s | 0.27/1.28/1.67 → 2.20/2.27/2.07 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37829654736](https://github.com/Sieitzz/dgfy-platform/actions/runs/37829654736) | 47.7s | 23.2s | 0.61/1.55/1.82 → 2.05/2.64/2.29 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37830928352](https://github.com/Sieitzz/dgfy-platform/actions/runs/37830928352) | 26.6s | 26.6s | 1.53/1.99/2.08 → 2.45/2.35/2.23 | 2.4/4.0 → 2.4/4.0 GiB |
+
+Most 157-table clone phases took 4.4–5.4s; outliers reached 11.7–19.4s. Database drops usually took
+1.1–1.2s, with outliers around 3–8s. `vmstat` showed no sustained swap-in/out, CPU was mostly idle,
+and I/O wait varied. The opposite suite-time swings and variable DDL phases do not identify a stable
+suite-level bottleneck. The host-side cause remains uncertain and is tracked by #2373.
+
+### Links
+
+- Issue: #2369; planner handoff: `.tmp/plan-2369.md` (planning head
+  `15c9b78ed4f0082c1b64cf970ae5e11a382f2194`).
+- Prior timing evidence and hosted baseline: #2357, run #37807851576.
+- Runner/DB provisioning I/O follow-up: #2373.
+- Prior tenant setup consolidation reviewed: #1452 / PR #1472.
+- Workflow: `.github/workflows/promotion-quality-gate.yml`.
+- Measurement documentation: `docs/testing/README.md`, Backend Test Matrix Gate.
+- Potential test change: `apps/dgfy-api/tests/purchaseOrder.test.js` only if repeated data supports it.
+- Timing instrumentation: `apps/dgfy-api/tests/helpers/testTenantHelper.js`, opt-in via
+  `BACKEND_TEST_TENANT_TIMING=1`.
+- Current implementation validation includes `node --check` for the changed helper,
+  `node scripts/check-workspace-hygiene.js`, `actionlint`, selector contract tests, and
+  `node scripts/check-app-version-bump.js` with `GITHUB_BASE_REF=develop`.
+- `npm run lint:docs`, `npm run check:architecture`, and `node scripts/check-compliance-impact.js
+  --staged` passed. The broader `node scripts/check-pr-quality-workflow.js` still reports its
+  pre-existing `develop` drift (`--detectOpenHandles` marker and unrelated advisory-step IDs); the
+  focused selective-dispatch contract test passes.
+
+### Completion date
+
+Not complete; set after the scoped implementation validation passes and the PR is merged.
+
+### Post-merge verification
+
+- [ ] operational — dispatch `api_db_chunks` against the merged `develop` SHA and confirm the
+  selected group/chunk result and uploaded evidence artifact; owned by #2369; blocks issue closure.
+
+### Next phase number
+
+Phase 485. No explicit dependency.
+
+## Phase 485 - Tenant intake backend proposals and human confirmation (#2372)
+
+### Initiative and release
+
+LLM-assisted OFFICIAL/DEMO tenant and owner-account onboarding, backend PR 1 of the #2372 sequence.
+Ordinary develop feature work; no deployment or app-version floor change.
+
+### Objective and scope
+
+Add landlord proposals, OpenAI text/CSV/PDF extraction, deterministic shared provisioning-field
+validation, combined Platform Admin authority, single-use hash-bound confirmation, DEMO guard and
+persisted `is_demo` classification. Only confirmation invokes the existing bundled account/tenant
+provisioning use case. UI review and the local MCP proposer remain later PRs under #2372.
+
+### Status
+
+`in_progress` — backend implementation and focused validation passed; Pat approved the migration
+and regulatory declaration before committing on 2026-10-09. PR review/merge and post-merge
+verification remain outstanding.
+
+### Dependencies
+
+Existing admin-assisted provisioning and ADR 0047 Platform Admin authority. No explicit dependency
+on Phase 484 or any earlier unfinished phase. Future dgfy-admin/MCP work depends on this API.
+
+### Acceptance and validation evidence
+
+- [x] Proposal creation/extraction does not provision; confirmation requires explicit approval and
+  the hash of the canonical payload plus target.
+- [x] Shared field validators preserve existing provisioning behavior; injected privileges are
+  dropped, credential-bearing input rejected and passwords absent from proposals/audit.
+- [x] Row-locked claims/edits reject replay, concurrent duplicate approval, stale or tampered hashes,
+  expired and terminal proposals.
+- [x] DEMO guard runs at creation, confirmation and existing provisioning entry points; all required
+  environmental denial cases have focused tests. Missing NODE_ENV also fails closed.
+- [x] Combined tenant/account grants apply to every intake route; unlisted routes retain master-only
+  policy. Use cases independently enforce actor authority.
+- [x] Disposable MySQL migration up/re-run and OFFICIAL/DEMO full existing tenant-schema provisioning
+  passed via `scripts/verify-tenant-intake.mjs`: both targets created 157-table tenant schemas, real
+  accounts/users/membership, persisted DEMO classification and approval audit; concurrent/replay,
+  stale/PATCH/expired/rejected paths and all three DEMO enforcement points passed.
+- [x] Five focused Jest suites passed (83 tests), including HTTP/multipart/no-store transport.
+- [x] Architecture (57 modules/705 code files, 106 controllers), docs lint/98 ADRs, compliance
+  declaration shape/API contract, landlord-only migration coverage, changed-file syntax and targeted
+  ESLint passed. Develop-base version-floor checks passed for API 1.39.0 and migration-runner 1.28.0
+  unchanged. Seven compliance-rule regression tests pass; future isolated intake/guard/rule changes
+  retain the regulatory floor. Live provider, deployed-session and full release-matrix checks were
+  not run. No architecture allowlist/exception introduced.
+- [x] Migration correctness and regulatory classification/declaration approved by Pat before
+  commit on 2026-10-09 (implementation-session reply: `approve`), per Worker checkpoint policy.
+
+### Links
+
+- Issue: #2372; local handoff `.tmp/plan-2372.md`, planning head
+  `e0522eae1a63fe0afca90c0554770f077973e01b`.
+- [ADR 0090](../architecture/adr/0090-tenant-intake-proposal-confirmation.md).
+- [API and recovery contract](../api/tenant-intake.md).
+- [Compliance declaration](../compliance/impact-declarations/2026-10-09-tenant-intake-backend.md).
+- Implementation: `apps/dgfy-api/src/modules/tenantIntake/`, shared provisioning rules and DEMO guard.
+- Migration: `apps/dgfy-migration-runner/migrations/20261009000001-create-tenant-intake-proposals.cjs`.
+- Tests: `tenantIntake.usecases.test.js`, `tenantIntake.extraction.test.js`, existing provisioning
+  and Platform Admin route-classification suites, transport suite, compliance-floor script tests; `scripts/verify-tenant-intake.mjs` for real MySQL.
+
+### Completion date
+
+Not complete. Set only after scoped implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] operational — landlord migration applies before API rollout; no proposal table enters tenant
+  schemas; owner #2372; blocks deployment qualification.
+- [ ] provider — verify approved OpenAI configuration, extraction limits/PII handling and safe logs
+  in a controlled environment; owner #2372; blocks extraction rollout qualification.
+- [ ] deployment — live admin-cookie/CSRF/combined-grant transport proof; owner #2372; blocks issue
+  closure with the later UI/MCP acceptance work.
+- [ ] product — dgfy-admin editable review, explicit approval and one-time password display; local
+  MCP tool-list proof with no confirm tool; owner #2372; later PRs required before issue closure.
+- [ ] operational — reconcile NOT-EXECUTED compliance preflight before promotion; owner #2372.
+
+### Next phase number
+
+Phase 486. No earlier-phase dependency blocks a separate initiative; later #2372 UI/MCP phases
+require the backend contract above.

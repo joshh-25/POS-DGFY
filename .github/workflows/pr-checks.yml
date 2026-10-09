@@ -111,6 +111,7 @@ jobs:
       runner_labels_json: *runner_light
       validate_pr_metadata: true
       enforce_compliance_declarations: false
+      skip_version_only_app_changes: true
 
   # #1529: a release/*|hotfix/*|fix/* head into a main base is a promotion or hotfix PR -- its
   # build-check jobs get the same GitHub-hosted isolation/predictability rationale

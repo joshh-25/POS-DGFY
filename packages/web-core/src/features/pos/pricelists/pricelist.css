@@ -1,0 +1,76 @@
+/* POS > Pricelists presentation. Keep Pricelist-only responsive rules beside the feature. */
+
+@media screen and (min-width: 640px) {
+  .pos-pricelist-card-row { align-items: stretch; }
+  .pos-pricelist-card-icon {
+    align-self: center;
+    box-sizing: border-box;
+    width: 4.5rem !important;
+    min-width: 4.5rem !important;
+    max-width: 4.5rem !important;
+    height: 4.5rem !important;
+    min-height: 4.5rem !important;
+    max-height: 4.5rem !important;
+    aspect-ratio: 1 / 1 !important;
+    flex: 0 0 4.5rem;
+  }
+  .pos-pricelist-card-icon > svg { width: 1.75rem; height: 1.75rem; }
+}
+
+/* The editor keeps a stable viewport while its catalog body scrolls. */
+.pos-pricelist-items-modal {
+  flex-shrink: 0;
+  height: min(52rem, calc(100vh - 6rem));
+  height: min(52rem, calc(100dvh - 6rem));
+  max-height: min(52rem, calc(100vh - 6rem));
+  max-height: min(52rem, calc(100dvh - 6rem));
+}
+
+@media (max-width: 767.98px) {
+  .pos-pricelist-items-modal {
+    height: calc(100vh - 1.5rem);
+    height: calc(100dvh - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
+  }
+  .pos-pricelist-items-modal .pos-items-modal-body {
+    padding: 0.75rem 0.75rem 1rem;
+    scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+  .pos-pricelist-items-modal-footer {
+    padding: 0.625rem 0.75rem calc(0.625rem + env(safe-area-inset-bottom, 0px));
+  }
+  .pos-pricelist-items-modal-footer > button { min-height: 2.5rem; }
+}
+
+@media screen and (min-width: 1280px) and (orientation: landscape) {
+  .pos-pricelist-items-modal {
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+  }
+}
+
+.pos-pricelist-catalog-workspace .pos-items-mobile-primary-button {
+  border-color: #1a4e8d;
+  background: #1a4e8d;
+  color: #fff;
+}
+
+.pos-pricelist-catalog-workspace .pos-items-mobile-primary-button:hover,
+.pos-pricelist-catalog-workspace .pos-items-mobile-primary-button:focus-visible,
+.pos-pricelist-catalog-workspace .pos-items-mobile-primary-button:active,
+.pos-pricelist-catalog-workspace .pos-items-mobile-primary-button.pos-items-mobile-icon-button--active {
+  border-color: #143f73;
+  background: #143f73;
+  color: #fff;
+}
+
+/* Keep Cancel and Publish in one row on portrait tablets. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1199.98px) {
+  .pos-pricelist-items-modal .pos-pricelist-items-modal-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .pos-pricelist-items-modal .pos-pricelist-items-modal-footer > button { width: 100%; }
+}

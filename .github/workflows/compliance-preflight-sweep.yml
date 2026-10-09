@@ -561,11 +561,12 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash scripts/ci-s3-upload.sh /tmp/results.json compliance-preflight-sweep-results
 
@@ -952,11 +953,12 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash scripts/ci-s3-upload.sh /tmp/compliance-preflight-sweep-handoff.json compliance-preflight-sweep-handoff
 

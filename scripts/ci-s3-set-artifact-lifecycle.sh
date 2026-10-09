@@ -7,6 +7,8 @@ fail() {
   exit 1
 }
 
+source "$(dirname "${BASH_SOURCE[0]}")/lib/ci-s3-config.sh"
+
 if [[ "$#" -gt 1 || ( "$#" -eq 1 && "$1" != "--apply" ) ]]; then
   fail "Usage: ci-s3-set-artifact-lifecycle.sh [--apply]"
 fi
@@ -16,14 +18,17 @@ if [[ "${1:-}" == "--apply" ]]; then
   apply=true
 fi
 
-[[ -n "${AWS_ACCESS_KEY_ID:-}" ]] || fail "S3 access key ID is unavailable."
+[[ -n "${ARTIFACT_S3_ACCESS_KEY_ID:-}" ]] || fail "S3 access key ID is unavailable."
 [[ -n "${AWS_SECRET_ACCESS_KEY:-}" ]] || fail "S3 secret access key is unavailable."
-[[ -n "${S3_BUCKET:-}" ]] || fail "S3 bucket setting is unavailable."
+[[ -n "${ARTIFACT_S3_BUCKET:-}" ]] || fail "S3 bucket setting is unavailable."
+endpoint_url="${ARTIFACT_S3_ENDPOINT:-}"
+[[ -n "$endpoint_url" ]] || fail "S3 endpoint setting is unavailable."
+command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to validate the S3 endpoint and lifecycle configuration."
+ci_s3_endpoint_is_usable "$endpoint_url" || fail "S3 endpoint must be a valid HTTPS URL without credentials, query tokens, or a fragment."
 command -v aws >/dev/null 2>&1 || fail "AWS CLI v2 is required to manage bucket lifecycle configuration."
-command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to preserve and validate lifecycle rules."
 
-endpoint_url="https://s3.patteruel.dev"
 aws_region="${AWS_DEFAULT_REGION:-us-east-1}"
+export AWS_ACCESS_KEY_ID="$ARTIFACT_S3_ACCESS_KEY_ID"
 tmp_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ci-s3-lifecycle.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
 
@@ -40,7 +45,7 @@ s3 =
 AWS_CONFIG
 
 if aws s3api get-bucket-lifecycle-configuration \
-  --bucket "$S3_BUCKET" --endpoint-url "$endpoint_url" --no-cli-pager \
+  --bucket "$ARTIFACT_S3_BUCKET" --endpoint-url "$endpoint_url" --no-cli-pager \
   >"$tmp_dir/current.json" 2>"$tmp_dir/get.log"; then
   :
 elif grep -q 'NoSuchLifecycleConfiguration' "$tmp_dir/get.log"; then
@@ -122,7 +127,7 @@ PY
 fi
 
 aws s3api put-bucket-lifecycle-configuration \
-  --bucket "$S3_BUCKET" --endpoint-url "$endpoint_url" \
+  --bucket "$ARTIFACT_S3_BUCKET" --endpoint-url "$endpoint_url" \
   --lifecycle-configuration "file://$tmp_dir/desired.json" --no-cli-pager \
   >"$tmp_dir/put.log" 2>&1 || {
     echo "::group::Lifecycle configuration write error"
@@ -132,7 +137,7 @@ aws s3api put-bucket-lifecycle-configuration \
   }
 
 aws s3api get-bucket-lifecycle-configuration \
-  --bucket "$S3_BUCKET" --endpoint-url "$endpoint_url" --no-cli-pager \
+  --bucket "$ARTIFACT_S3_BUCKET" --endpoint-url "$endpoint_url" --no-cli-pager \
   >"$tmp_dir/verified.json" 2>"$tmp_dir/verify.log" || {
     echo "::group::Lifecycle configuration verification error"
     sed -e 's/^/  /' "$tmp_dir/verify.log" | head -c 4000

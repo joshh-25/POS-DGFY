@@ -38,9 +38,7 @@ export function PosCurrentSaleActions({
   // action from dropping into an uneven third row on narrow screens.
   const cashDrawerLabel = drawerOpening ? 'Opening...' : 'Cash Drawer';
   const cashDrawerTabletLabel = drawerOpening ? 'Opening...' : 'Open Cash Drawer';
-  const cashDrawerLabelClassName = tabletLayout
-    ? 'w-full min-w-0 whitespace-nowrap text-center text-[10px] font-extrabold leading-none tracking-[-0.02em]'
-    : 'w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs';
+  const actionLabelClassName = 'w-full min-w-0 break-words text-center text-[11px] font-extrabold leading-[1.15] line-clamp-2 sm:text-xs';
   // Keep the parked-sale action grouping identical on tablet and PC. Tablet
   // only changes the touch target sizing through the responsive class below.
   const compactParkedLayout = hasParkedSaleControls;
@@ -66,10 +64,10 @@ export function PosCurrentSaleActions({
         type="button"
         onClick={onCheckout}
         disabled={checkoutDisabled}
-        className={`${checkoutActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl bg-[#0B449C] p-1.5 text-center text-white shadow-md shadow-blue-900/15 transition hover:bg-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60`}
+        className={`${checkoutActionClassName} flex h-auto min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl bg-[#0B449C] p-1.5 text-center text-white shadow-md shadow-blue-900/15 transition hover:bg-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60`}
       >
         <ShoppingCart size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] lg:text-xs xl:text-xs">
+        <span className={actionLabelClassName}>
           {checkoutLoading ? 'Processing...' : 'Checkout'}
         </span>
       </Button>
@@ -79,10 +77,10 @@ export function PosCurrentSaleActions({
         onClick={() => onPrintOrder?.()}
         disabled={printOrderDisabled}
         title={printerAvailable ? undefined : 'No order-ticket printer detected on this device.'}
-        className={`${printActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-center text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60`}
+        className={`${printActionClassName} flex h-auto min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-center text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60`}
       >
         <Printer size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] lg:text-xs xl:text-xs">Print Order</span>
+        <span className={actionLabelClassName}>Print Order</span>
       </Button>
       {hasParkedSaleControls && (
         <Button
@@ -92,10 +90,10 @@ export function PosCurrentSaleActions({
           onClick={parkHandler}
           disabled={parkSaleDisabled || !parkHandler}
           title={activeParkedSale ? 'Update this resumed parked sale and start a new sale.' : 'Save this cart and start a new sale.'}
-          className={`${bottomActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl border border-amber-300 bg-amber-50 p-1.5 text-center text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60`}
+          className={`${bottomActionClassName} flex h-auto min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl border border-amber-300 bg-amber-50 p-1.5 text-center text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60`}
         >
           <BookmarkPlus size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-          <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] sm:text-[11px] lg:text-xs xl:text-xs">
+          <span className={actionLabelClassName}>
             {isParkLoading ? 'Parking...' : resolvedParkLabel}
           </span>
         </Button>
@@ -108,21 +106,21 @@ export function PosCurrentSaleActions({
         onClick={onOpenCashDrawer}
         disabled={cashDrawerDisabled}
         title={cashDrawerAvailable ? undefined : 'No cash drawer is configured for this terminal.'}
-        className={`${bottomActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center`}
+        className={`${bottomActionClassName} flex h-auto min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center`}
       >
         <Banknote size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className={cashDrawerLabelClassName}>{tabletLayout ? cashDrawerTabletLabel : cashDrawerLabel}</span>
+        <span className={actionLabelClassName}>{tabletLayout ? cashDrawerTabletLabel : cashDrawerLabel}</span>
       </Button>
       <Button
         type="button"
         variant="outline"
         data-testid="pos-current-sale-split-payment"
-        className={`${bottomActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-[#1A4E8D] bg-blue-50 p-1.5 text-center text-[#1A4E8D] hover:bg-blue-100`}
+        className={`${bottomActionClassName} flex h-auto min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-[#1A4E8D] bg-blue-50 p-1.5 text-center text-[#1A4E8D] hover:bg-blue-100`}
         onClick={onSplitPayment}
         disabled={splitPaymentDisabled}
       >
         <CreditCard size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] lg:text-xs xl:text-xs">
+        <span className={actionLabelClassName}>
           {splitPaymentLoading ? 'Processing...' : 'Split Payment'}
         </span>
       </Button>

@@ -105,11 +105,12 @@ jobs:
         id: upload_release_apk
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.sha }}
           ARTIFACT_NAME: android-${{ inputs.flavor }}-release-${{ github.run_number }}
           EVIDENCE_FILE: ${{ steps.validate_release_files.outputs.apk_file }}
@@ -119,11 +120,12 @@ jobs:
         id: upload_release_checksum
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_ID }}
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_DEFAULT_REGION: us-east-1
-          S3_BUCKET: ${{ secrets.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
           SOURCE_COMMIT_SHA: ${{ github.sha }}
           ARTIFACT_NAME: android-${{ inputs.flavor }}-release-${{ github.run_number }}
           EVIDENCE_FILE: ${{ steps.validate_release_files.outputs.checksum_file }}

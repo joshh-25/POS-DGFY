@@ -3,13 +3,14 @@ import { Op } from 'sequelize';
 import dbStore from '../src/utils/dbStore.js';
 import { posRepository } from '../src/modules/pos/repositories/posRepository.js';
 
-describe('POS cashier shift history repository scope', () => {
+const findAndCountAll = jest.fn();
+
+describe('POS cashier shift history repository scope and search', () => {
     let PosTerminalShift;
 
     beforeEach(() => {
-        PosTerminalShift = {
-            findAndCountAll: jest.fn().mockResolvedValue({ rows: [], count: 0 })
-        };
+        findAndCountAll.mockReset().mockResolvedValue({ rows: [], count: 0 });
+        PosTerminalShift = { findAndCountAll };
         jest.spyOn(dbStore, 'get').mockImplementation((name) => {
             if (name === 'PosTerminalShift') return PosTerminalShift;
             return { modelName: name };
@@ -67,5 +68,53 @@ describe('POS cashier shift history repository scope', () => {
             'Cashier shift history requires an authenticated cashier or an authorized location scope'
         );
         expect(PosTerminalShift.findAndCountAll).not.toHaveBeenCalled();
+    });
+
+    it('searches shift number or terminal ID before pagination without relaxing cashier scope', async () => {
+        await posRepository.listCashierShiftHistory({
+            cashierId: 7,
+            locationId: 9,
+            dateFrom: '2026-08-01',
+            dateTo: '2026-08-31',
+            search: '#44',
+            status: 'closed',
+            page: 2,
+            limit: 10
+        });
+
+        const [query] = findAndCountAll.mock.calls[0];
+        expect(query.where).toMatchObject({
+            cashier_id: 7,
+            location_id: 9,
+            status: 'closed',
+            business_date: {
+                [Op.gte]: '2026-08-01',
+                [Op.lte]: '2026-08-31'
+            }
+        });
+        expect(query.where[Op.or]).toEqual(expect.arrayContaining([
+            { pos_terminal_shift_id: 44 },
+            { terminal_id: { [Op.like]: '%#44%' } }
+        ]));
+        expect(query.limit).toBe(10);
+        expect(query.offset).toBe(10);
+    });
+
+    it('uses only a terminal substring condition for nonnumeric searches', async () => {
+        await posRepository.listCashierShiftHistory({ cashierId: 7, search: 'COUNTER-01' });
+
+        const [query] = findAndCountAll.mock.calls[0];
+        expect(query.where[Op.or]).toEqual([
+            { terminal_id: { [Op.like]: '%COUNTER-01%' } }
+        ]);
+    });
+
+    it('escapes LIKE wildcard characters in terminal searches', async () => {
+        await posRepository.listCashierShiftHistory({ cashierId: 7, search: 'COUNTER_%' });
+
+        const [query] = findAndCountAll.mock.calls[0];
+        expect(query.where[Op.or]).toEqual([
+            { terminal_id: { [Op.like]: '%COUNTER\\_\\%%' } }
+        ]);
     });
 });

@@ -1,0 +1,66 @@
+# Planner/Worker handoff compatibility
+
+This document is the repository-side bridge for the manual Planner → Worker workflow in issue
+#2346. The repository Planner emits `dgfy-planner-handoff/v1`; the compatible global Planner emits
+`planner-handoff/v1`. The two names identify supported variants of the same handoff contract.
+
+## Supported input and identity
+
+- Accept exactly `dgfy-planner-handoff/v1` and `planner-handoff/v1`. Normalize the label in memory;
+  do not rewrite the source artifact just to make the labels match.
+- `repository` is optional for backward compatibility. If present, it must identify
+  `Sieitzz/dgfy-platform`; a different repository is a hard stop. If absent, establish repository
+  identity from the current checkout and live issue context.
+- The artifact must identify the same live, open issue (or epic) being implemented and have
+  `status: ready`. `planning_head` records provenance; a newer checkout alone does not make the
+  artifact stale.
+- Reject any other schema label, missing or malformed identity/status, missing substantive plan
+  content, or a material conflict with the live issue or authoritative repository sources before
+  editing.
+
+## Minimum ready-plan content
+
+Section headings may vary, but the plan must communicate all of the following:
+
+- Objective and scope boundaries.
+- Current behavior and repository evidence relevant to the change.
+- Required behavior or interface changes and material decisions already made.
+- Acceptance evidence and test scenarios.
+- Consequential assumptions, unresolved questions, risks, and non-goals where applicable.
+
+`ready` makes the plan actionable; it does not promise that implementation will uncover no new
+details. The plan need not enumerate every file or settle routine coding choices.
+
+## Worker escalation boundary
+
+Resolve routine details from the live issue, current code/tests, authoritative docs, and repository
+conventions, and continue. Examples include selecting an existing module/helper, choosing the
+focused test file, or following an established local naming/layout pattern. Record consequential
+assumptions or findings in the implementation/PR report.
+
+Pause for a genuine product/scope decision absent from repository evidence, a conflict between
+authoritative sources, a material scope change, or a safety/compliance checkpoint without a
+repository-defined answer. State the evidence, exact decision needed, and consequence of each
+option. Request a Planner refresh only when the plan or issue needs a real decision or scope
+correction.
+
+## Global-side bridge
+
+The global Worker must apply the same allowlist, normalization, identity checks, ready-content
+checks, and escalation boundary above. In particular, it must accept repository artifacts with the
+`dgfy-planner-handoff/v1` label and optional `repository` field. The global Planner may emit either
+supported label, but should include `repository: Sieitzz/dgfy-platform` when planning this repo.
+
+This file records the contract for synchronization; it does not modify or prove behavior of global
+skill files. Full two-way interoperability is verified only after the global Worker adopts this
+bridge and both pairings are manually exercised.
+
+## Manual compatibility walkthrough
+
+| Scenario | Expected result |
+| --- | --- |
+| Repo Worker reads global `planner-handoff/v1` with matching issue and repository | Normalize and proceed after live issue/docs revalidation. |
+| Global Worker reads repo `dgfy-planner-handoff/v1` with matching issue and repository | Normalize and proceed after the global Worker adopts this contract. |
+| Plan omits an ordinary implementation detail resolvable from code/tests/docs | Resolve it, record consequential assumptions, and continue without a Planner round trip. |
+| Plan leaves product intent undecided or conflicts with an authoritative source | Pause before editing and ask a precise question with evidence and options. |
+| Wrong issue/repository, `needs-decision`, malformed/missing required content, or unrecognized schema | Stop before editing and report the concrete mismatch. |

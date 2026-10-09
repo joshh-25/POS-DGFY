@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Info, Menu, UserRound } from 'lucide-react';
+import { Bell, Eye, Info, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
 import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
@@ -35,6 +35,9 @@ const STANDARD_POS_PAGE_FRAME_MODES = new Set([
   'history',
   'location_scope',
   'reports',
+  'shift_controls',
+  'close_shift',
+  'cash_drawer',
   'settings_pos',
   'settings_profile',
   'settings_storefront',
@@ -177,6 +180,7 @@ export default function TerminalPageLayout({
     adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
     branchDirectoryState = { loading: false, locations: [], scope: '', errorMessage: '' },
     branchViewLocationId = null,
+    branchViewTransitionLoading = false,
     canViewBranchLocations = false,
     onViewBranch = async () => false,
     onExitBranchView = async () => {},
@@ -373,6 +377,7 @@ export default function TerminalPageLayout({
       fnb_service: 'F&B service',
       items: 'Items',
       settings_vouchers: 'Vouchers',
+      settings_pricelists: 'Pricelists',
       services: 'Services',
       audit: 'Audit',
       incoming_queue: 'Orders',
@@ -518,13 +523,14 @@ export default function TerminalPageLayout({
     ? 'pointer-events-none select-none opacity-80 blur-[2px]'
     : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
-  // History, Reports, and Settings own their page-level gutters through
+  // History, Reports, Settings, and Shift own their page-level gutters through
   // PosPageFrame. Keep the generic shell padding for every other workspace.
-  // MSME-restricted settings modes are remapped to Shift Controls by the
-  // operations workspace and must retain the generic shell geometry.
+  // MSME-restricted settings modes are remapped to Shift Controls and use the
+  // same page frame as the direct Shift routes.
   const usesStandardPosPageFrame = IS_DGFY_POS_SURFACE
-    && STANDARD_POS_PAGE_FRAME_MODES.has(posViewMode)
-    && !(isMsmeMode && MSME_SETTINGS_SHIFT_FALLBACK_MODES.has(posViewMode));
+    && (STANDARD_POS_PAGE_FRAME_MODES.has(posViewMode)
+      || SHIFT_WORKSPACE_MODES.has(posViewMode)
+      || (isMsmeMode && MSME_SETTINGS_SHIFT_FALLBACK_MODES.has(posViewMode)));
   const hidesWorkspaceScrollbar = usesStandardPosPageFrame
     && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
@@ -534,7 +540,8 @@ export default function TerminalPageLayout({
     || receiptReturnViewMode !== null
     || isCustomerDisplaySettingsMode;
   const isVoucherManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_vouchers';
-  const isFullBleedCatalogWorkspace = isItemsCatalogWorkspace || isVoucherManagementWorkspace;
+  const isPricelistManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_pricelists';
+  const isFullBleedCatalogWorkspace = isItemsCatalogWorkspace || isVoucherManagementWorkspace || isPricelistManagementWorkspace;
   const workspacePaneClassName = isCheckoutWorkspaceMode || isFullBleedCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : `dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y ${hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`;
@@ -783,7 +790,7 @@ export default function TerminalPageLayout({
       {notificationPanel}
       {(!effectiveSidebarCollapsed || isTabletLayout) && (
         <div className={`${persistentSidebarClassName} ${lockedSidebarSurfaceClassName}`}>
-          <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
+          <Suspense fallback={<div className={persistentSidebarFallbackClassName} role="status" aria-live="polite" aria-busy="true">Loading POS navigation...</div>}>
             <TerminalWorkspaceSidebar
               className={persistentSidebarBodyClassName}
               isCollapsed={isTabletLayout}
@@ -1103,16 +1110,26 @@ export default function TerminalPageLayout({
       <div className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}>
         {isBranchReadOnlyView ? (
           <div
-            className="mx-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-950"
+            className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-[60] mx-auto flex w-auto max-w-[32rem] flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50/95 px-3 py-2.5 text-sm text-blue-950 shadow-xl shadow-slate-950/15 backdrop-blur-sm sm:inset-x-auto sm:bottom-4 sm:right-4 sm:mx-0 sm:w-[min(32rem,calc(100vw-2rem))] sm:flex-row sm:items-center sm:justify-between sm:gap-4"
             data-testid="pos-branch-view-banner"
+            role="status"
+            aria-live="polite"
           >
-            <div className="min-w-0">
-              <p className="font-extrabold">Viewing {branchViewLocationName}</p>
-              <p className="mt-0.5 text-xs font-semibold text-blue-800">Read-only POS view. Sales, checkout, cash, shift, and configuration changes are disabled.</p>
+            <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#1A4E8D] text-white" aria-hidden="true">
+                <Eye className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-extrabold">Viewing {branchViewLocationName}</p>
+                  <span className="rounded-md border border-blue-200 bg-white px-1.5 py-0.5 text-[9px] font-black tracking-wide text-[#1A4E8D]">READ-ONLY</span>
+                </div>
+                <p className="mt-0.5 text-xs font-semibold text-blue-800">Sales, checkout, cash, shifts, and settings are disabled.</p>
+              </div>
             </div>
             <button
               type="button"
-              className="shrink-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-extrabold text-blue-900 hover:bg-blue-100"
+              className="min-h-10 w-full shrink-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-extrabold text-blue-900 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2 sm:w-auto"
               onClick={() => onExitBranchView?.()}
             >
               Exit branch view
@@ -1129,7 +1146,7 @@ export default function TerminalPageLayout({
               data-testid={isCheckoutWorkspaceMode ? 'pos-checkout-workspace' : 'pos-customer-display-controller-host'}
               className={isCheckoutWorkspaceMode ? 'h-full min-h-0 overflow-hidden catalog-slide-enter' : 'hidden'}
             >
-              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
+              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500" role="status" aria-live="polite" aria-busy="true">Loading POS terminal...</div>}>
                 <POSCheckoutTerminal
                   workflowMode={workflowMode}
                   effectiveCapabilities={effectiveCapabilities}
@@ -1233,7 +1250,7 @@ export default function TerminalPageLayout({
                   currentUserId={terminalUser?.user_id || terminalUser?.id || null}
                 />
               </Suspense>
-            ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
+            ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500" role="status" aria-live="polite" aria-busy="true">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
                 viewMode={posViewMode}
                 workflowMode={workflowMode}
@@ -1270,6 +1287,7 @@ export default function TerminalPageLayout({
                 canViewAdminLocationMonitor={canViewBranchLocations}
                 branchDirectoryState={branchDirectoryState}
                 branchViewLocationId={branchViewLocationId}
+                branchViewTransitionLoading={branchViewTransitionLoading}
                 canViewBranchLocations={canViewBranchLocations}
                 onViewBranch={onViewBranch}
                 onExitBranchView={onExitBranchView}

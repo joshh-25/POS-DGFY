@@ -5,11 +5,59 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   getFastTierTestChunks,
+  partitionFastTierTests,
+  buildMigratedTemplateDbName,
+  isMigratedTemplateDbName,
+  isCoverageComplete,
+  extractFailureSummary,
   prepareLandlordTestDatabase,
   SUPPORTED_LANDLORD_TEST_DATABASE_NAMES,
 } = require('./run-backend-test-matrix.js');
 
 const matrixSource = fs.readFileSync(path.join(__dirname, 'run-backend-test-matrix.js'), 'utf8');
+
+test('migrated template database names are short, unique per run, and strictly guarded', () => {
+  const previousRunId = process.env.GITHUB_RUN_ID;
+  try {
+    process.env.GITHUB_RUN_ID = '123456789012345678901234567890123456789';
+    const name = buildMigratedTemplateDbName('a'.repeat(40));
+    assert.equal(name, `test_mig_template_${'a'.repeat(10)}_${'1234567890123456789012345678901'}`);
+    assert.ok(name.length <= 64);
+    assert.equal(isMigratedTemplateDbName(name), true);
+    for (const invalidName of [
+      'test_mig_template_',
+      'test_mig_template_abc;DROP_DATABASE',
+      `test_mig_template_${'a'.repeat(60)}`,
+      'production_template_db',
+    ]) {
+      assert.equal(isMigratedTemplateDbName(invalidName), false, invalidName);
+    }
+  } finally {
+    if (previousRunId === undefined) delete process.env.GITHUB_RUN_ID;
+    else process.env.GITHUB_RUN_ID = previousRunId;
+  }
+});
+
+test('failure extraction still reads Jest reporter output from stderr with JSON reporting enabled', () => {
+  const extracted = extractFailureSummary({
+    stdout: '',
+    stderr: [
+      'FAIL tests/example.test.js',
+      'Test Suites: 1 failed, 1 total',
+      'Tests:       2 failed, 3 passed, 5 total',
+      'Time:        4.2 s'
+    ].join('\n')
+  });
+  assert.deepEqual(extracted.failLines, ['FAIL tests/example.test.js']);
+  assert.match(extracted.summary, /Test Suites: 1 failed/);
+  assert.match(extracted.summary, /Tests:\s+2 failed/);
+});
+
+test('timed-out chunks mark matrix coverage incomplete', () => {
+  assert.equal(isCoverageComplete(false, [{ status: 'pass' }, { status: 'fail' }]), true);
+  assert.equal(isCoverageComplete(true, [{ status: 'pass' }]), false);
+  assert.equal(isCoverageComplete(false, [{ status: 'timeout' }]), false);
+});
 
 test('all-tier migration completes before fast tier and schema preflight', () => {
   const migration = matrixSource.indexOf('landlordTestDb = prepareLandlordTestDatabase(evidenceRoot)');
@@ -38,6 +86,21 @@ test('non-Windows fast tier keeps Jest scheduler ownership of the full test list
 
   assert.equal(chunks.length, 1);
   assert.equal(chunks[0], tests);
+});
+
+test('F&B open-handle suites are routed once to the diagnostic fast-tier run', () => {
+  const fnbSuites = [
+    'fnbMode.usecases.test.js',
+    'posCheckoutFnbContracts.usecase.test.js',
+    'storeFnbModifiers.usecases.test.js',
+    'fnbModifierCondition.migration.test.js',
+    'storeValidator.fnbModifiers.test.js',
+  ].map((name) => path.join(__dirname, '..', 'apps/dgfy-api/tests', name));
+  const ordinarySuite = path.join(__dirname, '..', 'apps/dgfy-api/tests', 'ordinary.test.js');
+  const partition = partitionFastTierTests([...fnbSuites, ordinarySuite]);
+  assert.deepEqual(partition.openHandleTests, fnbSuites);
+  assert.deepEqual(partition.parallelFastTests, [ordinarySuite]);
+  assert.equal(new Set([...partition.openHandleTests, ...partition.parallelFastTests]).size, 6);
 });
 
 test('landlord migration accepts only the repository-supported test database names', () => {

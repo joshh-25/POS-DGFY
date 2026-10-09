@@ -13,12 +13,29 @@ const JEST_CONFIG = path.join(APP_DIR, 'jest.config.cjs');
 const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
 const DEFAULT_FAST_WINDOWS_CHUNK_SIZE = 100;
+const FAST_OPEN_HANDLE_TESTS = new Set([
+  'tests/fnbMode.usecases.test.js',
+  'tests/posCheckoutFnbContracts.usecase.test.js',
+  'tests/storeFnbModifiers.usecases.test.js',
+  'tests/fnbModifierCondition.migration.test.js',
+  'tests/storeValidator.fnbModifiers.test.js',
+]);
 // Landlord test databases accepted by the API defaults and repository's test workflow.
 // Keep this an exact list: a substring like "contest" must never authorize migrations.
 const SUPPORTED_LANDLORD_TEST_DATABASE_NAMES = new Set([
   'sku_test',
   'sku_inventory_manager_test',
 ]);
+const MIGRATED_TEMPLATE_DB_NAME_PATTERN = /^test_mig_template_[A-Za-z0-9._-]+$/;
+
+function isMigratedTemplateDbName(value) {
+  const name = String(value || '');
+  return name.length <= 64 && MIGRATED_TEMPLATE_DB_NAME_PATTERN.test(name) && /test/i.test(name);
+}
+
+function isCoverageComplete(earlyStopped, chunks) {
+  return !earlyStopped && !chunks.some((chunk) => chunk.status === 'timeout');
+}
 // #986/#1124: the early-stop-on-first-failure default was a cost optimization from when the full
 // matrix took ~19.6min (#345); #1015/#1016 cut that to ~2-4min, so the premise that "stopping early
 // saves meaningful time" no longer holds, while the cost of stopping early -- every later group's
@@ -184,6 +201,13 @@ function getFastTierTestChunks(tests, platform = process.platform) {
     ? configuredSize
     : DEFAULT_FAST_WINDOWS_CHUNK_SIZE;
   return tests.length > size ? chunk(tests, size) : [tests];
+}
+
+function partitionFastTierTests(tests) {
+  return {
+    openHandleTests: tests.filter((testPath) => FAST_OPEN_HANDLE_TESTS.has(relativeTestPath(testPath))),
+    parallelFastTests: tests.filter((testPath) => !FAST_OPEN_HANDLE_TESTS.has(relativeTestPath(testPath))),
+  };
 }
 
 function ensureDir(dirPath) {
@@ -387,6 +411,11 @@ function buildTemplateTenantDbName(targetSha) {
   return `test_tenant_template_${safeName(targetSha).slice(0, 10)}_${runDiscriminator}`;
 }
 
+function buildMigratedTemplateDbName(targetSha) {
+  const runDiscriminator = safeName(process.env.GITHUB_RUN_ID || 'local').slice(0, 31);
+  return `test_mig_template_${safeName(targetSha).slice(0, 10)}_${runDiscriminator}`;
+}
+
 function provisionTemplateTenantDatabase(evidenceDir, targetSha) {
   if (SKIP_SCHEMA_PREFLIGHT) {
     console.log('[backend-test-matrix] template_tenant_db=skipped');
@@ -417,6 +446,7 @@ function provisionTemplateTenantDatabase(evidenceDir, targetSha) {
       process.env.DB_PASSWORD || '',
       {
         host: process.env.DB_HOST || 'localhost',
+        port: Number(process.env.DB_PORT || 3306),
         dialect: 'mysql',
         logging: false,
         pool: { max: 3, min: 0, acquire: 10000, idle: 5000 }
@@ -450,6 +480,81 @@ function provisionTemplateTenantDatabase(evidenceDir, targetSha) {
     db_name: dbName,
     log_file: relativeLog,
   };
+}
+
+function provisionMigratedTemplateDatabase(evidenceDir, targetSha) {
+  if (SKIP_SCHEMA_PREFLIGHT) {
+    console.log('[backend-test-matrix] migrated_template_db=skipped');
+    return { status: 'skipped', db_name: null };
+  }
+
+  const dbName = buildMigratedTemplateDbName(targetSha);
+  if (!isMigratedTemplateDbName(dbName)) {
+    throw new Error(`Refusing to provision migrated template database with invalid test name: ${dbName}`);
+  }
+
+  const migrationRunnerDir = path.join(ROOT, 'apps/dgfy-migration-runner');
+  const sequelizeCli = path.join(migrationRunnerDir, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
+  const createDatabaseScript = `
+    process.env.NODE_ENV = 'test';
+    const { sequelize } = await import('./src/models/index.js');
+    const dbName = ${JSON.stringify(dbName)};
+    if (!/^test_mig_template_[A-Za-z0-9._-]+$/.test(dbName) || dbName.length > 64 || !/test/i.test(dbName)) {
+      throw new Error('Refusing to create migrated template database with invalid test name: ' + dbName);
+    }
+    await sequelize.query('CREATE DATABASE IF NOT EXISTS \`' + dbName + '\`');
+    await sequelize.close();
+    console.log(JSON.stringify({ database: dbName }));
+  `;
+  const createResult = spawnSync(process.execPath, ['--input-type=module', '-e', createDatabaseScript], {
+    cwd: APP_DIR,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+    env: { ...process.env, NODE_ENV: 'test' },
+    shell: false,
+  });
+  const createLogFile = path.join(evidenceDir, 'migrated-template-db-create.log');
+  writeLog(createLogFile, createResult);
+  if (createResult.status !== 0) {
+    process.stdout.write(createResult.stdout || '');
+    process.stderr.write(createResult.stderr || '');
+    throw new Error(`Backend migrated template database creation failed. See ${path.relative(ROOT, createLogFile).replace(/\\/g, '/')}`);
+  }
+
+  const migrationResult = spawnSync(process.execPath, [
+    sequelizeCli,
+    'db:migrate',
+    '--env',
+    'development',
+    '--config',
+    'src/config/sequelize.config.cjs',
+    '--migrations-path',
+    'migrations'
+  ], {
+    cwd: migrationRunnerDir,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      DB_NAME: dbName,
+      DB_HOST: process.env.DB_HOST || 'localhost',
+      DB_USER: process.env.DB_USER || 'root',
+      DB_PASSWORD: process.env.DB_PASSWORD || '',
+      DB_PORT: String(process.env.DB_PORT || 3306)
+    },
+    shell: false,
+  });
+  const logFile = path.join(evidenceDir, 'migrated-template-db-migrate.log');
+  writeLog(logFile, migrationResult);
+  const relativeLog = path.relative(ROOT, logFile).replace(/\\/g, '/');
+  if (migrationResult.status !== 0) {
+    process.stdout.write(migrationResult.stdout || '');
+    process.stderr.write(migrationResult.stderr || '');
+    throw new Error(`Backend migrated template database migration failed. See ${relativeLog}`);
+  }
+  console.log(`[backend-test-matrix] migrated_template_db=pass db=${dbName} log=${relativeLog}`);
+  return { status: 'pass', db_name: dbName, log_file: relativeLog };
 }
 
 // #1015: best-effort drop, called exactly once by the matrix runner itself after every db-tier
@@ -488,7 +593,37 @@ function dropTemplateTenantDatabase(dbName, evidenceDir) {
   console.log(`[backend-test-matrix] template_tenant_db_dropped=${dbName}`);
 }
 
-function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, landlordReady) {
+function dropMigratedTemplateDatabase(dbName, evidenceDir) {
+  if (!isMigratedTemplateDbName(dbName)) return;
+  const script = `
+    process.env.NODE_ENV = 'test';
+    const { sequelize } = await import('./src/models/index.js');
+    const dbName = ${JSON.stringify(dbName)};
+    if (!/^test_mig_template_[A-Za-z0-9._-]+$/.test(dbName) || !/test/i.test(dbName)) {
+      throw new Error('Refusing to drop migrated template database with invalid test name: ' + dbName);
+    }
+    await sequelize.query('DROP DATABASE IF EXISTS \`' + dbName + '\`');
+    await sequelize.close();
+    console.log(JSON.stringify({ dropped: dbName }));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: APP_DIR,
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+    env: { ...process.env, NODE_ENV: 'test' },
+    shell: false,
+  });
+  const logFile = path.join(evidenceDir, 'migrated-template-db-teardown.log');
+  writeLog(logFile, result);
+  const relativeLog = path.relative(ROOT, logFile).replace(/\\/g, '/');
+  if (result.status !== 0) {
+    console.warn(`[backend-test-matrix] WARNING: failed to drop migrated template database ${dbName}; see ${relativeLog}`);
+    return;
+  }
+  console.log(`[backend-test-matrix] migrated_template_db_dropped=${dbName}`);
+}
+
+function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, migratedTemplateDbName, landlordReady) {
   const startedAt = new Date();
   const logFile = path.join(evidenceDir, `${safeName(groupName)}-${String(chunkIndex + 1).padStart(2, '0')}.log`);
   const args = [
@@ -498,6 +633,8 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, lan
     JEST_CONFIG,
     '--runInBand',
     '--ci',
+    '--json',
+    `--outputFile=${logFile.replace(/\.log$/, '.results.json')}`,
     '--runTestsByPath',
     ...tests.map(relativeTestPath),
   ];
@@ -509,12 +646,14 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, lan
   // supposed to guarantee no template cloning and no skipped-readiness-check happens, and a stale
   // inherited value would silently violate that guarantee.
   delete env.BACKEND_TEST_MATRIX_TEMPLATE_DB;
+  delete env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB;
   delete env.BACKEND_TEST_MATRIX_LANDLORD_READY;
   // #1015: propagates the shared template DB name (and whether the matrix already confirmed the
   // landlord DB is ready) into every db-tier chunk process. Absent for either reason
   // provisionTemplateTenantDatabase()/runSchemaPreflight() can report "skipped" -- --skip-schema-
   // preflight, or a provisioning failure that already threw and aborted the run before this point.
   if (templateDbName) env.BACKEND_TEST_MATRIX_TEMPLATE_DB = templateDbName;
+  if (migratedTemplateDbName) env.BACKEND_TEST_MATRIX_MIGRATED_TEMPLATE_DB = migratedTemplateDbName;
   if (landlordReady) env.BACKEND_TEST_MATRIX_LANDLORD_READY = 'true';
   const started = Date.now();
   const result = run(process.execPath, args, {
@@ -540,6 +679,7 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, lan
     exit_status: result.status,
     signal: result.signal || null,
     log_file: path.relative(ROOT, logFile).replace(/\\/g, '/'),
+    jest_results_file: path.relative(ROOT, logFile.replace(/\.log$/, '.results.json')).replace(/\\/g, '/'),
     // #1157: same extraction printed to the console above, persisted here too so
     // summarize-backend-test-matrix.js can render the failing suite names on
     // $GITHUB_STEP_SUMMARY without re-parsing the raw log itself.
@@ -556,6 +696,7 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, lan
 function runFastTier(tests, evidenceDir) {
   const startedAt = new Date();
   const logFile = path.join(evidenceDir, 'fast-tier.log');
+  const { openHandleTests, parallelFastTests } = partitionFastTierTests(tests);
   const maxWorkersArgs = process.env.BACKEND_TEST_MATRIX_FAST_MAX_WORKERS
     ? [`--maxWorkers=${process.env.BACKEND_TEST_MATRIX_FAST_MAX_WORKERS}`]
     : [];
@@ -573,7 +714,7 @@ function runFastTier(tests, evidenceDir) {
     env.DB_HOST = '127.0.0.1';
     env.DB_PORT = '1';
   }
-  const testChunks = getFastTierTestChunks(tests);
+  const testChunks = parallelFastTests.length > 0 ? getFastTierTestChunks(parallelFastTests) : [];
   const results = [];
   for (const [chunkIndex, testChunk] of testChunks.entries()) {
     const args = [
@@ -584,6 +725,8 @@ function runFastTier(tests, evidenceDir) {
       ...maxWorkersArgs,
       ...workerMemoryArgs,
       '--ci',
+      '--json',
+      `--outputFile=${(testChunks.length === 1 ? logFile : path.join(evidenceDir, `fast-tier-${String(chunkIndex + 1).padStart(2, '0')}.log`)).replace(/\.log$/, '.results.json')}`,
       '--runTestsByPath',
       ...testChunk.map(relativeTestPath),
     ];
@@ -607,8 +750,52 @@ function runFastTier(tests, evidenceDir) {
       durationMs,
       timedOut,
       logFile: chunkLogFile,
+      resultsFile: chunkLogFile.replace(/\.log$/, '.results.json'),
     });
     console.log(`[backend-test-matrix] ${timedOut ? 'TIMEOUT' : result.status === 0 ? 'PASS' : 'FAIL'} tier=fast chunk=${chunkIndex + 1}/${testChunks.length} tests=${testChunk.length} duration_ms=${durationMs} log=${path.relative(ROOT, chunkLogFile).replace(/\\/g, '/')}`);
+  }
+
+  let openHandleRun = null;
+  if (openHandleTests.length > 0) {
+    const diagnosticLogFile = path.join(evidenceDir, 'fast-fnb-open-handles.log');
+    const diagnosticResultsFile = diagnosticLogFile.replace(/\.log$/, '.results.json');
+    const diagnosticArgs = [
+      '--experimental-vm-modules',
+      JEST_BIN,
+      '--config',
+      JEST_CONFIG,
+      '--runInBand',
+      '--ci',
+      '--detectOpenHandles',
+      '--json',
+      `--outputFile=${diagnosticResultsFile}`,
+      '--runTestsByPath',
+      ...openHandleTests.map(relativeTestPath),
+    ];
+    const diagnosticStarted = Date.now();
+    const diagnosticResult = run(process.execPath, diagnosticArgs, {
+      cwd: APP_DIR,
+      timeout: DEFAULT_CHUNK_TIMEOUT_MS,
+      env,
+    });
+    const diagnosticDurationMs = Date.now() - diagnosticStarted;
+    writeLog(diagnosticLogFile, diagnosticResult);
+    const timedOut = diagnosticResult.error && diagnosticResult.error.code === 'ETIMEDOUT';
+    const shouldSummarize = !timedOut && diagnosticResult.status !== 0;
+    if (shouldSummarize) printFailureSummary('tier=fast group=fnb_open_handles', diagnosticResult);
+    openHandleRun = {
+      group: 'fnb_open_handles',
+      test_count: openHandleTests.length,
+      tests: openHandleTests.map(relativeTestPath),
+      duration_ms: diagnosticDurationMs,
+      status: timedOut ? 'timeout' : diagnosticResult.status === 0 ? 'pass' : 'fail',
+      exit_status: diagnosticResult.status,
+      signal: diagnosticResult.signal || null,
+      log_file: path.relative(ROOT, diagnosticLogFile).replace(/\\/g, '/'),
+      jest_results_file: path.relative(ROOT, diagnosticResultsFile).replace(/\\/g, '/'),
+      failing_suites: shouldSummarize ? extractFailureSummary(diagnosticResult).failLines : [],
+    };
+    console.log(`[backend-test-matrix] ${openHandleRun.status.toUpperCase()} tier=fast group=fnb_open_handles tests=${openHandleRun.test_count} duration_ms=${diagnosticDurationMs} log=${openHandleRun.log_file}`);
   }
 
   if (testChunks.length > 1) {
@@ -623,28 +810,38 @@ function runFastTier(tests, evidenceDir) {
   }
 
   const durationMs = Date.now() - startedAt.getTime();
-  const timedOut = results.some((entry) => entry.timedOut);
+  const timedOut = results.some((entry) => entry.timedOut) || openHandleRun?.status === 'timeout';
   const failedResults = results.filter((entry) => !entry.timedOut && entry.result.status !== 0);
-  const firstNonPassing = results.find((entry) => entry.timedOut || entry.result.status !== 0);
-  const failingSuites = [...new Set(results.flatMap((entry) => (
+  const firstNonPassing = results.find((entry) => entry.timedOut || entry.result.status !== 0)
+    || (openHandleRun && openHandleRun.status !== 'pass' ? { result: { status: openHandleRun.exit_status, signal: openHandleRun.signal } } : null);
+  const failingSuites = [...new Set([
+    ...results.flatMap((entry) => (
     !entry.timedOut && entry.result.status !== 0
       ? extractFailureSummary(entry.result).failLines
       : []
-  )))];
+    )),
+    ...(openHandleRun?.failing_suites || []),
+  ])];
   return {
     tier: 'fast',
     group: 'fast_tier',
     chunk_index: 1,
     test_count: tests.length,
+    primary_test_count: parallelFastTests.length,
     started_at: startedAt.toISOString(),
     duration_ms: durationMs,
     timeout_ms: DEFAULT_CHUNK_TIMEOUT_MS,
-    chunk_count: testChunks.length,
-    status: timedOut ? 'timeout' : failedResults.length > 0 ? 'fail' : 'pass',
+    chunk_count: testChunks.length + (openHandleRun ? 1 : 0),
+    status: timedOut ? 'timeout' : failedResults.length > 0 || (openHandleRun && openHandleRun.status !== 'pass') ? 'fail' : 'pass',
     exit_status: firstNonPassing ? firstNonPassing.result.status : 0,
     signal: firstNonPassing ? firstNonPassing.result.signal || null : null,
     db_pinned_unreachable: !FAST_ALLOW_DB,
     log_file: path.relative(ROOT, logFile).replace(/\\/g, '/'),
+    jest_results_files: [
+      ...results.map(({ resultsFile }) => path.relative(ROOT, resultsFile).replace(/\\/g, '/')),
+      ...(openHandleRun ? [openHandleRun.jest_results_file] : []),
+    ],
+    open_handle_diagnostic: openHandleRun,
     // #1157: same extraction printed to the console above, persisted here too so
     // summarize-backend-test-matrix.js can render the failing suite names on
     // $GITHUB_STEP_SUMMARY without re-parsing the raw log itself.
@@ -659,7 +856,9 @@ function runFastTier(tests, evidenceDir) {
 function runDbTier(dbTests, evidenceRoot, targetSha, onProgress) {
   const schemaPreflight = runSchemaPreflight(evidenceRoot);
   const templateTenantDb = provisionTemplateTenantDatabase(evidenceRoot, targetSha);
+  const migratedTemplateDb = provisionMigratedTemplateDatabase(evidenceRoot, targetSha);
   const templateDbName = templateTenantDb.status === 'pass' ? templateTenantDb.db_name : null;
+  const migratedTemplateDbName = migratedTemplateDb.status === 'pass' ? migratedTemplateDb.db_name : null;
   const landlordReady = schemaPreflight.status === 'pass' && Boolean(schemaPreflight.landlord_ready);
   const grouped = new Map(GROUPS.map((group) => [group.name, []]));
   for (const testPath of dbTests) {
@@ -681,7 +880,7 @@ function runDbTier(dbTests, evidenceRoot, targetSha, onProgress) {
   const chunks = [];
   let failed = false;
   let earlyStopped = false;
-  if (onProgress) onProgress({ schemaPreflight, templateTenantDb, chunks, failed });
+  if (onProgress) onProgress({ schemaPreflight, templateTenantDb, migratedTemplateDb, chunks, failed });
 
   for (const group of selectedGroups) {
     const testChunks = chunk(group.tests, DEFAULT_CHUNK_SIZE);
@@ -693,10 +892,10 @@ function runDbTier(dbTests, evidenceRoot, targetSha, onProgress) {
       ? testChunks.map((_, index) => index)
       : [chunkFilter - 1];
     for (const index of selectedChunkIndexes) {
-      const result = runChunk(group.name, index, testChunks[index], evidenceRoot, templateDbName, landlordReady);
+      const result = runChunk(group.name, index, testChunks[index], evidenceRoot, templateDbName, migratedTemplateDbName, landlordReady);
       chunks.push(result);
       console.log(`[backend-test-matrix] ${result.status.toUpperCase()} tier=db group=${group.name} chunk=${result.chunk_index}/${testChunks.length} tests=${result.test_count} duration_ms=${result.duration_ms} log=${result.log_file}`);
-      if (onProgress) onProgress({ schemaPreflight, templateTenantDb, chunks, failed: failed || result.status !== 'pass' });
+      if (onProgress) onProgress({ schemaPreflight, templateTenantDb, migratedTemplateDb, chunks, failed: failed || result.status !== 'pass' });
       if (result.status !== 'pass') {
         failed = true;
         if (!CONTINUE_ON_FAILURE) { earlyStopped = true; break; }
@@ -708,6 +907,7 @@ function runDbTier(dbTests, evidenceRoot, targetSha, onProgress) {
   return {
     schemaPreflight,
     templateTenantDb,
+    migratedTemplateDb,
     groups: selectedGroups.map((group) => ({
       name: group.name,
       description: group.description,
@@ -759,6 +959,7 @@ function main() {
   let earlyStopped = false;
   let schemaPreflight = { status: 'not_run', reason: `tier=${TIER}` };
   let templateTenantDb = { status: 'not_run', db_name: null };
+  let migratedTemplateDb = { status: 'not_run', db_name: null };
   let dbGroups = [];
   let landlordTestDb = { status: 'not_run', database: null };
 
@@ -786,13 +987,14 @@ function main() {
     // #986/#1124: lets a reader distinguish "green because everything passed" from "green because
     // an early stop meant we stopped looking" -- false whenever a fail-fast stop (chunk-loop,
     // group-loop, or the fast->db skip) cut this run short of its full scope.
-    coverage_complete: !earlyStopped,
+    coverage_complete: isCoverageComplete(earlyStopped, chunks),
     // Only meaningful for the db tier -- the fast tier has no schema preflight by construction.
     schema_preflight: schemaPreflight,
     // #1015: same tier scoping as schema_preflight above -- 'not_run' on the fast tier by
     // construction, 'skipped' when --skip-schema-preflight was passed, 'pass' with the shared
     // template DB name otherwise.
     template_tenant_db: templateTenantDb,
+    migrated_template_db: migratedTemplateDb,
     landlord_test_db: landlordTestDb,
     groups: dbGroups,
     chunks,
@@ -830,6 +1032,7 @@ function main() {
     // is a pure function of targetSha (+ GITHUB_RUN_ID), so this is guaranteed to match whatever name
     // provisionTemplateTenantDatabase() would actually use.
     const candidateTemplateDbName = SKIP_SCHEMA_PREFLIGHT ? null : buildTemplateTenantDbName(targetSha);
+    const candidateMigratedTemplateDbName = SKIP_SCHEMA_PREFLIGHT ? null : buildMigratedTemplateDbName(targetSha);
     // #1015: the matrix runner is the sole owner of the template DB's lifecycle -- built here,
     // dropped here (never from globalTeardown.cjs, which runs once per db-tier chunk process and
     // would otherwise race ~5 processes to DROP the same database other chunks still need). The
@@ -839,12 +1042,14 @@ function main() {
       const dbResult = runDbTier(dbTests, evidenceRoot, targetSha, (progress) => {
         schemaPreflight = progress.schemaPreflight;
         templateTenantDb = progress.templateTenantDb;
+        migratedTemplateDb = progress.migratedTemplateDb;
         chunks = TIER === 'all' ? [chunks[0], ...progress.chunks] : [...progress.chunks];
         failed = failed || progress.failed;
         persist(true);
       });
       schemaPreflight = dbResult.schemaPreflight;
       templateTenantDb = dbResult.templateTenantDb;
+      migratedTemplateDb = dbResult.migratedTemplateDb;
       dbGroups = dbResult.groups;
       chunks = TIER === 'all' ? [chunks[0], ...dbResult.chunks] : [...dbResult.chunks];
       if (dbResult.failed) failed = true;
@@ -858,6 +1063,12 @@ function main() {
         : candidateTemplateDbName;
       if (dbNameToClean) {
         dropTemplateTenantDatabase(dbNameToClean, evidenceRoot);
+      }
+      const migratedDbNameToClean = (migratedTemplateDb.status === 'pass' && migratedTemplateDb.db_name)
+        ? migratedTemplateDb.db_name
+        : candidateMigratedTemplateDbName;
+      if (migratedDbNameToClean) {
+        dropMigratedTemplateDatabase(migratedDbNameToClean, evidenceRoot);
       }
     }
   } else if (skipDbTier) {
@@ -880,6 +1091,11 @@ if (require.main === module) {
 
 module.exports = {
   getFastTierTestChunks,
+  partitionFastTierTests,
+  buildMigratedTemplateDbName,
+  isMigratedTemplateDbName,
+  isCoverageComplete,
+  extractFailureSummary,
   prepareLandlordTestDatabase,
   SUPPORTED_LANDLORD_TEST_DATABASE_NAMES,
 };

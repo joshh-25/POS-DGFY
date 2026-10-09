@@ -1,10 +1,56 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Eye, History, RefreshCcw } from 'lucide-react';
+import { CalendarDays, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
-import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
+import CashierHistoryTable from './CashierHistoryTable.jsx';
+import CashierHistoryFilterToolbar from './CashierHistoryFilterToolbar.jsx';
+import PosShiftRefreshButton from './PosShiftRefreshButton.jsx';
+import PosDropdownSelect from './PosDropdownSelect.jsx';
+import PosShiftStateNotice from './PosShiftStateNotice.jsx';
+import { formatPosDateRangeLabel } from './posFilterLabelUtils.js';
+import {
+    POS_SHIFT_PRIMARY_BUTTON_CLASS,
+    POS_SHIFT_SECONDARY_BUTTON_CLASS
+} from './posShiftButtonStyles.js';
 
 const CASHIER_HISTORY_PAGE_SIZE_OPTIONS = [10, 20, 50];
+
+const renderCashierHistoryPageSizeDropdown = ({
+    controlId,
+    options,
+    selectedPageSize,
+    disabled,
+    onChange,
+    hidePageSizeSuffixOnMobile
+}) => (
+    <PosDropdownSelect
+        id={controlId}
+        triggerTestId={controlId}
+        menuId={`${controlId}-options`}
+        ariaLabel="Items per page"
+        listboxLabel="Items per page options"
+        value={selectedPageSize}
+        disabled={disabled}
+        className="dgfy-global-pagination__page-size shrink-0"
+        triggerClassName="dgfy-global-pagination__page-size-trigger inline-flex h-10 min-w-[5.75rem] items-center justify-between gap-2 rounded-xl border border-[#8AA8CD] bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm outline-none transition hover:border-[#1A4E8D] hover:bg-[#F8FBFF] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/15 disabled:cursor-not-allowed disabled:opacity-50 lg:text-[13px]"
+        menuClassName="dgfy-global-pagination__page-size-menu absolute bottom-[calc(100%+0.375rem)] left-0 z-50 max-h-72 min-w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 ring-1 ring-slate-900/5"
+        optionClassName="dgfy-global-pagination__page-size-option"
+        valueClassName="dgfy-global-pagination__page-size-value whitespace-nowrap"
+        onChange={(nextValue) => onChange(Number(nextValue))}
+        options={options.map((option) => ({
+            value: option,
+            label: (
+                <>
+                    {option}
+                    <span className={`dgfy-global-pagination__page-size-suffix${hidePageSizeSuffixOnMobile ? ' dgfy-global-pagination__page-size-suffix--hide-on-mobile' : ''}`}>
+                        {' / page'}
+                    </span>
+                </>
+            ),
+            testId: `${controlId}-option-${option}`
+        }))}
+    />
+);
 
 const getManilaDate = () => {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -17,47 +63,35 @@ const getManilaDate = () => {
     return `${values.year}-${values.month}-${values.day}`;
 };
 
-const money = (value, currency = '₱') => `${String(currency).toUpperCase() === 'PHP' ? '₱' : currency}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const reconciliationMoney = (value, currency, pendingLabel) => (
-    value == null ? pendingLabel : money(value, currency)
-);
-
-const paymentLabel = (entry) => String(
-    entry?.payment_label || entry?.payment_type || 'Other'
-).replace(/_/g, ' ');
-
-const formatDateTime = (value) => {
-    if (!value) return '-';
-    const date = new Date(value);
-    return Number.isFinite(date.getTime()) ? date.toLocaleString() : '-';
-};
-
-function SummaryMetric({ label, value, strong = false }) {
-    return (
-        <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-slate-500">{label}</span>
-            <span className={`text-right tabular-nums ${strong ? 'font-black text-[#0F172A]' : 'font-bold text-slate-700'}`}>
-                {value}
-            </span>
-        </div>
-    );
-}
+const createTodayFilters = (today) => ({
+    rangeMode: 'today',
+    dateFrom: today,
+    dateTo: today,
+    dateFilterApplied: false,
+    status: 'all'
+});
 
 export default function CashierHistoryPanel({
-    state = { loading: false, records: [], pagination: null, errorMessage: '' },
+    state = { loading: false, records: [], pagination: null, errorMessage: '', requestScopeKey: null, recordsScopeKey: null },
     onRefresh = async () => {},
     onViewSummary = () => {},
     activeShift = null,
     locked = false,
     isOnline = true,
-    currency = '₱'
+    currency = '\u20b1'
 }) {
-    const [rangeMode, setRangeMode] = useState('today');
+    const today = useMemo(() => getManilaDate(), []);
+    const initialFilters = useMemo(() => createTodayFilters(today), [today]);
+    const [appliedFilters, setAppliedFilters] = useState(initialFilters);
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
-    const today = useMemo(() => getManilaDate(), []);
-    const records = Array.isArray(state?.records) ? state.records : [];
-    const pagination = state?.pagination || {};
+    const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+    const requestFilters = useMemo(() => ({
+        ...appliedFilters,
+        search: debouncedSearchQuery
+    }), [appliedFilters, debouncedSearchQuery]);
+    const storedRecords = Array.isArray(state?.records) ? state.records : [];
     const historyScope = state?.historyScope || state?.history_scope || {};
     const historyScopeMode = String(historyScope?.mode || 'own').trim().toLowerCase();
     const isCompanyScope = historyScopeMode === 'company';
@@ -70,40 +104,154 @@ export default function CashierHistoryPanel({
         ? `Showing shift summaries across all authorized company branches${historyScope?.location_count ? ` (${historyScope.location_count} branches).` : '.'}`
         : (isGrantedScope
             ? 'Showing shift summaries for the branches assigned to this account.'
-            : 'Your shift summaries only. Other cashiers’ records are not visible.');
+            : 'Only your shifts are shown.');
     const loadingCopy = isCompanyScope
         ? 'Loading company cashier summaries...'
         : (isGrantedScope ? 'Loading authorized branch cashier summaries...' : 'Loading your cashier summaries...');
-    const activeShiftLabel = isCompanyScope || isGrantedScope ? 'Active shift' : 'Your active shift';
-    const totalPages = Math.max(1, Number(pagination.totalPages || 1));
+    const activeShiftLabel = String(activeShift?.status || '').toLowerCase() === 'open'
+        ? 'Open shift'
+        : (isCompanyScope || isGrantedScope ? 'Active shift' : 'Your active shift');
+    const cashierName = state?.cashier?.cashier_name
+        || state?.cashier?.display_name
+        || state?.cashier?.name
+        || state?.cashier?.username
+        || '';
     const activeShiftId = activeShift?.pos_terminal_shift_id || activeShift?.shift_id || null;
     const activeShiftBusinessDate = String(activeShift?.business_date || '').slice(0, 10);
     const activeShiftLocationId = activeShift?.location_id || activeShift?.location?.location_id || null;
+    const buildFilters = useCallback((nextPage = page, nextFilters = requestFilters, nextPageSize = pageSize) => {
+        const normalizedSearch = String(nextFilters.search || '').trim();
+        return {
+            page: nextPage,
+            limit: nextPageSize,
+            ...(nextFilters.dateFrom ? { date_from: nextFilters.dateFrom } : {}),
+            ...(nextFilters.dateTo ? { date_to: nextFilters.dateTo } : {}),
+            ...(normalizedSearch ? { search: normalizedSearch } : {}),
+            ...(nextFilters.status !== 'all' ? { status: nextFilters.status } : {})
+        };
+    }, [page, pageSize, requestFilters]);
+
+    const expectedRequestScopeKey = JSON.stringify(buildFilters());
+    const hasRecordsScope = Object.prototype.hasOwnProperty.call(state || {}, 'recordsScopeKey');
+    const hasRequestScope = Object.prototype.hasOwnProperty.call(state || {}, 'requestScopeKey');
+    const recordsMatchCurrentScope = !hasRecordsScope || state.recordsScopeKey === expectedRequestScopeKey;
+    const requestMatchesCurrentScope = !hasRequestScope || state.requestScopeKey === expectedRequestScopeKey;
+    const records = recordsMatchCurrentScope ? storedRecords : [];
+    const pagination = recordsMatchCurrentScope ? (state?.pagination || {}) : {};
+    const totalItems = Number(pagination.total || records.length || 0);
+    const reportedTotalPages = Number(pagination.totalPages);
+    const totalPages = Math.max(1, Number.isFinite(reportedTotalPages) && reportedTotalPages > 0
+        ? reportedTotalPages
+        : Math.ceil(totalItems / pageSize));
+    const firstVisibleItem = records.length > 0 && totalItems > 0 ? ((page - 1) * pageSize) + 1 : 0;
+    const lastVisibleItem = records.length > 0
+        ? Math.min(firstVisibleItem + records.length - 1, totalItems)
+        : 0;
+    const currentScopeError = requestMatchesCurrentScope ? state?.errorMessage : '';
+    const currentScopeLoading = Boolean(
+        !currentScopeError
+        && (!recordsMatchCurrentScope || (requestMatchesCurrentScope && state?.loading))
+    );
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setDebouncedSearchQuery(searchQuery.trim());
+        }, 300);
+        return () => window.clearTimeout(timer);
+    }, [searchQuery]);
+
     const activeShiftIsInRecords = Boolean(
         activeShiftId
         && records.some((record) => String(record?.shift?.pos_terminal_shift_id || record?.shift?.shift_id || '') === String(activeShiftId))
     );
 
-    const buildFilters = useCallback((nextPage = page, nextRangeMode = rangeMode, nextPageSize = pageSize) => ({
-        page: nextPage,
-        limit: nextPageSize,
-        ...(nextRangeMode === 'today' ? { date_from: today, date_to: today } : {})
-    }), [page, pageSize, rangeMode, today]);
-
-    const refresh = useCallback((nextPage = page, nextRangeMode = rangeMode, nextPageSize = pageSize) => {
+    const refresh = useCallback((nextPage = page, nextFilters = requestFilters, nextPageSize = pageSize) => {
         setPage(nextPage);
-        return onRefresh(buildFilters(nextPage, nextRangeMode, nextPageSize));
-    }, [buildFilters, onRefresh, page, pageSize, rangeMode]);
+        return onRefresh(buildFilters(nextPage, nextFilters, nextPageSize));
+    }, [buildFilters, onRefresh, page, pageSize, requestFilters]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
-            void refresh(1, rangeMode);
+            void refresh(1, requestFilters);
         }, 0);
         return () => window.clearTimeout(timer);
-    }, [activeShiftBusinessDate, activeShiftId, activeShiftLocationId, rangeMode]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [activeShiftBusinessDate, activeShiftId, activeShiftLocationId, requestFilters]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleQuickRange = (rangeMode) => {
+        const nextFilters = {
+            ...appliedFilters,
+            rangeMode,
+            dateFrom: rangeMode === 'today' ? today : '',
+            dateTo: rangeMode === 'today' ? today : '',
+            dateFilterApplied: rangeMode === 'today'
+        };
+        setAppliedFilters(nextFilters);
+        setPage(1);
+    };
+
+    const handleApplyDateRange = ({ dateFrom, dateTo }) => {
+        const rangeMode = dateFrom === today && dateTo === today ? 'today' : 'custom';
+        setAppliedFilters((current) => ({
+            ...current,
+            rangeMode,
+            dateFrom,
+            dateTo,
+            dateFilterApplied: true
+        }));
+        setPage(1);
+    };
+
+    const handleApplyStatus = (status) => {
+        setAppliedFilters((current) => ({ ...current, status }));
+        setPage(1);
+    };
+
+    const handleRemoveFilter = (filterKey) => {
+        if (filterKey === 'date') {
+            setAppliedFilters((current) => ({
+                ...current,
+                rangeMode: 'today',
+                dateFrom: today,
+                dateTo: today,
+                dateFilterApplied: false
+            }));
+        } else if (filterKey === 'status') {
+            setAppliedFilters((current) => ({ ...current, status: 'all' }));
+        }
+        setPage(1);
+    };
+
+    const handleClearAllFilters = () => {
+        setAppliedFilters(createTodayFilters(today));
+        setSearchQuery('');
+        setDebouncedSearchQuery('');
+        setPage(1);
+    };
+
+    const handleViewAllRecords = () => {
+        const nextFilters = {
+            rangeMode: 'all',
+            dateFrom: '',
+            dateTo: '',
+            dateFilterApplied: false,
+            status: 'all'
+        };
+        setAppliedFilters(nextFilters);
+        setPage(1);
+    };
+
+    const activeFilterChips = useMemo(() => ([
+        ...(appliedFilters.dateFilterApplied ? [{
+            key: 'date',
+            label: `Date: ${formatPosDateRangeLabel(appliedFilters.dateFrom, appliedFilters.dateTo)}`
+        }] : []),
+        ...(appliedFilters.status !== 'all' ? [{
+            key: 'status',
+            label: `Status: ${appliedFilters.status === 'open' ? 'Open' : 'Closed'}`
+        }] : [])
+    ]), [appliedFilters]);
 
     return (
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+        <div className="min-w-0 space-y-4" aria-busy={state?.loading || undefined}>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <div className="flex items-center gap-2">
@@ -114,35 +262,49 @@ export default function CashierHistoryPanel({
                         {scopeDescription}
                     </p>
                 </div>
-                <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 rounded-lg border-slate-300 px-3 text-xs font-extrabold"
-                    onClick={() => void refresh(page, rangeMode)}
+                <PosShiftRefreshButton
+                    label="Refresh cashier history"
+                    onClick={() => void refresh(page, requestFilters)}
                     disabled={state?.loading || !isOnline}
-                >
-                    <RefreshCcw className={`mr-1.5 h-3.5 w-3.5 ${state?.loading ? 'animate-spin' : ''}`} />
-                    {state?.loading ? 'Refreshing...' : 'Refresh History'}
-                </Button>
+                    loading={state?.loading}
+                />
             </div>
+
+            <CashierHistoryFilterToolbar
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                status={appliedFilters.status}
+                onApplyStatus={handleApplyStatus}
+                dateRange={{
+                    dateFrom: appliedFilters.dateFrom || today,
+                    dateTo: appliedFilters.dateTo || today
+                }}
+                todayDate={today}
+                activeFilterChips={activeFilterChips}
+                onRemoveFilter={handleRemoveFilter}
+                onClearAllFilters={handleClearAllFilters}
+                onApplyDateRange={handleApplyDateRange}
+                cashierName={cashierName}
+                actionDisabled={locked || !isOnline}
+            />
 
             <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">
                 <Button
                     type="button"
-                    variant={rangeMode === 'today' ? 'default' : 'outline'}
-                    className="h-9 rounded-lg px-3 text-xs font-extrabold"
-                    onClick={() => setRangeMode('today')}
-                    aria-pressed={rangeMode === 'today'}
+                    variant={appliedFilters.rangeMode === 'today' ? 'default' : 'outline'}
+                    className={`h-9 rounded-lg px-3 text-xs font-extrabold ${appliedFilters.rangeMode === 'today' ? POS_SHIFT_PRIMARY_BUTTON_CLASS : POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+                    onClick={() => handleQuickRange('today')}
+                    aria-pressed={appliedFilters.rangeMode === 'today'}
                 >
                     <CalendarDays className="mr-1.5 h-3.5 w-3.5" />
                     Today
                 </Button>
                 <Button
                     type="button"
-                    variant={rangeMode === 'all' ? 'default' : 'outline'}
-                    className="h-9 rounded-lg px-3 text-xs font-extrabold"
-                    onClick={() => setRangeMode('all')}
-                    aria-pressed={rangeMode === 'all'}
+                    variant={appliedFilters.rangeMode === 'all' ? 'default' : 'outline'}
+                    className={`h-9 rounded-lg px-3 text-xs font-extrabold ${appliedFilters.rangeMode === 'all' ? POS_SHIFT_PRIMARY_BUTTON_CLASS : POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+                    onClick={() => handleQuickRange('all')}
+                    aria-pressed={appliedFilters.rangeMode === 'all'}
                 >
                     <History className="mr-1.5 h-3.5 w-3.5" />
                     All records
@@ -153,192 +315,80 @@ export default function CashierHistoryPanel({
             </div>
 
             {state?.errorMessage ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
-                    {state.errorMessage}
-                </div>
+                currentScopeError ? (
+                <PosShiftStateNotice
+                    variant="error"
+                    title={records.length > 0 ? 'Refresh failed — showing last results' : ''}
+                    message={currentScopeError}
+                    compact
+                />
+                ) : null
             ) : null}
 
-            {state?.loading && records.length === 0 ? (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600" role="status">
-                    {loadingCopy}
-                </p>
-            ) : records.length === 0 ? (
-                activeShift && !activeShiftIsInRecords ? (
+            {currentScopeLoading && records.length === 0 ? (
+                <PosShiftStateNotice variant="loading" message={loadingCopy} />
+            ) : !currentScopeError && !currentScopeLoading && records.length === 0 ? (
+                activeShift && !activeShiftIsInRecords && !debouncedSearchQuery ? (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900" role="status">
                         <p className="font-bold">
-                            {activeShiftLabel} #{activeShiftId || '-'} is open, but it belongs to business date {activeShiftBusinessDate || '-'}.
+                            {activeShiftLabel} #{activeShiftId || '-'} isn’t included in these results.
                         </p>
                         <p className="mt-1 text-blue-800">
-                            It is not included in the selected date period. Open All records to view this shift without changing its accounting date.
+                            Adjust filters or view all records. Business date: {activeShiftBusinessDate || 'unchanged'}.
                         </p>
-                        {rangeMode === 'today' ? (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="mt-3 h-9 rounded-lg border-blue-300 bg-white px-3 text-xs font-extrabold text-blue-900"
-                                onClick={() => setRangeMode('all')}
-                                disabled={locked || !isOnline}
-                            >
-                                View All records
-                            </Button>
-                        ) : null}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className={`mt-3 h-9 rounded-lg px-3 text-xs font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+                            onClick={handleViewAllRecords}
+                            disabled={locked || !isOnline}
+                        >
+                            View All records
+                        </Button>
                     </div>
                 ) : (
-                    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        No cashier shift records found for this period.
-                    </p>
+                    <PosShiftStateNotice
+                        variant="empty"
+                        message={debouncedSearchQuery
+                            ? 'No shifts match this search and the selected filters.'
+                            : 'No cashier shift records match these filters.'}
+                    />
                 )
-            ) : (
-                <div className="space-y-3">
-                    {records.map((record) => {
-                        const shift = record?.shift || {};
-                        const cash = record?.cash_summary || {};
-                        const sales = record?.sales_summary || {};
-                        const payments = Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : [];
-                        const deliveryProviders = parseDeliveryProviderSummary(sales.delivery_provider_breakdown);
-                        const postCloseAdjustments = Array.isArray(sales.post_close_adjustments) ? sales.post_close_adjustments : [];
-                        const shiftId = shift.pos_terminal_shift_id || shift.shift_id;
-                        const branchName = String(
-                            shift?.location?.name
-                            || shift?.location_name
-                            || 'Unknown branch'
-                        ).trim();
-                        const cashierName = String(
-                            shift?.cashier?.username
-                            || shift?.cashier?.email
-                            || shift?.cashier_name
-                            || (shift?.cashier_id ? `User #${shift.cashier_id}` : 'Unknown cashier')
-                        ).trim();
-                        return (
-                            <article key={shiftId} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-sm font-black text-[#0F172A]">
-                                            {shift.business_date || '-'} · Shift #{shiftId || '-'}
-                                        </p>
-                                        <p className="mt-1 text-xs text-slate-500">
-                                            {shift.terminal_id || 'No terminal'} · {shift.status || 'unknown'} · Opened {formatDateTime(shift.opened_at)}
-                                        </p>
-                                        <p className="mt-1 text-xs text-slate-600">
-                                            Branch: <span className="font-bold text-slate-800">{branchName}</span> · Cashier/register owner: <span className="font-bold text-slate-800">{cashierName}</span>
-                                        </p>
-                                        {shift.closed_at ? (
-                                            <p className="mt-1 text-xs text-slate-500">Closed {formatDateTime(shift.closed_at)}</p>
-                                        ) : null}
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="h-9 rounded-lg border-slate-300 bg-white px-3 text-xs font-extrabold"
-                                        onClick={() => onViewSummary(record)}
-                                        disabled={locked}
-                                    >
-                                        <Eye className="mr-1.5 h-3.5 w-3.5" />
-                                        View Summary
-                                    </Button>
-                                </div>
+            ) : records.length > 0 ? (
+                <CashierHistoryTable
+                    records={records}
+                    cashierName={cashierName}
+                    currency={currency}
+                    locked={locked}
+                    onViewSummary={onViewSummary}
+                />
+            ) : null}
 
-                                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                    <div className="space-y-1 rounded-lg border border-slate-200 bg-white p-3">
-                                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Sales</p>
-                                        <SummaryMetric label="Transactions" value={sales.transaction_count || 0} />
-                                        <SummaryMetric label="Total sales (excluding opening cash)" value={money(sales.total_amount, currency)} strong />
-                                        <SummaryMetric label="Discounts" value={money(sales.discount_amount, currency)} />
-                                        <SummaryMetric label="Voids" value={`${sales.void_transaction_count || 0} · ${money(sales.void_amount, currency)}`} />
-                                        {Number(sales.post_close_void_transaction_count || 0) > 0 ? (
-                                            <SummaryMetric
-                                                label="Post-close voids"
-                                                value={`${sales.post_close_void_transaction_count} · ${money(sales.post_close_void_amount, currency)}`}
-                                            />
-                                        ) : null}
-                                        {Number(sales.post_close_adjustment_count || 0) > 0 ? (
-                                            <>
-                                                <SummaryMetric label="Post-close refund actions" value={sales.post_close_adjustment_count} />
-                                                <SummaryMetric label="Completed after close" value={money(sales.post_close_refund_amount, currency)} />
-                                                <SummaryMetric label="Pending after close" value={money(sales.post_close_pending_amount, currency)} />
-                                                <SummaryMetric label="Manual review after close" value={money(sales.post_close_manual_review_amount, currency)} />
-                                            </>
-                                        ) : null}
-                                    </div>
-                                    <div className="space-y-1 rounded-lg border border-slate-200 bg-white p-3">
-                                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Cash reconciliation</p>
-                                        <SummaryMetric label="Opening/petty cash" value={money(cash.opening_float_amount, currency)} />
-                                        <SummaryMetric label="Cash sales" value={money(cash.cash_sales_amount, currency)} />
-                                        <SummaryMetric label="Expected cash in drawer" value={money(cash.expected_cash_amount, currency)} />
-                                        <SummaryMetric label="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
-                                    </div>
-                                </div>
-
-                                {postCloseAdjustments.length > 0 ? (
-                                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid={`post-close-adjustments-${shiftId}`}>
-                                        <p className="text-xs font-black uppercase tracking-wide text-amber-900">Post-close adjustment accountability</p>
-                                        <div className="mt-2 space-y-2">
-                                            {postCloseAdjustments.map((adjustment) => (
-                                                <div key={adjustment.pos_transaction_adjustment_id || adjustment.adjustment_reference} className="rounded-lg border border-amber-200 bg-white p-2 text-xs text-slate-700">
-                                                    <p className="font-black capitalize text-slate-900">{String(adjustment.adjustment_type || 'adjustment').replace(/_/g, ' ')} · {money(adjustment.amount, currency)}</p>
-                                                    <p className="mt-1">Status: <span className="font-bold">{String(adjustment.status || 'unknown').replace(/_/g, ' ')}</span></p>
-                                                    <p>Actioned by: <span className="font-bold">{adjustment.actor_name || adjustment.actor_user_id || '-'}</span> · Acting shift: <span className="font-bold">{adjustment.actor_shift_id || 'No acting shift'}</span></p>
-                                                    <p>Reference: <span className="font-bold">{adjustment.adjustment_reference || '-'}</span> · {formatDateTime(adjustment.event_at)}</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : null}
-
-                                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Payment methods</p>
-                                    {payments.length === 0 ? (
-                                        <p className="text-sm text-slate-500">No payment records.</p>
-                                    ) : (
-                                        <div className="grid gap-x-5 gap-y-1 sm:grid-cols-2">
-                                            {payments.map((entry) => (
-                                                <SummaryMetric
-                                                    key={`${entry.payment_type}-${entry.count}`}
-                                                    label={`${paymentLabel(entry)} (${entry.count || 0})`}
-                                                    value={money(entry.amount, currency)}
-                                                />
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                {deliveryProviders.length > 0 ? (
-                                    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
-                                        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#1A4E8D]">Delivery providers</p>
-                                        <div className="grid gap-x-5 gap-y-1 sm:grid-cols-2">
-                                            {deliveryProviders.map((entry) => (
-                                                <SummaryMetric
-                                                    key={`${entry.provider_type}-${entry.provider_name || ''}`}
-                                                    label={`${formatDeliveryProviderSummaryLabel(entry)} (${entry.transaction_count || 0})`}
-                                                    value={money(entry.amount, currency)}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : null}
-                            </article>
-                        );
-                    })}
-                </div>
-            )}
-
-            <GlobalPagination
-                testId="pos-cashier-history-pagination"
-                ariaLabel="Cashier history pagination"
-                currentPage={page}
-                totalPages={totalPages}
-                totalItems={Number(pagination.total || records.length || 0)}
-                pageSize={pageSize}
-                pageSizeOptions={CASHIER_HISTORY_PAGE_SIZE_OPTIONS}
-                itemLabel="records"
-                loading={state?.loading}
-                disabled={!isOnline}
-                onPageChange={(nextPage) => void refresh(nextPage, rangeMode)}
-                onPageSizeChange={(nextPageSize) => {
-                    setPageSize(nextPageSize);
-                    void refresh(1, rangeMode, nextPageSize);
-                }}
-                className="border-0 border-t border-slate-100 px-0 shadow-none"
-            />
+            {records.length > 0 && totalPages > 1 ? (
+                <GlobalPagination
+                    testId="pos-cashier-history-pagination"
+                    ariaLabel="Cashier history pagination"
+                    currentPage={page}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    pageSize={pageSize}
+                    pageSizeOptions={CASHIER_HISTORY_PAGE_SIZE_OPTIONS}
+                    renderPageSizeDropdown={renderCashierHistoryPageSizeDropdown}
+                    itemLabel="records"
+                    loading={state?.loading}
+                    disabled={!isOnline}
+                    onPageChange={(nextPage) => void refresh(nextPage, requestFilters)}
+                    onPageSizeChange={(nextPageSize) => {
+                        setPageSize(nextPageSize);
+                        void refresh(1, requestFilters, nextPageSize);
+                    }}
+                    className="border-0 border-t border-slate-100 px-0 shadow-none"
+                />
+            ) : records.length > 0 && totalItems > 0 ? (
+                <p className="border-t border-slate-100 py-3 text-xs text-slate-500">
+                    Showing {firstVisibleItem}–{lastVisibleItem} of {totalItems} records
+                </p>
+            ) : null}
         </div>
     );
 }

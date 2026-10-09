@@ -12,7 +12,6 @@ import {
   Play,
   Plus,
   RefreshCcw,
-  Search,
   ShieldAlert,
   SlidersHorizontal,
   Ticket,
@@ -28,6 +27,7 @@ import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import StorefrontSectionInfo from '../settings/StorefrontSectionInfo.jsx';
 import { PosFilterDialogFooter, PosFilterDialogHeader } from './PosFilterDialogParts.jsx';
 import PosFilterDialogShell from './PosFilterDialogShell.jsx';
+import PosSearchField, { POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS } from './PosSearchField.jsx';
 import { getFolders, getItems } from '@/services/itemService.js';
 import {
   activateVoucher,
@@ -731,18 +731,18 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
       <div className="shrink-0">
         <div className="relative">
           <div className="pos-items-desktop-toolbar hidden items-center gap-2 sm:flex">
-          <div className="relative min-w-0 flex-1">
-            <Label htmlFor="pos-vouchers-search" className="sr-only">Search vouchers</Label>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />
-            <Input
+          <PosSearchField
               id="pos-vouchers-search"
-              className="h-9 rounded-lg border-[#1A4E8D] bg-white pl-9 pr-3 text-[13px] placeholder:text-slate-300 focus:border-[#1A4E8D] focus:ring-blue-100"
+              ariaLabel="Search vouchers"
+              variant="catalog"
+              inputClassName={POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS}
+              className="min-w-0 flex-1"
               placeholder="Code or title"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              onClear={() => setSearchInput('')}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearchSubmit(); }}
-            />
-          </div>
+          />
           <div className="pos-items-desktop-actions flex shrink-0 flex-wrap items-center justify-end gap-2">
             <Button
               type="button"
@@ -772,18 +772,18 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
 
         <div className="pos-items-mobile-controls sm:hidden">
           <div className="pos-items-mobile-toolbar">
-            <div className="pos-items-mobile-search">
-            <Label htmlFor="pos-vouchers-search-mobile" className="sr-only">Search vouchers</Label>
-            <Input
+          <PosSearchField
               id="pos-vouchers-search-mobile"
-              className="h-11 w-full rounded-2xl border-[#1A4E8D] bg-white pl-9 pr-3 text-base text-[#0F172A] placeholder:text-slate-300 shadow-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
+              ariaLabel="Search vouchers"
+              variant="catalog"
+              inputClassName={POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS}
+              className="min-w-0 flex-1"
               placeholder="Code or title"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              onClear={() => setSearchInput('')}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearchSubmit(); }}
-            />
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />
-            </div>
+          />
           <button
             type="button"
             onClick={openMobileFilters}
@@ -927,24 +927,24 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
       </div>
       </div>
 
-      {listLoading && <p className="text-sm text-slate-500">Loading vouchers...</p>}
-      {!listLoading && listError && (
-        <div className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-          <span>{listError}</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => loadVouchers()}>
-            <RefreshCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Retry
-          </Button>
-        </div>
-      )}
+      <div data-testid="pos-vouchers-content" className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+        {listLoading && <p className="text-sm text-slate-500">Loading vouchers...</p>}
+        {!listLoading && listError && (
+          <div className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            <span>{listError}</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => loadVouchers()}>
+              <RefreshCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Retry
+            </Button>
+          </div>
+        )}
 
-      {!listLoading && !listError && vouchers.length === 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500 shadow-sm shadow-slate-200/70">
-          No vouchers match these filters yet.
-        </div>
-      )}
+        {!listLoading && !listError && vouchers.length === 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500 shadow-sm shadow-slate-200/70">
+            No vouchers match these filters yet.
+          </div>
+        )}
 
-      {!listLoading && !listError && vouchers.length > 0 && (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+        {!listLoading && !listError && vouchers.length > 0 && (
           <div data-testid="pos-vouchers-results" className="dgfy-pos-scroll-region min-h-0 min-w-0 flex-1 content-start overflow-y-auto overscroll-contain pr-1 touch-pan-y space-y-2">
           {vouchers.map((voucher) => {
             const allowedTargets = ALLOWED_STATUS_TRANSITIONS[voucher.derived_status] || [];
@@ -972,7 +972,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <Ticket className="h-3.5 w-3.5 shrink-0 text-[#1A4E8D] sm:hidden" aria-hidden="true" />
-                          <p className="min-w-0 max-w-full shrink break-words text-base font-black uppercase leading-tight tracking-[0.06em] text-[#0F172A] sm:text-[13px]">{voucher.code}</p>
+                          <p className="min-w-0 max-w-full shrink break-words text-[13px] font-black uppercase leading-tight tracking-[0.06em] text-[#0F172A]">{voucher.code}</p>
                           <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusBadgeClass}`}>
                             <span className={`h-1.5 w-1.5 rounded-full ${voucher.derived_status === 'active' ? 'bg-emerald-500' : 'bg-current'}`} aria-hidden="true" />
                             {statusLabel}
@@ -1030,8 +1030,8 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
             );
           })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {!listError && (
         <GlobalPagination

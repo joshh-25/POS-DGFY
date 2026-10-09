@@ -6,6 +6,28 @@ const projectRoot = path.resolve(__dirname, '../../../..');
 const readSource = (relativePath) => fs.readFileSync(path.resolve(projectRoot, relativePath), 'utf8');
 
 describe('POS mobile focus zoom contracts', () => {
+  it('blocks mobile page double-tap zoom only in Items, History, Reports, Settings, and Shift', () => {
+    const css = readSource('src/index.css');
+    const terminalPage = readSource('src/features/pos/pages/TerminalPage.jsx');
+    const mapPinPicker = readSource('src/components/maps/MapPinPicker.jsx');
+    const posHtml = readSource('../../apps/dgfy-pos/index.html');
+    const viewModes = terminalPage.match(/const POS_MOBILE_DOUBLE_TAP_GUARD_VIEW_MODES = new Set\(\[([\s\S]*?)\]\);/);
+
+    expect(viewModes).not.toBeNull();
+    for (const mode of ['items', 'history', 'reports', 'shift_controls', 'cash_drawer', 'close_shift']) {
+      expect(viewModes[1]).toContain(`'${mode}'`);
+    }
+    expect(viewModes[1]).toContain('...SETTINGS_VIEW_MODES');
+    expect(terminalPage).toContain("root.setAttribute(attribute, 'true')");
+    expect(css).toContain('@media screen and (max-width: 767.98px), screen and (pointer: coarse)');
+    expect(css).toContain('html[data-pos-mobile-no-double-tap-zoom="true"]');
+    expect(css).toContain('touch-action: manipulation;');
+    expect(mapPinPicker).toContain('doubleClickZoom: true');
+    expect(mapPinPicker).toContain('touchZoomRotate: true');
+    expect(posHtml).toContain('name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"');
+    expect(posHtml).not.toMatch(/user-scalable\s*=\s*no/i);
+  });
+
   it('keeps portal-rendered scanner and item controls at the iOS-safe font size', () => {
     const css = readSource('src/index.css');
     const scanner = readSource('src/features/pos/components/POSBarcodeScanner.jsx');
@@ -27,6 +49,7 @@ describe('POS mobile focus zoom contracts', () => {
     const posHtml = readSource('../../apps/dgfy-pos/index.html');
 
     expect(css).toContain('body[data-pos-surface="pos"] {\n  touch-action: manipulation;\n}');
+    expect(css).toMatch(/}\s*\/\* Keep browser double-tap zoom[\s\S]*?\*\/\s*body\[data-pos-surface="pos"\] \{\s*touch-action: manipulation;\s*\}/);
     expect(posEntry).toContain("document.body.setAttribute('data-pos-surface', 'pos');");
     expect(posHtml).not.toMatch(/user-scalable\s*=\s*["']no["']/i);
     expect(posHtml).not.toMatch(/maximum-scale\s*=\s*["']1(?:\.0)?["']/i);

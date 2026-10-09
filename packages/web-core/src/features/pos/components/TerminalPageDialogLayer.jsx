@@ -1081,7 +1081,9 @@ export default function TerminalPageDialogLayer({ model }) {
             currency={terminalMeta.pettyCashSymbol || DEFAULT_CURRENCY}
             businessSettings={terminalMeta.businessSettings}
             autoPrint={closedShiftReportAutoPrint}
-            title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}
+            title={closedShiftReportAutoPrint || closedShiftReport?.shift?.closed_at
+              ? 'Cashier Shift Sales Summary'
+              : 'Current Shift Sales Summary'}
             paperWidth={zReadingPaperWidth}
             onPaperWidthChange={setZReadingPaperWidth}
             hardwareLoading={hardwareLoading}

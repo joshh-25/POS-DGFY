@@ -9,10 +9,10 @@ afterEach(() => {
 });
 
 describe('POS text-size control', () => {
-    it('provides an accessible native selector for all supported levels', () => {
+    it('provides the shared accessible dropdown for all supported levels', () => {
         render(<PosTextSizeControl value="large" onChange={vi.fn()} />);
 
-        const control = screen.getByRole('button', { name: 'POS text size: Large (115%)' });
+        const control = screen.getByRole('combobox', { name: 'POS text size: Large (115%)' });
         expect(control.getAttribute('aria-expanded')).toBe('false');
         fireEvent.click(control);
         expect(screen.getByRole('option', { name: 'Normal (100%)' }).className).toContain('pos-text-size-control__option');
@@ -25,7 +25,7 @@ describe('POS text-size control', () => {
         const onChange = vi.fn();
         render(<PosTextSizeControl onChange={onChange} />);
 
-        fireEvent.click(screen.getByRole('button', { name: 'POS text size: Normal (100%)' }));
+        fireEvent.click(screen.getByRole('combobox', { name: 'POS text size: Normal (100%)' }));
         fireEvent.click(screen.getByRole('option', { name: 'Extra large (130%)' }));
 
         expect(onChange).toHaveBeenCalledWith('extra-large');
@@ -34,6 +34,6 @@ describe('POS text-size control', () => {
     it('normalizes an invalid controlled value to normal', () => {
         render(<PosTextSizeControl value="invalid" onChange={vi.fn()} />);
 
-        expect(screen.getByRole('button', { name: 'POS text size: Normal (100%)' })).toBeTruthy();
+        expect(screen.getByRole('combobox', { name: 'POS text size: Normal (100%)' })).toBeTruthy();
     });
 });

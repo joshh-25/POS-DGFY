@@ -23,7 +23,7 @@
  * fall back to if narrowing were ever disabled; it exists ONLY to narrow, so there's nothing for a
  * toggle to gate here. If a live false negative in the shared oracle ever needs an emergency
  * rollback, that toggle already covers check-app-version-bump.js's own gating; reverting this
- * script's own workflow wiring (shared-changed-paths.yml's "Narrow frontend build triggers..." step)
+ * script's workflow wiring (shared-changed-paths.yml's per-app resolver step)
  * is the equivalent lever for this consumer -- see that workflow's own step for how it degrades to
  * the "Detect changed paths" step's own directory-level fallback whenever the diff isn't available.
  *
