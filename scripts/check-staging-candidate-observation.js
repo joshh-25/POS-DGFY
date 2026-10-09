@@ -30,7 +30,8 @@ function validateStagingObservation(observation, candidateManifest) {
   assert(candidate.status !== 'refresh_in_progress', 'A candidate undergoing refresh cannot be qualified by a staging observation', 'REFRESH_IN_PROGRESS');
   assert(observation.candidate_id === candidate.candidate_id, 'Observation candidate_id does not match the candidate manifest', 'CANDIDATE_ID_MISMATCH');
   assert(observation.candidate_sha === candidate.current_staging_sha, 'Observation candidate_sha does not match current_staging_sha', 'CANDIDATE_SHA_MISMATCH');
-  assert(observation.runtime_sha === candidate.current_staging_sha, 'Staging runtime_sha does not match the candidate SHA', 'RUNTIME_SHA_MISMATCH');
+  assert(typeof candidate.staging_head_sha === 'string' && /^[0-9a-f]{40}$/.test(candidate.staging_head_sha), 'Candidate manifest must include a valid staging_head_sha for observation', 'MISSING_STAGING_HEAD_SHA');
+  assert(observation.runtime_sha === candidate.staging_head_sha, 'Staging runtime_sha does not match staging_head_sha', 'RUNTIME_SHA_MISMATCH');
   assert(observation.result === 'pass', 'Staging observation result must be pass', 'OBSERVATION_FAILED');
   for (const [name, check] of Object.entries(observation.checks || {})) {
     assert(check && check.status === 'pass', `Staging observation check failed: ${name}`, 'CHECK_FAILED');

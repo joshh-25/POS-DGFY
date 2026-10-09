@@ -67,6 +67,10 @@ const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
     main: /^release\//,
 });
 const REFRESH_HEAD_PATTERN = /^to-staging\/(\d{4}-\d{2}-\d{2}-\d{2})-refresh-\d+$/;
+// Staging repair branches use the candidate ID plus a bare repair sequence under v2+.
+// Accept the legacy `-rN` suffix too so in-flight pre-v2 candidate repairs keep the
+// ADR 0081 patch-only floor rule when checked.
+const STAGING_REPAIR_HEAD_PATTERN = /^fix\/staging\/\d{4}-\d{2}-\d{2}-\d{2}-(?:r)?\d+$/;
 
 const runCommand = (command, { allowFail = false, cwd = REPO_ROOT } = {}) => {
     try {
@@ -178,7 +182,9 @@ function resolveMode(baseBranchName, headBranchName) {
     const head = String(headBranchName || '').trim();
 
     if (base === 'staging') {
-        return PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head) ? 'minor-floor' : 'unchanged';
+        if (PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head)) return 'minor-floor';
+        if (STAGING_REPAIR_HEAD_PATTERN.test(head)) return 'patch-only';
+        return 'unchanged';
     }
     if (base === 'develop') {
         return PROMOTION_HEAD_PREFIX_BY_BASE.develop.test(head) ? 'minor-floor' : 'unchanged';
