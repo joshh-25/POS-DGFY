@@ -12,8 +12,8 @@ verification_evidence: 83 tests passed in 5 focused Jest suites and 7 compliance
 rollback_note: Revert API callers and retain landlord proposals/audits/is_demo. Migration down refuses automatic destructive rollback; preserve and reconcile executing/failed records before any operator-reviewed schema change.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-09T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-2372-TENANT-INTAKE-BACKEND
+preflight_run_at: 2026-10-09T05:03:27.846Z
+preflight_request_ref: PREFLIGHT-37886055710-2026-10-09-TENANT-INTAKE-BACKEND
 ---
 
 # Tenant intake backend (#2372, Phase 485)
