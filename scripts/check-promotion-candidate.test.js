@@ -301,6 +301,7 @@ test('v4: release cut after an empty refresh stays bound to the new staging SHA'
   };
 
   const result = validatePromotionCandidate(manifest);
+  assert.deepEqual(result.release_revision, manifest.release_revision.apps);
   assert.equal(result.current_staging_sha, SHA('d'));
   assert.equal(result.staging_observation_current, true);
   assert.equal(manifest.release_revision.apps['dgfy-ims'].source_sha, SHA('b'));
