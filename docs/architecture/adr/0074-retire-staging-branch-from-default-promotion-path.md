@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-09
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -658,3 +658,17 @@ cites),
 executable policy this ADR governs),
 `docs/architecture/adr/0030-free-tier-signed-release-authorization.md` (superseded, the model
 `NO_STAGING_RELEASE_STANDARD.md` described).
+
+
+### 2026-10-09 — Staging may advance during soak; release cut freezes selection (#2381, Phase 486)
+
+A later pinned `develop` SHA may advance `staging` under the active candidate ID while the candidate
+is soaking and before `release/<candidate_id>` is cut. This is a routine pre-cut refresh, with the
+existing exact-SHA, review, compliance, observation, and immutable-artifact controls. The release
+cut from qualified current `origin/staging` is the production-selection freeze point. After that cut,
+new staging work uses a successor candidate with its own ID and record; a cut release can be changed
+only through its reviewed `fix/release/*` path or explicitly withdrawn and archived. The successor
+release cut waits until the predecessor release merges to `main` or is withdrawn. No automatic
+staging synchronization is introduced. `[default]` — amends Decision 4 and clarifies Decision 6;
+all binding clauses are unchanged. See #2381 and `RELEASE_CANDIDATE_POLICY.md`'s 2026-10-09
+amendment.

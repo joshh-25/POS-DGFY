@@ -58,10 +58,12 @@ Prefix a breaking change or a reversion so its severity doesn't have to be infer
 |---|---|---|---|---|
 | Initial | <source_develop_sha> | <current_staging_sha> | <PR number> | — |
 
-<!-- Keep one cumulative history for this candidate ID. Add one row per refresh, preserve archived
-selection details in the manifest, and mark the active selection pending until its new release cut
-is known. At production finalization, record production SHA plus each selected app's floor, artifact
-revision, source SHA, and digest from the active manifest. -->
+<!-- Keep one cumulative history for this candidate ID. Add one row per pre-cut refresh, preserve
+archived selection details in the manifest, and mark the active selection pending until its new
+release cut is known. A post-cut successor has its own note and baseline; its Included section names
+its scope and identifies predecessor scope carried forward. At production finalization, record
+production SHA plus each selected app's floor, artifact revision, source SHA, and digest from the
+active manifest. -->
 
 ## Production selection
 
@@ -76,8 +78,8 @@ revision, source SHA, and digest from the active manifest. -->
 | dgfy-admin | pending | pending | pending | pending |
 
 <!-- Before opening the release/<candidate_id> promotion PR, replace these rows with exactly the
-selected apps and values from the active manifest. Keep the table unchanged during archived-release
-withdrawal; update it for the newly qualified selection. -->
+selected apps and values from the active manifest. A cut candidate remains bound to this selection;
+do not rewrite it for a later staging update. A successor uses its own note and selection table. -->
 
 ## Operational notes
 
