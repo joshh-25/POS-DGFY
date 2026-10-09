@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { runCheck, resolveCandidateIdFromHeadBranch } = require('./check-release-notes');
+const { runCheck, resolveCandidateIdFromHeadBranch, validateCandidateHistory } = require('./check-release-notes');
 
 // --- git fixture harness, same shape as check-app-version-bump.test.js's -----------
 
@@ -152,6 +152,49 @@ test('resolveCandidateIdFromHeadBranch: rejects a non-release-shaped branch', ()
   assert.equal(resolveCandidateIdFromHeadBranch('fix/2026-09-06-01'), null);
   assert.equal(resolveCandidateIdFromHeadBranch(''), null);
   assert.equal(resolveCandidateIdFromHeadBranch(undefined), null);
+});
+
+test('candidate history accepts pre-cut refreshes with no release PR to supersede', () => {
+  const body = [
+    '## Candidate history',
+    '',
+    '| Refresh | Incoming develop SHA | Resulting staging SHA | Promotion PR | Superseded release PR |',
+    '|---|---|---|---|---|',
+    `| Initial | ${'a'.repeat(40)} | ${'b'.repeat(40)} | #2384 | — |`,
+    `| 1 | ${'c'.repeat(40)} | ${'d'.repeat(40)} | #2389 | — |`,
+    `| 2 | ${'e'.repeat(40)} | ${'f'.repeat(40)} | #2391 | — |`,
+    `| 3 | ${'1'.repeat(40)} | ${'2'.repeat(40)} | #2396 | — |`,
+  ].join('\n');
+
+  assert.deepEqual(validateCandidateHistory(body), []);
+});
+
+test('candidate history still requires a release PR reference when one was superseded', () => {
+  const body = [
+    '## Candidate history',
+    '',
+    '| Refresh | Incoming develop SHA | Resulting staging SHA | Promotion PR | Superseded release PR |',
+    '|---|---|---|---|---|',
+    `| Initial | ${'a'.repeat(40)} | ${'b'.repeat(40)} | #2384 | — |`,
+    `| 1 | ${'c'.repeat(40)} | ${'d'.repeat(40)} | #2389 | #2386 |`,
+  ].join('\n');
+
+  assert.deepEqual(validateCandidateHistory(body), []);
+});
+
+test('candidate history rejects malformed refresh sequence and PR fields', () => {
+  const body = [
+    '## Candidate history',
+    '',
+    '| Refresh | Incoming develop SHA | Resulting staging SHA | Promotion PR | Superseded release PR |',
+    '|---|---|---|---|---|',
+    `| Initial | ${'a'.repeat(40)} | ${'b'.repeat(40)} | #2384 | — |`,
+    `| Refresh 1 | ${'c'.repeat(40)} | ${'d'.repeat(40)} | PR #2389 | — |`,
+  ].join('\n');
+
+  const findings = validateCandidateHistory(body);
+  assert.ok(findings.some((finding) => finding.code === 'INVALID_CANDIDATE_HISTORY_SEQ'));
+  assert.ok(findings.some((finding) => finding.code === 'INVALID_CANDIDATE_HISTORY_PR'));
 });
 
 // --- happy paths -------------------------------------------------------------------

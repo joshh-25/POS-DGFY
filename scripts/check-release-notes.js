@@ -254,7 +254,10 @@ function validateCandidateHistory(body) {
     if (index === 0 ? refresh !== 'Initial' : Number(refresh) !== index) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_SEQ', message: `Candidate history row ${index + 1} must use ${index === 0 ? 'Initial' : `refresh sequence ${index}`}.` });
     if (!SHA_PATTERN.test(incoming) || !SHA_PATTERN.test(staging)) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_SHA', message: `Candidate history row ${index + 1} must include valid incoming and resulting 40-character SHAs.` });
     if (!/^#\d+$/.test(promotionPr)) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_PR', message: `Candidate history row ${index + 1} must include its promotion PR number.` });
-    if (index === 0 ? oldReleasePr !== '—' : !/^#\d+$/.test(oldReleasePr)) findings.push({ code: 'INVALID_CANDIDATE_HISTORY_RELEASE_PR', message: `Candidate history row ${index + 1} must identify the superseded release PR where applicable.` });
+    const hasReleasePr = /^#\d+$/.test(oldReleasePr);
+    if (index === 0 ? oldReleasePr !== '—' : oldReleasePr !== '—' && !hasReleasePr) {
+      findings.push({ code: 'INVALID_CANDIDATE_HISTORY_RELEASE_PR', message: `Candidate history row ${index + 1} must identify the superseded release PR where applicable, or use — when no release selection was superseded.` });
+    }
   });
   return findings;
 }
