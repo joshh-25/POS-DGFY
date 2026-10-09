@@ -213,6 +213,18 @@ Evidence semantics:
 5. CI runs `node ../scripts/run-backend-test-matrix.js` from the backend job and uploads `.tmp/release-gates/<sha>/backend-test-matrix/**` as the backend matrix artifact.
 6. A green matrix proves the backend Jest inventory completes under the configured chunk timeout in the local or CI test environment. It does not prove production database parity, live provider behavior, browser E2E assertions behind opt-in flags, or external compliance approval.
 
+### Selective operator dispatch
+
+`.github/workflows/promotion-quality-gate.yml` defaults `test_selection` to `full`, which keeps all existing quality jobs enabled. For an isolated database test run, choose `api_db_chunks` and enter one or more comma-separated selectors in `api_db_targets`:
+
+```text
+inventory_reporting_operations:1,tenant_storefront_modes:1
+```
+
+Selectors use the DB tier's group names; `:N` is a one-based chunk number. Omitting `:N` runs every chunk in that group. Find current group names with `node scripts/run-backend-test-matrix.js --list-groups`. The selective job runs only on `sieitz-lg` or `sieitz-runner`, defaults to `sieitz-lg`, and writes every selected suite's Jest timing, tenant phase timings, `uptime`, `free -h`, and one-second `vmstat` samples to the run summary and the verified S3 evidence store. The summary includes the S3 object URI and checksum; the evidence remains subject to the repository's S3 retention policy. All workflow steps remain advisory; selective evidence does not replace required PR checks or production controls.
+
+The timing probe enables `BACKEND_TEST_TENANT_TIMING=1` to log setup and cleanup phases without changing tenant behavior. `createTestTenant()` ensures landlord schema readiness, inserts the landlord `Tenant` row, creates the tenant database, opens and binds its Sequelize connection, then clones the matrix template (or uses the standalone `sync({ force: true })` fallback). Tests create their fixtures against that isolated database. `destroyTestTenant()` closes connector and Sequelize connections, drops the tenant database, then deletes invitation, mapping, and landlord tenant rows. `tenantSchemaBootstrap.integration.test.js` then measures its explicit post-sync schema bootstrap as part of its assertions.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:

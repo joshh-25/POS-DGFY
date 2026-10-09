@@ -27152,3 +27152,91 @@ Not complete; set only after the acceptance evidence above is recorded and all r
 ### Next phase number
 
 Phase 484. No explicit dependency.
+
+## Phase 484 - Selective self-hosted DB-suite runtime investigation (#2369)
+
+### Initiative and release
+
+dgfy-api database test execution and runner-runtime evidence.
+
+### Objective and scope
+
+Measure `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js` on repeated,
+same-SHA `sieitz-lg` runs; capture per-suite Jest duration and contemporaneous runner load, memory,
+and swap observations; document tenant setup and cleanup; and optimize test code only if the evidence
+shows a repeatable suite-attributable cost. Add an opt-in `api_db_chunks` mode to the operator-
+dispatched quality workflow for future targeted DB group/chunk runs, retaining `full` as its default
+selection and keeping the existing full quality run unchanged.
+
+### Status
+
+`in_progress` — selective workflow support and all three same-SHA self-hosted measurements are
+complete; the evidence supports no test-code optimization. PR review and post-merge verification
+remain outstanding.
+
+### Dependencies
+
+Issue #2369 and the Phase 482 (#2357) DB-suite timing findings. Phase 482 is context only; there is
+no explicit dependency on Phase 483 or any earlier phase.
+
+### Acceptance and validation evidence
+
+- [x] Three serialized `sieitz-lg` runs against SHA
+      `aadf28110d540c2b40f6ca99963ab4c9fea60670` include an idle-runner observation and capture both
+      suite durations plus contemporaneous uptime, memory, swap, load, and vmstat samples.
+- [x] Compare repeated self-hosted results with the fixed hosted baseline from run #37807851576;
+      no `ubuntu-latest` or full quality-gate run was dispatched for this investigation.
+- [x] Document the tenant setup and cleanup sequence in `docs/testing/README.md`; variable clone/drop
+      phases explain the suite-time swings, so no test-code optimization is justified.
+- [x] The operator workflow exposes `full` and opt-in `api_db_chunks` selections; `full` is the
+      default, while the targeted mode accepts DB group/chunk selectors and uses only self-hosted
+      runners.
+- [x] No test-code changes were justified. Both target chunks passed three times on the measured
+      SHA, preserving assertions, per-test database isolation, and cleanup.
+- [x] `actionlint` (with the repository's custom self-hosted-label diagnostic ignored), workspace
+      hygiene, selector contract tests, docs lint, architecture check, and compliance check pass.
+
+| Runner/run | `purchaseOrder.test.js` | `tenantSchemaBootstrap.integration.test.js` | Load avg start → end (1/5/15 min) | Swap used start → end |
+|---|---:|---:|---|---:|
+| Hosted #37807851576 (fixed baseline) | 24.2s | 20.8s | n/a | n/a |
+| `sieitz-lg` [#37828223391](https://github.com/Sieitzz/dgfy-platform/actions/runs/37828223391) | 26.3s | 45.4s | 0.27/1.28/1.67 → 2.20/2.27/2.07 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37829654736](https://github.com/Sieitzz/dgfy-platform/actions/runs/37829654736) | 47.7s | 23.2s | 0.61/1.55/1.82 → 2.05/2.64/2.29 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37830928352](https://github.com/Sieitzz/dgfy-platform/actions/runs/37830928352) | 26.6s | 26.6s | 1.53/1.99/2.08 → 2.45/2.35/2.23 | 2.4/4.0 → 2.4/4.0 GiB |
+
+Most 157-table clone phases took 4.4–5.4s; outliers reached 11.7–19.4s. Database drops usually took
+1.1–1.2s, with outliers around 3–8s. `vmstat` showed no sustained swap-in/out, CPU was mostly idle,
+and I/O wait varied. The opposite suite-time swings and variable DDL phases do not identify a stable
+suite-level bottleneck. The host-side cause remains uncertain and is tracked by #2373.
+
+### Links
+
+- Issue: #2369; planner handoff: `.tmp/plan-2369.md` (planning head
+  `15c9b78ed4f0082c1b64cf970ae5e11a382f2194`).
+- Prior timing evidence and hosted baseline: #2357, run #37807851576.
+- Runner/DB provisioning I/O follow-up: #2373.
+- Prior tenant setup consolidation reviewed: #1452 / PR #1472.
+- Workflow: `.github/workflows/promotion-quality-gate.yml`.
+- Measurement documentation: `docs/testing/README.md`, Backend Test Matrix Gate.
+- Potential test change: `apps/dgfy-api/tests/purchaseOrder.test.js` only if repeated data supports it.
+- Timing instrumentation: `apps/dgfy-api/tests/helpers/testTenantHelper.js`, opt-in via
+  `BACKEND_TEST_TENANT_TIMING=1`.
+- Current implementation validation includes `node --check` for the changed helper,
+  `node scripts/check-workspace-hygiene.js`, `actionlint`, selector contract tests, and
+  `node scripts/check-app-version-bump.js` with `GITHUB_BASE_REF=develop`.
+- `npm run lint:docs`, `npm run check:architecture`, and `node scripts/check-compliance-impact.js
+  --staged` passed. The broader `node scripts/check-pr-quality-workflow.js` still reports its
+  pre-existing `develop` drift (`--detectOpenHandles` marker and unrelated advisory-step IDs); the
+  focused selective-dispatch contract test passes.
+
+### Completion date
+
+Not complete; set after the scoped implementation validation passes and the PR is merged.
+
+### Post-merge verification
+
+- [ ] operational — dispatch `api_db_chunks` against the merged `develop` SHA and confirm the
+  selected group/chunk result and uploaded evidence artifact; owned by #2369; blocks issue closure.
+
+### Next phase number
+
+Phase 485. No explicit dependency.
