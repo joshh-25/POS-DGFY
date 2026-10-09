@@ -776,7 +776,8 @@ PR: (this PR). Refs #1542.
   dispatch by default meant a retry after one app's Decision 7 refusal re-tripped the SAME guard for
   every app that had already succeeded — resolved by this ADR's 2026-09-05 build-skip Amendment
   above. Both symptoms trace back to the same fact (PROD always rebuilds unconditionally); neither
-  fix loosens Decision 7 itself.
+  fix loosens Decision 7 itself. Its 2026-10-09 no-app-change refresh case is resolved by the
+  Phase 487 amendment below; real-candidate requalification remains post-merge verification.
 - #1560 — the PR-time version-bump check (Decision 9) this ADR hands its enforcement rule to;
   explicitly not implemented by this ADR.
 - [ADR 0072](0072-ghcr-container-image-naming.md) — governs image *names*; this ADR governs tag
@@ -969,3 +970,13 @@ so changed apps take the next minor floor from that baseline. Never overwrite or
 artifact tags for different contents. `[default]` — amends Decisions 6 and 8. Decision 7's
 `[binding]` immutable-tag invariant is unchanged. See #2381 and `RELEASE_CANDIDATE_POLICY.md`'s
 2026-10-09 amendment.
+
+### 2026-10-09 — No-app-change refresh (#1610, Phase 487)
+
+A staging refresh whose content-equivalence build plan selects no app may record both
+`apps_touched: []` and `artifacts: []`. The refresh still advances the candidate's staging history
+and `current_staging_sha`; apps not rebuilt retain their existing artifacts and per-app source-SHA
+lineage. Observation and release qualification remain bound to the new staging SHA, and the
+manifest reason records the skipped-build-plan evidence. This does not change Decision 7's
+`[binding]` immutable-tag rule. `[default]` — amends Decision 8. See #1610 and
+`RELEASE_CANDIDATE_POLICY.md`'s 2026-10-09 amendment.

@@ -251,8 +251,10 @@ authored feature, note, or floor-bump commit of its own.
 Set manifest status to `refresh_in_progress` with no release selection. Record incoming develop SHA,
 resulting staging SHA, physical `base_staging_sha`, parent candidate SHA, PR, reason, and
 `apps_touched`; the initial promotion records its physical staging base too. Build changed apps with
-fresh per-app immutable `rN` tags, preserve valid untouched artifacts, and include the complete
-selected/carry-forward set. Never overwrite a published tag or reuse an archived artifact for
+fresh per-app immutable `rN` tags, recording artifacts only for apps selected by the
+content-equivalence build plan; preserve untouched apps' prior artifact and per-app source-SHA
+lineage. When no app inputs changed, both refresh arrays are empty and the skipped-build-plan
+evidence is linked from `reason`. Never overwrite a published tag or reuse an archived artifact for
 different contents. Once merge and builds succeed, return to `staging_soak` and repeat observation
 and required qualification against the actual staging SHA. Earlier SHA-bound observation,
 qualification, and optional quality-suite evidence is stale. Only then cut `release/<id>` and freeze
