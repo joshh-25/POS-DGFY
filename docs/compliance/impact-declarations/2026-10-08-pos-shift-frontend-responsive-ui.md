@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.08
-verification_evidence: "Cashier History UI 4 files/23 tests; cashier-history API 3 suites/8 tests; shift-summary printing 4 files/23 tests; POS production build; targeted web-core and API ESLint; git diff --check"
+verification_evidence: "Cashier History UI 4 files/23 tests; cashier-history API 3 suites/8 tests; shift-summary printing 4 files/23 tests; mobile zoom contract 1 file/5 tests; POS production build; targeted web-core and API ESLint; git diff --check"
 rollback_note: Revert the POS Shift commits and this declaration together; the cashier-history search query is read-only and adds no schema or Phase 2 work.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -69,10 +69,12 @@ change authorization, fiscal calculations, payment settlement, or persisted tran
   location scoping, shift-number/terminal search, and pagination. Changed API source lint passed.
 - Shift-summary UI and native iMin paper-width tests passed (4 files, 23 tests), including 57mm
   layout selection and the 32-character native output width.
+- Mobile double-tap and map-gesture contract tests passed (1 file, 5 tests).
 - POS production build passed. Vite reported existing mixed static/dynamic import warnings; the
   build also reports the existing large vendor chunk.
-- Targeted shared web-core lint passed with no findings; ESLint emitted a React-version detection
-  warning because the package is not installed directly under `packages/web-core`.
+- Targeted shared web-core lint passed with zero errors. ESLint reported a React-version detection
+  warning and four existing `TerminalPage.jsx` warnings (unused state setter, hook dependencies, and
+  the file-length rule); none are introduced by this batch.
 - `git diff --check` and staged diff whitespace checks passed.
 - The existing `terminalViewModeContracts.test.js` has five inherited checkout-source contract
   failures on the current base; those expectations target code already extracted before this

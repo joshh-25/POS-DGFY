@@ -267,6 +267,15 @@ const OPERATIONS_VIEW_MODES = [
 ];
 const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup', 'approvals'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
+const POS_MOBILE_DOUBLE_TAP_GUARD_VIEW_MODES = new Set([
+  'items',
+  'history',
+  'reports',
+  ...SETTINGS_VIEW_MODES,
+  'shift_controls',
+  'cash_drawer',
+  'close_shift'
+]);
 const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history', 'approvals']);
 // RF-2 (PR #762 review): settings_vouchers/settings_pricelists are gated on their own
 // canViewVouchers permission check (the sidebar NavButton visibility and the
@@ -983,6 +992,23 @@ export default function TerminalPage() {
   });
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
   const [posViewMode, setPosViewMode] = useState(() => readRequestedPosView(location.search) || 'checkout');
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !POS_MOBILE_DOUBLE_TAP_GUARD_VIEW_MODES.has(posViewMode)) {
+      return undefined;
+    }
+
+    const root = document.documentElement;
+    const attribute = 'data-pos-mobile-no-double-tap-zoom';
+    const previousValue = root.getAttribute(attribute);
+    root.setAttribute(attribute, 'true');
+
+    return () => {
+      if (previousValue === null) root.removeAttribute(attribute);
+      else root.setAttribute(attribute, previousValue);
+    };
+  }, [posViewMode]);
+
   const checkoutLifecycleRef = useRef(null);
   const handleCheckoutLifecycleChange = useCallback((lifecycle) => {
     checkoutLifecycleRef.current = lifecycle;

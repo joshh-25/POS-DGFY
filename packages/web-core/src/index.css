@@ -1237,6 +1237,14 @@ body[data-pos-surface="pos"] {
   overflow-y: auto;
 }
 
+/* Keep mobile POS pages at their fitted viewport on repeated taps without
+ * disabling pinch-to-zoom. MapLibre owns gestures inside its map canvas. */
+@media screen and (max-width: 767.98px), screen and (pointer: coarse) {
+  html[data-pos-mobile-no-double-tap-zoom="true"] {
+    touch-action: manipulation;
+  }
+}
+
 .dgfy-pos-shell {
   --pos-font-family: 'Inter', 'Roboto', system-ui, sans-serif;
   --pos-shell-bg: #ffffff;

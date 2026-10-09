@@ -279,7 +279,9 @@ describe('MapPinPicker MapLibre behavior', () => {
       minZoom: 4,
       maxZoom: 18,
       trackResize: false,
-      attributionControl: false
+      attributionControl: false,
+      doubleClickZoom: true,
+      touchZoomRotate: true
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
     expect(maplibreMocks.Map.mock.calls[0][0].center).toEqual([122.5621, 10.7202]);
