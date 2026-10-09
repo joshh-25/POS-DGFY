@@ -141,6 +141,16 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).not.toContain('Lifetime total');
     });
 
+    it('formats iMin shift summaries within the selected 57mm paper width', () => {
+        const shiftText = formatIminShiftSummaryText({
+            shiftSummary: { sales_summary: salesSummary },
+            businessSettings,
+            paperWidth: '57mm'
+        });
+
+        expect(shiftText.split('\n').every((line) => line.length <= 32)).toBe(true);
+    });
+
     it('keeps missing or invalid generation times readable without breaking the report', () => {
         const markup = renderToStaticMarkup(
             <ZReadingPrintView report={{ generated_at: 'not-a-timestamp' }} />

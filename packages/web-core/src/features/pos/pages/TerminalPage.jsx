@@ -2336,7 +2336,6 @@ export default function TerminalPage() {
     const report = closeResult || null;
     const shiftId = Number(report?.shift?.pos_terminal_shift_id || 0);
     if (!report || !Number.isInteger(shiftId) || shiftId <= 0) return false;
-
     try {
       const outcome = await posHardware.printShiftSummary({
         shiftId,

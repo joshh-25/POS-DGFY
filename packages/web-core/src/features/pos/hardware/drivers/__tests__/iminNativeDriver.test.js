@@ -198,18 +198,24 @@ describe('iminNativeDriver', () => {
     });
 
     it('printShiftSummary(): prints through the supported text command and reports the real result', async () => {
-        withBridge({
-            printReceipt: () => ({ success: false, message: 'Printer paper is unavailable.' })
-        });
+        const printReceipt = vi.fn(() => ({ success: false, message: 'Printer paper is unavailable.' }));
+        withBridge({ printReceipt });
 
         const outcome = await iminNativeDriver.printShiftSummary({
-            shiftSummary: {},
+            shiftSummary: {
+                shift: { terminal_id: 'COUNTER-01' },
+                sales_summary: {},
+                cash_summary: {}
+            },
             shiftId: 12,
-            terminalId: 'COUNTER-01'
+            terminalId: 'COUNTER-01',
+            paperWidth: '57mm'
         });
 
         expect(outcome.success).toBe(false);
         expect(outcome.reasonCode).toBe('IMIN_PRINT_FAILED');
+        const printedText = printReceipt.mock.calls[0]?.[0] || '';
+        expect(printedText.split('\n').every((line) => line.length <= 32)).toBe(true);
         expect(reportPosDeviceClientResult).toHaveBeenCalledWith(
             expect.objectContaining({ operation: 'print_shift_summary' })
         );

@@ -2313,11 +2313,29 @@ html.dgfy-imin-performance [class~="transition-all"] {
     position: fixed;
     inset: 0;
     z-index: 2147483647;
-    width: 100%;
-    margin: 0;
+    width: var(--pos-shift-summary-paper-width, 80mm);
+    max-width: var(--pos-shift-summary-paper-width, 80mm);
+    margin: 0 auto;
+    display: block;
+    overflow: visible;
+    padding: 0;
+    background: #fff;
   }
 
-  body.pos-shift-summary-printing .pos-shift-summary-print {
+  body.pos-shift-summary-printing .pos-shift-summary-print-dialog {
+    width: var(--pos-shift-summary-paper-width, 80mm);
+    max-width: var(--pos-shift-summary-paper-width, 80mm);
+    max-height: none;
+    height: auto;
+    margin: 0 auto;
+    overflow: visible;
+  }
+
+  body.pos-shift-summary-printing .pos-shift-summary-print-scroll {
+    overflow: visible;
+  }
+
+  body.pos-shift-summary-printing .pos-shift-summary-print-content {
     width: var(--pos-shift-summary-paper-width, 80mm);
     max-width: var(--pos-shift-summary-paper-width, 80mm);
     margin: 0 auto;
