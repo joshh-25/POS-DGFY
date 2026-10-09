@@ -61,10 +61,13 @@ Run `scripts/dglaundry-connection-setup.mjs inspect` and `prepare` with
 DGFY-owned key pairs under `keys/` and a candidate env file; it refuses to replace partial pairs.
 Install the browser client secret with the approved secret manager at the configured host path.
 Apply only after the candidate, registration evidence, and public-key fingerprints are reviewed.
-Compose must receive the generated env file as interpolation input and as the service env file, as
-documented in `docs/integrations/DGLAUNDRY_CONNECTION_SETUP.md`. Create the configuration
-directory before starting the compose profile so Docker does not create it with unexpected
-ownership. Do not copy a private key into the repository or release artifact.
+Synchronize generated connection variables into the deploy-owned
+`/opt/dgfy-stage/.env` with `apply --compose-env-file /opt/dgfy-stage/.env`, as documented in
+`docs/integrations/DGLAUNDRY_CONNECTION_SETUP.md`. CI intentionally cannot read the protected,
+root-only `/etc/dgfy/dglaundry/staging/` directory. Compose receives service configuration from
+`.env` and mounts that directory read-only into the API. Create the configuration directory before
+starting the compose profile so Docker does not create it with unexpected ownership. Do not copy a
+private key into the repository or release artifact.
 
 ## Production
 

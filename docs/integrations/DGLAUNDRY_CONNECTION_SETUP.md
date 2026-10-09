@@ -67,13 +67,15 @@ docker compose config --services
 docker compose ps
 ```
 
-The Compose version must be 2.24.0 or newer because the reviewed API compose
-fragment uses optional `env_file` entries. Stop if the staging SHA is not the
-promoted candidate, if the `dgfy-api` service is absent, or if its reviewed
-configuration does not include the connection env file, read-only
-`/run/dgfy-connection-source` key mounts, `/run/dgfy-secrets` tmpfs, and the
-root-to-`app` key-copy entrypoint. The deployed staging compose is hand-managed;
-resolve any drift through its reviewed release path before continuing.
+Stop if the staging SHA is not the promoted candidate, if the `dgfy-api`
+service is absent, or if its reviewed configuration does not load connection
+variables from `/opt/dgfy-stage/.env`, retain the read-only
+`/run/dgfy-connection-source` key mount and `/run/dgfy-secrets` tmpfs, and use
+the root-to-`app` key-copy entrypoint. The protected host directory remains
+root-only; the CI SSH identity does not need read access because it uses the
+deploy-owned `.env` for Compose configuration. The deployed staging compose is
+hand-managed; resolve any drift through its reviewed release path before
+continuing.
 
 Create the owner-only config directory and run a read-only inventory:
 
@@ -148,6 +150,7 @@ sudo node /opt/dgfy-stage/dglaundry-tools/dglaundry-connection-setup.mjs apply \
   --environment staging \
   --config-dir /etc/dgfy/dglaundry/staging \
   --manifest /etc/dgfy/dglaundry/staging/dglaundry-connection-manifest.json \
+  --compose-env-file /opt/dgfy-stage/.env \
   --confirm
 sudo node /opt/dgfy-stage/dglaundry-tools/dglaundry-connection-setup.mjs verify \
   --environment staging \
@@ -157,29 +160,24 @@ sudo node /opt/dgfy-stage/dglaundry-tools/dglaundry-connection-setup.mjs verify 
 
 `verify` must report `passed: true`; this is **local configuration/key
 consistency evidence only**. It does not prove JWKS publication, token issuance,
-signature interoperability, or an application journey. First confirm the
-reviewed staging compose change will load the generated env file as Compose
-interpolation input, then validate configuration without printing values:
+signature interoperability, or an application journey. From `/opt/dgfy-stage`,
+validate configuration without printing values. Compose reads the synchronized
+`.env` automatically; CI intentionally cannot read the protected root-only key
+directory:
 
 ```sh
 cd /opt/dgfy-stage
-docker compose --env-file .env \
-  --env-file /etc/dgfy/dglaundry/staging/dglaundry-connection.env config --quiet
+docker compose config --quiet
 ```
 
-After the DGFY release owner approves a staging API restart, keep the generated
-environment file as a Compose interpolation input for every command that
-renders or applies this connection profile. First run the read-only config
-check above; then review the target image, volumes, and environment diff before
-recreating only the staging API service:
+After the DGFY release owner approves a staging API restart, run plain Compose
+commands from `/opt/dgfy-stage`; the connection variables already come from
+`.env`. First run the read-only config check above; then review the target image,
+volumes, and environment diff before recreating only the staging API service:
 
 ```sh
-docker compose --env-file .env \
-  --env-file /etc/dgfy/dglaundry/staging/dglaundry-connection.env \
-  up -d --no-deps dgfy-api
-docker compose --env-file .env \
-  --env-file /etc/dgfy/dglaundry/staging/dglaundry-connection.env \
-  ps dgfy-api
+docker compose up -d --no-deps dgfy-api
+docker compose ps dgfy-api
 ```
 
 Do not run a production deployment command from this handoff. If the reviewed
