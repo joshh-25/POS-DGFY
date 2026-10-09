@@ -157,6 +157,7 @@ import {
   HospitalityStay
 } from './HospitalityModels.js';
 import TenantFactory from './Landlord/Tenant.js';
+import TenantIntakeProposalFactory from './Landlord/TenantIntakeProposal.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
@@ -238,6 +239,7 @@ import PlatformInvoiceAdjustmentFactory from './Landlord/PlatformInvoiceAdjustme
 import PlatformInvoiceEventFactory from './Landlord/PlatformInvoiceEvent.js';
 import OidcSigningKeyFactory from './Landlord/OidcSigningKey.js';
 const Tenant = TenantFactory(sequelize);
+const TenantIntakeProposal = TenantIntakeProposalFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
@@ -1411,6 +1413,7 @@ const db = {
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
   TenantAdminAuditLog,
+  TenantIntakeProposal,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
@@ -1645,6 +1648,7 @@ export {
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
   TenantAdminAuditLog,
+  TenantIntakeProposal,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
