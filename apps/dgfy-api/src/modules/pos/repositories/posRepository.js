@@ -7578,6 +7578,7 @@ export const posRepository = {
         locationIds = [],
         dateFrom = null,
         dateTo = null,
+        search = '',
         status = 'all',
         page = 1,
         limit = 20
@@ -7610,6 +7611,20 @@ export const posRepository = {
             where.business_date = {};
             if (normalizedDateFrom) where.business_date[Op.gte] = normalizedDateFrom;
             if (normalizedDateTo) where.business_date[Op.lte] = normalizedDateTo;
+        }
+
+        const normalizedSearch = String(search || '').trim().slice(0, 120);
+        if (normalizedSearch) {
+            const shiftIdSearch = normalizedSearch.replace(/^#\s*/, '');
+            const terminalSearch = normalizedSearch.replace(/[\\%_]/g, '\\$&');
+            const conditions = [{ terminal_id: { [Op.like]: `%${terminalSearch}%` } }];
+            if (/^\d+$/.test(shiftIdSearch)) {
+                const shiftId = Number(shiftIdSearch);
+                if (Number.isSafeInteger(shiftId)) {
+                    conditions.unshift({ pos_terminal_shift_id: shiftId });
+                }
+            }
+            where[Op.or] = conditions;
         }
 
         const { rows, count } = await PosTerminalShift.findAndCountAll({

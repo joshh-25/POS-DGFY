@@ -53,8 +53,9 @@ describe('TerminalLockDrawer contract', () => {
     expect(companySelect.classList.contains('dgfy-pos-company-select')).toBe(true);
     expect(companySelect.getAttribute('aria-haspopup')).toBe('listbox');
     fireEvent.click(companySelect);
-    expect(container.querySelector('#dgfy-pos-company-options')).toBeTruthy();
-    expect(container.querySelectorAll('[role="option"]')).toHaveLength(2);
+    const companyOptions = container.querySelector('#dgfy-pos-company-options');
+    expect(companyOptions).toBeTruthy();
+    expect(companyOptions.querySelectorAll('[role="option"]')).toHaveLength(2);
   });
 
   it('does not render company token input in terminal lock drawer', () => {
@@ -126,7 +127,7 @@ describe('TerminalLockDrawer contract', () => {
     const onSubmit = vi.fn();
     render(<TerminalLockDrawer {...buildProps({ onSubmit })} />);
 
-    const textSizeControl = screen.getByRole('button', { name: 'POS text size: Normal (100%)' });
+    const textSizeControl = screen.getByRole('combobox', { name: 'POS text size: Normal (100%)' });
     expect(textSizeControl.closest('form')).toBeNull();
 
     fireEvent.click(textSizeControl);

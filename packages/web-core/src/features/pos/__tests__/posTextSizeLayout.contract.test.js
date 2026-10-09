@@ -13,6 +13,7 @@ describe('POS text-size layout hardening contracts', () => {
     let itemsSource = '';
     let layoutSource = '';
     let textSizeControlSource = '';
+    let dropdownSource = '';
     let sidebarSource = '';
     let historySource = '';
     let appStyles = '';
@@ -27,6 +28,7 @@ describe('POS text-size layout hardening contracts', () => {
         itemsSource = readSource('../components/TerminalOperationsWorkspace.jsx');
         layoutSource = readSource('../components/TerminalPageLayout.jsx');
         textSizeControlSource = readSource('../components/PosTextSizeControl.jsx');
+        dropdownSource = readSource('../components/PosDropdownSelect.jsx');
         sidebarSource = readSource('../components/TerminalWorkspaceSidebar.jsx');
         historySource = readSource('../components/POSTransactionHistoryPanel.jsx');
         appStyles = readSource('../../../index.css');
@@ -81,7 +83,8 @@ describe('POS text-size layout hardening contracts', () => {
         expect(appStyles).toContain('aspect-ratio: auto;');
         expect(appStyles).toContain('touch-action: pan-x;');
         expect(appStyles).toContain('width: max-content;');
-        expect(textSizeControlSource).toContain('pos-text-size-control__option flex w-full items-center justify-between');
+        expect(textSizeControlSource).toContain('optionClassName="pos-text-size-control__option"');
+        expect(dropdownSource).toContain("const DEFAULT_OPTION_CLASS_NAME = 'flex w-full items-center justify-between");
         expect(appStyles).toContain('.pos-text-size-control__option:not([aria-selected="true"]):hover');
         expect(appStyles).toContain('body[data-pos-text-size="large"] .pos-items-desktop-toolbar');
         expect(appStyles).toContain('flex-wrap: nowrap;');

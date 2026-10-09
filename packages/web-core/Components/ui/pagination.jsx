@@ -118,6 +118,7 @@ export function GlobalPagination({
   disabled = false,
   loading = false,
   showPageSize = true,
+  renderPageSizeDropdown = null,
   hidePageSizeSuffixOnMobile = false,
   showGoTo = true,
   accentColor = '#1A4E8D',
@@ -179,15 +180,27 @@ export function GlobalPagination({
           Showing {safeStart}–{safeEnd} of {safeTotalItems} {itemLabel}
         </span>
         {showPageSize ? (
-          <PageSizeDropdown
-            controlId={pageSizeId}
-            options={options}
-            selectedPageSize={selectedPageSize}
-            disabled={isDisabled}
-            onChange={onPageSizeChange}
-            ariaLabel={pageSizeLabel}
-            hidePageSizeSuffixOnMobile={hidePageSizeSuffixOnMobile}
-          />
+          typeof renderPageSizeDropdown === 'function'
+            ? renderPageSizeDropdown({
+              controlId: pageSizeId,
+              options,
+              selectedPageSize,
+              disabled: isDisabled,
+              onChange: onPageSizeChange,
+              ariaLabel: pageSizeLabel,
+              hidePageSizeSuffixOnMobile
+            })
+            : (
+              <PageSizeDropdown
+                controlId={pageSizeId}
+                options={options}
+                selectedPageSize={selectedPageSize}
+                disabled={isDisabled}
+                onChange={onPageSizeChange}
+                ariaLabel={pageSizeLabel}
+                hidePageSizeSuffixOnMobile={hidePageSizeSuffixOnMobile}
+              />
+            )
         ) : null}
       </div>
 

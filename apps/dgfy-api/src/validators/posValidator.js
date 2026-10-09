@@ -795,6 +795,7 @@ const terminalCurrentShiftQuerySchema = Joi.object({
 const terminalShiftHistoryQuerySchema = Joi.object({
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    search: Joi.string().trim().max(120).allow('', null).optional(),
     location_id: Joi.number().integer().positive().optional(),
     status: Joi.string().valid('all', 'open', 'closed').default('all'),
     page: Joi.number().integer().min(1).max(100000).default(1),

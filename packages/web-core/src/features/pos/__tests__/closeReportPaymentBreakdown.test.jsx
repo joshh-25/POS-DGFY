@@ -141,6 +141,16 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).not.toContain('Lifetime total');
     });
 
+    it('formats iMin shift summaries within the selected 57mm paper width', () => {
+        const shiftText = formatIminShiftSummaryText({
+            shiftSummary: { sales_summary: salesSummary },
+            businessSettings,
+            paperWidth: '57mm'
+        });
+
+        expect(shiftText.split('\n').every((line) => line.length <= 32)).toBe(true);
+    });
+
     it('keeps missing or invalid generation times readable without breaking the report', () => {
         const markup = renderToStaticMarkup(
             <ZReadingPrintView report={{ generated_at: 'not-a-timestamp' }} />
@@ -182,7 +192,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(markup).toContain('80mm (3 1/8 in)');
         expect(markup).toContain('57mm (2 1/4 in)');
         expect(markup).toContain('No native POS printer detected.');
-        expect(markup).toContain('Print in browser');
+        expect(markup).toContain('>Print</button>');
         expect(markup).not.toContain('print:max-w-[80mm]');
     });
 
