@@ -425,11 +425,15 @@ function validatePromotionCandidateV3(manifest) {
 }
 
 // v4 adds explicit, append-only refresh history while preserving the v3 initial and
-// staging-repair contract. A refresh is an operator-authorized replacement of the
-// active staging selection, so it clears release_revision until qualification is repeated.
+// staging-repair contract. A refresh replaces the active staging selection, so it clears
+// release_revision until qualification is repeated.
 function validatePromotionCandidateV4(manifest) {
   assert(manifest.schema === 'sku-release-candidate/v4', 'Candidate manifest schema must be sku-release-candidate/v4', 'INVALID_SCHEMA');
   assertSha(manifest.promotion_base_sha, 'promotion_base_sha');
+  if (manifest.predecessor_candidate_id !== undefined) {
+    assert(CANDIDATE_ID_PATTERN.test(manifest.predecessor_candidate_id), 'predecessor_candidate_id must use YYYY-MM-DD-NN', 'INVALID_PREDECESSOR_CANDIDATE_ID');
+    assert(manifest.predecessor_candidate_id !== manifest.candidate_id, 'predecessor_candidate_id must differ from candidate_id', 'INVALID_PREDECESSOR_CANDIDATE_ID');
+  }
   if (manifest.status === 'refresh_in_progress') {
     assert(manifest.release_revision === null, 'A candidate in refresh_in_progress cannot retain an active release selection', 'REFRESH_HAS_ACTIVE_RELEASE');
     assert(manifest.refresh_in_progress && typeof manifest.refresh_in_progress === 'object', 'refresh_in_progress details are required while refresh is active', 'MISSING_REFRESH_CONTEXT');
@@ -450,6 +454,10 @@ function validatePromotionCandidateV4(manifest) {
     refresh_in_progress: undefined,
   };
   const result = validatePromotionCandidateV3(baseManifest);
+  const initialRevision = manifest.revisions?.[0];
+  if (initialRevision && Object.hasOwn(initialRevision, 'base_staging_sha') && initialRevision.base_staging_sha != null) {
+    assertSha(initialRevision.base_staging_sha, 'initial revision base_staging_sha');
+  }
   const refreshes = manifest.staging_refresh || [];
   assert(Array.isArray(refreshes), 'staging_refresh must be an array when present', 'INVALID_STAGING_REFRESHES');
   if (manifest.release_revision === null && manifest.status !== 'refresh_in_progress') {
@@ -520,9 +528,30 @@ function validatePromotionCandidateV4(manifest) {
     seenShas.add(entry.sha);
   });
   assert(manifest.current_staging_sha === previousSha, 'current_staging_sha must equal the latest staging history SHA', 'CURRENT_STAGING_SHA_MISMATCH');
+  const supersededStagingShas = [manifest.revisions[0].sha, ...ordered.map((entry) => entry.sha)]
+    .filter((sha) => manifest.status === 'refresh_in_progress' || sha !== manifest.current_staging_sha);
+  const stagingSummary = {
+    active_staging_sha: manifest.status === 'refresh_in_progress' ? null : manifest.current_staging_sha,
+    superseded_staging_shas: supersededStagingShas,
+    initial_base_staging_sha: initialRevision?.base_staging_sha || null,
+  };
   if (manifest.status === 'refresh_in_progress') {
     assert(manifest.refresh_in_progress.refresh_seq === refreshes.length + 1, 'Active refresh sequence must immediately follow completed refreshes', 'INVALID_REFRESH_SEQ');
-    return { ...result, status: manifest.status, current_staging_sha: manifest.current_staging_sha, refresh_count: refreshes.length };
+    return { ...result, ...stagingSummary, staging_observation_current: false, status: manifest.status, current_staging_sha: manifest.current_staging_sha, refresh_count: refreshes.length };
+  }
+  if (Object.hasOwn(manifest, 'staging_observation')) {
+    const observation = manifest.staging_observation;
+    assert(observation && typeof observation === 'object' && !Array.isArray(observation), 'staging_observation must be an object when present', 'INVALID_STAGING_OBSERVATION');
+    assertSha(observation.sha, 'staging_observation.sha');
+    assert((Number.isInteger(observation.run_id) && observation.run_id > 0) || (typeof observation.run_url === 'string' && /^https:\/\//.test(observation.run_url)), 'staging_observation must include a positive run_id or HTTPS run_url', 'INVALID_STAGING_OBSERVATION_RUN');
+    assert(typeof observation.observed_at === 'string' && !Number.isNaN(Date.parse(observation.observed_at)), 'staging_observation.observed_at must be a date-time', 'INVALID_STAGING_OBSERVATION_TIME');
+    assert(observation.result === 'pass', 'staging_observation.result must be pass', 'INVALID_STAGING_OBSERVATION_RESULT');
+    if (manifest.release_revision) {
+      assert(observation.sha === manifest.release_revision.source_staging_sha, 'staging_observation.sha must match release_revision.source_staging_sha', 'RELEASE_OBSERVATION_SHA_MISMATCH');
+    }
+    result.staging_observation_current = observation.sha === manifest.current_staging_sha;
+  } else {
+    result.staging_observation_current = false;
   }
   if (manifest.release_revision) {
     const release = manifest.release_revision;
@@ -570,7 +599,7 @@ function validatePromotionCandidateV4(manifest) {
     validateReleaseRepairs(archived.repairs, manifest.candidate_id, archived.source_staging_sha, new Set([archived.source_staging_sha]));
     if (manifest.release_revision) assert(manifest.release_revision.source_staging_sha !== archived.source_staging_sha, 'An archived release selection cannot be restored as the active selection; cut and qualify a fresh release', 'ARCHIVED_RELEASE_RESELECTED');
   });
-  return { ...result, status: manifest.status, current_staging_sha: manifest.current_staging_sha, refresh_count: refreshes.length };
+  return { ...result, ...stagingSummary, status: manifest.status, current_staging_sha: manifest.current_staging_sha, refresh_count: refreshes.length };
 }
 
 function getActiveCandidateSha(manifest) {
