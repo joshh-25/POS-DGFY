@@ -10488,6 +10488,7 @@ export const buildGetCashierShiftHistoryUseCase = ({
         }
 
         try {
+            const search = String(query?.search || '').trim().slice(0, 120);
             const historyScope = await resolveCashierHistoryScope({
                 user,
                 userId: normalizedUserId,
@@ -10498,6 +10499,7 @@ export const buildGetCashierShiftHistoryUseCase = ({
             const historyQuery = {
                 dateFrom: query?.date_from,
                 dateTo: query?.date_to,
+                search,
                 status: query?.status || 'all',
                 page: query?.page || 1,
                 limit: query?.limit || 20
@@ -10556,7 +10558,8 @@ export const buildGetCashierShiftHistoryUseCase = ({
                     location_id: historyScope.locationId,
                     date_from: normalizeBusinessDateInput(query?.date_from) || null,
                     date_to: normalizeBusinessDateInput(query?.date_to) || null,
-                    status: query?.status || 'all'
+                    status: query?.status || 'all',
+                    search: search || null
                 }
             });
         } catch (error) {

@@ -24,8 +24,7 @@ describe('POS mobile page spacing contract', () => {
     expect(operationsWorkspaceSource).toContain('data-testid="pos-shift-sticky-tabs"');
     expect(operationsWorkspaceSource).toContain('className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}');
     expect(operationsWorkspaceSource).toContain('className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}');
-    expect(primaryShiftTabCall).toContain('mobileGridColumns={visibleShiftTabs.length > 1 ? 2 : 1}');
-    expect(primaryShiftTabCall).not.toContain('mobileGridColumns={3}');
+    expect(primaryShiftTabCall).not.toContain('mobileGridColumns=');
     expect(terminalLayoutSource).toContain('SHIFT_WORKSPACE_MODES.has(posViewMode)');
   });
 

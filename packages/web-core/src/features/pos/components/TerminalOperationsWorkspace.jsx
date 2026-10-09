@@ -1847,7 +1847,6 @@ function ShiftControlsWorkspace({
             ariaLabel="Shift sections"
             idPrefix={shiftTabIdPrefix}
             panelId={shiftPanelId}
-            mobileGridColumns={visibleShiftTabs.length > 1 ? 2 : 1}
           />
         </div>
 

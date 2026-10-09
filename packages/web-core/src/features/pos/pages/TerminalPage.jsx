@@ -784,8 +784,11 @@ export default function TerminalPage() {
     historyScope: null,
     records: [],
     pagination: null,
-    errorMessage: ''
+    errorMessage: '',
+    requestScopeKey: null,
+    recordsScopeKey: null
   });
+  const cashierHistoryRequestRef = useRef(0);
   const [todayDashboard, setTodayDashboard] = useState({
     loading: false,
     businessDate: null,
@@ -1827,10 +1830,14 @@ export default function TerminalPage() {
 
   const refreshCashierHistory = useCallback(async (filters = {}) => {
     if (locked) return null;
+    const requestId = cashierHistoryRequestRef.current + 1;
+    cashierHistoryRequestRef.current = requestId;
+    const requestScopeKey = Object.keys(filters || {}).length ? JSON.stringify(filters) : null;
     setCashierHistoryState((previous) => ({
       ...previous,
       loading: true,
-      errorMessage: ''
+      errorMessage: '',
+      requestScopeKey
     }));
 
     try {
@@ -1842,20 +1849,25 @@ export default function TerminalPage() {
       else delete historyFilters.location_id;
 
       const payload = await fetchCashierShiftHistory(historyFilters, SUPPRESS_GLOBAL_ERROR_TOAST);
+      if (requestId !== cashierHistoryRequestRef.current) return payload;
       setCashierHistoryState({
         loading: false,
         cashier: payload?.cashier || null,
         historyScope: payload?.history_scope || null,
         records: Array.isArray(payload?.records) ? payload.records : [],
         pagination: payload?.pagination || null,
-        errorMessage: ''
+        errorMessage: '',
+        requestScopeKey,
+        recordsScopeKey: requestScopeKey
       });
       return payload;
     } catch (error) {
       const message = error?.response?.data?.message || 'Failed to load cashier shift history.';
+      if (requestId !== cashierHistoryRequestRef.current) return null;
       setCashierHistoryState((previous) => ({
         ...previous,
         loading: false,
+        requestScopeKey,
         errorMessage: message
       }));
       if (error?.response?.status !== 403) toast.error(message);

@@ -3180,6 +3180,28 @@ for the selected terminal in order to perform the existing authorized closeout.
 |------|------|-------------|
 | `terminal_id` | string | Terminal identifier (e.g. `COUNTER-01`) |
 
+### GET /pos/terminal/shifts/history
+List paginated shift summaries for the authenticated cashier. The server always
+scopes records to that cashier and the resolved or authorized location before
+applying search, filters, and pagination.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `date_from` | ISO date | Optional inclusive business-date lower bound. |
+| `date_to` | ISO date | Optional inclusive business-date upper bound; must be on or after `date_from`. |
+| `search` | string | Optional search by exact shift number (a leading `#` is allowed) or partial terminal ID. Maximum 120 characters. Search is applied before pagination. |
+| `status` | string | `all`, `open`, or `closed`; defaults to `all`. |
+| `location_id` | integer | Optional authorized branch. If omitted, the server resolves the user's location scope. |
+| `page` | integer | Page number; defaults to `1`. |
+| `limit` | integer | Page size from `1` to `50`; defaults to `20`. |
+
+The response includes `cashier`, paginated `records`, `pagination`, and
+`applied_filters` (including the normalized search value when present).
+
 ### POST /pos/terminal/shifts/open
 Open a terminal shift for cashier operations.
 
