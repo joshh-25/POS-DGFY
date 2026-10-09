@@ -12,8 +12,8 @@ verification_evidence: "Cashier History UI 4 files/23 tests; cashier-history API
 rollback_note: Revert the POS Shift commits and this declaration together; the cashier-history search query is read-only and adds no schema or Phase 2 work.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-08T17:01:31+08:00
-preflight_request_ref: NOT-EXECUTED-LOCAL-POS-SHIFT-FRONTEND-2026-10-08
+preflight_run_at: 2026-10-09T05:03:27.844Z
+preflight_request_ref: PREFLIGHT-37886055710-2026-10-08-POS-SHIFT-FRONTEND-RESPONSIVE-UI
 ---
 
 # POS Shift responsive frontend and Cashier History search

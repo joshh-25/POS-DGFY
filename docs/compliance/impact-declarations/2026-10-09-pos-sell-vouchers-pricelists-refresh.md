@@ -11,8 +11,8 @@ verification_evidence: pos_frontend_focused_tests,pos_voucher_contract,pos_lint,
 rollback_note: Revert the POS Sell, Vouchers, and Pricelists presentation changes, shared POS touch styling, and this declaration; no backend, database, migration, authorization, or persisted tenant-data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-09T12:43:29+08:00
-preflight_request_ref: NOT-EXECUTED-POS-SELL-VOUCHERS-PRICELISTS-20261009
+preflight_run_at: 2026-10-09T05:03:27.846Z
+preflight_request_ref: PREFLIGHT-37886055710-2026-10-09-POS-SELL-VOUCHERS-PRICELISTS-REFRESH
 ---
 
 # POS Sell, Vouchers, and Pricelists Frontend Refresh Compliance Impact
