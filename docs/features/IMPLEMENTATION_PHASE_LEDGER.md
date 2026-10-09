@@ -27324,3 +27324,75 @@ Not complete. Set only after scoped implementation merges and validation passes.
 
 Phase 486. No earlier-phase dependency blocks a separate initiative; later #2372 UI/MCP phases
 require the backend contract above.
+
+## Phase 486 - Mid-soak staging refresh and release-cut freeze (#2381)
+
+### Initiative and release
+
+Release-candidate lifecycle: permit later pinned `develop` snapshots to advance `staging` during an
+active soak, with the release cut as the production-selection freeze point.
+
+### Objective and scope
+
+Make pre-cut refresh routine under the same candidate ID while preserving exact SHA qualification,
+repair/backport rules, candidate/release-note lineage, version floors, immutable per-app artifacts,
+and all existing production controls. After release cut, advance staging only under a successor
+candidate with a new ID and independent manifest/note/artifacts. Add optional v4 observation and
+lineage metadata while retaining old-manifest compatibility. No deploy workflow, app, or automatic
+continuous-sync changes.
+
+### Status
+
+`in_progress` — implementation and focused validator tests are underway; merge and the first
+report-only live refresh dry run remain outstanding.
+
+### Dependencies
+
+Issue #2381 and the existing release flow in ADRs 0074, 0081, 0082 and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`. No earlier phase dependency blocks this initiative.
+
+### Acceptance and validation evidence
+
+- [ ] Policy, promoter skill, and runbook allow pre-cut refresh during soak and name the release cut
+      as the freeze point; successor ordering and withdrawal behavior are documented.
+- [ ] Manifest lineage records source develop, resulting staging, and physical base SHAs; validator
+      reports the active and superseded staging selections while accepting legacy v4 manifests.
+- [ ] Observation and required qualification bind to the exact current staging SHA; optional quality
+      evidence becomes stale after a refresh; new cuts record passing observation.
+- [ ] Cut releases remain bound to their selected SHA; successors have separate IDs, release notes,
+      floors, manifests, and immutable artifacts.
+- [ ] Incoming develop refresh and staging defect repair/backport procedures are distinct; all
+      existing compliance, Merge Safety, no-squash, tenant-schema, and production controls remain.
+- [x] `node --test scripts/check-promotion-candidate.test.js` passes the focused validator suite
+      (50 tests) for current and legacy manifest behavior.
+- [ ] Neighboring observation, image-parity, evidence-builder, version-floor, docs, compliance,
+      release-note, and Worker Tier 0 checks pass and are reported in the PR.
+
+### Links
+
+- Issue: #2381; planner handoff `.tmp/plan-2381.md`, planning head
+  `55f134ce449a04bdcaf4b49a03b423ef5a538ae6`.
+- Policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md` 2026-10-09 amendment.
+- ADRs: 0074, 0081, 0082, with dated amendments; ADR 0039 strictness tiers.
+- Implementation: `scripts/check-promotion-candidate.js` and
+  `scripts/check-promotion-candidate.test.js`.
+- Procedure: `.agents/skills/promoter/SKILL.md` and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+
+### Completion date
+
+Not complete. Set only after scoped implementation is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — perform the first real pre-cut refresh as a report-only dry run; verify branch,
+      SHA lineage, observation invalidation, and immutable artifact allocation without merging or
+      deploying; owner: promoter; blocks release-qualification for this lifecycle change.
+- [ ] operational — confirm a successor release remains blocked until its predecessor is merged or
+      withdrawn; owner: promoter; verify during the first applicable candidate transition.
+- [ ] compliance — reconcile any outstanding `NOT-EXECUTED-*` declaration through the existing
+      preflight before production promotion; owner: promoter.
+
+### Next phase number
+
+Phase 487. No explicit dependency.

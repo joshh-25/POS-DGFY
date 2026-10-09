@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-09
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, release_process
 topic: per_app_container_semantic_versioning
@@ -954,3 +954,18 @@ initial minor-floor obligation against that original baseline and rejects a floo
 STAGING. A refresh branch name grants no exception by itself. Missing or unverifiable baseline
 evidence stops v4 conversion; v1-v3 remain valid for their existing workflows. `[default]` — amends
 Decision 6 and Decision 8; Decision 7's immutable-tag invariant is unchanged.
+
+
+### 2026-10-09 — Mid-soak refresh and successor version/artifact lineage (#2381, Phase 486)
+
+A pre-cut staging refresh may use later pinned `develop` work under the existing candidate ID and
+original `promotion_base_sha`. The initial manifest revision may include optional `base_staging_sha`;
+each refresh records its source develop SHA, resulting staging SHA, physical staging base, parent,
+PR, and per-app artifact lineage. New release cuts require a recorded staging observation bound to
+the selected SHA; the validator accepts this field as optional for in-flight v4 compatibility and
+validates it against the release selection when present. A post-cut update uses a new successor
+candidate and fresh immutable per-app artifacts. Its floor is checked against then-current staging,
+so changed apps take the next minor floor from that baseline. Never overwrite or reuse published
+artifact tags for different contents. `[default]` — amends Decisions 6 and 8. Decision 7's
+`[binding]` immutable-tag invariant is unchanged. See #2381 and `RELEASE_CANDIDATE_POLICY.md`'s
+2026-10-09 amendment.
