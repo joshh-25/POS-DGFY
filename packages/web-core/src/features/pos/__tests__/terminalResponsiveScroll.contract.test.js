@@ -119,8 +119,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain("? 'flex min-h-0 flex-1 flex-col overflow-hidden'");
     expect(terminalLayoutContent).toContain('dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y');
     expect(terminalLayoutContent).toContain("hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''");
-    expect(terminalLayoutContent).toContain("const checkoutWorkspaceRowsClassName = 'grid-rows-[minmax(0,1fr)]'");
-    expect(terminalLayoutContent).not.toContain('grid-rows-[auto_minmax(0,1fr)]');
+    expect(terminalLayoutContent).toContain('const checkoutWorkspaceRowsClassName = isBranchReadOnlyView');
+    expect(terminalLayoutContent).toContain("? 'grid-rows-[auto_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain(": 'grid-rows-[minmax(0,1fr)]'");
     expect(terminalLayoutContent).toContain("'grid-rows-[minmax(0,1fr)]'");
     expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden');
     expect(terminalLayoutContent).toContain("usesStandardPosPageFrame ? 'p-0'");
@@ -132,7 +133,8 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('content-start auto-rows-max overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 xl:grid-cols-2 dgfy-pos-items-catalog-results');
     expect(terminalOperationsWorkspaceContent).not.toContain('dgfy-pos-items-catalog-results xl:flex-none');
     expect(terminalLayoutContent).toContain("'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'");
-    expect(terminalLayoutContent).toContain('data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter"');
+    expect(terminalLayoutContent).toContain("data-testid={isCheckoutWorkspaceMode ? 'pos-checkout-workspace' : 'pos-customer-display-controller-host'}");
+    expect(terminalLayoutContent).toContain("className={isCheckoutWorkspaceMode ? 'h-full min-h-0 overflow-hidden catalog-slide-enter' : 'hidden'}");
     expect(terminalLayoutContent).not.toContain('workspaceDesktopOverflowClassName');
   });
 
@@ -144,7 +146,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent.match(/Exit branch view/gi)).toHaveLength(1);
     expect(terminalOperationsWorkspaceContent).not.toContain('Read-only branch view');
     expect(terminalOperationsWorkspaceContent).not.toContain('Exit Branch View');
-    expect(terminalLayoutContent).toContain("const checkoutWorkspaceRowsClassName = 'grid-rows-[minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain('const checkoutWorkspaceRowsClassName = isBranchReadOnlyView');
+    expect(terminalLayoutContent).toContain("? 'grid-rows-[auto_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain(": 'grid-rows-[minmax(0,1fr)]'");
   });
 
   it('announces POS and shift-context loading feedback to assistive technology', () => {

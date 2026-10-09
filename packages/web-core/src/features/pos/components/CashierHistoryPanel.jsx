@@ -104,11 +104,13 @@ export default function CashierHistoryPanel({
         ? `Showing shift summaries across all authorized company branches${historyScope?.location_count ? ` (${historyScope.location_count} branches).` : '.'}`
         : (isGrantedScope
             ? 'Showing shift summaries for the branches assigned to this account.'
-            : 'Your shift summaries only. Other cashiers’ records are not visible.');
+            : 'Only your shifts are shown.');
     const loadingCopy = isCompanyScope
         ? 'Loading company cashier summaries...'
         : (isGrantedScope ? 'Loading authorized branch cashier summaries...' : 'Loading your cashier summaries...');
-    const activeShiftLabel = isCompanyScope || isGrantedScope ? 'Active shift' : 'Your active shift';
+    const activeShiftLabel = String(activeShift?.status || '').toLowerCase() === 'open'
+        ? 'Open shift'
+        : (isCompanyScope || isGrantedScope ? 'Active shift' : 'Your active shift');
     const cashierName = state?.cashier?.cashier_name
         || state?.cashier?.display_name
         || state?.cashier?.name

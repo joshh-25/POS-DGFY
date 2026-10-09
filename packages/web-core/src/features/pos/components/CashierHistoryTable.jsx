@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useState } from 'react';
 import { Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PosTableActionButton from './PosTableActionButton.jsx';
@@ -63,6 +62,7 @@ export default function CashierHistoryTable({
             const status = getShiftStatus(shift.status);
             const rowCashierName = shift.cashier?.display_name
               || shift.cashier?.cashier_name
+              || shift.cashier?.username
               || cashierName
               || '—';
             const branchName = shift.location?.name || shift.location_name || '—';
@@ -225,8 +225,8 @@ export default function CashierHistoryTable({
             const rowCashierName = shift.cashier?.display_name
               || shift.cashier?.cashier_name
               || cashierName
-              || '\u2014';
-            const branchName = shift.location?.name || shift.location_name || '\u2014';
+              || 'Unknown cashier';
+            const branchName = shift.location?.name || shift.location_name || 'Unknown branch';
             const postCloseAdjustments = Array.isArray(sales.post_close_adjustments) ? sales.post_close_adjustments : [];
             const postCloseVoidCount = Number(sales.post_close_void_transaction_count || 0);
             const postCloseAdjustmentCount = Number(sales.post_close_adjustment_count || postCloseAdjustments.length || 0);

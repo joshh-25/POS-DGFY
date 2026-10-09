@@ -14,29 +14,32 @@ describe('PosLineTabNavigation', () => {
     { id: 'history', label: 'Cashier History', mobileLabel: 'History' }
   ];
 
-  it('uses the same single-row, scrollbar-hidden line tabs as Reports', () => {
+  it('uses full-width centered mobile tabs and a scrollbar-hidden desktop line rail', () => {
     render(
       <PosLineTabNavigation
         tabs={tabs}
         activeTab="location"
         onTabChange={vi.fn()}
         ariaLabel="Shift sections"
+        hideScrollbar
+        mobileGridColumns={2}
       />
     );
 
     const tablist = screen.getByRole('tablist', { name: 'Shift sections' });
     const locationTab = screen.getByRole('tab', { name: 'Shift Location' });
 
-    expect(tablist.parentElement.className).toContain('overflow-x-auto');
+    expect(tablist.parentElement.className).toContain('overflow-x-hidden');
     expect(tablist.parentElement.className).toContain('border-b');
     expect(tablist.parentElement.className).toContain('border-slate-200');
     expect(tablist.parentElement.className).toContain('overflow-y-hidden');
     expect(tablist.parentElement.className).toContain('[scrollbar-width:none]');
     expect(tablist.parentElement.className).toContain('[&::-webkit-scrollbar]:hidden');
     expect(tablist.className).toContain('-mb-px');
-    expect(tablist.className).toContain('flex min-w-max');
-    expect(tablist.className).not.toContain('grid grid-cols-2');
-    expect(locationTab.className).toContain('shrink-0');
+    expect(tablist.className).toContain('grid grid-cols-2 min-w-0 w-full');
+    expect(tablist.className).not.toContain('flex min-w-max');
+    expect(locationTab.className).toContain('w-full min-w-0 justify-center');
+    expect(locationTab.className).toContain('text-center');
     expect(locationTab.querySelectorAll('span')[0].textContent).toBe('Location');
     expect(locationTab.querySelectorAll('span')[0].className).toContain('min-[1024px]:hidden');
     expect(locationTab.getAttribute('aria-label')).toBe('Shift Location');

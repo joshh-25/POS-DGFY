@@ -1845,6 +1845,8 @@ function ShiftControlsWorkspace({
             activeTab={selectedShiftTabId}
             onTabChange={handleTabChange}
             ariaLabel="Shift sections"
+            hideScrollbar
+            mobileGridColumns={2}
             idPrefix={shiftTabIdPrefix}
             panelId={shiftPanelId}
           />

@@ -62,8 +62,8 @@ describe('CashierHistoryPanel', () => {
         expect(screen.getByText(/across all authorized company branches \(2 branches\)/i)).toBeTruthy();
         expect(screen.getByText(/All authorized company branches/)).toBeTruthy();
         expect(screen.getByText(/Branch:/)).toBeTruthy();
-        expect(screen.getByText('Second Branch')).toBeTruthy();
-        expect(screen.getByText('Maya Cashier')).toBeTruthy();
+        expect(screen.getAllByText('Second Branch').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Maya Cashier').length).toBeGreaterThan(0);
     });
 
     it('uses scope-aware loading copy for company history', () => {

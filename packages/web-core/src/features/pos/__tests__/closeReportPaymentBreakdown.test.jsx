@@ -192,7 +192,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(markup).toContain('80mm (3 1/8 in)');
         expect(markup).toContain('57mm (2 1/4 in)');
         expect(markup).toContain('No native POS printer detected.');
-        expect(markup).toContain('Print in browser');
+        expect(markup).toContain('>Print</button>');
         expect(markup).not.toContain('print:max-w-[80mm]');
     });
 

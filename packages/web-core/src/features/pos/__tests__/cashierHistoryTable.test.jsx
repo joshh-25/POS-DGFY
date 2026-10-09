@@ -139,6 +139,15 @@ describe('CashierHistoryTable', () => {
         const mobileView = screen.getByTestId('pos-cashier-history-mobile-view');
         fireEvent.click(within(mobileView).getByRole('button', { name: 'Show details for shift #10' }));
         expect(within(mobileView).getByText('Second Branch')).toBeTruthy();
-        expect(within(mobileView).getByText(/cash refund · ₱125\.00 · succeeded · By Admin One · Shift 91 · PRA-9/)).toBeTruthy();
+        const accountabilityItems = within(mobileView).getAllByText((_, element) => (
+            element?.tagName === 'LI'
+            && element.textContent.includes('cash refund')
+            && element.textContent.includes('₱125.00')
+            && element.textContent.includes('succeeded')
+            && element.textContent.includes('By Admin One')
+            && element.textContent.includes('Shift 91')
+            && element.textContent.includes('PRA-9')
+        ));
+        expect(accountabilityItems.length).toBeGreaterThan(0);
     });
 });

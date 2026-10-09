@@ -165,6 +165,7 @@ export default function ShiftCloseSummaryPrintView({
                         <label id="shift-summary-paper-width-label" htmlFor="shift-summary-paper-width" className="shrink-0 text-sm font-semibold text-slate-700">Paper</label>
                         <PosDropdownSelect
                             id="shift-summary-paper-width"
+                            triggerTestId="pos-shift-summary-paper-width"
                             ariaLabel="Paper"
                             ariaDescribedBy="shift-summary-paper-width-help"
                             listboxLabel="Paper size options"
