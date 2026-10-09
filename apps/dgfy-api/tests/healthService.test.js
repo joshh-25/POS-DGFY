@@ -29,6 +29,22 @@ describe('healthService', () => {
         });
     });
 
+    it('uses SENTRY_RELEASE as the injected runtime SHA source', () => {
+        process.env = {
+            ...originalEnv,
+            RELEASE_TARGET_SHA: '',
+            DEPLOYED_COMMIT: '',
+            RELEASE_SHA: '',
+            SENTRY_RELEASE: '3333333333333333333333333333333333333333'
+        };
+
+        expect(resolveRuntimeShaInfo({ environment: 'production' })).toEqual({
+            runtimeSha: '3333333333333333333333333333333333333333',
+            source: 'env:SENTRY_RELEASE',
+            present: true
+        });
+    });
+
     it('uses production deploy marker as runtime SHA fallback', async () => {
         const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sku-health-sha-'));
         const markerPath = path.join(rootDir, 'last_deployed_commit');
