@@ -807,6 +807,7 @@ import storeRoutes from './routes/store.js';
 import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
+import adminTenantIntakeRoutes from './routes/adminTenantIntake.js';
 import platformAdminRoutes from './routes/platformAdmins.js';
 import adminInvoiceRoutes from './routes/adminInvoices.js';
 import adminTemplateRoutes from './routes/adminTemplates.js';
@@ -856,6 +857,7 @@ app.use('/api/v1/commerce-payments', commercePaymentRoutes);
 app.use('/api/v1/tenant-revenue', tenantRevenueRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
+app.use('/api/v1/admin/tenant-intake', adminTenantIntakeRoutes);
 app.use('/api/v1/admin/platform-admins', platformAdminRoutes);
 app.use('/api/v1/admin/invoices', adminInvoiceRoutes);
 app.use('/api/v1/admin/templates', adminTemplateRoutes);

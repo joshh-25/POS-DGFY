@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-06
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-09
 review_by: 2027-03-23
 applies_to: development_to_production_release_flow, release_notes
 topic: production_release_record_and_release_notes
@@ -316,3 +316,15 @@ as the active production selection. Existing user-visible-change authorship rule
    `check:release-notes` to also fire on any `fix/* → main` PR, or accept that path's continued
    procedural-only enforcement via `.agents/skills/incident-responder/SKILL.md` as a deliberate,
    named limitation rather than an oversight.
+
+
+### 2026-10-09 — Candidate notes across mid-soak refreshes and successors (#2381, Phase 486)
+
+A same-ID pre-cut refresh keeps one release note and its original `promotion_base_sha`; append each
+refresh to candidate history and keep `## Included` cumulative. A post-cut successor gets a new
+candidate ID, its own note and baseline, and a `predecessor_candidate_id` link in its manifest. The
+successor's `## Included` names its own scope and explicitly identifies predecessor scope carried
+forward. A cut predecessor remains bound to its release record; withdrawal archives that selection
+and does not permit candidate-ID reuse for new contents. `[default]` — amends Decisions 4 and 5;
+Decision 3's binding production release-note obligation is unchanged. See #2381 and
+`RELEASE_CANDIDATE_POLICY.md`'s 2026-10-09 amendment.

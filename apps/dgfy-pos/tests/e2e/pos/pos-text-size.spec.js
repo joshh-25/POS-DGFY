@@ -76,8 +76,9 @@ for (const viewport of VIEWPORTS) {
 
       const textSizeControl = page.locator('#pos-text-size-lock-drawer');
       await expect(textSizeControl).toBeVisible();
-      await expect(textSizeControl).toHaveAttribute('aria-label', 'POS text size');
-      await expect(textSizeControl).toHaveValue('normal');
+      await expect(textSizeControl).toHaveAttribute('role', 'combobox');
+      await expect(textSizeControl).toHaveAttribute('aria-label', 'POS text size: Normal (100%)');
+      await expect(textSizeControl).toHaveAttribute('data-value', 'normal');
 
       const formOwner = await textSizeControl.evaluate((element) => element.closest('form'));
       expect(formOwner).toBeNull();
@@ -85,9 +86,11 @@ for (const viewport of VIEWPORTS) {
       const normalHeadingSize = await page.getByRole('heading', { name: 'Terminal Login Required' })
         .evaluate((element) => Number.parseFloat(window.getComputedStyle(element).fontSize));
 
-      await textSizeControl.selectOption('large');
+      await textSizeControl.click();
+      await page.getByRole('option', { name: 'Large (115%)' }).click();
       await expect(page.locator('body')).toHaveAttribute('data-pos-text-size', 'large');
-      await expect(textSizeControl).toHaveValue('large');
+      await expect(textSizeControl).toHaveAttribute('data-value', 'large');
+      await expect(textSizeControl).toHaveAttribute('aria-label', 'POS text size: Large (115%)');
       await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), POS_TEXT_SIZE_STORAGE_KEY))
         .toBe('large');
 
@@ -95,9 +98,10 @@ for (const viewport of VIEWPORTS) {
         .evaluate((element) => Number.parseFloat(window.getComputedStyle(element).fontSize));
       expect(largeHeadingSize).toBeGreaterThan(normalHeadingSize);
 
-      await textSizeControl.selectOption('extra-large');
+      await textSizeControl.click();
+      await page.getByRole('option', { name: 'Extra large (130%)' }).click();
       await expect(page.locator('body')).toHaveAttribute('data-pos-text-size', 'extra-large');
-      await expect(textSizeControl).toHaveValue('extra-large');
+      await expect(textSizeControl).toHaveAttribute('data-value', 'extra-large');
       await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), POS_TEXT_SIZE_STORAGE_KEY))
         .toBe('extra-large');
 
@@ -106,7 +110,7 @@ for (const viewport of VIEWPORTS) {
       await page.reload({ waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('heading', { name: 'Terminal Login Required' })).toBeVisible();
       await expect(page.locator('body')).toHaveAttribute('data-pos-text-size', 'extra-large');
-      await expect(page.locator('#pos-text-size-lock-drawer')).toHaveValue('extra-large');
+      await expect(page.locator('#pos-text-size-lock-drawer')).toHaveAttribute('data-value', 'extra-large');
       await assertNoHorizontalOverflow(page);
       await assertHealthy(page, diagnostics);
     });

@@ -126,6 +126,11 @@ export default (sequelize) => {
                 key: 'id'
             }
         },
+        is_demo: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
         provisioning_source: {
             type: DataTypes.ENUM('public_registration', 'platform_admin'),
             allowNull: false,

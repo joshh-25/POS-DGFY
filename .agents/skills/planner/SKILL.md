@@ -18,6 +18,9 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>` (Claude) or
 - Read the issue, its comments, relevant code/tests, and authoritative repository documentation.
   Follow `docs/START_HERE.md` → architecture boundaries/governance → relevant accepted/amended ADRs
   → domain documents. Read only the relevant tail/entries of the phase ledger, not the whole file.
+- When reading the ledger, treat only an explicit dependency under `### Dependencies` as blocking;
+  `### Next eligible phase` prose alone is not a prerequisite. Follow `AGENTS.md` and the ledger's
+  "Phase Sequencing and Lifecycle Rules" section.
 - Do not edit tracked files, create branches, change labels/fields/status, file children, open PRs,
   merge, deploy, or invoke `orca`.
 - Explicit invocation establishes handoff-only intent that survives a host Plan-mode exit, plan
@@ -36,6 +39,20 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>` (Claude) or
   post a comment solely because the section is absent; if it's relevant to Worker's later `Closes`
   vs. `Refs` choice, note it under the plan's Risks/Non-goals and move on.
 
+### What `ready` means
+
+`ready` means the Worker can begin implementation without guessing about product intent or scope.
+The plan must make the objective, scope boundaries, material decisions, affected behavior or
+interfaces, and acceptance evidence concrete. It should capture repository evidence that materially
+constrains implementation and state consequential assumptions or unresolved questions. It does not
+need to predict every implementation detail or discovery.
+
+Routine details the Worker can resolve from current code, tests, authoritative docs, and repository
+conventions include which existing module or helper owns a behavior, the appropriate test file, and
+a local naming or layout choice. A missing business rule, conflicting authoritative sources, a
+material scope change, or a safety/compliance checkpoint without a repository-defined answer is a
+genuine decision and should be marked `needs-decision` or raised to the operator.
+
 ## Artifact
 
 Write or refresh `.tmp/plan-<issue>.md` in the current worktree. The path is deterministic so the
@@ -51,6 +68,25 @@ Use the `dgfy-planner-handoff/v1` format in
 the issue identity, planning commit, status (`ready` or `needs-decision`), objective, current
 behavior/evidence, required changes, interfaces/types, affected files or subsystems, tests,
 acceptance criteria, risks, non-goals, and the exact Worker handoff.
+
+`status: ready` means every item in the template's five-item **Ready checklist** is satisfied. It
+does not mean every file or line is prescribed: the Worker is expected to resolve routine
+implementation gaps using the shared test in `references/escalation-boundary.md`.
+
+## Escalation boundary
+
+Planner and Worker use `references/escalation-boundary.md` as their shared test for routine gaps and
+blocking decisions. On a plan refresh, inspect `.tmp/plan-<issue>.md` for a `## Worker escalation`
+block first; the refresh was requested to resume that blocker. Resolve it from repository evidence
+where possible. If evidence does not settle it, use this skill's existing issue-comment path and
+include the evidence, exact decision needed, and consequence of each option. Remove the escalation
+block only after resolving it, and fold the resolution into `Risks, decisions, and non-goals` before
+returning the artifact to `status: ready`. Never silently drop the block.
+
+The repository compatibility contract is documented in
+`docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`. Keep local artifacts compatible with the
+documented global `planner-handoff/v1` format; do not broaden acceptance to unrecognized schema
+labels.
 
 For an epic, produce an umbrella plan containing its definition of done, dependencies, and a
 candidate slate. Do not file child issues; deferred decomposition and wave scheduling remain

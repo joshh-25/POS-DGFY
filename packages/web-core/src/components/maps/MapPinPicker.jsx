@@ -656,6 +656,8 @@ export default function MapPinPicker({
         maxZoom: MAX_ZOOM,
         trackResize: false,
         attributionControl: false,
+        doubleClickZoom: true,
+        touchZoomRotate: true,
         bearing: 0,
         pitch: 0
       });

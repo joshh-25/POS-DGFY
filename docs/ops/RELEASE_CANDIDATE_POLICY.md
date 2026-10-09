@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-09
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1970,3 +1970,101 @@ conversion; absent evidence is a hard stop, never a guessed baseline.
 release-note template, and Phase 474 in the implementation ledger.
 
 PR: (this PR). Closes #2266.
+
+### 2026-10-08: Reduce ordinary PR app checks for version-only manifests (#2356)
+
+`pr-checks.yml` may omit an app's Docker build and frontend lint routing when the complete
+app-local diff changes only that app's top-level `package.json` `version`, and the resolver can
+read and compare both committed manifests. It removes only that proven manifest from the routing
+input, then applies the existing app filters and frontend shared-code reachability rules. Any other
+app-local change, malformed or unavailable comparison, missing branch context, or failed whole-diff
+resolution retains normal routing or fails detection. The full original diff continues to feed
+version-floor checks, PR metadata, compliance settings, independent security scanning, release/docs
+validation, and artifact selection.
+
+The reduction applies to ordinary PRs, including staging repairs and main hotfixes, when explicitly
+enabled by the ordinary PR-check caller. Aggregate promotion PRs (`develop`/`to-staging` or
+`to-staging/*` into `staging`; `staging` or `release/*` into `main`) keep their existing routing.
+Promotion-time quality evidence and deploy artifact builds are unchanged. Skipped frontend builds
+receive a dependency-free assertion that the manifest fallback, HTML version/floor tags, emitted
+`version.json`, and environment override precedence remain aligned. ADR 0081's per-app floor check
+and all release-note, compliance, security, and immutable-artifact obligations remain in force.
+
+`[snapshot]` CI scheduling detail; no release-control clause changes. See issue #2356 and
+`scripts/resolve-pr-app-check-triggers.js` for the fail-safe resolver contract.
+
+PR: (this PR). Closes #2356.
+
+### 2026-10-09: Routine mid-soak staging refresh and release-cut freeze (#2381, Phase 486)
+
+While a candidate is in `staging_soak` and no `release/<candidate_id>` branch has been cut, a later
+pinned `develop` SHA may advance `staging` under the same candidate ID through the existing
+`to-staging/<candidate_id>-refresh-<seq>` path. This is routine and does not require an explicit
+delayed-production request. Keep a concise refresh reason in the manifest. Every refresh records its
+incoming `source_develop_sha`, resulting staging SHA, physical `base_staging_sha`, parent staging
+SHA, PR, and touched-app/artifact lineage. The initial promotion records the same source/result/base
+triple; `base_staging_sha` on its initial revision is optional so existing v4 manifests remain
+valid.
+
+The cut of `release/<candidate_id>` from the qualified current `origin/staging` head is the
+production-selection freeze point. A cut candidate stays bound to its `release_revision` and its
+SHA-bound evidence. Later staging advancement uses a successor candidate with a fresh
+`YYYY-MM-DD-NN` ID, separate manifest and release note, and optional `predecessor_candidate_id`.
+Do not cut the successor's release branch until its predecessor release PR has merged to `main` or
+has been explicitly withdrawn and archived. A withdrawal preserves the original candidate record,
+release SHA, artifact map, PR, and repair lineage; it does not authorize reusing that candidate ID
+for new contents. After a cut, use only reviewed `fix/release/*` repairs for that release.
+
+Every new release cut records a passing v4 `staging_observation` for the exact selected staging SHA,
+with run ID or URL and observation time. The validator accepts the field as optional for older
+in-flight manifests, but when it exists it must match `release_revision.source_staging_sha`. New
+cuts require it procedurally. Any staging SHA change makes prior observation, required
+qualification, and optional quality-suite evidence stale; re-run required qualification and
+observation at the actual new staging SHA before cutting. The optional quality suite remains
+operator-selected.
+
+Incoming develop refreshes and staging defect repairs are separate. A refresh branch is cut from a
+pinned `develop` SHA only after every `fix/staging/*` repair has a reviewed backport to `develop` or
+equivalent content is verified there. Missing backports, divergence, or merge-hygiene findings
+stop the refresh because it could revert the repair. A staging repair remains a narrow
+`fix/staging/<candidate_id>-<repair_seq>` from current `origin/staging`, followed by observation and
+its mandatory develop backport. Release-only repairs remain on the frozen release branch and are
+backported to develop after production is stable, except for an explicitly withdrawn candidate's
+preserved history.
+
+Same-candidate refreshes retain the original `promotion_base_sha` and release note; append the
+refresh to candidate history and cumulative `## Included` scope. A successor has its own baseline
+and note. Its `## Included` section states its own scope and identifies any predecessor scope
+carried into it. The successor's version floors are checked against then-current `origin/staging`;
+an app changed again after predecessor content was promoted takes the next minor floor from that
+staging baseline. Each refresh allocates fresh per-app immutable `rN` artifacts only for apps
+selected by the content-equivalence build plan; untouched apps retain their earlier artifact and
+per-app source-SHA lineage. Never overwrite a published tag or reuse an archived artifact for
+different contents.
+
+All compliance, ordinary PR checks, Merge Safety, no-squash, tenant-schema reporting, immutable-tag,
+alias, and production authorization controls remain unchanged. This amendment supersedes the
+mid-soak default of the 2026-09-06 #1660 amendment and the explicit/delayed-only precondition in the
+2026-10-06 #2266 amendment. It does not change ADR 0081 Decision 7 `[binding]`, ADR 0074 Decision 6,
+ADR 0082 Decision 3, the #1007 override, or automatic/continuous staging synchronization.
+
+`[default]` tier under ADR 0039. Matching dated Amendments: ADRs 0074, 0081, and 0082; see the
+promoter skill, runbook, validator tests, release-note template, and Phase 486 ledger entry.
+
+PR: (this PR). Closes #2381. Refs #1542.
+
+### 2026-10-09: No-app-change staging refresh (#1610, Phase 487)
+
+A refresh whose content-equivalence build plan selects no app records both `apps_touched: []` and
+`artifacts: []`. This advances staging history and `current_staging_sha` without claiming that
+untouched apps were rebuilt or changing their existing artifacts and per-app source-SHA lineage.
+The manifest `reason` must link the skipped-build-plan evidence. After the refresh, repeat
+observation and required qualification at the new staging SHA before cutting a release; older
+SHA-bound evidence is stale. Refresh SHA uniqueness, source advancement, parent-chain integrity,
+API/migration-runner pairing when apps are selected, immutable tags, and all other release gates
+remain unchanged. This does not change ADR 0081 Decision 7's `[binding]` rule.
+
+`[default]` tier under ADR 0039; amends ADR 0081 Decision 8. See the promoter runbook and Phase 487
+in the implementation ledger.
+
+PR: (this PR). Refs #1610.

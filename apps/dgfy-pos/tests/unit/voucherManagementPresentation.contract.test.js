@@ -53,7 +53,7 @@ describe('POS voucher management presentation contract', () => {
     expect(listView).toContain('pos-voucher-card-row');
     expect(listView).toContain('pos-voucher-card-icon');
     expect(listView).toContain('h-3.5 w-3.5 shrink-0 text-[#1A4E8D] sm:hidden');
-    expect(listView).toContain('text-base font-black uppercase leading-tight');
+    expect(listView).toContain('text-[13px] font-black uppercase leading-tight');
     expect(listView).toContain('mt-1 min-w-0 max-w-full overflow-hidden');
     expect(listView).toContain('min-w-0 max-w-full overflow-hidden break-words line-clamp-2');
   });
@@ -66,7 +66,7 @@ describe('POS voucher management presentation contract', () => {
     expect(panel).toContain('pos-voucher-catalog-workspace');
     expect(terminalLayout).toContain("posViewMode === 'settings_vouchers'");
     expect(terminalLayout).toContain('isFullBleedCatalogWorkspace');
-    expect(operationsWorkspace).toContain('pos-vouchers-workspace-shell');
+    expect(operationsWorkspace).toContain('pos-catalog-workspace-shell');
     expect(operationsWorkspace).toContain('isFullBleedCatalogView');
   });
 

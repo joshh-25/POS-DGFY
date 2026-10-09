@@ -5,6 +5,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'sequelize',
     'Sequelize',
     'Tenant',
+    'TenantIntakeProposal',
     'UserTenantMapping',
     'UserInvitation',
     'EmailOtp',

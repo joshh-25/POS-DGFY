@@ -33,6 +33,13 @@ const ensureAuthPhoneSchema = async () => {
 // enforced here too since templateDbName arrives via BACKEND_TEST_MATRIX_TEMPLATE_DB, external
 // environment input, not something purely metadata-derived like the table names below.
 const TEMPLATE_DB_NAME_PATTERN = /^test_tenant_template_[A-Za-z0-9._-]+$/;
+const TEST_TENANT_TIMING_ENABLED = process.env.BACKEND_TEST_TENANT_TIMING === '1';
+
+function logTestTenantTiming(phase, startedAt, details = {}) {
+    if (!TEST_TENANT_TIMING_ENABLED) return;
+    const suffix = Object.entries(details).map(([key, value]) => `${key}=${value}`).join(' ');
+    logger.info(`[TestTenantTiming] phase=${phase} duration_ms=${Date.now() - startedAt}${suffix ? ` ${suffix}` : ''}`);
+}
 
 // RF-4: one shared escaping helper for every backtick-quoted identifier this module interpolates --
 // both templateDbName (external env input, gated above by the strict shape check) and the table
@@ -61,16 +68,19 @@ export const cloneFromTemplateDatabase = async (tenantSeq, templateDbName, landl
         throw new Error(`Refusing to clone from template tenant database with unexpected name shape: ${templateDbName}`);
     }
 
+    let phaseStartedAt = Date.now();
     const [tables] = await landlordSeq.query(
         "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'",
         { replacements: [templateDbName] }
     );
     const tableNames = tables.map((row) => row.name);
+    logTestTenantTiming('clone.list_tables', phaseStartedAt, { table_count: tableNames.length });
     if (tableNames.length === 0) {
         throw new Error(`Template tenant database ${templateDbName} has no tables to clone`);
     }
 
     const createStatements = [];
+    phaseStartedAt = Date.now();
     for (const tableName of tableNames) {
         const [rows] = await landlordSeq.query(
             `SHOW CREATE TABLE ${escapeIdentifier(templateDbName)}.${escapeIdentifier(tableName)}`
@@ -81,7 +91,9 @@ export const cloneFromTemplateDatabase = async (tenantSeq, templateDbName, landl
         }
         createStatements.push(createStatement);
     }
+    logTestTenantTiming('clone.show_create_tables', phaseStartedAt, { table_count: tableNames.length });
 
+    phaseStartedAt = Date.now();
     await tenantSeq.transaction(async (t) => {
         await tenantSeq.query('SET FOREIGN_KEY_CHECKS=0', { transaction: t });
         // RF-1 (PR #1638 review): previously SET FOREIGN_KEY_CHECKS=1 was the last statement in this
@@ -100,6 +112,7 @@ export const cloneFromTemplateDatabase = async (tenantSeq, templateDbName, landl
             await tenantSeq.query('SET FOREIGN_KEY_CHECKS=1', { transaction: t });
         }
     });
+    logTestTenantTiming('clone.create_tables', phaseStartedAt, { table_count: tableNames.length });
 };
 
 /**
@@ -116,9 +129,12 @@ export async function createTestTenant(label = 'default') {
     const token = `test-tok-${label}-${ts}`;
     const dbName = `test_tenant_${label}_${ts}`;
 
+    let phaseStartedAt = Date.now();
     await ensureAuthPhoneSchema();
+    logTestTenantTiming('tenant.ensure_landlord_schema', phaseStartedAt, { db_name: dbName });
 
     // 1. Create landlord-side Tenant record
+    phaseStartedAt = Date.now();
     const tenant = await Tenant.create({
         name: `Test Tenant [${label}] ${ts}`,
         db_name: dbName,
@@ -129,12 +145,16 @@ export async function createTestTenant(label = 'default') {
         subscription_status: 'active',
         db_host: process.env.DB_HOST || 'localhost'
     });
+    logTestTenantTiming('tenant.insert_landlord_row', phaseStartedAt, { db_name: dbName });
 
     // 2. Create the actual MySQL database
+    phaseStartedAt = Date.now();
     await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+    logTestTenantTiming('tenant.create_database', phaseStartedAt, { db_name: dbName });
     logger.info(`[TestTenantHelper] Created test database: ${dbName}`);
 
     // 3. Open a Sequelize connection to the tenant DB
+    phaseStartedAt = Date.now();
     const tenantSeq = new Sequelize(
         dbName,
         process.env.DB_USER || 'root',
@@ -150,16 +170,21 @@ export async function createTestTenant(label = 'default') {
 
     // 4. Bind all app models to this connection
     const models = getTenantModels(tenantSeq);
+    logTestTenantTiming('tenant.connect_and_bind_models', phaseStartedAt, { db_name: dbName });
 
     // 5. Create the tables -- clone from the matrix's shared template DB when one exists,
     //    otherwise fall back to exactly today's full sync (so a bare `npm test`, or any
     //    single-file `npx jest`, keeps working unchanged with zero new env setup).
     const templateDbName = process.env.BACKEND_TEST_MATRIX_TEMPLATE_DB;
     if (templateDbName) {
+        phaseStartedAt = Date.now();
         await cloneFromTemplateDatabase(tenantSeq, templateDbName);
+        logTestTenantTiming('tenant.clone_schema', phaseStartedAt, { db_name: dbName });
         logger.info(`[TestTenantHelper] Cloned schema into: ${dbName} (template: ${templateDbName})`);
     } else {
+        phaseStartedAt = Date.now();
         await tenantSeq.sync({ force: true });
+        logTestTenantTiming('tenant.sync_schema', phaseStartedAt, { db_name: dbName });
         logger.info(`[TestTenantHelper] Synced schema into: ${dbName}`);
     }
 
@@ -174,12 +199,18 @@ export async function createTestTenant(label = 'default') {
  */
 export async function destroyTestTenant({ tenant, dbName, tenantSeq }) {
     try {
+        let phaseStartedAt = Date.now();
         await tenantConnector.closeConnection(tenant.id);
         await tenantSeq.close();
+        logTestTenantTiming('cleanup.close_connections', phaseStartedAt, { db_name: dbName });
+        phaseStartedAt = Date.now();
         await landlordSequelize.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
+        logTestTenantTiming('cleanup.drop_database', phaseStartedAt, { db_name: dbName });
+        phaseStartedAt = Date.now();
         await UserInvitation.destroy({ where: { tenant_id: tenant.id } }).catch(() => null);
         await UserTenantMapping.destroy({ where: { tenant_id: tenant.id } }).catch(() => null);
         await Tenant.destroy({ where: { id: tenant.id } });
+        logTestTenantTiming('cleanup.delete_landlord_rows', phaseStartedAt, { db_name: dbName });
         logger.info(`[TestTenantHelper] Destroyed test tenant: ${dbName}`);
     } catch (err) {
         logger.warn(`[TestTenantHelper] Cleanup error for ${dbName}: ${err.message}`);

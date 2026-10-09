@@ -35,6 +35,65 @@ function formatMs(ms) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function loadJestResults(relativePath) {
+  if (!relativePath) return null;
+  const absolutePath = path.resolve(ROOT, relativePath);
+  if (!fs.existsSync(absolutePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function readSuiteTimings(chunks) {
+  const suites = [];
+  for (const chunk of chunks) {
+    const resultsFiles = chunk.tier === 'fast'
+      ? (Array.isArray(chunk.jest_results_files) ? chunk.jest_results_files : [])
+      : [chunk.jest_results_file].filter(Boolean);
+    for (const resultsFile of resultsFiles) {
+      const results = loadJestResults(resultsFile);
+      for (const suite of results?.testResults || []) {
+        // Jest 30's JSON reporter uses `name`, `startTime`, and `endTime`. Older Jest
+        // result shapes exposed `testFilePath` and `perfStats.{start,end}`. Accept both
+        // shapes because the summary consumes artifacts produced by the configured Jest
+        // version, and a missing timing table hides the slow suites this report is meant
+        // to identify.
+        const startTime = suite.perfStats?.start ?? suite.startTime;
+        const endTime = suite.perfStats?.end ?? suite.endTime;
+        const durationMs = Number(endTime) - Number(startTime);
+        if (!Number.isFinite(durationMs) || durationMs < 0) continue;
+        const testFilePath = suite.testFilePath || suite.name;
+        if (typeof testFilePath !== 'string' || testFilePath.length === 0) continue;
+        suites.push({
+          tier: chunk.tier || 'unknown',
+          group: chunk.tier === 'db' ? chunk.group || 'db' : 'fast_tier',
+          path: path.relative(path.join(ROOT, 'apps/dgfy-api'), testFilePath).replace(/\\/g, '/'),
+          durationMs,
+          status: suite.status || 'unknown',
+        });
+      }
+    }
+  }
+  return suites;
+}
+
+function formatSlowestSuites(suites, tier) {
+  const selected = suites.filter((suite) => suite.tier === tier)
+    .sort((a, b) => b.durationMs - a.durationMs)
+    .slice(0, 15);
+  const lines = [`#### Slowest ${tier} suites`, '', '| Suite | Group | Status | Duration |', '|---|---|---|---|'];
+  if (selected.length === 0) {
+    lines.push('| _No Jest timing data found_ | - | - | - |');
+  } else {
+    for (const suite of selected) {
+      lines.push(`| \`${suite.path}\` | ${suite.group} | \`${suite.status}\` | ${formatMs(suite.durationMs)} |`);
+    }
+  }
+  return lines;
+}
+
 function main() {
   const targetSha = getTargetSha();
   const evidenceRootBase = process.env.RELEASE_GATES_EVIDENCE_ROOT || path.join(ROOT, '.tmp', 'release-gates');
@@ -66,6 +125,7 @@ function main() {
   lines.push('');
 
   const chunks = Array.isArray(payload.chunks) ? payload.chunks : [];
+  const suiteTimings = readSuiteTimings(chunks);
   if (chunks.length === 0) {
     lines.push('_No chunks recorded yet._');
   } else {
@@ -92,6 +152,30 @@ function main() {
       }
       lines.push('');
       lines.push('</details>');
+    }
+  }
+
+  lines.push('');
+  lines.push(...formatSlowestSuites(suiteTimings, 'fast'));
+  lines.push('');
+  lines.push(...formatSlowestSuites(suiteTimings, 'db'));
+
+  const failedSuiteNames = new Set(chunks.flatMap((chunk) => (
+    Array.isArray(chunk.failing_suites)
+      ? chunk.failing_suites.map((line) => line.replace(/^FAIL\s+/, '').trim())
+      : []
+  )));
+  const failedSuiteTimings = suiteTimings.filter((suite) => (
+    suite.status === 'failed' || [...failedSuiteNames].some((name) => suite.path === name || suite.path.endsWith(name))
+  )).sort((a, b) => b.durationMs - a.durationMs);
+  if (failedSuiteTimings.length > 0) {
+    lines.push('');
+    lines.push('#### Failing suite durations');
+    lines.push('');
+    lines.push('| Suite | Tier | Duration |');
+    lines.push('|---|---|---|');
+    for (const suite of failedSuiteTimings) {
+      lines.push(`| \`${suite.path}\` | ${suite.tier} | ${formatMs(suite.durationMs)} |`);
     }
   }
 

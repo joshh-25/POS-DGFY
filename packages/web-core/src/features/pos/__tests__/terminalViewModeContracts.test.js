@@ -11,6 +11,8 @@ const terminalPageDialogLayerPath = path.resolve(__dirname, '../components/Termi
 const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const adminBranchShiftMonitorPath = path.resolve(__dirname, '../components/AdminBranchShiftMonitor.jsx');
+const shiftSessionSummaryPath = path.resolve(__dirname, '../components/ShiftSessionSummary.jsx');
 const posSettingsWorkspacePath = path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx');
 const terminalLocalControlsPath = path.resolve(__dirname, '../settings/TerminalLocalControlsSection.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
@@ -52,6 +54,8 @@ describe('POS terminal view-mode contracts', () => {
   let terminalWorkspaceSidebarContent = '';
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
+  let adminBranchShiftMonitorContent = '';
+  let shiftSessionSummaryContent = '';
   let posSettingsWorkspaceContent = '';
   let terminalLocalControlsContent = '';
   let terminalOperationsPanelsContent = '';
@@ -83,6 +87,8 @@ describe('POS terminal view-mode contracts', () => {
     terminalWorkspaceSidebarContent = readSourceForContract(terminalWorkspaceSidebarPath);
     terminalSidebarPanelContent = readSourceForContract(terminalSidebarPanelPath);
     terminalOperationsWorkspaceContent = readSourceForContract(terminalOperationsWorkspacePath);
+    adminBranchShiftMonitorContent = readSourceForContract(adminBranchShiftMonitorPath);
+    shiftSessionSummaryContent = readSourceForContract(shiftSessionSummaryPath);
     posSettingsWorkspaceContent = readSourceForContract(posSettingsWorkspacePath);
     terminalLocalControlsContent = readSourceForContract(terminalLocalControlsPath);
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
@@ -417,10 +423,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('includeServerParkedSales = true');
     expect(posShiftCloseResolutionContent).toContain('if (!isOnline || !includeServerParkedSales)');
     expect(terminalPageContent).toMatch(/getShiftCloseResolutionState\(\{[\s\S]*?shiftId: normalizedShiftId,[\s\S]*?includeServerParkedSales: false[\s\S]*?\}\);/);
-    expect(terminalOperationsWorkspaceContent).toContain('Branch Shift Monitor');
-    expect(terminalOperationsWorkspaceContent).toContain('Recover Stale Shift');
+    expect(terminalOperationsWorkspaceContent).toContain('<AdminBranchShiftMonitor');
+    expect(adminBranchShiftMonitorContent).toContain('title="Active Shifts"');
+    expect(adminBranchShiftMonitorContent).toContain('Recover Stale Shift');
     expect(terminalOperationsWorkspaceContent).toContain('Force Close Stale Shift');
-    expect(terminalOperationsWorkspaceContent).toContain('Opened by');
+    expect(adminBranchShiftMonitorContent).toContain('Opened by');
     expect(terminalOperationsWorkspaceContent).toContain('staleRecoveryForm.reason.trim().length < 8');
     expect(posServiceContent).toContain('`/pos/terminal/shifts/${shiftId}/force-close`');
   });
@@ -534,7 +541,9 @@ describe('POS terminal view-mode contracts', () => {
   it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
     expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
     expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
-    expect(terminalOperationsWorkspaceContent).toContain("const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';");
+    expect(terminalOperationsWorkspaceContent).toContain('const usesOwnPageFrame = isSettingsView');
+    expect(terminalOperationsWorkspaceContent).toContain("|| effectiveViewMode === 'reports'");
+    expect(terminalOperationsWorkspaceContent).toContain('|| SHIFT_WORKSPACE_MODES.has(effectiveViewMode);');
     expect(terminalOperationsWorkspaceContent).toContain('bare={usesOwnPageFrame}');
     expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
     expect(terminalOperationsPanelsContent).toContain('if (bare) {');
@@ -721,11 +730,14 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const handleViewShiftSummary = useCallback(async () => {');
     expect(terminalPageContent).toContain('const currentShiftResult = await fetchCurrentTerminalShift({');
     expect(terminalPageContent).toContain("summary: false");
-    expect(terminalOperationsWorkspaceContent).toContain("'Refreshing Summary...'");
+    expect(terminalOperationsWorkspaceContent).toContain('<ShiftSessionSummary');
+    expect(shiftSessionSummaryContent).toContain("summaryLoading ? 'Refreshing...' : 'View Summary'");
     expect(terminalPageContent).toContain('setClosedShiftReportAutoPrint(false);');
-    expect(terminalPageContent).toContain("title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}");
-    expect(terminalOperationsWorkspaceContent).toContain('View Shift Summary');
-    expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.total_amount');
+    expect(terminalPageContent).toContain('title={closedShiftReportAutoPrint || closedShiftReport?.shift?.closed_at');
+    expect(terminalPageContent).toContain("? 'Cashier Shift Sales Summary'");
+    expect(terminalPageContent).toContain(": 'Current Shift Sales Summary'");
+    expect(shiftSessionSummaryContent).toContain('onClick={onViewSummary}');
+    expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.subtotal_amount');
     expect(terminalSidebarPanelContent).toContain('View Shift Summary');
   });
 
@@ -737,10 +749,13 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('separates sales revenue from opening cash and expected drawer cash', () => {
-    expect(terminalOperationsWorkspaceContent).toContain('Total Sales (excluding opening cash):');
-    expect(terminalOperationsWorkspaceContent).toContain('Opening/Petty Cash:');
-    expect(terminalOperationsWorkspaceContent).toContain('Expected Cash in Drawer:');
+    expect(terminalOperationsWorkspaceContent).toContain("label: 'Opening float'");
+    expect(terminalOperationsWorkspaceContent).toContain("label: 'Shift cash sales'");
     expect(terminalOperationsWorkspaceContent).toContain('shiftState.cashSummary?.cash_sales_amount');
+    expect(terminalOperationsWorkspaceContent).toContain("label: 'Total gross sales'");
+    expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.subtotal_amount');
+    expect(terminalOperationsWorkspaceContent).toContain("label: 'Expected in drawer'");
+    expect(terminalOperationsWorkspaceContent).toContain('shiftState.cashSummary?.expected_cash_amount');
     expect(terminalSidebarPanelContent).toContain('Total Sales (excluding opening cash)');
     expect(terminalSidebarPanelContent).toContain('Opening/Petty Cash');
     expect(terminalSidebarPanelContent).toContain('Expected Cash in Drawer');

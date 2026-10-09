@@ -58,6 +58,7 @@ export const resolveRuntimeShaInfo = ({
         ['RELEASE_TARGET_SHA', process.env.RELEASE_TARGET_SHA],
         ['DEPLOYED_COMMIT', process.env.DEPLOYED_COMMIT],
         ['RELEASE_SHA', process.env.RELEASE_SHA],
+        ['SENTRY_RELEASE', process.env.SENTRY_RELEASE],
         ['GIT_SHA', process.env.GIT_SHA],
         ['GIT_COMMIT', process.env.GIT_COMMIT],
         ['COMMIT_SHA', process.env.COMMIT_SHA],

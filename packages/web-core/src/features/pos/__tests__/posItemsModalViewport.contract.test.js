@@ -19,6 +19,27 @@ describe('POS Items modal viewport contract', () => {
     expect(css).toContain('env(safe-area-inset-bottom, 0px)');
   });
 
+  it('keeps the Pricelist editor at a stable height when the filtered row count changes', () => {
+    const pricelistRule = read('src/features/pos/pricelists/pricelist.css');
+    const component = read('src/features/pos/pricelists/PricelistItemsEditor.jsx');
+
+    expect(pricelistRule).toContain('.pos-pricelist-items-modal {');
+    expect(pricelistRule).toContain('height: min(52rem, calc(100vh - 6rem));');
+    expect(pricelistRule).toContain('height: min(52rem, calc(100dvh - 6rem));');
+    expect(pricelistRule).toContain('flex-shrink: 0;');
+    expect(pricelistRule).toContain('height: calc(100vh - 1.5rem);');
+    expect(pricelistRule).toContain('height: calc(100dvh - 1.5rem);');
+    expect(component).toContain('pos-items-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto');
+  });
+
+  it('keeps Pricelist editor footer actions in one row on portrait tablets', () => {
+    const css = read('src/features/pos/pricelists/pricelist.css');
+
+    expect(css).toContain('@media (orientation: portrait) and (min-width: 768px) and (max-width: 1199.98px)');
+    expect(css).toContain('.pos-pricelist-items-modal .pos-pricelist-items-modal-footer {');
+    expect(css).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
+  });
+
   it.each([
     ['Add/Edit Item', 'src/features/pos/components/TerminalOperationsWorkspace.jsx'],
     ['Create Service', 'src/features/pos/components/PosServiceCatalogCreateModal.jsx'],

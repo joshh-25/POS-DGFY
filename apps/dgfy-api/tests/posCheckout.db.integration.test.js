@@ -1,9 +1,6 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { spawnSync } from 'child_process';
 import { Sequelize } from 'sequelize';
+import { createMigratedTestDatabase } from './helpers/migratedTestDatabase.js';
 import bcrypt from 'bcryptjs';
 import dbStore from '../src/utils/dbStore.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
@@ -15,12 +12,6 @@ import { reconcileFifoLedgerOpeningBalance } from '../src/services/stockMovement
 import { createPosCashierAttendanceRepository } from '../src/modules/pos/repositories/posCashierAttendanceRepository.js';
 import { createAssertPosUserOperatingScope } from '../src/modules/pos/usecases/posUserOperatingScope.js';
 import { resolvePosCashierAttendanceFeature } from '../src/modules/pos/services/posCashierAttendanceFeature.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const backendRoot = path.join(__dirname, '..');
-const migrationRunnerRoot = path.join(backendRoot, '..', 'dgfy-migration-runner');
-const sequelizeCliPath = path.join(migrationRunnerRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
 
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
@@ -46,44 +37,6 @@ const checkoutPosUseCase = buildCheckoutPosUseCase({
 const createIsolatedDbName = () => (
     `test_pos_checkout_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`
 );
-
-const runMigrationsForDb = (dbName) => {
-    if (!fs.existsSync(sequelizeCliPath)) {
-        throw new Error(`Sequelize CLI entrypoint not found at: ${sequelizeCliPath}`);
-    }
-
-    const migrationResult = spawnSync(
-        process.execPath,
-        [
-            sequelizeCliPath,
-            'db:migrate',
-            '--env',
-            'development',
-            '--config',
-            'src/config/sequelize.config.cjs',
-            '--migrations-path',
-            'migrations'
-        ],
-        {
-            cwd: migrationRunnerRoot,
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                DB_NAME: dbName,
-                DB_HOST: dbConfig.host,
-                DB_USER: dbConfig.user,
-                DB_PASSWORD: dbConfig.password,
-                DB_PORT: String(dbConfig.port)
-            }
-        }
-    );
-
-    if (migrationResult.status !== 0) {
-        throw new Error(
-            `Migration failed for ${dbName}\n${migrationResult.stdout}\n${migrationResult.stderr}`
-        );
-    }
-};
 
 describe('POS checkout DB integration (migrations + transactional stock writes)', () => {
     const dbName = createIsolatedDbName();
@@ -250,7 +203,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     beforeAll(async () => {
         await adminSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
-        runMigrationsForDb(dbName);
+        await createMigratedTestDatabase(dbName, adminSequelize);
 
         tenantSequelize = new Sequelize(
             dbName,

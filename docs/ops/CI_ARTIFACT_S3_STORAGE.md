@@ -14,22 +14,27 @@ than attached to GitHub Actions runs. Uploads use `scripts/ci-s3-upload.sh`, whi
 or one directory. A directory is archived as a `.tar.gz` while preserving its root and relative
 paths; single-file uploads retain their original bytes and filename.
 
-## Credentials and uploader contract
+## Configuration and uploader contract
 
-Workflows map these repository secrets into the uploader environment:
+Set these as **repository-level GitHub Actions Variables** so they are available to all artifact
+upload and lifecycle jobs without depending on a GitHub Environment:
 
-| GitHub secret | Environment variable |
-| --- | --- |
-| `ARTIFACT_S3_ACCESS_KEY_ID` | `AWS_ACCESS_KEY_ID` |
-| `ARTIFACT_S3_ACCESS_KEY_SECRET` | `AWS_SECRET_ACCESS_KEY` |
-| `ARTIFACT_S3_BUCKET` | `S3_BUCKET` |
+| GitHub Actions variable | Job environment variable | Purpose |
+| --- | --- | --- |
+| `ARTIFACT_S3_ENDPOINT` | `ARTIFACT_S3_ENDPOINT` | Absolute HTTPS endpoint URL; current value: `https://s3.patteruel.dev` |
+| `ARTIFACT_S3_BUCKET` | `ARTIFACT_S3_BUCKET` | Bucket name; current value: `artifacts` |
+| `ARTIFACT_S3_ACCESS_KEY_ID` | `ARTIFACT_S3_ACCESS_KEY_ID` | Access key identifier; configuration, not the credential secret |
+
+Set `ARTIFACT_S3_ACCESS_KEY_SECRET` as a **GitHub Actions Secret**. Workflows map it directly to
+`AWS_SECRET_ACCESS_KEY`; never put it in a variable or endpoint URL. The scripts map the access key
+ID to `AWS_ACCESS_KEY_ID` for the AWS CLI. The endpoint must be a valid HTTPS URL without embedded
+credentials, query tokens, or a fragment. Validation errors do not print the configured URL.
 
 The uploader also requires GitHub run metadata (`GITHUB_REPOSITORY`, `GITHUB_WORKFLOW`,
-`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_JOB`) and the source commit SHA. It uses the HTTPS
-endpoint `https://s3.patteruel.dev`, private objects, path-style requests, and multipart upload for
-large files. It verifies a direct download and a 48-hour presigned readback by SHA-256. Credentials
-and presigned links are not printed by the uploader; the presigned link is written to the run
-summary only after verification.
+`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_JOB`) and the source commit SHA. It uses private
+objects, path-style requests, and multipart upload for large files. It verifies a direct download
+and a 48-hour presigned readback by SHA-256. Credentials and presigned links are not printed by the
+uploader; the presigned link is written to the run summary only after verification.
 
 Large multipart uploads can briefly return 403 during SeaweedFS's post-completion consistency
 window. The uploader retries direct readback at 10, 20, 30, and 40 seconds before failing. See the
@@ -51,7 +56,7 @@ Use either the object URI in the workflow summary with operator credentials:
 
 ```bash
 aws s3 cp 's3://<bucket>/<object-key>' ./evidence \
-  --endpoint-url https://s3.patteruel.dev
+  --endpoint-url "$ARTIFACT_S3_ENDPOINT"
 ```
 
 or the verified 48-hour presigned URL shown in that run's step summary. Treat that URL as a bearer

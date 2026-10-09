@@ -201,6 +201,7 @@ describe('POS cashier shift history', () => {
                 location_id: 9,
                 date_from: '2026-08-15',
                 date_to: '2026-08-15',
+                search: '#44',
                 page: 1,
                 limit: 10
             },
@@ -213,6 +214,7 @@ describe('POS cashier shift history', () => {
             locationId: 9,
             dateFrom: '2026-08-15',
             dateTo: '2026-08-15',
+            search: '#44',
             status: 'all',
             page: 1,
             limit: 10
@@ -223,6 +225,7 @@ describe('POS cashier shift history', () => {
             sales_summary: expect.objectContaining({ total_amount: 450 })
         }));
         expect(result.data.cashier).toEqual({ cashier_id: 7, cashier_name: 'Cashier One' });
+        expect(result.data.applied_filters.search).toBe('#44');
     });
 
     it('derives cash reconciliation from the same sales summary as transactions and payment methods', async () => {
