@@ -7,7 +7,7 @@ classification: major
 surfaces: payments,pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.10.10
-verification_evidence: API Jest focused suites (5 suites, 54 tests passed),npm run check:architecture,npm run check:compliance,npm run lint:docs,npm run check:adr,node --check on each changed API JavaScript file
+verification_evidence: API Jest focused suites (5 suites, 55 tests passed),npm run check:architecture,npm run check:compliance,npm run lint:docs,npm run check:adr,GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feature/2416-order-sms-alerts node scripts/check-app-version-bump.js --staged,node --check on each changed API JavaScript file
 rollback_note: Revert this change to remove the two best-effort post-commit SMS dispatch calls and their service. The SMS log schema and order state are unchanged; failures are swallowed after commit, so rollback needs no data repair.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
