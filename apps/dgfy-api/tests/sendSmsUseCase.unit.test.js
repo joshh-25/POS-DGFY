@@ -21,6 +21,28 @@ describe('sendSmsUseCase', () => {
     expect(JSON.stringify(repository.create.mock.calls[0][0])).not.toContain('order ready');
   });
 
+  it('accepts one string recipient and resolves the adapter only once for a multi-recipient request', async () => {
+    const repository = makeRepo();
+    const send = jest.fn(async () => ({ status: 'accepted', simulated: true }));
+    const adapterResolver = jest.fn(() => ({ mode: 'fake', adapter: { send } }));
+    const result = await sendSmsUseCase({
+      recipients: '+63 917 123 4567',
+      purpose: 'transactional_order',
+      content: 'order ready'
+    }, { repository, adapterResolver });
+
+    expect(result.deliveries).toHaveLength(1);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: '+639171234567' }));
+
+    await sendSmsUseCase({
+      recipients: ['09171234567', '09181234567'],
+      purpose: 'transactional_order',
+      content: 'order ready'
+    }, { repository, adapterResolver });
+    expect(adapterResolver).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
   it('logs unconfigured and rejects invalid input without calling the adapter', async () => {
     const repository = makeRepo();
     const send = jest.fn();

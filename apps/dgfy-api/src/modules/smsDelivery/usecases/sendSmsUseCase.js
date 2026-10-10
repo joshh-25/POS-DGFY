@@ -42,12 +42,29 @@ const existingResult = (row) => ({
 export const sendSmsUseCase = async ({
   recipients = [], purpose, content, template, data, tenantId = null, orderId = null, correlation = null, dedupeKey = null
 } = {}, { repository = null, adapterResolver = resolveSmsAdapter } = {}) => {
+  const recipientList = Array.isArray(recipients)
+    ? recipients
+    : typeof recipients === 'string' && recipients.trim() ? [recipients.trim()] : [];
   const deliveries = [];
   const repo = repository || await getRepository().catch(() => null);
   const message = resolveMessage({ content, template, data });
   const validPurpose = PURPOSES.has(purpose);
+  let adapterResolution = null;
+  const getSmsAdapter = () => {
+    if (!adapterResolution) {
+      try {
+        adapterResolution = { adapter: adapterResolver({ onProductionFakeBlocked: () => {
+          void raiseSmsOperationalAlert({ key: 'sms.fake_provider_blocked', level: 'warning', context: { provider: 'fake' } });
+        } }) };
+      } catch (error) {
+        adapterResolution = { error };
+      }
+    }
+    if (adapterResolution.error) throw adapterResolution.error;
+    return adapterResolution.adapter;
+  };
 
-  for (const recipient of Array.isArray(recipients) ? recipients : []) {
+  for (const recipient of recipientList) {
     const normalized = toE164(recipient);
     const phoneForHash = normalized.ok ? normalized.e164 : String(recipient ?? '').trim();
     let recipientHash;
@@ -80,9 +97,7 @@ export const sendSmsUseCase = async ({
 
     if (!errorCode) {
       try {
-        const resolved = adapterResolver({ onProductionFakeBlocked: () => {
-          void raiseSmsOperationalAlert({ key: 'sms.fake_provider_blocked', level: 'warning', context: { provider: 'fake' } });
-        } });
+        const resolved = getSmsAdapter();
         provider = resolved.mode;
         const outcome = await resolved.adapter.send({ id, to: normalized.e164, purpose, content: message, correlation });
         status = outcome?.status === 'accepted' || outcome?.status === 'rejected' || outcome?.status === 'failed'

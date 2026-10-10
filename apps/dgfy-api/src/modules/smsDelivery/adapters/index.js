@@ -3,7 +3,7 @@ import { unconfiguredSmsAdapter } from './unconfiguredSmsAdapter.js';
 
 export const getSmsProviderMode = () => {
   const configuredMode = String(process.env.SMS_PROVIDER || '').trim().toLowerCase();
-  if (configuredMode === 'fake' && process.env.NODE_ENV !== 'production') return 'fake';
+  if (configuredMode === 'fake') return process.env.NODE_ENV === 'production' ? 'unconfigured' : 'fake';
   if (configuredMode !== 'fake' && configuredMode !== 'unconfigured') return 'unconfigured';
   return configuredMode || 'unconfigured';
 };

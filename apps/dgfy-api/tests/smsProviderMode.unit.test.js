@@ -18,8 +18,10 @@ describe('SMS provider mode', () => {
   it('selects fake explicitly outside production and blocks it in production', () => {
     process.env.SMS_PROVIDER = 'fake';
     process.env.NODE_ENV = 'test';
+    expect(getSmsProviderMode()).toBe('fake');
     expect(resolveSmsAdapter().mode).toBe('fake');
     process.env.NODE_ENV = 'production';
+    expect(getSmsProviderMode()).toBe('unconfigured');
     const blocked = jest.fn();
     expect(resolveSmsAdapter({ onProductionFakeBlocked: blocked }).mode).toBe('unconfigured');
     expect(blocked).toHaveBeenCalledTimes(1);
