@@ -116,6 +116,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0091 | [Tenant-Scoped Customer CRM and Partner References](0091-tenant-scoped-customer-crm.md) | `proposed` | tenant_scoped_customer_crm | 2027-04-10 | 3 |
 | 0092 | [Partner Integration Administration and Tenant Attachment](0092-partner-integration-administration-and-tenant-attachment.md) | `proposed` | partner_integration_administration_and_tenant_attachment | 2027-04-10 | 0 |
 | 0093 | [Third-Party Partner Integration, Engine Authority, and Attachments](0093-third-party-partner-integration-engine-authority-and-attachments.md) | `proposed` | third_party_partner_integration_contract | 2027-04-10 | 5 |
+| 0094 | [Outbound SMS delivery contract, log, and PII retention](0094-outbound-sms-delivery-contract-log-and-pii-retention.md) | `accepted` | outbound_sms_delivery_contract_and_log | 2027-04-10 | 0 |
 
 ## Renumbered (collision stubs)
 
