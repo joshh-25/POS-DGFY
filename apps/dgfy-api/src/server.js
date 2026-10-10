@@ -827,6 +827,7 @@ import adminTenantIntakeRoutes from './routes/adminTenantIntake.js';
 import platformAdminRoutes from './routes/platformAdmins.js';
 import partnerIntegrationRoutes from './routes/partnerIntegrations.js';
 import partnerAttachmentRoutes from './routes/partnerAttachments.js';
+import smsMarketingConsentRoutes from './routes/smsMarketingConsent.js';
 import adminInvoiceRoutes from './routes/adminInvoices.js';
 import adminTemplateRoutes from './routes/adminTemplates.js';
 import adminRegistrationIndustryRoutes from './routes/adminRegistrationIndustries.js';
@@ -884,6 +885,7 @@ app.use('/api/v1/admin/registration-industries', adminRegistrationIndustryRoutes
 
 app.use('/api/v1/admin', adminAuthRoutes);
 app.use('/api/v1/partner-attachments', partnerAttachmentRoutes);
+app.use('/api/v1/sms', smsMarketingConsentRoutes);
 app.use('/api/v1/compliance', complianceRoutes);
 app.use('/api/v1/onboarding', onboardingRoutes);
 app.use('/api/v1/business-admin', businessAdminRoutes);
