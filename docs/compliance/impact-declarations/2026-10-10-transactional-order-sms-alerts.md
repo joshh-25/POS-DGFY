@@ -11,8 +11,8 @@ verification_evidence: API Jest focused suites (5 suites, 55 tests passed),npm r
 rollback_note: Revert this change to remove the two best-effort post-commit SMS dispatch calls and their service. The SMS log schema and order state are unchanged; failures are swallowed after commit, so rollback needs no data repair.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-10T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2416-2026-10-10
+preflight_run_at: 2026-10-10T17:27:24.686Z
+preflight_request_ref: PREFLIGHT-38071438498-2026-10-10-TRANSACTIONAL-ORDER-SMS-ALERTS
 ---
 
 # Transactional Order SMS Alerts

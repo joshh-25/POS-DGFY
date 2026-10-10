@@ -11,8 +11,8 @@ verification_evidence: focused SMS consent Jest suites,npm run check:architectur
 rollback_note: Disable promotional sending and revoke the route before reverting the sender gate. The additive consent tables contain only HMAC phone identifiers, coarse prefixes, and consent metadata; retain them during code rollback until a separately reviewed data-retention decision authorizes deletion. Never rotate SMS_PHONE_HASH_SECRET without re-keying delivery, consent, event, and global suppression hashes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-10T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2417-2026-10-10
+preflight_run_at: 2026-10-10T17:27:24.686Z
+preflight_request_ref: PREFLIGHT-38071438498-2026-10-10-PROMOTIONAL-SMS-MARKETING-CONSENT
 ---
 
 # Promotional SMS Marketing Consent and Opt-Out Suppression
