@@ -54,7 +54,7 @@ beforeEach(async () => {
   failMachineTokenStorage = false;
   redisClient = {
     set: jest.fn(async (key, value, options) => {
-      if (key.startsWith('dglaundry:oidc:access:') && failMachineTokenStorage) return false;
+      if (key.startsWith(`oidc:${encodeURIComponent(MACHINE_CLIENT_ID)}:access:`) && failMachineTokenStorage) return false;
       if (options?.NX && storedValues.has(key)) return null;
       storedValues.set(key, value);
       return 'OK';
@@ -73,6 +73,14 @@ beforeEach(async () => {
   }));
   jest.unstable_mockModule('../src/modules/dgfy/repositories/dgfyAccountRepository.js', () => ({
     dgfyAccountRepository: { findById: jest.fn() }
+  }));
+  jest.unstable_mockModule('../src/modules/partnerIdentity/repositories/partnerIdentityRegistryRepository.js', () => ({
+    partnerIdentityRegistryRepository: {
+      findClientByClientId: async () => null,
+      findAppBySlug: async () => null,
+      listClientsForApp: async () => [],
+      listActiveClients: async () => []
+    }
   }));
   jest.unstable_mockModule('../src/modules/shared/utils/oidcSigningKeyResolver.js', () => ({
     resolveSigningKeyMaterial: () => ({ pem: '', kid: null })
@@ -94,7 +102,7 @@ describe('DGLaundry machine-token registration', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toMatchObject({ token_type: 'Bearer', expires_in: 300, scope: 'dglaundry' });
     expect(typeof response.body.access_token).toBe('string');
-    expect(storedValues.has(`dglaundry:oidc:access:${response.body.access_token}`)).toBe(true);
+    expect(storedValues.has(`oidc:${encodeURIComponent(MACHINE_CLIENT_ID)}:access:${response.body.access_token}`)).toBe(true);
   });
 
   test('rejects unregistered, reverse-direction, combined, and missing scopes', async () => {

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-26
-last_reviewed: 2026-09-25
+last_reviewed: 2026-10-10
 review_by: 2026-12-26
 applies_to: architecture_decision
 topic: catalog_inventory_pos_storefront_ownership_boundaries
@@ -266,3 +266,53 @@ stock, regardless of whether the order is pickup, delivery, scheduled, F&B, or R
 
 `status: amended` is preserved; this dated block supersedes the mode-specific timing sentences
 above without rewriting the earlier implementation history.
+
+## Amendment (2026-10-10): Per-Terminal Stock Allocations (Phase 490, #997)
+
+This amendment extends the Inventory-owned online reservation precedent to scoped terminal
+allocations for offline POS. It changes the reservation and availability approach recorded in the
+2026-08-21 amendment, which is a `[default]` decision. Boundary Rules 1-2 and ownership clauses
+1-4 above remain unchanged: terminals request stock effects, and Inventory commands record them.
+No `[binding]` clause changes; this does not require a superseding ADR or a tech-lead exception.
+
+1. Inventory is the authority for each allocation. A grant is created only online and is bound to
+   tenant, location, registered terminal, the app attachment recognized by that client's governed
+   device policy, and operator authority. Browser pairing remains a logical terminal signal; it
+   does not prove unique physical hardware. Where strict device enforcement applies, the enrolled
+   device proof is also required. The grant has immutable quantities for every stock-bearing effect,
+   including recipe ingredients and modifier SKUs. `stock_exempt` lines have no allocation. POS
+   clients may keep a local view for offline checkout but never become the allocation or stock
+   ledger.
+2. Available-to-sell is location-scoped on-hand minus active online-order holds and remaining
+   terminal allocations. A terminal may consume its own allocated quantity; other terminals, live
+   POS sales, Storefront quote/checkout, and other stock-decreasing flows must respect the
+   unallocated remainder. Any administrative override that takes allocated units requires prior
+   explicit reconciliation/recovery and an audit record. Storefront continues applying ADR 0017's
+   `inventory_display_mode` after computing availability; this amendment does not expose exact
+   quantities by default.
+3. Online grants, top-ups, and returns use Inventory's reservation arithmetic under stock-row locks
+   and a transaction. The default sizing surface is an explicit per-item quantity per terminal,
+   with an even-split helper shown only as a suggestion. Allocation configuration belongs to the
+   governed inventory model and can be consumed by OPIS; this amendment does not prescribe its UI.
+4. A terminal allocation has no time-based automatic release. Disconnect, device loss, idle timeout,
+   and the end of the 24-hour offline authorization window do not free its remaining quantity. An
+   unreachable or expired holder is quarantined and remains subtracted from availability until
+   explicit online return, reconciled shift close, or audited administrator recovery. The 24-hour
+   window ends new local operations; it does not delete or discard pending sale records. Reconcile
+   and recovery revalidate current authority; unresolved or revoked authority requires manual
+   resolution.
+5. Replay consumes the matching terminal allocation and records its Inventory goods-issue effect
+   atomically. The allocation check replaces the ordinary live on-hand shortfall check only for the
+   quantity proven to be covered by that allocation; it does not authorize a client-supplied effect
+   or an unallocated overage. A sale above its allocation fails closed with a stable distinct reason
+   such as `TERMINAL_ALLOCATION_EXCEEDED` and enters manual resolution. POS replay idempotency plus
+   append-only allocation evidence ensures retries cannot consume or decrement the same sale twice.
+6. Inventory must apply the same reservation arithmetic to competing live stock issues so a
+   different terminal, Storefront, dispatch, or manual issue cannot spend another terminal's slice.
+   If an explicit stock loss or adjustment makes outstanding allocations impossible to honor, the
+   affected allocations are quarantined for reconciliation; the system does not silently reassign
+   them.
+
+The feature contract and later implementation slices are defined in
+`docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`. This amendment records design only: it does not
+authorize migrations, runtime enforcement, POS client changes, or UI work.

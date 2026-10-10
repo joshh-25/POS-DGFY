@@ -2,7 +2,7 @@ name: Build Android Release (manual)
 
 # Builds a signed release APK of the iMin Android wrapper for the selected
 # product flavor via scripts/build-android-release.sh and uploads it to the
-# configured S3-compatible evidence store. Manual only -- run from the Actions
+# GitHub Actions Artifacts with configured S3-compatible fallback. Manual only -- run from the Actions
 # tab when an APK is needed for distribution/testing.
 #
 # workflow_dispatch lets you pick the ref (branch/tag/commit) this runs
@@ -101,77 +101,35 @@ jobs:
           echo "apk_file=$apk_file" >> "$GITHUB_OUTPUT"
           echo "checksum_file=$checksum_file" >> "$GITHUB_OUTPUT"
 
-      - name: Upload release APK to S3
+      - name: Upload release APK evidence
         id: upload_release_apk
-        shell: bash
-        env:
-          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_DEFAULT_REGION: us-east-1
-          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
-          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
-          SOURCE_COMMIT_SHA: ${{ github.sha }}
-          ARTIFACT_NAME: android-${{ inputs.flavor }}-release-${{ github.run_number }}
-          EVIDENCE_FILE: ${{ steps.validate_release_files.outputs.apk_file }}
-        run: bash scripts/ci-s3-upload.sh "$EVIDENCE_FILE" "$ARTIFACT_NAME"
-
-      - name: Upload release APK checksum to S3
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: ${{ steps.validate_release_files.outputs.apk_file }}
+          name: android-${{ inputs.flavor }}-release-${{ github.run_number }}
+          github-name: android-${{ inputs.flavor }}-release-${{ github.run_number }}-apk
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+      - name: Upload release APK checksum evidence
         id: upload_release_checksum
-        shell: bash
-        env:
-          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_DEFAULT_REGION: us-east-1
-          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
-          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
-          SOURCE_COMMIT_SHA: ${{ github.sha }}
-          ARTIFACT_NAME: android-${{ inputs.flavor }}-release-${{ github.run_number }}
-          EVIDENCE_FILE: ${{ steps.validate_release_files.outputs.checksum_file }}
-        run: bash scripts/ci-s3-upload.sh "$EVIDENCE_FILE" "$ARTIFACT_NAME"
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: ${{ steps.validate_release_files.outputs.checksum_file }}
+          name: android-${{ inputs.flavor }}-release-${{ github.run_number }}
+          github-name: android-${{ inputs.flavor }}-release-${{ github.run_number }}-checksum
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
 
-      - name: Record release APK S3 evidence
-        if: always()
-        shell: bash
-        env:
-          UPLOAD_OUTCOME: ${{ steps.upload_release_apk.outcome }}
-          CHECKSUM_OUTCOME: ${{ steps.upload_release_checksum.outcome }}
-          APK_URI: ${{ steps.upload_release_apk.outputs.object_uri }}
-          APK_SIZE: ${{ steps.upload_release_apk.outputs.size_bytes }}
-          APK_SHA256: ${{ steps.upload_release_apk.outputs.source_sha256 }}
-          APK_DIRECT_SHA256: ${{ steps.upload_release_apk.outputs.direct_readback_sha256 }}
-          APK_PRESIGNED_SHA256: ${{ steps.upload_release_apk.outputs.presigned_readback_sha256 }}
-          APK_PRESIGNED_HTTP_STATUS: ${{ steps.upload_release_apk.outputs.presigned_http_status }}
-          APK_PRESIGNED_URL: ${{ steps.upload_release_apk.outputs.presigned_url }}
-          CHECKSUM_URI: ${{ steps.upload_release_checksum.outputs.object_uri }}
-          CHECKSUM_SIZE: ${{ steps.upload_release_checksum.outputs.size_bytes }}
-          CHECKSUM_SHA256: ${{ steps.upload_release_checksum.outputs.source_sha256 }}
-          CHECKSUM_DIRECT_SHA256: ${{ steps.upload_release_checksum.outputs.direct_readback_sha256 }}
-          CHECKSUM_PRESIGNED_SHA256: ${{ steps.upload_release_checksum.outputs.presigned_readback_sha256 }}
-          CHECKSUM_PRESIGNED_HTTP_STATUS: ${{ steps.upload_release_checksum.outputs.presigned_http_status }}
-          CHECKSUM_PRESIGNED_URL: ${{ steps.upload_release_checksum.outputs.presigned_url }}
+      - name: Fail on evidence storage failure
+        if: always() && (steps.upload_release_apk.outputs.storage_status == 'failed' || steps.upload_release_checksum.outputs.storage_status == 'failed')
         run: |
-          {
-            echo "### Android release evidence storage"
-            echo "- APK upload step: ${UPLOAD_OUTCOME:-not run}."
-            echo "- Checksum upload step: ${CHECKSUM_OUTCOME:-not run}."
-            if [[ -n "$APK_URI" ]]; then
-              echo "- APK object URI: ${APK_URI}"
-              echo "- APK size: ${APK_SIZE:-unknown} bytes"
-              echo "- APK SHA-256: source ${APK_SHA256:-unknown}; direct readback ${APK_DIRECT_SHA256:-unknown}; presigned readback ${APK_PRESIGNED_SHA256:-unknown}"
-              echo "- APK presigned readback HTTP status: ${APK_PRESIGNED_HTTP_STATUS:-unknown}"
-              if [[ -n "$APK_PRESIGNED_URL" ]]; then
-                echo "- APK retrieval URL (48-hour bearer link): ${APK_PRESIGNED_URL}"
-              fi
-            fi
-            if [[ -n "$CHECKSUM_URI" ]]; then
-              echo "- Checksum object URI: ${CHECKSUM_URI}"
-              echo "- Checksum file size: ${CHECKSUM_SIZE:-unknown} bytes"
-              echo "- Checksum file SHA-256: source ${CHECKSUM_SHA256:-unknown}; direct readback ${CHECKSUM_DIRECT_SHA256:-unknown}; presigned readback ${CHECKSUM_PRESIGNED_SHA256:-unknown}"
-              echo "- Checksum file presigned readback HTTP status: ${CHECKSUM_PRESIGNED_HTTP_STATUS:-unknown}"
-              if [[ -n "$CHECKSUM_PRESIGNED_URL" ]]; then
-                echo "- Checksum retrieval URL (48-hour bearer link): ${CHECKSUM_PRESIGNED_URL}"
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Android release evidence storage failed. See the APK and checksum summaries for both backend outcomes."
+          exit 1

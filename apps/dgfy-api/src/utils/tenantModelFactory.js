@@ -10,6 +10,10 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'UserInvitation',
     'EmailOtp',
     'EmailDeliveryLog',
+    'SmsDeliveryLog',
+    'SmsMarketingConsent',
+    'SmsConsentEvent',
+    'SmsGlobalSuppression',
     'DgfyAccount',
     'DgfyAccountHandoff',
     'DgfyAccountTenantMembership',
@@ -100,6 +104,10 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     // Global OIDC verification/signing metadata belongs to the landlord database;
     // private key bytes stay in mounted files and this registry must not be cloned.
     'OidcSigningKey',
+    'PartnerApp',
+    'OidcClient',
+    'PartnerClientCredential',
+    'PartnerAttachment',
     'TenantPayout',
     'TenantRevenueAdjustment',
     'TenantRevenueFeePolicy',

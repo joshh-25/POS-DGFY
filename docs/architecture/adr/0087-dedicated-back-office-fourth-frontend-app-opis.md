@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-09-23
-last_reviewed: 2026-09-29
+last_reviewed: 2026-10-10
 review_by: 2027-03-29
 applies_to: repository_layout
 topic: opis_fourth_frontend_app
@@ -79,6 +79,10 @@ its shared-code and app-isolation rules.
 7. Retained POS/IMS Back Office routes are registered as compatibility seams under
    ADR 0035 with owner, tests, rollback, and removal criteria tied to #1354 migration
    completion — not silent leftovers. `[default]`
+8. OPIS owns the merchant partner-connection settings section, including consent, scoped
+   health, tenant disconnect, and plan-bounded allocation/sync inputs; DGFY Admin remains the
+   platform control surface. Exact route placement follows OPIS's existing settings/navigation
+   conventions. `[default]`
 
 Dependencies were duplicated verbatim from `apps/dgfy-pos/package.json` into
 `apps/dgfy-opis/package.json` (OPIS keeps the `pos-receipt` shared package for the order
@@ -123,3 +127,18 @@ decision. `[default]`
   `npm run check:pr-quality-workflow`, `npm run check:workspace-hygiene`,
   `npm run test:web-core-reachability`, `npm run test:frontend-build-triggers`,
   `npm run test:app-versions`, `git diff --check`
+
+## Amendments
+
+### 2026-10-10 — Merchant partner-connection administration belongs to OPIS (#2379)
+
+- Clause added: Decision 8 (`default`).
+- Change: OPIS is the merchant surface for consenting to connect an approved partner App at explicit
+  tenant/location/scopes, viewing redacted connection/credential/sync/allocation health, changing
+  plan-bounded merchant allocation and sync-round inputs, and disconnecting/revoking that tenant's
+  attachment. Platform App approval, platform credentials, client suspension, platform audit, and
+  plan/entitlement authority remain in DGFY Admin under ADR 0047/0089.
+- Boundary: OPIS actions remain subject to existing tenant/session/location checks and server-side
+  authorization. This amendment does not alter Decisions 1–4 or 6 binding text; it does not change
+  the independent `/admin` surface in ADR 0089.
+- Reference: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`; proposed ADR 0092.

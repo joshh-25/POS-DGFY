@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-27
-last_reviewed: 2026-08-27
+last_reviewed: 2026-10-10
 review_by: 2026-10-27
 applies_to: architecture_decision
 topic: multi_template_modes_pos_offline_sync_and_storefront_cache_contracts
@@ -152,3 +152,147 @@ is locally complete; non-cash checkout and offline voids remain explicitly
 provisional until server acknowledgement. This amendment does not change the
 web POS rule that replay is operator-controlled, and it does not permit fiscal
 issuance or server-authoritative account and permission decisions offline.
+
+## Addendum: Inventory-Owned Offline Terminal Allocation (2026-10-10, Phase 490)
+
+The web POS offline checkout rules above continue to apply: replay remains operator-controlled,
+and a local cached-stock decrement is only a client estimate. An Inventory-owned terminal
+allocation is the server-confirmed stock guarantee that makes that local selling limit safe across
+terminals and Storefront.
+
+- Offline checkout may use only the remaining allocation bound to the current tenant, location,
+  terminal, app attachment, and operator authority. It may not create grants, top up, return stock,
+  or expand quantities while offline.
+- A previously authenticated operator has at most a 24-hour offline authorization window. After
+  expiry, the client stops accepting new local operations and keeps all pending records intact for
+  explicit online replay or manual resolution. Expiry does not release or delete the server-side
+  allocation.
+- Replay remains behind the operator's explicit `Sync All Pending Records` action and its existing
+  daily limit. The server revalidates current authority and the allocation; matching allocated
+  effects are consumed once with the Inventory goods-issue command. An allocation overrun fails
+  deterministically into manual resolution. No reconnect, page-load, retry, or service-worker event
+  may submit a queued operation.
+- Recipe and modifier-derived ingredient quantities are part of the allocation. `stock_exempt`
+  lines remain outside Inventory allocation and movement.
+- Pending allocations held by disconnected, expired, or lost terminals remain unavailable to other
+  terminals and Storefront. They can be returned only through explicit online reconciliation or
+  audited administrator recovery. Storefront output still follows ADR 0017's public inventory
+  display policy.
+
+This addendum defines the offline/replay side of the contract. ADR 0029 and
+`docs/features/PER_TERMINAL_STOCK_ALLOCATION.md` define ownership, available-to-sell, and the
+Inventory enforcement boundary. It records design only and authorizes no runtime or schema change.
+
+## Amendments
+
+### 2026-10-10 — Tier-aware POS replay policy and client-authoritative sale amount
+
+- Clause amended: Offline Checkout Experience Addendum replay bullet; Tenant-Scoped Offline
+  Persistence and Deterministic App Shell Addendum opening sentence and manual-sync allowance bullet;
+  Phase 490 Addendum replay paragraph (`default`).
+- Change: For web POS, replay policy is resolved per tenant/store from server-provided settings. A
+  `manual` policy retains operator-only replay. An `auto` policy permits scheduled replay and
+  connectivity-restored opportunistic replay when enabled, while preserving the operator's
+  `Sync All Pending Records` action. The conceptual settings are `sync_mode` (`auto` or `manual`),
+  `sync_schedule` (daily windows, default two), and `opportunistic_on_reconnect` (default enabled
+  in `auto` mode); these names are illustrative, and the server supplies the values through
+  settings bootstrap. The main admin can return a premium-eligible tenant to `manual` at
+  any time. Once #999 ships, premium-eligible tenants default to `auto`; free-tier tenants remain
+  `manual` and cannot enable `auto`. This amendment authorizes the policy only: web POS remains
+  manual until #999 implements it. Client enforcement remains advisory; this amendment does not
+  claim server-side web round enforcement exists.
+
+  A sync round is one leased outbox drain identified by a stable `client_sync_run_id`. Empty drains
+  with no replay candidate consume no round. The free tier allows two successful rounds per local
+  day; failed validation, authorization, server, and network attempts do not consume a round.
+  Premium has no round cap. These round semantics align with the shared accounting model; native
+  and partner entitlement and enforcement details remain governed by ADR 0043 and their own
+  contracts. The terminal's local scope key is `tenantId|terminalId|locationId|userId`.
+
+  Automatic replay must prevent reconnect storms: allow one in-flight drain per scope across tabs
+  and windows; apply randomized 0–60 second jitter to reconnect-triggered runs; use exponential
+  backoff starting at 30 seconds and doubling to a 15-minute cap; and honor `429` and
+  `Retry-After`. Deduplication continues to use the existing `operation_key` and `idempotency_key`
+  contract; automatic replay adds no new idempotency key. A foreground timer or connectivity
+  `online` handler is the baseline trigger. Service Worker `sync` or `periodicsync` is optional
+  progressive enhancement; ADR 0067's browser baseline does not guarantee it. #999 must also
+  coordinate automatic replay with `derivePosUpdateSafety` so a service-worker update reload does
+  not race an active drain.
+
+  The replay authorization does not loosen these existing constraints: offline artifacts and
+  allowances stay fully scoped, unscoped legacy records remain quarantined, queue writes must be
+  durable before local checkout completes, and pending/replaying/manual-resolution records are not
+  evicted; replay still validates server authority and idempotency/conflicts; offline checkout
+  retains its existing authorization window,
+  allocation bounds, cash/non-governed-discount rules, and manual resolution for allocation
+  overruns; no final receipt prints before server confirmation (ADR 0025 Guardrail 4); and
+  `failed_manual_resolution_required` records, including uncertain item creates without an
+  idempotency contract, are never automatically retried. Offline login remains unsupported and
+  shift-open still requires live server confirmation under the current clauses; this amendment
+  neither broadens nor makes those policies permanent, and #1482/#1483 own any changes. ADR 0026 is
+  not amended here and remains owned by #1482. The same manual-only web replay restatement in
+  superseded ADR 0061 §1 is governed by this amendment for web POS.
+- Reason: The offline-first POS posture in #993 requires configurable background convergence while
+  retaining an administrator-controlled manual mode and the existing isolation, durability, and
+  financial safety boundaries.
+- PR: this PR (Closes #995).
+
+### 2026-10-10 — Reconcile client sale amount with backend persistence authority
+
+- Clause amended: Consequences item 1 (`default`).
+- Change: The backend remains the system of record and sole authority for persisted sales,
+  inventory, transactions, reporting, compliance, and rule-owned pricing. “Does not move into client
+  runtimes” continues to mean that persistence and rules authority do not move. For browser/web POS
+  and clients following this replay contract, the client runtime is authoritative only for the
+  amount charged for a sale as transacted: the amount displayed to and paid by the customer and
+  recorded on the provisional slip, computed from server-issued rules and snapshots. That amount is
+  a reconciliation claim, not persistence authority. On replay the server independently
+  re-derives its amount, records both figures, and flags any divergence for reconciliation; neither
+  figure silently overwrites the other. The immutable sale-time receipt snapshot required by ADR
+  0075 remains consistent with the charged amount. Server-side discount/PIN approval and
+  rule-validation authority under ADRs 0033 and 0075 remain unchanged. Per #996, the server-rederived amount remains
+  the recorded/reportable truth while the client-charged amount is retained as the customer-facing
+  sale-time figure. #996 owns the unresolved drawer-expectation treatment before reconciliation
+  and what happens to a printed slip after a mismatch, including coordination with the offline
+  fiscal-numbering child and its BIR / `PosFiscalEvent` implications. This scoped carve-out does not
+  revive the LAN-host topology that ADR 0043 supersedes in part.
+- Reason: Make the already-decided offline sale-total behavior consistent with backend persistence
+  and pricing authority, while leaving unresolved drawer and fiscal-document handling to its owners.
+- PR: this PR (Closes #995).
+
+### 2026-10-10 — Storefront Stock Freshness Contract (#998)
+
+ADR 0017 continues to govern public inventory display after availability is computed. The
+Storefront freshness design is documented in
+`docs/features/STOREFRONT_STOCK_FRESHNESS_CONTRACT.md`; it consumes the Phase 490 allocation model
+and adds no second allocation policy.
+
+1. `GET /store/catalog` keeps its existing HTTP cache policy (`max-age=45`, `s-maxage=45`,
+   `stale-while-revalidate=90`, `stale-if-error=180`). Origin availability is live and has no
+   Storefront catalog Redis cache-aside layer. Quote and checkout remain `no-store`. Browse may be
+   stale within the HTTP bound; checkout commit remains authoritative and rechecks under stock-row
+   locks. `[default]`
+2. Storefront availability is the Inventory-owned location remainder after active online-order
+   holds and all active or quarantined terminal allocations. Storefront browse, quote, and commit
+   consume the same availability rule; Storefront does not duplicate the arithmetic. The origin
+   result never counts allocated units, while cached copies may lag within the documented HTTP
+   freshness bound. `[default]`
+3. Reuse ADR 0055's tenant-scoped catalog-change bus for allocation lifecycle invalidations. The
+   #997 runtime implementation must publish after grant, top-up, return, quarantine, recovery, and
+   consume. Do not expose the authenticated `pos:view` SSE stream to anonymous Storefront clients;
+   HTTP TTL remains Storefront browse's invalidation bound. `[default]`
+
+This amendment changes no binding-tier clause and authorizes no runtime, cache-configuration, API,
+schema, or UI change. The contract records the allowed stricter option—shorter shared-cache TTL or
+`no-store` for stock-bearing catalog reads—if a future product decision requires a literal
+"never higher than sellable" guarantee for every served cache copy.
+
+### 2026-10-10 — Web/mobile sync convergence proposal (#1484)
+
+ADR 0095 proposes web POS adoption of the platform-owned `/mobile-pos/sync/*` and
+`/mobile-pos/bootstrap/*` contract, while preserving the native client architecture in the mobile
+repository. Its per-clause dispositions for ADR 0075/0076 remain non-binding until tech-lead
+approval. The governed platform contract is
+[`POS_OFFLINE_SYNC_CONTRACT.md`](../../features/POS_OFFLINE_SYNC_CONTRACT.md). This reference does
+not change ADR 0014's existing web replay policy, per-operation CP/AP classifications, or the
+separate #999 implementation scope.

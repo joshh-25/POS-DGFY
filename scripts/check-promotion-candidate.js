@@ -599,7 +599,14 @@ function validatePromotionCandidateV4(manifest) {
     validateReleaseRepairs(archived.repairs, manifest.candidate_id, archived.source_staging_sha, new Set([archived.source_staging_sha]));
     if (manifest.release_revision) assert(manifest.release_revision.source_staging_sha !== archived.source_staging_sha, 'An archived release selection cannot be restored as the active selection; cut and qualify a fresh release', 'ARCHIVED_RELEASE_RESELECTED');
   });
-  return { ...result, ...stagingSummary, status: manifest.status, current_staging_sha: manifest.current_staging_sha, refresh_count: refreshes.length };
+  return {
+    ...result,
+    ...stagingSummary,
+    status: manifest.status,
+    current_staging_sha: manifest.current_staging_sha,
+    refresh_count: refreshes.length,
+    release_revision: manifest.release_revision?.apps ?? null,
+  };
 }
 
 function getActiveCandidateSha(manifest) {

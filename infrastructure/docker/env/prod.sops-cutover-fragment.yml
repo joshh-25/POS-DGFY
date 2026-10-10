@@ -207,6 +207,7 @@
 #       STOREFRONT_PUBLIC_ORIGIN: <copy literal from live .env -- Phase 3>
 #       STOREFRONT_PAYMENT_RETURN_URL: <copy literal from live .env -- Phase 3>
 #       ROUTE_CALCULATOR_ENDPOINT: <copy literal from live .env -- Phase 3>
+#       SMS_PHONE_HASH_SECRET: <generate a new random secret of at least 32 characters>
 #
 #       # --- bucket B: feature flags / toggles ---
 #       BILLING_FUNNEL_AUDIT_ENABLED: <copy literal from live .env -- Phase 3>
@@ -224,6 +225,11 @@
 #       STOREFRONT_DIRECT_MAYA_ENABLED: <copy literal from live .env -- Phase 3>
 #       STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED: <copy literal from live .env -- Phase 3>
 #       ORIGINAL_LEGACY_ALLOW_TOKEN_ROTATION: <copy literal from live .env -- Phase 3>
+#       SMS_PROVIDER: unconfigured
+#       SMS_DELIVERY_LOG_ENABLED: true
+#       SMS_DELIVERY_LOG_RETENTION_ENABLED: true
+#       SMS_DELIVERY_LOG_RETENTION_DAYS: 30
+#       SMS_DEFAULT_REGION: PH
 #
 #       # --- bucket B: rate limits / auth expiry / misc tuning ---
 #       RATE_LIMIT_ALERT_THRESHOLD: <copy literal from live .env -- Phase 3>
