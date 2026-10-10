@@ -28367,9 +28367,10 @@ is proposed pending tech-lead approval; its web dispositions are not binding unt
       policies.
 - [x] `docs/_meta/document-registry.json` includes the governed contract and `docs/INDEX.md` points
       to it.
-- [ ] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
       `npm run check:compliance`, `node scripts/check-app-version-bump.js`, and `git diff --check`
-      pass; ADR index is regenerated.
+      pass; ADR index is regenerated. Pre-commit hooks also reran compliance and docs lint for the
+      three commit batches.
 
 ### Links
 
