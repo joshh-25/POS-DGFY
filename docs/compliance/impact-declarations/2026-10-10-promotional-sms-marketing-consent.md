@@ -33,6 +33,10 @@ remain with the separately tracked consent-policy work.
 
 ## Compliance Preconditions
 
+No live preflight was executed for this PR. The `NOT-EXECUTED-2417-2026-10-10` reference is an
+intentional PR-open placeholder and will be reconciled by the continuous preflight sweep after the
+declaration lands on `develop`.
+
 Promotional sending fails closed when tenant consent is absent/revoked, global suppression exists,
 or consent storage is unavailable. Transactional order alerts never read marketing consent. Only
 the existing phone HMAC and a coarse prefix are retained in consent records; message content and
