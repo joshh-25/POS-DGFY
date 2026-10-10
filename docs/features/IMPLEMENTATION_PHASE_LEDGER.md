@@ -27459,7 +27459,72 @@ Not complete. Set only after the change is merged and implementation validation 
 
 Phase 488. No explicit dependency.
 
-## Phase 488 - Third-party partner API contract and engine authority (#803)
+## Phase 488 - Tenant CRM foundation and partner-customer contract (#2378)
+
+### Initiative and release
+
+Tenant CRM foundation / definition release.
+
+### Objective and scope
+
+Document the current OPIS/API/data/partner baseline, propose tenant-scoped customer identity and
+lifecycle, field-level channel access and provenance, OPIS and partner boundaries, privacy
+dependencies, and prioritized implementation candidates. Add proposed ADR 0091, register and index
+the governed foundation, and cross-link BO-10. No application code, API, or migration changes.
+
+### Status
+
+`in_progress` — the definition and proposed ADR are drafted; governed documentation validation and
+PR review remain due.
+
+### Dependencies
+
+No earlier phase dependency blocks this definition. Acceptance of proposed ADR 0091 and decisions
+under #243, #796, and #803 are dependencies for later implementation slices, not for drafting this
+contract.
+
+### Acceptance and validation evidence
+
+- [x] Current-state map identifies OPIS UI, API operations, tenant/landlord data, POS/Storefront
+      snapshot behavior, and partner contract limits.
+- [x] Tenant identity/lifecycle defines explicit-only DGFY links, tenant isolation, partner-scoped
+      references, immutable transaction snapshots, and stable profile-reference direction.
+- [x] Channel matrix identifies create/read/update/link boundaries, provenance, actor, and verified
+      versus unverified contact data.
+- [x] OPIS, #803 partner-customer contract, #796/#2379 handoffs, #243 privacy dependencies, and
+      DGFY Admin ownership boundary are documented.
+- [x] Prioritized issue candidates are sized without filing new issues or duplicating #1355.
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, link/path spot checks, and the repository pre-commit marker
+      scan pass; any compliance declaration request is escalated under the Worker checkpoint.
+
+### Links
+
+- Issue: #2378; planner handoff `.tmp/plan-2378.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- Contract: `docs/features/TENANT_CRM_FOUNDATION.md`.
+- Proposed architecture decision: ADR 0091; related ADRs 0006, 0023, 0079, 0087, and 0089.
+- Related issues: #243, #796, #803, #1354, #1355, #2308, #2379.
+- Implementation baseline: `apps/dgfy-opis/src/features/businessAdmin/`,
+  `apps/dgfy-api/src/modules/businessAdmin/`, and `docs/api/PARTNER_INTEGRATION_CONTRACT.md`.
+
+### Completion date
+
+Not complete. Set after the definition PR is merged and named validation passes.
+
+### Post-merge verification
+
+- [ ] operational — Pat/tech-lead review and explicit acceptance or revision of proposed ADR 0091;
+      owner: architecture; blocks implementation planning based on the proposed decisions.
+- [ ] operational — coordinate #243 privacy decisions and #796/#803 partner envelope before
+      scheduling customer data lifecycle or partner customer-reference implementation; owner:
+      product/security; blocks those implementation slices.
+
+### Next phase number
+
+Phase 489. No explicit dependency.
+
+## Phase 489 - Third-party partner API contract and engine authority (#803)
 
 ### Initiative and release
 
@@ -27469,21 +27534,21 @@ definition work; no runtime endpoint, schema, migration, or app-version change.
 ### Objective and scope
 
 Define the generic `partner-contract/v0.1` contract for DGFY-engine and external-engine partners,
-document the DGLaundry compatibility adapter, propose ADR 0091, amend ADRs 0043 and 0079 at the
+document the DGLaundry compatibility adapter, propose ADR 0092, amend ADRs 0043 and 0079 at the
 default tier, register/cross-reference the contract, and map future implementation ownership.
-Keep the contract at reference authority until ADR 0091 receives tech-lead approval. No endpoint,
+Keep the contract at reference authority until ADR 0092 receives tech-lead approval. No endpoint,
 registry, allocation engine, customer privacy policy, demo, or implementation candidate is delivered.
 
 ### Status
 
-`in_progress` — documentation and ADR changes are being authored; governed validation, commit,
-review, and merge remain outstanding.
+`in_progress` — documentation and ADR changes are being reconciled with develop; governed
+validation, commit, review, and merge remain outstanding.
 
 ### Dependencies
 
 Issue #803 is a child of #796. No earlier phase blocks this definition work. #2379 and #2378 gate
 their respective administration and customer sections, not this phase. #997/#998 own allocation
-design; #1484 owns shared sync convergence. ADR 0091 approval gates dependent implementation from
+design; #1484 owns shared sync convergence. ADR 0092 approval gates dependent implementation from
 treating its proposed rules as binding.
 
 ### Acceptance and validation evidence
@@ -27493,7 +27558,7 @@ treating its proposed rules as binding.
   reconciliation.
 - [ ] DGLaundry remains governed by its authoritative contract and has named compatibility seams,
   owner, evidence, rollback, and removal conditions.
-- [ ] Proposed ADR 0091 has strictness-tiered decisions and an empty approval record; ADR 0043 and
+- [ ] Proposed ADR 0092 has strictness-tiered decisions and an empty approval record; ADR 0043 and
   ADR 0079 carry dated default-tier amendments.
 - [ ] `npm run check:adr -- --write-index` leaves no stale ADR index; `npm run lint:docs`,
   `npm run check:architecture`, and `npm run check:compliance` pass.
@@ -27505,7 +27570,7 @@ treating its proposed rules as binding.
 
 - Issue: #803; parent epic: #796; planner handoff: `.tmp/plan-803.md`, planning head
   `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
-- Proposed ADR: `docs/architecture/adr/0091-third-party-partner-integration-engine-authority-and-attachments.md`.
+- Proposed ADR: `docs/architecture/adr/0092-third-party-partner-integration-engine-authority-and-attachments.md`.
 - Contract: `docs/api/THIRD_PARTY_PARTNER_CONTRACT.md`.
 - Related documents: `docs/api/PARTNER_INTEGRATION_CONTRACT.md`, `docs/api/README.md`,
   `docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md`,
@@ -27519,7 +27584,7 @@ Not complete. Set only after the scoped change is merged and implementation vali
 
 ### Post-merge verification
 
-- [ ] operational — obtain and record tech-lead approval for proposed ADR 0091 before #2311, #801,
+- [ ] operational — obtain and record tech-lead approval for proposed ADR 0092 before #2311, #801,
   or #802 treats the contract as authoritative; owner: architecture; blocks binding adoption.
 - [ ] provider — assess DGLaundry `external-runtime-v0.1` against the generic context before any
   schema adoption; owner: #2311/DGLaundry integration; blocks generic context implementation.
@@ -27528,4 +27593,4 @@ Not complete. Set only after the scoped change is merged and implementation vali
 
 ### Next phase number
 
-Phase 489. No explicit dependency.
+Phase 490. No explicit dependency.

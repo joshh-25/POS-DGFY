@@ -196,6 +196,12 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/features/TENANT_CRM_FOUNDATION.md",
+      "topic": "tenant_customer_crm_foundation",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/api/THIRD_PARTY_PARTNER_CONTRACT.md",
       "topic": "third_party_partner_contract",
       "expected_status": "reference",
