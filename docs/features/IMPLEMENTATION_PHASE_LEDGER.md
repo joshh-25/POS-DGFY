@@ -27733,3 +27733,78 @@ Not complete. Set only after the scoped change is merged and implementation vali
 ### Next phase number
 
 Phase 492. No explicit dependency.
+
+## Phase 492 - Multi-client platform OIDC registry and DGLaundry compatibility adapter (#2311)
+
+### Initiative and release
+
+Third-party partner integration tier under epic #796. Slice A provides the landlord client registry,
+client-aware `/oidc` provider, and DGLaundry compatibility adapter. Slice B, including any neutral
+tenant/session context claim, is explicitly deferred.
+
+### Objective and scope
+
+Add landlord-only `partner_apps` and `oidc_clients` tables for #801/#802 to build on; move OIDC
+provider and signing-key ownership into `modules/partnerIdentity`; enforce active approved client
+registration, endpoint type, exact destinations, allowed scopes, per-client state/replay isolation,
+and fail-closed shared state; retain DGLaundry's current claim, scopes, routes, and env-backed
+browser/machine fallback as ADR 0035 seams. Do not add credential lifecycle, attachments, or a
+neutral context claim.
+
+### Status
+
+`in_progress` — implementation, validation, commit, and review remain outstanding.
+
+### Dependencies
+
+No explicit dependency blocks slice A. The generic neutral context claim remains deferred until ADR
+0093 is accepted and DGLaundry's `external-runtime-v0.1` is assessed. #801/#802 consume the registry
+shape but do not block this foundation.
+
+### Acceptance and validation evidence
+
+- [ ] Registry migration, landlord models, repository interface, and module README define the shared
+      client schema without tenant attachment or credential lifecycle tables.
+- [ ] Synthetic registered browser and machine clients complete authorization/client-credentials
+      flows without code changes to admit them.
+- [ ] DGLaundry browser, machine, service signing, logout, discovery, and partner API behavior remain
+      compatible through adapter and re-export shims.
+- [ ] Per-client codes, PAR, tokens, sessions, and assertion replay are isolated; invalid clients,
+      redirects, scopes, app/client statuses, and unavailable Redis/registry fail closed.
+- [ ] Generic clients receive standard OIDC claims only; DGLaundry context is adapter-produced.
+- [ ] ADR 0035 manifest, code markers, tests, rollback, and removal conditions pass
+      `node scripts/check-compat-seams.js`.
+- [ ] `node --check` for changed JavaScript, `node scripts/check-app-version-bump.js`,
+      `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+      `npm run check:compliance`, and the focused dgfy-api OIDC/DGLaundry suites pass.
+
+### Links
+
+- Issue: #2311; planner handoff: `.tmp/plan-2311.md`, planning head
+  `179a9769a1c177bb27848f728d423865cc7fa58e`.
+- Governing architecture: ADR 0035 and ADR 0079; ADR 0093 remains proposed and is design guidance
+  only. The Third-Party Partner Contract is reference; the DGLaundry Partner Integration Contract
+  remains authoritative for existing behavior.
+- Implementation: `apps/dgfy-api/src/modules/partnerIdentity/`,
+  `apps/dgfy-api/src/routes/oidc.js`,
+  `apps/dgfy-migration-runner/migrations/20261010000001-create-partner-identity-registry.cjs`,
+  and `docs/architecture/compatibility-seams.json`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and its implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] provider — confirm DGLaundry browser and machine registrations use either the approved
+      registry rows or the documented env adapter, and retain source proof of callback, claim, and
+      token compatibility; owner: #2311/DGLaundry contract owner.
+- [ ] database — verify the landlord migration ran and `partner_apps`/`oidc_clients` are absent from
+      tenant schemas; owner: migration/operator.
+- [ ] future scope — assess `external-runtime-v0.1` and obtain ADR 0093 approval before implementing
+      a neutral session/tenant context claim; owner: architecture/#2311.
+
+### Next phase number
+
+Phase 493. No explicit dependency.
