@@ -18,3 +18,14 @@ then client, app, attachment, tenant, and active location rows are revalidated f
 The tenant header is only a selector and is replaced with the server-resolved company token before
 `tenantHandler` establishes tenant DB context. Partner identity never creates a cashier or staff
 identity.
+
+Browser clients keep exact `allowed_origins`, `redirect_uris`, and
+`post_logout_redirect_uris` on their landlord registry row. DGFY Admin registers these values with
+the client and updates them at
+`PUT /api/v1/admin/partner-integrations/clients/:clientId/destinations`; machine/service clients
+cannot register browser destinations and revoked clients cannot be edited. Destination writes
+validate canonical uniqueness and write before/after audit snapshots in the same transaction.
+Registered origins grant CORS only for GET/HEAD/OPTIONS on OIDC discovery and JWKS metadata, with
+credentials disabled. The resolver runs only after existing CORS policy denies and fails closed on
+registry errors. It never authorizes API, tenant, or OIDC operational routes and does not alter
+internal DGFY handoff, cookies, or CSRF behavior.
