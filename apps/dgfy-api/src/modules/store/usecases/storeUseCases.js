@@ -94,6 +94,7 @@ import {
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryEffects.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
+import { dispatchDgfyOrderSmsAlert } from '../../dgfy/index.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
     isDateWithinStorefrontBusinessHours,
@@ -4067,6 +4068,7 @@ export const buildExchangeStoreGuestCheckoutGrantUseCase = ({ dgfyCustomerReposi
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
     recordOrderActivity = recordDgfyOrderActivity,
+    dispatchOrderSmsAlert = dispatchDgfyOrderSmsAlert,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -4201,6 +4203,12 @@ export const buildStoreCheckoutUseCase = ({
                     error: error?.message,
                     tracking_pin: existing?.tracking_pin
                 }));
+                await Promise.resolve().then(() => dispatchOrderSmsAlert({
+                    tenantId: normalizedTenantId,
+                    order: existing,
+                    storeCustomer: normalizedStoreCustomer,
+                    event: 'placed'
+                })).catch(() => null);
                 return ok({
                     idempotent_replay: true,
                     order: serializeOrderForCustomer(existing),
@@ -4595,6 +4603,12 @@ export const buildStoreCheckoutUseCase = ({
                 error: error?.message,
                 tracking_pin: created?.tracking_pin
             }));
+            await Promise.resolve().then(() => dispatchOrderSmsAlert({
+                tenantId: normalizedTenantId,
+                order: created,
+                storeCustomer: normalizedStoreCustomer,
+                event: 'placed'
+            })).catch(() => null);
 
             // Best-effort, post-commit: was dormant until a storefront visit set the attribution
             // cookie, now live via the Phase 1 affiliate pricing rule engine (see
