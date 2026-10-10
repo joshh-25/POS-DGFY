@@ -153,7 +153,7 @@ provisional until server acknowledgement. This amendment does not change the
 web POS rule that replay is operator-controlled, and it does not permit fiscal
 issuance or server-authoritative account and permission decisions offline.
 
-## Addendum: Inventory-Owned Offline Terminal Allocation (2026-10-10, Phase 488)
+## Addendum: Inventory-Owned Offline Terminal Allocation (2026-10-10, Phase 490)
 
 The web POS offline checkout rules above continue to apply: replay remains operator-controlled,
 and a local cached-stock decrement is only a client estimate. An Inventory-owned terminal

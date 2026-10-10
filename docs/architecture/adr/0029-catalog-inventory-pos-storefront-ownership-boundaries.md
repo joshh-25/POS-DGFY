@@ -267,7 +267,7 @@ stock, regardless of whether the order is pickup, delivery, scheduled, F&B, or R
 `status: amended` is preserved; this dated block supersedes the mode-specific timing sentences
 above without rewriting the earlier implementation history.
 
-## Amendment (2026-10-10): Per-Terminal Stock Allocations (Phase 488, #997)
+## Amendment (2026-10-10): Per-Terminal Stock Allocations (Phase 490, #997)
 
 This amendment extends the Inventory-owned online reservation precedent to scoped terminal
 allocations for offline POS. It changes the reservation and availability approach recorded in the

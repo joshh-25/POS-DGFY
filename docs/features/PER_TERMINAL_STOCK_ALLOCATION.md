@@ -19,7 +19,7 @@ partner terminals. A slice prevents two terminals from promising the same stock 
 Storefront from offering stock already assigned to a terminal. Each client keeps its own governed
 sync trigger and local persistence contract.
 
-Phase 488 is governance and design only. It changes no schema, API, runtime code, POS client, or
+Phase 490 is governance and design only. It changes no schema, API, runtime code, POS client, or
 admin UI. Later implementation is split into separately scoped issues.
 
 ## Governance classification
@@ -41,7 +41,7 @@ builds stock effects and calls the Inventory `issueStockForPosSale` command in
 `createStockMovement`, which checks live on-hand quantity. The POS issue path does not yet consume
 or account for outstanding terminal allocations. Storefront catalog presentation reads scoped
 stock in its store use cases/repository and does not yet subtract terminal allocations. These are
-required follow-on enforcement gaps, not claims that the guarantee is implemented in Phase 488.
+required follow-on enforcement gaps, not claims that the guarantee is implemented in Phase 490.
 
 ## Allocation identity and quantities
 
