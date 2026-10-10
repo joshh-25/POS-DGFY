@@ -28251,7 +28251,7 @@ Not complete. Set only after the scoped implementation is merged and named valid
 
 ### Next phase number
 
-Phase 500. No explicit dependency.
+Phase 499. No explicit dependency.
 
 ## Phase 499 - Multi-terminal POS consistency model (#798)
 
@@ -28329,7 +28329,85 @@ validation passes.
 
 Phase 500. No explicit dependency.
 
-## Phase 500 - Web/mobile POS offline-sync contract convergence (#1484)
+## Phase 500 - Promotional SMS consent and opt-out suppression (#2417)
+
+### Initiative and release
+
+Wave 3 of the outbound SMS foundation under epic #2413.
+
+### Objective and scope
+
+Require active tenant-scoped marketing consent and absence of landlord-global suppression before
+each promotional send. Add append-only consent events, tenant grant/revoke and global suppression
+use cases, authenticated tenant-owner/admin grant/revoke routes, and provider onboarding controls.
+Transactional order alerts remain independent. No capture UI, inbound STOP webhook, global
+suppression lift, campaign authoring, consent wording decision, or real-provider activation is in
+scope.
+
+### Status
+
+`in_progress` — implementation and validation are complete; PR review and merge remain outstanding.
+
+### Dependencies
+
+- Phase 495 / #2415 sender contract and Phase 498 / #2416 transactional integration are merged in
+  the current `develop` ancestry.
+- Phase 499 / #798 is an independent documentation decision with no dependency on this phase; it
+  does not block this SMS implementation.
+- Current phase: 500; next phase number: 501.
+
+### Acceptance and validation evidence
+
+- [x] Promotional send rejects missing tenant, absent/revoked consent, global suppression, missing
+      opt-out instruction, or consent-store error; rejected rows use a null dedupe key.
+- [x] Active consent permits promotional delivery and caller-supplied opt-out wording is appended.
+- [x] Revoked consent stays blocked on repeat send; global suppression blocks across tenants;
+      consent granted to another tenant does not grant tenant A eligibility.
+- [x] Transactional sends do not read consent data and continue for non-consenting recipients.
+- [x] Grant/revoke events are atomic with their projection update; revoke without prior grant
+      creates a revoked projection. Invalid numbers and grants without text version are rejected.
+- [x] Tenant-authenticated API requires tenant owner/admin authority, validates payloads, and
+      never echoes raw phone values.
+- [x] Migration creates the three landlord-only tables idempotently with tenant-phone and global
+      suppression uniqueness; migration test covers up/down.
+- [x] `node --check` on changed API JavaScript, focused SMS/API/migration Jest suites,
+      `npm run check:architecture`, `npm run check:compliance`, `npm run lint:docs`,
+      `npm run check:adr`, and `node scripts/check-app-version-bump.js` pass.
+
+### Links
+
+- Issue: #2417; parent epic: #2413; planner handoff `.tmp/plan-2417.md`, planning head
+  `0121d48306c21c10a8c92f43e372434043cf869e`.
+- Governing architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADRs 0039 and 0094.
+- Domain and operations: `docs/ops/OUTBOUND_SMS_PROVIDER_ONBOARDING.md`.
+- Implementation: `apps/dgfy-api/src/modules/smsDelivery/`, SMS landlord models, and
+  `apps/dgfy-migration-runner/migrations/20261010000004-create-sms-marketing-consent.cjs`.
+- Compliance: `docs/compliance/impact-declarations/2026-10-10-promotional-sms-marketing-consent.md`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] provider — confirm approved opt-out wording and whether authenticated inbound STOP capture is
+      supported and implemented before representing STOP as available; owner: SMS product/provider
+      owner; blocks promotional production traffic.
+- [ ] deployment — confirm production `SMS_PHONE_HASH_SECRET` is configured and matches the key
+      used to create consent/suppression hashes; owner: deployment operator; blocks production SMS.
+- [ ] operational — run the landlord migration and verify the tables are absent from tenant
+      schemas; owner: migration/operator; blocks enabling consent-backed promotional sending.
+- [ ] privacy — verify consent events/projections contain hashes and coarse prefix only and that
+      secret rotation re-keys all four SMS hash locations before activation; owner: Verifier / API
+      operator; blocks opt-out continuity claims.
+
+### Next phase number
+
+Phase 501. No explicit dependency.
+
+## Phase 501 - Web/mobile POS offline-sync contract convergence (#1484)
 
 ### Initiative and release
 
@@ -28354,7 +28432,7 @@ is proposed pending tech-lead approval; its web dispositions are not binding unt
 - No explicit dependency blocks this documentation decision. Web runtime adoption depends on the
   #468 cursor contract, #800 server-validated terminal identity, and #999 web round-limiter
   reconciliation; these are follow-on implementation dependencies, not blockers for this record.
-- Current phase: 500; next phase number: 501.
+- Current phase: 501; next phase number: 502.
 
 ### Acceptance and validation evidence
 
@@ -28403,5 +28481,5 @@ validation passes.
 
 ### Next phase number
 
-Phase 501. Runtime migration has explicit follow-on dependencies; no implementation is authorized
+Phase 502. Runtime migration has explicit follow-on dependencies; no implementation is authorized
 by this documentation phase.

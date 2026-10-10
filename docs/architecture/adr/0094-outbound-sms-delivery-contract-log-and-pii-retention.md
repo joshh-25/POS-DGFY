@@ -67,6 +67,22 @@ enough keyspace that an unkeyed digest is not an adequate retained identifier.
    request timeout because the caller's timeout does not cancel an underlying provider request.
    `[default]`
 
+### 2026-10-10 — Promotional marketing consent and opt-out suppression (#2417)
+
+1. A promotional send requires active landlord consent scoped by tenant and recipient HMAC and is
+   rejected when a landlord-global suppression exists. Consent lookup failures fail closed. The
+   sender appends a caller-supplied opt-out instruction; it does not invent wording or imply that
+   inbound STOP capture is available. Transactional sends never read consent state. `[default]`
+2. Consent state is a landlord projection with append-only grant/revoke events. A revoke is stored
+   even without an earlier grant; a new explicit grant may reactivate tenant consent. Global
+   suppressions have no application lift path in this wave. Raw phone values are not stored in
+   consent state; identity uses the existing `SMS_PHONE_HASH_SECRET` HMAC and coarse prefix.
+   Rotating that secret requires re-keying all SMS delivery, consent, and suppression hashes before
+   the new secret is used, or opt-outs could be bypassed. `[default]`
+3. Manual authenticated tenant-owner/admin grant and revoke routes are available. Consent wording,
+   lawful basis, capture UI, retention/erasure, provider selection, and inbound STOP capture remain
+   separately scoped. No real-provider delivery is enabled by this amendment. `[default]`
+
 ## References
 
 - ADR 0054 — outbound email delivery log and bounce capture (landlord log precedent).

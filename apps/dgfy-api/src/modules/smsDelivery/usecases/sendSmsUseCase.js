@@ -8,8 +8,11 @@ const makeId = () => crypto.randomUUID();
 const toErrorText = (value) => String(value || '').slice(0, 500) || null;
 
 let repositoryOverride = null;
+let consentRepositoryOverride = null;
 export const setSmsDeliveryLogRepository = (repository) => { repositoryOverride = repository; };
+export const setSmsConsentRepository = (repository) => { consentRepositoryOverride = repository; };
 const getRepository = async () => repositoryOverride || (await import('../repositories/smsDeliveryLogRepository.js')).smsDeliveryLogRepository;
+const getConsentRepository = async () => consentRepositoryOverride || (await import('../repositories/smsConsentRepository.js')).smsConsentRepository;
 
 const recordFailureAlert = async (deliveryId, provider, errorCode) => raiseSmsOperationalAlert({
   key: 'sms.send_failed',
@@ -40,8 +43,9 @@ const existingResult = (row) => ({
 });
 
 export const sendSmsUseCase = async ({
-  recipients = [], purpose, content, template, data, tenantId = null, orderId = null, correlation = null, dedupeKey = null
-} = {}, { repository = null, adapterResolver = resolveSmsAdapter } = {}) => {
+  recipients = [], purpose, content, template, data, tenantId = null, orderId = null, correlation = null, dedupeKey = null,
+  optOutInstruction = null
+} = {}, { repository = null, consentRepository = null, adapterResolver = resolveSmsAdapter } = {}) => {
   const recipientList = Array.isArray(recipients)
     ? recipients
     : typeof recipients === 'string' && recipients.trim() ? [recipients.trim()] : [];
@@ -82,6 +86,9 @@ export const sendSmsUseCase = async ({
     let simulated = false;
     let dedupe = null;
     try { dedupe = deriveDedupeKey(dedupeKey, recipientHash); } catch { errorCode ||= 'invalid_dedupe_key'; }
+    if (!errorCode && purpose === 'promotional' && !tenantId) errorCode = 'missing_tenant';
+    if (!errorCode && purpose === 'promotional' && !String(optOutInstruction || '').trim()) errorCode = 'missing_opt_out_instruction';
+    if (['missing_tenant', 'missing_opt_out_instruction'].includes(errorCode)) dedupe = null;
 
     if (errorCode) {
       status = 'rejected';
@@ -95,11 +102,33 @@ export const sendSmsUseCase = async ({
       } catch { /* Continue; logging is best-effort and must not block delivery. */ }
     }
 
+    if (!errorCode && purpose === 'promotional') {
+      // Check immediately before adapter send. Rejections deliberately have no dedupe key so a
+      // later explicit grant can send; a previously deduplicated send returns above without send.
+      try {
+        if (!tenantId) errorCode = 'missing_tenant';
+        else {
+          const consentRepo = consentRepository || await getConsentRepository();
+          const decision = await consentRepo.getPromotionalEligibility({ tenantId, recipientPhoneHash: recipientHash });
+          if (decision?.globallySuppressed) errorCode = 'opted_out_global';
+          else if (decision?.status === 'revoked') errorCode = 'opted_out';
+          else if (decision?.status !== 'active') errorCode = 'consent_missing';
+        }
+      } catch {
+        errorCode = 'consent_check_failed';
+      }
+      if (!errorCode && !String(optOutInstruction || '').trim()) errorCode = 'missing_opt_out_instruction';
+      if (errorCode) dedupe = null;
+    }
+
     if (!errorCode) {
       try {
         const resolved = getSmsAdapter();
         provider = resolved.mode;
-        const outcome = await resolved.adapter.send({ id, to: normalized.e164, purpose, content: message, correlation });
+        const outgoingMessage = purpose === 'promotional'
+          ? `${message.trim()} ${String(optOutInstruction).trim()}`
+          : message;
+        const outcome = await resolved.adapter.send({ id, to: normalized.e164, purpose, content: outgoingMessage, correlation });
         status = outcome?.status === 'accepted' || outcome?.status === 'rejected' || outcome?.status === 'failed'
           ? outcome.status
           : outcome?.status === 'unconfigured' ? 'unconfigured' : 'failed';
