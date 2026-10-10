@@ -65,7 +65,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0040 | [On-Hand Weighted Average Cost Valuation Across Inventory, PO, JO, Suppliers, and Reporting](0040-weighted-average-cost-valuation-and-variance-analytics.md) | `accepted` | weighted_average_cost_valuation_and_variance_analytics | 2026-10-20 | 0 |
 | 0041 | [Hospitality Mode PMS And Stay Management](0041-hospitality-mode-pms-stay-management.md) | `accepted` | hospitality_mode_pms_stay_management | 2026-11-19 | 0 |
 | 0042 | [BIR RMO 24-2023 Fiscal Document and Accreditation Closure](0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md) | `accepted` | bir_rmo_24_2023_fiscal_document_and_accreditation_closure | 2026-12-01 | 0 |
-| 0043 | [Standalone Native Hardware POS Runtime](0043-standalone-native-hardware-pos-runtime.md) | `amended` | standalone_native_hardware_pos_runtime | 2026-12-19 | 0 |
+| 0043 | [Standalone Native Hardware POS Runtime](0043-standalone-native-hardware-pos-runtime.md) | `amended` | standalone_native_hardware_pos_runtime | 2027-04-10 | 0 |
 | 0044 | [POS Terminal Device Pairing](0044-pos-terminal-device-pairing.md) | `amended` | pos_terminal_device_pairing | 2027-03-14 | 0 |
 | 0045 | [Shared POS Receipt Renderer](0045-shared-pos-receipt-renderer.md) | `accepted` | shared_pos_receipt_renderer | 2027-01-23 | 0 |
 | 0046 | [Verified Storefront Custom Domains](0046-verified-storefront-custom-domains.md) | `accepted` | verified_storefront_custom_domains | 2026-09-04 | 0 |
@@ -103,7 +103,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `amended` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `amended` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 | 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `amended` | item_multi_category_membership | 2027-03-03 | 6 |
-| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 9 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 12 |
 | 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `amended` | production_release_record_and_release_notes | 2027-03-23 | 3 |
 | 0083 | [Courier Cash Custody and Remittance for COD Deliveries](0083-courier-cash-custody-and-remittance.md) | `accepted` | courier_cash_custody_remittance | 2027-03-13 | 9 |
 | 0084 | [POS Business Admin Operational Expense Ledger](0084-pos-business-admin-operational-expense-ledger.md) | `accepted` | pos_business_admin_operational_expense_ledger | 2027-03-17 | 5 |
@@ -113,6 +113,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0088 | [POS Has No Back Office Routes or OPIS Handoff](0088-pos-has-no-back-office-routes-or-opis-handoff.md) | `proposed` | opis_fourth_frontend_app | 2027-03-30 | 4 |
 | 0089 | [Platform Admin as a Fifth Frontend App (`apps/dgfy-admin`) with Cross-Host `/admin` Routing](0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md) | `accepted` | dgfy_admin_fifth_frontend_app | 2027-04-03 | 4 |
 | 0090 | [Tenant Intake Proposals and Human Confirmation](0090-tenant-intake-proposal-confirmation.md) | `accepted` | tenant_intake_proposal_confirmation | 2027-04-09 | 0 |
+| 0091 | [Third-Party Partner Integration, Engine Authority, and Attachments](0091-third-party-partner-integration-engine-authority-and-attachments.md) | `proposed` | third_party_partner_integration_contract | 2027-04-10 | 5 |
 
 ## Renumbered (collision stubs)
 
