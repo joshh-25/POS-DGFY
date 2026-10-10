@@ -5,6 +5,7 @@ import { dgfyAccountRepository } from '../../dgfy/repositories/dgfyAccountReposi
 import { partnerIdentityRegistryRepository } from '../repositories/partnerIdentityRegistryRepository.js';
 import { buildPartnerIdentityUseCases } from '../usecases/partnerIdentityUseCases.js';
 import { getActiveSigningKey, listVerificationKeys } from './oidcSigningKeyRegistry.js';
+import { hashPartnerClientSecret } from '../domain/credentialSecrets.js';
 
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const DEFAULT_SCOPE = 'openid profile email';
@@ -39,11 +40,9 @@ const scopesAllowed = (client, scope, defaults = []) => {
 const defaultBrowserScopes = (client, adapter) => adapter?.scopes
     || ['openid', 'profile', 'email'].filter((scope) => client.allowed_scopes?.includes(scope));
 const exactRegistered = (registered, value) => Array.isArray(registered) && registered.includes(String(value || ''));
+const accessTokenIndexKey = (token) => `oidc:atk:${crypto.createHash('sha256').update(String(token)).digest('hex')}`;
 
-export const hashClientSecret = (secret, salt = crypto.randomBytes(16).toString('base64url')) => {
-    const digest = crypto.scryptSync(String(secret), salt, 64).toString('base64url');
-    return `scrypt$${salt}$${digest}`;
-};
+export const hashClientSecret = hashPartnerClientSecret;
 const verifyClientSecret = (secret, hash) => {
     const [scheme, salt, expected] = String(hash || '').split('$');
     if (scheme !== 'scrypt' || !salt || !expected) return false;
@@ -139,6 +138,23 @@ export const validateDglaundryMachineToken = async (token) => {
     return grant;
 };
 
+export const validatePartnerMachineToken = async (token) => {
+    const normalized = String(token || '').trim();
+    if (!normalized) return null;
+    const indexed = await load(accessTokenIndexKey(normalized));
+    if (!indexed?.client_id) return null;
+    const client = await resolveClient(indexed.client_id, { allowLegacy: false });
+    if (!client || !['machine', 'service'].includes(client.client_type)) return null;
+    const grant = await load(oidcKey(client.client_id, 'access', normalized));
+    if (!grant || grant.client_id !== client.client_id || !Number.isFinite(grant.expires_at) || grant.expires_at <= Date.now()) return null;
+    if (grant.credential_version_id) {
+        const credential = (client.credentials || []).find((item) => item.id === grant.credential_version_id);
+        if (!credential || !['active', 'overlap'].includes(credential.status)
+            || (credential.status === 'overlap' && (!credential.overlap_expires_at || new Date(credential.overlap_expires_at).getTime() <= Date.now()))) return null;
+    } else if (client.has_credential_versions) return null;
+    return { ...grant, app: client.app, client };
+};
+
 export const authenticateDglaundryMachineToken = async (req, res, next) => {
     try {
         const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
@@ -163,7 +179,10 @@ const requireMachineClient = async (input, client) => {
         error.statusCode = 401;
         throw error;
     }
-    const key = client.public_key_pem;
+    const credential = client.has_credential_versions
+        ? (client.credentials || []).find((item) => item.kind === 'public_key' && item.key_id === (jwt.decode(input.client_assertion, { complete: true })?.header?.kid))
+        : null;
+    const key = credential?.public_key_pem || (!client.has_credential_versions ? client.public_key_pem : null);
     if (!key) {
         const error = new Error('Machine client keys are not configured.');
         error.statusCode = 503;
@@ -172,7 +191,8 @@ const requireMachineClient = async (input, client) => {
     let claims;
     if (!client.legacy) {
         const decoded = jwt.decode(input.client_assertion, { complete: true });
-        if (!client.key_id || decoded?.header?.kid !== client.key_id) {
+        const activeKeyId = credential?.key_id || (!client.has_credential_versions ? client.key_id : null);
+        if (!activeKeyId || decoded?.header?.kid !== activeKeyId) {
             const error = new Error('Machine client assertion key identifier is invalid.');
             error.statusCode = 401;
             throw error;
@@ -201,6 +221,7 @@ const requireMachineClient = async (input, client) => {
         error.statusCode = 401;
         throw error;
     }
+    if (credential) client.authenticated_credential_id = credential.id;
     return client;
 };
 
@@ -228,10 +249,14 @@ const authenticateOidcClient = async (req, input) => {
             error.statusCode = 401;
             throw error;
         }
+        let matchedCredential = null;
         const valid = client.legacy
             ? safeEqual(clientSecret, client.legacy_secret)
-            : verifyClientSecret(clientSecret, client.secret_hash);
+            : client.has_credential_versions
+                ? (matchedCredential = (client.credentials || []).filter((item) => item.kind === 'secret_hash').find((item) => verifyClientSecret(clientSecret, item.secret_hash)), Boolean(matchedCredential))
+                : verifyClientSecret(clientSecret, client.secret_hash);
         if (!valid) throw clientUnavailable();
+        if (matchedCredential) client.authenticated_credential_id = matchedCredential.id;
         return client;
     }
     if (basicClientId || input.client_secret !== undefined) throw clientUnavailable();
@@ -413,8 +438,16 @@ export const oidcToken = async (req, res, next) => {
                     client_id: client.client_id,
                     scope: requestedScope,
                     access_token: token,
+                    credential_version_id: client.authenticated_credential_id || null,
                     expires_at: now + 300_000
                 }, 300);
+                if (stored) {
+                    const indexed = await store(accessTokenIndexKey(token), { client_id: client.client_id }, 300);
+                    if (!indexed) {
+                        await consume(oidcKey(client.client_id, 'access', token));
+                        stored = false;
+                    }
+                }
             } catch {
                 stored = false;
             }
@@ -454,7 +487,10 @@ export const oidcRevoke = async (req, res, next) => {
         if (input.token) {
             const token = String(input.token).trim();
             const grant = await load(oidcKey(client.client_id, 'access', token));
-            if (grant?.client_id === client.client_id) await consume(oidcKey(client.client_id, 'access', token));
+            if (grant?.client_id === client.client_id) {
+                await consume(oidcKey(client.client_id, 'access', token));
+                await consume(accessTokenIndexKey(token));
+            }
         }
         return res.status(200).end();
     } catch (error) { return next(error); }

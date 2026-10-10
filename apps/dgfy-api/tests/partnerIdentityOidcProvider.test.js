@@ -16,6 +16,7 @@ let registry;
 let hashClientSecret;
 let configurePartnerIdentityProvider;
 let oidcKey;
+let validatePartnerMachineToken;
 
 const response = () => ({
   statusCode: 200,
@@ -66,7 +67,7 @@ beforeEach(async () => {
     listVerificationKeys: async () => [{ kid: 'issuer-key', publicKeyPem: signingPublicKey }]
   }));
   provider = await import('../src/modules/partnerIdentity/services/oidcProvider.js');
-  ({ hashClientSecret, configurePartnerIdentityProvider, oidcKey } = provider);
+  ({ hashClientSecret, configurePartnerIdentityProvider, oidcKey, validatePartnerMachineToken } = provider);
   const rows = [
     registryClient({ clientId: 'synthetic-browser', type: 'browser', secret: 'browser-secret', redirect: 'https://synthetic.example.test/callback', scopes: ['openid', 'profile', 'email', 'custom:read'] }),
     registryClient({ clientId: 'synthetic-browser-b', type: 'browser', secret: 'browser-secret-b', redirect: 'https://synthetic-b.example.test/callback' }),
@@ -147,6 +148,35 @@ describe('platform partner OIDC provider', () => {
         expect(replayError.statusCode).toBe(401);
       }
     }
+  });
+
+  test('versioned machine credentials resolve generic bearer grants through the reverse index', async () => {
+    const client = registryClient({ clientId: 'versioned-machine', type: 'machine', key: machineA, scopes: ['orders:read'] });
+    client.has_credential_versions = true;
+    client.credentials = [{
+      id: 'credential-v1', kind: 'public_key', key_id: 'kid-versioned-machine', public_key_pem: publicPem(machineA),
+      status: 'active', activated_at: new Date()
+    }];
+    client.credentials_all_versions = client.credentials;
+    const originalFind = registry.findClientByClientId;
+    registry.findClientByClientId = async (clientId) => clientId === client.client_id ? client : originalFind(clientId);
+    const assertion = jwt.sign({}, privatePem(machineA), {
+      algorithm: 'RS256', issuer: client.client_id, subject: client.client_id,
+      audience: client.audience, expiresIn: 60, jwtid: 'versioned-assertion', keyid: 'kid-versioned-machine'
+    });
+    const tokenResponse = response();
+    await provider.oidcToken({ headers: {}, query: {}, body: {
+      grant_type: 'client_credentials', client_id: client.client_id,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: assertion, scope: 'orders:read'
+    } }, tokenResponse, requestError((error) => { throw error; }));
+    const indexKey = `oidc:atk:${crypto.createHash('sha256').update(tokenResponse.body.access_token).digest('hex')}`;
+    expect(JSON.parse(redisValues.get(indexKey))).toEqual({ client_id: client.client_id });
+    await expect(validatePartnerMachineToken(tokenResponse.body.access_token)).resolves.toMatchObject({
+      client_id: client.client_id, credential_version_id: 'credential-v1'
+    });
+    client.credentials = [];
+    await expect(validatePartnerMachineToken(tokenResponse.body.access_token)).resolves.toBeNull();
   });
 
   test('cross-client grants, redirects, scopes, and inactive apps fail closed', async () => {
