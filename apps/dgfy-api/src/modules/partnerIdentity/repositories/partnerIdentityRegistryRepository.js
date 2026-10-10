@@ -10,6 +10,7 @@ const normalizeClient = (row) => row ? {
   ...row.get({ plain: true }),
   redirect_uris: parseJsonArray(row.redirect_uris),
   post_logout_redirect_uris: parseJsonArray(row.post_logout_redirect_uris),
+  allowed_origins: parseJsonArray(row.allowed_origins),
   allowed_scopes: parseJsonArray(row.allowed_scopes)
 } : null;
 
@@ -43,6 +44,17 @@ export const partnerIdentityRegistryRepository = {
   async listClientsForApp(appId) {
     const rows = await OidcClient.findAll({ where: { app_id: appId }, order: [['client_id', 'ASC']] });
     return rows.map(normalizeClient);
+  },
+  async listAllClients() {
+    return (await OidcClient.findAll({ order: [['client_id', 'ASC']] })).map(normalizeClient);
+  },
+  async listActiveBrowserClients() {
+    const rows = await OidcClient.findAll({ where: { status: 'active', client_type: 'browser' }, order: [['client_id', 'ASC']] });
+    return Promise.all(rows.map(async (row) => {
+      const client = normalizeClient(row);
+      client.app = await this.findAppById(client.app_id);
+      return client;
+    }));
   },
   async listActiveClients() {
     const rows = await OidcClient.findAll({ where: { status: 'active' }, order: [['client_id', 'ASC']] });

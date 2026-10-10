@@ -30,6 +30,7 @@ describe('partner credential and attachment use cases', () => {
     registryRepository = {
       findAppById: async () => app,
       findClientByClientId: async () => client,
+      listAllClients: async () => [],
       findAttachmentById: async () => attachment,
       findAttachmentsForClientTenant: async () => [attachment],
       findAttachmentsForClient: async () => [attachment],
@@ -54,7 +55,7 @@ describe('partner credential and attachment use cases', () => {
     app.status = 'approved';
     const browserClient = await useCases.registerClient(app.id, {
       client_id: 'browser-deployment', client_type: 'browser', auth_method: 'client_secret_basic',
-      audience: 'https://api.example.test', allowed_scopes: ['openid'], redirect_uris: ['https://partner.example.test/callback']
+      audience: 'https://api.example.test', allowed_scopes: ['openid'], allowed_origins: ['https://partner.example.test'], redirect_uris: ['https://partner.example.test/callback']
     }, admin, request);
 
     expect(Buffer.from(browserClient.issued_secret, 'base64url')).toHaveLength(32);

@@ -4,7 +4,8 @@ import { PLATFORM_ADMIN_PERMISSION_KEYS } from '../modules/platformAdmin/constan
 import {
   createPartnerApp, createPartnerClient, listPartnerApps, listPartnerClients,
   listPartnerCredentials, revokePartnerCredential, rotatePartnerCredential,
-  setPartnerAttachmentEntitlements, transitionPartnerApp, transitionPartnerClient
+  setPartnerAttachmentEntitlements, transitionPartnerApp, transitionPartnerClient,
+  updatePartnerClientDestinations
 } from '../modules/partnerIdentity/controllers/partnerIdentityHandlers.js';
 
 const router = express.Router();
@@ -15,6 +16,7 @@ router.post('/apps/:id/:action(approve|suspend|unsuspend|retire)', ...guard, tra
 router.get('/apps/:id/clients', ...guard, listPartnerClients);
 router.post('/apps/:id/clients', ...guard, createPartnerClient);
 router.post('/clients/:clientId/:action(activate|suspend|unsuspend|revoke)', ...guard, transitionPartnerClient);
+router.put('/clients/:clientId/destinations', ...guard, updatePartnerClientDestinations);
 router.get('/clients/:clientId/credentials', ...guard, listPartnerCredentials);
 router.post('/clients/:clientId/credentials/rotate', ...guard, rotatePartnerCredential);
 router.post('/clients/:clientId/credentials/:versionId/revoke', ...guard, revokePartnerCredential);

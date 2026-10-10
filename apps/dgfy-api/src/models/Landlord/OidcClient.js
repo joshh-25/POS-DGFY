@@ -16,6 +16,7 @@ export default (sequelize) => {
     audience: { type: DataTypes.STRING(255), allowNull: false },
     redirect_uris: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
     post_logout_redirect_uris: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+    allowed_origins: { type: DataTypes.JSON, allowNull: true, defaultValue: null },
     allowed_scopes: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
     context_adapter: { type: DataTypes.STRING(96), allowNull: true },
     secret_rotated_at: { type: DataTypes.DATE, allowNull: true }

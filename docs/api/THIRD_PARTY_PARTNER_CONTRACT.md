@@ -74,7 +74,7 @@ The `laundry` workflow remains the ADR 0079 external-engine shape: DGLaundry own
 
 ### 4.1 Browser clients
 
-Use Authorization Code with PAR and PKCE S256. Each deployment registers exact redirect, callback, and post-logout destinations. Matching is exact; wildcard, suffix, and prefix matching are prohibited. Partner sessions are independent from DGFY internal-app sessions. An external origin is never added to ADR 0026's trusted internal handoff or shared-cookie lists. Logout of one partner session does not log out another app or broaden cookie scope.
+Use Authorization Code with PAR and PKCE S256. Each browser deployment registers exact allowed browser origins, redirect/callback destinations, and post-logout destinations on its landlord `oidc_clients` record. Redirect and post-logout destinations must use a registered origin; matching is exact, canonical collisions are rejected, and wildcard, suffix, and prefix matching are prohibited. DGFY Admin manages these destinations under its live `admin.partner_integrations` grant; OPIS and partner self-service do not. Registry origins permit credential-free CORS only for `GET`, `HEAD`, and `OPTIONS` on OIDC discovery and JWKS metadata. They do not permit tenant or API access. Partner sessions are independent from DGFY internal-app sessions. An external origin is never added to ADR 0026's trusted internal handoff or shared-cookie lists. Logout of one partner session does not log out another app or broaden cookie scope. See [#802](https://github.com/Sieitzz/dgfy-platform/issues/802) for implementation traceability.
 
 ### 4.2 Machine and service clients
 
@@ -223,7 +223,7 @@ Any probe not run is reported as unverified with its owner and blocking conseque
 | Generic contract and ADR definition | #803 | Current scope; no runtime implementation. |
 | Compatibility-preserving App/client registry and identity generalization | #2311 | Implements seams and compatibility manifest; blocked on accepted identity/context decisions. |
 | App IDs, clients, credentials, tenant attachments, lifecycle | #801 | Implements registry and attachment lifecycle after #2311. |
-| External browser origins and session behavior | #802 | Exact origins and isolated browser sessions. |
+| External browser origins and session behavior | #802 | Exact origins, redirect and post-logout destinations, guarded DGFY Admin updates, metadata-only credential-free CORS, and isolated browser sessions. |
 | Admin approval, merchant consent, permissions, and entitlement administration | #2379 | DGFY Admin and OPIS ownership; no partner self-service. |
 | Customer identity, tenant CRM fields, and privacy | #2378, #243, OPIS | Gates customer-specific capabilities only. |
 | Allocation and conservative availability | #997/#998 under #993 | Reuse their model and reconcile current ADR amendments. |

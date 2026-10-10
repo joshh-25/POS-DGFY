@@ -63,6 +63,21 @@ export const partnerLifecycleRepository = {
   },
   transitionApp({ id, expected, updates, audit }) { return this.transition({ model: PartnerApp, id, expected, updates, audit }); },
   transitionClient({ id, expected, updates, audit }) { return this.transition({ model: OidcClient, id, expected, updates, audit }); },
+  async updateClientDestinations({ id, expected, updates, audit }) {
+    return sequelize.transaction(async (transaction) => {
+      const row = await OidcClient.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!row || row.status !== expected || !['pending', 'active', 'suspended'].includes(row.status)) throw conflict();
+      const before = {
+        allowed_origins: Array.isArray(row.allowed_origins) ? row.allowed_origins : [],
+        redirect_uris: Array.isArray(row.redirect_uris) ? row.redirect_uris : [],
+        post_logout_redirect_uris: Array.isArray(row.post_logout_redirect_uris) ? row.post_logout_redirect_uris : []
+      };
+      await this.writeAudit({ ...audit, before: { client_id: row.client_id, ...before }, after: { client_id: row.client_id, ...updates } }, transaction);
+      const [count] = await OidcClient.update(updates, { where: { id, status: expected }, transaction });
+      if (count !== 1) throw conflict();
+      return plain(await OidcClient.findByPk(id, { transaction }));
+    });
+  },
   transitionAttachment({ id, expected, updates, audit }) { return this.transition({ model: PartnerAttachment, id, expected, updates, audit }); },
   async rotateCredential({ client, newCredential, overlapExpiresAt, audit }) {
     return sequelize.transaction(async (transaction) => {

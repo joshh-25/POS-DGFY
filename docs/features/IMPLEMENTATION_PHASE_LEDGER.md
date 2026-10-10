@@ -27900,7 +27900,94 @@ passes.
 
 Phase 494. No explicit dependency.
 
-## Phase 494 - Storefront stock freshness contract for POS-allocated inventory (#998)
+## Phase 494 - Registry-configured partner browser destinations and metadata CORS (#802)
+
+### Initiative and release
+
+Third-party partner integration tier under epic #796. Browser destination registration slice on the
+landlord OIDC registry established by #2311 and lifecycle controls established by #801.
+
+### Objective and scope
+
+Store exact allowed browser origins, redirect URIs, and post-logout redirect URIs on landlord
+`oidc_clients`; validate them on registration and destination updates; administer updates through
+DGFY Admin; and grant credential-free CORS only to active browser clients under approved Apps for
+OIDC discovery/JWKS metadata. External origins remain outside internal DGFY handoff, cookies, CSRF,
+and tenant/API authority. Internal hostname lists, logout propagation, partner UI, and tenant
+attachment behavior are excluded.
+
+### Status
+
+`in_progress` — implementation and focused validation are underway; the additive landlord schema
+migration requires human confirmation before commit, and migration execution, final hardening,
+commit, PR review, and merge remain due.
+
+### Dependencies
+
+- #2311 / Phase 492 registry substrate is satisfied by merged PR #2412.
+- #801 / Phase 493 client lifecycle is satisfied by merged PR #2418; its ledger status remains
+  `in_progress`, but it declares no dependency blocking this slice.
+- #2379 administration ownership is documented in the partner administration matrix; DGFY Admin
+  owns destination writes and OPIS has no role.
+- #803 owns logout/session termination semantics. This phase preserves current behavior.
+- No other explicit phase dependency blocks this work. Current phase: 494; next phase number: 495.
+
+### Acceptance and validation evidence
+
+- [x] Add nullable landlord `oidc_clients.allowed_origins`; keep `null` equivalent to an empty list
+  and do not clone the landlord field into tenant schemas.
+- [x] Validate browser origins and redirect/post-logout destinations strictly, enforce registered
+  origins and cross-App collision rejection, and reject browser destinations on machine/service
+  clients.
+- [x] Add guarded destination update for pending, active, or suspended clients; reject revoked
+  clients; write before/after destination audit atomically with the mutation; redact credential
+  material from response and audit.
+- [x] Resolve registry CORS only after existing CORS denial, only for metadata GET/HEAD/OPTIONS,
+  with credentials disabled; deny unregistered, ambiguous, non-active, unapproved, and DB-error
+  cases; do not grant API/tenant or OIDC operational-route CORS.
+- [x] Prove removed callbacks invalidate in-flight token exchange; preserve internal cookies, CSRF,
+  internal handoff, and DGLaundry behavior with focused compatibility evidence.
+- [x] Run focused destination, lifecycle, CORS, OIDC, DGLaundry, cookie, CSRF, and compatibility
+  suites; `node --check` changed API JS; `npm run check:architecture`, `npm run check:adr`,
+  `npm run lint:docs`, `npm run check:compliance`, `node scripts/check-compat-seams.js`, and
+  `node scripts/check-app-version-bump.js` pass. Run the migration against disposable MySQL if
+  available; otherwise state it was not run.
+
+### Links
+
+- Issue: #802; handoff `.tmp/plan-802.md`, planning head `7efaead855e330cf1c6ac0cce6fbe16f28ee83c7`.
+- Governing architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADRs 0026, 0035, 0092, and 0093. ADRs 0092 and
+  0093 remain proposed; ADR 0026's internal cookie/handoff rules are preserved.
+- Domain contracts: `docs/api/THIRD_PARTY_PARTNER_CONTRACT.md` §4.1 and
+  `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`.
+- Implementation: `apps/dgfy-api/src/modules/partnerIdentity/`,
+  `apps/dgfy-api/src/routes/partnerIntegrations.js`, `apps/dgfy-api/src/server.js`,
+  `apps/dgfy-api/src/models/Landlord/OidcClient.js`, and
+  `apps/dgfy-migration-runner/migrations/20261010000003-add-oidc-client-allowed-origins.cjs`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] database — run the landlord migration and verify `oidc_clients.allowed_origins` exists only
+  in the landlord schema; owner: migration/operator.
+- [ ] runtime — confirm an approved second partner receives CORS headers only on discovery/JWKS,
+  with credentials disabled, and that suspension/revocation removes the grant on the next request;
+  owner: Verifier.
+- [ ] compatibility — confirm DGLaundry and internal DGFY login/logout/CSRF behavior against the
+  deployed candidate; owner: DGLaundry contract owner / Verifier.
+- [ ] follow-up — keep #503 internal hostname-list work and #803 logout semantics separate; owner:
+  Planner/PM.
+
+### Next phase number
+
+Phase 495. No explicit dependency.
+
+## Phase 495 - Storefront stock freshness contract for POS-allocated inventory (#998)
 
 ### Initiative and release
 
@@ -27926,7 +28013,7 @@ review, and merge remain outstanding.
 - Runtime read-path adoption depends on the separately scoped #997 runtime ledger and must land with
   or after #947's location-scope root-cause fix. These runtime follow-ons do not block this design
   phase.
-- Phases 491–493 have no explicit dependency on this work and do not block it.
+- Phases 491–494 have no explicit dependency on this work and do not block it.
 
 ### Acceptance and validation evidence
 
@@ -27971,7 +28058,3 @@ validation passes.
       Worker/Reviewer.
 - [ ] cache — confirm implementation preserves the documented HTTP bounds or records a separately
       approved tighter stock-bearing catalog policy; owner: Worker/Reviewer.
-
-### Next phase number
-
-Phase 495. No explicit dependency.
