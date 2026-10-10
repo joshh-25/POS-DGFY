@@ -190,6 +190,12 @@
       "expected_authority_level": "reference"
     },
     {
+      "path": "docs/features/POS_OFFLINE_SYNC_CONTRACT.md",
+      "topic": "pos_offline_sync_contract",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
       "path": "docs/api/PARTNER_INTEGRATION_CONTRACT.md",
       "topic": "partner_integration_contract",
       "expected_status": "authoritative",

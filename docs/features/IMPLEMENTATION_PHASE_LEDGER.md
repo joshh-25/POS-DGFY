@@ -28328,3 +28328,79 @@ validation passes.
 ### Next phase number
 
 Phase 500. No explicit dependency.
+
+## Phase 500 - Web/mobile POS offline-sync contract convergence (#1484)
+
+### Initiative and release
+
+Offline-first POS governance under epic #993. Decision and governed documentation for web POS
+adoption of the platform-owned mobile sync endpoints and three-channel model.
+
+### Objective and scope
+
+Publish the platform contract and proposed ADR 0095 with explicit per-client capabilities, mapping
+of existing web queue operations, dedupe and cutover requirements, #468 cursor adoption, device
+identity dependency, and IMS boundary. Amend ADR pointers and register the governed contract. No
+runtime, API, schema, or client migration is included.
+
+### Status
+
+`in_progress` — documentation is implemented and validation/PR review remain outstanding. ADR 0095
+is proposed pending tech-lead approval; its web dispositions are not binding until accepted.
+
+### Dependencies
+
+- Phase 496 / #995 and Phase 499 / #798 are closed and their authoritative decisions are inputs.
+- No explicit dependency blocks this documentation decision. Web runtime adoption depends on the
+  #468 cursor contract, #800 server-validated terminal identity, and #999 web round-limiter
+  reconciliation; these are follow-on implementation dependencies, not blockers for this record.
+- Current phase: 500; next phase number: 501.
+
+### Acceptance and validation evidence
+
+- [x] The governed contract defines endpoint authority, three channels, operation mapping,
+      per-client capability, replay dedupe, migration compatibility, cursor ownership, device
+      identity, and IMS implications.
+- [x] ADR 0095 records proposed dispositions for all 13 ADR 0075 binding clauses and all five ADR
+      0076 binding clauses, and clearly remains non-binding pending approval.
+- [x] ADR 0014/0043/0075/0076 point to the proposal without silently changing existing web/native
+      policies.
+- [x] `docs/_meta/document-registry.json` includes the governed contract and `docs/INDEX.md` points
+      to it.
+- [ ] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, `node scripts/check-app-version-bump.js`, and `git diff --check`
+      pass; ADR index is regenerated.
+
+### Links
+
+- Issue: #1484, child of epic #993; planner handoff: `.tmp/plan-1484.md`, planning head
+  `9d2b6623747e2592f29a944aef50273fa8ef7a86`.
+- Governing inputs: ADR 0014, ADR 0025, ADR 0029, ADR 0031, ADR 0039, ADR 0043, ADR 0045, ADR
+  0075, ADR 0076, ADR 0087, ADR 0088, and
+  `docs/features/POS_MULTI_TERMINAL_CONSISTENCY_MODEL.md`.
+- Cross-repo native client reference:
+  `https://github.com/Sieitzz/dgfy-mobile/blob/develop/docs/architecture/SYNC-ARCHITECTURE.md`.
+- Follow-on ownership: #468 (cursor/tombstone implementation), #800 (terminal identity), #999
+  (web round limiter), #1001/#358 (IMS outcome), and PM for queue drift follow-ups.
+- Implementation: `docs/features/POS_OFFLINE_SYNC_CONTRACT.md`, ADR 0095, ADR 0014/0043/0075/0076,
+  document registry, docs index, generated ADR index, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation change is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] governance — obtain tech-lead approval for ADR 0095's proposed binding-clause dispositions
+      before treating them as in force; owner: Pat / platform tech lead.
+- [ ] runtime — PM shapes separate implementation slices for web queue migration, #468 reference
+      cursor adoption, #800 identity, and #999 limiter reconciliation; owner: PM.
+- [ ] drift — PM triages existing web `shift_close` and queued `item_create` behavior against the
+      CP model and OPIS ownership; owner: PM.
+- [ ] IMS — apply the result of #1001/#358 before scheduling any IMS-specific sync work; owner: PM.
+
+### Next phase number
+
+Phase 501. Runtime migration has explicit follow-on dependencies; no implementation is authorized
+by this documentation phase.
