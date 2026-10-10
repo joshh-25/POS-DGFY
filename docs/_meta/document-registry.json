@@ -194,6 +194,12 @@
       "topic": "partner_integration_contract",
       "expected_status": "authoritative",
       "expected_authority_level": "authoritative"
+    },
+    {
+      "path": "docs/features/TENANT_CRM_FOUNDATION.md",
+      "topic": "tenant_customer_crm_foundation",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }
