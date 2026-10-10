@@ -107,6 +107,29 @@ describe('sendSmsUseCase', () => {
     expect(JSON.stringify(repository.create.mock.calls[0][0])).not.toContain(input.content);
   });
 
+  it('keeps an accepted delivery result when the log repository cannot persist it', async () => {
+    raiseSmsOperationalAlert.mockClear();
+    const repository = {
+      findByDedupeKey: jest.fn(async () => null),
+      create: jest.fn(async () => { throw new Error('log database unavailable'); })
+    };
+    const send = jest.fn(async () => ({ status: 'accepted', simulated: true }));
+
+    const result = await sendSmsUseCase({
+      recipients: ['09171234567'],
+      purpose: 'transactional_order',
+      content: 'order received',
+      orderId: null,
+      dedupeKey: 'order-alert:tenant-1:42:placed'
+    }, { repository, adapterResolver: () => ({ mode: 'fake', adapter: { send } }) });
+
+    expect(result.deliveries[0].status).toBe('accepted');
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(raiseSmsOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'sms.delivery_log_write_failed'
+    }));
+  });
+
   it('returns and logs unconfigured without claiming delivery', async () => {
     const repository = makeRepo();
     const result = await sendSmsUseCase({ recipients: ['09171234567'], purpose: 'transactional_order', content: 'ready' }, {
