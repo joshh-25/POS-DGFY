@@ -238,6 +238,8 @@ import PlatformInvoiceDeliveryFactory from './Landlord/PlatformInvoiceDelivery.j
 import PlatformInvoiceAdjustmentFactory from './Landlord/PlatformInvoiceAdjustment.js';
 import PlatformInvoiceEventFactory from './Landlord/PlatformInvoiceEvent.js';
 import OidcSigningKeyFactory from './Landlord/OidcSigningKey.js';
+import PartnerAppFactory from './Landlord/PartnerApp.js';
+import OidcClientFactory from './Landlord/OidcClient.js';
 const Tenant = TenantFactory(sequelize);
 const TenantIntakeProposal = TenantIntakeProposalFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
@@ -320,6 +322,8 @@ const PlatformInvoiceDelivery = PlatformInvoiceDeliveryFactory(sequelize);
 const PlatformInvoiceAdjustment = PlatformInvoiceAdjustmentFactory(sequelize);
 const PlatformInvoiceEvent = PlatformInvoiceEventFactory(sequelize);
 const OidcSigningKey = OidcSigningKeyFactory(sequelize);
+const PartnerApp = PartnerAppFactory(sequelize);
+const OidcClient = OidcClientFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -1456,12 +1460,16 @@ const db = {
   ,PlatformInvoiceAdjustment
   ,PlatformInvoiceEvent
   ,OidcSigningKey
+  ,PartnerApp
+  ,OidcClient
 };
 
 export default db;
 export {
   sequelize,
   OidcSigningKey,
+  PartnerApp,
+  OidcClient,
   User,
   StaffRole,
   Item,

@@ -59,3 +59,4 @@ router.get('/staff-invitation-intents/:intentId', requireDglaundryPartner, getLa
 router.post('/mappings', requireDglaundryPartner, createLaundryMapping);
 
 export default router;
+// @compat-seam id=oidc-dglaundry-partner-routes
