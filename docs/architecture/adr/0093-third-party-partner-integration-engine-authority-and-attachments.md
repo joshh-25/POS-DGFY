@@ -9,7 +9,7 @@ applies_to: third_party_partner_integrations
 topic: third_party_partner_integration_contract
 ---
 
-# ADR 0092: Third-Party Partner Integration, Engine Authority, and Attachments
+# ADR 0093: Third-Party Partner Integration, Engine Authority, and Attachments
 
 ## Status
 

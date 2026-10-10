@@ -147,7 +147,7 @@ a non-binding document.
   already stated here. The DGLaundry-specific contract remains authoritative for that integration;
   its legacy claim, routes, and environment client triple are compatibility seams until #2311 proves
   generic replacement and ADR 0035 removal criteria pass. The generic contract is reference while
-  proposed ADR 0092 awaits approval.
+  proposed ADR 0093 awaits approval.
 - Reason: answer the required generic polarity without rewriting the DGLaundry-specific runtime or
   authorizing another hard-coded workflow mode.
-- See: ADR 0035, ADR 0092, #803, and #2311.
+- See: ADR 0035, ADR 0093, #803, and #2311.

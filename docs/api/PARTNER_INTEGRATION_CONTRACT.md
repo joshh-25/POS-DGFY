@@ -314,6 +314,12 @@ flagged for reconciliation, not yet an active contract item.
 
 ## Known gaps (verified in source, 2026-10-08)
 
+The administration and permission boundary is defined separately in
+[`PARTNER_ADMINISTRATION_MATRIX.md`](PARTNER_ADMINISTRATION_MATRIX.md) for issue #2379. That matrix
+assigns first-release DGFY Admin and OPIS responsibilities and distinguishes App, client, credential,
+and tenant attachment authority. This contract remains the owner of wire-level partner behavior;
+the matrix does not redefine endpoints or offline authorization semantics.
+
 This table is the document's load-bearing content — it states plainly what is built, what is
 configuration-only, and what does not exist, rather than implying full readiness.
 

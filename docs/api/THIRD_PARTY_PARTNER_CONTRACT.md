@@ -14,7 +14,7 @@ contract_version: partner-contract/v0.1
 
 **Contract version:** `partner-contract/v0.1`
 
-**Governance:** reference pending tech-lead approval of proposed [ADR 0092](../architecture/adr/0092-third-party-partner-integration-engine-authority-and-attachments.md).
+**Governance:** reference pending tech-lead approval of proposed [ADR 0093](../architecture/adr/0093-third-party-partner-integration-engine-authority-and-attachments.md).
 
 **Scope:** future independent partner integrations. This document defines requirements; it does not claim that generic partner endpoints, client registries, allocation APIs, or demo qualification exist today.
 
@@ -97,7 +97,7 @@ Any future neutral context schema is server-issued and derived from validated id
 
 ### 4.5 Administration and consent
 
-Approved pilots only. DGFY Admin registers and approves Apps and deployment clients. The merchant owner gives tenant/location/scope consent in OPIS under ADRs 0087 and 0089. Partner self-service registration is deferred. Staff permissions remain separate from application identity. The detailed role, permission, and consent matrix belongs to #2379. Approval by DGFY is not merchant consent; merchant consent is not staff authorization.
+Approved pilots only. DGFY Admin registers and approves Apps and deployment clients. The merchant owner gives tenant/location/scope consent in OPIS under ADRs 0087 and 0089. Partner self-service registration is deferred. Staff permissions remain separate from application identity. The detailed role, permission, and consent matrix belongs to #2379 and is documented in [Partner Integration Administration Matrix](PARTNER_ADMINISTRATION_MATRIX.md). That matrix and ADR 0092 remain supporting reference/proposal until ADR 0092 is accepted; this document remains the wire-level owner. Approval by DGFY is not merchant consent; merchant consent is not staff authorization.
 
 ### 4.6 DGLaundry compatibility adapter
 
@@ -182,7 +182,7 @@ Partner checkout and offline work preserve the existing payment, settlement, and
 
 Cash may be represented locally as `paid_local` only where the applicable offline ADR permits it. Other tenders, refunds, and voids remain explicit `pending_server` or equivalent provisional states until acknowledged. Preserve immutable local receipt and line snapshots, signed discount evidence (ADR 0033 and ADR 0075 Decisions 3–4), and append-only void/refund intents. At synchronization, recheck staff permission, tenant/location identity, attachment state, and expected versions. A divergent total records both the locally shown and server-calculated amounts and surfaces a conflict; never silently replace what the operator or customer saw.
 
-This contract changes none of the current settlement or fiscal gates in ADR 0042 and ADR 0052, including provider verification, tenant revenue settlement controls, fiscal document authority, accreditation, and release requirements. ADR 0075's binding financial clauses currently govern the native app; applying them to partner clients is proposed adoption by reference in ADR 0092 and requires approval before dependent implementation treats them as binding.
+This contract changes none of the current settlement or fiscal gates in ADR 0042 and ADR 0052, including provider verification, tenant revenue settlement controls, fiscal document authority, accreditation, and release requirements. ADR 0075's binding financial clauses currently govern the native app; applying them to partner clients is proposed adoption by reference in ADR 0093 and requires approval before dependent implementation treats them as binding.
 
 Historical #993-family proposals for automatic background mutation replay, client-authoritative totals, or offline fiscal numbering do not override current amendments. Follow ADR 0043's policy-governed replay rules, ADR 0075's explicit provisional settlement and non-fiscal slip rules, and the divergence-conflict rule above.
 
@@ -244,7 +244,7 @@ Candidates P1–P11 are the 2026-10-09 slate in #796, not new issues or commitme
 
 ## 14. ADR mapping and reconciliation
 
-`proposed` ADR 0092 identifies the decisions that await tech-lead approval. “Owner / PR” below names the governing ticket or candidate; implementation PR numbers do not exist yet.
+`proposed` ADR 0093 identifies the decisions that await tech-lead approval. “Owner / PR” below names the governing ticket or candidate; implementation PR numbers do not exist yet.
 
 | ADR | Clauses touched | Tier | Treatment | Owner / PR |
 | --- | --- | --- | --- | --- |
@@ -255,13 +255,13 @@ Candidates P1–P11 are the 2026-10-09 slate in #796, not new issues or commitme
 | 0031 | Terminal pairing, operator, location, and shift context | default | adopted-by-reference; 24-hour continuation does not create offline login or shift-open | P3/P8 |
 | 0033 | Discount authority and signed evidence | default | adopted-by-reference; existing governed discount rules remain | P4 |
 | 0035 | Compatibility seam manifest, rollback, removal criteria | binding | unchanged; #2311 implementation PR records the DGLaundry seam | #2311 |
-| 0039 | ADR strictness tiers, approval and amendment paths | binding | unchanged; governs proposed ADR 0092 | #803; tech-lead approval pending |
+| 0039 | ADR strictness tiers, approval and amendment paths | binding | unchanged; governs proposed ADR 0093 | #803; tech-lead approval pending |
 | 0042 | Fiscal document authority and accreditation gates | default | unchanged | P5 |
 | 0043 | Per-device sync rounds and stable run accounting | default | amend [default] in this PR; record partner participation and planned 5/10 entitlements | #803 amendment; #1484/#2379 own entitlement implementation |
 | 0047 | Platform Admin identity and page RBAC | default | adopted-by-reference for DGFY Admin approval; no new permissions decided | #2379 |
 | 0052 | Tenant revenue, collection, and settlement controls | binding | unchanged; partner has no settlement administration | P4/P5 |
-| 0075 | Native offline financial and refund evidence | binding | adopted-by-reference as proposed guidance for partner clients; approval required before implementation treats it as binding | #803 / ADR 0092; #1484 and P4 |
-| 0076 | Native offline order-action records and expected versions | binding | adopted-by-reference as proposed guidance for partner clients; approval required before implementation treats it as binding | #803 / ADR 0092; P1/P4 |
+| 0075 | Native offline financial and refund evidence | binding | adopted-by-reference as proposed guidance for partner clients; approval required before implementation treats it as binding | #803 / ADR 0093; #1484 and P4 |
+| 0076 | Native offline order-action records and expected versions | binding | adopted-by-reference as proposed guidance for partner clients; approval required before implementation treats it as binding | #803 / ADR 0093; P1/P4 |
 | 0079 | `laundry` external-engine shape and DGLaundry contract | default | amend [default] in this PR with generic-contract/adapter reference; `laundry` remains external authority | #803 amendment; #2311 |
 | 0087 | OPIS merchant back-office ownership and consent surface | binding | unchanged; OPIS owns merchant consent | #2379 |
 | 0089 | DGFY Admin app and independent host sessions | binding | unchanged; DGFY Admin owns platform approval | #2379 |
@@ -272,7 +272,7 @@ Historical #993-family text proposing automatic background mutation sync, client
 
 ## 15. Open items and known gaps
 
-- ADR 0092 is proposed and awaits tech-lead approval. Until accepted, dependent implementation issues #2311, #801, and #802 must treat this contract as reference.
+- ADR 0093 is proposed and awaits tech-lead approval. Until accepted, dependent implementation issues #2311, #801, and #802 must treat this contract as reference.
 - #997 must decide the allocation ADR path before partner allocation implementation; this contract does not decide it.
 - #2378/#243 must approve customer field-level permissions and privacy policy before customer operations are implemented.
 - #1484/#2379 must decide and fund the planned 5/10 sync entitlements; they are not shipped behavior.
