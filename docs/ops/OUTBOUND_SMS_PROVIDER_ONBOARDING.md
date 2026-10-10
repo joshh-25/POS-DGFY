@@ -13,6 +13,10 @@ topic: outbound_sms_provider_onboarding
 No production SMS provider is configured by this change. `SMS_PROVIDER` defaults to
 `unconfigured`; sending in that mode records an `unconfigured` result and does not claim delivery.
 The `fake` adapter is for development and tests only and is blocked when `NODE_ENV=production`.
+Transactional order-received and order-delivered alerts use this boundary after the order
+transaction commits. Dispatch is best-effort and bounded by the caller, so every real provider
+adapter must also apply its own network/request timeout; a caller timeout does not cancel an
+underlying provider request.
 
 ## Required provider inputs
 

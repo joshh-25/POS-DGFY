@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-10
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -28111,4 +28111,66 @@ Not complete. Set only after the scoped documentation PR is merged and its valid
 
 ### Next phase number
 
-Phase 497. No explicit dependency.
+## Phase 497 - Transactional order received and delivered SMS alerts (#2416)
+
+### Initiative and release
+
+Wave 2 of the outbound SMS foundation under epic #2413.
+
+### Objective and scope
+
+Dispatch one best-effort transactional SMS for storefront orders after `placed` checkout commits
+and one after a manual delivery job transitions to `delivered`. Covers guest orders and idempotent
+checkout recovery while preserving checkout and delivery transition outcomes. No provider, schema,
+route, consent, promotional message, outbox, or sender-contract change is included.
+
+### Status
+
+`in_progress` — implementation and validation are underway; PR review and merge remain outstanding.
+
+### Dependencies
+
+- Phase 495 / #2415 provider-neutral SMS sender contract and delivery log are merged in PR #2419.
+
+### Acceptance and validation evidence
+
+- [x] Focused service, checkout, delivery-job, SMS sender, and customer-activity tests pass (5
+      suites, 55 tests); prove E.164 transactional requests, replay dedupe, guest coverage,
+      post-commit delivery gating, failure isolation, no-phone skip, no content persistence, and
+      null `order_id`.
+- [x] `npm run check:architecture` and `npm run check:compliance` pass.
+- [x] `npm run lint:docs` and `npm run check:adr` pass with the generated ADR index current.
+- [x] `node --check` passes for each changed API JavaScript file.
+- [x] `node scripts/check-app-version-bump.js --staged` passes against the develop version floor.
+
+### Links
+
+- Issue: #2416; parent epic: #2413; planner handoff: `.tmp/plan-2416.md`, planning head
+  `b27d3ac6a398245af6e066d433d686d6a950ce86`.
+- Architecture decision: ADR 0094 amendment dated 2026-10-10.
+- Provider onboarding: `docs/ops/OUTBOUND_SMS_PROVIDER_ONBOARDING.md`.
+- Implementation: `apps/dgfy-api/src/modules/dgfy/services/dgfyOrderSmsAlerts.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`.
+- Tests: `apps/dgfy-api/tests/dgfyOrderSmsAlerts.unit.test.js`,
+  `apps/dgfy-api/tests/storeFnbModifiers.usecases.test.js`,
+  `apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and named validation passes.
+
+### Post-merge verification
+
+- [ ] provider — complete provider selection, sender registration, credentials, sandbox, cost,
+      webhook, and purpose-specific controls before enabling real SMS; owner: #2415 outbound SMS
+      product owner; blocks real-provider traffic.
+- [ ] deployment — confirm production `SMS_PHONE_HASH_SECRET` is configured before deploying the
+      API version; owner: deployment operator; blocks production rollout.
+- [ ] operational — verify deployed order alerts preserve successful checkout and delivery
+      transitions and that SMS delivery rows contain no message content; owner: Verifier; blocks
+      closing #2416.
+
+### Next phase number
+
+Phase 498. No explicit dependency.
