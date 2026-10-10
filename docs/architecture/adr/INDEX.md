@@ -51,7 +51,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0026 | [Browser Session Cookie Authority](0026-browser-session-cookie-authority.md) | `accepted` | browser_session_cookie_authority | 2027-01-08 | 0 |
 | 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `superseded` | paymongo_qrph_platform_split_settlement | 2026-07-30 | 0 |
 | 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-03-14 | 0 |
-| 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `amended` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 6 |
+| 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `amended` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 7 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2027-03-15 | 0 |
 | 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `amended` | standalone_dgfy_api_service | 2027-01-08 | 0 |

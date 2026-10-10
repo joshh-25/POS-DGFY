@@ -27593,7 +27593,73 @@ passes.
 
 Phase 490. No explicit dependency.
 
-## Phase 490 - Third-party partner API contract and engine authority (#803)
+## Phase 490 - Per-terminal stock allocation governance and design (#997)
+
+### Initiative and release
+
+Offline-first POS: define the Inventory-owned allocation contract shared by web POS, native POS,
+partner terminals, and Storefront before schema or runtime enforcement is built.
+
+### Objective and scope
+
+Amend ADRs 0029 and 0014 at their `[default]` clauses, and publish the authoritative feature
+contract in `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`. Define grant, consumption, competing
+stock issues, availability, web/native replay, quarantine, recovery, recipe/modifier effects,
+operator authority, and admin sizing. This phase is documentation only: no migration, model,
+service, API, POS client, or UI changes.
+
+### Status
+
+`in_progress` — the design and documentation checks are complete; the PR is not yet merged.
+
+### Dependencies
+
+Issue #997 and the existing Inventory-owned online reservation contract in ADR 0029. No earlier
+ledger phase blocks this work. Existing #998 is the Storefront freshness sibling of #993 and
+consumes this contract. Runtime slices must close the verified POS live-sale and Storefront
+availability gaps before claiming conflict-free allocation.
+
+### Acceptance and validation evidence
+
+- [x] Cross-boundary classification, changed `[default]` clauses, unchanged `[binding]` ownership
+      clauses, and the ADR 0029 POS/Storefront call-site findings are recorded.
+- [x] ADR 0029 and ADR 0014 amendments describe the allocation authority, replay boundary, and
+      explicit no-auto-release policy without authorizing runtime changes.
+- [x] The feature contract answers grant, return, offline holder, 24-hour authorization, sizing,
+      replay/idempotency, recipe/modifier-derived stock, stock-exempt behavior, and Storefront
+      availability/display requirements.
+- [x] The shared allocation design preserves web POS manual replay and native/partner client-specific
+      governed sync triggers and device-attachment policy.
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, and `node scripts/check-app-version-bump.js` pass and are
+      recorded in PR evidence.
+
+### Links
+
+- Issue: #997, child of #993; planner handoff `.tmp/plan-997.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- ADRs: 0009, 0014, 0017, 0029, 0031, 0039, 0043, and 0044.
+- Feature contract: `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`.
+- Current enforcement call sites: `apps/dgfy-api/src/modules/inventory/services/inventoryReservationService.js`,
+  `apps/dgfy-api/src/modules/inventory/commands/stockCommandService.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, and
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`.
+
+### Completion date
+
+Not complete. Set only after the documentation PR is merged and its implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] governance — PM schedules and shapes the separately scoped Inventory schema/service, replay
+      and competing stock-issue, client/OPIS, and Storefront freshness work; owner: PM; verify before
+      any runtime slice begins.
+- [ ] architecture — the first runtime rollout proves POS live sale, Storefront, and all competing
+      stock issues honor active/quarantined allocations before enabling offline allocation grants;
+      owner: Worker/Reviewer; blocks claiming conflict-free selling.
+
+## Phase 491 - Third-party partner API contract and engine authority (#803)
 
 ### Initiative and release
 
@@ -27666,4 +27732,4 @@ Not complete. Set only after the scoped change is merged and implementation vali
 
 ### Next phase number
 
-Phase 491. No explicit dependency.
+Phase 492. No explicit dependency.
