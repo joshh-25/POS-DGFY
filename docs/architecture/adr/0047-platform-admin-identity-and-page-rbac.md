@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-07-28
-last_reviewed: 2026-07-29
+last_reviewed: 2026-10-10
 review_by: 2027-01-28
 topic: platform_admin_identity_rbac
 ---
@@ -35,3 +35,20 @@ The historical admin JWT represented a shared master credential and carried no r
 - Prove login, session rehydration, logout/revocation, disabled-user rejection, password reset/change invalidation, and stale JWT rejection.
 - Prove each delegated grant can access only its mapped API/page and direct requests are rejected without it.
 - Prove Platform Master-only user management rejects delegated admins.
+
+## Amendments
+
+### 2026-10-10 — Partner integration administration page grant (#2379)
+
+- Clause amended: Consequences (default).
+- Change: add `admin.partner_integrations` to the Platform Admin page-permission matrix and
+  middleware classification before partner administration routes are enabled. The grant covers
+  approved-pilot partner/App/client administration, App approval, client credential issue/rotation/
+  revocation, and client suspension, subject to the server-side lifecycle checks in the partner
+  administration matrix. Plan/entitlement changes remain subject to the platform plan authority.
+- Boundary: Platform Master alone grants or removes this page permission and manages delegated
+  Platform Admin accounts/grants. A delegated holder cannot self-grant or use this page grant to
+  consent for a merchant or modify a tenant attachment.
+- Audit and secret handling follow this ADR's Consequences and the proposed partner administration
+  matrix. This amendment defines the page grant; it does not claim routes are implemented.
+- Reference: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`; proposed ADR 0091.
