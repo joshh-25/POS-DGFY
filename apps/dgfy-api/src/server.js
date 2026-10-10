@@ -94,6 +94,7 @@ import {
   stopStorefrontDomainMaintenanceScheduler
 } from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
 import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
+import { resolvePartnerCorsOrigin } from './modules/partnerIdentity/services/partnerOriginResolver.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 
@@ -344,6 +345,17 @@ const resolveCorsAllowed = async (origin, req = {}) => {
 const corsOptionsDelegate = async (req, callback) => {
   const origin = req.headers.origin || null;
   const allowed = await resolveCorsAllowed(origin, req);
+
+  if (!allowed && await resolvePartnerCorsOrigin(origin, req).catch(() => false)) {
+    callback(null, {
+      origin: true,
+      credentials: false,
+      methods: ['GET', 'HEAD', 'OPTIONS'],
+      optionsSuccessStatus: 200,
+      exposedHeaders: ['Content-Disposition', 'Content-Length', 'x-request-id', 'x-trace-id']
+    });
+    return;
+  }
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
