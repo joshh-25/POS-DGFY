@@ -200,6 +200,12 @@
       "topic": "tenant_customer_crm_foundation",
       "expected_status": "reference",
       "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/api/PARTNER_ADMINISTRATION_MATRIX.md",
+      "topic": "partner_integration_administration_matrix",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }
