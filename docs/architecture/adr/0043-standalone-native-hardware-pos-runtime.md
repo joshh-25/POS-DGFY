@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-19
-last_reviewed: 2026-09-17
-review_by: 2026-12-19
+last_reviewed: 2026-10-10
+review_by: 2027-04-10
 applies_to: hardware_pos_android_imin_runtime
 topic: standalone_native_hardware_pos_runtime
 supersedes_in_part: docs/architecture/adr/0025-pos-application-shells-and-lan-host-runtime.md
@@ -228,3 +228,19 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 - Reason: close an audit gap on the fallback path while the standalone
   native runtime this ADR describes continues to mature.
 - See: ADR 0053.
+
+### 2026-10-10 — Partner sync participation and planned entitlements
+
+- Clause amended: Sync Strategy 4 and Guardrail 6 (`default`).
+- Change: approved partner devices that participate in DGFY-engine ledger synchronization follow
+  the same per-device successful-round accounting, tenant/device day window, stable
+  `client_sync_run_id`, bounded 15-minute reuse window, and failed-attempt exclusions as native
+  sync. The current baseline remains at most two successful rounds per device per day, with the
+  existing premium bypass. Configurable 5/10 entitlements are **planned**, not current behavior;
+  #1484 owns shared sync semantics and #2379 owns entitlement/administration decisions. A partner
+  cannot self-grant premium access, and no merchant-wide counter or unlimited order-mutation
+  exemption is introduced.
+- Reason: make future partner participation explicit without describing unimplemented billing or
+  entitlement tiers as shipped behavior.
+- See: [Third-Party Partner Contract](../../api/THIRD_PARTY_PARTNER_CONTRACT.md), #803, #1484,
+  and #2379.

@@ -3,7 +3,7 @@ status: amended
 authority_level: architecture
 owner: dgfy-platform
 date: 2026-08-30
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-10
 review_by: 2027-02-28
 applies_to: dgfy_dglaundry_integration
 topic: dglaundry_external_runtime_and_provider_contract
@@ -135,3 +135,19 @@ a non-binding document.
   contract a partner developer codes against, addressing issue #519's "write the contract down"
   requirement. It restates and verifies this ADR's decisions against current source; this ADR
   remains the architectural authority, the contract document is the implementation-level detail.
+
+### 2026-10-10 — Generic partner contract and `laundry` engine shape (#803)
+
+- Clause amended: Decision 1 and the 2026-10-07 rule that every future `external` shape must be
+  named (`default`).
+- Change: the generic [Third-Party Partner Contract](../../api/THIRD_PARTY_PARTNER_CONTRACT.md)
+  defines `external` authority as a per-location attachment attribute, not a new workflow mode.
+  The existing `laundry` mode remains the DGLaundry-owned operational-engine shape: DGLaundry owns
+  its operational engine, while DGFY retains the storefront and DGFY-origin payment responsibilities
+  already stated here. The DGLaundry-specific contract remains authoritative for that integration;
+  its legacy claim, routes, and environment client triple are compatibility seams until #2311 proves
+  generic replacement and ADR 0035 removal criteria pass. The generic contract is reference while
+  proposed ADR 0093 awaits approval.
+- Reason: answer the required generic polarity without rewriting the DGLaundry-specific runtime or
+  authorizing another hard-coded workflow mode.
+- See: ADR 0035, ADR 0093, #803, and #2311.

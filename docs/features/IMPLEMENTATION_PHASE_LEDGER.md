@@ -27659,6 +27659,77 @@ passes.
       stock issues honor active/quarantined allocations before enabling offline allocation grants;
       owner: Worker/Reviewer; blocks claiming conflict-free selling.
 
+## Phase 491 - Third-party partner API contract and engine authority (#803)
+
+### Initiative and release
+
+Third-party app integration tier under epic #796. Ordinary develop-based, documentation and ADR
+definition work; no runtime endpoint, schema, migration, or app-version change.
+
+### Objective and scope
+
+Define the generic `partner-contract/v0.1` contract for DGFY-engine and external-engine partners,
+document the DGLaundry compatibility adapter, propose ADR 0093, amend ADRs 0043 and 0079 at the
+default tier, register/cross-reference the contract and #2379 administration matrix, and map future
+implementation ownership. Keep the contract at reference authority until ADR 0093 receives
+tech-lead approval. No endpoint, registry, allocation engine, customer privacy policy, demo, or
+implementation candidate is delivered.
+
+### Status
+
+`in_progress` — documentation and ADR changes are being reconciled with develop; governed
+validation, commit, review, and merge remain outstanding.
+
+### Dependencies
+
+Issue #803 is a child of #796. No earlier phase blocks this definition work. #2379 and #2378 gate
+their respective administration and customer sections, not this phase. #997/#998 own allocation
+design; #1484 owns shared sync convergence. ADR 0093 approval gates dependent implementation from
+treating its proposed rules as binding.
+
+### Acceptance and validation evidence
+
+- [ ] Generic contract covers both engine tiers, per-location authority, coexistence, identity,
+  operations, offline recovery, sync, money/fiscal authority, qualification, ownership, and ADR
+  reconciliation.
+- [ ] DGLaundry remains governed by its authoritative contract and has named compatibility seams,
+  owner, evidence, rollback, and removal conditions.
+- [ ] Proposed ADR 0093 has strictness-tiered decisions and an empty approval record; ADR 0043 and
+  ADR 0079 carry dated default-tier amendments.
+- [ ] Contract references #2379's administration matrix without duplicating its permission policy;
+  #2378's customer policy remains gated.
+- [ ] `npm run check:adr -- --write-index` leaves no stale ADR index; `npm run lint:docs`,
+  `npm run check:architecture`, and `npm run check:compliance` pass.
+- [ ] No application code or migration changes; build/app-version Tier 0 checks are not applicable.
+- [ ] PR links #803 with `Refs #803`, records artifact provenance, assumptions, validation, and
+  pending ADR approval.
+
+### Links
+
+- Issue: #803; parent epic: #796; planner handoff: `.tmp/plan-803.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- Proposed ADR: `docs/architecture/adr/0093-third-party-partner-integration-engine-authority-and-attachments.md`.
+- Contract: `docs/api/THIRD_PARTY_PARTNER_CONTRACT.md`.
+- Administrative matrix: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md` (#2379, phase 489).
+- Related documents: `docs/api/PARTNER_INTEGRATION_CONTRACT.md`, `docs/api/README.md`,
+  `docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md`,
+  `docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md`,
+  `docs/_meta/document-registry.json`, and this ledger entry.
+- Implementation: documentation and ADR only; no runtime files or tests are added.
+
+### Completion date
+
+Not complete. Set only after the scoped change is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — obtain and record tech-lead approval for proposed ADR 0093 before #2311, #801,
+  or #802 treats the contract as authoritative; owner: architecture; blocks binding adoption.
+- [ ] provider — assess DGLaundry `external-runtime-v0.1` against the generic context before any
+  schema adoption; owner: #2311/DGLaundry integration; blocks generic context implementation.
+- [ ] operational — implement and verify the ADR 0035 compatibility-seam entry and removal
+  evidence in #2311; owner: #2311; blocks removal of legacy DGLaundry claims/routes/clients.
+
 ### Next phase number
 
-Phase 491. No explicit dependency.
+Phase 492. No explicit dependency.

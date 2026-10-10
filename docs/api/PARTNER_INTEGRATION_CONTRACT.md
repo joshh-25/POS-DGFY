@@ -376,3 +376,7 @@ inventory needs the opposite shape.
 See [issue #796](https://github.com/Sieitzz/dgfy-platform/issues/796) (Epic: Third-party app
 integration tier) and [#803](https://github.com/Sieitzz/dgfy-platform/issues/803) (the third-party
 version of this same question) for that separate track.
+
+The generic contract is now documented in [Third-Party Partner Contract](THIRD_PARTY_PARTNER_CONTRACT.md).
+It defines the DGFY-engine and external-engine tiers while this DGLaundry contract remains authoritative
+for the existing DGLaundry integration and its compatibility adapter.
