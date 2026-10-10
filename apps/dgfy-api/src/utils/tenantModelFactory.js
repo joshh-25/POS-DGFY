@@ -102,6 +102,8 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'OidcSigningKey',
     'PartnerApp',
     'OidcClient',
+    'PartnerClientCredential',
+    'PartnerAttachment',
     'TenantPayout',
     'TenantRevenueAdjustment',
     'TenantRevenueFeePolicy',
