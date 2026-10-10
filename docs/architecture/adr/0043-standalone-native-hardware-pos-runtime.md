@@ -137,6 +137,26 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 
 ## Amendments
 
+### 2026-10-10 — Align POS sync-round accounting and authorize web policy
+
+- Clause amended: Sync Strategy 4 and Guardrail 6 (`default`).
+- Change: “Phase 1 begins with manual sync” is historical for the completed native runtime. The
+  shared POS sync contract counts one leased outbox drain with a stable `client_sync_run_id` as one
+  round; empty drains and failed validation, authorization, server, or network attempts do not spend
+  a successful round. The free-tier baseline is two successful rounds per local day; premium has no
+  round cap. Web POS adopts this accounting vocabulary through #1477/#999, with convergence
+  mechanics in #1484. Native and partner enforcement, triggers, and entitlements remain governed by
+  their existing contracts; this amendment does not add partner entitlements or claim web
+  server-side round enforcement exists. For web, #995 authorizes an administrator-resolvable
+  manual/automatic policy, but implementation remains manual until #999 ships. The manual mode
+  keeps operator-triggered sync; the automatic mode may add policy-governed scheduled and
+  connectivity-restored runs alongside the operator action. See ADR 0014 for its configuration,
+  replay-storm, and unchanged-safety requirements.
+- Reason: Keep the sync-round meaning consistent across POS clients while making explicit that
+  policy authorization does not itself ship automatic web replay or change native and partner
+  entitlement contracts.
+- PR: this PR (Closes #995).
+
 ### 2026-09-17 — iMin WebView defers optional operations work
 
 - Clause amended: Guardrail 7 / “Browser-only POS remains a rollback-safe
