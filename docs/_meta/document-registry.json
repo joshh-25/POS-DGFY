@@ -194,6 +194,12 @@
       "topic": "partner_integration_contract",
       "expected_status": "authoritative",
       "expected_authority_level": "authoritative"
+    },
+    {
+      "path": "docs/api/THIRD_PARTY_PARTNER_CONTRACT.md",
+      "topic": "third_party_partner_contract",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }
