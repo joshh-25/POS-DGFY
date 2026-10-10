@@ -93,9 +93,10 @@ same units would leave the conflict unresolved.
   delete queue entries, or discard pending records.
 - Offline checkout is limited to the current terminal's remaining allocation. It may not sell
   beyond that quantity, grant stock, top up, return stock, or change allocation identity.
-- **Web POS** replay stays operator-triggered through the existing `Sync All Pending Records`
-  action and its daily limit. Reconnect, page load, retry timers, and Service Worker events do not
-  submit records, per ADR 0014.
+- **Web POS** replay is operator-triggered unless the tenant's resolved ADR 0014 policy is `auto`.
+  A `manual` policy retains the existing `Sync All Pending Records` action and applicable daily
+  limit; an `auto` policy permits its governed scheduled and connectivity-restored triggers after
+  #999 implements them. This amendment authorizes the policy but adds no runtime behavior.
 - **Native POS and partner clients** follow their own governed sync policies. In particular, ADR
   0043 permits policy-governed reconnect/foreground replay for the standalone native hardware app
   and paid realtime replay. This allocation contract neither enables nor disables those triggers;
@@ -163,8 +164,10 @@ did not happen merely because the server has not received it.
 - Grant, consumption, return, quarantine, and recovery validate tenant/location/terminal/app
   attachment/operator scope and preserve append-only audit evidence. Browser pairing is not
   elevated into unique-device proof; strict device policy is enforced when enabled.
-- Web replay retains ADR 0014's manual trigger. Native and partner replay retain their respective
-  governed sync triggers while using the same allocation accounting and idempotency boundary.
+- Web replay is manual unless the tenant's resolved policy is `auto`, as authorized by ADR 0014;
+  automatic runtime behavior remains owned by #999. Native and partner replay retain their
+  respective governed sync triggers while using the same allocation accounting and idempotency
+  boundary.
 
 ## Authoritative references
 
