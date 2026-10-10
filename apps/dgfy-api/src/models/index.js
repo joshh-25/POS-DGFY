@@ -243,6 +243,9 @@ import PartnerAppFactory from './Landlord/PartnerApp.js';
 import OidcClientFactory from './Landlord/OidcClient.js';
 import PartnerClientCredentialFactory from './Landlord/PartnerClientCredential.js';
 import PartnerAttachmentFactory from './Landlord/PartnerAttachment.js';
+import SmsMarketingConsentFactory from './Landlord/SmsMarketingConsent.js';
+import SmsConsentEventFactory from './Landlord/SmsConsentEvent.js';
+import SmsGlobalSuppressionFactory from './Landlord/SmsGlobalSuppression.js';
 const Tenant = TenantFactory(sequelize);
 const TenantIntakeProposal = TenantIntakeProposalFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
@@ -250,6 +253,9 @@ const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
 const EmailDeliveryLog = EmailDeliveryLogFactory(sequelize);
 const SmsDeliveryLog = SmsDeliveryLogFactory(sequelize);
+const SmsMarketingConsent = SmsMarketingConsentFactory(sequelize);
+const SmsConsentEvent = SmsConsentEventFactory(sequelize);
+const SmsGlobalSuppression = SmsGlobalSuppressionFactory(sequelize);
 const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
@@ -1395,6 +1401,9 @@ const db = {
   EmailOtp,
   EmailDeliveryLog,
   SmsDeliveryLog,
+  SmsMarketingConsent,
+  SmsConsentEvent,
+  SmsGlobalSuppression,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
@@ -1639,6 +1648,9 @@ export {
   EmailOtp,
   EmailDeliveryLog,
   SmsDeliveryLog,
+  SmsMarketingConsent,
+  SmsConsentEvent,
+  SmsGlobalSuppression,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
