@@ -28251,4 +28251,80 @@ Not complete. Set only after the scoped implementation is merged and named valid
 
 ### Next phase number
 
-Phase 499. No explicit dependency.
+Phase 500. No explicit dependency.
+
+## Phase 499 - Multi-terminal POS consistency model (#798)
+
+### Initiative and release
+
+Offline-first POS governance under epic #993. Cross-surface consistency decision for POS, Inventory,
+Storefront, and terminal registry state; documentation only.
+
+### Objective and scope
+
+Publish the authoritative per-operation CP/AP model for a LAN partition; decide invoice-counter
+sharding, normalized terminal identity target, and the limits of peer-to-peer transport; reconcile
+the decision with current replay and ownership contracts. Amend ADR 0031's `[default]` registry
+storage direction. No runtime, API, UI, schema, or migration changes are in scope.
+
+### Status
+
+`in_progress` — implementation and documentation validation are underway; commit, PR review, and
+merge remain outstanding.
+
+### Dependencies
+
+- No explicit dependency blocks this decision record. Phase 490 / #997 provides the terminal stock
+  allocation contract; Phase 496 / #995 provides the current replay policy.
+- Phase 497 / #998 and Phase 498 / #2416 are concurrent governed changes and declare no dependency
+  on this decision record; their runtime scope does not block this documentation slice.
+- Current phase: 499; next phase number: 500.
+
+### Acceptance and validation evidence
+
+- [x] The feature contract classifies online/offline stock effects, invoice numbering, shift open
+      and close, Z-reading, parked-sale claims, charged amount, and registry edits, with a reason for
+      each classification.
+- [x] The contract keeps `POS_OR` unsharded without claiming measured acceptability, records a
+      measurable reopening trigger, and defers offline fiscal numbering to #1000.
+- [x] The normalized registry target is `terminal_identities`; its boundary with current
+      settings-backed runtime and #800-owned pairing/operational fields is explicit.
+- [x] LAN WiFi/Bluetooth is rejected as an authority-bearing state transport; any retained signal
+      is advisory and backend-validated.
+- [x] ADR 0014's 2026-10-10 replay amendment is cited without duplication; ADR 0031's default
+      storage wording is amended; ADR 0029 `[binding]` ownership clauses remain unchanged.
+- [x] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance`,
+      `node scripts/check-app-version-bump.js`, and `git diff --check` pass.
+
+### Links
+
+- Issue: #798; parent epic: #795; planner handoff: `.tmp/plan-798.md`, planning head
+  `ad17fc3c4`.
+- Governing architecture: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0014, ADR 0025, ADR 0029, ADR 0031, ADR
+  0039, ADR 0042, ADR 0043, ADR 0044, ADR 0065, and ADR 0067.
+- Domain/schema contracts: `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`,
+  `docs/database/dgfy-foundation.md`, and `docs/database/dgfy-data-migration-map.md`.
+- Follow-on ownership: #800 (terminal pairing and operational fields), #999 (replay accounting),
+  #1000 (offline fiscal numbering), and PM for counter measurement and stale issue wording.
+- Implementation: `docs/features/POS_MULTI_TERMINAL_CONSISTENCY_MODEL.md`, ADR 0031, generated ADR
+  index, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation change is merged and its implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] governance — confirm #800's pairing and terminal operational-field design targets the same
+      normalized identity without duplicating source-of-truth state; owner: #800 / Planner.
+- [ ] performance — collect representative `pos_invoice_counters` lock-wait and checkout-latency
+      evidence before changing counter topology; owner: POS/API operator.
+- [ ] follow-up — PM shapes registry compare-and-set adoption, measured counter follow-up if its
+      trigger fires, and stale #798/#795 issue corrections; owner: PM.
+
+### Next phase number
+
+Phase 500. No explicit dependency.
