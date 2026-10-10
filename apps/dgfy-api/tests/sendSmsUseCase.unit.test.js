@@ -119,11 +119,21 @@ describe('sendSmsUseCase', () => {
       [{ status: 'revoked' }, 'opted_out'],
       [{ status: null, globallySuppressed: true }, 'opted_out_global']
     ]) {
-      await sendSmsUseCase({ recipients: ['09171234567'], purpose: 'promotional', content: 'sale', tenantId: 'tenant-a', optOutInstruction: 'Reply STOP to opt out.' }, {
-        repository, consentRepository: { getPromotionalEligibility: jest.fn(async () => eligibility) },
+      const consentRepository = { getPromotionalEligibility: jest.fn(async () => eligibility) };
+      const input = { recipients: ['09171234567'], purpose: 'promotional', content: 'sale', tenantId: 'tenant-a', optOutInstruction: 'Reply STOP to opt out.' };
+      await sendSmsUseCase(input, {
+        repository, consentRepository,
         adapterResolver: () => ({ mode: 'fake', adapter: { send } })
       });
       expect(repository.create).toHaveBeenLastCalledWith(expect.objectContaining({ error_code: errorCode, dedupe_key: null }));
+      if (errorCode === 'opted_out') {
+        const repeated = await sendSmsUseCase(input, {
+          repository, consentRepository,
+          adapterResolver: () => ({ mode: 'fake', adapter: { send } })
+        });
+        expect(repeated.deliveries[0].status).toBe('rejected');
+        expect(repository.create).toHaveBeenLastCalledWith(expect.objectContaining({ error_code: 'opted_out', dedupe_key: null }));
+      }
     }
     await sendSmsUseCase({ recipients: ['09171234567'], purpose: 'promotional', content: 'sale', tenantId: 'tenant-a', optOutInstruction: 'Reply STOP to opt out.' }, {
       repository, consentRepository: { getPromotionalEligibility: jest.fn(async () => { throw new Error('db down'); }) },
