@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { generatePartnerClientSecret, hashPartnerClientSecret } from '../domain/credentialSecrets.js';
+import { canonicalDestination, normalizeRegisteredOrigin, validateDestinationLists } from '../domain/destinationPolicy.js';
 
 const fail = (statusCode, code, message) => Object.assign(new Error(message), { statusCode, code });
 const allowedEntitlementKeys = new Set(['sync_rounds']);
@@ -17,6 +18,44 @@ const credentialRecord = ({ clientId, version, authMethod, secretHash, publicKey
   secret_hash: secretHash || null, public_key_pem: publicKeyPem || null, key_id: keyId || null,
   status: 'active', activated_at: new Date(), created_by_admin_id: adminId || null
 });
+
+const readDestinationLists = (input, environment, clientType) => {
+  const keys = ['allowed_origins', 'redirect_uris', 'post_logout_redirect_uris'];
+  if (clientType !== 'browser') {
+    if (keys.some((key) => Array.isArray(input[key]) ? input[key].length > 0 : input[key] !== undefined && input[key] !== null)) {
+      throw fail(400, 'INVALID_DESTINATION', 'Machine and service clients cannot register browser destinations.');
+    }
+    return { allowed_origins: [], redirect_uris: [], post_logout_redirect_uris: [] };
+  }
+  const lists = validateDestinationLists({
+    allowedOrigins: input.allowed_origins ?? [],
+    redirectUris: input.redirect_uris ?? [],
+    postLogoutRedirectUris: input.post_logout_redirect_uris ?? [],
+    environment
+  });
+  if (!lists.redirect_uris.length) throw fail(400, 'INVALID_DESTINATION', 'Browser clients require at least one redirect URI.');
+  return lists;
+};
+
+const assertNoCrossAppDestinationConflict = async (registryRepository, appId, lists, environment) => {
+  if (!lists.allowed_origins.length && !lists.redirect_uris.length && !lists.post_logout_redirect_uris.length) return;
+  const clients = await registryRepository.listAllClients();
+  const newOrigins = new Set(lists.allowed_origins.map((origin) => normalizeRegisteredOrigin(origin, environment).canonical));
+  const newUris = new Set([...lists.redirect_uris, ...lists.post_logout_redirect_uris].map((uri) => canonicalDestination(uri, environment)));
+  for (const existing of clients) {
+    if (String(existing.app_id) === String(appId)) continue;
+    const existingOrigins = [...(existing.allowed_origins || [])];
+    for (const uri of [...(existing.redirect_uris || []), ...(existing.post_logout_redirect_uris || [])]) {
+      try { existingOrigins.push(new URL(uri).origin); } catch { /* Legacy malformed rows do not grant a match. */ }
+    }
+    if (existingOrigins.some((origin) => {
+      try { return newOrigins.has(normalizeRegisteredOrigin(origin, existing.environment || environment).canonical); } catch { return false; }
+    })) throw fail(409, 'DESTINATION_CONFLICT', 'A destination origin is already registered to a client of another app.');
+    if ([...(existing.redirect_uris || []), ...(existing.post_logout_redirect_uris || [])].some((uri) => {
+      try { return newUris.has(canonicalDestination(uri, existing.environment || environment)); } catch { return false; }
+    })) throw fail(409, 'DESTINATION_CONFLICT', 'A redirect destination is already registered to a client of another app.');
+  }
+};
 
 export const buildPartnerLifecycleUseCases = ({ repository, registryRepository }) => ({
   async registerApp(input, actor, request) {
@@ -51,11 +90,15 @@ export const buildPartnerLifecycleUseCases = ({ repository, registryRepository }
     if ((clientType === 'browser') !== (authMethod === 'client_secret_basic')) throw fail(400, 'INVALID_CLIENT', 'Browser clients use client_secret_basic; machine and service clients use private_key_jwt.');
     if (input.entitlements !== undefined) throw fail(400, 'INVALID_CLIENT', 'Client registration cannot set attachment entitlements.');
     if (authMethod === 'client_secret_basic' && typeof input.public_key_pem === 'string') throw fail(400, 'INVALID_CLIENT', 'Browser clients cannot register a public key.');
+    const environment = String(input.environment || 'production').trim();
+    const destinations = readDestinationLists(input, environment, clientType);
+    await assertNoCrossAppDestinationConflict(registryRepository, app.id, destinations, environment);
     const registryClient = {
       id: crypto.randomUUID(), app_id: app.id, client_id: clientId, client_type: clientType,
-      environment: String(input.environment || 'production').trim(), status: 'pending', auth_method: authMethod,
+      environment, status: 'pending', auth_method: authMethod,
       secret_hash: null, public_key_pem: null, key_id: null, audience,
-      redirect_uris: cleanList(input.redirect_uris), post_logout_redirect_uris: cleanList(input.post_logout_redirect_uris),
+      redirect_uris: destinations.redirect_uris, post_logout_redirect_uris: destinations.post_logout_redirect_uris,
+      allowed_origins: destinations.allowed_origins,
       allowed_scopes: scopes, context_adapter: null, secret_rotated_at: null
     };
     if (authMethod === 'client_secret_basic') {
@@ -89,6 +132,20 @@ export const buildPartnerLifecycleUseCases = ({ repository, registryRepository }
     const transition = transitions[action];
     if (!transition || !(Array.isArray(transition[0]) ? transition[0].includes(client.status) : client.status === transition[0])) throw fail(409, 'LIFECYCLE_CONFLICT', 'This client transition is not allowed from its current state.');
     return repository.transitionClient({ id: client.id, expected: client.status, updates: { status: transition[1] }, audit: { ...auditContext(actor, request, reason), action: `partner.client.${action}`, after: { app_id: client.app_id, client_id: client.client_id, status: transition[1] } } });
+  },
+  async updateClientDestinations(clientId, input, actor, request) {
+    const client = await registryRepository.findClientByClientId(clientId);
+    if (!client) throw fail(404, 'CLIENT_NOT_FOUND', 'Partner client was not found.');
+    if (client.status === 'revoked') throw fail(409, 'LIFECYCLE_CONFLICT', 'Destinations cannot be changed for a revoked client.');
+    if (client.client_type !== 'browser') throw fail(400, 'INVALID_DESTINATION', 'Only browser clients can register destinations.');
+    const destinations = readDestinationLists(input || {}, client.environment || 'production', 'browser');
+    await assertNoCrossAppDestinationConflict(registryRepository, client.app_id, destinations, client.environment || 'production');
+    return repository.updateClientDestinations({
+      id: client.id,
+      expected: client.status,
+      updates: destinations,
+      audit: { ...auditContext(actor, request, input?.reason), action: 'partner.client.destinations_updated' }
+    });
   },
   async rotateCredential(clientId, input, actor, request) {
     const client = await registryRepository.findClientByClientId(clientId);

@@ -120,6 +120,36 @@ describe('platform partner OIDC provider', () => {
     expect(ownerIntrospection.body.active).toBe(true);
   });
 
+  test('removing a registered callback invalidates an authorization code and rejects a changed client redirect', async () => {
+    const verifier = 'a-second-synthetic-browser-code-verifier-with-entropy';
+    const redirect = 'https://synthetic.example.test/callback';
+    const client = await registry.findClientByClientId('synthetic-browser');
+    const par = response();
+    await provider.oidcPar(browser('synthetic-browser', 'browser-secret', {
+      client_id: 'synthetic-browser', response_type: 'code', redirect_uri: redirect,
+      code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'),
+      code_challenge_method: 'S256', scope: 'openid profile email', nonce: 'n-remove'
+    }), par, requestError((error) => { throw error; }));
+    const authorized = response();
+    await provider.buildOidcAuthorizeHandler()({ headers: {}, body: { request_uri: par.body.request_uri }, query: {}, dgfyAccount: { id: 'account-1' } }, authorized, requestError((error) => { throw error; }));
+    const code = new URL(authorized.redirectUrl).searchParams.get('code');
+
+    client.redirect_uris = [];
+    const removedCallback = response();
+    await provider.oidcToken(browser('synthetic-browser', 'browser-secret', {
+      grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirect
+    }), removedCallback, requestError((error) => { throw error; }));
+    expect(removedCallback.body).toEqual({ error: 'invalid_grant' });
+
+    client.redirect_uris = [redirect];
+    const wrongClientRedirect = response();
+    await provider.oidcToken(browser('synthetic-browser', 'browser-secret', {
+      grant_type: 'authorization_code', code: 'not-a-valid-code', code_verifier: verifier,
+      redirect_uri: 'https://synthetic.example.test.evil.test/callback'
+    }), wrongClientRedirect, requestError((error) => { throw error; }));
+    expect(wrongClientRedirect.body).toEqual({ error: 'invalid_grant' });
+  });
+
   test('a registry-only machine client uses its registered key, audience, scopes, and isolated replay namespace', async () => {
     const jti = 'same-jti-for-two-clients';
     for (const [clientId, pair] of [['synthetic-machine-a', machineA], ['synthetic-machine-b', machineB]]) {
