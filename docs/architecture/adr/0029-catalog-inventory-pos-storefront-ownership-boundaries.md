@@ -276,10 +276,13 @@ allocations for offline POS. It changes the reservation and availability approac
 No `[binding]` clause changes; this does not require a superseding ADR or a tech-lead exception.
 
 1. Inventory is the authority for each allocation. A grant is created only online and is bound to
-   tenant, location, registered terminal, app attachment/device identity, and operator authority.
-   It has immutable granted quantities for every stock-bearing effect, including recipe ingredients
-   and modifier SKUs. `stock_exempt` lines have no allocation. POS clients may keep a local view for
-   offline checkout but never become the allocation or stock ledger.
+   tenant, location, registered terminal, the app attachment recognized by that client's governed
+   device policy, and operator authority. Browser pairing remains a logical terminal signal; it
+   does not prove unique physical hardware. Where strict device enforcement applies, the enrolled
+   device proof is also required. The grant has immutable quantities for every stock-bearing effect,
+   including recipe ingredients and modifier SKUs. `stock_exempt` lines have no allocation. POS
+   clients may keep a local view for offline checkout but never become the allocation or stock
+   ledger.
 2. Available-to-sell is location-scoped on-hand minus active online-order holds and remaining
    terminal allocations. A terminal may consume its own allocated quantity; other terminals, live
    POS sales, Storefront quote/checkout, and other stock-decreasing flows must respect the

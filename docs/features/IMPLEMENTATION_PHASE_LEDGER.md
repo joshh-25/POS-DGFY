@@ -27494,6 +27494,8 @@ claiming conflict-free allocation.
 - [x] The feature contract answers grant, return, offline holder, 24-hour authorization, sizing,
       replay/idempotency, recipe/modifier-derived stock, stock-exempt behavior, and Storefront
       availability/display requirements.
+- [x] The shared allocation design preserves web POS manual replay and native/partner client-specific
+      governed sync triggers and device-attachment policy.
 - [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
       `npm run check:compliance`, and `node scripts/check-app-version-bump.js` pass and are
       recorded in PR evidence.

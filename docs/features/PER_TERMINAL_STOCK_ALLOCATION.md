@@ -14,9 +14,10 @@ topic: per_terminal_stock_allocation
 
 This contract defines Inventory-owned stock slices for POS terminals that must continue selling
 cash transactions while offline. It is the governed design for issue #997 under the Offline-first
-POS epic #993, and is shared by native DGFY POS and authorized partner terminals. A slice prevents
-two terminals from promising the same stock and keeps Storefront from offering stock already
-assigned to a terminal.
+POS epic #993, and its allocation accounting is shared by web POS, native DGFY POS, and authorized
+partner terminals. A slice prevents two terminals from promising the same stock and keeps
+Storefront from offering stock already assigned to a terminal. Each client keeps its own governed
+sync trigger and local persistence contract.
 
 Phase 488 is governance and design only. It changes no schema, API, runtime code, POS client, or
 admin UI. Later implementation is split into separately scoped issues.
@@ -45,8 +46,11 @@ required follow-on enforcement gaps, not claims that the guarantee is implemente
 ## Allocation identity and quantities
 
 - Inventory owns the durable allocation ledger. Each grant is scoped to tenant, location,
-  registered terminal, app attachment/device identity, and the operator authority that requested
-  it. The server validates these bindings when granting, topping up, returning, and reconciling.
+  registered terminal, the app attachment recognized by that client's governed device policy, and
+  the operator authority that requested it. The server validates these bindings when granting,
+  topping up, returning, and reconciling. Browser pairing is a logical terminal signal and does not
+  prove unique physical hardware (ADR 0044); strict device policy additionally requires its
+  enrolled device proof.
 - A grant is made only while online. Top-ups and returns also require an online Inventory command
   and a transaction. The terminal may cache its remaining slice for local checkout, but the cache
   is a use of server-issued authority, never stock truth.
@@ -89,8 +93,14 @@ same units would leave the conflict unresolved.
   delete queue entries, or discard pending records.
 - Offline checkout is limited to the current terminal's remaining allocation. It may not sell
   beyond that quantity, grant stock, top up, return stock, or change allocation identity.
-- Replay stays operator-triggered through the existing `Sync All Pending Records` action and its
-  daily limit. Reconnect, page load, retry timers, and Service Worker events do not submit records.
+- **Web POS** replay stays operator-triggered through the existing `Sync All Pending Records`
+  action and its daily limit. Reconnect, page load, retry timers, and Service Worker events do not
+  submit records, per ADR 0014.
+- **Native POS and partner clients** follow their own governed sync policies. In particular, ADR
+  0043 permits policy-governed reconnect/foreground replay for the standalone native hardware app
+  and paid realtime replay. This allocation contract neither enables nor disables those triggers;
+  every accepted replay still consumes the same Inventory-owned allocation and remains idempotent.
+  A partner client must use its approved attachment, authorization, and sync contract.
 - For each replayed stock-bearing sale, the server derives effects from the validated sale snapshot,
   verifies the terminal scope and remaining allocation, consumes the matching allocation, and
   records the Inventory goods issue atomically. The allocation check may replace the ordinary
@@ -151,7 +161,10 @@ did not happen merely because the server has not received it.
   Pending records survive expiry, and only explicit online return, reconciled shift close, or
   audited admin recovery releases a remainder.
 - Grant, consumption, return, quarantine, and recovery validate tenant/location/terminal/app
-  attachment/operator scope and preserve append-only audit evidence.
+  attachment/operator scope and preserve append-only audit evidence. Browser pairing is not
+  elevated into unique-device proof; strict device policy is enforced when enabled.
+- Web replay retains ADR 0014's manual trigger. Native and partner replay retain their respective
+  governed sync triggers while using the same allocation accounting and idempotency boundary.
 
 ## Authoritative references
 
@@ -160,7 +173,8 @@ did not happen merely because the server has not received it.
 - ADR 0017 — customer inventory display policy.
 - ADR 0029 — Catalog, Inventory, POS, and Storefront ownership boundaries and online reservation
   precedent.
-- ADR 0031 and ADR 0044 — terminal pairing, device binding, and operator authority.
+- ADR 0031 and ADR 0044 — terminal selection, pairing limitations, device binding, and operator
+  authority.
 - ADR 0039 — ADR strictness tiers and amendment path.
 - ADR 0043 — standalone native hardware POS runtime.
 - Issue #997, including its 2026-10-09 consumer requirements from #796.
