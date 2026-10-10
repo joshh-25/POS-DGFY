@@ -2,22 +2,28 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-10
 applies_to: ci_artifact_storage
 topic: s3_artifact_storage
 ---
 
 # CI artifact S3 storage
 
-Active workflow evidence migrated in #2329 is stored in the configured SeaweedFS S3 bucket rather
-than attached to GitHub Actions runs. Uploads use `scripts/ci-s3-upload.sh`, which accepts one file
-or one directory. A directory is archived as a `.tar.gz` while preserving its root and relative
-paths; single-file uploads retain their original bytes and filename.
+Active workflow evidence uses GitHub Actions Artifacts first, with the configured SeaweedFS S3
+bucket as a fallback only when the GitHub upload fails. The shared local composite action
+`.github/actions/upload-evidence` owns this policy across the security, compliance, promotion
+quality, and Android workflows. It lets each workflow finish its scanner, reconciliation, cleanup,
+and reporting steps before a final storage-enforcement step fails the run if both backends failed.
+
+The fallback uses `scripts/ci-s3-upload.sh`, which accepts one file or one directory. A directory
+is archived as a `.tar.gz` while preserving its root and relative paths; single-file uploads retain
+their original bytes and filename. Missing/unreadable evidence is recorded as `missing` with a
+warning and does not count as a backend failure, preserving the uploader's existing contract.
 
 ## Configuration and uploader contract
 
-Set these as **repository-level GitHub Actions Variables** so they are available to all artifact
-upload and lifecycle jobs without depending on a GitHub Environment:
+Set these as **repository-level GitHub Actions Variables** so they are available to fallback
+uploads and lifecycle jobs without depending on a GitHub Environment:
 
 | GitHub Actions variable | Job environment variable | Purpose |
 | --- | --- | --- |
@@ -30,7 +36,7 @@ Set `ARTIFACT_S3_ACCESS_KEY_SECRET` as a **GitHub Actions Secret**. Workflows ma
 ID to `AWS_ACCESS_KEY_ID` for the AWS CLI. The endpoint must be a valid HTTPS URL without embedded
 credentials, query tokens, or a fragment. Validation errors do not print the configured URL.
 
-The uploader also requires GitHub run metadata (`GITHUB_REPOSITORY`, `GITHUB_WORKFLOW`,
+The S3 fallback also requires GitHub run metadata (`GITHUB_REPOSITORY`, `GITHUB_WORKFLOW`,
 `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_JOB`) and the source commit SHA. It uses private
 objects, path-style requests, and multipart upload for large files. It verifies a direct download
 and a 48-hour presigned readback by SHA-256. Credentials and presigned links are not printed by the
@@ -43,7 +49,7 @@ verified retry run in [#2329](https://github.com/Sieitzz/dgfy-platform/issues/23
 
 ## Object keys and retrieval
 
-Keys use this structure:
+S3 fallback keys use this structure:
 
 ```text
 artifacts/repo/<owner>/<repo>/workflow/<workflow-slug>/run/<run-id>/attempt/<attempt>/job/<job>/artifact/<artifact-name>/sha/<source-sha>/<filename>
@@ -52,37 +58,49 @@ artifacts/repo/<owner>/<repo>/workflow/<workflow-slug>/run/<run-id>/attempt/<att
 Directory uploads use `<directory-name>.tar.gz` for `<filename>`. Android APK and checksum files
 are uploaded separately under the same artifact folder so the APK can be retrieved directly.
 
-Use either the object URI in the workflow summary with operator credentials:
+When GitHub Artifacts is the selected backend, the summary records the artifact name, ID, digest,
+run ID/attempt, source SHA, size, checksum, and retention. Repository readers can retrieve it with:
+
+```bash
+gh run download <run-id> -n <artifact-name>
+```
+
+GitHub artifact access follows repository read access. GitHub artifact names include the run
+attempt because v4 artifacts are immutable; Android APK and checksum files use distinct names.
+
+When the workflow used the S3 fallback, retrieve the object URI in the summary with operator
+credentials:
 
 ```bash
 aws s3 cp 's3://<bucket>/<object-key>' ./evidence \
   --endpoint-url "$ARTIFACT_S3_ENDPOINT"
 ```
 
-or the verified 48-hour presigned URL shown in that run's step summary. Treat that URL as a bearer
-link: anyone who can read it can retrieve the object until it expires. For a directory archive,
-extract the `.tar.gz` after retrieval.
+or the verified 48-hour presigned URL shown in that run's step summary. S3 objects are private;
+treat the URL as a bearer link that anyone holding it can use until expiry. For a directory
+archive, extract the `.tar.gz` after retrieval.
 
 ## Retention and expiry
 
-The old GitHub artifact settings describe intended retention. The 30-day families are scoped by
-workflow key prefix, with lifecycle rules for current objects and noncurrent versions:
+The 30-day S3 families are scoped by workflow key prefix, with lifecycle rules for current objects
+and noncurrent versions:
 
-| Upload family | Previous GitHub retention | S3 workflow prefix |
+| Upload family | GitHub retention (`retention-days`) | S3 fallback workflow prefix / expiry |
 | --- | ---: | --- |
-| API test-matrix evidence | 30 days | `promotion-quality-gate/` |
-| F&B browser evidence | 30 days | `promotion-quality-gate/` |
-| POS sales E2E evidence | 30 days | `promotion-quality-gate/` |
-| Frontend budgets report | 30 days | `promotion-quality-gate/` |
-| Salvaged API test-matrix evidence | 30 days | `promotion-quality-gate/` |
-| Compliance sweep results | 30 days | `compliance-preflight-sweep/` |
-| Compliance sweep handoff | 30 days | `compliance-preflight-sweep/` |
-| Android release APK and checksum | 30 days | `build-android-release-manual/` |
-| Gitleaks report | No explicit retention setting | `security-scanning/` |
+| API test-matrix evidence | 30 days | `promotion-quality-gate/`; managed 30-day lifecycle |
+| F&B browser evidence | 30 days | `promotion-quality-gate/`; managed 30-day lifecycle |
+| POS sales E2E evidence | 30 days | `promotion-quality-gate/`; managed 30-day lifecycle |
+| Frontend budgets report | 30 days | `promotion-quality-gate/`; managed 30-day lifecycle |
+| Salvaged API test-matrix evidence | 30 days | `promotion-quality-gate/`; managed 30-day lifecycle |
+| Compliance sweep results | 30 days | `compliance-preflight-sweep/`; managed 30-day lifecycle |
+| Compliance sweep handoff | 30 days | `compliance-preflight-sweep/`; managed 30-day lifecycle |
+| Android release APK and checksum | 30 days | `build-android-release-manual/`; managed 30-day lifecycle |
+| Gitleaks report | 30 days | `security-scanning/`; no automatic S3 expiry |
 
-`security-scanning/` has no automatic expiry rule because the prior upload had no `retention-days`
-setting. Large evidence test objects are configured for delete-after-verification and are separate
-from the retained Gitleaks report.
+All GitHub evidence uploads set `retention-days: 30`, including the Gitleaks report. S3 fallback
+objects continue to follow the existing prefix lifecycle rules. `security-scanning/` has no
+automatic S3 expiry; the large-object S3 multipart diagnostic is separate from retained workflow
+evidence and deletes its test object after verification.
 
 The production bucket's three managed 30-day rules were applied and read back successfully in
 [lifecycle setup run 37757312162](https://github.com/Sieitzz/dgfy-platform/actions/runs/37757312162).
@@ -101,9 +119,8 @@ and [S3 Lifecycle Recipes](https://github.com/seaweedfs/seaweedfs/wiki/S3-Lifecy
 
 ## GitHub artifact API scope
 
-After the migration is deployed, these workflow uploads no longer appear in
-`gh api --paginate /repos/<owner>/<repo>/actions/artifacts`. That endpoint remains useful for
-other active or historical GitHub-native artifacts; it is no longer an evidence inventory for the
-migrated `security-scan.yml`, `compliance-preflight-sweep.yml`, `build-android-manual.yml`, and
-`promotion-quality-gate.yml` uploads. Use the workflow summary's S3 object URI for migrated
-evidence.
+Successful primary uploads appear in
+`gh api --paginate /repos/<owner>/<repo>/actions/artifacts` and can be downloaded from the run.
+Evidence uploaded through the S3 fallback does not appear there; use that run summary's S3 object
+URI or verified presigned URL instead. This endpoint remains useful for other active or historical
+GitHub-native artifacts.
