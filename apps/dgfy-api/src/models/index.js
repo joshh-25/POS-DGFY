@@ -162,6 +162,7 @@ import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
 import EmailDeliveryLogFactory from './Landlord/EmailDeliveryLog.js';
+import SmsDeliveryLogFactory from './Landlord/SmsDeliveryLog.js';
 import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
@@ -248,6 +249,7 @@ const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
 const EmailDeliveryLog = EmailDeliveryLogFactory(sequelize);
+const SmsDeliveryLog = SmsDeliveryLogFactory(sequelize);
 const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
@@ -1392,6 +1394,7 @@ const db = {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  SmsDeliveryLog,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
@@ -1635,6 +1638,7 @@ export {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  SmsDeliveryLog,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
