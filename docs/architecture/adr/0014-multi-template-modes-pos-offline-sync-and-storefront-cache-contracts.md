@@ -286,3 +286,13 @@ This amendment changes no binding-tier clause and authorizes no runtime, cache-c
 schema, or UI change. The contract records the allowed stricter option—shorter shared-cache TTL or
 `no-store` for stock-bearing catalog reads—if a future product decision requires a literal
 "never higher than sellable" guarantee for every served cache copy.
+
+### 2026-10-10 — Web/mobile sync convergence proposal (#1484)
+
+ADR 0095 proposes web POS adoption of the platform-owned `/mobile-pos/sync/*` and
+`/mobile-pos/bootstrap/*` contract, while preserving the native client architecture in the mobile
+repository. Its per-clause dispositions for ADR 0075/0076 remain non-binding until tech-lead
+approval. The governed platform contract is
+[`POS_OFFLINE_SYNC_CONTRACT.md`](../../features/POS_OFFLINE_SYNC_CONTRACT.md). This reference does
+not change ADR 0014's existing web replay policy, per-operation CP/AP classifications, or the
+separate #999 implementation scope.

@@ -264,3 +264,12 @@ Native hardware app flow must mirror the current web POS operator journey, but i
   entitlement tiers as shipped behavior.
 - See: [Third-Party Partner Contract](../../api/THIRD_PARTY_PARTNER_CONTRACT.md), #803, #1484,
   and #2379.
+
+### 2026-10-10 — Web/mobile sync contract convergence proposal (#1484)
+
+ADR 0095 proposes a shared platform endpoint and replay contract for web and native POS. This
+proposal does not change native accounting, the current tenant/device limiter, or the status of
+planned 5/10 entitlements. Web limiter reconciliation remains #999; entitlement funding and
+administration remain #2379/#803. The per-client contract is documented in
+[`POS_OFFLINE_SYNC_CONTRACT.md`](../../features/POS_OFFLINE_SYNC_CONTRACT.md). ADR 0095's web
+dispositions remain non-binding pending tech-lead approval.
