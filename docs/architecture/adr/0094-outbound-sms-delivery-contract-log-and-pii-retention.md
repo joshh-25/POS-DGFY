@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-10-10
@@ -46,9 +46,31 @@ enough keyspace that an unkeyed digest is not an adequate retained identifier.
   works after the retention window.
 - Production environments must configure a strong SMS phone HMAC secret before this version starts.
 
+## Amendments
+
+### 2026-10-10 — Best-effort transactional order alerts (#2416)
+
+1. Order-received (`placed`) and order-delivered SMS alerts dispatch after the owning database
+   transaction commits. The implementation uses bounded, best-effort dispatch rather than an
+   outbox. A process crash between commit and dispatch can lose an alert; a persisted failed-send
+   row is not retried because the sender's durable dedupe record short-circuits every existing
+   outcome. A failure to write the log can leave no dedupe row. This is accepted for this alert
+   wave; callers must not roll back or fail an order transition because dispatch failed.
+   `[default]`
+2. “Delivered” for this alert means the manual delivery job transitions to `delivered`. The order's
+   `completed` fulfillment status is not used because it also represents pickup completion.
+   `[default]`
+3. Order-alert log rows leave `order_id` null. The SMS log column is UUID while the order's
+   `pos_transaction_id` is an integer; the schema remains unchanged and dedupe uses the event key
+   plus recipient hash. `[default]`
+4. Order-alert dispatch is bounded to five seconds. A real provider adapter must enforce its own
+   request timeout because the caller's timeout does not cancel an underlying provider request.
+   `[default]`
+
 ## References
 
 - ADR 0054 — outbound email delivery log and bounce capture (landlord log precedent).
 - `apps/dgfy-api/src/modules/smsDelivery/README.md` — module boundary.
 - `docs/ops/OUTBOUND_SMS_PROVIDER_ONBOARDING.md` — provider-specific rollout checklist.
 - Issue #2415 — provider-neutral sender foundation.
+- Issue #2416 — order-received and order-delivered alert integration.
