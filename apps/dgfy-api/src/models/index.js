@@ -240,6 +240,8 @@ import PlatformInvoiceEventFactory from './Landlord/PlatformInvoiceEvent.js';
 import OidcSigningKeyFactory from './Landlord/OidcSigningKey.js';
 import PartnerAppFactory from './Landlord/PartnerApp.js';
 import OidcClientFactory from './Landlord/OidcClient.js';
+import PartnerClientCredentialFactory from './Landlord/PartnerClientCredential.js';
+import PartnerAttachmentFactory from './Landlord/PartnerAttachment.js';
 const Tenant = TenantFactory(sequelize);
 const TenantIntakeProposal = TenantIntakeProposalFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
@@ -324,6 +326,8 @@ const PlatformInvoiceEvent = PlatformInvoiceEventFactory(sequelize);
 const OidcSigningKey = OidcSigningKeyFactory(sequelize);
 const PartnerApp = PartnerAppFactory(sequelize);
 const OidcClient = OidcClientFactory(sequelize);
+const PartnerClientCredential = PartnerClientCredentialFactory(sequelize);
+const PartnerAttachment = PartnerAttachmentFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -1462,6 +1466,8 @@ const db = {
   ,OidcSigningKey
   ,PartnerApp
   ,OidcClient
+  ,PartnerClientCredential
+  ,PartnerAttachment
 };
 
 export default db;
@@ -1470,6 +1476,8 @@ export {
   OidcSigningKey,
   PartnerApp,
   OidcClient,
+  PartnerClientCredential,
+  PartnerAttachment,
   User,
   StaffRole,
   Item,
