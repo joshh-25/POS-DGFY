@@ -35,7 +35,6 @@ const REQUIRED_QUALITY_MARKERS = [
   'node scripts/post-quality-suite-evidence.js --run-id',
   'npm run test:quality-evidence',
   'node scripts/run-backend-test-matrix.js',
-  '--detectOpenHandles',
   'npm run audit:indexes',
   'npm run lint:docs',
   'npm run check:compat-seams',
@@ -157,11 +156,11 @@ function checkSelectiveDispatchShape(qualityWorkflowText) {
       problems.push('promotion-quality-gate.yml: selected DB job must run validated DB group/chunk targets');
     }
     if (!targetJob.includes('vmstat 1') || !targetJob.includes('free -h')
-      || !targetJob.includes('scripts/ci-s3-upload.sh')
+      || !targetJob.includes('uses: ./.github/actions/upload-evidence')
       || !targetJob.includes("tee -a \"$GITHUB_STEP_SUMMARY\"")
       || !targetJob.includes('backend_test_matrix_${group}_${chunk_label}.json')
       || !targetJob.includes('results.testResults')) {
-      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry, preserve each selected matrix, report every suite, and persist evidence to S3');
+      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry, preserve each selected matrix, report every suite, and store evidence through the shared upload action');
     }
   }
 
@@ -286,10 +285,13 @@ function checkBackendMatrixResourceGuards(qualityWorkflowText) {
   return problems;
 }
 
-function checkPrQualityWorkflow({ prChecksText, qualityWorkflowText }) {
+function checkPrQualityWorkflow({ prChecksText, qualityWorkflowText, backendMatrixScriptText }) {
   return [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
     ...REQUIRED_QUALITY_MARKERS.filter((marker) => !qualityWorkflowText.includes(marker)).map((marker) => `promotion-quality-gate.yml:${marker}`),
+    ...(!backendMatrixScriptText.includes('--detectOpenHandles')
+      ? ['scripts/run-backend-test-matrix.js must retain --detectOpenHandles coverage']
+      : []),
     ...checkRunnerCacheConsistency(prChecksText),
     ...checkDevelopPrLintJobMapping(prChecksText),
     ...checkOperatorDispatchShape(qualityWorkflowText),
@@ -305,6 +307,7 @@ function main() {
   const problems = checkPrQualityWorkflow({
     prChecksText: read('.github/workflows/pr-checks.yml'),
     qualityWorkflowText: read('.github/workflows/promotion-quality-gate.yml'),
+    backendMatrixScriptText: read('scripts/run-backend-test-matrix.js'),
   });
   if (problems.length) {
     console.error('[pr-quality-workflow] FAILED');
