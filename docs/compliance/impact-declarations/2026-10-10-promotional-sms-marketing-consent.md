@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-10-10
 declaration_id: 2026-10-10-promotional-sms-marketing-consent
 classification: regulatory
-surfaces: api,merchant-admin,tenant-isolation,database
+surfaces: api,merchant-admin,tenant-isolation,database,compliance
 reason_codes_impacted: PRIVACY
 policy_version: 2026.10.10
 verification_evidence: focused SMS consent Jest suites,npm run check:architecture,npm run check:compliance,npm run lint:docs,npm run check:adr,node --check on each changed API JavaScript file
@@ -16,6 +16,8 @@ preflight_request_ref: NOT-EXECUTED-2417-2026-10-10
 ---
 
 # Promotional SMS Marketing Consent and Opt-Out Suppression
+
+This declaration covers tenant-scoped consent, revocation, and global opt-out suppression for promotional SMS; legal wording and provider-side STOP capture remain outside this implementation.
 
 ## Compliance Impact Classification
 
@@ -30,12 +32,16 @@ remain with the separately tracked consent-policy work.
 - Shared SMS API sender and consent repository: `api`, `tenant-isolation`.
 - Authenticated tenant-owner/admin grant and revoke endpoints: `merchant-admin`.
 - Landlord consent projection, append-only events, and global suppression tables: `database`.
+- Live request-time preflight policy evaluation: `compliance`.
 
 ## Compliance Preconditions
 
 No live preflight was executed for this PR. The `NOT-EXECUTED-2417-2026-10-10` reference is an
 intentional PR-open placeholder and will be reconciled by the continuous preflight sweep after the
-declaration lands on `develop`.
+declaration lands on `develop`. The `compliance` surface makes the generic request-time preflight
+operation evaluable; it does not claim that the policy engine evaluates SMS-provider or marketing
+consent-specific legal requirements. Those remain subject to the separately tracked consent-policy
+work and provider onboarding.
 
 Promotional sending fails closed when tenant consent is absent/revoked, global suppression exists,
 or consent storage is unavailable. Transactional order alerts never read marketing consent. Only
