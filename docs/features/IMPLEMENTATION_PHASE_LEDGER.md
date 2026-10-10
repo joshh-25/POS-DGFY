@@ -27807,9 +27807,92 @@ passes.
 
 ### Next phase number
 
-Phase 493. No explicit dependency.
+Phase 494. No explicit dependency.
 
-## Phase 493 - Provider-neutral outbound SMS delivery foundation (#2415)
+## Phase 493 - App ID registry and partner credential lifecycle (#801)
+
+### Initiative and release
+
+Third-party partner integration tier under epic #796. Backend lifecycle implementation on the
+landlord registry established by #2311 slice A.
+
+### Objective and scope
+
+Implement platform App/client lifecycle, versioned credential issue/rotation/revocation, merchant
+tenant/location attachment consent and controls, landlord/tenant audit events, entitlement writes,
+and generic machine-token authorization with tenant/location context resolved from active registry
+records. Scope is `apps/dgfy-api`, `apps/dgfy-migration-runner`, and supporting docs. Partner
+self-service, browser-origin administration UI, partner operational APIs, allocation/sync runtime,
+neutral OIDC context claims, and DGLaundry behavior changes remain excluded.
+
+### Status
+
+`in_progress` — implementation and focused validation are underway; migration execution, final
+hardening evidence, commit, PR review, and merge remain due.
+
+### Dependencies
+
+- #2311 slice A is satisfied by merged PR #2412 (landlord `partner_apps`/`oidc_clients` registry and
+  client-aware provider); Phase 492 remains marked `in_progress` but declares no explicit dependency
+  blocking this slice.
+- #2379's administration matrix is closed and remains the reference source for permissions and
+  lifecycle effects.
+- #803 remains the owner of wire-level offline/reconciliation semantics; this phase returns
+  authorization/quarantine decisions but does not read, delete, or release queued work.
+- No other explicit phase dependency blocks this work. Current phase: 493; next phase number: 494.
+
+### Acceptance and validation evidence
+
+- [ ] App, deployment client, credential version, and tenant/location attachment remain separate
+      landlord records with additive schema and one-active-attachment enforcement.
+- [ ] Platform App/client transitions and credential issue/rotation/revocation use guarded writes,
+      redact hashes/keys/secrets from ordinary reads, and write successful audit events atomically.
+- [ ] Browser secrets are generated once and stored as scrypt hashes; machine private keys are
+      rejected; active key selection uses `kid`; overlap expires at its configured bound.
+- [ ] Merchant consent/scopes/suspend/reactivate/disconnect require tenant owner/admin authority,
+      tenant-scoped attachment access, active tenant locations, scope ceiling, and tenant audit.
+- [ ] Only the Platform Admin entitlement route can write closed-set `sync_rounds` values; consent
+      and merchant paths cannot self-grant.
+- [ ] Generic bearer validation re-resolves client/app/credential/attachment per request, selects
+      tenant context through `tenantHandler`, re-checks locations, and does not create staff identity.
+- [ ] Online denial, reconcile quarantine, tenant/location/scope isolation, audit-failure safety,
+      credential overlap/revocation, and existing DGLaundry compatibility have focused test evidence.
+- [ ] `node --check` for changed JavaScript, `node scripts/check-app-version-bump.js`,
+      `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+      `npm run check:compliance`, `node scripts/check-compat-seams.js`, and the scoped OIDC/DGLaundry
+      suites pass. Run migration against a disposable MySQL database when available; report if not.
+
+### Links
+
+- Issue: #801; handoff `.tmp/plan-801.md`, planning head `a0598a79d2ce2731376bfdf6918f8cf158aad058`.
+- Governing architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADRs 0002, 0035, 0047, 0079, 0081; ADRs 0092 and
+  0093 remain proposed and non-binding.
+- Domain contract: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md` and
+  `docs/api/THIRD_PARTY_PARTNER_CONTRACT.md`.
+- Implementation: `apps/dgfy-api/src/modules/partnerIdentity/`,
+  `apps/dgfy-api/src/routes/partnerIntegrations.js`,
+  `apps/dgfy-api/src/routes/partnerAttachments.js`, and
+  `apps/dgfy-migration-runner/migrations/20261010000002-create-partner-credentials-and-attachments.cjs`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] database — run the landlord migration and verify `partner_client_credentials` and
+      `partner_attachments` are absent from tenant schemas; owner: migration/operator.
+- [ ] security — spot-check partner credential lifecycle logs and audit snapshots for absence of
+      plaintext secrets, private keys, bearer tokens, and raw IP/user-agent values; owner: Worker /
+      Reviewer.
+- [ ] provider — confirm existing DGLaundry browser/machine flows remain compatible against the
+      deployed registry/provider state; owner: DGLaundry contract owner.
+- [ ] runtime — confirm suspension, credential revocation, and attachment disconnect deny already
+      issued partner tokens on the next request; owner: Verifier.
+
+## Phase 494 - Provider-neutral outbound SMS delivery foundation (#2415)
 
 ### Initiative and release
 
@@ -27870,4 +27953,4 @@ Not complete. Set only after the scoped change is merged and implementation vali
 
 ### Next phase number
 
-Phase 494. No explicit dependency.
+Phase 495. No explicit dependency.
