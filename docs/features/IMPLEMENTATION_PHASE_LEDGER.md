@@ -27987,7 +27987,70 @@ passes.
 
 Phase 495. No explicit dependency.
 
-## Phase 495 - Storefront stock freshness contract for POS-allocated inventory (#998)
+## Phase 495 - Provider-neutral outbound SMS delivery foundation (#2415)
+
+### Initiative and release
+
+Wave 1 of the outbound SMS foundation under epic #2413.
+
+### Objective and scope
+
+Add the `apps/dgfy-api` provider-neutral SMS adapter contract, fake and unconfigured adapters,
+landlord delivery log, phone normalization and HMAC, deduplication, failure alerting, PII retention,
+environment configuration, architecture decision, and operator onboarding path. No real provider,
+order-event wiring, promotional consent/suppression, OTP, HTTP route, or frontend work is included.
+
+### Status
+
+`in_progress` — scoped implementation and validation are complete; PR review and merge remain outstanding.
+
+### Dependencies
+
+No explicit dependency blocks this phase. Later order-alert and promotional SMS waves depend on this
+contract; they do not block its implementation.
+
+### Acceptance and validation evidence
+
+- [x] Fake adapter receives normalized E.164 recipients and purpose; fake outcomes are marked
+      simulated and production cannot select fake.
+- [x] Missing/unknown provider returns and logs `unconfigured`; adapter failures return `failed`,
+      alert with PII-free context, and do not throw into callers.
+- [x] Per-recipient delivery logs contain no content; dedupe prevents repeat adapter calls; expired
+      raw phone values are redacted while HMAC and prefix remain.
+- [x] Focused SMS tests, migration tests, and API architecture boundaries pass.
+- [x] `npm run check:architecture`, `npm run check:compliance`, `npm run lint:docs`,
+      `npm run check:adr`, `npm run check:production-env`, and
+      `node scripts/check-app-version-bump.js` pass.
+
+### Links
+
+- Issue: #2415; parent epic: #2413; planner handoff: `.tmp/plan-2415.md`, planning head
+  `a0598a79d2ce2731376bfdf6918f8cf158aad058`.
+- Architecture decision: ADR 0094.
+- Operator procedure: `docs/ops/OUTBOUND_SMS_PROVIDER_ONBOARDING.md`.
+- Implementation: `apps/dgfy-api/src/modules/smsDelivery/`,
+  `apps/dgfy-api/src/models/Landlord/SmsDeliveryLog.js`,
+  `apps/dgfy-migration-runner/migrations/20261010000002-create-sms-delivery-logs.cjs`.
+
+### Completion date
+
+Not complete. Set only after the scoped change is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] provider — choose and approve an SMS provider, sender registration, credentials, sandbox,
+      DLR/webhook, cost limits, and purpose-specific consent controls before production sending;
+      owner: #2415 / outbound SMS product owner; blocks real-provider traffic.
+- [ ] deployment — configure a production `SMS_PHONE_HASH_SECRET` before deploying this phase;
+      owner: deployment operator; blocks startup with the new API version.
+- [ ] operational — run the migration and verify the landlord table exists and is not cloned into
+      tenant schemas; owner: migration/operator; blocks enabling the SMS module.
+
+### Next phase number
+
+Phase 496. No explicit dependency.
+
+## Phase 496 - Storefront stock freshness contract for POS-allocated inventory (#998)
 
 ### Initiative and release
 
@@ -28013,7 +28076,7 @@ review, and merge remain outstanding.
 - Runtime read-path adoption depends on the separately scoped #997 runtime ledger and must land with
   or after #947's location-scope root-cause fix. These runtime follow-ons do not block this design
   phase.
-- Phases 491–494 have no explicit dependency on this work and do not block it.
+- Phases 491–495 have no explicit dependency on this work and do not block it.
 
 ### Acceptance and validation evidence
 

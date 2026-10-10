@@ -1,5 +1,5 @@
 const VALID_PROFILES = new Set(['shared', 'vps']);
-const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET', 'POS_OPERATOR_AUTHORITY_SECRET'];
+const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET', 'POS_OPERATOR_AUTHORITY_SECRET', 'SMS_PHONE_HASH_SECRET'];
 const PLACEHOLDER_PATTERN = /(change[_-]?this|change[_-]?me|replace[_-]?with|placeholder|your[_-]?|example\.com|xxxx|dummy|sample)/i;
 const DEFAULT_ADMIN_USERNAME = 'skupervisor';
 const DEFAULT_ADMIN_PASSWORD_HASH = '$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK';
@@ -67,6 +67,9 @@ const validateSecrets = (env, errors, keys = SECRET_KEYS) => {
     if (PLACEHOLDER_PATTERN.test(value)) {
       errors.push(`${key} must not use a placeholder value`);
     }
+  }
+  if (String(env?.NODE_ENV || '').trim().toLowerCase() === 'production' && !hasValue(env, 'SMS_PHONE_HASH_SECRET')) {
+    addMissing(errors, 'SMS_PHONE_HASH_SECRET');
   }
 };
 
