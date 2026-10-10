@@ -17,7 +17,7 @@ It records first-release decisions alongside the generic wire contract in
 wire-level behavior, including the 24-hour offline authorization window and quarantine rules;
 this document assigns administrative authority and does not restate those protocol details.
 
-The linked ADR 0091 is `proposed`. This matrix is supporting reference material until that ADR is
+The linked ADR 0092 is `proposed`. This matrix is supporting reference material until that ADR is
 accepted. The permission names below are proposed contract names, not claims that the routes or
 checks already exist. Every protected API must enforce the stated checks server-side before its
 surface is enabled.
@@ -207,7 +207,7 @@ slices; this table names the backend prerequisite and owning surface for that pl
 
 ## References
 
-- [ADR 0091](../architecture/adr/0091-partner-integration-administration-and-tenant-attachment.md) — proposed surface and identity boundary.
+- [ADR 0092](../architecture/adr/0092-partner-integration-administration-and-tenant-attachment.md) — proposed surface and identity boundary.
 - [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md) and [ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md) — landlord identity, page RBAC, and Admin surface.
 - [ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md) — OPIS ownership and tenant surface.
 - [ADR 0079](../architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md) — existing DGLaundry-specific provider boundary.

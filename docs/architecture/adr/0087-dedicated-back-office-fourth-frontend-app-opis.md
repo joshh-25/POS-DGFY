@@ -141,4 +141,4 @@ decision. `[default]`
 - Boundary: OPIS actions remain subject to existing tenant/session/location checks and server-side
   authorization. This amendment does not alter Decisions 1–4 or 6 binding text; it does not change
   the independent `/admin` surface in ADR 0089.
-- Reference: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`; proposed ADR 0091.
+- Reference: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`; proposed ADR 0092.

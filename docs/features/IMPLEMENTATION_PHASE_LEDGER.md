@@ -27459,7 +27459,72 @@ Not complete. Set only after the change is merged and implementation validation 
 
 Phase 488. No explicit dependency.
 
-## Phase 488 - Partner integration administration matrix (#2379)
+## Phase 488 - Tenant CRM foundation and partner-customer contract (#2378)
+
+### Initiative and release
+
+Tenant CRM foundation / definition release.
+
+### Objective and scope
+
+Document the current OPIS/API/data/partner baseline, propose tenant-scoped customer identity and
+lifecycle, field-level channel access and provenance, OPIS and partner boundaries, privacy
+dependencies, and prioritized implementation candidates. Add proposed ADR 0091, register and index
+the governed foundation, and cross-link BO-10. No application code, API, or migration changes.
+
+### Status
+
+`in_progress` — the definition and proposed ADR are drafted; governed documentation validation and
+PR review remain due.
+
+### Dependencies
+
+No earlier phase dependency blocks this definition. Acceptance of proposed ADR 0091 and decisions
+under #243, #796, and #803 are dependencies for later implementation slices, not for drafting this
+contract.
+
+### Acceptance and validation evidence
+
+- [x] Current-state map identifies OPIS UI, API operations, tenant/landlord data, POS/Storefront
+      snapshot behavior, and partner contract limits.
+- [x] Tenant identity/lifecycle defines explicit-only DGFY links, tenant isolation, partner-scoped
+      references, immutable transaction snapshots, and stable profile-reference direction.
+- [x] Channel matrix identifies create/read/update/link boundaries, provenance, actor, and verified
+      versus unverified contact data.
+- [x] OPIS, #803 partner-customer contract, #796/#2379 handoffs, #243 privacy dependencies, and
+      DGFY Admin ownership boundary are documented.
+- [x] Prioritized issue candidates are sized without filing new issues or duplicating #1355.
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, link/path spot checks, and the repository pre-commit marker
+      scan pass; any compliance declaration request is escalated under the Worker checkpoint.
+
+### Links
+
+- Issue: #2378; planner handoff `.tmp/plan-2378.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- Contract: `docs/features/TENANT_CRM_FOUNDATION.md`.
+- Proposed architecture decision: ADR 0091; related ADRs 0006, 0023, 0079, 0087, and 0089.
+- Related issues: #243, #796, #803, #1354, #1355, #2308, #2379.
+- Implementation baseline: `apps/dgfy-opis/src/features/businessAdmin/`,
+  `apps/dgfy-api/src/modules/businessAdmin/`, and `docs/api/PARTNER_INTEGRATION_CONTRACT.md`.
+
+### Completion date
+
+Not complete. Set after the definition PR is merged and named validation passes.
+
+### Post-merge verification
+
+- [ ] operational — Pat/tech-lead review and explicit acceptance or revision of proposed ADR 0091;
+      owner: architecture; blocks implementation planning based on the proposed decisions.
+- [ ] operational — coordinate #243 privacy decisions and #796/#803 partner envelope before
+      scheduling customer data lifecycle or partner customer-reference implementation; owner:
+      product/security; blocks those implementation slices.
+
+### Next phase number
+
+Phase 489. No explicit dependency.
+
+## Phase 489 - Partner integration administration matrix (#2379)
 
 ### Initiative and release
 
@@ -27471,7 +27536,7 @@ the generic contract in #803.
 Define the first-release platform/merchant permission and lifecycle matrix for partner organizations,
 Apps, deployment clients, credentials, and tenant/location attachments. Record DGFY Admin vs OPIS
 ownership, audit and secret-handling requirements, tenant isolation, deferred partner portal scope,
-and candidate implementation slices. Add proposed ADR 0091 and default-tier amendments to ADRs 0047
+and candidate implementation slices. Add proposed ADR 0092 and default-tier amendments to ADRs 0047
 and 0087. Documentation only; no API, UI, migration, or runtime behavior changes.
 
 ### Status
@@ -27492,7 +27557,7 @@ phase blocks this phase.
 - [ ] `docs/api/PARTNER_ADMINISTRATION_MATRIX.md` covers actors, objects, every specified action,
       server-side checks, lifecycle effects, surfaces, audit, secrets, isolation, and candidate
       dependencies/owners.
-- [ ] Proposed ADR 0091 records the surface and identity boundaries; tenant-isolation and
+- [ ] Proposed ADR 0092 records the surface and identity boundaries; tenant-isolation and
       App-ID/header authorization clauses are explicitly flagged for tech-lead review if promoted
       to binding.
 - [ ] ADR 0047 and 0087 contain dated default-tier amendments without changing their binding
@@ -27506,9 +27571,10 @@ phase blocks this phase.
 ### Links
 
 - Issue #2379; planner handoff `.tmp/plan-2379.md`, planning head
-  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`. ADR and phase numbers were advanced after #2378
+  landed concurrently and claimed 0091/488.
 - Matrix: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`.
-- ADR: `docs/architecture/adr/0091-partner-integration-administration-and-tenant-attachment.md`
+- ADR: `docs/architecture/adr/0092-partner-integration-administration-and-tenant-attachment.md`
   (proposed); amendments to ADRs 0047 and 0087.
 - Contract: `docs/api/PARTNER_INTEGRATION_CONTRACT.md` (#803 wire-level owner).
 - Related issues: #796, #801, #802, #803, #997, #998, #1484, #2311, #2378.
@@ -27525,4 +27591,4 @@ passes.
 
 ### Next phase number
 
-Phase 489. No explicit dependency.
+Phase 490. No explicit dependency.

@@ -8,7 +8,7 @@ review_by: 2027-04-10
 topic: partner_integration_administration_and_tenant_attachment
 ---
 
-# ADR 0091: Partner Integration Administration and Tenant Attachment
+# ADR 0092: Partner Integration Administration and Tenant Attachment
 
 ## Status
 

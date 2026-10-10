@@ -51,4 +51,4 @@ The historical admin JWT represented a shared master credential and carried no r
   consent for a merchant or modify a tenant attachment.
 - Audit and secret handling follow this ADR's Consequences and the proposed partner administration
   matrix. This amendment defines the page grant; it does not claim routes are implemented.
-- Reference: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`; proposed ADR 0091.
+- Reference: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`; proposed ADR 0092.
