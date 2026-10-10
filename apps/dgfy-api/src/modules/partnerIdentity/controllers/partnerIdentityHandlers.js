@@ -28,6 +28,7 @@ export const createPartnerClient = run(async (req, res) => {
   return send(res, { client: safeClient(result.client), issued_secret: result.issued_secret }, 201);
 });
 export const transitionPartnerClient = run(async (req, res) => send(res, safeClient(await lifecycle.transitionClient(req.params.clientId, req.params.action, req.admin, req, req.body?.reason))));
+export const updatePartnerClientDestinations = run(async (req, res) => send(res, safeClient(await lifecycle.updateClientDestinations(req.params.clientId, req.body || {}, req.admin, req))));
 export const listPartnerCredentials = run(async (req, res) => {
   const client = await partnerIdentityRegistryRepository.findClientByClientId(req.params.clientId);
   if (!client) return res.status(404).json({ success: false, message: 'Partner client was not found.', error_code: 'CLIENT_NOT_FOUND' });
