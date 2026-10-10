@@ -121,5 +121,6 @@ test('repository promotion quality contract remains internally consistent', () =
     prChecksText: read('.github/workflows/pr-checks.yml'),
     complianceScriptText: read('scripts/check-compliance-impact.js'),
     qualityWorkflowText: realWorkflow,
+    backendMatrixScriptText: read('scripts/run-backend-test-matrix.js'),
   }), []);
 });
