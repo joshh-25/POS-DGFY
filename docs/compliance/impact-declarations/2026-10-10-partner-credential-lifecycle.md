@@ -11,8 +11,8 @@ verification_evidence: 'Phase 493 implementation validation: 7 focused Jest suit
 rollback_note: Revert the partner lifecycle API and disable its routes; retain existing #2311 registry tables and preserve audit records. Do not drop applied credential or attachment tables without an operator-reviewed data-retention plan.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-10T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-2026-10-10-PARTNER-CREDENTIAL-LIFECYCLE
+preflight_run_at: 2026-10-10T17:27:24.684Z
+preflight_request_ref: PREFLIGHT-38071438498-2026-10-10-PARTNER-CREDENTIAL-LIFECYCLE
 ---
 
 # Partner Credential Lifecycle (#801, Phase 493)
