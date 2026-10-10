@@ -27610,8 +27610,7 @@ service, API, POS client, or UI changes.
 
 ### Status
 
-`completed` — the design is merged in PR #2411 (2026-10-10), and its scoped documentation checks
-passed. Runtime enforcement remains separate follow-on work.
+`in_progress` — the design and documentation checks are complete; the PR is not yet merged.
 
 ### Dependencies
 
@@ -27648,7 +27647,8 @@ availability gaps before claiming conflict-free allocation.
 
 ### Completion date
 
-2026-10-10 — PR #2411 merged after the scoped design and documentation validation passed.
+Not complete. Set only after the documentation PR is merged and its implementation validation
+passes.
 
 ### Post-merge verification
 
@@ -27658,10 +27658,6 @@ availability gaps before claiming conflict-free allocation.
 - [ ] architecture — the first runtime rollout proves POS live sale, Storefront, and all competing
       stock issues honor active/quarantined allocations before enabling offline allocation grants;
       owner: Worker/Reviewer; blocks claiming conflict-free selling.
-
-### Next phase number
-
-Phase 491. No explicit dependency.
 
 ## Phase 491 - Third-party partner API contract and engine authority (#803)
 
@@ -28046,11 +28042,78 @@ Not complete. Set only after the scoped change is merged and implementation vali
 - [ ] operational — run the migration and verify the landlord table exists and is not cloned into
       tenant schemas; owner: migration/operator; blocks enabling the SMS module.
 
+## Phase 496 - Offline-first POS posture and replay policy amendment (#995)
+
+### Initiative and release
+
+Offline-first POS governance under epic #993. This phase authorizes tier-aware web replay and
+reconciles the sale-amount versus persistence authority statements; it does not implement runtime
+behavior.
+
+### Objective and scope
+
+Amend ADRs 0014, 0025, and 0043 in one docs-only PR; align the per-terminal stock allocation
+contract's web replay references; regenerate the ADR index; and record the phase. No code, schema,
+API, or UI changes are in scope. ADR 0026 and binding ADR 0029 remain unchanged.
+
+### Status
+
+`in_progress` — implementation and documentation validation are complete; commit, PR review, and
+merge remain outstanding.
+
+### Dependencies
+
+- No explicit phase dependency blocks this work. Phase 490 provides the allocation context and is
+  already merged.
+- Current phase: 496; next phase number: 497.
+
+### Acceptance and validation evidence
+
+- [x] ADR 0014 defines the manual/automatic tier policy, server-provided admin settings, successful
+      round accounting, retry-storm controls, and unchanged safety constraints while explicitly
+      authorizing policy only until #999 implements it.
+- [x] ADR 0025 reconciles the client's charged-amount claim with backend persistence and rules
+      authority, preserving #996's reportable-total decision and its drawer/fiscal-handling handoff.
+- [x] ADR 0043 aligns shared round accounting without changing native or partner entitlement and
+      enforcement contracts.
+- [x] `PER_TERMINAL_STOCK_ALLOCATION.md` qualifies its web replay statements by the resolved
+      policy; no runtime behavior is claimed.
+- [x] `npm run check:adr`, `npm run lint:docs`, `npm run check:architecture`,
+      `npm run check:compliance`, `node scripts/check-app-version-bump.js`, and `git diff --check`
+      pass; the generated ADR index is committed.
+
+### Links
+
+- Issue: #995; epic: #993; planner handoff: `.tmp/plan-995.md`, planning head
+  `318f5a44eb092aabd8368f3c1dabc3269940080d`.
+- Governing architecture: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0014, ADR 0025, ADR 0039, ADR 0043, ADR
+  0067, and ADR 0075.
+- Follow-up ownership: #999 (web replay implementation), #996 (total divergence and reporting),
+  #1482/#1483 (offline identity and shift policy), and #1484 (cross-client sync convergence).
+- Implementation: the three ADR files, `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`,
+  `docs/architecture/adr/INDEX.md`, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation PR is merged and its validation passes.
+
+### Post-merge verification
+
+- [ ] governance — verify #999 implements only the policy authorized here and preserves the
+      manual mode and replay-storm safeguards; owner: #999 / Reviewer.
+- [ ] totals — verify #996 records both totals, preserves the server-rederived reportable amount,
+      and resolves the drawer and printed-slip handoffs with the fiscal-numbering child; owner:
+      #996 / fiscal-numbering owner.
+- [ ] convergence — confirm #1484 adopts the shared round meaning without changing partner
+      entitlements owned by #2379; owner: #1484 / Planner.
+
 ### Next phase number
 
-Phase 496. No explicit dependency.
+Phase 497. No explicit dependency.
 
-## Phase 496 - Storefront stock freshness contract for POS-allocated inventory (#998)
+## Phase 497 - Storefront stock freshness contract for POS-allocated inventory (#998)
 
 ### Initiative and release
 
@@ -28076,7 +28139,7 @@ review, and merge remain outstanding.
 - Runtime read-path adoption depends on the separately scoped #997 runtime ledger and must land with
   or after #947's location-scope root-cause fix. These runtime follow-ons do not block this design
   phase.
-- Phases 491–495 have no explicit dependency on this work and do not block it.
+- Phases 491–496 have no explicit dependency on this work and do not block it.
 
 ### Acceptance and validation evidence
 
@@ -28121,3 +28184,7 @@ validation passes.
       Worker/Reviewer.
 - [ ] cache — confirm implementation preserves the documented HTTP bounds or records a separately
       approved tighter stock-bearing catalog policy; owner: Worker/Reviewer.
+
+### Next phase number
+
+Phase 498. No explicit dependency.
