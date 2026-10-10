@@ -114,6 +114,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0089 | [Platform Admin as a Fifth Frontend App (`apps/dgfy-admin`) with Cross-Host `/admin` Routing](0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md) | `accepted` | dgfy_admin_fifth_frontend_app | 2027-04-03 | 4 |
 | 0090 | [Tenant Intake Proposals and Human Confirmation](0090-tenant-intake-proposal-confirmation.md) | `accepted` | tenant_intake_proposal_confirmation | 2027-04-09 | 0 |
 | 0091 | [Tenant-Scoped Customer CRM and Partner References](0091-tenant-scoped-customer-crm.md) | `proposed` | tenant_scoped_customer_crm | 2027-04-10 | 3 |
+| 0092 | [Partner Integration Administration and Tenant Attachment](0092-partner-integration-administration-and-tenant-attachment.md) | `proposed` | partner_integration_administration_and_tenant_attachment | 2027-04-10 | 0 |
 
 ## Renumbered (collision stubs)
 

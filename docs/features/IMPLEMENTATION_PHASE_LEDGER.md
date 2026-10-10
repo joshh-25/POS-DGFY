@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-08
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -27524,7 +27524,76 @@ Not complete. Set after the definition PR is merged and named validation passes.
 
 Phase 489. No explicit dependency.
 
-## Phase 489 - Per-terminal stock allocation governance and design (#997)
+## Phase 489 - Partner integration administration matrix (#2379)
+
+### Initiative and release
+
+Third-party App integration administration and tenant attachment definition, developed alongside
+the generic contract in #803.
+
+### Objective and scope
+
+Define the first-release platform/merchant permission and lifecycle matrix for partner organizations,
+Apps, deployment clients, credentials, and tenant/location attachments. Record DGFY Admin vs OPIS
+ownership, audit and secret-handling requirements, tenant isolation, deferred partner portal scope,
+and candidate implementation slices. Add proposed ADR 0092 and default-tier amendments to ADRs 0047
+and 0087. Documentation only; no API, UI, migration, or runtime behavior changes.
+
+### Status
+
+`in_progress` — implementation is unmerged; documentation, ADR, architecture, compliance, and
+agent-surface validation remain due.
+
+### Dependencies
+
+Issue #2379; ADRs 0039, 0047, 0079, 0087, and 0089; the authoritative partner contract in #803 and
+backend work #2311/#801/#802. #803 is developed alongside this phase and is not a blocker; its
+wire-level contract remains authoritative for protocol and offline behavior. Allocation boundaries
+coordinate with #997/#998, sync with #1484, and customer permissions with #2378. No earlier ledger
+phase blocks this phase.
+
+### Acceptance and validation evidence
+
+- [ ] `docs/api/PARTNER_ADMINISTRATION_MATRIX.md` covers actors, objects, every specified action,
+      server-side checks, lifecycle effects, surfaces, audit, secrets, isolation, and candidate
+      dependencies/owners.
+- [ ] Proposed ADR 0092 records the surface and identity boundaries; tenant-isolation and
+      App-ID/header authorization clauses are explicitly flagged for tech-lead review if promoted
+      to binding.
+- [ ] ADR 0047 and 0087 contain dated default-tier amendments without changing their binding
+      decisions; the partner contract cross-links the matrix and keeps #803 as wire-contract owner.
+- [ ] ADR index is generated from the source ADR files; issue acceptance maps to the matrix sections
+      and #2378/#997/#998/#1484 boundaries remain with their owners.
+- [ ] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, `npm run check:agent-surfaces`, app-version check, and
+      `git diff --check` pass and are reported in the PR.
+
+### Links
+
+- Issue #2379; planner handoff `.tmp/plan-2379.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`. ADR and phase numbers were advanced after #2378
+  landed concurrently and claimed 0091/488.
+- Matrix: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`.
+- ADR: `docs/architecture/adr/0092-partner-integration-administration-and-tenant-attachment.md`
+  (proposed); amendments to ADRs 0047 and 0087.
+- Contract: `docs/api/PARTNER_INTEGRATION_CONTRACT.md` (#803 wire-level owner).
+- Related issues: #796, #801, #802, #803, #997, #998, #1484, #2311, #2378.
+
+### Completion date
+
+Not complete. Set only after the documentation change is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- None. Documentation-only phase; implementation validation is recorded above and no deployment,
+  provider, or operational verification is introduced.
+
+### Next phase number
+
+Phase 490. No explicit dependency.
+
+## Phase 490 - Per-terminal stock allocation governance and design (#997)
 
 ### Initiative and release
 
@@ -27592,4 +27661,4 @@ passes.
 
 ### Next phase number
 
-Phase 490. No explicit dependency.
+Phase 491. No explicit dependency.
