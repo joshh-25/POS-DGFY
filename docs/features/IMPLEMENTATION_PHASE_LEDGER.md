@@ -28270,8 +28270,7 @@ scope.
 
 ### Status
 
-`in_progress` — implementation and validation are underway; the additive landlord migration,
-regulatory compliance declaration, commit, PR review, and merge remain outstanding.
+`in_progress` — implementation and validation are complete; PR review and merge remain outstanding.
 
 ### Dependencies
 
@@ -28281,19 +28280,19 @@ regulatory compliance declaration, commit, PR review, and merge remain outstandi
 
 ### Acceptance and validation evidence
 
-- [ ] Promotional send rejects missing tenant, absent/revoked consent, global suppression, missing
+- [x] Promotional send rejects missing tenant, absent/revoked consent, global suppression, missing
       opt-out instruction, or consent-store error; rejected rows use a null dedupe key.
-- [ ] Active consent permits promotional delivery and caller-supplied opt-out wording is appended.
-- [ ] Revoked consent stays blocked on repeat send; global suppression blocks across tenants;
+- [x] Active consent permits promotional delivery and caller-supplied opt-out wording is appended.
+- [x] Revoked consent stays blocked on repeat send; global suppression blocks across tenants;
       consent granted to another tenant does not grant tenant A eligibility.
-- [ ] Transactional sends do not read consent data and continue for non-consenting recipients.
-- [ ] Grant/revoke events are atomic with their projection update; revoke without prior grant
+- [x] Transactional sends do not read consent data and continue for non-consenting recipients.
+- [x] Grant/revoke events are atomic with their projection update; revoke without prior grant
       creates a revoked projection. Invalid numbers and grants without text version are rejected.
-- [ ] Tenant-authenticated API requires tenant owner/admin authority, validates payloads, and
+- [x] Tenant-authenticated API requires tenant owner/admin authority, validates payloads, and
       never echoes raw phone values.
-- [ ] Migration creates the three landlord-only tables idempotently with tenant-phone and global
+- [x] Migration creates the three landlord-only tables idempotently with tenant-phone and global
       suppression uniqueness; migration test covers up/down.
-- [ ] `node --check` on changed API JavaScript, focused SMS/API/migration Jest suites,
+- [x] `node --check` on changed API JavaScript, focused SMS/API/migration Jest suites,
       `npm run check:architecture`, `npm run check:compliance`, `npm run lint:docs`,
       `npm run check:adr`, and `node scripts/check-app-version-bump.js` pass.
 
