@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-08
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -28111,7 +28111,85 @@ Not complete. Set only after the scoped documentation PR is merged and its valid
 
 ### Next phase number
 
-## Phase 497 - Transactional order received and delivered SMS alerts (#2416)
+Phase 497. No explicit dependency.
+
+## Phase 497 - Storefront stock freshness contract for POS-allocated inventory (#998)
+
+### Initiative and release
+
+Offline-first POS epic #993. Storefront read-contract design consuming the Inventory-owned
+per-terminal allocation model from Phase 490; documentation only.
+
+### Objective and scope
+
+Define the Storefront availability remainder, browse/quote/commit authority tiers, quantified cache
+freshness bound and direction, allocation invalidation reuse, zero-stock checkout behavior, and
+fail-closed boundary with #947. Publish `docs/features/STOREFRONT_STOCK_FRESHNESS_CONTRACT.md` and
+append a default-tier amendment to ADR 0014. No schema, API, runtime, cache configuration, app, or UI
+changes are in scope.
+
+### Status
+
+`in_progress` — documentation, ADR, and ledger changes are under implementation; validation, PR
+review, and merge remain outstanding.
+
+### Dependencies
+
+- Phase 490 / #997's merged allocation design is the only explicit design dependency.
+- Runtime read-path adoption depends on the separately scoped #997 runtime ledger and must land with
+  or after #947's location-scope root-cause fix. These runtime follow-ons do not block this design
+  phase.
+- Phases 491–496 have no explicit dependency on this work and do not block it.
+
+### Acceptance and validation evidence
+
+- [ ] The feature contract defines unallocated-only availability, active hold expiry, allocation
+      remainder, recipe/modifier effects, and `stock_exempt` behavior.
+- [ ] The contract states browse is bounded-stale, quote is uncached/fresh preflight, and commit is
+      authoritative under stock-row locks; it quantifies 135-second stale-while-revalidate and
+      225-second stale-if-error bounds and explains stale direction.
+- [ ] The contract records zero offline replay lag as an invariant, while distinguishing origin
+      availability from bounded-stale cached copies under epic #993's criterion.
+- [ ] ADR 0014 has a dated default-tier amendment reusing ADR 0055's bus without changing binding
+      clauses, exposing SSE to anonymous Storefront clients, or changing cache TTLs.
+- [ ] Zero-stock behavior covers quote and commit shortfall, customer-safe copy, exact-quantity
+      display policy, and the pre-existing payload-redaction finding for separate PM triage.
+- [ ] Location and allocation-ledger failures fail closed; #947 remains a dependency for runtime
+      adoption and no unscoped fallback is carried forward.
+- [ ] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, and `node scripts/check-app-version-bump.js` pass. No app build or
+      unit tests run because the phase changes documentation only.
+
+### Links
+
+- Issue: #998, child of epic #993; planner handoff `.tmp/plan-998.md`, planning head
+  `7efaead855e330cf1c6ac0cce6fbe16f28ee83c7`.
+- Allocation input: Phase 490 / #997 and `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`.
+- ADRs: 0014, 0017, 0029, 0039, and 0055.
+- Related issue: #947, whose location-scope fallback fix must precede or accompany runtime read-path
+  adoption.
+- Implementation: `docs/features/STOREFRONT_STOCK_FRESHNESS_CONTRACT.md`, ADR 0014, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation change is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] governance — PM shapes Inventory availability/read-path adoption, allocation lifecycle event
+      publication, and ADR 0017 payload-redaction follow-up; owner: PM.
+- [ ] runtime — sequence Storefront read-path adoption with the #997 runtime ledger and after or
+      alongside #947's root-cause fix; prove fail-closed scoped reads and authoritative commit; owner:
+      Worker/Reviewer.
+- [ ] cache — confirm implementation preserves the documented HTTP bounds or records a separately
+      approved tighter stock-bearing catalog policy; owner: Worker/Reviewer.
+
+### Next phase number
+
+Phase 498. No explicit dependency.
+
+## Phase 498 - Transactional order received and delivered SMS alerts (#2416)
 
 ### Initiative and release
 
@@ -28126,7 +28204,7 @@ route, consent, promotional message, outbox, or sender-contract change is includ
 
 ### Status
 
-`in_progress` — implementation and validation are underway; PR review and merge remain outstanding.
+`in_progress` — implementation and validation are complete; PR review and merge remain outstanding.
 
 ### Dependencies
 
@@ -28173,4 +28251,4 @@ Not complete. Set only after the scoped implementation is merged and named valid
 
 ### Next phase number
 
-Phase 498. No explicit dependency.
+Phase 499. No explicit dependency.

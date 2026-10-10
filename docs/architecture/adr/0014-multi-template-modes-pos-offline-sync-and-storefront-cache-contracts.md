@@ -259,3 +259,30 @@ Inventory enforcement boundary. It records design only and authorizes no runtime
 - Reason: Make the already-decided offline sale-total behavior consistent with backend persistence
   and pricing authority, while leaving unresolved drawer and fiscal-document handling to its owners.
 - PR: this PR (Closes #995).
+
+### 2026-10-10 — Storefront Stock Freshness Contract (#998)
+
+ADR 0017 continues to govern public inventory display after availability is computed. The
+Storefront freshness design is documented in
+`docs/features/STOREFRONT_STOCK_FRESHNESS_CONTRACT.md`; it consumes the Phase 490 allocation model
+and adds no second allocation policy.
+
+1. `GET /store/catalog` keeps its existing HTTP cache policy (`max-age=45`, `s-maxage=45`,
+   `stale-while-revalidate=90`, `stale-if-error=180`). Origin availability is live and has no
+   Storefront catalog Redis cache-aside layer. Quote and checkout remain `no-store`. Browse may be
+   stale within the HTTP bound; checkout commit remains authoritative and rechecks under stock-row
+   locks. `[default]`
+2. Storefront availability is the Inventory-owned location remainder after active online-order
+   holds and all active or quarantined terminal allocations. Storefront browse, quote, and commit
+   consume the same availability rule; Storefront does not duplicate the arithmetic. The origin
+   result never counts allocated units, while cached copies may lag within the documented HTTP
+   freshness bound. `[default]`
+3. Reuse ADR 0055's tenant-scoped catalog-change bus for allocation lifecycle invalidations. The
+   #997 runtime implementation must publish after grant, top-up, return, quarantine, recovery, and
+   consume. Do not expose the authenticated `pos:view` SSE stream to anonymous Storefront clients;
+   HTTP TTL remains Storefront browse's invalidation bound. `[default]`
+
+This amendment changes no binding-tier clause and authorizes no runtime, cache-configuration, API,
+schema, or UI change. The contract records the allowed stricter option—shorter shared-cache TTL or
+`no-store` for stock-bearing catalog reads—if a future product decision requires a literal
+"never higher than sellable" guarantee for every served cache copy.
