@@ -27459,20 +27459,85 @@ Not complete. Set only after the change is merged and implementation validation 
 
 Phase 488. No explicit dependency.
 
-## Phase 488 - Per-terminal stock allocation governance and design (#997)
+## Phase 488 - Tenant CRM foundation and partner-customer contract (#2378)
 
 ### Initiative and release
 
-Offline-first POS: define the Inventory-owned allocation contract shared by native POS, partner
-terminals, and Storefront before schema or runtime enforcement is built.
+Tenant CRM foundation / definition release.
+
+### Objective and scope
+
+Document the current OPIS/API/data/partner baseline, propose tenant-scoped customer identity and
+lifecycle, field-level channel access and provenance, OPIS and partner boundaries, privacy
+dependencies, and prioritized implementation candidates. Add proposed ADR 0091, register and index
+the governed foundation, and cross-link BO-10. No application code, API, or migration changes.
+
+### Status
+
+`in_progress` — the definition and proposed ADR are drafted; governed documentation validation and
+PR review remain due.
+
+### Dependencies
+
+No earlier phase dependency blocks this definition. Acceptance of proposed ADR 0091 and decisions
+under #243, #796, and #803 are dependencies for later implementation slices, not for drafting this
+contract.
+
+### Acceptance and validation evidence
+
+- [x] Current-state map identifies OPIS UI, API operations, tenant/landlord data, POS/Storefront
+      snapshot behavior, and partner contract limits.
+- [x] Tenant identity/lifecycle defines explicit-only DGFY links, tenant isolation, partner-scoped
+      references, immutable transaction snapshots, and stable profile-reference direction.
+- [x] Channel matrix identifies create/read/update/link boundaries, provenance, actor, and verified
+      versus unverified contact data.
+- [x] OPIS, #803 partner-customer contract, #796/#2379 handoffs, #243 privacy dependencies, and
+      DGFY Admin ownership boundary are documented.
+- [x] Prioritized issue candidates are sized without filing new issues or duplicating #1355.
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, link/path spot checks, and the repository pre-commit marker
+      scan pass; any compliance declaration request is escalated under the Worker checkpoint.
+
+### Links
+
+- Issue: #2378; planner handoff `.tmp/plan-2378.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- Contract: `docs/features/TENANT_CRM_FOUNDATION.md`.
+- Proposed architecture decision: ADR 0091; related ADRs 0006, 0023, 0079, 0087, and 0089.
+- Related issues: #243, #796, #803, #1354, #1355, #2308, #2379.
+- Implementation baseline: `apps/dgfy-opis/src/features/businessAdmin/`,
+  `apps/dgfy-api/src/modules/businessAdmin/`, and `docs/api/PARTNER_INTEGRATION_CONTRACT.md`.
+
+### Completion date
+
+Not complete. Set after the definition PR is merged and named validation passes.
+
+### Post-merge verification
+
+- [ ] operational — Pat/tech-lead review and explicit acceptance or revision of proposed ADR 0091;
+      owner: architecture; blocks implementation planning based on the proposed decisions.
+- [ ] operational — coordinate #243 privacy decisions and #796/#803 partner envelope before
+      scheduling customer data lifecycle or partner customer-reference implementation; owner:
+      product/security; blocks those implementation slices.
+
+### Next phase number
+
+Phase 489. No explicit dependency.
+
+## Phase 489 - Per-terminal stock allocation governance and design (#997)
+
+### Initiative and release
+
+Offline-first POS: define the Inventory-owned allocation contract shared by web POS, native POS,
+partner terminals, and Storefront before schema or runtime enforcement is built.
 
 ### Objective and scope
 
 Amend ADRs 0029 and 0014 at their `[default]` clauses, and publish the authoritative feature
-contract in `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`. Define grant, consumption, live and
-offline replay, availability, quarantine, recovery, recipe/modifier stock effects, operator
-authority, and admin sizing. This phase is documentation only: no migration, model, service, API,
-POS client, or UI changes.
+contract in `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`. Define grant, consumption, competing
+stock issues, availability, web/native replay, quarantine, recovery, recipe/modifier effects,
+operator authority, and admin sizing. This phase is documentation only: no migration, model,
+service, API, POS client, or UI changes.
 
 ### Status
 
@@ -27481,9 +27546,9 @@ POS client, or UI changes.
 ### Dependencies
 
 Issue #997 and the existing Inventory-owned online reservation contract in ADR 0029. No earlier
-ledger phase blocks this work. The Storefront freshness sibling of #993 consumes this contract;
-runtime slices must also close the verified POS live-sale and Storefront availability gaps before
-claiming conflict-free allocation.
+ledger phase blocks this work. Existing #998 is the Storefront freshness sibling of #993 and
+consumes this contract. Runtime slices must close the verified POS live-sale and Storefront
+availability gaps before claiming conflict-free allocation.
 
 ### Acceptance and validation evidence
 
@@ -27518,13 +27583,13 @@ passes.
 
 ### Post-merge verification
 
-- [ ] governance — PM files the separately scoped schema/Inventory, POS replay and competing
-      stock-issue, POS client/OPIS, and Storefront freshness follow-on issues; owner: PM; verify
-      before any runtime slice is scheduled.
+- [ ] governance — PM schedules and shapes the separately scoped Inventory schema/service, replay
+      and competing stock-issue, client/OPIS, and Storefront freshness work; owner: PM; verify before
+      any runtime slice begins.
 - [ ] architecture — the first runtime rollout proves POS live sale, Storefront, and all competing
       stock issues honor active/quarantined allocations before enabling offline allocation grants;
       owner: Worker/Reviewer; blocks claiming conflict-free selling.
 
 ### Next phase number
 
-Phase 489. No explicit dependency.
+Phase 490. No explicit dependency.
