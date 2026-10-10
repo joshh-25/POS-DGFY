@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-27
-last_reviewed: 2026-08-27
+last_reviewed: 2026-10-10
 review_by: 2026-10-27
 applies_to: architecture_decision
 topic: multi_template_modes_pos_offline_sync_and_storefront_cache_contracts
@@ -152,3 +152,33 @@ is locally complete; non-cash checkout and offline voids remain explicitly
 provisional until server acknowledgement. This amendment does not change the
 web POS rule that replay is operator-controlled, and it does not permit fiscal
 issuance or server-authoritative account and permission decisions offline.
+
+## Addendum: Inventory-Owned Offline Terminal Allocation (2026-10-10, Phase 488)
+
+The web POS offline checkout rules above continue to apply: replay remains operator-controlled,
+and a local cached-stock decrement is only a client estimate. An Inventory-owned terminal
+allocation is the server-confirmed stock guarantee that makes that local selling limit safe across
+terminals and Storefront.
+
+- Offline checkout may use only the remaining allocation bound to the current tenant, location,
+  terminal, app attachment, and operator authority. It may not create grants, top up, return stock,
+  or expand quantities while offline.
+- A previously authenticated operator has at most a 24-hour offline authorization window. After
+  expiry, the client stops accepting new local operations and keeps all pending records intact for
+  explicit online replay or manual resolution. Expiry does not release or delete the server-side
+  allocation.
+- Replay remains behind the operator's explicit `Sync All Pending Records` action and its existing
+  daily limit. The server revalidates current authority and the allocation; matching allocated
+  effects are consumed once with the Inventory goods-issue command. An allocation overrun fails
+  deterministically into manual resolution. No reconnect, page-load, retry, or service-worker event
+  may submit a queued operation.
+- Recipe and modifier-derived ingredient quantities are part of the allocation. `stock_exempt`
+  lines remain outside Inventory allocation and movement.
+- Pending allocations held by disconnected, expired, or lost terminals remain unavailable to other
+  terminals and Storefront. They can be returned only through explicit online reconciliation or
+  audited administrator recovery. Storefront output still follows ADR 0017's public inventory
+  display policy.
+
+This addendum defines the offline/replay side of the contract. ADR 0029 and
+`docs/features/PER_TERMINAL_STOCK_ALLOCATION.md` define ownership, available-to-sell, and the
+Inventory enforcement boundary. It records design only and authorizes no runtime or schema change.
