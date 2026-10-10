@@ -30,6 +30,11 @@ Before choosing a driver, record and approve:
   callback ownership.
 - Rate limits, throughput caps, per-message costs, and spend alerts.
 - Required consent, suppression, and opt-out behavior for each message purpose.
+- Approved opt-out instruction wording for promotional content. The sender appends the supplied
+  instruction but does not invent copy or imply inbound STOP capture.
+- Whether the provider supports authenticated inbound STOP webhooks, including signature
+  verification, replay handling, tenant/global suppression mapping, and operational ownership.
+  Until that decision is implemented and verified, STOP is not captured automatically.
 
 ## Connection and verification path
 
@@ -43,9 +48,15 @@ Before choosing a driver, record and approve:
 4. Send an approved sandbox message to a controlled destination. Confirm the API result, one
    `sms_delivery_logs` row, provider message ID (if supplied), simulation flag, and failure alert
    behavior. Verify no message body is present in the row or alert context.
-5. Confirm sender registration, rate/cost controls, opt-out handling, webhook decision, and
-   operational ownership before enabling the provider for production traffic.
+5. Confirm sender registration, rate/cost controls, approved promotional opt-out wording, opt-out
+   handling, webhook decision, and operational ownership before enabling the provider for
+   production traffic. Promotional consent is required by the shared sender and transactional
+   traffic remains independent of marketing consent.
 
 The retained raw phone is redacted after `SMS_DELIVERY_LOG_RETENTION_DAYS` (default 30). The HMAC
-secret `SMS_PHONE_HASH_SECRET` is required in production and should be rotated only with a planned
-hash continuity decision.
+secret `SMS_PHONE_HASH_SECRET` is required in production. Before rotating it, re-key
+`sms_delivery_logs.recipient_phone_hash`, `sms_marketing_consents.recipient_phone_hash`,
+`sms_consent_events.recipient_phone_hash`, and `sms_global_suppressions.recipient_phone_hash` with
+the new key as one controlled operation. A rotation without this continuity step makes prior
+consents and opt-outs unmatchable and can permit a previously suppressed number to receive a
+promotional send.
