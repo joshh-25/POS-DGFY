@@ -73,6 +73,9 @@ services:
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
       PORT: 5100
+      # Required even while SMS_PROVIDER=unconfigured because production-mode
+      # startup validates the keyed recipient-hash secret unconditionally.
+      SMS_PHONE_HASH_SECRET: ${SMS_PHONE_HASH_SECRET:?must be configured in the stage .env}
       NODE_OPTIONS: --max-old-space-size=256
       DB_MAX_CONNECTIONS: "200"
     volumes:

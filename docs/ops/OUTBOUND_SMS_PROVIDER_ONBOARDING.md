@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: operations
-last_reviewed: 2026-10-10
-review_by: 2027-04-10
+last_reviewed: 2026-10-11
+review_by: 2027-04-11
 applies_to: outbound_sms_provider_onboarding
 topic: outbound_sms_provider_onboarding
 ---
@@ -52,6 +52,17 @@ Before choosing a driver, record and approve:
    handling, webhook decision, and operational ownership before enabling the provider for
    production traffic. Promotional consent is required by the shared sender and transactional
    traffic remains independent of marketing consent.
+
+## Deployment secret required before production API startup
+
+`SMS_PHONE_HASH_SECRET` is required whenever `NODE_ENV=production`, even when the provider stays
+`unconfigured`. Configure a persistent, environment-specific value of at least 32 characters and
+pass it to the API container before deploying this API version. For staging, store the value in
+`/opt/dgfy-stage/.env` and map it into `dgfy-api`; for PROD, add it to the SOPS-encrypted
+`secrets/dgfy-api.env`, export it through `deploy-sops.sh`, and map it in
+`infrastructure/docker/env/prod.sops-cutover-fragment.yml`'s bucket-A section. Do not reuse the
+staging value in PROD. `infrastructure/docker/env/prod.env-var-classification.md` must also keep
+this key in the boot-required secret list.
 
 The retained raw phone is redacted after `SMS_DELIVERY_LOG_RETENTION_DAYS` (default 30). The HMAC
 secret `SMS_PHONE_HASH_SECRET` is required in production. Before rotating it, re-key
