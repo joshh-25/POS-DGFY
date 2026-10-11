@@ -20,6 +20,7 @@ const baseEnv = {
   DB_AUTO_SYNC: 'false',
   JWT_SECRET: strongSecret('jwt'),
   REFRESH_TOKEN_SECRET: strongSecret('refresh'),
+  SMS_PHONE_HASH_SECRET: strongSecret('sms-phone-hash'),
   CORS_ORIGIN: 'https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph',
   SESSION_COOKIE_SECURE: 'true',
   RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: '3600000',

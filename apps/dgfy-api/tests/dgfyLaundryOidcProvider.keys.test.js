@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { jest } from '@jest/globals';
 
 const registryRows = [];
-jest.unstable_mockModule('../src/modules/dgfyLaundry/repositories/oidcSigningKeyRepository.js', () => ({
+jest.unstable_mockModule('../src/modules/partnerIdentity/repositories/oidcSigningKeyRepository.js', () => ({
   oidcSigningKeyRepository: {
     count: async () => registryRows.length,
     findActive: async () => registryRows.find((row) => row.status === 'active') || null,
@@ -23,6 +23,14 @@ jest.unstable_mockModule('../src/modules/dgfyLaundry/repositories/oidcSigningKey
       if (row) row.status = status;
       return row || null;
     }
+  }
+}));
+jest.unstable_mockModule('../src/modules/partnerIdentity/repositories/partnerIdentityRegistryRepository.js', () => ({
+  partnerIdentityRegistryRepository: {
+    findClientByClientId: async () => null,
+    findAppBySlug: async () => null,
+    listClientsForApp: async () => [],
+    listActiveClients: async () => []
   }
 }));
 

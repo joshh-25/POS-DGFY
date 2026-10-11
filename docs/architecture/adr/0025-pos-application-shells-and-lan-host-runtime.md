@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-03
-last_reviewed: 2026-08-04
+last_reviewed: 2026-10-10
 review_by: 2026-12-03
 applies_to: pos_windows_android_clients_and_lan_store_runtime
 topic: pos_application_shells_and_lan_host_runtime
@@ -109,6 +109,30 @@ POS Client -> Backend -> Device Bridge -> Printer -> Drawer
 5. Wire standalone POS clients after host/device proof is complete.
 
 ## Amendments
+
+### 2026-10-10 — Separate sale-amount authority from persistence authority
+
+- Clause amended: Consequences item 1 (`default`).
+- Change: The backend remains the system of record and sole authority for persisted sales,
+  inventory, transactions, reporting, compliance, and rule-owned pricing. The statement that backend
+  authority does not move into client runtimes continues to govern persistence and rules. For
+  browser/web POS and clients following the same replay contract, the client runtime is authoritative
+  only for the amount charged for a sale as transacted: the amount shown to and paid by the customer
+  and recorded on its provisional slip, computed from server-issued rules and snapshots. This is a
+  reconciliation claim, not persistence authority. On replay the server independently re-derives
+  its amount, records both values, and flags divergence for reconciliation; neither side silently
+  overwrites the other. The immutable sale-time receipt snapshot required by ADR 0075 does not change
+  the charged amount. Server-side discount/PIN approval and rule-validation authority under ADRs
+  0033 and 0075 remain unchanged. Per #996, the server-rederived amount remains the recorded/reportable truth
+  while the client-charged amount is retained as the customer-facing sale-time figure. #996 owns
+  drawer-expectation treatment before reconciliation and printed-slip handling after a mismatch,
+  including BIR / `PosFiscalEvent` implications coordinated with the offline fiscal-numbering child.
+  This carve-out applies to the browser/web replay contract and does not restore the LAN-host
+  topology superseded in part by ADR 0043.
+- Reason: Reconcile the backend's persisted-record authority with the offline POS decision that the
+  customer's transacted amount remains the sale-time amount, preserving #996's server-reporting
+  decision and leaving drawer and fiscal mismatch handling to its owning implementation work.
+- PR: this PR (Closes #995).
 
 ### 2026-08-04 — Hardware becomes pluggable; the LAN bridge becomes one driver among several
 - Clause amended: Hardware Strategy / Communication (`default`) and
