@@ -3,8 +3,8 @@ status: draft
 authority_level: default
 owner: architecture
 date: 2026-08-28
-last_reviewed: 2026-08-28
-review_by: 2027-02-28
+last_reviewed: 2026-10-11
+review_by: 2027-04-11
 applies_to: production_deployment, secrets_management
 topic: prod_env_var_classification
 ---
@@ -70,6 +70,10 @@ is the input to that step, not a replacement for it.
 - `REFRESH_TOKEN_SECRET` — **secret** (bucket A, Appendix A)
 - `SESSION_COOKIE_SECURE`
 - `TEMP_FILE_STORAGE`
+
+### Additional unconditional production validator requirement
+
+- `SMS_PHONE_HASH_SECRET` — **secret** (bucket A; `productionEnvValidation.cjs:71-73` requires it whenever `NODE_ENV=production`, regardless of `SMS_PROVIDER`)
 
 ### Conditionally required — depends on which features/profile are live
 

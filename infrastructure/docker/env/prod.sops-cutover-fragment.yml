@@ -40,6 +40,9 @@
 # below -- see prod.env-var-classification.md's "Boot-required" section for the
 # reasoning. TENANT_SCHEMA_MUTATION_APPROVED (bucket B) is included explicitly --
 # it was in NEITHER the 2026-08-13 fragment nor the runbook's old Appendix A.
+# SMS_PHONE_HASH_SECRET is an additional production-only validator requirement
+# outside BASE_REQUIRED_KEYS; it belongs in bucket A and must be set even while
+# SMS_PROVIDER remains unconfigured.
 #
 # Live-server drift folded in here rather than left as a separate inventory
 # (unlike the 2026-08-13 version of this file):
@@ -268,6 +271,7 @@
 #       DB_PASSWORD: ${DB_PASSWORD}
 #       JWT_SECRET: ${JWT_SECRET}
 #       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+#       SMS_PHONE_HASH_SECRET: ${SMS_PHONE_HASH_SECRET}
 #       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
 #       ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON}
 #       OPENAI_API_KEY: ${OPENAI_API_KEY}
