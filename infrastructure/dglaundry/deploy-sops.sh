@@ -66,18 +66,14 @@ done < <("$SOPS_BIN" decrypt --input-type dotenv "$CIPHERTEXT_CACHE")
 echo
 echo "== secrets materialized. =="
 echo
-echo "What this does NOT do yet, and why:"
-echo "  - It does not run 'docker compose up'. This environment's $ENV_FILE"
-echo "    still carries at least one REPLACE_BEFORE_DEPLOY placeholder"
-echo "    (DGLAUNDRY_MIGRATION_REQUIRED_HEAD) that Compose's own :? guard"
-echo "    will hard-fail on -- filling it in requires DGLaundry to confirm"
-echo "    the reviewed migration head for the pinned release SHA first."
-echo "  - It does not check out DGLaundry's own docker-compose.production.yml"
-echo "    onto this host. Pin and copy it from Sieitzz/dglaundry at the exact"
-echo "    release SHA named in $ENV_FILE (DGLAUNDRY_RELEASE_SHA) into"
-echo "    $HOST_ROOT/releases/<sha>/, then symlink $HOST_ROOT/current -> it."
+echo "What this does NOT do yet:"
+echo "  It does not run 'docker compose up', and it does not check out"
+echo "  DGLaundry's own docker-compose.production.yml onto this host. Pin"
+echo "  and copy it from Sieitzz/dglaundry at the exact release SHA named"
+echo "  in $ENV_FILE (DGLAUNDRY_RELEASE_SHA) into $HOST_ROOT/releases/<sha>/,"
+echo "  then symlink $HOST_ROOT/current -> it."
 echo
-echo "Once both of those are done, bring the stack up from $HOST_ROOT/current:"
+echo "Once that's done, bring the stack up from $HOST_ROOT/current:"
 echo
 echo "  docker compose --env-file $ENV_FILE -f docker-compose.production.yml up -d mysql"
 echo "  docker compose --env-file $ENV_FILE -f docker-compose.production.yml run --rm migrate"
