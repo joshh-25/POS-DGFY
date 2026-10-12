@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 const posRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const repositoryRoot = path.resolve(posRoot, '../..');
 const panelPath = path.join(repositoryRoot, 'packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx');
+const formModalPath = path.join(repositoryRoot, 'packages/web-core/src/features/pos/components/VoucherFormModal.jsx');
 const stylesPath = path.join(repositoryRoot, 'packages/web-core/src/index.css');
 const terminalLayoutPath = path.join(repositoryRoot, 'packages/web-core/src/features/pos/components/TerminalPageLayout.jsx');
 const operationsWorkspacePath = path.join(repositoryRoot, 'packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx');
@@ -82,8 +83,9 @@ describe('POS voucher management presentation contract', () => {
 
   it('uses the Items-sized modal treatment for new and edit voucher handling', () => {
     const source = fs.readFileSync(panelPath, 'utf8');
-    const form = source.slice(source.indexOf('const renderForm'));
+    const form = fs.readFileSync(formModalPath, 'utf8');
 
+    expect(source).toContain('<VoucherFormModal');
     expect(form).toContain('role="dialog"');
     expect(form).toContain('pos-voucher-form-modal');
     expect(form).toContain('pos-items-mobile-sheet-panel');
@@ -131,10 +133,9 @@ describe('POS voucher management presentation contract', () => {
   });
 
   it('adds low-emphasis example placeholders to editable voucher fields', () => {
-    const source = fs.readFileSync(panelPath, 'utf8');
-    const form = source.slice(source.indexOf('const renderForm'));
+    const form = fs.readFileSync(formModalPath, 'utf8');
 
-    expect(source).toContain("const VOUCHER_FORM_PLACEHOLDER_CLASS = 'placeholder:text-slate-400 placeholder:opacity-70';");
+    expect(form).toContain("const VOUCHER_FORM_PLACEHOLDER_CLASS = 'placeholder:text-slate-400 placeholder:opacity-70';");
 
     [
       'placeholder="e.g. SUMMER15"',
@@ -201,9 +202,9 @@ describe('POS voucher management presentation contract', () => {
   });
 
   it('keeps voucher labels and controls aligned across responsive field grids', () => {
-    const source = fs.readFileSync(panelPath, 'utf8');
+    const source = fs.readFileSync(formModalPath, 'utf8');
     const styles = fs.readFileSync(stylesPath, 'utf8');
-    const form = source.slice(source.indexOf('const renderForm'));
+    const form = source;
 
     expect(form).toContain('pos-voucher-form-grid');
     expect(form).toContain('pos-voucher-form-field');

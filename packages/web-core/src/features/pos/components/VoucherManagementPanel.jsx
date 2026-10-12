@@ -7,8 +7,6 @@ import {
   Pencil,
   Play,
   RefreshCcw,
-  ShieldAlert,
-  SlidersHorizontal,
   SortAsc,
   SortDesc,
   Ticket,
