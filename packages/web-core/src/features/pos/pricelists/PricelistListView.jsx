@@ -1,9 +1,29 @@
 import React from 'react';
-import { Archive, Pencil, Plus, Tag, Upload } from 'lucide-react';
+import { Archive, Pencil, Tag, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
 import PosSearchField, { POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS } from '../components/PosSearchField.jsx';
 import { PRICELIST_PAGE_SIZE_OPTIONS, STATUS_BADGE_CLASS, STATUS_LABEL } from './pricelistPresentation.js';
+
+const TagPlusIcon = ({ className = '', ...props }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+    focusable="false"
+    {...props}
+  >
+    <path d="M16 13h6" />
+    <path d="m16.5 6.5-3.914-3.914A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l1.79-1.79" />
+    <path d="M19 10v6" />
+    <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
+  </svg>
+);
 
 export default function PricelistListView({
   disabled,
@@ -50,10 +70,11 @@ export default function PricelistListView({
           disabled={disabled || !canManage}
           onClick={onOpenCreate}
           aria-label="New pricelist"
+          data-testid="pos-pricelists-new-button"
           title="New pricelist"
-          className="pos-items-mobile-icon-button pos-items-mobile-primary-button shrink-0 px-0 sm:h-9 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[13px]"
+          className="pos-items-primary-action pos-items-mobile-icon-button pos-items-mobile-primary-button h-10 w-10 shrink-0 rounded-lg border-[#1A4E8D] bg-[#1A4E8D] px-0 text-[13px] text-white shadow-none hover:bg-[#143F73] active:bg-[#143F73] sm:h-9 sm:w-auto sm:px-3"
         >
-          <Plus className="h-4 w-4 shrink-0 sm:mr-1 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
+          <TagPlusIcon className="h-4 w-4 shrink-0 sm:mr-1.5" />
           <span className="hidden sm:inline">New Pricelist</span>
         </Button>
       </div>
@@ -101,16 +122,16 @@ export default function PricelistListView({
                       </div>
                     </div>
                     <div className="flex w-full min-w-0 items-center gap-1 border-t border-slate-100 pt-2 sm:w-auto sm:flex-wrap sm:justify-end sm:gap-1.5 sm:border-t-0 sm:pt-0">
-                      <Button type="button" variant="outline" className="h-9 min-w-0 w-auto flex-1 justify-center whitespace-nowrap rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] shadow-sm sm:h-8 sm:w-[6.5rem] sm:flex-none sm:text-xs" onClick={() => onOpenEditor(row)}>
+                      <Button type="button" variant="outline" className="h-9 min-w-0 w-auto flex-1 justify-center whitespace-nowrap rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] shadow-sm sm:w-[6.5rem] sm:flex-none sm:text-xs" onClick={() => onOpenEditor(row)}>
                         <Pencil className="mr-1 h-4 w-4 shrink-0 sm:h-3.5 sm:w-3.5" aria-hidden="true" /> {canManage ? 'Edit items' : 'View items'}
                       </Button>
                       {status === 'draft' && (
-                        <Button type="button" variant="outline" className="h-9 min-w-0 w-auto flex-1 justify-center whitespace-nowrap rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] shadow-sm hover:bg-[#F0F6FF] sm:h-8 sm:w-[6.5rem] sm:flex-none sm:text-xs" disabled={disabled || !canManage || publishingListId === row.pricelist_id} onClick={() => onPublish(row)}>
+                        <Button type="button" variant="outline" className="h-9 min-w-0 w-auto flex-1 justify-center whitespace-nowrap rounded-lg border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] shadow-sm hover:bg-[#F0F6FF] sm:w-[6.5rem] sm:flex-none sm:text-xs" disabled={disabled || !canManage || publishingListId === row.pricelist_id} onClick={() => onPublish(row)}>
                           <Upload className="mr-1 h-4 w-4 shrink-0 sm:h-3.5 sm:w-3.5" aria-hidden="true" /> {publishingListId === row.pricelist_id ? 'Publishing...' : 'Publish'}
                         </Button>
                       )}
                       {!isArchived && (
-                        <Button type="button" variant="outline" className="h-9 min-w-0 w-auto flex-1 justify-center whitespace-nowrap rounded-lg border-rose-300 px-2 text-[11px] font-bold text-rose-600 shadow-sm hover:bg-rose-50 sm:h-8 sm:w-[6.5rem] sm:flex-none sm:text-xs" disabled={disabled || !canManage} onClick={() => onOpenArchive(row.pricelist_id)}>
+                        <Button type="button" variant="outline" className="h-9 min-w-0 w-auto flex-1 justify-center whitespace-nowrap rounded-lg border-rose-300 px-2 text-[11px] font-bold text-rose-600 shadow-sm hover:bg-rose-50 sm:w-[6.5rem] sm:flex-none sm:text-xs" disabled={disabled || !canManage} onClick={() => onOpenArchive(row.pricelist_id)}>
                           <Archive className="mr-1 h-4 w-4 shrink-0 sm:h-3.5 sm:w-3.5" aria-hidden="true" /> Archive
                         </Button>
                       )}

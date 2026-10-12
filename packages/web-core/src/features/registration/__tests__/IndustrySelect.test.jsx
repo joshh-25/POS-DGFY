@@ -23,16 +23,21 @@ describe('IndustrySelect', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders a placeholder option plus all 11 industry names as plain options', async () => {
+  it('renders the POS-style listbox with all 11 industry names', async () => {
     render(<IndustrySelect value="" onSelect={() => {}} />);
 
-    await screen.findByText('What kind of business is this?');
-    const select = screen.getByRole('combobox');
-    const options = within(select).getAllByRole('option');
-    expect(options).toHaveLength(REGISTRATION_INDUSTRIES_DESCRIBED.length + 1);
-    expect(options[0].textContent).toMatch(/select your business type/i);
+    await screen.findByText('Business industry');
+    expect(screen.getByText('Business industry').className).toContain('font-semibold');
+    const trigger = screen.getByRole('combobox', { name: 'Business industry' });
+    expect(trigger.textContent).toMatch(/select an industry/i);
+    expect(trigger.querySelector('span').className).toContain('font-normal');
+    fireEvent.click(trigger);
+
+    const listbox = await screen.findByRole('listbox', { name: 'Business industry options' });
+    const options = within(listbox).getAllByRole('option');
+    expect(options).toHaveLength(REGISTRATION_INDUSTRIES_DESCRIBED.length);
     REGISTRATION_INDUSTRIES_DESCRIBED.forEach((entry) => {
-      expect(within(select).getByText(entry.label)).toBeTruthy();
+      expect(within(listbox).getByRole('option', { name: entry.label })).toBeTruthy();
     });
   });
 
@@ -40,8 +45,9 @@ describe('IndustrySelect', () => {
     const onSelect = vi.fn();
     render(<IndustrySelect value="" onSelect={onSelect} />);
 
-    const select = await screen.findByRole('combobox');
-    fireEvent.change(select, { target: { value: 'micro_fnb' } });
+    const trigger = await screen.findByRole('combobox', { name: 'Business industry' });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole('option', { name: 'Micro Food & Beverage' }));
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
@@ -54,6 +60,8 @@ describe('IndustrySelect', () => {
   it('shows a summary panel with niches once an industry is selected', async () => {
     render(<IndustrySelect value="micro_fnb" onSelect={() => {}} />);
 
+    const trigger = await screen.findByRole('combobox', { name: 'Business industry' });
+    expect(trigger.querySelector('span').className).not.toContain('font-normal');
     expect(await screen.findByText(/Carinderia, Small eatery, Turo-turo, Food cart/)).toBeTruthy();
     expect(screen.getAllByText('Micro Food & Beverage').length).toBeGreaterThanOrEqual(2);
   });
@@ -75,7 +83,7 @@ describe('IndustrySelect', () => {
   it('opens a catalog dialog listing every visible industry via the (i) button', async () => {
     render(<IndustrySelect value="" onSelect={() => {}} />);
 
-    const infoButton = await screen.findByRole('button', { name: /about business types/i });
+    const infoButton = await screen.findByRole('button', { name: /about business industries/i });
     fireEvent.click(infoButton);
 
     const dialog = screen.getByRole('dialog');
@@ -88,7 +96,7 @@ describe('IndustrySelect', () => {
     render(<IndustrySelect value="healthcare" onSelect={() => {}} />);
 
     await screen.findByRole('combobox');
-    fireEvent.click(screen.getByRole('button', { name: /about business types/i }));
+    fireEvent.click(screen.getByRole('button', { name: /about business industries/i }));
 
     expect(screen.queryByText(/native today/i)).toBeNull();
     expect(screen.queryByText(/listing only/i)).toBeNull();
@@ -103,10 +111,13 @@ describe('IndustrySelect', () => {
     );
     render(<IndustrySelect value="" onSelect={() => {}} />);
 
-    const select = await screen.findByRole('combobox');
-    expect(within(select).queryByText('Food Manufacturing')).toBeNull();
+    const trigger = await screen.findByRole('combobox', { name: 'Business industry' });
+    fireEvent.click(trigger);
+    const visibleOption = await screen.findByRole('option', { name: 'Retail' });
+    expect(visibleOption).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'Food Manufacturing' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /about business types/i }));
+    fireEvent.click(screen.getByRole('button', { name: /about business industries/i }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).queryByText('Food Manufacturing')).toBeNull();
   });
@@ -117,8 +128,9 @@ describe('IndustrySelect', () => {
     // on a network failure, and it must fail open (show everything).
     render(<IndustrySelect value="" onSelect={() => {}} />);
 
-    const select = await screen.findByRole('combobox');
-    expect(within(select).getByText('Food Manufacturing')).toBeTruthy();
+    const trigger = await screen.findByRole('combobox', { name: 'Business industry' });
+    fireEvent.click(trigger);
+    expect(await screen.findByRole('option', { name: 'Food Manufacturing' })).toBeTruthy();
   });
 
   // issue #316: an admin-created industry can point at a template that

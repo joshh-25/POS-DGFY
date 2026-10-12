@@ -36,7 +36,7 @@ describe('POS dropdown select', () => {
         expect(screen.getByRole('listbox', { name: 'Shift location options' })).toBeTruthy();
         expect(screen.getByRole('option', { name: 'First location' }).getAttribute('aria-selected')).toBe('true');
         expect(screen.getByRole('option', { name: 'Occupied terminal' }).getAttribute('aria-disabled')).toBe('true');
-        expect(screen.getByRole('option', { name: 'First location' }).className).toContain('pos-dropdown-select__option');
+        expect(screen.getByRole('option', { name: 'First location' }).className).toContain('dropdown-select__option');
     });
 
     it('selects by pointer and restores focus to the trigger', () => {

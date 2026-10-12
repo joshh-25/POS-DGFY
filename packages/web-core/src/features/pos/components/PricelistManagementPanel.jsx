@@ -70,7 +70,6 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
   const [editingTargetId, setEditingTargetId] = useState(null); // where the server actually wrote last (may be a draft revision)
   const [editorVersion, setEditorVersion] = useState(null);
   const [rows, setRows] = useState([]);
-  const [rowsById, setRowsById] = useState(new Map());
   const [editorLoading, setEditorLoading] = useState(false);
   const [editorError, setEditorError] = useState('');
   const [publishing, setPublishing] = useState(false);
@@ -203,7 +202,6 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
     const byItemId = new Map(items.map((item) => [Number(item.item_id), item]));
     const built = buildRows(catalogItems, byItemId);
     setRows(built);
-    setRowsById(new Map(built.map((row) => [row.item_id, row])));
   }, []);
 
   const openEditor = async (summaryRow) => {
@@ -238,13 +236,12 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
     }
   };
 
-  const backToList = () => {
+  const backToList = useCallback(() => {
     setView('list');
     setPricelist(null);
     setRows([]);
-    setRowsById(new Map());
     setRestoreBanner(null);
-  };
+  }, []);
 
   const updateRow = (itemId, patch) => {
     setRows((current) => current.map((row) => (row.item_id === itemId ? { ...row, ...patch } : row)));

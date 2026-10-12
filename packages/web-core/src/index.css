@@ -262,8 +262,8 @@ body[data-pos-surface="pos"] {
    dropdown states without leaving unselected options or triggers hovered. */
 .pos-text-size-control__trigger,
 .pos-text-size-control__option,
-.pos-dropdown-select__trigger,
-.pos-dropdown-select__option {
+.dropdown-select__trigger,
+.dropdown-select__option {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -277,15 +277,15 @@ body[data-pos-surface="pos"] {
     color: #0f172a;
   }
 
-  .pos-dropdown-select__trigger[data-appearance="field"]:hover {
+  .dropdown-select__trigger[data-appearance="field"]:hover {
     background-color: #fff;
   }
 
-  .pos-dropdown-select__trigger[data-appearance="toolbar"]:hover {
+  .dropdown-select__trigger[data-appearance="toolbar"]:hover {
     background-color: transparent;
   }
 
-  .pos-dropdown-select__option:not([aria-selected="true"]):hover:not([data-active="true"]) {
+  .dropdown-select__option:not([aria-selected="true"]):hover:not([data-active="true"]) {
     background-color: transparent;
   }
 }
@@ -2441,6 +2441,49 @@ html.dgfy-imin-performance [class~="transition-all"] {
    overlapping calendar affordance inside the same input. */
 .pos-report-date-input::-webkit-calendar-picker-indicator {
   cursor: pointer;
+}
+
+@keyframes dgfy-pos-calendar-slide-next {
+  from {
+    opacity: 0.35;
+    transform: translate3d(1rem, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes dgfy-pos-calendar-slide-previous {
+  from {
+    opacity: 0.35;
+    transform: translate3d(-1rem, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.pos-date-range-calendar-month-content {
+  will-change: transform, opacity;
+}
+
+.pos-date-range-calendar-month-transition-next {
+  animation: dgfy-pos-calendar-slide-next 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pos-date-range-calendar-month-transition-previous {
+  animation: dgfy-pos-calendar-slide-previous 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-date-range-calendar-month-content {
+    animation: none !important;
+    will-change: auto;
+  }
 }
 
 /* Keep transaction action cells above row content when the history table uses
@@ -8187,6 +8230,51 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   outline: 2px solid transparent;
   outline-offset: 2px;
   box-shadow: 0 0 0 2px #c7dcf3;
+}
+
+/* Keep every voucher field on the same label/control baseline when labels
+   include required markers, help affordances, or wrapped text. */
+.pos-voucher-form-modal .pos-voucher-form-grid {
+  align-items: stretch;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-grid > .pos-voucher-form-field {
+  align-self: stretch;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :where(label, .pos-voucher-form-label-row) {
+  min-width: 0;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > label {
+  display: block;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :where(input, textarea, button[role="combobox"]) {
+  width: 100%;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-grid > .pos-voucher-form-field > :where(input, button[role="combobox"]) {
+  margin-top: auto !important;
 }
 
 @media screen and (min-width: 640px) {

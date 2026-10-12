@@ -32,6 +32,7 @@ const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutTerminalViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const posDiscountWorkspacePath = path.resolve(__dirname, '../components/POSDiscountWorkspace.jsx');
+const posTerminalViewModelPath = path.resolve(__dirname, '../hooks/usePosTerminalViewModel.js');
 const posCheckoutTerminalReceiptDialogsPath = path.resolve(__dirname, '../components/POSCheckoutTerminalReceiptDialogs.jsx');
 const posCheckoutWorkflowPath = path.resolve(__dirname, '../hooks/usePosCheckoutWorkflow.js');
 const posHistoryVoidWorkflowPath = path.resolve(__dirname, '../hooks/usePosHistoryVoidWorkflow.js');
@@ -178,6 +179,7 @@ describe('POS terminal view-mode contracts', () => {
   it('promotes Vouchers and Pricelists to top-level nav modes, out of the Settings tab strip', () => {
     expect(terminalPageContent).toContain("'settings_vouchers'");
     expect(terminalPageContent).toContain("'settings_pricelists'");
+    expect(terminalPageLayoutContent).toContain("settings_pricelists: 'Pricelists'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'settings_vouchers':");
     expect(terminalOperationsWorkspaceContent).toContain("case 'settings_pricelists':");
     expect(terminalPageContent).toContain('const canViewVouchers');
