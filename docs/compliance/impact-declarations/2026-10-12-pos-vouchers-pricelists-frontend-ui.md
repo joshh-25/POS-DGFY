@@ -69,3 +69,5 @@ credentials were supplied.
   text-size, zoom, and terminal-workspace edits.
 - Merged Voucher validity-date and daily-time controls are isolated with their picker behavior
   tests; calendar left/right swipe semantics and reduced-motion transitions are covered.
+- Voucher catalog/form extraction, responsive controls, pagination, and modal focus behavior are
+  isolated from the unrelated POS current-sale and History-only edits.

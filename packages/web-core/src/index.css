@@ -8232,6 +8232,51 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   box-shadow: 0 0 0 2px #c7dcf3;
 }
 
+/* Keep every voucher field on the same label/control baseline when labels
+   include required markers, help affordances, or wrapped text. */
+.pos-voucher-form-modal .pos-voucher-form-grid {
+  align-items: stretch;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-grid > .pos-voucher-form-field {
+  align-self: stretch;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :where(label, .pos-voucher-form-label-row) {
+  min-width: 0;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > label {
+  display: block;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :where(input, textarea, button[role="combobox"]) {
+  width: 100%;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-grid > .pos-voucher-form-field > :where(input, button[role="combobox"]) {
+  margin-top: auto !important;
+}
+
 @media screen and (min-width: 640px) {
   .pos-voucher-card-row { align-items: stretch; }
   .pos-voucher-card-icon {
