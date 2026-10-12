@@ -262,8 +262,8 @@ body[data-pos-surface="pos"] {
    dropdown states without leaving unselected options or triggers hovered. */
 .pos-text-size-control__trigger,
 .pos-text-size-control__option,
-.pos-dropdown-select__trigger,
-.pos-dropdown-select__option {
+.dropdown-select__trigger,
+.dropdown-select__option {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -277,15 +277,15 @@ body[data-pos-surface="pos"] {
     color: #0f172a;
   }
 
-  .pos-dropdown-select__trigger[data-appearance="field"]:hover {
+  .dropdown-select__trigger[data-appearance="field"]:hover {
     background-color: #fff;
   }
 
-  .pos-dropdown-select__trigger[data-appearance="toolbar"]:hover {
+  .dropdown-select__trigger[data-appearance="toolbar"]:hover {
     background-color: transparent;
   }
 
-  .pos-dropdown-select__option:not([aria-selected="true"]):hover:not([data-active="true"]) {
+  .dropdown-select__option:not([aria-selected="true"]):hover:not([data-active="true"]) {
     background-color: transparent;
   }
 }
