@@ -162,9 +162,6 @@ export const validateRegistrationSubmission = ({ payload, uploads = [] }) => {
   const hours = resolveHoursSection(payload);
   const errors = [];
 
-  if (!firstMeaningful(business.business_type, business.businessType, business.type)) {
-    errors.push({ field: 'business.business_type', message: 'Business type is required.' });
-  }
   if (!firstMeaningful(business.company_name, business.companyName, business.name)) {
     errors.push({ field: 'business.company_name', message: 'Company name is required.' });
   }

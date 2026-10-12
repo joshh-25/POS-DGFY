@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-08-07
+last_reviewed: 2026-10-10
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -32,6 +32,7 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Phone Format**: Company admin phone numbers and user phone numbers are trimmed and must be 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
 - **Provisioning Trigger**: Database provisioning runs only after a Platform Admin approves the pending application. A failed provisioning attempt remains auditable and retryable; it must not activate the tenant or leave a reusable partial tenant database.
 - **Storefront Handoff**: `Register Your Business` runs inside the signed-in DGFY/Storefront business-registration surface. A successful submission opens the owner-authorized SKUpervisor status route using the returned `application_id`; it does not attempt a tenant-session or POS handoff. Legacy one-time DGFY handoff tokens remain a compatibility path for cross-surface authentication, not an activation bypass.
+- **Registration Draft Persistence**: Editable business, storefront, and schedule fields autosave to the authenticated account's server-side registration draft after a 700 ms idle debounce. A session-scoped recovery snapshot preserves recent field edits if the page refreshes or unmounts before that debounce fires; on reload, the wizard reconciles the snapshot with the latest server draft and retries saving recovered changes. The wizard also flushes pending field changes before step navigation, continuation, or submission, communicates saving/saved/failed states, and retains local edits with a retry action after failure. Recovery snapshots exclude legal consent evidence and file contents. Legal consent checkboxes remain separate submission evidence, and a selected map candidate is not persisted until the user explicitly adds it as a store location. Uploaded files continue to use the draft's upload/remove endpoints; replacing a profile or cover image swaps the active upload atomically so a failed replacement leaves the prior image staged.
 - **Email Mapping**: Pending registrations create the founder email-to-tenant mapping at registration time so lookup can report pending status. Provisioning completes the active tenant-user and accepted-membership links only after approval succeeds.
 - **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict to protect landlord application creation and the later tenant-provisioning queue.
 

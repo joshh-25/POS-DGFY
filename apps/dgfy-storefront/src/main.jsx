@@ -65,6 +65,12 @@ function AnalyticsRouteTracker() {
   return null;
 }
 
+function RouteConsentBanner() {
+  const location = useLocation();
+  if (location.pathname.replace(/\/+$/, '') === '/business/grow') return null;
+  return <ConsentBanner onConsentChange={handleConsentChange} />;
+}
+
 // Kept exactly as-is: several integration tests render `<App/>` directly
 // (no router context), and StorefrontApp itself never touches react-router
 // hooks, so this stays a plain, router-free composition root.
@@ -93,7 +99,7 @@ function StoreRoot() {
     >
       <AnalyticsRouteTracker />
       <VersionBadge label="Store" />
-      <ConsentBanner onConsentChange={handleConsentChange} />
+      <RouteConsentBanner />
       <Routes>
         <Route
           path="/login"
@@ -135,7 +141,7 @@ function StoreRoot() {
           path="/business/grow"
           element={(
             <>
-              <StorefrontBusinessGrowPage />
+              <StorefrontBusinessGrowPage consentBanner={<ConsentBanner placement="inline" onConsentChange={handleConsentChange} />} />
               <Toaster richColors position="top-right" closeButton duration={2200} />
             </>
           )}

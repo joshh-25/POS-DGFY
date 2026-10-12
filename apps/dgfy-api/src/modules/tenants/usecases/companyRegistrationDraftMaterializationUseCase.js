@@ -34,6 +34,8 @@ const asPlain = (value) => {
     return value;
 };
 
+const getLegacyBusinessTypeFromPayload = (payload) => String(payload?.business?.business_type || '').trim();
+
 const parseSnapshot = (value) => {
     if (!value) return {};
     if (typeof value === 'object') return value;
@@ -417,9 +419,10 @@ export const buildMaterializeCompanyRegistrationDraftUseCase = ({
         });
         snapshot.location_id = primaryLocation.location_id;
 
+        const legacyBusinessType = getLegacyBusinessTypeFromPayload(payload);
         const settings = [
             ['pos_business_name', companyName, 'string', 'Business name used by POS and tenant-facing receipts.'],
-            ['registration_business_type', String(payload?.business?.business_type || '').trim(), 'string', 'Business type captured during company registration.'],
+            ...(legacyBusinessType ? [['registration_business_type', legacyBusinessType, 'string', 'Legacy business type captured during company registration.']] : []),
             ['storefront_email', String(storefront.store_email || '').trim().toLowerCase(), 'string', 'Public Storefront contact email.'],
             ['storefront_phone', normalizePhoneNumber(storefront.store_phone || '') || String(storefront.store_phone || '').trim(), 'string', 'Public Storefront contact phone.'],
             ['storefront_tagline', String(storefront.tagline || '').trim(), 'string', 'Public Storefront tagline.'],
@@ -682,6 +685,8 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
 
         const identifiers = buildTenantIdentifiers({ name: companyName, idGenerator });
         const normalizedPhone = normalizePhoneNumber(account.phone || '') || String(account.phone || '').trim() || null;
+        const legacyBusinessType = getLegacyBusinessTypeFromPayload(payload);
+        const industryTag = String(payload?.business?.industry_tag ?? payload?.business?.industryTag ?? '').trim().slice(0, 120) || industry.label;
         const tenant = await tenantAdminRepository.createTenant({
             id: identifiers.id,
             name: companyName,
@@ -705,10 +710,10 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
             ownership_status: 'claimed',
             settings: {
                 workflow_mode: industry.workflowMode,
-                industry_tag: industry.label,
+                industry_tag: industryTag,
                 registration_industry: industry.key,
                 store_template_key: industry.templateKey,
-                business_type: String(payload?.business?.business_type || '').trim(),
+                ...(legacyBusinessType ? { business_type: legacyBusinessType } : {}),
                 registration_draft_id: plainDraft.id,
                 store_is_visible: false
             }
@@ -756,7 +761,7 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
             },
             legalTermsSnapshot,
             workflowMode: industry.workflowMode,
-            industryTag: industry.label,
+            industryTag,
             registrationIndustry: industry.key,
             storeTemplateKey: industry.templateKey,
             actor,

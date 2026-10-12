@@ -416,9 +416,9 @@ Total active test files: **829** | db-manifest members: **32** | findings: **3**
 | tests/commercialPromoPolicy.unit.test.js | 256 | 10 | keep | R5-default | default keep (suffix: unit) |
 | tests/companyRegistrationDownloadAudit.migration.test.js | 58 | 2 | keep | R5-default | default keep (suffix: migration) |
 | tests/companyRegistrationDraft.migration.test.js | 71 | 3 | keep | R5-default | default keep (suffix: migration) |
-| tests/companyRegistrationDraftContract.test.js | 97 | 3 | keep | R5-default | default keep (suffix: (none)) |
-| tests/companyRegistrationDraftMaterialization.test.js | 328 | 4 | keep | R5-default | default keep (suffix: (none)) |
-| tests/companyRegistrationDraftUseCases.test.js | 272 | 5 | keep | R5-default | default keep (suffix: (none)) |
+| tests/companyRegistrationDraftContract.test.js | 106 | 4 | keep | R5-default | default keep (suffix: (none)) |
+| tests/companyRegistrationDraftMaterialization.test.js | 338 | 4 | keep | R5-default | default keep (suffix: (none)) |
+| tests/companyRegistrationDraftUseCases.test.js | 468 | 8 | keep | R5-default | default keep (suffix: (none)) |
 | tests/companyRegistrationHandlers.transport.test.js | 109 | 3 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/companyRegistrationMaterialization.migration.test.js | 76 | 2 | keep | R5-default | default keep (suffix: migration) |
 | tests/companyRegistrationStatusUseCase.test.js | 22 | 2 | keep | R5-default | default keep (suffix: (none)) |

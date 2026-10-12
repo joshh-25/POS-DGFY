@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
+import DropdownSelect from '../../components/ui/DropdownSelect.jsx';
 import { fetchRegistrationIndustries } from './registrationIndustryService.js';
 import { resolveWhatYoullGet } from './whatYoullGet.js';
 
@@ -69,8 +70,8 @@ function IndustryInfoModal({ open, onClose, titleId, title, entries }) {
 /**
  * The MERCHANT-facing registration Industry selector (Phase 38 rework of
  * the Phase 33 card-based `IndustryPicker`). Restores the pre-Phase-33
- * dropdown UX merchants were used to - a plain `<select>` of industry
- * names - while keeping the richer catalog content available on demand:
+ * dropdown UX merchants were used to - a keyboard-navigable styled
+ * listbox of industry names - while keeping the richer catalog content available on demand:
  * an (i) button opens a modal listing every visible industry with full
  * detail, and once an industry is chosen a summary panel appears below the
  * dropdown with its own "What you'll get" modal.
@@ -94,6 +95,7 @@ function IndustryInfoModal({ open, onClose, titleId, title, entries }) {
  */
 export default function IndustrySelect({ value, onSelect, disabled = false, idPrefix = 'industry' }) {
   const [industries, setIndustries] = useState([]);
+  const [industriesLoaded, setIndustriesLoaded] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -104,7 +106,9 @@ export default function IndustrySelect({ value, onSelect, disabled = false, idPr
         if (!cancelled) setIndustries(list);
       })
       .catch(() => {})
-      .finally(() => {});
+      .finally(() => {
+        if (!cancelled) setIndustriesLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -114,39 +118,47 @@ export default function IndustrySelect({ value, onSelect, disabled = false, idPr
   const selectedEntry = visibleIndustries.find((entry) => entry.key === value) || null;
   const labelId = `${idPrefix}-label`;
   const selectId = `${idPrefix}-select`;
+  const helpTextId = `${idPrefix}-help`;
   const catalogTitleId = `${idPrefix}-catalog-title`;
   const detailTitleId = `${idPrefix}-detail-title`;
+  const industryOptions = visibleIndustries.length > 0
+    ? visibleIndustries.map((entry) => ({ value: entry.key, label: entry.label }))
+    : [{
+      value: '__industry_options_unavailable__',
+      label: industriesLoaded ? 'No industries available' : 'Loading industries…',
+      disabled: true
+    }];
 
   return (
     <div>
-      <label htmlFor={selectId} id={labelId} className="text-sm font-medium text-slate-900">What kind of business is this?</label>
-      <p className="mt-1 text-xs text-slate-500">
-        Pick the closest match — this sets up your DGFY tools. You can refine it later.
+      <label htmlFor={selectId} id={labelId} className="text-sm font-semibold text-slate-900">Business industry</label>
+      <p id={helpTextId} className="mt-1 text-xs text-slate-500">
+        Choose the closest match to configure your DGFY tools.
       </p>
 
       <div className="mt-2 flex items-center gap-2">
-        <select
+        <DropdownSelect
           id={selectId}
           value={value || ''}
+          options={industryOptions}
           disabled={disabled}
-          onChange={(event) => {
-            const nextKey = event.target.value;
+          onChange={(nextKey) => {
             const entry = visibleIndustries.find((candidate) => candidate.key === nextKey);
             if (entry) onSelect(entry);
           }}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">Select your business type…</option>
-          {visibleIndustries.map((entry) => (
-            <option key={entry.key} value={entry.key}>{entry.label}</option>
-          ))}
-        </select>
+          ariaDescribedBy={helpTextId}
+          listboxLabel="Business industry options"
+          placeholder="Select an industry…"
+          placeholderClassName="font-normal"
+          required
+          className="min-w-0 flex-1"
+        />
         <button
           type="button"
-          aria-label="About business types"
+          aria-label="About business industries"
           aria-haspopup="dialog"
           onClick={() => setCatalogOpen(true)}
-          className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-500 hover:bg-slate-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
         >
           <Info className="h-4 w-4" />
         </button>
@@ -176,7 +188,7 @@ export default function IndustrySelect({ value, onSelect, disabled = false, idPr
         open={catalogOpen}
         onClose={() => setCatalogOpen(false)}
         titleId={catalogTitleId}
-        title="Business types on DGFY"
+        title="Business industries on DGFY"
         entries={visibleIndustries}
       />
       {selectedEntry ? (

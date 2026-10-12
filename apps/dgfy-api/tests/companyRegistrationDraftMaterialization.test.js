@@ -10,7 +10,6 @@ const accountId = '11111111-1111-4111-8111-111111111111';
 
 const payload = {
   business: {
-    business_type: 'food_beverage',
     company_name: 'Example Cafe',
     industry_key: 'fnb'
   },
@@ -78,7 +77,14 @@ const buildTenant = (overrides = {}) => ({
 
 describe('company registration draft materialization', () => {
   it('approves a submitted draft once, creates the tenant projection, and materializes asynchronously', async () => {
-    const draft = buildDraft();
+    const draftPayload = {
+      ...payload,
+      business: { ...payload.business, industry_tag: 'Neighborhood cafe and bakery' }
+    };
+    const draft = buildDraft({
+      draft_payload: draftPayload,
+      submission_snapshot: { schema_version: 1, payload: draftPayload, uploads: [] }
+    });
     const tenant = buildTenant();
     const approvedDraft = buildDraft({
       status: 'approved',
@@ -152,8 +158,11 @@ describe('company registration draft materialization', () => {
       }),
       expect.anything()
     );
+    expect(tenantAdminRepository.createTenant.mock.calls[0][0].settings).not.toHaveProperty('business_type');
+    expect(tenantAdminRepository.createTenant.mock.calls[0][0].settings.industry_tag).toBe('Neighborhood cafe and bakery');
     expect(companyRegistrationRepository.createApprovedProjection).toHaveBeenCalledWith(expect.objectContaining({
       tenant,
+      industryTag: 'Neighborhood cafe and bakery',
       submissionSnapshot: expect.objectContaining({ registration_draft_id: draftId }),
       transaction: expect.anything()
     }));
@@ -318,6 +327,7 @@ describe('company registration draft materialization', () => {
     }), expect.anything());
     expect(settingRows.get('storefront_tagline').setting_value).toBe('Fresh every day');
     expect(settingRows.get('storefront_hours').data_type).toBe('json');
+    expect(settingRows.has('registration_business_type')).toBe(false);
     expect(settingRows.get('store_is_visible').setting_value).toBe('true');
     expect(repository.updateUploadMaterializationStates).toHaveBeenCalledWith(expect.objectContaining({
       draftId,

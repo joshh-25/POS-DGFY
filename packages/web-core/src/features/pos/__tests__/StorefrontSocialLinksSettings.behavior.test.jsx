@@ -15,7 +15,7 @@ describe('Storefront social links settings', () => {
   it('renders configured backend-supported links in a compact responsive list', () => {
     render(<StorefrontSocialLinksSettings links={{ facebook: 'https://facebook.com/yourpage', instagram: 'https://instagram.com/yourpage', messenger: 'https://m.me/yourpage' }} />);
 
-    expect(screen.getByRole('heading', { name: 'Social Links', exact: true })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Social Links', exact: true, level: 3 })).toBeTruthy();
     expect(screen.getByText('Connect your social channels to your storefront.')).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Storefront social links', exact: true })).toBeTruthy();
     expect(screen.getByRole('listitem', { name: '1. facebook', exact: true })).toBeTruthy();
@@ -75,9 +75,16 @@ describe('Storefront social links settings', () => {
   it('renders a compact empty state', () => {
     render(<StorefrontSocialLinksSettings links={{ facebook: '', instagram: '', messenger: '' }} />);
 
-    expect(screen.getByRole('heading', { name: 'No social links added yet.', exact: true })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'No social links added yet.', exact: true, level: 4 })).toBeTruthy();
     expect(screen.getByText('Add links so customers can find you on social media.')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Add social link', exact: true })).toHaveLength(1);
+  });
+
+  it('supports registration-level headings and readable validation copy without changing POS defaults', () => {
+    render(<StorefrontSocialLinksSettings titleHeadingLevel={2} links={{ facebook: 'not a valid url' }} />);
+
+    expect(screen.getByRole('heading', { name: 'Social Links', level: 2 })).toBeTruthy();
+    expect(screen.getByText('Please enter a valid URL.').className).toContain('text-xs');
   });
 
   it('renders preview links without a platform dropdown or outer row card', () => {

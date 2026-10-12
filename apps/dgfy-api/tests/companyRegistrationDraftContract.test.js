@@ -8,7 +8,6 @@ import {
 describe('company registration draft contract', () => {
   const completePayload = () => ({
     business: {
-      business_type: 'retail',
       company_name: 'Example Store',
       industry_key: 'retail'
     },
@@ -66,6 +65,16 @@ describe('company registration draft contract', () => {
         removed_at: null
       }))
     })).toThrow('Complete the required');
+  });
+
+  it('accepts the canonical industry without requiring the legacy broad business type', () => {
+    const payload = completePayload();
+
+    expect(payload.business).not.toHaveProperty('business_type');
+    expect(validateRegistrationSubmission({ payload, uploads: [] }).business).toEqual(expect.objectContaining({
+      company_name: 'Example Store',
+      industry_key: 'retail'
+    }));
   });
 
   it('requires file content to match the declared MIME type', () => {

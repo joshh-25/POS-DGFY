@@ -6,11 +6,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import StorefrontBusinessHoursScheduler from '../StorefrontBusinessHoursScheduler.jsx';
 import { createDefaultStorefrontBusinessHours } from '../storefrontBusinessHours.js';
 
-function ControlledScheduler({ onChange = vi.fn(), initialValue = createDefaultStorefrontBusinessHours() }) {
+function ControlledScheduler({ onChange = vi.fn(), initialValue = createDefaultStorefrontBusinessHours(), compactDayLabels = false, compactDaySelection = false }) {
   const [value, setValue] = useState(initialValue);
   return (
     <StorefrontBusinessHoursScheduler
       value={value}
+      compactDayLabels={compactDayLabels}
+      compactDaySelection={compactDaySelection}
       onChange={(next) => {
         setValue(next);
         onChange(next);
@@ -269,6 +271,133 @@ describe.skip('StorefrontBusinessHoursScheduler legacy modal behavior', () => {
 
 describe('StorefrontBusinessHoursScheduler inline schedule-set behavior', () => {
   afterEach(() => cleanup());
+
+  it('can hide the intro header on mobile while preserving the current schedule summary', () => {
+    render(
+      <StorefrontBusinessHoursScheduler
+        value={createDefaultStorefrontBusinessHours()}
+        onChange={vi.fn()}
+        hideHeaderOnMobile
+      />
+    );
+
+    const introHeading = screen.getByRole('heading', { name: 'Business Hours', level: 3 });
+    const introHeader = introHeading.parentElement?.parentElement?.parentElement;
+
+    expect(introHeader?.className).toContain('hidden sm:flex');
+    expect(screen.getByRole('heading', { name: 'Current Schedule' })).toBeTruthy();
+  });
+
+  it('can hide the current-schedule label and icon while retaining the add action', () => {
+    render(
+      <StorefrontBusinessHoursScheduler
+        value={createDefaultStorefrontBusinessHours()}
+        onChange={vi.fn()}
+        hideScheduleSummaryHeader
+      />
+    );
+
+    expect(screen.queryByRole('heading', { name: 'Current Schedule', exact: true })).toBeNull();
+    expect(screen.queryByText('This is how your business hours will appear on your storefront.')).toBeNull();
+    const addScheduleButton = screen.getByRole('button', { name: 'Add Schedule Set', exact: true });
+    expect(addScheduleButton.parentElement?.querySelector('.bg-blue-50')).toBeNull();
+  });
+
+  it('keeps the business-hours heading icon by default and hides it on request', () => {
+    const { rerender } = render(
+      <StorefrontBusinessHoursScheduler
+        value={createDefaultStorefrontBusinessHours()}
+        onChange={vi.fn()}
+      />
+    );
+    const getHeadingContent = () => screen.getByRole('heading', { name: 'Business Hours', level: 3 }).parentElement?.parentElement;
+
+    expect(getHeadingContent()?.querySelector('svg')).toBeTruthy();
+
+    rerender(
+      <StorefrontBusinessHoursScheduler
+        value={createDefaultStorefrontBusinessHours()}
+        onChange={vi.fn()}
+        hideHeadingIcon
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: 'Business Hours', level: 3 })).toBeTruthy();
+    expect(getHeadingContent()?.querySelector('svg')).toBeNull();
+  });
+
+  it('removes the schedule card wrapper only when unboxed is requested', () => {
+    const { unmount } = render(
+      <StorefrontBusinessHoursScheduler
+        value={createDefaultStorefrontBusinessHours()}
+        onChange={vi.fn()}
+        hideScheduleSummaryHeader
+      />
+    );
+    const defaultContainer = screen.getByRole('button', { name: 'Add Schedule Set' }).closest('section');
+    expect(defaultContainer?.className).toContain('rounded-xl');
+    expect(defaultContainer?.className).toContain('border-slate-200');
+    unmount();
+
+    render(
+      <StorefrontBusinessHoursScheduler
+        value={createDefaultStorefrontBusinessHours()}
+        onChange={vi.fn()}
+        hideScheduleSummaryHeader
+        unboxed
+      />
+    );
+    const unboxedContainer = screen.getByRole('button', { name: 'Add Schedule Set' }).closest('section');
+    expect(unboxedContainer?.className).not.toContain('rounded-xl');
+    expect(unboxedContainer?.className).not.toContain('border-slate-200');
+  });
+
+  it('uses compact visual day labels while keeping full accessible names when requested', async () => {
+    const user = userEvent.setup();
+    render(<ControlledScheduler compactDayLabels />);
+
+    await user.click(screen.getByRole('button', { name: 'Add Schedule Set', exact: true }));
+
+    for (const [weekday, label] of [
+      ['Monday', 'M'],
+      ['Tuesday', 'Tu'],
+      ['Wednesday', 'W'],
+      ['Thursday', 'Th'],
+      ['Friday', 'F'],
+      ['Saturday', 'Sa'],
+      ['Sunday', 'Su']
+    ]) {
+      const dayButton = screen.getByRole('button', { name: `Select ${weekday}`, exact: true });
+      expect(dayButton.textContent.trim()).toBe(label);
+    }
+  });
+
+  it('keeps compact day choices in one row and positions selected checks above the labels', async () => {
+    const user = userEvent.setup();
+    render(<ControlledScheduler compactDayLabels compactDaySelection />);
+
+    await user.click(screen.getByRole('button', { name: 'Add Schedule Set', exact: true }));
+
+    const monday = screen.getByRole('button', { name: 'Select Monday', exact: true });
+    expect(monday.parentElement?.className).toContain('grid-cols-7');
+    expect(monday.getAttribute('aria-pressed')).toBe('true');
+    expect(monday.querySelector('svg')?.getAttribute('class')).toContain('absolute');
+    expect(monday.querySelector('svg')?.getAttribute('class')).toContain('top-1');
+    expect(screen.getByRole('button', { name: 'Select Thursday', exact: true }).querySelector('svg')).toBeNull();
+  });
+
+  it('keeps the current three-letter day labels by default', async () => {
+    const user = userEvent.setup();
+    render(<ControlledScheduler />);
+
+    await user.click(screen.getByRole('button', { name: 'Add Schedule Set', exact: true }));
+
+    const monday = screen.getByRole('button', { name: 'Select Mon', exact: true });
+    expect(monday.textContent.trim()).toBe('Mon');
+    expect(monday.parentElement?.className).toContain('flex flex-wrap');
+    expect(monday.querySelector('svg')?.getAttribute('class')).toContain('sm:block');
+    expect(monday.querySelector('svg')?.getAttribute('class')).not.toContain('absolute');
+  });
 
   it('keeps the default schedule visible and expands the add form inline below it', async () => {
     const user = userEvent.setup();

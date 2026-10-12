@@ -17,6 +17,7 @@ export const STOREFRONT_TYPOGRAPHY = Object.freeze({
 export function StorefrontSectionHeader({
   title,
   titleId,
+  titleHeadingLevel = 3,
   description,
   info,
   infoLabel,
@@ -25,12 +26,17 @@ export function StorefrontSectionHeader({
   action = null,
   actionNote = null
 }) {
+  const TitleHeading = titleHeadingLevel === 2 ? 'h2' : 'h3';
+  const titleClassName = titleHeadingLevel === 2
+    ? 'text-base font-extrabold tracking-tight text-[#0F172A]'
+    : STOREFRONT_TYPOGRAPHY.sectionTitle;
+
   return (
     <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 items-start">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 id={titleId} className={STOREFRONT_TYPOGRAPHY.sectionTitle}>{title}</h3>
+            <TitleHeading id={titleId} className={titleClassName}>{title}</TitleHeading>
             {info ? <StorefrontSectionInfo label={infoLabel || title} panelId={infoPanelId}>{info}</StorefrontSectionInfo> : null}
           </div>
           <p className={`mt-0.5 max-w-prose ${STOREFRONT_TYPOGRAPHY.sectionDescription}`}>{description}</p>
@@ -50,15 +56,18 @@ export function StorefrontEmptyState({
   icon: Icon,
   iconClassName = 'mx-auto grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]',
   title,
+  titleHeadingLevel = 4,
   titleClassName = '',
   description,
   action,
   className = ''
 }) {
+  const TitleHeading = titleHeadingLevel === 3 ? 'h3' : 'h4';
+
   return (
     <div className={`rounded-lg border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center ${className}`}>
       {Icon ? <span className={iconClassName} aria-hidden="true"><Icon className="h-5 w-5" /></span> : null}
-      <h4 className={`${Icon ? 'mt-3 ' : ''}${STOREFRONT_TYPOGRAPHY.itemLabel} ${titleClassName}`}>{title}</h4>
+      <TitleHeading className={`${Icon ? 'mt-3 ' : ''}${STOREFRONT_TYPOGRAPHY.itemLabel} ${titleClassName}`}>{title}</TitleHeading>
       <p className={`mx-auto mt-1 max-w-xs ${STOREFRONT_TYPOGRAPHY.sectionDescription}`}>{description}</p>
       {action}
     </div>
