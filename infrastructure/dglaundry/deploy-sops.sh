@@ -66,15 +66,15 @@ done < <("$SOPS_BIN" decrypt --input-type dotenv "$CIPHERTEXT_CACHE")
 echo
 echo "== secrets materialized. =="
 echo
-echo "What this does NOT do yet:"
-echo "  It does not run 'docker compose up', and it does not check out"
-echo "  DGLaundry's own docker-compose.production.yml onto this host. Pin"
-echo "  and copy it from Sieitzz/dglaundry at the exact release SHA named"
-echo "  in $ENV_FILE (DGLAUNDRY_RELEASE_SHA) into $HOST_ROOT/releases/<sha>/,"
-echo "  then symlink $HOST_ROOT/current -> it."
+echo "This script still only materializes secrets -- it does not check out"
+echo "compose files or run 'docker compose' itself. .github/workflows/"
+echo "deploy-dglaundry.yml (remote-deploy-stage.sh) does that end to end,"
+echo "including calling this script, for the normal path."
 echo
-echo "Once that's done, bring the stack up from $HOST_ROOT/current:"
+echo "To bring the stack up by hand instead, from \$HOST_ROOT/current (only"
+echo "docker-compose.production.yml -- no surebizcorp-lean.yml overlay, see"
+echo "remote-deploy-stage.sh's header comment for why):"
 echo
 echo "  docker compose --env-file $ENV_FILE -f docker-compose.production.yml up -d mysql"
-echo "  docker compose --env-file $ENV_FILE -f docker-compose.production.yml run --rm migrate"
 echo "  docker compose --env-file $ENV_FILE -f docker-compose.production.yml up -d api worker gateway"
+echo "  # (no separate 'run --rm migrate' step -- api's own depends_on already runs it once)"
