@@ -23,12 +23,15 @@ infrastructure/dglaundry/
   README.md                          # this file
   deploy-sops.sh                      # ./deploy-sops.sh <stage|prod> -- decrypts secrets into <host-root>/secrets/
   provision-migration-identity.sh     # idempotent CREATE USER/GRANT for the schema-scoped migration account
-  remote-deploy-stage.sh              # runs ON the host: GHCR login -> pull -> up -> migrate -> up -> logout
+  remote-deploy-stage.sh              # runs ON the host: GHCR login -> pull -> up mysql -> migrate+up api/worker/gateway -> logout
   stage.env                           # non-secret config for staging (image digests, origin, migration head, ...)
   prod.env                            # same shape, for production -- added when prod hosting is actually scoped
   compose/<release-sha>/
-    docker-compose.production.yml     # vendored verbatim from Sieitzz/dglaundry at that exact pinned SHA
-    docker-compose.surebizcorp-lean.yml
+    docker-compose.production.yml     # vendored verbatim from Sieitzz/dglaundry at that exact pinned SHA -- only this
+                                       # file; docker-compose.surebizcorp-lean.yml is deliberately NOT vendored (see
+                                       # remote-deploy-stage.sh's header comment -- it needs several live DGFY
+                                       # integration vars this deployment doesn't have, and stage.env's own
+                                       # mem_limit/cpus vars already apply directly to this file without it)
 ```
 
 The `compose/<release-sha>/` files are **vendored, not generated** — copied byte-for-byte from
