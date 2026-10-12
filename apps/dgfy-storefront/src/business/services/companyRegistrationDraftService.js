@@ -33,10 +33,11 @@ export const updateCompanyRegistrationDraft = async (draftId, payload, token) =>
   await api.patch(getDraftPath(draftId), payload, requestConfig(token))
 );
 
-export const uploadCompanyRegistrationDraftFile = async (draftId, category, file, token, onProgress) => {
+export const uploadCompanyRegistrationDraftFile = async (draftId, category, file, token, onProgress, { replaceUploadId = '' } = {}) => {
   const formData = new FormData();
   formData.append('category', category);
   formData.append('file', file);
+  if (replaceUploadId) formData.append('replace_upload_id', String(replaceUploadId));
   return unwrap(await api.post(
     `${getDraftPath(draftId)}/uploads`,
     formData,
