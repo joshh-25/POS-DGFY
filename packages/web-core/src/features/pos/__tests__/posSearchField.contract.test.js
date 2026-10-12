@@ -75,4 +75,11 @@ describe('POS shared search field contract', () => {
     expect(pricelistSource.match(/variant="catalog"/g)).toHaveLength(2);
     expect(pricelistSource.match(/inputClassName=\{POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS\}/g)).toHaveLength(2);
   });
+
+  it('keeps Vouchers and Pricelists card actions at the shared 36px action height', () => {
+    expect(voucherSource).toContain('h-9 min-w-0 w-auto flex-1');
+    expect(pricelistSource).toContain('h-9 min-w-0 w-auto flex-1');
+    expect(voucherSource).not.toContain('sm:h-8 sm:w-[6.5rem]');
+    expect(pricelistSource).not.toContain('sm:h-8 sm:w-[6.5rem]');
+  });
 });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, RefreshCcw, ShieldAlert, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,15 @@ import {
   rowBelowCostWarning,
   rowNoDiscountWarning
 } from './pricelistPresentation.js';
+
+const PRICELIST_EDITOR_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+].join(',');
 
 export default function PricelistItemsEditor({
   disabled,
@@ -47,6 +56,75 @@ export default function PricelistItemsEditor({
   onPublish
 }) {
   const currentMobileRow = filteredRows[Math.min(mobileIndex, Math.max(0, filteredRows.length - 1))] || null;
+  const editorDialogRef = useRef(null);
+  const editorCloseButtonRef = useRef(null);
+  const editorRestoreFocusRef = useRef(null);
+  const publishingRef = useRef(publishing);
+
+  useEffect(() => {
+    publishingRef.current = publishing;
+  }, [publishing]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    editorRestoreFocusRef.current = document.activeElement;
+    editorCloseButtonRef.current?.focus();
+
+    const handleEditorKeyDown = (event) => {
+      if (document.querySelector('[data-dialog-root="true"]')) return;
+
+      if (event.key === 'Escape') {
+        if (publishingRef.current) return;
+        event.preventDefault();
+        onBackToList();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const dialog = editorDialogRef.current;
+      if (!dialog) return;
+      const focusableElements = Array.from(dialog.querySelectorAll(PRICELIST_EDITOR_FOCUSABLE_SELECTOR));
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      if (!dialog.contains(activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? lastFocusable : firstFocusable).focus();
+      } else if (event.shiftKey && activeElement === firstFocusable) {
+        event.preventDefault();
+        lastFocusable.focus();
+      } else if (!event.shiftKey && activeElement === lastFocusable) {
+        event.preventDefault();
+        firstFocusable.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleEditorKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleEditorKeyDown);
+      const previousFocus = editorRestoreFocusRef.current;
+      editorRestoreFocusRef.current = null;
+      const restoreFocus = () => {
+        const fallback = document.querySelector('[data-testid="pos-pricelists-new-button"]');
+        const target = previousFocus && previousFocus !== document.body && previousFocus.isConnected
+          ? previousFocus
+          : fallback;
+        target?.focus?.();
+      };
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(restoreFocus);
+      } else {
+        restoreFocus();
+      }
+    };
+  }, [onBackToList]);
 
   const editorModal = (
     <div
@@ -54,6 +132,8 @@ export default function PricelistItemsEditor({
       role="dialog"
       aria-modal="true"
       aria-labelledby="pos-pricelist-items-modal-title"
+      tabIndex={-1}
+      ref={editorDialogRef}
       onClick={() => {
         if (!publishing) onBackToList();
       }}
@@ -80,6 +160,7 @@ export default function PricelistItemsEditor({
             type="button"
             onClick={onBackToList}
             disabled={publishing}
+            ref={editorCloseButtonRef}
             aria-label="Close Edit Pricelist Items"
             className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-60"
           >
