@@ -39,8 +39,23 @@ fi
 
 # SQL identifiers (user, schema) are regex-constrained above to [A-Za-z0-9_],
 # so no further escaping is needed for them; only the password needs
-# single-quote escaping for the SQL string literal.
-MIG_PASS_ESCAPED="${MIG_PASS//\'/\'\'}"
+# escaping for the SQL string literal. Backslash MUST be escaped before
+# quotes, not after: under MySQL's default (non-ANSI) sql_mode, backslash is
+# itself the string-literal escape character, so an unescaped backslash in
+# the password could swallow a following quote or corrupt the literal
+# (PR #2448 review, RF-3).
+#
+# The quote-doubling step deliberately holds the quote character in a
+# variable ($q) rather than writing \' directly in the pattern/replacement:
+# `${v//\'/\'\'}` looks like it doubles a quote but does not -- bash leaves
+# the backslashes in the *replacement* text literal (pattern-side backslash
+# is consumed, replacement-side is not), so that form actually turns each
+# `'` into the 4-byte sequence `\'\'`, not `''` -- confirmed with `xxd`
+# while fixing RF-3. Using $q for both pattern and replacement sidesteps
+# the ambiguity entirely.
+q="'"
+MIG_PASS_ESCAPED="${MIG_PASS//\\/\\\\}"
+MIG_PASS_ESCAPED="${MIG_PASS_ESCAPED//$q/$q$q}"
 
 SQL_TMP_FILE="$(mktemp "${RELEASE_DIR}/.provision-migration.XXXXXX.sql")"
 chmod 600 "$SQL_TMP_FILE"
@@ -57,13 +72,14 @@ SQL
 echo "== provisioning migration identity '${MIG_USER}'@'%' scoped to \`${MIG_SCHEMA}\` =="
 
 cd "$RELEASE_DIR"
+# Only docker-compose.production.yml -- no surebizcorp-lean.yml overlay, see
+# remote-deploy-stage.sh's header comment for why (PR #2448 review, RF-2).
+COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.production.yml)
+
 # Root password never leaves the mysql container -- read from its own
 # already-mounted secret file (mysql service's compose secrets already
 # include mysql_root_password), never passed in on this host's command line.
-docker compose --env-file "$ENV_FILE" \
-  -f docker-compose.production.yml \
-  -f docker-compose.surebizcorp-lean.yml \
-  exec -T mysql sh -c 'MYSQL_PWD="$(cat /run/secrets/mysql_root_password)" exec mysql -uroot' \
+"${COMPOSE[@]}" exec -T mysql sh -c 'MYSQL_PWD="$(cat /run/secrets/mysql_root_password)" exec mysql -uroot' \
   < "$SQL_TMP_FILE"
 
 echo "== migration identity provisioned (idempotent -- safe to re-run) =="
