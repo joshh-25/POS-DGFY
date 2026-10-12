@@ -67,3 +67,5 @@ credentials were supplied.
 
 - Catalog workspace/search presentation is isolated from unrelated current-sale, History-only,
   text-size, zoom, and terminal-workspace edits.
+- Merged Voucher validity-date and daily-time controls are isolated with their picker behavior
+  tests; calendar left/right swipe semantics and reduced-motion transitions are covered.

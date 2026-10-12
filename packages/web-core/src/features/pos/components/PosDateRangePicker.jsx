@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const CALENDAR_SWIPE_THRESHOLD = 48;
 const CALENDAR_PRESETS = [
   { value: 'today', label: 'Today' },
   { value: 'yesterday', label: 'Yesterday' },
@@ -92,13 +93,19 @@ export default function PosDateRangePicker({
   timeZone,
   dateLabelStyle = 'full',
   selectionMode = 'range',
+  showPresets = true,
   todayDate = ''
 }) {
   const initialMonth = parseDateInput(from) || parseDateInput(to) || new Date();
   const [monthDate, setMonthDate] = useState(() => new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1));
+  const [monthTransition, setMonthTransition] = useState('');
+  const [monthAnimationKey, setMonthAnimationKey] = useState(0);
   const [customRangeActive, setCustomRangeActive] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const ignoreClickRef = useRef(false);
+  const dragStartRef = useRef('');
+  const swipeStartRef = useRef(null);
+  const swipeIgnoreClickTimerRef = useRef(null);
   const calendarDays = getCalendarDays(monthDate);
   const fromDate = parseDateInput(from);
   const toDate = parseDateInput(to);
@@ -115,10 +122,25 @@ export default function PosDateRangePicker({
   const isCustomRange = customRangeActive || (Boolean(fromKey || toKey) && !activePreset);
   const rangeTrackClassName = mobile ? 'before:inset-y-2' : 'before:inset-y-1';
 
+  const navigateMonth = (monthDelta) => {
+    if (!monthDelta) return;
+    setMonthTransition(monthDelta > 0 ? 'next' : 'previous');
+    setMonthAnimationKey((current) => current + 1);
+    setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() + monthDelta, 1));
+  };
+
+  const navigateToMonth = (targetDate) => {
+    if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return;
+    const monthDelta = (targetDate.getFullYear() - monthDate.getFullYear()) * 12
+      + targetDate.getMonth() - monthDate.getMonth();
+    navigateMonth(monthDelta);
+  };
+
   useEffect(() => {
     if (!enableRangeDrag || !isDragging) return undefined;
     const finishDrag = () => {
       setIsDragging(false);
+      dragStartRef.current = '';
       window.setTimeout(() => {
         ignoreClickRef.current = false;
       }, 0);
@@ -127,16 +149,63 @@ export default function PosDateRangePicker({
     return () => window.removeEventListener('pointerup', finishDrag);
   }, [enableRangeDrag, isDragging]);
 
+  useEffect(() => () => {
+    if (swipeIgnoreClickTimerRef.current) window.clearTimeout(swipeIgnoreClickTimerRef.current);
+  }, []);
+
+  const suppressCalendarClick = () => {
+    ignoreClickRef.current = true;
+    if (swipeIgnoreClickTimerRef.current) window.clearTimeout(swipeIgnoreClickTimerRef.current);
+    swipeIgnoreClickTimerRef.current = window.setTimeout(() => {
+      ignoreClickRef.current = false;
+      swipeIgnoreClickTimerRef.current = null;
+    }, 400);
+  };
+
+  const handleCalendarPointerDown = (event) => {
+    if (event.pointerType !== 'touch') return;
+    swipeStartRef.current = { x: event.clientX, y: event.clientY, customRangeActive };
+  };
+
+  const handleCalendarPointerMove = (event) => {
+    const start = swipeStartRef.current;
+    if (!start || event.pointerType !== 'touch') return;
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) <= CALENDAR_SWIPE_THRESHOLD || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+
+    event.preventDefault();
+    suppressCalendarClick();
+    if (enableRangeDrag) {
+      setIsDragging(false);
+      dragStartRef.current = '';
+      setCustomRangeActive(swipeStartRef.current.customRangeActive);
+    }
+  };
+
+  const handleCalendarPointerEnd = (event) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || event.pointerType !== 'touch') return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) <= CALENDAR_SWIPE_THRESHOLD || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+
+    suppressCalendarClick();
+    // Match the conventional calendar gesture: a left swipe advances the
+    // visible month, while a right swipe returns to the previous month.
+    navigateMonth(deltaX < 0 ? 1 : -1);
+  };
+
   const selectDate = (date) => {
     const selectedKey = dateToInput(date);
+    navigateToMonth(date);
     if (isSingleDateMode) {
       onChange(selectedKey, selectedKey);
       return;
     }
     setCustomRangeActive(true);
-    if (date.getMonth() !== monthDate.getMonth() || date.getFullYear() !== monthDate.getFullYear()) {
-      setMonthDate(new Date(date.getFullYear(), date.getMonth(), 1));
-    }
     if (!fromKey || toKey) {
       onChange(selectedKey, '');
       return;
@@ -156,27 +225,29 @@ export default function PosDateRangePicker({
       onChange(range.from, range.to);
     }
     const anchor = parseDateInput(range.from);
-    if (anchor) setMonthDate(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
+    if (anchor) navigateToMonth(anchor);
   };
 
-  const startDrag = (event, dateValue) => {
+  const startDrag = (dateValue) => {
     if (!enableRangeDrag) return;
-    event.preventDefault();
-    ignoreClickRef.current = true;
+    dragStartRef.current = dateValue;
+    ignoreClickRef.current = false;
     setCustomRangeActive(true);
-    onChange(dateValue, dateValue);
     setIsDragging(true);
   };
 
   const updateDrag = (dateValue) => {
-    if (!enableRangeDrag || !isDragging || !fromKey) return;
-    if (dateValue < fromKey) onChange(dateValue, fromKey);
-    else onChange(fromKey, dateValue);
+    if (!enableRangeDrag || !isDragging || !dragStartRef.current) return;
+    const startDate = dragStartRef.current;
+    if (dateValue === startDate) return;
+    ignoreClickRef.current = true;
+    if (dateValue < startDate) onChange(dateValue, startDate);
+    else onChange(startDate, dateValue);
   };
 
   return (
     <div className={`grid ${mobile ? 'gap-3' : 'gap-2'}`} data-testid={`${testIdPrefix}-picker`}>
-      {!isSingleDateMode ? (
+      {!isSingleDateMode && showPresets ? (
         <div className={`grid grid-cols-2 ${mobile ? 'gap-2.5' : 'gap-1.5'}`} role="group" aria-label="Date presets">
           {CALENDAR_PRESETS.map((preset) => {
             const selected = activePreset === preset.value;
@@ -212,13 +283,26 @@ export default function PosDateRangePicker({
         </div>
       ) : null}
 
-      <div className={`${mobile ? 'rounded-xl border-0 bg-transparent px-0 py-1' : 'rounded-lg border border-slate-100 bg-slate-50/40 px-2 py-1.5'}`}>
+      <div
+        className={`${mobile ? 'rounded-xl border-0 bg-transparent px-0 py-1' : 'rounded-lg border border-slate-100 bg-slate-50/40 px-2 py-1.5'} overflow-hidden touch-pan-y`}
+        data-testid={`${testIdPrefix}-month-view`}
+        onPointerDownCapture={handleCalendarPointerDown}
+        onPointerMoveCapture={handleCalendarPointerMove}
+        onPointerUpCapture={handleCalendarPointerEnd}
+        onPointerCancelCapture={() => {
+          swipeStartRef.current = null;
+        }}
+      >
+        <div
+          key={monthAnimationKey}
+          className={`pos-date-range-calendar-month-content ${monthTransition ? `pos-date-range-calendar-month-transition-${monthTransition}` : ''}`}
+        >
         <div className={`flex items-center justify-between gap-2 ${mobile ? 'px-0' : 'px-1'}`}>
           <button
             type="button"
             data-testid={`${testIdPrefix}-previous-month`}
             aria-label="Previous month"
-            onClick={() => setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+            onClick={() => navigateMonth(-1)}
             className={`grid ${mobile ? 'h-10 w-10 rounded-xl' : 'h-7 w-7 rounded-lg'} place-items-center text-slate-500 transition hover:bg-white hover:text-[#1A4E8D] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100`}
           >
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -230,7 +314,7 @@ export default function PosDateRangePicker({
             type="button"
             data-testid={`${testIdPrefix}-next-month`}
             aria-label="Next month"
-            onClick={() => setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+            onClick={() => navigateMonth(1)}
             className={`grid ${mobile ? 'h-10 w-10 rounded-xl' : 'h-7 w-7 rounded-lg'} place-items-center text-slate-500 transition hover:bg-white hover:text-[#1A4E8D] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100`}
           >
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -262,13 +346,18 @@ export default function PosDateRangePicker({
                 data-testid={`${testIdPrefix}-day-${dateKey}`}
                 aria-label={formatDateLabel(date, dateLabelStyle)}
                 aria-pressed={isSelected || isInRange}
-                onPointerDown={(event) => startDrag(event, dateKey)}
+                onPointerDown={() => startDrag(dateKey)}
                 onPointerEnter={() => updateDrag(dateKey)}
                 onPointerUp={() => {
                   if (enableRangeDrag) setIsDragging(false);
                 }}
                 onClick={() => {
-                  if (enableRangeDrag && ignoreClickRef.current) return;
+                  if (ignoreClickRef.current) {
+                    ignoreClickRef.current = false;
+                    if (swipeIgnoreClickTimerRef.current) window.clearTimeout(swipeIgnoreClickTimerRef.current);
+                    swipeIgnoreClickTimerRef.current = null;
+                    return;
+                  }
                   selectDate(date);
                 }}
                 className={`relative z-0 flex ${mobile ? 'h-9 text-[13px]' : 'h-7 text-[11px]'} min-w-0 items-center justify-center rounded-full transition focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${isRangeSegment ? `before:absolute ${rangeTrackClassName} ${rangeTrackStartClassName} ${rangeTrackEndClassName} before:z-0 before:bg-[#C7DCF3]` : ''} ${isRangeStart ? 'before:rounded-l-full' : ''} ${isRangeEnd ? 'before:rounded-r-full' : ''} ${isOutsideMonth ? 'text-slate-300' : 'text-slate-700'} hover:bg-blue-50`}
@@ -285,6 +374,7 @@ export default function PosDateRangePicker({
               </button>
             );
           })}
+        </div>
         </div>
       </div>
 
