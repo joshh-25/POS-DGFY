@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import DropdownSelect from '../../../components/ui/DropdownSelect.jsx';
 import { STOREFRONT_TYPOGRAPHY, StorefrontEmptyState, StorefrontSectionHeader } from './StorefrontSectionPrimitives.jsx';
 
 export const STOREFRONT_SOCIAL_PLATFORMS = [
@@ -76,12 +77,17 @@ function SocialLinkPreview({ entry, normalizedUrl }) {
   );
 }
 
-function SocialLinkRow({ entry, index, entries, disabled, onChange, onDelete, onEdit, isPending, modalMode }) {
+function SocialLinkRow({ entry, index, entries, disabled, onChange, onDelete, onEdit, isPending, modalMode, useCustomPlatformDropdown, supportTextClassName = 'text-[11px]' }) {
   const normalizedUrl = entry.url.trim();
   const duplicate = entries.some((candidate, candidateIndex) => candidateIndex !== index && candidate.platform === entry.platform);
   const urlError = normalizedUrl ? (!isValidUrl(normalizedUrl) ? 'Please enter a valid URL.' : '') : 'URL is required.';
   const platformError = !entry.platform ? 'Select a platform.' : duplicate ? 'This platform has already been added.' : '';
   const usedPlatforms = entries.filter((_, candidateIndex) => candidateIndex !== index).map((candidate) => candidate.platform);
+  const platformOptions = STOREFRONT_SOCIAL_PLATFORMS.map((platform) => ({
+    value: platform.id,
+    label: `${platform.label}${usedPlatforms.includes(platform.id) ? ' (already added)' : ''}`,
+    disabled: usedPlatforms.includes(platform.id)
+  }));
 
   return (
     <div
@@ -98,21 +104,40 @@ function SocialLinkRow({ entry, index, entries, disabled, onChange, onDelete, on
         ) : <div className="min-w-0 flex-1 space-y-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-blue-100 bg-blue-50" aria-hidden="true"><PlatformIcon platform={entry.platform} /></span>
-            <select
-              value={entry.platform}
-              disabled={disabled}
-              aria-label={`Social platform ${index + 1}`}
-              aria-invalid={Boolean(platformError)}
-              onChange={(event) => onChange(index, 'platform', event.target.value)}
-              className={`h-9 min-w-0 flex-1 rounded-lg border bg-white px-2.5 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:opacity-50 ${platformError ? 'border-rose-300' : 'border-slate-200'}`}
-            >
-              <option value="" disabled>Select platform</option>
-              {STOREFRONT_SOCIAL_PLATFORMS.map((platform) => (
-                <option key={platform.id} value={platform.id} disabled={usedPlatforms.includes(platform.id)}>{platform.label}{usedPlatforms.includes(platform.id) ? ' (already added)' : ''}</option>
-              ))}
-            </select>
+            {useCustomPlatformDropdown ? (
+              <DropdownSelect
+                id={`storefront-social-platform-${index}`}
+                value={entry.platform}
+                options={platformOptions}
+                onChange={(nextPlatform) => onChange(index, 'platform', nextPlatform)}
+                ariaLabel={`Social platform ${index + 1}`}
+                ariaInvalid={Boolean(platformError)}
+                listboxLabel={`Social platform ${index + 1} options`}
+                disabled={disabled}
+                placeholder="Select platform"
+                className="min-w-0 flex-1"
+                triggerClassName={`h-9 min-h-9 w-full min-w-0 rounded-lg border bg-white px-2.5 py-1 text-left text-[13px] font-semibold text-[#0F172A] shadow-none outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:opacity-50 ${platformError ? 'border-rose-300' : 'border-slate-200'}`}
+                menuClassName="absolute left-0 top-full z-50 mt-1 max-h-48 w-full min-w-[12rem] overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl"
+                optionClassName="text-[13px] font-semibold"
+                placeholderClassName="font-semibold text-slate-500"
+              />
+            ) : (
+              <select
+                value={entry.platform}
+                disabled={disabled}
+                aria-label={`Social platform ${index + 1}`}
+                aria-invalid={Boolean(platformError)}
+                onChange={(event) => onChange(index, 'platform', event.target.value)}
+                className={`h-9 min-w-0 flex-1 rounded-lg border bg-white px-2.5 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:opacity-50 ${platformError ? 'border-rose-300' : 'border-slate-200'}`}
+              >
+                <option value="" disabled>Select platform</option>
+                {STOREFRONT_SOCIAL_PLATFORMS.map((platform) => (
+                  <option key={platform.id} value={platform.id} disabled={usedPlatforms.includes(platform.id)}>{platform.label}{usedPlatforms.includes(platform.id) ? ' (already added)' : ''}</option>
+                ))}
+              </select>
+            )}
           </div>
-          {platformError ? <p className="text-[11px] font-semibold leading-4 text-rose-600" role="alert">{platformError}</p> : null}
+          {platformError ? <p className={`${supportTextClassName} font-semibold leading-4 text-rose-600`} role="alert">{platformError}</p> : null}
           <Input
             value={entry.url}
             onChange={(event) => onChange(index, 'url', event.target.value)}
@@ -125,7 +150,7 @@ function SocialLinkRow({ entry, index, entries, disabled, onChange, onDelete, on
             placeholder={STOREFRONT_SOCIAL_PLATFORMS.find((platform) => platform.id === entry.platform)?.placeholder || 'https://...'}
             className={`h-9 rounded-lg border-slate-200 px-2.5 text-[13px] text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-[#1A4E8D] ${urlError ? 'border-rose-300 focus-visible:border-rose-500 focus-visible:ring-rose-500' : ''}`}
           />
-          {urlError ? <p className="text-[11px] font-semibold leading-4 text-rose-600" role="alert">{urlError}</p> : null}
+          {urlError ? <p className={`${supportTextClassName} font-semibold leading-4 text-rose-600`} role="alert">{urlError}</p> : null}
           {isPending ? <p className="sr-only" aria-live="polite">Choose a platform and enter a profile URL.</p> : null}
         </div>}
         <Button
@@ -190,7 +215,7 @@ function SocialLinkDialog({ mode, open, draft, entries, editIndex, onChange, onC
   );
 }
 
-export default function StorefrontSocialLinksSettings({ links = {}, onChange, disabled = false, interactionMode = 'inline' }) {
+export default function StorefrontSocialLinksSettings({ links = {}, onChange, disabled = false, interactionMode = 'inline', platformDropdown = 'native', titleHeadingLevel = 3 }) {
   const normalizedEntries = useMemo(() => normalizeSocialLinks(links), [links]);
   const [pendingEntry, setPendingEntry] = useState(null);
   const [linkDialog, setLinkDialog] = useState({ mode: null, index: null, draft: { platform: '', url: '' } });
@@ -254,6 +279,7 @@ export default function StorefrontSocialLinksSettings({ links = {}, onChange, di
       <StorefrontSectionHeader
         title="Social Links"
         titleId="storefront-social-links-heading"
+        titleHeadingLevel={titleHeadingLevel}
         description="Connect your social channels to your storefront."
         info={atMaximum ? <><p className="font-extrabold text-[#0F172A]">You have reached the maximum of {MAX_STOREFRONT_SOCIAL_LINKS} social links.</p><p className="mt-1">Remove a link to add a new one.</p></> : <><p className="font-extrabold text-[#0F172A]">You can add up to {MAX_STOREFRONT_SOCIAL_LINKS} social links.</p><p className="mt-1">These will be shown on your storefront so customers can find and follow you.</p></>}
         infoLabel="Social Links"
@@ -271,7 +297,7 @@ export default function StorefrontSocialLinksSettings({ links = {}, onChange, di
             <Plus className="h-4 w-4" aria-hidden="true" />Add Social Link
           </Button>
         )}
-        actionNote={atMaximum ? <span className="text-right text-[11px] font-semibold text-[#64748B]">Maximum of {MAX_STOREFRONT_SOCIAL_LINKS} social links reached.</span> : null}
+        actionNote={atMaximum ? <span className={`text-right ${titleHeadingLevel === 2 ? 'text-xs' : 'text-[11px]'} font-semibold text-[#64748B]`}>Maximum of {MAX_STOREFRONT_SOCIAL_LINKS} social links reached.</span> : null}
       />
 
       {entries.length > 0 ? (
@@ -289,6 +315,8 @@ export default function StorefrontSocialLinksSettings({ links = {}, onChange, di
               disabled={disabled}
               isPending={pendingEntry != null && index === normalizedEntries.length}
               modalMode={interactionMode === 'modal'}
+              useCustomPlatformDropdown={platformDropdown === 'custom'}
+              supportTextClassName={titleHeadingLevel === 2 ? 'text-xs' : 'text-[11px]'}
               onChange={handleChange}
               onDelete={handleDelete}
               onEdit={(entryIndex) => {
@@ -302,6 +330,7 @@ export default function StorefrontSocialLinksSettings({ links = {}, onChange, di
           className="mt-4"
           icon={Link2}
           title="No social links added yet."
+          titleHeadingLevel={titleHeadingLevel === 2 ? 3 : 4}
           description="Add links so customers can find you on social media."
           action={<Button type="button" onClick={handleAdd} disabled={disabled} aria-label="Add social link" className="mt-3 min-h-9 gap-1.5 rounded-lg bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white hover:bg-[#143F73]"><Plus className="h-4 w-4" aria-hidden="true" />Add Social Link</Button>}
         />
