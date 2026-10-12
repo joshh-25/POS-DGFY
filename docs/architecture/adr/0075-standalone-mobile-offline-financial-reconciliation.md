@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-27
-last_reviewed: 2026-09-01
+last_reviewed: 2026-10-10
 review_by: 2027-02-27
 applies_to: mobile_pos, pos, discounts, receipts, voids, cash_drawer, sync
 topic: standalone_mobile_offline_financial_reconciliation
@@ -149,3 +149,14 @@ the device authoritative for provider money movement or final settlement.
 - `docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md`
 - `docs/architecture/adr/0045-shared-pos-receipt-renderer.md`
 - `docs/architecture/adr/0005-unified-sales-read-model.md`
+
+## Amendments
+
+### 2026-10-10 — Web sync scope proposal (#1484)
+
+- Clause referenced: Decisions 1–9 and the refund-request amendment.
+- Change: Proposed ADR 0095 records web POS dispositions for every binding clause and the separate
+  platform feature contract documents endpoint ownership and per-client capabilities. This pointer
+  does not extend any binding clause to web; ADR 0095 remains proposed pending tech-lead approval.
+- See: [ADR 0095](0095-offline-pos-sync-contract-convergence.md) and
+  [`POS_OFFLINE_SYNC_CONTRACT.md`](../../features/POS_OFFLINE_SYNC_CONTRACT.md).

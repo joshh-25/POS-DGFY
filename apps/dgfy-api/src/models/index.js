@@ -157,10 +157,12 @@ import {
   HospitalityStay
 } from './HospitalityModels.js';
 import TenantFactory from './Landlord/Tenant.js';
+import TenantIntakeProposalFactory from './Landlord/TenantIntakeProposal.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
 import EmailDeliveryLogFactory from './Landlord/EmailDeliveryLog.js';
+import SmsDeliveryLogFactory from './Landlord/SmsDeliveryLog.js';
 import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
@@ -237,11 +239,23 @@ import PlatformInvoiceDeliveryFactory from './Landlord/PlatformInvoiceDelivery.j
 import PlatformInvoiceAdjustmentFactory from './Landlord/PlatformInvoiceAdjustment.js';
 import PlatformInvoiceEventFactory from './Landlord/PlatformInvoiceEvent.js';
 import OidcSigningKeyFactory from './Landlord/OidcSigningKey.js';
+import PartnerAppFactory from './Landlord/PartnerApp.js';
+import OidcClientFactory from './Landlord/OidcClient.js';
+import PartnerClientCredentialFactory from './Landlord/PartnerClientCredential.js';
+import PartnerAttachmentFactory from './Landlord/PartnerAttachment.js';
+import SmsMarketingConsentFactory from './Landlord/SmsMarketingConsent.js';
+import SmsConsentEventFactory from './Landlord/SmsConsentEvent.js';
+import SmsGlobalSuppressionFactory from './Landlord/SmsGlobalSuppression.js';
 const Tenant = TenantFactory(sequelize);
+const TenantIntakeProposal = TenantIntakeProposalFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
 const EmailDeliveryLog = EmailDeliveryLogFactory(sequelize);
+const SmsDeliveryLog = SmsDeliveryLogFactory(sequelize);
+const SmsMarketingConsent = SmsMarketingConsentFactory(sequelize);
+const SmsConsentEvent = SmsConsentEventFactory(sequelize);
+const SmsGlobalSuppression = SmsGlobalSuppressionFactory(sequelize);
 const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
@@ -318,6 +332,10 @@ const PlatformInvoiceDelivery = PlatformInvoiceDeliveryFactory(sequelize);
 const PlatformInvoiceAdjustment = PlatformInvoiceAdjustmentFactory(sequelize);
 const PlatformInvoiceEvent = PlatformInvoiceEventFactory(sequelize);
 const OidcSigningKey = OidcSigningKeyFactory(sequelize);
+const PartnerApp = PartnerAppFactory(sequelize);
+const OidcClient = OidcClientFactory(sequelize);
+const PartnerClientCredential = PartnerClientCredentialFactory(sequelize);
+const PartnerAttachment = PartnerAttachmentFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -1382,6 +1400,10 @@ const db = {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  SmsDeliveryLog,
+  SmsMarketingConsent,
+  SmsConsentEvent,
+  SmsGlobalSuppression,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
@@ -1411,6 +1433,7 @@ const db = {
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
   TenantAdminAuditLog,
+  TenantIntakeProposal,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
@@ -1453,12 +1476,20 @@ const db = {
   ,PlatformInvoiceAdjustment
   ,PlatformInvoiceEvent
   ,OidcSigningKey
+  ,PartnerApp
+  ,OidcClient
+  ,PartnerClientCredential
+  ,PartnerAttachment
 };
 
 export default db;
 export {
   sequelize,
   OidcSigningKey,
+  PartnerApp,
+  OidcClient,
+  PartnerClientCredential,
+  PartnerAttachment,
   User,
   StaffRole,
   Item,
@@ -1616,6 +1647,10 @@ export {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  SmsDeliveryLog,
+  SmsMarketingConsent,
+  SmsConsentEvent,
+  SmsGlobalSuppression,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
@@ -1645,6 +1680,7 @@ export {
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
   TenantAdminAuditLog,
+  TenantIntakeProposal,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,

@@ -79,10 +79,7 @@ describe('PricelistManagementPanel -- Publish persists edited rows (#748)', () =
     render(<PricelistManagementPanel canManage sectionId="test-pricelists" />);
 
     await user.click(await screen.findByRole('button', { name: /new pricelist/i }));
-    // Label isn't htmlFor-linked to the input (shadcn Label used decoratively here), so select
-    // by position -- Name is the dialog's first textbox, Description the second.
-    const dialogInputs = screen.getAllByRole('textbox');
-    await user.type(dialogInputs[0], 'Wholesale');
+    await user.type(screen.getByLabelText('Name'), 'Wholesale');
     await user.click(screen.getByRole('button', { name: /^create$/i }));
 
     // Editor loaded with the one catalog item.

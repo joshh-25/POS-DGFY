@@ -458,9 +458,29 @@ test('staging <- to-staging/* (#1802): backported staging repairs do not fail ru
     }
 });
 
-// --- staging mode: any other head -> patch-only -----------------------------
+// --- staging mode: fix/staging/* -> patch-only ------------------------------
 
-test('staging <- fix/staging/*: a minor bump fails unchanged-floor mode', async () => {
+test('staging <- fix/staging/*: a patch bump passes', async () => {
+    const { root, baseGitRef, headGitRef } = setupScenario({
+        baseVersions: { 'dgfy-api': '1.2.0' },
+        headFiles: {
+            'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
+            'apps/dgfy-api/package.json': pkgJson('1.2.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        },
+    });
+    try {
+        const result = await runCheck({
+            repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-r2',
+        });
+        assert.equal(result.mode, 'patch-only');
+        assert.equal(result.ok, true);
+        assert.equal(findApp(result, 'dgfy-api').ok, true);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('staging <- fix/staging/*: a minor bump fails patch-only mode', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -470,9 +490,9 @@ test('staging <- fix/staging/*: a minor bump fails unchanged-floor mode', async 
     });
     try {
         const result = await runCheck({
-            repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-r2',
+            repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-2',
         });
-        assert.equal(result.mode, 'unchanged');
+        assert.equal(result.mode, 'patch-only');
         assert.equal(result.ok, false);
         assert.equal(findApp(result, 'dgfy-api').code, 'insufficient-bump');
     } finally {
@@ -480,7 +500,7 @@ test('staging <- fix/staging/*: a minor bump fails unchanged-floor mode', async 
     }
 });
 
-test('staging <- fix/staging/*: unchanged floor passes', async () => {
+test('staging <- fix/staging/*: unchanged floor fails patch-only mode', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -490,11 +510,30 @@ test('staging <- fix/staging/*: unchanged floor passes', async () => {
     });
     try {
         const result = await runCheck({
-            repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-r2',
+            repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-2',
+        });
+        assert.equal(result.mode, 'patch-only');
+        assert.equal(result.ok, false);
+        assert.equal(findApp(result, 'dgfy-api').code, 'insufficient-bump');
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('staging <- unrelated head: patch bump remains outside the unchanged-floor rule', async () => {
+    const { root, baseGitRef, headGitRef } = setupScenario({
+        baseVersions: { 'dgfy-api': '1.2.0' },
+        headFiles: {
+            'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
+            'apps/dgfy-api/package.json': pkgJson('1.2.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        },
+    });
+    try {
+        const result = await runCheck({
+            repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'maintenance/cleanup',
         });
         assert.equal(result.mode, 'unchanged');
-        assert.equal(result.ok, true);
-        assert.equal(findApp(result, 'dgfy-api').ok, true);
+        assert.equal(result.ok, false);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }

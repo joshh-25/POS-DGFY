@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-19
-last_reviewed: 2026-09-17
-review_by: 2026-12-19
+last_reviewed: 2026-10-10
+review_by: 2027-04-10
 applies_to: hardware_pos_android_imin_runtime
 topic: standalone_native_hardware_pos_runtime
 supersedes_in_part: docs/architecture/adr/0025-pos-application-shells-and-lan-host-runtime.md
@@ -137,6 +137,26 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 
 ## Amendments
 
+### 2026-10-10 — Align POS sync-round accounting and authorize web policy
+
+- Clause amended: Sync Strategy 4 and Guardrail 6 (`default`).
+- Change: “Phase 1 begins with manual sync” is historical for the completed native runtime. The
+  shared POS sync contract counts one leased outbox drain with a stable `client_sync_run_id` as one
+  round; empty drains and failed validation, authorization, server, or network attempts do not spend
+  a successful round. The free-tier baseline is two successful rounds per local day; premium has no
+  round cap. Web POS adopts this accounting vocabulary through #1477/#999, with convergence
+  mechanics in #1484. Native and partner enforcement, triggers, and entitlements remain governed by
+  their existing contracts; this amendment does not add partner entitlements or claim web
+  server-side round enforcement exists. For web, #995 authorizes an administrator-resolvable
+  manual/automatic policy, but implementation remains manual until #999 ships. The manual mode
+  keeps operator-triggered sync; the automatic mode may add policy-governed scheduled and
+  connectivity-restored runs alongside the operator action. See ADR 0014 for its configuration,
+  replay-storm, and unchanged-safety requirements.
+- Reason: Keep the sync-round meaning consistent across POS clients while making explicit that
+  policy authorization does not itself ship automatic web replay or change native and partner
+  entitlement contracts.
+- PR: this PR (Closes #995).
+
 ### 2026-09-17 — iMin WebView defers optional operations work
 
 - Clause amended: Guardrail 7 / “Browser-only POS remains a rollback-safe
@@ -228,3 +248,28 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 - Reason: close an audit gap on the fallback path while the standalone
   native runtime this ADR describes continues to mature.
 - See: ADR 0053.
+
+### 2026-10-10 — Partner sync participation and planned entitlements
+
+- Clause amended: Sync Strategy 4 and Guardrail 6 (`default`).
+- Change: approved partner devices that participate in DGFY-engine ledger synchronization follow
+  the same per-device successful-round accounting, tenant/device day window, stable
+  `client_sync_run_id`, bounded 15-minute reuse window, and failed-attempt exclusions as native
+  sync. The current baseline remains at most two successful rounds per device per day, with the
+  existing premium bypass. Configurable 5/10 entitlements are **planned**, not current behavior;
+  #1484 owns shared sync semantics and #2379 owns entitlement/administration decisions. A partner
+  cannot self-grant premium access, and no merchant-wide counter or unlimited order-mutation
+  exemption is introduced.
+- Reason: make future partner participation explicit without describing unimplemented billing or
+  entitlement tiers as shipped behavior.
+- See: [Third-Party Partner Contract](../../api/THIRD_PARTY_PARTNER_CONTRACT.md), #803, #1484,
+  and #2379.
+
+### 2026-10-10 — Web/mobile sync contract convergence proposal (#1484)
+
+ADR 0095 proposes a shared platform endpoint and replay contract for web and native POS. This
+proposal does not change native accounting, the current tenant/device limiter, or the status of
+planned 5/10 entitlements. Web limiter reconciliation remains #999; entitlement funding and
+administration remain #2379/#803. The per-client contract is documented in
+[`POS_OFFLINE_SYNC_CONTRACT.md`](../../features/POS_OFFLINE_SYNC_CONTRACT.md). ADR 0095's web
+dispositions remain non-binding pending tech-lead approval.

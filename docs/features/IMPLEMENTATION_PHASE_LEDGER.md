@@ -27152,3 +27152,1334 @@ Not complete; set only after the acceptance evidence above is recorded and all r
 ### Next phase number
 
 Phase 484. No explicit dependency.
+
+## Phase 484 - Selective self-hosted DB-suite runtime investigation (#2369)
+
+### Initiative and release
+
+dgfy-api database test execution and runner-runtime evidence.
+
+### Objective and scope
+
+Measure `purchaseOrder.test.js` and `tenantSchemaBootstrap.integration.test.js` on repeated,
+same-SHA `sieitz-lg` runs; capture per-suite Jest duration and contemporaneous runner load, memory,
+and swap observations; document tenant setup and cleanup; and optimize test code only if the evidence
+shows a repeatable suite-attributable cost. Add an opt-in `api_db_chunks` mode to the operator-
+dispatched quality workflow for future targeted DB group/chunk runs, retaining `full` as its default
+selection and keeping the existing full quality run unchanged.
+
+### Status
+
+`in_progress` — selective workflow support and all three same-SHA self-hosted measurements are
+complete; the evidence supports no test-code optimization. PR review and post-merge verification
+remain outstanding.
+
+### Dependencies
+
+Issue #2369 and the Phase 482 (#2357) DB-suite timing findings. Phase 482 is context only; there is
+no explicit dependency on Phase 483 or any earlier phase.
+
+### Acceptance and validation evidence
+
+- [x] Three serialized `sieitz-lg` runs against SHA
+      `aadf28110d540c2b40f6ca99963ab4c9fea60670` include an idle-runner observation and capture both
+      suite durations plus contemporaneous uptime, memory, swap, load, and vmstat samples.
+- [x] Compare repeated self-hosted results with the fixed hosted baseline from run #37807851576;
+      no `ubuntu-latest` or full quality-gate run was dispatched for this investigation.
+- [x] Document the tenant setup and cleanup sequence in `docs/testing/README.md`; variable clone/drop
+      phases explain the suite-time swings, so no test-code optimization is justified.
+- [x] The operator workflow exposes `full` and opt-in `api_db_chunks` selections; `full` is the
+      default, while the targeted mode accepts DB group/chunk selectors and uses only self-hosted
+      runners.
+- [x] No test-code changes were justified. Both target chunks passed three times on the measured
+      SHA, preserving assertions, per-test database isolation, and cleanup.
+- [x] `actionlint` (with the repository's custom self-hosted-label diagnostic ignored), workspace
+      hygiene, selector contract tests, docs lint, architecture check, and compliance check pass.
+
+| Runner/run | `purchaseOrder.test.js` | `tenantSchemaBootstrap.integration.test.js` | Load avg start → end (1/5/15 min) | Swap used start → end |
+|---|---:|---:|---|---:|
+| Hosted #37807851576 (fixed baseline) | 24.2s | 20.8s | n/a | n/a |
+| `sieitz-lg` [#37828223391](https://github.com/Sieitzz/dgfy-platform/actions/runs/37828223391) | 26.3s | 45.4s | 0.27/1.28/1.67 → 2.20/2.27/2.07 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37829654736](https://github.com/Sieitzz/dgfy-platform/actions/runs/37829654736) | 47.7s | 23.2s | 0.61/1.55/1.82 → 2.05/2.64/2.29 | 2.4/4.0 → 2.4/4.0 GiB |
+| `sieitz-lg` [#37830928352](https://github.com/Sieitzz/dgfy-platform/actions/runs/37830928352) | 26.6s | 26.6s | 1.53/1.99/2.08 → 2.45/2.35/2.23 | 2.4/4.0 → 2.4/4.0 GiB |
+
+Most 157-table clone phases took 4.4–5.4s; outliers reached 11.7–19.4s. Database drops usually took
+1.1–1.2s, with outliers around 3–8s. `vmstat` showed no sustained swap-in/out, CPU was mostly idle,
+and I/O wait varied. The opposite suite-time swings and variable DDL phases do not identify a stable
+suite-level bottleneck. The host-side cause remains uncertain and is tracked by #2373.
+
+### Links
+
+- Issue: #2369; planner handoff: `.tmp/plan-2369.md` (planning head
+  `15c9b78ed4f0082c1b64cf970ae5e11a382f2194`).
+- Prior timing evidence and hosted baseline: #2357, run #37807851576.
+- Runner/DB provisioning I/O follow-up: #2373.
+- Prior tenant setup consolidation reviewed: #1452 / PR #1472.
+- Workflow: `.github/workflows/promotion-quality-gate.yml`.
+- Measurement documentation: `docs/testing/README.md`, Backend Test Matrix Gate.
+- Potential test change: `apps/dgfy-api/tests/purchaseOrder.test.js` only if repeated data supports it.
+- Timing instrumentation: `apps/dgfy-api/tests/helpers/testTenantHelper.js`, opt-in via
+  `BACKEND_TEST_TENANT_TIMING=1`.
+- Current implementation validation includes `node --check` for the changed helper,
+  `node scripts/check-workspace-hygiene.js`, `actionlint`, selector contract tests, and
+  `node scripts/check-app-version-bump.js` with `GITHUB_BASE_REF=develop`.
+- `npm run lint:docs`, `npm run check:architecture`, and `node scripts/check-compliance-impact.js
+  --staged` passed. The broader `node scripts/check-pr-quality-workflow.js` still reports its
+  pre-existing `develop` drift (`--detectOpenHandles` marker and unrelated advisory-step IDs); the
+  focused selective-dispatch contract test passes.
+
+### Completion date
+
+Not complete; set after the scoped implementation validation passes and the PR is merged.
+
+### Post-merge verification
+
+- [ ] operational — dispatch `api_db_chunks` against the merged `develop` SHA and confirm the
+  selected group/chunk result and uploaded evidence artifact; owned by #2369; blocks issue closure.
+
+### Next phase number
+
+Phase 485. No explicit dependency.
+
+## Phase 485 - Tenant intake backend proposals and human confirmation (#2372)
+
+### Initiative and release
+
+LLM-assisted OFFICIAL/DEMO tenant and owner-account onboarding, backend PR 1 of the #2372 sequence.
+Ordinary develop feature work; no deployment or app-version floor change.
+
+### Objective and scope
+
+Add landlord proposals, OpenAI text/CSV/PDF extraction, deterministic shared provisioning-field
+validation, combined Platform Admin authority, single-use hash-bound confirmation, DEMO guard and
+persisted `is_demo` classification. Only confirmation invokes the existing bundled account/tenant
+provisioning use case. UI review and the local MCP proposer remain later PRs under #2372.
+
+### Status
+
+`in_progress` — backend implementation and focused validation passed; Pat approved the migration
+and regulatory declaration before committing on 2026-10-09. PR review/merge and post-merge
+verification remain outstanding.
+
+### Dependencies
+
+Existing admin-assisted provisioning and ADR 0047 Platform Admin authority. No explicit dependency
+on Phase 484 or any earlier unfinished phase. Future dgfy-admin/MCP work depends on this API.
+
+### Acceptance and validation evidence
+
+- [x] Proposal creation/extraction does not provision; confirmation requires explicit approval and
+  the hash of the canonical payload plus target.
+- [x] Shared field validators preserve existing provisioning behavior; injected privileges are
+  dropped, credential-bearing input rejected and passwords absent from proposals/audit.
+- [x] Row-locked claims/edits reject replay, concurrent duplicate approval, stale or tampered hashes,
+  expired and terminal proposals.
+- [x] DEMO guard runs at creation, confirmation and existing provisioning entry points; all required
+  environmental denial cases have focused tests. Missing NODE_ENV also fails closed.
+- [x] Combined tenant/account grants apply to every intake route; unlisted routes retain master-only
+  policy. Use cases independently enforce actor authority.
+- [x] Disposable MySQL migration up/re-run and OFFICIAL/DEMO full existing tenant-schema provisioning
+  passed via `scripts/verify-tenant-intake.mjs`: both targets created 157-table tenant schemas, real
+  accounts/users/membership, persisted DEMO classification and approval audit; concurrent/replay,
+  stale/PATCH/expired/rejected paths and all three DEMO enforcement points passed.
+- [x] Five focused Jest suites passed (83 tests), including HTTP/multipart/no-store transport.
+- [x] Architecture (57 modules/705 code files, 106 controllers), docs lint/98 ADRs, compliance
+  declaration shape/API contract, landlord-only migration coverage, changed-file syntax and targeted
+  ESLint passed. Develop-base version-floor checks passed for API 1.39.0 and migration-runner 1.28.0
+  unchanged. Seven compliance-rule regression tests pass; future isolated intake/guard/rule changes
+  retain the regulatory floor. Live provider, deployed-session and full release-matrix checks were
+  not run. No architecture allowlist/exception introduced.
+- [x] Migration correctness and regulatory classification/declaration approved by Pat before
+  commit on 2026-10-09 (implementation-session reply: `approve`), per Worker checkpoint policy.
+
+### Links
+
+- Issue: #2372; local handoff `.tmp/plan-2372.md`, planning head
+  `e0522eae1a63fe0afca90c0554770f077973e01b`.
+- [ADR 0090](../architecture/adr/0090-tenant-intake-proposal-confirmation.md).
+- [API and recovery contract](../api/tenant-intake.md).
+- [Compliance declaration](../compliance/impact-declarations/2026-10-09-tenant-intake-backend.md).
+- Implementation: `apps/dgfy-api/src/modules/tenantIntake/`, shared provisioning rules and DEMO guard.
+- Migration: `apps/dgfy-migration-runner/migrations/20261009000001-create-tenant-intake-proposals.cjs`.
+- Tests: `tenantIntake.usecases.test.js`, `tenantIntake.extraction.test.js`, existing provisioning
+  and Platform Admin route-classification suites, transport suite, compliance-floor script tests; `scripts/verify-tenant-intake.mjs` for real MySQL.
+
+### Completion date
+
+Not complete. Set only after scoped implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] operational — landlord migration applies before API rollout; no proposal table enters tenant
+  schemas; owner #2372; blocks deployment qualification.
+- [ ] provider — verify approved OpenAI configuration, extraction limits/PII handling and safe logs
+  in a controlled environment; owner #2372; blocks extraction rollout qualification.
+- [ ] deployment — live admin-cookie/CSRF/combined-grant transport proof; owner #2372; blocks issue
+  closure with the later UI/MCP acceptance work.
+- [ ] product — dgfy-admin editable review, explicit approval and one-time password display; local
+  MCP tool-list proof with no confirm tool; owner #2372; later PRs required before issue closure.
+- [ ] operational — reconcile NOT-EXECUTED compliance preflight before promotion; owner #2372.
+
+### Next phase number
+
+Phase 486. No earlier-phase dependency blocks a separate initiative; later #2372 UI/MCP phases
+require the backend contract above.
+
+## Phase 486 - Mid-soak staging refresh and release-cut freeze (#2381)
+
+### Initiative and release
+
+Release-candidate lifecycle: permit later pinned `develop` snapshots to advance `staging` during an
+active soak, with the release cut as the production-selection freeze point.
+
+### Objective and scope
+
+Make pre-cut refresh routine under the same candidate ID while preserving exact SHA qualification,
+repair/backport rules, candidate/release-note lineage, version floors, immutable per-app artifacts,
+and all existing production controls. After release cut, advance staging only under a successor
+candidate with a new ID and independent manifest/note/artifacts. Add optional v4 observation and
+lineage metadata while retaining old-manifest compatibility. No deploy workflow, app, or automatic
+continuous-sync changes.
+
+### Status
+
+`in_progress` — implementation and focused validator tests are underway; merge and the first
+report-only live refresh dry run remain outstanding.
+
+### Dependencies
+
+Issue #2381 and the existing release flow in ADRs 0074, 0081, 0082 and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`. No earlier phase dependency blocks this initiative.
+
+### Acceptance and validation evidence
+
+- [ ] Policy, promoter skill, and runbook allow pre-cut refresh during soak and name the release cut
+      as the freeze point; successor ordering and withdrawal behavior are documented.
+- [ ] Manifest lineage records source develop, resulting staging, and physical base SHAs; validator
+      reports the active and superseded staging selections while accepting legacy v4 manifests.
+- [ ] Observation and required qualification bind to the exact current staging SHA; optional quality
+      evidence becomes stale after a refresh; new cuts record passing observation.
+- [ ] Cut releases remain bound to their selected SHA; successors have separate IDs, release notes,
+      floors, manifests, and immutable artifacts.
+- [ ] Incoming develop refresh and staging defect repair/backport procedures are distinct; all
+      existing compliance, Merge Safety, no-squash, tenant-schema, and production controls remain.
+- [x] `node --test scripts/check-promotion-candidate.test.js` passes the focused validator suite
+      (50 tests) for current and legacy manifest behavior.
+- [ ] Neighboring observation, image-parity, evidence-builder, version-floor, docs, compliance,
+      release-note, and Worker Tier 0 checks pass and are reported in the PR.
+
+### Links
+
+- Issue: #2381; planner handoff `.tmp/plan-2381.md`, planning head
+  `55f134ce449a04bdcaf4b49a03b423ef5a538ae6`.
+- Policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md` 2026-10-09 amendment.
+- ADRs: 0074, 0081, 0082, with dated amendments; ADR 0039 strictness tiers.
+- Implementation: `scripts/check-promotion-candidate.js` and
+  `scripts/check-promotion-candidate.test.js`.
+- Procedure: `.agents/skills/promoter/SKILL.md` and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+
+### Completion date
+
+Not complete. Set only after scoped implementation is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — perform the first real pre-cut refresh as a report-only dry run; verify branch,
+      SHA lineage, observation invalidation, and immutable artifact allocation without merging or
+      deploying; owner: promoter; blocks release-qualification for this lifecycle change.
+- [ ] operational — confirm a successor release remains blocked until its predecessor is merged or
+      withdrawn; owner: promoter; verify during the first applicable candidate transition.
+- [ ] compliance — reconcile any outstanding `NOT-EXECUTED-*` declaration through the existing
+      preflight before production promotion; owner: promoter.
+
+### Next phase number
+
+Phase 487. No explicit dependency.
+
+## Phase 487 - No-app-change staging refresh manifests (#1610)
+
+### Initiative and release
+
+Release-candidate lifecycle: represent a valid staging refresh that advances the staging SHA while
+the content-equivalence build plan selects no applications.
+
+### Objective and scope
+
+Allow v4 `staging_refresh` entries to record empty `apps_touched` and `artifacts` arrays together.
+Preserve existing per-app artifact and source-SHA lineage, keep staging history and release
+qualification bound to the new SHA, and amend the validator tests and governed release guidance.
+Do not change Decision 7, workflow behavior, or the per-app identity model.
+
+### Status
+
+`in_progress` — implementation is unmerged; focused and governed-document validation remain due.
+
+### Dependencies
+
+Issue #1610 and ADR 0081 Decisions 6 and 8, the v4 candidate validator, and the release policy.
+No earlier phase dependency blocks this initiative.
+
+### Acceptance and validation evidence
+
+- [x] A refresh with both arrays empty validates and advances `current_staging_sha` while every
+      app retains its prior source SHA, including apps touched by earlier repairs.
+- [x] A release cut after an empty refresh validates only at the new staging SHA; an old-SHA
+      observation is rejected or reported stale.
+- [x] Empty/non-empty array mismatches, empty initial revisions, empty repairs, duplicate/unknown
+      apps, and one-sided API/migration-runner selections remain rejected.
+- [x] ADR 0081, release policy, promoter guidance, and this ledger describe the no-app-change shape
+      and preserve post-refresh observation/qualification requirements.
+- [x] Focused validator/parity/evidence tests, architecture and ADR/doc checks, compliance, and
+      Worker Tier 0 checks pass and are recorded in the PR.
+
+### Links
+
+- Issue: #1610; planner handoff `.tmp/plan-1610.md`, planning head
+  `fad763bd92014589f89cba9253f201bdf25e4bcd`.
+- ADR: 0081 dated 2026-10-09 amendment; ADR 0039 default-tier procedure.
+- Policy: `docs/ops/RELEASE_CANDIDATE_POLICY.md` 2026-10-09 amendment.
+- Implementation: `scripts/check-promotion-candidate.js` and
+  `scripts/check-promotion-candidate.test.js`.
+- Procedure: `.agents/skills/promoter/SKILL.md` and
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+
+### Completion date
+
+Not complete. Set only after the change is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — validate and finalize candidate `2026-10-09-01` after its refresh manifest
+      records empty `apps_touched`/`artifacts`, then repeat observation and qualification at
+      `a6e297aca19a3f2bf51e6b2cda4de10ca4537bd`; owner: promoter; blocks release qualification and
+      closure of #1610.
+
+### Next phase number
+
+Phase 488. No explicit dependency.
+
+## Phase 488 - Tenant CRM foundation and partner-customer contract (#2378)
+
+### Initiative and release
+
+Tenant CRM foundation / definition release.
+
+### Objective and scope
+
+Document the current OPIS/API/data/partner baseline, propose tenant-scoped customer identity and
+lifecycle, field-level channel access and provenance, OPIS and partner boundaries, privacy
+dependencies, and prioritized implementation candidates. Add proposed ADR 0091, register and index
+the governed foundation, and cross-link BO-10. No application code, API, or migration changes.
+
+### Status
+
+`in_progress` — the definition and proposed ADR are drafted; governed documentation validation and
+PR review remain due.
+
+### Dependencies
+
+No earlier phase dependency blocks this definition. Acceptance of proposed ADR 0091 and decisions
+under #243, #796, and #803 are dependencies for later implementation slices, not for drafting this
+contract.
+
+### Acceptance and validation evidence
+
+- [x] Current-state map identifies OPIS UI, API operations, tenant/landlord data, POS/Storefront
+      snapshot behavior, and partner contract limits.
+- [x] Tenant identity/lifecycle defines explicit-only DGFY links, tenant isolation, partner-scoped
+      references, immutable transaction snapshots, and stable profile-reference direction.
+- [x] Channel matrix identifies create/read/update/link boundaries, provenance, actor, and verified
+      versus unverified contact data.
+- [x] OPIS, #803 partner-customer contract, #796/#2379 handoffs, #243 privacy dependencies, and
+      DGFY Admin ownership boundary are documented.
+- [x] Prioritized issue candidates are sized without filing new issues or duplicating #1355.
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, link/path spot checks, and the repository pre-commit marker
+      scan pass; any compliance declaration request is escalated under the Worker checkpoint.
+
+### Links
+
+- Issue: #2378; planner handoff `.tmp/plan-2378.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- Contract: `docs/features/TENANT_CRM_FOUNDATION.md`.
+- Proposed architecture decision: ADR 0091; related ADRs 0006, 0023, 0079, 0087, and 0089.
+- Related issues: #243, #796, #803, #1354, #1355, #2308, #2379.
+- Implementation baseline: `apps/dgfy-opis/src/features/businessAdmin/`,
+  `apps/dgfy-api/src/modules/businessAdmin/`, and `docs/api/PARTNER_INTEGRATION_CONTRACT.md`.
+
+### Completion date
+
+Not complete. Set after the definition PR is merged and named validation passes.
+
+### Post-merge verification
+
+- [ ] operational — Pat/tech-lead review and explicit acceptance or revision of proposed ADR 0091;
+      owner: architecture; blocks implementation planning based on the proposed decisions.
+- [ ] operational — coordinate #243 privacy decisions and #796/#803 partner envelope before
+      scheduling customer data lifecycle or partner customer-reference implementation; owner:
+      product/security; blocks those implementation slices.
+
+### Next phase number
+
+Phase 489. No explicit dependency.
+
+## Phase 489 - Partner integration administration matrix (#2379)
+
+### Initiative and release
+
+Third-party App integration administration and tenant attachment definition, developed alongside
+the generic contract in #803.
+
+### Objective and scope
+
+Define the first-release platform/merchant permission and lifecycle matrix for partner organizations,
+Apps, deployment clients, credentials, and tenant/location attachments. Record DGFY Admin vs OPIS
+ownership, audit and secret-handling requirements, tenant isolation, deferred partner portal scope,
+and candidate implementation slices. Add proposed ADR 0092 and default-tier amendments to ADRs 0047
+and 0087. Documentation only; no API, UI, migration, or runtime behavior changes.
+
+### Status
+
+`in_progress` — implementation is unmerged; documentation, ADR, architecture, compliance, and
+agent-surface validation remain due.
+
+### Dependencies
+
+Issue #2379; ADRs 0039, 0047, 0079, 0087, and 0089; the authoritative partner contract in #803 and
+backend work #2311/#801/#802. #803 is developed alongside this phase and is not a blocker; its
+wire-level contract remains authoritative for protocol and offline behavior. Allocation boundaries
+coordinate with #997/#998, sync with #1484, and customer permissions with #2378. No earlier ledger
+phase blocks this phase.
+
+### Acceptance and validation evidence
+
+- [ ] `docs/api/PARTNER_ADMINISTRATION_MATRIX.md` covers actors, objects, every specified action,
+      server-side checks, lifecycle effects, surfaces, audit, secrets, isolation, and candidate
+      dependencies/owners.
+- [ ] Proposed ADR 0092 records the surface and identity boundaries; tenant-isolation and
+      App-ID/header authorization clauses are explicitly flagged for tech-lead review if promoted
+      to binding.
+- [ ] ADR 0047 and 0087 contain dated default-tier amendments without changing their binding
+      decisions; the partner contract cross-links the matrix and keeps #803 as wire-contract owner.
+- [ ] ADR index is generated from the source ADR files; issue acceptance maps to the matrix sections
+      and #2378/#997/#998/#1484 boundaries remain with their owners.
+- [ ] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, `npm run check:agent-surfaces`, app-version check, and
+      `git diff --check` pass and are reported in the PR.
+
+### Links
+
+- Issue #2379; planner handoff `.tmp/plan-2379.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`. ADR and phase numbers were advanced after #2378
+  landed concurrently and claimed 0091/488.
+- Matrix: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`.
+- ADR: `docs/architecture/adr/0092-partner-integration-administration-and-tenant-attachment.md`
+  (proposed); amendments to ADRs 0047 and 0087.
+- Contract: `docs/api/PARTNER_INTEGRATION_CONTRACT.md` (#803 wire-level owner).
+- Related issues: #796, #801, #802, #803, #997, #998, #1484, #2311, #2378.
+
+### Completion date
+
+Not complete. Set only after the documentation change is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- None. Documentation-only phase; implementation validation is recorded above and no deployment,
+  provider, or operational verification is introduced.
+
+### Next phase number
+
+Phase 490. No explicit dependency.
+
+## Phase 490 - Per-terminal stock allocation governance and design (#997)
+
+### Initiative and release
+
+Offline-first POS: define the Inventory-owned allocation contract shared by web POS, native POS,
+partner terminals, and Storefront before schema or runtime enforcement is built.
+
+### Objective and scope
+
+Amend ADRs 0029 and 0014 at their `[default]` clauses, and publish the authoritative feature
+contract in `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`. Define grant, consumption, competing
+stock issues, availability, web/native replay, quarantine, recovery, recipe/modifier effects,
+operator authority, and admin sizing. This phase is documentation only: no migration, model,
+service, API, POS client, or UI changes.
+
+### Status
+
+`in_progress` — the design and documentation checks are complete; the PR is not yet merged.
+
+### Dependencies
+
+Issue #997 and the existing Inventory-owned online reservation contract in ADR 0029. No earlier
+ledger phase blocks this work. Existing #998 is the Storefront freshness sibling of #993 and
+consumes this contract. Runtime slices must close the verified POS live-sale and Storefront
+availability gaps before claiming conflict-free allocation.
+
+### Acceptance and validation evidence
+
+- [x] Cross-boundary classification, changed `[default]` clauses, unchanged `[binding]` ownership
+      clauses, and the ADR 0029 POS/Storefront call-site findings are recorded.
+- [x] ADR 0029 and ADR 0014 amendments describe the allocation authority, replay boundary, and
+      explicit no-auto-release policy without authorizing runtime changes.
+- [x] The feature contract answers grant, return, offline holder, 24-hour authorization, sizing,
+      replay/idempotency, recipe/modifier-derived stock, stock-exempt behavior, and Storefront
+      availability/display requirements.
+- [x] The shared allocation design preserves web POS manual replay and native/partner client-specific
+      governed sync triggers and device-attachment policy.
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, and `node scripts/check-app-version-bump.js` pass and are
+      recorded in PR evidence.
+
+### Links
+
+- Issue: #997, child of #993; planner handoff `.tmp/plan-997.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- ADRs: 0009, 0014, 0017, 0029, 0031, 0039, 0043, and 0044.
+- Feature contract: `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`.
+- Current enforcement call sites: `apps/dgfy-api/src/modules/inventory/services/inventoryReservationService.js`,
+  `apps/dgfy-api/src/modules/inventory/commands/stockCommandService.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, and
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`.
+
+### Completion date
+
+Not complete. Set only after the documentation PR is merged and its implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] governance — PM schedules and shapes the separately scoped Inventory schema/service, replay
+      and competing stock-issue, client/OPIS, and Storefront freshness work; owner: PM; verify before
+      any runtime slice begins.
+- [ ] architecture — the first runtime rollout proves POS live sale, Storefront, and all competing
+      stock issues honor active/quarantined allocations before enabling offline allocation grants;
+      owner: Worker/Reviewer; blocks claiming conflict-free selling.
+
+## Phase 491 - Third-party partner API contract and engine authority (#803)
+
+### Initiative and release
+
+Third-party app integration tier under epic #796. Ordinary develop-based, documentation and ADR
+definition work; no runtime endpoint, schema, migration, or app-version change.
+
+### Objective and scope
+
+Define the generic `partner-contract/v0.1` contract for DGFY-engine and external-engine partners,
+document the DGLaundry compatibility adapter, propose ADR 0093, amend ADRs 0043 and 0079 at the
+default tier, register/cross-reference the contract and #2379 administration matrix, and map future
+implementation ownership. Keep the contract at reference authority until ADR 0093 receives
+tech-lead approval. No endpoint, registry, allocation engine, customer privacy policy, demo, or
+implementation candidate is delivered.
+
+### Status
+
+`in_progress` — documentation and ADR changes are being reconciled with develop; governed
+validation, commit, review, and merge remain outstanding.
+
+### Dependencies
+
+Issue #803 is a child of #796. No earlier phase blocks this definition work. #2379 and #2378 gate
+their respective administration and customer sections, not this phase. #997/#998 own allocation
+design; #1484 owns shared sync convergence. ADR 0093 approval gates dependent implementation from
+treating its proposed rules as binding.
+
+### Acceptance and validation evidence
+
+- [ ] Generic contract covers both engine tiers, per-location authority, coexistence, identity,
+  operations, offline recovery, sync, money/fiscal authority, qualification, ownership, and ADR
+  reconciliation.
+- [ ] DGLaundry remains governed by its authoritative contract and has named compatibility seams,
+  owner, evidence, rollback, and removal conditions.
+- [ ] Proposed ADR 0093 has strictness-tiered decisions and an empty approval record; ADR 0043 and
+  ADR 0079 carry dated default-tier amendments.
+- [ ] Contract references #2379's administration matrix without duplicating its permission policy;
+  #2378's customer policy remains gated.
+- [ ] `npm run check:adr -- --write-index` leaves no stale ADR index; `npm run lint:docs`,
+  `npm run check:architecture`, and `npm run check:compliance` pass.
+- [ ] No application code or migration changes; build/app-version Tier 0 checks are not applicable.
+- [ ] PR links #803 with `Refs #803`, records artifact provenance, assumptions, validation, and
+  pending ADR approval.
+
+### Links
+
+- Issue: #803; parent epic: #796; planner handoff: `.tmp/plan-803.md`, planning head
+  `cd81ff29ecae47563237a99c8f48e26cc3b82f6b`.
+- Proposed ADR: `docs/architecture/adr/0093-third-party-partner-integration-engine-authority-and-attachments.md`.
+- Contract: `docs/api/THIRD_PARTY_PARTNER_CONTRACT.md`.
+- Administrative matrix: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md` (#2379, phase 489).
+- Related documents: `docs/api/PARTNER_INTEGRATION_CONTRACT.md`, `docs/api/README.md`,
+  `docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md`,
+  `docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md`,
+  `docs/_meta/document-registry.json`, and this ledger entry.
+- Implementation: documentation and ADR only; no runtime files or tests are added.
+
+### Completion date
+
+Not complete. Set only after the scoped change is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — obtain and record tech-lead approval for proposed ADR 0093 before #2311, #801,
+  or #802 treats the contract as authoritative; owner: architecture; blocks binding adoption.
+- [ ] provider — assess DGLaundry `external-runtime-v0.1` against the generic context before any
+  schema adoption; owner: #2311/DGLaundry integration; blocks generic context implementation.
+- [ ] operational — implement and verify the ADR 0035 compatibility-seam entry and removal
+  evidence in #2311; owner: #2311; blocks removal of legacy DGLaundry claims/routes/clients.
+
+### Next phase number
+
+Phase 492. No explicit dependency.
+
+## Phase 492 - Multi-client platform OIDC registry and DGLaundry compatibility adapter (#2311)
+
+### Initiative and release
+
+Third-party partner integration tier under epic #796. Slice A provides the landlord client registry,
+client-aware `/oidc` provider, and DGLaundry compatibility adapter. Slice B, including any neutral
+tenant/session context claim, is explicitly deferred.
+
+### Objective and scope
+
+Add landlord-only `partner_apps` and `oidc_clients` tables for #801/#802 to build on; move OIDC
+provider and signing-key ownership into `modules/partnerIdentity`; enforce active approved client
+registration, endpoint type, exact destinations, allowed scopes, per-client state/replay isolation,
+and fail-closed shared state; retain DGLaundry's current claim, scopes, routes, and env-backed
+browser/machine fallback as ADR 0035 seams. Do not add credential lifecycle, attachments, or a
+neutral context claim.
+
+### Status
+
+`in_progress` — implementation, validation, commit, and review remain outstanding.
+
+### Dependencies
+
+No explicit dependency blocks slice A. The generic neutral context claim remains deferred until ADR
+0093 is accepted and DGLaundry's `external-runtime-v0.1` is assessed. #801/#802 consume the registry
+shape but do not block this foundation.
+
+### Acceptance and validation evidence
+
+- [ ] Registry migration, landlord models, repository interface, and module README define the shared
+      client schema without tenant attachment or credential lifecycle tables.
+- [ ] Synthetic registered browser and machine clients complete authorization/client-credentials
+      flows without code changes to admit them.
+- [ ] DGLaundry browser, machine, service signing, logout, discovery, and partner API behavior remain
+      compatible through adapter and re-export shims.
+- [ ] Per-client codes, PAR, tokens, sessions, and assertion replay are isolated; invalid clients,
+      redirects, scopes, app/client statuses, and unavailable Redis/registry fail closed.
+- [ ] Generic clients receive standard OIDC claims only; DGLaundry context is adapter-produced.
+- [ ] ADR 0035 manifest, code markers, tests, rollback, and removal conditions pass
+      `node scripts/check-compat-seams.js`.
+- [ ] `node --check` for changed JavaScript, `node scripts/check-app-version-bump.js`,
+      `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+      `npm run check:compliance`, and the focused dgfy-api OIDC/DGLaundry suites pass.
+
+### Links
+
+- Issue: #2311; planner handoff: `.tmp/plan-2311.md`, planning head
+  `179a9769a1c177bb27848f728d423865cc7fa58e`.
+- Governing architecture: ADR 0035 and ADR 0079; ADR 0093 remains proposed and is design guidance
+  only. The Third-Party Partner Contract is reference; the DGLaundry Partner Integration Contract
+  remains authoritative for existing behavior.
+- Implementation: `apps/dgfy-api/src/modules/partnerIdentity/`,
+  `apps/dgfy-api/src/routes/oidc.js`,
+  `apps/dgfy-migration-runner/migrations/20261010000001-create-partner-identity-registry.cjs`,
+  and `docs/architecture/compatibility-seams.json`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and its implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] provider — confirm DGLaundry browser and machine registrations use either the approved
+      registry rows or the documented env adapter, and retain source proof of callback, claim, and
+      token compatibility; owner: #2311/DGLaundry contract owner.
+- [ ] database — verify the landlord migration ran and `partner_apps`/`oidc_clients` are absent from
+      tenant schemas; owner: migration/operator.
+- [ ] future scope — assess `external-runtime-v0.1` and obtain ADR 0093 approval before implementing
+      a neutral session/tenant context claim; owner: architecture/#2311.
+
+### Next phase number
+
+Phase 493. No explicit dependency.
+
+## Phase 493 - App ID registry and partner credential lifecycle (#801)
+
+### Initiative and release
+
+Third-party partner integration tier under epic #796. Backend lifecycle implementation on the
+landlord registry established by #2311 slice A.
+
+### Objective and scope
+
+Implement platform App/client lifecycle, versioned credential issue/rotation/revocation, merchant
+tenant/location attachment consent and controls, landlord/tenant audit events, entitlement writes,
+and generic machine-token authorization with tenant/location context resolved from active registry
+records. Scope is `apps/dgfy-api`, `apps/dgfy-migration-runner`, and supporting docs. Partner
+self-service, browser-origin administration UI, partner operational APIs, allocation/sync runtime,
+neutral OIDC context claims, and DGLaundry behavior changes remain excluded.
+
+### Status
+
+`in_progress` — implementation and focused validation are underway; migration execution, final
+hardening evidence, commit, PR review, and merge remain due.
+
+### Dependencies
+
+- #2311 slice A is satisfied by merged PR #2412 (landlord `partner_apps`/`oidc_clients` registry and
+  client-aware provider); Phase 492 remains marked `in_progress` but declares no explicit dependency
+  blocking this slice.
+- #2379's administration matrix is closed and remains the reference source for permissions and
+  lifecycle effects.
+- #803 remains the owner of wire-level offline/reconciliation semantics; this phase returns
+  authorization/quarantine decisions but does not read, delete, or release queued work.
+- No other explicit phase dependency blocks this work. Current phase: 493; next phase number: 494.
+
+### Acceptance and validation evidence
+
+- [ ] App, deployment client, credential version, and tenant/location attachment remain separate
+      landlord records with additive schema and one-active-attachment enforcement.
+- [ ] Platform App/client transitions and credential issue/rotation/revocation use guarded writes,
+      redact hashes/keys/secrets from ordinary reads, and write successful audit events atomically.
+- [ ] Browser secrets are generated once and stored as scrypt hashes; machine private keys are
+      rejected; active key selection uses `kid`; overlap expires at its configured bound.
+- [ ] Merchant consent/scopes/suspend/reactivate/disconnect require tenant owner/admin authority,
+      tenant-scoped attachment access, active tenant locations, scope ceiling, and tenant audit.
+- [ ] Only the Platform Admin entitlement route can write closed-set `sync_rounds` values; consent
+      and merchant paths cannot self-grant.
+- [ ] Generic bearer validation re-resolves client/app/credential/attachment per request, selects
+      tenant context through `tenantHandler`, re-checks locations, and does not create staff identity.
+- [ ] Online denial, reconcile quarantine, tenant/location/scope isolation, audit-failure safety,
+      credential overlap/revocation, and existing DGLaundry compatibility have focused test evidence.
+- [ ] `node --check` for changed JavaScript, `node scripts/check-app-version-bump.js`,
+      `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+      `npm run check:compliance`, `node scripts/check-compat-seams.js`, and the scoped OIDC/DGLaundry
+      suites pass. Run migration against a disposable MySQL database when available; report if not.
+
+### Links
+
+- Issue: #801; handoff `.tmp/plan-801.md`, planning head `a0598a79d2ce2731376bfdf6918f8cf158aad058`.
+- Governing architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADRs 0002, 0035, 0047, 0079, 0081; ADRs 0092 and
+  0093 remain proposed and non-binding.
+- Domain contract: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md` and
+  `docs/api/THIRD_PARTY_PARTNER_CONTRACT.md`.
+- Implementation: `apps/dgfy-api/src/modules/partnerIdentity/`,
+  `apps/dgfy-api/src/routes/partnerIntegrations.js`,
+  `apps/dgfy-api/src/routes/partnerAttachments.js`, and
+  `apps/dgfy-migration-runner/migrations/20261010000002-create-partner-credentials-and-attachments.cjs`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] database — run the landlord migration and verify `partner_client_credentials` and
+      `partner_attachments` are absent from tenant schemas; owner: migration/operator.
+- [ ] security — spot-check partner credential lifecycle logs and audit snapshots for absence of
+      plaintext secrets, private keys, bearer tokens, and raw IP/user-agent values; owner: Worker /
+      Reviewer.
+- [ ] provider — confirm existing DGLaundry browser/machine flows remain compatible against the
+      deployed registry/provider state; owner: DGLaundry contract owner.
+- [ ] runtime — confirm suspension, credential revocation, and attachment disconnect deny already
+      issued partner tokens on the next request; owner: Verifier.
+
+### Next phase number
+
+Phase 494. No explicit dependency.
+
+## Phase 494 - Registry-configured partner browser destinations and metadata CORS (#802)
+
+### Initiative and release
+
+Third-party partner integration tier under epic #796. Browser destination registration slice on the
+landlord OIDC registry established by #2311 and lifecycle controls established by #801.
+
+### Objective and scope
+
+Store exact allowed browser origins, redirect URIs, and post-logout redirect URIs on landlord
+`oidc_clients`; validate them on registration and destination updates; administer updates through
+DGFY Admin; and grant credential-free CORS only to active browser clients under approved Apps for
+OIDC discovery/JWKS metadata. External origins remain outside internal DGFY handoff, cookies, CSRF,
+and tenant/API authority. Internal hostname lists, logout propagation, partner UI, and tenant
+attachment behavior are excluded.
+
+### Status
+
+`in_progress` — implementation and focused validation are underway; the additive landlord schema
+migration requires human confirmation before commit, and migration execution, final hardening,
+commit, PR review, and merge remain due.
+
+### Dependencies
+
+- #2311 / Phase 492 registry substrate is satisfied by merged PR #2412.
+- #801 / Phase 493 client lifecycle is satisfied by merged PR #2418; its ledger status remains
+  `in_progress`, but it declares no dependency blocking this slice.
+- #2379 administration ownership is documented in the partner administration matrix; DGFY Admin
+  owns destination writes and OPIS has no role.
+- #803 owns logout/session termination semantics. This phase preserves current behavior.
+- No other explicit phase dependency blocks this work. Current phase: 494; next phase number: 495.
+
+### Acceptance and validation evidence
+
+- [x] Add nullable landlord `oidc_clients.allowed_origins`; keep `null` equivalent to an empty list
+  and do not clone the landlord field into tenant schemas.
+- [x] Validate browser origins and redirect/post-logout destinations strictly, enforce registered
+  origins and cross-App collision rejection, and reject browser destinations on machine/service
+  clients.
+- [x] Add guarded destination update for pending, active, or suspended clients; reject revoked
+  clients; write before/after destination audit atomically with the mutation; redact credential
+  material from response and audit.
+- [x] Resolve registry CORS only after existing CORS denial, only for metadata GET/HEAD/OPTIONS,
+  with credentials disabled; deny unregistered, ambiguous, non-active, unapproved, and DB-error
+  cases; do not grant API/tenant or OIDC operational-route CORS.
+- [x] Prove removed callbacks invalidate in-flight token exchange; preserve internal cookies, CSRF,
+  internal handoff, and DGLaundry behavior with focused compatibility evidence.
+- [x] Run focused destination, lifecycle, CORS, OIDC, DGLaundry, cookie, CSRF, and compatibility
+  suites; `node --check` changed API JS; `npm run check:architecture`, `npm run check:adr`,
+  `npm run lint:docs`, `npm run check:compliance`, `node scripts/check-compat-seams.js`, and
+  `node scripts/check-app-version-bump.js` pass. Run the migration against disposable MySQL if
+  available; otherwise state it was not run.
+
+### Links
+
+- Issue: #802; handoff `.tmp/plan-802.md`, planning head `7efaead855e330cf1c6ac0cce6fbe16f28ee83c7`.
+- Governing architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADRs 0026, 0035, 0092, and 0093. ADRs 0092 and
+  0093 remain proposed; ADR 0026's internal cookie/handoff rules are preserved.
+- Domain contracts: `docs/api/THIRD_PARTY_PARTNER_CONTRACT.md` §4.1 and
+  `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`.
+- Implementation: `apps/dgfy-api/src/modules/partnerIdentity/`,
+  `apps/dgfy-api/src/routes/partnerIntegrations.js`, `apps/dgfy-api/src/server.js`,
+  `apps/dgfy-api/src/models/Landlord/OidcClient.js`, and
+  `apps/dgfy-migration-runner/migrations/20261010000003-add-oidc-client-allowed-origins.cjs`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] database — run the landlord migration and verify `oidc_clients.allowed_origins` exists only
+  in the landlord schema; owner: migration/operator.
+- [ ] runtime — confirm an approved second partner receives CORS headers only on discovery/JWKS,
+  with credentials disabled, and that suspension/revocation removes the grant on the next request;
+  owner: Verifier.
+- [ ] compatibility — confirm DGLaundry and internal DGFY login/logout/CSRF behavior against the
+  deployed candidate; owner: DGLaundry contract owner / Verifier.
+- [ ] follow-up — keep #503 internal hostname-list work and #803 logout semantics separate; owner:
+  Planner/PM.
+
+### Next phase number
+
+Phase 495. No explicit dependency.
+
+## Phase 495 - Provider-neutral outbound SMS delivery foundation (#2415)
+
+### Initiative and release
+
+Wave 1 of the outbound SMS foundation under epic #2413.
+
+### Objective and scope
+
+Add the `apps/dgfy-api` provider-neutral SMS adapter contract, fake and unconfigured adapters,
+landlord delivery log, phone normalization and HMAC, deduplication, failure alerting, PII retention,
+environment configuration, architecture decision, and operator onboarding path. No real provider,
+order-event wiring, promotional consent/suppression, OTP, HTTP route, or frontend work is included.
+
+### Status
+
+`in_progress` — scoped implementation and validation are complete; PR review and merge remain outstanding.
+
+### Dependencies
+
+No explicit dependency blocks this phase. Later order-alert and promotional SMS waves depend on this
+contract; they do not block its implementation.
+
+### Acceptance and validation evidence
+
+- [x] Fake adapter receives normalized E.164 recipients and purpose; fake outcomes are marked
+      simulated and production cannot select fake.
+- [x] Missing/unknown provider returns and logs `unconfigured`; adapter failures return `failed`,
+      alert with PII-free context, and do not throw into callers.
+- [x] Per-recipient delivery logs contain no content; dedupe prevents repeat adapter calls; expired
+      raw phone values are redacted while HMAC and prefix remain.
+- [x] Focused SMS tests, migration tests, and API architecture boundaries pass.
+- [x] `npm run check:architecture`, `npm run check:compliance`, `npm run lint:docs`,
+      `npm run check:adr`, `npm run check:production-env`, and
+      `node scripts/check-app-version-bump.js` pass.
+
+### Links
+
+- Issue: #2415; parent epic: #2413; planner handoff: `.tmp/plan-2415.md`, planning head
+  `a0598a79d2ce2731376bfdf6918f8cf158aad058`.
+- Architecture decision: ADR 0094.
+- Operator procedure: `docs/ops/OUTBOUND_SMS_PROVIDER_ONBOARDING.md`.
+- Implementation: `apps/dgfy-api/src/modules/smsDelivery/`,
+  `apps/dgfy-api/src/models/Landlord/SmsDeliveryLog.js`,
+  `apps/dgfy-migration-runner/migrations/20261010000002-create-sms-delivery-logs.cjs`.
+
+### Completion date
+
+Not complete. Set only after the scoped change is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] provider — choose and approve an SMS provider, sender registration, credentials, sandbox,
+      DLR/webhook, cost limits, and purpose-specific consent controls before production sending;
+      owner: #2415 / outbound SMS product owner; blocks real-provider traffic.
+- [ ] deployment — configure a production `SMS_PHONE_HASH_SECRET` before deploying this phase;
+      owner: deployment operator; blocks startup with the new API version.
+- [ ] operational — run the migration and verify the landlord table exists and is not cloned into
+      tenant schemas; owner: migration/operator; blocks enabling the SMS module.
+
+## Phase 496 - Offline-first POS posture and replay policy amendment (#995)
+
+### Initiative and release
+
+Offline-first POS governance under epic #993. This phase authorizes tier-aware web replay and
+reconciles the sale-amount versus persistence authority statements; it does not implement runtime
+behavior.
+
+### Objective and scope
+
+Amend ADRs 0014, 0025, and 0043 in one docs-only PR; align the per-terminal stock allocation
+contract's web replay references; regenerate the ADR index; and record the phase. No code, schema,
+API, or UI changes are in scope. ADR 0026 and binding ADR 0029 remain unchanged.
+
+### Status
+
+`in_progress` — implementation and documentation validation are complete; commit, PR review, and
+merge remain outstanding.
+
+### Dependencies
+
+- No explicit phase dependency blocks this work. Phase 490 provides the allocation context and is
+  already merged.
+- Current phase: 496; next phase number: 497.
+
+### Acceptance and validation evidence
+
+- [x] ADR 0014 defines the manual/automatic tier policy, server-provided admin settings, successful
+      round accounting, retry-storm controls, and unchanged safety constraints while explicitly
+      authorizing policy only until #999 implements it.
+- [x] ADR 0025 reconciles the client's charged-amount claim with backend persistence and rules
+      authority, preserving #996's reportable-total decision and its drawer/fiscal-handling handoff.
+- [x] ADR 0043 aligns shared round accounting without changing native or partner entitlement and
+      enforcement contracts.
+- [x] `PER_TERMINAL_STOCK_ALLOCATION.md` qualifies its web replay statements by the resolved
+      policy; no runtime behavior is claimed.
+- [x] `npm run check:adr`, `npm run lint:docs`, `npm run check:architecture`,
+      `npm run check:compliance`, `node scripts/check-app-version-bump.js`, and `git diff --check`
+      pass; the generated ADR index is committed.
+
+### Links
+
+- Issue: #995; epic: #993; planner handoff: `.tmp/plan-995.md`, planning head
+  `318f5a44eb092aabd8368f3c1dabc3269940080d`.
+- Governing architecture: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0014, ADR 0025, ADR 0039, ADR 0043, ADR
+  0067, and ADR 0075.
+- Follow-up ownership: #999 (web replay implementation), #996 (total divergence and reporting),
+  #1482/#1483 (offline identity and shift policy), and #1484 (cross-client sync convergence).
+- Implementation: the three ADR files, `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`,
+  `docs/architecture/adr/INDEX.md`, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation PR is merged and its validation passes.
+
+### Post-merge verification
+
+- [ ] governance — verify #999 implements only the policy authorized here and preserves the
+      manual mode and replay-storm safeguards; owner: #999 / Reviewer.
+- [ ] totals — verify #996 records both totals, preserves the server-rederived reportable amount,
+      and resolves the drawer and printed-slip handoffs with the fiscal-numbering child; owner:
+      #996 / fiscal-numbering owner.
+- [ ] convergence — confirm #1484 adopts the shared round meaning without changing partner
+      entitlements owned by #2379; owner: #1484 / Planner.
+
+### Next phase number
+
+Phase 497. No explicit dependency.
+
+## Phase 497 - Storefront stock freshness contract for POS-allocated inventory (#998)
+
+### Initiative and release
+
+Offline-first POS epic #993. Storefront read-contract design consuming the Inventory-owned
+per-terminal allocation model from Phase 490; documentation only.
+
+### Objective and scope
+
+Define the Storefront availability remainder, browse/quote/commit authority tiers, quantified cache
+freshness bound and direction, allocation invalidation reuse, zero-stock checkout behavior, and
+fail-closed boundary with #947. Publish `docs/features/STOREFRONT_STOCK_FRESHNESS_CONTRACT.md` and
+append a default-tier amendment to ADR 0014. No schema, API, runtime, cache configuration, app, or UI
+changes are in scope.
+
+### Status
+
+`in_progress` — documentation, ADR, and ledger changes are under implementation; validation, PR
+review, and merge remain outstanding.
+
+### Dependencies
+
+- Phase 490 / #997's merged allocation design is the only explicit design dependency.
+- Runtime read-path adoption depends on the separately scoped #997 runtime ledger and must land with
+  or after #947's location-scope root-cause fix. These runtime follow-ons do not block this design
+  phase.
+- Phases 491–496 have no explicit dependency on this work and do not block it.
+
+### Acceptance and validation evidence
+
+- [ ] The feature contract defines unallocated-only availability, active hold expiry, allocation
+      remainder, recipe/modifier effects, and `stock_exempt` behavior.
+- [ ] The contract states browse is bounded-stale, quote is uncached/fresh preflight, and commit is
+      authoritative under stock-row locks; it quantifies 135-second stale-while-revalidate and
+      225-second stale-if-error bounds and explains stale direction.
+- [ ] The contract records zero offline replay lag as an invariant, while distinguishing origin
+      availability from bounded-stale cached copies under epic #993's criterion.
+- [ ] ADR 0014 has a dated default-tier amendment reusing ADR 0055's bus without changing binding
+      clauses, exposing SSE to anonymous Storefront clients, or changing cache TTLs.
+- [ ] Zero-stock behavior covers quote and commit shortfall, customer-safe copy, exact-quantity
+      display policy, and the pre-existing payload-redaction finding for separate PM triage.
+- [ ] Location and allocation-ledger failures fail closed; #947 remains a dependency for runtime
+      adoption and no unscoped fallback is carried forward.
+- [ ] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, and `node scripts/check-app-version-bump.js` pass. No app build or
+      unit tests run because the phase changes documentation only.
+
+### Links
+
+- Issue: #998, child of epic #993; planner handoff `.tmp/plan-998.md`, planning head
+  `7efaead855e330cf1c6ac0cce6fbe16f28ee83c7`.
+- Allocation input: Phase 490 / #997 and `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`.
+- ADRs: 0014, 0017, 0029, 0039, and 0055.
+- Related issue: #947, whose location-scope fallback fix must precede or accompany runtime read-path
+  adoption.
+- Implementation: `docs/features/STOREFRONT_STOCK_FRESHNESS_CONTRACT.md`, ADR 0014, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation change is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] governance — PM shapes Inventory availability/read-path adoption, allocation lifecycle event
+      publication, and ADR 0017 payload-redaction follow-up; owner: PM.
+- [ ] runtime — sequence Storefront read-path adoption with the #997 runtime ledger and after or
+      alongside #947's root-cause fix; prove fail-closed scoped reads and authoritative commit; owner:
+      Worker/Reviewer.
+- [ ] cache — confirm implementation preserves the documented HTTP bounds or records a separately
+      approved tighter stock-bearing catalog policy; owner: Worker/Reviewer.
+
+### Next phase number
+
+Phase 498. No explicit dependency.
+
+## Phase 498 - Transactional order received and delivered SMS alerts (#2416)
+
+### Initiative and release
+
+Wave 2 of the outbound SMS foundation under epic #2413.
+
+### Objective and scope
+
+Dispatch one best-effort transactional SMS for storefront orders after `placed` checkout commits
+and one after a manual delivery job transitions to `delivered`. Covers guest orders and idempotent
+checkout recovery while preserving checkout and delivery transition outcomes. No provider, schema,
+route, consent, promotional message, outbox, or sender-contract change is included.
+
+### Status
+
+`in_progress` — implementation and validation are complete; PR review and merge remain outstanding.
+
+### Dependencies
+
+- Phase 495 / #2415 provider-neutral SMS sender contract and delivery log are merged in PR #2419.
+
+### Acceptance and validation evidence
+
+- [x] Focused service, checkout, delivery-job, SMS sender, and customer-activity tests pass (5
+      suites, 55 tests); prove E.164 transactional requests, replay dedupe, guest coverage,
+      post-commit delivery gating, failure isolation, no-phone skip, no content persistence, and
+      null `order_id`.
+- [x] `npm run check:architecture` and `npm run check:compliance` pass.
+- [x] `npm run lint:docs` and `npm run check:adr` pass with the generated ADR index current.
+- [x] `node --check` passes for each changed API JavaScript file.
+- [x] `node scripts/check-app-version-bump.js --staged` passes against the develop version floor.
+
+### Links
+
+- Issue: #2416; parent epic: #2413; planner handoff: `.tmp/plan-2416.md`, planning head
+  `b27d3ac6a398245af6e066d433d686d6a950ce86`.
+- Architecture decision: ADR 0094 amendment dated 2026-10-10.
+- Provider onboarding: `docs/ops/OUTBOUND_SMS_PROVIDER_ONBOARDING.md`.
+- Implementation: `apps/dgfy-api/src/modules/dgfy/services/dgfyOrderSmsAlerts.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`.
+- Tests: `apps/dgfy-api/tests/dgfyOrderSmsAlerts.unit.test.js`,
+  `apps/dgfy-api/tests/storeFnbModifiers.usecases.test.js`,
+  `apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and named validation passes.
+
+### Post-merge verification
+
+- [ ] provider — complete provider selection, sender registration, credentials, sandbox, cost,
+      webhook, and purpose-specific controls before enabling real SMS; owner: #2415 outbound SMS
+      product owner; blocks real-provider traffic.
+- [ ] deployment — confirm production `SMS_PHONE_HASH_SECRET` is configured before deploying the
+      API version; owner: deployment operator; blocks production rollout.
+- [ ] operational — verify deployed order alerts preserve successful checkout and delivery
+      transitions and that SMS delivery rows contain no message content; owner: Verifier; blocks
+      closing #2416.
+
+### Next phase number
+
+Phase 499. No explicit dependency.
+
+## Phase 499 - Multi-terminal POS consistency model (#798)
+
+### Initiative and release
+
+Offline-first POS governance under epic #993. Cross-surface consistency decision for POS, Inventory,
+Storefront, and terminal registry state; documentation only.
+
+### Objective and scope
+
+Publish the authoritative per-operation CP/AP model for a LAN partition; decide invoice-counter
+sharding, normalized terminal identity target, and the limits of peer-to-peer transport; reconcile
+the decision with current replay and ownership contracts. Amend ADR 0031's `[default]` registry
+storage direction. No runtime, API, UI, schema, or migration changes are in scope.
+
+### Status
+
+`in_progress` — implementation and documentation validation are underway; commit, PR review, and
+merge remain outstanding.
+
+### Dependencies
+
+- No explicit dependency blocks this decision record. Phase 490 / #997 provides the terminal stock
+  allocation contract; Phase 496 / #995 provides the current replay policy.
+- Phase 497 / #998 and Phase 498 / #2416 are concurrent governed changes and declare no dependency
+  on this decision record; their runtime scope does not block this documentation slice.
+- Current phase: 499; next phase number: 500.
+
+### Acceptance and validation evidence
+
+- [x] The feature contract classifies online/offline stock effects, invoice numbering, shift open
+      and close, Z-reading, parked-sale claims, charged amount, and registry edits, with a reason for
+      each classification.
+- [x] The contract keeps `POS_OR` unsharded without claiming measured acceptability, records a
+      measurable reopening trigger, and defers offline fiscal numbering to #1000.
+- [x] The normalized registry target is `terminal_identities`; its boundary with current
+      settings-backed runtime and #800-owned pairing/operational fields is explicit.
+- [x] LAN WiFi/Bluetooth is rejected as an authority-bearing state transport; any retained signal
+      is advisory and backend-validated.
+- [x] ADR 0014's 2026-10-10 replay amendment is cited without duplication; ADR 0031's default
+      storage wording is amended; ADR 0029 `[binding]` ownership clauses remain unchanged.
+- [x] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance`,
+      `node scripts/check-app-version-bump.js`, and `git diff --check` pass.
+
+### Links
+
+- Issue: #798; parent epic: #795; planner handoff: `.tmp/plan-798.md`, planning head
+  `ad17fc3c4`.
+- Governing architecture: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0014, ADR 0025, ADR 0029, ADR 0031, ADR
+  0039, ADR 0042, ADR 0043, ADR 0044, ADR 0065, and ADR 0067.
+- Domain/schema contracts: `docs/features/PER_TERMINAL_STOCK_ALLOCATION.md`,
+  `docs/database/dgfy-foundation.md`, and `docs/database/dgfy-data-migration-map.md`.
+- Follow-on ownership: #800 (terminal pairing and operational fields), #999 (replay accounting),
+  #1000 (offline fiscal numbering), and PM for counter measurement and stale issue wording.
+- Implementation: `docs/features/POS_MULTI_TERMINAL_CONSISTENCY_MODEL.md`, ADR 0031, generated ADR
+  index, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation change is merged and its implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] governance — confirm #800's pairing and terminal operational-field design targets the same
+      normalized identity without duplicating source-of-truth state; owner: #800 / Planner.
+- [ ] performance — collect representative `pos_invoice_counters` lock-wait and checkout-latency
+      evidence before changing counter topology; owner: POS/API operator.
+- [ ] follow-up — PM shapes registry compare-and-set adoption, measured counter follow-up if its
+      trigger fires, and stale #798/#795 issue corrections; owner: PM.
+
+### Next phase number
+
+Phase 500. No explicit dependency.
+
+## Phase 500 - Promotional SMS consent and opt-out suppression (#2417)
+
+### Initiative and release
+
+Wave 3 of the outbound SMS foundation under epic #2413.
+
+### Objective and scope
+
+Require active tenant-scoped marketing consent and absence of landlord-global suppression before
+each promotional send. Add append-only consent events, tenant grant/revoke and global suppression
+use cases, authenticated tenant-owner/admin grant/revoke routes, and provider onboarding controls.
+Transactional order alerts remain independent. No capture UI, inbound STOP webhook, global
+suppression lift, campaign authoring, consent wording decision, or real-provider activation is in
+scope.
+
+### Status
+
+`in_progress` — implementation and validation are complete; PR review and merge remain outstanding.
+
+### Dependencies
+
+- Phase 495 / #2415 sender contract and Phase 498 / #2416 transactional integration are merged in
+  the current `develop` ancestry.
+- Phase 499 / #798 is an independent documentation decision with no dependency on this phase; it
+  does not block this SMS implementation.
+- Current phase: 500; next phase number: 501.
+
+### Acceptance and validation evidence
+
+- [x] Promotional send rejects missing tenant, absent/revoked consent, global suppression, missing
+      opt-out instruction, or consent-store error; rejected rows use a null dedupe key.
+- [x] Active consent permits promotional delivery and caller-supplied opt-out wording is appended.
+- [x] Revoked consent stays blocked on repeat send; global suppression blocks across tenants;
+      consent granted to another tenant does not grant tenant A eligibility.
+- [x] Transactional sends do not read consent data and continue for non-consenting recipients.
+- [x] Grant/revoke events are atomic with their projection update; revoke without prior grant
+      creates a revoked projection. Invalid numbers and grants without text version are rejected.
+- [x] Tenant-authenticated API requires tenant owner/admin authority, validates payloads, and
+      never echoes raw phone values.
+- [x] Migration creates the three landlord-only tables idempotently with tenant-phone and global
+      suppression uniqueness; migration test covers up/down.
+- [x] `node --check` on changed API JavaScript, focused SMS/API/migration Jest suites,
+      `npm run check:architecture`, `npm run check:compliance`, `npm run lint:docs`,
+      `npm run check:adr`, and `node scripts/check-app-version-bump.js` pass.
+
+### Links
+
+- Issue: #2417; parent epic: #2413; planner handoff `.tmp/plan-2417.md`, planning head
+  `0121d48306c21c10a8c92f43e372434043cf869e`.
+- Governing architecture: `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADRs 0039 and 0094.
+- Domain and operations: `docs/ops/OUTBOUND_SMS_PROVIDER_ONBOARDING.md`.
+- Implementation: `apps/dgfy-api/src/modules/smsDelivery/`, SMS landlord models, and
+  `apps/dgfy-migration-runner/migrations/20261010000004-create-sms-marketing-consent.cjs`.
+- Compliance: `docs/compliance/impact-declarations/2026-10-10-promotional-sms-marketing-consent.md`.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] provider — confirm approved opt-out wording and whether authenticated inbound STOP capture is
+      supported and implemented before representing STOP as available; owner: SMS product/provider
+      owner; blocks promotional production traffic.
+- [ ] deployment — confirm production `SMS_PHONE_HASH_SECRET` is configured and matches the key
+      used to create consent/suppression hashes; owner: deployment operator; blocks production SMS.
+- [ ] operational — run the landlord migration and verify the tables are absent from tenant
+      schemas; owner: migration/operator; blocks enabling consent-backed promotional sending.
+- [ ] privacy — verify consent events/projections contain hashes and coarse prefix only and that
+      secret rotation re-keys all four SMS hash locations before activation; owner: Verifier / API
+      operator; blocks opt-out continuity claims.
+
+### Next phase number
+
+Phase 501. No explicit dependency.
+
+## Phase 501 - Web/mobile POS offline-sync contract convergence (#1484)
+
+### Initiative and release
+
+Offline-first POS governance under epic #993. Decision and governed documentation for web POS
+adoption of the platform-owned mobile sync endpoints and three-channel model.
+
+### Objective and scope
+
+Publish the platform contract and proposed ADR 0095 with explicit per-client capabilities, mapping
+of existing web queue operations, dedupe and cutover requirements, #468 cursor adoption, device
+identity dependency, and IMS boundary. Amend ADR pointers and register the governed contract. No
+runtime, API, schema, or client migration is included.
+
+### Status
+
+`in_progress` — documentation is implemented and validation/PR review remain outstanding. ADR 0095
+is proposed pending tech-lead approval; its web dispositions are not binding until accepted.
+
+### Dependencies
+
+- Phase 496 / #995 and Phase 499 / #798 are closed and their authoritative decisions are inputs.
+- No explicit dependency blocks this documentation decision. Web runtime adoption depends on the
+  #468 cursor contract, #800 server-validated terminal identity, and #999 web round-limiter
+  reconciliation; these are follow-on implementation dependencies, not blockers for this record.
+- Current phase: 501; next phase number: 502.
+
+### Acceptance and validation evidence
+
+- [x] The governed contract defines endpoint authority, three channels, operation mapping,
+      per-client capability, replay dedupe, migration compatibility, cursor ownership, device
+      identity, and IMS implications.
+- [x] ADR 0095 records proposed dispositions for all 13 ADR 0075 binding clauses and all five ADR
+      0076 binding clauses, and clearly remains non-binding pending approval.
+- [x] ADR 0014/0043/0075/0076 point to the proposal without silently changing existing web/native
+      policies.
+- [x] `docs/_meta/document-registry.json` includes the governed contract and `docs/INDEX.md` points
+      to it.
+- [x] `npm run lint:docs`, `npm run check:adr`, `npm run check:architecture`,
+      `npm run check:compliance`, `node scripts/check-app-version-bump.js`, and `git diff --check`
+      pass; ADR index is regenerated. Pre-commit hooks also reran compliance and docs lint for the
+      three commit batches.
+
+### Links
+
+- Issue: #1484, child of epic #993; planner handoff: `.tmp/plan-1484.md`, planning head
+  `9d2b6623747e2592f29a944aef50273fa8ef7a86`.
+- Governing inputs: ADR 0014, ADR 0025, ADR 0029, ADR 0031, ADR 0039, ADR 0043, ADR 0045, ADR
+  0075, ADR 0076, ADR 0087, ADR 0088, and
+  `docs/features/POS_MULTI_TERMINAL_CONSISTENCY_MODEL.md`.
+- Cross-repo native client reference:
+  `https://github.com/Sieitzz/dgfy-mobile/blob/develop/docs/architecture/SYNC-ARCHITECTURE.md`.
+- Follow-on ownership: #468 (cursor/tombstone implementation), #800 (terminal identity), #999
+  (web round limiter), #1001/#358 (IMS outcome), and PM for queue drift follow-ups.
+- Implementation: `docs/features/POS_OFFLINE_SYNC_CONTRACT.md`, ADR 0095, ADR 0014/0043/0075/0076,
+  document registry, docs index, generated ADR index, and this ledger.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation change is merged and implementation
+validation passes.
+
+### Post-merge verification
+
+- [ ] governance — obtain tech-lead approval for ADR 0095's proposed binding-clause dispositions
+      before treating them as in force; owner: Pat / platform tech lead.
+- [ ] runtime — PM shapes separate implementation slices for web queue migration, #468 reference
+      cursor adoption, #800 identity, and #999 limiter reconciliation; owner: PM.
+- [ ] drift — PM triages existing web `shift_close` and queued `item_create` behavior against the
+      CP model and OPIS ownership; owner: PM.
+- [ ] IMS — apply the result of #1001/#358 before scheduling any IMS-specific sync work; owner: PM.
+
+### Next phase number
+
+Phase 502. Runtime migration has explicit follow-on dependencies; no implementation is authorized
+by this documentation phase.

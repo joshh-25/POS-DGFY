@@ -54,7 +54,7 @@ import {
     buildLineStockPolicySubject
 } from '../../shared/utils/onlineInventoryEffects.js';
 import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
-import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
+import { dispatchDgfyOrderSmsAlert, getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
@@ -13667,7 +13667,10 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
+export const buildUpdateDeliveryJobStatusUseCase = ({
+    posRepository,
+    dispatchOrderSmsAlert = dispatchDgfyOrderSmsAlert
+}) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
         const cashierId = parsePositiveInt(user?.user_id);
@@ -13958,6 +13961,14 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 transaction
             });
             await transaction.commit();
+            if (currentStatus !== requestedStatus && requestedStatus === 'delivered') {
+                await Promise.resolve().then(() => dispatchOrderSmsAlert({
+                    tenantId: dbStore.getStore()?.tenantId,
+                    order: updatedOrder,
+                    storeCustomer: order.storeCustomer || order.store_customer || null,
+                    event: 'delivered'
+                })).catch(() => null);
+            }
             return ok({
                 ...responsePayload,
                 idempotent_replay: false,

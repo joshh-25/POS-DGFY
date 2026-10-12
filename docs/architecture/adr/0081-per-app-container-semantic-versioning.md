@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-09
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, release_process
 topic: per_app_container_semantic_versioning
@@ -776,7 +776,8 @@ PR: (this PR). Refs #1542.
   dispatch by default meant a retry after one app's Decision 7 refusal re-tripped the SAME guard for
   every app that had already succeeded — resolved by this ADR's 2026-09-05 build-skip Amendment
   above. Both symptoms trace back to the same fact (PROD always rebuilds unconditionally); neither
-  fix loosens Decision 7 itself.
+  fix loosens Decision 7 itself. Its 2026-10-09 no-app-change refresh case is resolved by the
+  Phase 487 amendment below; real-candidate requalification remains post-merge verification.
 - #1560 — the PR-time version-bump check (Decision 9) this ADR hands its enforcement rule to;
   explicitly not implemented by this ADR.
 - [ADR 0072](0072-ghcr-container-image-naming.md) — governs image *names*; this ADR governs tag
@@ -954,3 +955,39 @@ initial minor-floor obligation against that original baseline and rejects a floo
 STAGING. A refresh branch name grants no exception by itself. Missing or unverifiable baseline
 evidence stops v4 conversion; v1-v3 remain valid for their existing workflows. `[default]` — amends
 Decision 6 and Decision 8; Decision 7's immutable-tag invariant is unchanged.
+
+
+### 2026-10-09 — Mid-soak refresh and successor version/artifact lineage (#2381, Phase 486)
+
+A pre-cut staging refresh may use later pinned `develop` work under the existing candidate ID and
+original `promotion_base_sha`. The initial manifest revision may include optional `base_staging_sha`;
+each refresh records its source develop SHA, resulting staging SHA, physical staging base, parent,
+PR, and per-app artifact lineage. New release cuts require a recorded staging observation bound to
+the selected SHA; the validator accepts this field as optional for in-flight v4 compatibility and
+validates it against the release selection when present. A post-cut update uses a new successor
+candidate and fresh immutable per-app artifacts. Its floor is checked against then-current staging,
+so changed apps take the next minor floor from that baseline. Never overwrite or reuse published
+artifact tags for different contents. `[default]` — amends Decisions 6 and 8. Decision 7's
+`[binding]` immutable-tag invariant is unchanged. See #2381 and `RELEASE_CANDIDATE_POLICY.md`'s
+2026-10-09 amendment.
+
+### 2026-10-09 — No-app-change refresh (#1610, Phase 487)
+
+A staging refresh whose content-equivalence build plan selects no app may record both
+`apps_touched: []` and `artifacts: []`. The refresh still advances the candidate's staging history
+and `current_staging_sha`; apps not rebuilt retain their existing artifacts and per-app source-SHA
+lineage. Observation and release qualification remain bound to the new staging SHA, and the
+manifest reason records the skipped-build-plan evidence. This does not change Decision 7's
+`[binding]` immutable-tag rule. `[default]` — amends Decision 8. See #1610 and
+`RELEASE_CANDIDATE_POLICY.md`'s 2026-10-09 amendment.
+
+### 2026-10-09 — Bind live staging runtime evidence to the physical staging head (#2399)
+
+For live staging observation, `observation.candidate_sha` remains bound to the candidate's
+`current_staging_sha` identity, while `observation.runtime_sha` must equal the manifest's required
+`staging_head_sha`, the physical Git head at `origin/staging`. These values can differ because
+candidate source identity and physical staging history serve separate purposes. Per-app candidate
+source resolution, immutable artifact revisions, and promotion parity continue to use their
+existing provenance rules; this change affects only the identity used to verify the running
+staging deployment. `[default]` — amends Decision 8's staging observation contract; Decision 7's
+`[binding]` immutable-tag rule and existing per-app provenance semantics are unchanged. See #2399.

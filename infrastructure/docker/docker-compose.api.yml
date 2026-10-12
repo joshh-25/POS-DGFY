@@ -22,11 +22,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      # The connection installer writes a separate staging file outside the
-      # checkout. Operators pass it as a second --env-file so Compose can
-      # resolve DGLAUNDRY_CONNECTION_CONFIG_DIR for this optional env file.
-      - path: ${DGLAUNDRY_CONNECTION_CONFIG_DIR:-./secrets}/dglaundry-connection.env
-        required: false
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
@@ -37,9 +32,11 @@ services:
       # backend compares its own pool budget against this at boot and
       # warns on a mismatch instead of failing later under load.
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
-      # Keep integration settings in the reviewed connection env file. Do not
-      # duplicate them here: Compose `environment` overrides `env_file` and
-      # would otherwise replace the installer-rendered tmpfs key paths/IDs.
+      # Integration settings are synchronized into the deploy-owned .env by
+      # dglaundry-connection-setup.mjs apply --compose-env-file. Keep the
+      # protected host key directory root-only and mount it read-only below;
+      # do not duplicate integration settings here because `environment`
+      # overrides `env_file` and could replace installer-rendered tmpfs paths/IDs.
       SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}

@@ -6846,11 +6846,12 @@ export default function TerminalOperationsWorkspace({
     || effectiveViewMode === 'reports'
     || SHIFT_WORKSPACE_MODES.has(effectiveViewMode);
   const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
-  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView;
+  const isPricelistManagementView = effectiveViewMode === 'settings_pricelists';
+  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView || isPricelistManagementView;
   const workspaceShellClassName = usesOwnPageFrame
     ? 'p-0'
     : isFullBleedCatalogView
-      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-vouchers-workspace-shell'}`
+      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-catalog-workspace-shell'}`
       : 'p-5';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;

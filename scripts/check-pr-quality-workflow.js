@@ -35,7 +35,6 @@ const REQUIRED_QUALITY_MARKERS = [
   'node scripts/post-quality-suite-evidence.js --run-id',
   'npm run test:quality-evidence',
   'node scripts/run-backend-test-matrix.js',
-  '--detectOpenHandles',
   'npm run audit:indexes',
   'npm run lint:docs',
   'npm run check:compat-seams',
@@ -119,6 +118,64 @@ function checkOperatorDispatchShape(qualityWorkflowText) {
   if (/^\s*(pull_request|workflow_call):/m.test(triggerBlock)) problems.push('promotion-quality-gate.yml: automatic pull_request and reusable workflow_call triggers are not allowed');
   const activeLines = qualityWorkflowText.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
   if (/is_staging_leg|needs\.gate|^  gate:/m.test(activeLines)) problems.push('promotion-quality-gate.yml: obsolete promotion detection and staging-leg gating must be removed');
+  return problems;
+}
+
+function checkSelectiveDispatchShape(qualityWorkflowText) {
+  const problems = [];
+  const dispatch = qualityWorkflowText.match(/^on:\n([\s\S]*?)(?=^concurrency:|^jobs:)/m)?.[1] || '';
+  const selection = dispatch.match(/^      test_selection:\n([\s\S]*?)(?=^      [A-Za-z0-9_-]+:|$(?![\s\S]))/m)?.[1] || '';
+  if (!selection.includes('type: choice') || !/^        default: full\s*$/m.test(selection)) {
+    problems.push('promotion-quality-gate.yml: test_selection must default to the full quality suite');
+  }
+  if (!/^          - full\s*$/m.test(selection) || !/^          - api_db_chunks\s*$/m.test(selection)) {
+    problems.push('promotion-quality-gate.yml: test_selection must offer full and api_db_chunks modes');
+  }
+  const runner = dispatch.match(/^      api_db_runner:\n([\s\S]*?)(?=^      [A-Za-z0-9_-]+:|$(?![\s\S]))/m)?.[1] || '';
+  if (!runner.includes('type: choice') || !/^        default: sieitz-lg\s*$/m.test(runner)
+    || !/^          - sieitz-lg\s*$/m.test(runner) || !/^          - sieitz-runner\s*$/m.test(runner)) {
+    problems.push('promotion-quality-gate.yml: api_db_runner must default to and allow only self-hosted runners');
+  }
+  if (!dispatch.includes('api_db_targets:')) {
+    problems.push('promotion-quality-gate.yml: api_db_targets input is required for selective DB dispatch');
+  }
+
+  const targetJob = findJobBlock(qualityWorkflowText, 'dgfy-api-selected-db-tests');
+  if (!targetJob) {
+    problems.push('promotion-quality-gate.yml: dgfy-api-selected-db-tests job is required');
+  } else {
+    if (!targetJob.includes("if: ${{ inputs.test_selection == 'api_db_chunks' }}")) {
+      problems.push('promotion-quality-gate.yml: selected DB job must run only for api_db_chunks');
+    }
+    if (!targetJob.includes("runs-on: ${{ inputs.api_db_runner || 'sieitz-lg' }}")) {
+      problems.push('promotion-quality-gate.yml: selected DB job must default to a self-hosted runner');
+    }
+    if (!targetJob.includes('node scripts/run-backend-test-matrix.js')
+      || !targetJob.includes('--tier db --group')
+      || !targetJob.includes('args+=(--chunk "$chunk")')) {
+      problems.push('promotion-quality-gate.yml: selected DB job must run validated DB group/chunk targets');
+    }
+    if (!targetJob.includes('vmstat 1') || !targetJob.includes('free -h')
+      || !targetJob.includes('uses: ./.github/actions/upload-evidence')
+      || !targetJob.includes("tee -a \"$GITHUB_STEP_SUMMARY\"")
+      || !targetJob.includes('backend_test_matrix_${group}_${chunk_label}.json')
+      || !targetJob.includes('results.testResults')) {
+      problems.push('promotion-quality-gate.yml: selected DB job must capture runner telemetry, preserve each selected matrix, report every suite, and store evidence through the shared upload action');
+    }
+  }
+
+  for (const jobName of QUALITY_JOBS) {
+    const block = findJobBlock(qualityWorkflowText, jobName);
+    if (block && !block.includes("if: ${{ inputs.test_selection == 'full' }}")) {
+      problems.push(`promotion-quality-gate.yml: ${jobName} must be limited to the full selection`);
+    }
+  }
+  for (const jobName of ['report-quality-evidence', 'salvage-api-evidence']) {
+    const block = findJobBlock(qualityWorkflowText, jobName);
+    if (!block || !block.includes("inputs.test_selection == 'full'")) {
+      problems.push(`promotion-quality-gate.yml: ${jobName} must be limited to the full selection`);
+    }
+  }
   return problems;
 }
 
@@ -228,13 +285,17 @@ function checkBackendMatrixResourceGuards(qualityWorkflowText) {
   return problems;
 }
 
-function checkPrQualityWorkflow({ prChecksText, qualityWorkflowText }) {
+function checkPrQualityWorkflow({ prChecksText, qualityWorkflowText, backendMatrixScriptText }) {
   return [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
     ...REQUIRED_QUALITY_MARKERS.filter((marker) => !qualityWorkflowText.includes(marker)).map((marker) => `promotion-quality-gate.yml:${marker}`),
+    ...(!backendMatrixScriptText.includes('--detectOpenHandles')
+      ? ['scripts/run-backend-test-matrix.js must retain --detectOpenHandles coverage']
+      : []),
     ...checkRunnerCacheConsistency(prChecksText),
     ...checkDevelopPrLintJobMapping(prChecksText),
     ...checkOperatorDispatchShape(qualityWorkflowText),
+    ...checkSelectiveDispatchShape(qualityWorkflowText),
     ...checkBackendMatrixResourceGuards(qualityWorkflowText),
     ...checkAllStepsAdvisory(qualityWorkflowText),
     ...checkQualityReporterShape(qualityWorkflowText),
@@ -246,6 +307,7 @@ function main() {
   const problems = checkPrQualityWorkflow({
     prChecksText: read('.github/workflows/pr-checks.yml'),
     qualityWorkflowText: read('.github/workflows/promotion-quality-gate.yml'),
+    backendMatrixScriptText: read('scripts/run-backend-test-matrix.js'),
   });
   if (problems.length) {
     console.error('[pr-quality-workflow] FAILED');
@@ -260,6 +322,7 @@ if (require.main === module) main();
 module.exports = {
   checkPrQualityWorkflow,
   checkOperatorDispatchShape,
+  checkSelectiveDispatchShape,
   checkAllStepsAdvisory,
   checkQualityReporterShape,
   checkQualityJobFailureWiring,

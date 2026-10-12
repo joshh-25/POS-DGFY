@@ -2,6 +2,55 @@
   "version": 1,
   "seams": [
     {
+      "id": "oidc-dglaundry-env-client-source",
+      "type": "api-boundary",
+      "status": "active",
+      "rationale": "The legacy DGLaundry browser and machine client registrations are synthesized from the existing environment settings only when no registry row exists, preserving hosted compatibility during the registry cutover.",
+      "tests": [
+        "apps/dgfy-api/tests/dgfyLaundryOidcProvider.keys.test.js",
+        "apps/dgfy-api/tests/dgfyLaundryMachineTokenAuth.test.js",
+        "apps/dgfy-api/tests/productionEnvValidation.test.js"
+      ],
+      "rollback": "Restore the prior DGLaundry provider/router implementation and its environment-backed client checks; no client registry rows are modified by this adapter.",
+      "removal_criteria": "All DGLaundry deployments use approved active registry client rows with independently managed credentials, the environment client triple is no longer read, rollback is exercised, and provider compatibility evidence is accepted by the DGLaundry contract owner."
+    },
+    {
+      "id": "oidc-dglaundry-company-context",
+      "type": "api-boundary",
+      "status": "active",
+      "rationale": "DGLaundry continues receiving its existing dglaundry_company_context through an injected provider adapter while generic clients receive only standard OIDC claims.",
+      "tests": [
+        "apps/dgfy-api/tests/dgfyLaundryOidcProvider.keys.test.js"
+      ],
+      "rollback": "Restore the previous DGLaundry claim builder in the provider and route through the compatibility adapter without changing the authoritative DGLaundry contract.",
+      "removal_criteria": "DGLaundry accepts the reviewed replacement context, all token consumers have migrated, tenant/location isolation is proven, rollback is exercised, and the ADR 0035 seam review accepts the evidence."
+    },
+    {
+      "id": "oidc-dglaundry-old-path-reexports",
+      "type": "build-time",
+      "status": "active",
+      "rationale": "Thin re-export shims preserve imports used by existing DGLaundry routes, order-token signing, attestation, and tests while ownership moves to partnerIdentity.",
+      "tests": [
+        "apps/dgfy-api/tests/dgfyLaundryOidcProvider.keys.test.js",
+        "apps/dgfy-api/tests/dglaundryPartnerAccessToken.test.js",
+        "apps/dgfy-api/tests/dglaundryPartnerAuth.test.js"
+      ],
+      "rollback": "Restore the moved implementation at the previous module paths and repoint partnerIdentity consumers; no schema changes are needed for source rollback.",
+      "removal_criteria": "No runtime importer, test mock, or operational tooling references the legacy provider, key registry, key repository, or OIDC route paths."
+    },
+    {
+      "id": "oidc-dglaundry-partner-routes",
+      "type": "api-boundary",
+      "status": "active",
+      "rationale": "The vendor-namespaced /api/v1/partners/dglaundry routes remain unchanged under their authoritative DGLaundry contract while only the shared /oidc provider is generalized.",
+      "tests": [
+        "apps/dgfy-api/tests/dglaundryPartnerAuth.test.js",
+        "apps/dgfy-api/tests/dglaundryRuntimeAttestation.test.js"
+      ],
+      "rollback": "No route rollback is needed for this change; if a later generic route cutover is attempted, restore traffic to the existing DGLaundry router.",
+      "removal_criteria": "A separately reviewed route migration proves all DGLaundry clients use the replacement namespace, preserves the authoritative contract, and meets its explicit rollback and operational qualification gates."
+    },
+    {
       "id": "db-continuity-legacy-backup",
       "type": "db-level",
       "status": "removed",

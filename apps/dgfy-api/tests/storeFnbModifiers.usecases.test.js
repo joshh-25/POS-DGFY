@@ -71,6 +71,7 @@ const buildCheckoutUseCase = (repository, dependencies = {}) => {
     storeRepository: repository,
     revenueSharingEnabled: false,
     recordOrderActivity: jest.fn().mockResolvedValue(null),
+    dispatchOrderSmsAlert: jest.fn().mockResolvedValue(null),
     ...dependencies
   });
 
@@ -649,6 +650,77 @@ describe('storefront F&B modifier checkout contract', () => {
     }), expect.objectContaining({
       transaction: expect.any(Object)
     }));
+  });
+
+  it('dispatches guest order alerts after activity recording and keeps checkout successful on alert failure', async () => {
+    const sequence = [];
+    const transaction = createTransaction();
+    transaction.commit = jest.fn(async () => {
+      sequence.push('commit');
+      transaction.finished = true;
+    });
+    const repository = buildRepository([burgerItem], {
+      beginTransaction: jest.fn().mockResolvedValue(transaction),
+      findCustomerByEmail: jest.fn().mockResolvedValue(null),
+      getOrderById: jest.fn().mockResolvedValue({
+        pos_transaction_id: 501,
+        tracking_pin: 'SK-ABC123',
+        invoice_number: 'INV-000001',
+        order_source: 'online_store',
+        order_method: 'pickup',
+        fulfillment_status: 'placed',
+        status: 'completed',
+        customer_name: 'Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        store_customer_id: null,
+        total_amount: 100,
+        lines: []
+      })
+    });
+    const recordOrderActivity = jest.fn(async () => { sequence.push('activity'); });
+    const dispatchOrderSmsAlert = jest.fn(async (input) => {
+      sequence.push('sms');
+      expect(input).toMatchObject({
+        tenantId,
+        event: 'placed',
+        storeCustomer: null,
+        order: { pos_transaction_id: 501, customer_phone: '09170000000' }
+      });
+      throw new Error('sender unavailable');
+    });
+    const useCase = buildCheckoutUseCase(repository, { recordOrderActivity, dispatchOrderSmsAlert });
+    const payload = {
+      idempotency_key: 'guest-sms-checkout',
+      location_id: 4,
+      order_method: 'pickup',
+      payment_type: 'cash',
+      customer_name: 'Guest',
+      customer_phone: '09170000000',
+      customer_email: 'guest@example.test',
+      lines: [{ item_id: 20, quantity: 1 }]
+    };
+
+    const first = await useCase({ tenantId, payload });
+    const requestHash = repository.createOnlineTransactionWithLines.mock.calls[0][0].header.request_hash;
+    repository.findTransactionByIdempotencyKey.mockResolvedValue({
+      pos_transaction_id: 501,
+      tracking_pin: 'SK-ABC123',
+      invoice_number: 'INV-000001',
+      order_source: 'online_store',
+      order_method: 'pickup',
+      fulfillment_status: 'placed',
+      status: 'completed',
+      request_hash: requestHash,
+      lines: []
+    });
+    const replay = await useCase({ tenantId, payload });
+
+    expect(first.success).toBe(true);
+    expect(replay.success).toBe(true);
+    expect(replay.data.idempotent_replay).toBe(true);
+    expect(sequence).toEqual(['commit', 'activity', 'sms', 'commit', 'activity', 'sms']);
+    expect(dispatchOrderSmsAlert).toHaveBeenCalledTimes(2);
   });
 
   it('allows checkout with a price-only modifier when strict inventory reservation is enabled', async () => {

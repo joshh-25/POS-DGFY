@@ -72,8 +72,12 @@ const run = (callback) => {
     return dbStore.run({ tenantId: 'delivery-job-test', sequelize }, callback);
 };
 
-const updateStatus = (repository, status, idempotencyKey = null) => {
-    const useCase = buildUpdateDeliveryJobStatusUseCase({ posRepository: repository });
+const updateStatus = (repository, status, idempotencyKey = null, dependencies = {}) => {
+    const useCase = buildUpdateDeliveryJobStatusUseCase({
+        posRepository: repository,
+        dispatchOrderSmsAlert: jest.fn().mockResolvedValue(null),
+        ...dependencies
+    });
     return run(() => useCase({
         posTransactionId: 44,
         payload: { status, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) },
@@ -140,6 +144,42 @@ describe('POS manual delivery job status', () => {
         expect(repository.deliveryJob).toMatchObject({ status: 'delivered' });
         expect(repository.deliveryJob.delivered_at).toEqual(expect.any(Date));
         expect(repository.audit).toHaveLength(2);
+    });
+
+    it('dispatches one delivered alert after commit and ignores replay/no-change while swallowing failures', async () => {
+        const repository = buildRepository({
+            deliveryJob: {
+                status: 'picked_up',
+                delivery_personnel_id: 21,
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: new Date('2026-08-08T10:00:00.000Z')
+            },
+            storeCustomer: { phone: '09171234567' }
+        });
+        let transactionFinishedAtDispatch = false;
+        const dispatchOrderSmsAlert = jest.fn(async (input) => {
+            transactionFinishedAtDispatch = repository.deliveryJob.status === 'delivered';
+            expect(input).toMatchObject({
+                tenantId: 'delivery-job-test',
+                event: 'delivered',
+                storeCustomer: { phone: '09171234567' },
+                order: { pos_transaction_id: 44 }
+            });
+            throw new Error('best-effort alert failure');
+        });
+
+        const first = await updateStatus(repository, 'delivered', 'delivery-alert-001', { dispatchOrderSmsAlert });
+        const replay = await updateStatus(repository, 'delivered', 'delivery-alert-001', { dispatchOrderSmsAlert });
+        const noChange = await updateStatus(repository, 'delivered', null, { dispatchOrderSmsAlert });
+
+        expect(first.success).toBe(true);
+        expect(replay.success).toBe(true);
+        expect(replay.data.idempotent_replay).toBe(true);
+        expect(noChange.success).toBe(true);
+        expect(noChange.data.status_transition.outcome).toBe('no_change');
+        expect(dispatchOrderSmsAlert).toHaveBeenCalledTimes(1);
+        expect(transactionFinishedAtDispatch).toBe(true);
     });
 
     it('rejects skipping a manual delivery lifecycle state without mutating the job', async () => {

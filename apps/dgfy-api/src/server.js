@@ -59,6 +59,10 @@ import {
   stopBusinessAdminAlertScheduler
 } from './schedulers/businessAdminAlertScheduler.js';
 import {
+  startSmsDeliveryRetentionScheduler,
+  stopSmsDeliveryRetentionScheduler
+} from './schedulers/smsDeliveryRetentionScheduler.js';
+import {
   startGeoInventoryWorker,
   stopGeoInventoryWorker
 } from './workers/geoInventoryWorker.js';
@@ -94,6 +98,7 @@ import {
   stopStorefrontDomainMaintenanceScheduler
 } from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
 import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
+import { resolvePartnerCorsOrigin } from './modules/partnerIdentity/services/partnerOriginResolver.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 
@@ -344,6 +349,17 @@ const resolveCorsAllowed = async (origin, req = {}) => {
 const corsOptionsDelegate = async (req, callback) => {
   const origin = req.headers.origin || null;
   const allowed = await resolveCorsAllowed(origin, req);
+
+  if (!allowed && await resolvePartnerCorsOrigin(origin, req).catch(() => false)) {
+    callback(null, {
+      origin: true,
+      credentials: false,
+      methods: ['GET', 'HEAD', 'OPTIONS'],
+      optionsSuccessStatus: 200,
+      exposedHeaders: ['Content-Disposition', 'Content-Length', 'x-request-id', 'x-trace-id']
+    });
+    return;
+  }
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
@@ -756,14 +772,14 @@ import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
 import registrationRoutes from './routes/registration.js';
 import dgfyLaundryRoutes from './routes/dgfyLaundry.js';
-import dgfyLaundryOidcRoutes from './routes/dgfyLaundryOidc.js';
+import oidcRoutes from './routes/oidc.js';
 import dgfyLaundryOrderRoutes from './routes/dgfyLaundryOrders.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use(dgfyLaundryOrderRoutes);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/partners/dglaundry', dgfyLaundryRoutes);
-app.use('/oidc', oidcLimiter, dgfyLaundryOidcRoutes);
+app.use('/oidc', oidcLimiter, oidcRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
 app.use('/api/v1/geo', routeCalculatorRoutes);
 // Public - no tenant context needed, called before any tenant exists (all
@@ -807,7 +823,11 @@ import storeRoutes from './routes/store.js';
 import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
+import adminTenantIntakeRoutes from './routes/adminTenantIntake.js';
 import platformAdminRoutes from './routes/platformAdmins.js';
+import partnerIntegrationRoutes from './routes/partnerIntegrations.js';
+import partnerAttachmentRoutes from './routes/partnerAttachments.js';
+import smsMarketingConsentRoutes from './routes/smsMarketingConsent.js';
 import adminInvoiceRoutes from './routes/adminInvoices.js';
 import adminTemplateRoutes from './routes/adminTemplates.js';
 import adminRegistrationIndustryRoutes from './routes/adminRegistrationIndustries.js';
@@ -856,12 +876,16 @@ app.use('/api/v1/commerce-payments', commercePaymentRoutes);
 app.use('/api/v1/tenant-revenue', tenantRevenueRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
+app.use('/api/v1/admin/tenant-intake', adminTenantIntakeRoutes);
 app.use('/api/v1/admin/platform-admins', platformAdminRoutes);
+app.use('/api/v1/admin/partner-integrations', partnerIntegrationRoutes);
 app.use('/api/v1/admin/invoices', adminInvoiceRoutes);
 app.use('/api/v1/admin/templates', adminTemplateRoutes);
 app.use('/api/v1/admin/registration-industries', adminRegistrationIndustryRoutes);
 
 app.use('/api/v1/admin', adminAuthRoutes);
+app.use('/api/v1/partner-attachments', partnerAttachmentRoutes);
+app.use('/api/v1/sms', smsMarketingConsentRoutes);
 app.use('/api/v1/compliance', complianceRoutes);
 app.use('/api/v1/onboarding', onboardingRoutes);
 app.use('/api/v1/business-admin', businessAdminRoutes);
@@ -996,6 +1020,7 @@ const startServer = async () => {
     startStorefrontDiscoveryIndexReconciliationScheduler();
     startTenantProvisioningReconciliationScheduler();
     startBusinessAdminAlertScheduler();
+    startSmsDeliveryRetentionScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
@@ -1087,6 +1112,7 @@ const startServer = async () => {
       stopStorefrontDiscoveryIndexReconciliationScheduler();
       stopTenantProvisioningReconciliationScheduler();
       stopBusinessAdminAlertScheduler();
+      stopSmsDeliveryRetentionScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       if (MENU_IMPORT_BATCH_ENABLED) {

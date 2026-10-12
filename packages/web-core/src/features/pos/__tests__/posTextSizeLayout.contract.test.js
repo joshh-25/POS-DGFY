@@ -10,6 +10,7 @@ const readSource = (relativePath) => fs.readFileSync(path.resolve(__dirname, rel
 
 describe('POS text-size layout hardening contracts', () => {
     let checkoutSource = '';
+    let currentSaleActionsSource = '';
     let itemsSource = '';
     let layoutSource = '';
     let textSizeControlSource = '';
@@ -25,6 +26,7 @@ describe('POS text-size layout hardening contracts', () => {
             readSource('../hooks/usePosCatalogWorkflow.js'),
             readSource('../utils/posCatalogWorkflow.js'),
         ].join('\n');
+        currentSaleActionsSource = readSource('../components/PosCurrentSaleActions.jsx');
         itemsSource = readSource('../components/TerminalOperationsWorkspace.jsx');
         layoutSource = readSource('../components/TerminalPageLayout.jsx');
         textSizeControlSource = readSource('../components/PosTextSizeControl.jsx');
@@ -48,6 +50,24 @@ describe('POS text-size layout hardening contracts', () => {
         expect(sidebarSource).toContain('break-words whitespace-normal line-clamp-2 text-[10.5px]');
         expect(checkoutSource).toContain('block max-w-full line-clamp-2 text-[13px]');
         expect(checkoutSource).toContain('break-words line-clamp-2 text-[10px]');
+    });
+
+    it('keeps Sell action labels readable at every POS text size', () => {
+        expect(currentSaleActionsSource).toContain(
+            "const actionLabelClassName = 'w-full min-w-0 break-words text-center text-[11px] font-extrabold leading-[1.15] line-clamp-2 sm:text-xs';"
+        );
+        expect(currentSaleActionsSource).toContain('flex h-auto min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
+        expect(currentSaleActionsSource).not.toContain('whitespace-nowrap text-center text-[10px]');
+        expect(appStyles).toContain('height: max(3.5rem, calc(3.5rem * var(--pos-text-size-scale, 1)));');
+        expect(appStyles).toContain('min-height: max(3.5rem, calc(3.5rem * var(--pos-text-size-scale, 1)));');
+        expect(appStyles).toContain('max-height: max(3.5rem, calc(3.5rem * var(--pos-text-size-scale, 1)));');
+        expect(appStyles).toContain('body[data-pos-text-size="normal"] .dgfy-pos-current-sale-actions > button');
+        expect(appStyles).toContain('padding: 0.25rem;');
+        expect(appStyles).toContain('line-height: 0.875rem;');
+        expect(appStyles).toContain('screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px)');
+        expect(appStyles).toContain('white-space: normal;');
+        expect(appStyles).toContain('line-height: calc(0.875rem * var(--pos-text-size-scale, 1));');
+        expect(appStyles).toContain('font-size: calc(0.6875rem * var(--pos-text-size-scale, 1));');
     });
 
     it('keeps dialogs and history actions bounded and scrollable at larger text sizes', () => {

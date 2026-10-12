@@ -244,10 +244,145 @@ test('v4: refresh history invalidates selection during refresh and resolves refr
     }],
     current_staging_sha: SHA('d'),
   });
-  assert.equal(validatePromotionCandidate(manifest).refresh_count, 1);
+  const result = validatePromotionCandidate(manifest);
+  assert.equal(result.refresh_count, 1);
+  assert.equal(result.active_staging_sha, null);
+  assert.deepEqual(result.superseded_staging_shas, [SHA('a'), SHA('b'), SHA('c'), SHA('d')]);
+  assert.equal(result.staging_observation_current, false);
   assert.equal(getActiveCandidateSha(manifest), null);
   assert.equal(resolveCandidateSourceShaByApp(manifest)['dgfy-pos'], SHA('d'));
   assert.equal(resolveCandidateSourceShaByApp(manifest)['dgfy-ims'], SHA('b'));
+});
+
+test('v4: accepts a no-app-change refresh and keeps every app on its prior source SHA', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+    status: 'staging_soak', release_revision: null,
+    staging_refresh: [{
+      refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('d'), parent_sha: SHA('c'), base_staging_sha: SHA('9'),
+      branch: 'to-staging/2026-09-04-01-refresh-1', pr: 2027,
+      reason: 'No app inputs changed; skipped build plan: https://github.com/Sieitzz/dgfy-platform/actions/runs/123',
+      apps_touched: [], artifacts: [],
+    }],
+    current_staging_sha: SHA('d'), staging_head_sha: SHA('d'),
+  });
+
+  const result = validatePromotionCandidate(manifest);
+  assert.equal(result.current_staging_sha, SHA('d'));
+  assert.equal(result.active_staging_sha, SHA('d'));
+  assert.equal(getActiveCandidateSha(manifest), SHA('d'));
+  assert.deepEqual(resolveCandidateSourceShaByApp(manifest), {
+    'dgfy-api': SHA('c'),
+    'dgfy-migration-runner': SHA('c'),
+    'dgfy-ims': SHA('b'),
+    'dgfy-pos': SHA('a'),
+    'dgfy-storefront': SHA('a'),
+    'dgfy-opis': SHA('a'),
+    'dgfy-admin': SHA('a'),
+  });
+});
+
+test('v4: release cut after an empty refresh stays bound to the new staging SHA', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+    status: 'qualified', staging_head_sha: SHA('d'),
+    staging_refresh: [{
+      refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('d'), parent_sha: SHA('c'), base_staging_sha: SHA('9'),
+      branch: 'to-staging/2026-09-04-01-refresh-1', pr: 2027,
+      reason: 'No app inputs changed; skipped build plan: https://github.com/Sieitzz/dgfy-platform/actions/runs/123',
+      apps_touched: [], artifacts: [],
+    }],
+    current_staging_sha: SHA('d'),
+    staging_observation: { sha: SHA('d'), run_id: 123, observed_at: '2026-10-09T00:00:00Z', result: 'pass' },
+  });
+  manifest.release_revision = {
+    source_staging_sha: SHA('d'), branch: 'release/2026-09-04-01', pr: 2028,
+    apps: structuredClone(candidateV3().release_revision.apps),
+  };
+
+  const result = validatePromotionCandidate(manifest);
+  assert.deepEqual(result.release_revision, manifest.release_revision.apps);
+  assert.equal(result.current_staging_sha, SHA('d'));
+  assert.equal(result.staging_observation_current, true);
+  assert.equal(manifest.release_revision.apps['dgfy-ims'].source_sha, SHA('b'));
+  assert.equal(manifest.release_revision.apps['dgfy-api'].source_sha, SHA('c'));
+  assert.equal(manifest.release_revision.apps['dgfy-migration-runner'].source_sha, SHA('c'));
+
+  const staleObservation = structuredClone(manifest);
+  staleObservation.staging_observation.sha = SHA('c');
+  assert.throws(() => validatePromotionCandidate(staleObservation), /must match release_revision.source_staging_sha/);
+});
+
+test('v4: refresh accepts empty app/artifact arrays only together and preserves paired backend selection', () => {
+  const base = () => candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+    status: 'staging_soak', release_revision: null,
+    staging_refresh: [{
+      refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('d'), parent_sha: SHA('c'), base_staging_sha: SHA('9'),
+      branch: 'to-staging/2026-09-04-01-refresh-1', pr: 2027, reason: 'refresh',
+      apps_touched: [], artifacts: [],
+    }],
+    current_staging_sha: SHA('d'),
+  });
+  const withUnselectedArtifact = base();
+  withUnselectedArtifact.staging_refresh[0].artifacts = [{ app: 'dgfy-pos', revision: 2, source_sha: SHA('d'), digest: DIGEST('8'), origin: 'staging_refresh' }];
+  assert.throws(() => validatePromotionCandidate(withUnselectedArtifact), /artifact for untouched app dgfy-pos/);
+
+  const missingArtifact = base();
+  missingArtifact.staging_refresh[0].apps_touched = ['dgfy-pos'];
+  assert.throws(() => validatePromotionCandidate(missingArtifact), /missing artifact for touched app dgfy-pos/);
+
+  const oneSidedPair = base();
+  oneSidedPair.staging_refresh[0].apps_touched = ['dgfy-api'];
+  assert.throws(() => validatePromotionCandidate(oneSidedPair), /must list dgfy-api and dgfy-migration-runner together or not at all/);
+});
+
+test('v4: initial promotion and staging repair still reject empty apps_touched', () => {
+  const initial = candidateV3({ schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e') });
+  initial.revisions[0].apps_touched = [];
+  assert.throws(() => validatePromotionCandidate(initial), /must declare a non-empty apps_touched array/);
+
+  const repair = candidateV3({ schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e') });
+  repair.revisions[1].apps_touched = [];
+  assert.throws(() => validatePromotionCandidate(repair), /must declare a non-empty apps_touched array/);
+});
+
+test('v4: reports active and superseded staging selections and marks old observation stale', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'), status: 'staging_soak', release_revision: null,
+    staging_refresh: [{ refresh_seq: 1, source_develop_sha: SHA('f'), sha: SHA('d'), parent_sha: SHA('c'), base_staging_sha: SHA('9'), branch: 'to-staging/2026-09-04-01-refresh-1', pr: 1, reason: 'later develop update', apps_touched: ['dgfy-pos'], artifacts: [{ app: 'dgfy-pos', revision: 2, source_sha: SHA('d'), digest: DIGEST('8'), origin: 'staging_refresh' }] }],
+    current_staging_sha: SHA('d'),
+    revisions: [{ ...candidateV3().revisions[0], base_staging_sha: SHA('8') }, ...candidateV3().revisions.slice(1)],
+    staging_observation: { sha: SHA('c'), run_id: 123, observed_at: '2026-10-09T00:00:00Z', result: 'pass' },
+  });
+  const result = validatePromotionCandidate(manifest);
+  assert.equal(result.active_staging_sha, SHA('d'));
+  assert.deepEqual(result.superseded_staging_shas, [SHA('a'), SHA('b'), SHA('c')]);
+  assert.equal(result.initial_base_staging_sha, SHA('8'));
+  assert.equal(result.staging_observation_current, false);
+});
+
+test('v4: observation is optional for legacy manifests and must match a recorded release cut', () => {
+  const legacy = candidateV3({ schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e') });
+  assert.equal(validatePromotionCandidate(legacy).staging_observation_current, false);
+
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'),
+    staging_observation: { sha: SHA('c'), run_url: 'https://github.com/Sieitzz/dgfy-platform/actions/runs/123', observed_at: '2026-10-09T00:00:00Z', result: 'pass' },
+  });
+  assert.equal(validatePromotionCandidate(manifest).staging_observation_current, true);
+  manifest.staging_observation.sha = SHA('b');
+  assert.throws(() => validatePromotionCandidate(manifest), /must match release_revision.source_staging_sha/);
+});
+
+test('v4: validates optional predecessor candidate and initial physical staging base', () => {
+  const manifest = candidateV3({
+    schema: 'sku-release-candidate/v4', promotion_base_sha: SHA('e'), predecessor_candidate_id: '2026-10-08-02',
+    revisions: [{ ...candidateV3().revisions[0], base_staging_sha: SHA('9') }, ...candidateV3().revisions.slice(1)],
+  });
+  assert.equal(validatePromotionCandidate(manifest).initial_base_staging_sha, SHA('9'));
+  manifest.predecessor_candidate_id = manifest.candidate_id;
+  assert.throws(() => validatePromotionCandidate(manifest), /must differ from candidate_id/);
 });
 
 test('v4: rejects branch-name-only refresh bypass and duplicate refresh SHA', () => {

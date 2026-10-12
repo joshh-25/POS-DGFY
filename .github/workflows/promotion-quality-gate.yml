@@ -25,6 +25,30 @@ on:
         type: string
         # default: '["ubuntu-latest"]'
         default: '["sieitz-runner"]'
+      test_selection:
+        description: Full runs every quality job by default; api_db_chunks runs only selected API DB groups/chunks.
+        required: true
+        type: choice
+        options:
+          - full
+          - api_db_chunks
+        default: full
+      api_db_runner:
+        description: Self-hosted runner for selected dgfy-api DB chunks.
+        required: false
+        type: choice
+        options:
+          - sieitz-lg
+          - sieitz-runner
+        default: sieitz-lg
+      api_db_targets:
+        description: >-
+          Comma-separated DB group selectors for api_db_chunks, such as
+          inventory_reporting_operations:1,tenant_storefront_modes:1. Omit :N to run every chunk
+          in a group. Valid groups are listed by node scripts/run-backend-test-matrix.js --list-groups.
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   # Each operator dispatch has its own group; a later dispatch does not cancel an earlier run.
@@ -32,7 +56,281 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  dgfy-api-selected-db-tests:
+    if: ${{ inputs.test_selection == 'api_db_chunks' }}
+    runs-on: ${{ inputs.api_db_runner || 'sieitz-lg' }}
+    timeout-minutes: 45
+    steps:
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        continue-on-error: true
+        id: workspace_hygiene_clear
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - uses: actions/checkout@v7
+        continue-on-error: true
+        id: checkout
+        with:
+          fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        continue-on-error: true
+        id: workspace_hygiene_assert
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Setup Node.js
+        continue-on-error: true
+        id: setup_node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            apps/dgfy-api/package-lock.json
+            apps/dgfy-migration-runner/package-lock.json
+
+      - name: Install API dependencies
+        continue-on-error: true
+        id: install_api_deps
+        working-directory: apps/dgfy-api
+        run: npm ci
+
+      - name: Install migration-runner dependencies
+        continue-on-error: true
+        id: install_migration_runner_deps
+        working-directory: apps/dgfy-migration-runner
+        run: npm ci
+
+      - name: Start test services
+        continue-on-error: true
+        id: start_services
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker ps -aq --filter "label=dgfy-ci-quality-gate=1" | xargs -r docker rm -f
+          docker run -d --name "$MYSQL_CONTAINER" \
+            --label dgfy-ci-quality-gate=1 \
+            -e MYSQL_ROOT_PASSWORD=testpassword \
+            -e MYSQL_DATABASE=sku_inventory_manager_test \
+            -p 3306:3306 \
+            mysql:8.0
+          docker run -d --name "$REDIS_CONTAINER" \
+            --label dgfy-ci-quality-gate=1 \
+            -p 6379:6379 \
+            redis:7-alpine
+
+      - name: Wait for test services
+        continue-on-error: true
+        id: wait_services
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mysql_ready=0
+          redis_ready=0
+          for _ in $(seq 1 12); do
+            if docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword; then mysql_ready=1; break; fi
+            sleep 10
+          done
+          for _ in $(seq 1 12); do
+            if docker exec "$REDIS_CONTAINER" redis-cli ping; then redis_ready=1; break; fi
+            sleep 10
+          done
+          [ "$mysql_ready" -eq 1 ] && [ "$redis_ready" -eq 1 ]
+
+      - name: Capture selected DB chunks and runner telemetry
+        continue-on-error: true
+        id: run_selected_db_chunks
+        env:
+          API_DB_TARGETS: ${{ inputs.api_db_targets }}
+          NODE_ENV: test
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://127.0.0.1:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          BACKEND_TEST_TENANT_TIMING: '1'
+          RELEASE_TARGET_SHA: ${{ github.sha }}
+          RELEASE_GATES_EVIDENCE_ROOT: ${{ github.workspace }}/.tmp/api-db-runtime-probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_GATES_EVIDENCE_ROOT/runner"
+          HEALTH_FILE="$RELEASE_GATES_EVIDENCE_ROOT/runner/health.txt"
+          VMSTAT_FILE="$RELEASE_GATES_EVIDENCE_ROOT/runner/vmstat.log"
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo "runner=${RUNNER_NAME:-unknown}"
+            echo "started_at=$(date -Is)"
+            echo "--- uptime ---"
+            uptime || true
+            echo "--- free -h ---"
+            free -h || true
+          } > "$HEALTH_FILE"
+          VMSTAT_PID=""
+          if command -v vmstat >/dev/null 2>&1; then
+            vmstat 1 > "$VMSTAT_FILE" &
+            VMSTAT_PID=$!
+          else
+            echo "vmstat=unavailable" > "$VMSTAT_FILE"
+          fi
+          finish_telemetry() {
+              if [ -n "$VMSTAT_PID" ]; then
+              kill "$VMSTAT_PID" 2>/dev/null || true
+              wait "$VMSTAT_PID" 2>/dev/null || true
+              fi
+              {
+                echo "finished_at=$(date -Is)"
+                echo "--- uptime ---"
+                uptime || true
+                echo "--- free -h ---"
+                free -h || true
+              } >> "$HEALTH_FILE"
+              echo "### Selected DB runner health"
+              cat "$HEALTH_FILE" | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "### Selected DB vmstat samples"
+              cat "$VMSTAT_FILE" | tee -a "$GITHUB_STEP_SUMMARY"
+              MATRIX_DIR="$RELEASE_GATES_EVIDENCE_ROOT/$RELEASE_TARGET_SHA/backend-test-matrix"
+              echo "### Tenant setup and cleanup timings"
+              if ! grep -h '\[TestTenantTiming\]' "$MATRIX_DIR"/*.log | tee -a "$GITHUB_STEP_SUMMARY"; then
+                echo "No tenant phase timing lines were recorded." | tee -a "$GITHUB_STEP_SUMMARY"
+              fi
+          }
+          trap finish_telemetry EXIT
+
+          if [ -z "$API_DB_TARGETS" ]; then
+            echo "::error::api_db_targets must be set when test_selection=api_db_chunks."
+            exit 2
+          fi
+
+          IFS=',' read -r -a targets <<< "$API_DB_TARGETS"
+          overall_status=0
+          for target in "${targets[@]}"; do
+            if [[ ! "$target" =~ ^([a-z_]+)(:([1-9][0-9]*))?$ ]]; then
+              echo "::error::Invalid DB target '$target'; expected group or group:chunk."
+              exit 2
+            fi
+            group="${BASH_REMATCH[1]}"
+            chunk="${BASH_REMATCH[3]:-}"
+            case "$group" in
+              auth_security_session|payments_commerce_billing|compliance_pos_fiscal|tenant_storefront_modes|inventory_reporting_operations|ai_tools|db_integration_scripts|platform_misc) ;;
+              *) echo "::error::Unknown DB group '$group'."; exit 2 ;;
+            esac
+            args=(--tier db --group "$group")
+            if [ -n "$chunk" ]; then args+=(--chunk "$chunk"); fi
+            echo "[selected-db-tests] target=$target"
+            node scripts/run-backend-test-matrix.js "${args[@]}" || overall_status=1
+            MATRIX_DIR="$RELEASE_GATES_EVIDENCE_ROOT/$RELEASE_TARGET_SHA/backend-test-matrix"
+            MATRIX_FILE="$MATRIX_DIR/backend_test_matrix.json"
+            if [ -f "$MATRIX_FILE" ]; then
+              chunk_label="${chunk:-all}"
+              cp "$MATRIX_FILE" "$MATRIX_DIR/backend_test_matrix_${group}_${chunk_label}.json"
+              node - "$MATRIX_FILE" "$group" "$chunk_label" <<'NODE' | tee -a "$GITHUB_STEP_SUMMARY"
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const matrixFile = process.argv[2];
+          const selectedGroup = process.argv[3];
+          const selectedChunk = process.argv[4];
+          const root = process.cwd();
+          const matrix = JSON.parse(fs.readFileSync(matrixFile, 'utf8'));
+          console.log(`### DB suite timings: ${selectedGroup} chunk ${selectedChunk}\n`);
+          console.log('| Group | Chunk | Suite | Status | Duration |');
+          console.log('|---|---:|---|---|---:|');
+          for (const chunkResult of matrix.chunks || []) {
+            if (chunkResult.tier !== 'db' || !chunkResult.jest_results_file) continue;
+            const resultPath = path.resolve(root, chunkResult.jest_results_file);
+            if (!fs.existsSync(resultPath)) continue;
+            const results = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+            for (const suite of results.testResults || []) {
+              const start = Number(suite.perfStats?.start ?? suite.startTime);
+              const end = Number(suite.perfStats?.end ?? suite.endTime);
+              const duration = Number.isFinite(end - start) ? `${((end - start) / 1000).toFixed(1)}s` : 'n/a';
+              const suitePath = path.relative(path.join(root, 'apps/dgfy-api'), suite.name || suite.testFilePath || 'unknown');
+              console.log(`| ${chunkResult.group || selectedGroup} | ${chunkResult.chunk_index ?? selectedChunk} | \`${suitePath}\` | \`${suite.status || 'unknown'}\` | ${duration} |`);
+            }
+          }
+          NODE
+            fi
+          done
+          exit "$overall_status"
+
+      - name: Upload selected DB test evidence
+        id: upload_selected_db_evidence
+        continue-on-error: true
+        if: always()
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: ${{ github.workspace }}/.tmp/api-db-runtime-probe
+          name: api-db-runtime-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+      - name: Remove test service containers
+        continue-on-error: true
+        id: stop_services
+        if: always()
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker rm -f "$MYSQL_CONTAINER" "$REDIS_CONTAINER" 2>/dev/null || true
+
+      - name: Fail on evidence storage failure
+        id: enforce_evidence_storage
+        continue-on-error: true
+        if: always() && (steps.upload_selected_db_evidence.outputs.storage_status == 'failed')
+        run: |
+          echo "::error::Evidence storage failed after this job's required work completed. See the evidence storage summary for both backend outcomes."
+          exit 1
+
+      - name: Record selected DB evidence storage outcome
+        continue-on-error: true
+        if: always()
+        env:
+          STORAGE_STATUS: ${{ steps.upload_selected_db_evidence.outputs.storage_status }}
+          ENFORCEMENT_OUTCOME: ${{ steps.enforce_evidence_storage.outcome }}
+        run: |
+          echo "Selected DB evidence storage: ${STORAGE_STATUS:-not attempted}; enforcement: ${ENFORCEMENT_OUTCOME:-not run}." >> "$GITHUB_STEP_SUMMARY"
+
   dgfy-api-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
@@ -389,57 +687,32 @@ jobs:
       # -- this is promotion evidence, not routine per-push scratch. The `steps.run_test_matrix...`
       # guard on `if:` keeps a legitimately-skipped matrix (services never came up) from being
       # reported as a missing-artifact failure it isn't.
-      - name: Upload API test-matrix evidence
+      - name: Validate API test-matrix evidence
         continue-on-error: true
-        id: upload_test_matrix_evidence
+        id: validate_api_test_matrix_evidence
         if: always() && steps.run_test_matrix.outcome != 'skipped'
-        shell: bash
         env:
-          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_DEFAULT_REGION: us-east-1
-          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
-          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
-          SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          ARTIFACT_NAME: dgfy-api-test-matrix-${{ github.sha }}
           EVIDENCE_DIRECTORY: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}
         run: |
-          set -euo pipefail
           if [[ ! -d "$EVIDENCE_DIRECTORY" ]] || ! find "$EVIDENCE_DIRECTORY" -type f -print -quit | grep -q .; then
             echo "::error::API test-matrix evidence is missing or empty: $EVIDENCE_DIRECTORY"
             exit 1
           fi
-          bash scripts/ci-s3-upload.sh "$EVIDENCE_DIRECTORY" "$ARTIFACT_NAME"
 
-      - name: Record API test-matrix S3 evidence
-        if: always()
-        shell: bash
-        env:
-          UPLOAD_OUTCOME: ${{ steps.upload_test_matrix_evidence.outcome }}
-          UPLOAD_STATUS: ${{ steps.upload_test_matrix_evidence.outputs.upload_status }}
-          UPLOAD_URI: ${{ steps.upload_test_matrix_evidence.outputs.object_uri }}
-          UPLOAD_SIZE: ${{ steps.upload_test_matrix_evidence.outputs.size_bytes }}
-          SOURCE_SHA256: ${{ steps.upload_test_matrix_evidence.outputs.source_sha256 }}
-          DIRECT_SHA256: ${{ steps.upload_test_matrix_evidence.outputs.direct_readback_sha256 }}
-          PRESIGNED_SHA256: ${{ steps.upload_test_matrix_evidence.outputs.presigned_readback_sha256 }}
-          PRESIGNED_HTTP_STATUS: ${{ steps.upload_test_matrix_evidence.outputs.presigned_http_status }}
-          PRESIGNED_URL: ${{ steps.upload_test_matrix_evidence.outputs.presigned_url }}
-        run: |
-          {
-            echo "### API test-matrix evidence storage"
-            echo "- Upload step: ${UPLOAD_OUTCOME:-not run} (${UPLOAD_STATUS:-no verified result})."
-            if [[ -n "$UPLOAD_URI" ]]; then
-              echo "- Object URI: ${UPLOAD_URI}"
-              echo "- Size: ${UPLOAD_SIZE:-unknown} bytes"
-              echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}; presigned readback ${PRESIGNED_SHA256:-unknown}"
-              echo "- Presigned readback HTTP status: ${PRESIGNED_HTTP_STATUS:-unknown}"
-              if [[ -n "$PRESIGNED_URL" && "$UPLOAD_STATUS" == "verified" ]]; then
-                echo "- Retrieval URL (48-hour bearer link; anyone who can view this run can retrieve the report before expiry): ${PRESIGNED_URL}"
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
+      - name: Upload API test-matrix evidence
+        id: upload_test_matrix_evidence
+        continue-on-error: true
+        if: always() && steps.run_test_matrix.outcome != 'skipped'
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}
+          name: dgfy-api-test-matrix-${{ github.sha }}
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
       - name: Stop service containers
         continue-on-error: true
         id: stop_services
@@ -463,12 +736,22 @@ jobs:
       # longer a runner-generated "Initialize containers" phase outside continue-on-error's reach --
       # see the workflow-level comment) so they're included below; stop_services is deliberately
       # excluded, see its own comment.
+      - name: Fail on evidence storage failure
+        id: enforce_evidence_storage
+        continue-on-error: true
+        if: always() && (steps.upload_test_matrix_evidence.outputs.storage_status == 'failed')
+        run: |
+          echo "::error::Evidence storage failed after this job's required work completed. See the evidence storage summary for both backend outcomes."
+          exit 1
+
       - name: Record real per-step outcomes for advisory-failure reporting
         continue-on-error: true
         id: record_outcomes
         if: always()
         env:
           STEP_OUTCOMES: |
+            Fail on evidence storage failure|${{ steps.enforce_evidence_storage.outcome }}
+            Validate API test-matrix evidence|${{ steps.validate_api_test_matrix_evidence.outcome }}
             Start service containers|${{ steps.start_services.outcome }}
             Wait for service containers|${{ steps.wait_services.outcome }}
             Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
@@ -495,6 +778,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   migration-runner-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
@@ -661,6 +945,7 @@ jobs:
   # and node_modules-free); the 7th, storefrontErrorMessages.test.js, is
   # storefront's own local test.
   web-core-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
@@ -816,6 +1101,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   frontend-pos-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
@@ -922,6 +1208,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   frontend-storefront-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
@@ -1040,20 +1327,11 @@ jobs:
       # upload's own fix above and for the same reason -- a missing artifact is real signal, not
       # something to swallow, and record_outcomes below reports it as a real failure instead of
       # silently dropping it.
-      - name: Upload F&B browser evidence
+      - name: Prepare F&B browser evidence
         continue-on-error: true
-        id: upload_fnb_browser_evidence
+        id: prepare_fnb_browser_evidence
         if: always()
         shell: bash
-        env:
-          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_DEFAULT_REGION: us-east-1
-          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
-          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
-          SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          ARTIFACT_NAME: fnb-playwright-contract-${{ github.sha }}
         run: |
           set -euo pipefail
           playwright_source="apps/dgfy-storefront/playwright-report/fnb-contract"
@@ -1068,35 +1346,28 @@ jobs:
           mkdir -p "$stage_dir/playwright-report" "$stage_dir/test-results"
           cp -R "$playwright_source/." "$stage_dir/playwright-report/"
           cp -R "$test_results_source/." "$stage_dir/test-results/"
-          bash scripts/ci-s3-upload.sh "$stage_dir" "$ARTIFACT_NAME"
 
-      - name: Record F&B browser S3 evidence
+      - name: Upload F&B browser evidence
+        id: upload_fnb_browser_evidence
+        continue-on-error: true
         if: always()
-        shell: bash
-        env:
-          UPLOAD_OUTCOME: ${{ steps.upload_fnb_browser_evidence.outcome }}
-          UPLOAD_STATUS: ${{ steps.upload_fnb_browser_evidence.outputs.upload_status }}
-          UPLOAD_URI: ${{ steps.upload_fnb_browser_evidence.outputs.object_uri }}
-          UPLOAD_SIZE: ${{ steps.upload_fnb_browser_evidence.outputs.size_bytes }}
-          SOURCE_SHA256: ${{ steps.upload_fnb_browser_evidence.outputs.source_sha256 }}
-          DIRECT_SHA256: ${{ steps.upload_fnb_browser_evidence.outputs.direct_readback_sha256 }}
-          PRESIGNED_SHA256: ${{ steps.upload_fnb_browser_evidence.outputs.presigned_readback_sha256 }}
-          PRESIGNED_HTTP_STATUS: ${{ steps.upload_fnb_browser_evidence.outputs.presigned_http_status }}
-          PRESIGNED_URL: ${{ steps.upload_fnb_browser_evidence.outputs.presigned_url }}
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: ${{ runner.temp }}/fnb-browser-evidence
+          name: fnb-playwright-contract-${{ github.sha }}
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+      - name: Fail on evidence storage failure
+        id: enforce_evidence_storage
+        continue-on-error: true
+        if: always() && (steps.upload_fnb_browser_evidence.outputs.storage_status == 'failed')
         run: |
-          {
-            echo "### F&B browser evidence storage"
-            echo "- Upload step: ${UPLOAD_OUTCOME:-not run} (${UPLOAD_STATUS:-no verified result})."
-            if [[ -n "$UPLOAD_URI" ]]; then
-              echo "- Object URI: ${UPLOAD_URI}"
-              echo "- Size: ${UPLOAD_SIZE:-unknown} bytes"
-              echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}; presigned readback ${PRESIGNED_SHA256:-unknown}"
-              echo "- Presigned readback HTTP status: ${PRESIGNED_HTTP_STATUS:-unknown}"
-              if [[ -n "$PRESIGNED_URL" && "$UPLOAD_STATUS" == "verified" ]]; then
-                echo "- Retrieval URL (48-hour bearer link; anyone who can view this run can retrieve the report before expiry): ${PRESIGNED_URL}"
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Evidence storage failed after this job's required work completed. See the evidence storage summary for both backend outcomes."
+          exit 1
 
       - name: Record real per-step outcomes for advisory-failure reporting
         continue-on-error: true
@@ -1104,6 +1375,8 @@ jobs:
         if: always()
         env:
           STEP_OUTCOMES: |
+            Fail on evidence storage failure|${{ steps.enforce_evidence_storage.outcome }}
+            Prepare F&B browser evidence|${{ steps.prepare_fnb_browser_evidence.outcome }}
             Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
             Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
@@ -1126,6 +1399,7 @@ jobs:
   # Issue #2052: OPIS (dgfy-opis) quality coverage -- lint plus a vite build of the new
   # fourth frontend app. Included in the optional operator-dispatched evidence suite.
   frontend-opis-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     continue-on-error: true
     # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
     # The class-specific dispatch input above supplies this job's runner selector.
@@ -1240,6 +1514,7 @@ jobs:
 
   # Issue #350: Platform Admin quality coverage -- its own lint/build evidence.
   frontend-admin-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     continue-on-error: true
     # Route Platform Admin lint/build with the general frontend quality jobs.
     # runs-on: ${{ fromJSON(inputs.general_runner_labels_json || '["ubuntu-latest"]') }}
@@ -1355,6 +1630,7 @@ jobs:
   # disposable tenant admin and terminal fixture, seeds a sellable item through the API, then
   # exercises checkout, stock, history/detail, and CSV export entirely in POS.
   pos-sales-e2e-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     continue-on-error: true
     # Keep this trimmed POS E2E job in the general pool: its latest post-#2251 run completed on
     # vm-openproject in 323s, matching the pre-rename IMS+POS run on vm-sieitzstaging in 315s.
@@ -1636,57 +1912,30 @@ jobs:
       # Mirrors the API test-matrix / F&B browser evidence uploads elsewhere in this file --
       # if-no-files-found: error (a missing artifact is real signal, not something to swallow),
       # retention-days: 30 (promotion evidence, not routine per-push scratch).
-      - name: Upload POS sales e2e evidence
+      - name: Validate POS sales e2e evidence
         continue-on-error: true
-        id: upload_pos_sales_e2e_evidence
+        id: validate_pos_sales_e2e_evidence
         if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
-        shell: bash
-        env:
-          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_DEFAULT_REGION: us-east-1
-          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
-          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
-          SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          ARTIFACT_NAME: pos-sales-e2e-${{ github.sha }}
-          EVIDENCE_DIRECTORY: apps/dgfy-pos/test-results
         run: |
-          set -euo pipefail
-          if [[ ! -d "$EVIDENCE_DIRECTORY" ]] || ! find "$EVIDENCE_DIRECTORY" -type f -print -quit | grep -q .; then
-            echo "::error::POS sales E2E evidence is missing or empty: $EVIDENCE_DIRECTORY"
+          if [[ ! -d apps/dgfy-pos/test-results ]] || ! find apps/dgfy-pos/test-results -type f -print -quit | grep -q .; then
+            echo "::error::POS sales E2E evidence is missing or empty: apps/dgfy-pos/test-results"
             exit 1
           fi
-          bash scripts/ci-s3-upload.sh "$EVIDENCE_DIRECTORY" "$ARTIFACT_NAME"
 
-      - name: Record POS sales E2E S3 evidence
-        if: always()
-        shell: bash
-        env:
-          UPLOAD_OUTCOME: ${{ steps.upload_pos_sales_e2e_evidence.outcome }}
-          UPLOAD_STATUS: ${{ steps.upload_pos_sales_e2e_evidence.outputs.upload_status }}
-          UPLOAD_URI: ${{ steps.upload_pos_sales_e2e_evidence.outputs.object_uri }}
-          UPLOAD_SIZE: ${{ steps.upload_pos_sales_e2e_evidence.outputs.size_bytes }}
-          SOURCE_SHA256: ${{ steps.upload_pos_sales_e2e_evidence.outputs.source_sha256 }}
-          DIRECT_SHA256: ${{ steps.upload_pos_sales_e2e_evidence.outputs.direct_readback_sha256 }}
-          PRESIGNED_SHA256: ${{ steps.upload_pos_sales_e2e_evidence.outputs.presigned_readback_sha256 }}
-          PRESIGNED_HTTP_STATUS: ${{ steps.upload_pos_sales_e2e_evidence.outputs.presigned_http_status }}
-          PRESIGNED_URL: ${{ steps.upload_pos_sales_e2e_evidence.outputs.presigned_url }}
-        run: |
-          {
-            echo "### POS sales E2E evidence storage"
-            echo "- Upload step: ${UPLOAD_OUTCOME:-not run} (${UPLOAD_STATUS:-no verified result})."
-            if [[ -n "$UPLOAD_URI" ]]; then
-              echo "- Object URI: ${UPLOAD_URI}"
-              echo "- Size: ${UPLOAD_SIZE:-unknown} bytes"
-              echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}; presigned readback ${PRESIGNED_SHA256:-unknown}"
-              echo "- Presigned readback HTTP status: ${PRESIGNED_HTTP_STATUS:-unknown}"
-              if [[ -n "$PRESIGNED_URL" && "$UPLOAD_STATUS" == "verified" ]]; then
-                echo "- Retrieval URL (48-hour bearer link; anyone who can view this run can retrieve the report before expiry): ${PRESIGNED_URL}"
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
+      - name: Upload POS sales e2e evidence
+        id: upload_pos_sales_e2e_evidence
+        continue-on-error: true
+        if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: apps/dgfy-pos/test-results
+          name: pos-sales-e2e-${{ github.sha }}
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
       - name: Stop service containers
         continue-on-error: true
         id: stop_services
@@ -1698,12 +1947,22 @@ jobs:
           docker rm -f "$MYSQL_CONTAINER" 2>/dev/null || true
           docker rm -f "$REDIS_CONTAINER" 2>/dev/null || true
 
+      - name: Fail on evidence storage failure
+        id: enforce_evidence_storage
+        continue-on-error: true
+        if: always() && (steps.upload_pos_sales_e2e_evidence.outputs.storage_status == 'failed')
+        run: |
+          echo "::error::Evidence storage failed after this job's required work completed. See the evidence storage summary for both backend outcomes."
+          exit 1
+
       - name: Record real per-step outcomes for advisory-failure reporting
         continue-on-error: true
         id: record_outcomes
         if: always()
         env:
           STEP_OUTCOMES: |
+            Fail on evidence storage failure|${{ steps.enforce_evidence_storage.outcome }}
+            Validate POS sales e2e evidence|${{ steps.validate_pos_sales_e2e_evidence.outcome }}
             Start service containers|${{ steps.start_services.outcome }}
             Wait for service containers|${{ steps.wait_services.outcome }}
             Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
@@ -1740,6 +1999,7 @@ jobs:
   # is recorded in this job, before these builds) -- do NOT instead download dists from other jobs
   # as artifacts; extraction resets mtimes and the freshness check becomes meaningless.
   frontend-budgets-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     continue-on-error: true
     # Phase 233 (#1365) scaffold: the commented hosted alternate is inert by default.
     # The class-specific dispatch input above supplies this job's runner selector.
@@ -1866,56 +2126,37 @@ jobs:
           --report .tmp/frontend-budgets-report.json
         timeout-minutes: 5
 
-      - name: Upload frontend budgets report
+      - name: Validate frontend budgets report
         continue-on-error: true
-        id: upload_frontend_budgets_report
+        id: validate_frontend_budgets_report
         if: always()
-        shell: bash
-        env:
-          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_DEFAULT_REGION: us-east-1
-          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
-          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
-          SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          ARTIFACT_NAME: frontend-budgets-report-${{ github.sha }}
-          EVIDENCE_FILE: .tmp/frontend-budgets-report.json
         run: |
-          set -euo pipefail
-          if [[ ! -f "$EVIDENCE_FILE" ]]; then
-            echo "::error::Frontend budgets report is missing: $EVIDENCE_FILE"
+          if [[ ! -f .tmp/frontend-budgets-report.json ]]; then
+            echo "::error::Frontend budgets report is missing: .tmp/frontend-budgets-report.json"
             exit 1
           fi
-          bash scripts/ci-s3-upload.sh "$EVIDENCE_FILE" "$ARTIFACT_NAME"
 
-      - name: Record frontend budgets S3 evidence
+      - name: Upload frontend budgets report
+        id: upload_frontend_budgets_report
+        continue-on-error: true
         if: always()
-        shell: bash
-        env:
-          UPLOAD_OUTCOME: ${{ steps.upload_frontend_budgets_report.outcome }}
-          UPLOAD_STATUS: ${{ steps.upload_frontend_budgets_report.outputs.upload_status }}
-          UPLOAD_URI: ${{ steps.upload_frontend_budgets_report.outputs.object_uri }}
-          UPLOAD_SIZE: ${{ steps.upload_frontend_budgets_report.outputs.size_bytes }}
-          SOURCE_SHA256: ${{ steps.upload_frontend_budgets_report.outputs.source_sha256 }}
-          DIRECT_SHA256: ${{ steps.upload_frontend_budgets_report.outputs.direct_readback_sha256 }}
-          PRESIGNED_SHA256: ${{ steps.upload_frontend_budgets_report.outputs.presigned_readback_sha256 }}
-          PRESIGNED_HTTP_STATUS: ${{ steps.upload_frontend_budgets_report.outputs.presigned_http_status }}
-          PRESIGNED_URL: ${{ steps.upload_frontend_budgets_report.outputs.presigned_url }}
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: .tmp/frontend-budgets-report.json
+          name: frontend-budgets-report-${{ github.sha }}
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+      - name: Fail on evidence storage failure
+        id: enforce_evidence_storage
+        continue-on-error: true
+        if: always() && (steps.upload_frontend_budgets_report.outputs.storage_status == 'failed')
         run: |
-          {
-            echo "### Frontend budgets evidence storage"
-            echo "- Upload step: ${UPLOAD_OUTCOME:-not run} (${UPLOAD_STATUS:-no verified result})."
-            if [[ -n "$UPLOAD_URI" ]]; then
-              echo "- Object URI: ${UPLOAD_URI}"
-              echo "- Size: ${UPLOAD_SIZE:-unknown} bytes"
-              echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}; presigned readback ${PRESIGNED_SHA256:-unknown}"
-              echo "- Presigned readback HTTP status: ${PRESIGNED_HTTP_STATUS:-unknown}"
-              if [[ -n "$PRESIGNED_URL" && "$UPLOAD_STATUS" == "verified" ]]; then
-                echo "- Retrieval URL (48-hour bearer link; anyone who can view this run can retrieve the report before expiry): ${PRESIGNED_URL}"
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Evidence storage failed after this job's required work completed. See the evidence storage summary for both backend outcomes."
+          exit 1
 
       - name: Record real per-step outcomes for advisory-failure reporting
         continue-on-error: true
@@ -1923,6 +2164,8 @@ jobs:
         if: always()
         env:
           STEP_OUTCOMES: |
+            Fail on evidence storage failure|${{ steps.enforce_evidence_storage.outcome }}
+            Validate frontend budgets report|${{ steps.validate_frontend_budgets_report.outcome }}
             Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
             Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
@@ -1953,6 +2196,7 @@ jobs:
   # job grouping and job name(s) changed. See docs/ops/RELEASE_CANDIDATE_POLICY.md's matching
   # 2026-09-07 amendment for the rationale and before/after job names.
   repository-dependency-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # Split from the former `repository-quality` job (#1690): dependency/compliance/env posture --
     # "is this repo's declared and installed state trustworthy" -- grouped separately from the
     # CI-self-test contracts (`repository-ci-contracts-quality`) and docs/release hygiene
@@ -2123,6 +2367,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   repository-ci-contracts-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # Split from the former `repository-quality` job (#1690): CI/workflow self-validation --
     # contracts that validate this repo's own CI configuration, not product code -- grouped
     # separately from the dependency/compliance/env group above and the docs/release hygiene group
@@ -2293,6 +2538,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   repository-docs-quality:
+    if: ${{ inputs.test_selection == 'full' }}
     # Split from the former `repository-quality` job (#1690): docs/release/repo hygiene -- grouped
     # separately from the dependency/compliance/env group and the CI-self-test contracts group
     # above.
@@ -2477,7 +2723,7 @@ jobs:
       - repository-docs-quality
       - frontend-budgets-quality
       - pos-sales-e2e-quality
-    if: always()
+    if: always() && inputs.test_selection == 'full'
     # runs-on: ['ubuntu-latest']
     runs-on: ['sieitz-runner']
     timeout-minutes: 3
@@ -2574,7 +2820,7 @@ jobs:
     # skipped; without this it would otherwise burn a 5-minute-timeout runner slot salvaging
     # evidence for a job that never ran (dgfy-api-quality.conclusion == 'skipped' would read as
     # needing salvage, per the needsSalvage check below).
-    if: always()
+    if: always() && inputs.test_selection == 'full'
     continue-on-error: true
     # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
     # (ubuntu-latest) is the intended class for this job too -- BUT: co-location
@@ -2665,52 +2911,37 @@ jobs:
             console.log(`dgfy-api-quality real conclusion: ${job?.conclusion ?? 'not found'} -> needs_salvage=${needsSalvage}`);
 
       - name: Upload salvaged API test-matrix evidence
-        continue-on-error: true
         id: upload_salvaged_evidence
+        continue-on-error: true
         if: runner.environment == 'self-hosted' && steps.check_api_quality_envelope.outputs.needs_salvage == 'true'
-        shell: bash
-        env:
-          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_DEFAULT_REGION: us-east-1
-          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
-          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
-          SOURCE_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          ARTIFACT_NAME: dgfy-api-test-matrix-salvaged-${{ github.sha }}
-          EVIDENCE_DIRECTORY: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}
-        run: bash scripts/ci-s3-upload.sh "$EVIDENCE_DIRECTORY" "$ARTIFACT_NAME"
-
-      - name: Record salvaged API test-matrix S3 evidence
-        if: always()
-        shell: bash
-        env:
-          UPLOAD_OUTCOME: ${{ steps.upload_salvaged_evidence.outcome }}
-          UPLOAD_STATUS: ${{ steps.upload_salvaged_evidence.outputs.upload_status }}
-          UPLOAD_URI: ${{ steps.upload_salvaged_evidence.outputs.object_uri }}
-          UPLOAD_SIZE: ${{ steps.upload_salvaged_evidence.outputs.size_bytes }}
-          SOURCE_SHA256: ${{ steps.upload_salvaged_evidence.outputs.source_sha256 }}
-          DIRECT_SHA256: ${{ steps.upload_salvaged_evidence.outputs.direct_readback_sha256 }}
-          PRESIGNED_SHA256: ${{ steps.upload_salvaged_evidence.outputs.presigned_readback_sha256 }}
-          PRESIGNED_HTTP_STATUS: ${{ steps.upload_salvaged_evidence.outputs.presigned_http_status }}
-          PRESIGNED_URL: ${{ steps.upload_salvaged_evidence.outputs.presigned_url }}
-        run: |
-          {
-            echo "### Salvaged API test-matrix evidence storage"
-            echo "- Upload step: ${UPLOAD_OUTCOME:-not run} (${UPLOAD_STATUS:-no verified result})."
-            if [[ -n "$UPLOAD_URI" ]]; then
-              echo "- Object URI: ${UPLOAD_URI}"
-              echo "- Size: ${UPLOAD_SIZE:-unknown} bytes"
-              echo "- SHA-256: source ${SOURCE_SHA256:-unknown}; direct readback ${DIRECT_SHA256:-unknown}; presigned readback ${PRESIGNED_SHA256:-unknown}"
-              echo "- Presigned readback HTTP status: ${PRESIGNED_HTTP_STATUS:-unknown}"
-              if [[ -n "$PRESIGNED_URL" && "$UPLOAD_STATUS" == "verified" ]]; then
-                echo "- Retrieval URL (48-hour bearer link; anyone who can view this run can retrieve the report before expiry): ${PRESIGNED_URL}"
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
+        uses: ./.github/actions/upload-evidence
+        with:
+          path: ${{ env.RELEASE_GATES_EVIDENCE_ROOT }}
+          name: dgfy-api-test-matrix-salvaged-${{ github.sha }}
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
       - name: Sweep salvaged evidence
         continue-on-error: true
         id: sweep_salvaged_evidence
         if: always() && runner.environment == 'self-hosted'
         run: rm -rf "${{ env.RELEASE_GATES_EVIDENCE_ROOT }}"
+      - name: Fail on evidence storage failure
+        id: enforce_evidence_storage
+        continue-on-error: true
+        if: always() && (steps.upload_salvaged_evidence.outputs.storage_status == 'failed')
+        run: |
+          echo "::error::Evidence storage failed after this job's required work completed. See the evidence storage summary for both backend outcomes."
+          exit 1
+
+      - name: Record salvaged evidence storage outcome
+        continue-on-error: true
+        if: always()
+        env:
+          STORAGE_STATUS: ${{ steps.upload_salvaged_evidence.outputs.storage_status }}
+          ENFORCEMENT_OUTCOME: ${{ steps.enforce_evidence_storage.outcome }}
+        run: |
+          echo "Salvaged API evidence storage: ${STORAGE_STATUS:-not attempted}; enforcement: ${ENFORCEMENT_OUTCOME:-not run}." >> "$GITHUB_STEP_SUMMARY"
