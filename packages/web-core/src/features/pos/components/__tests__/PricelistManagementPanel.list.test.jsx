@@ -77,8 +77,15 @@ describe('PricelistManagementPanel -- list presentation', () => {
     expect(document.getElementById('test-pricelists')?.className).toContain('pos-pricelist-catalog-workspace');
     expect(newPricelistButton.className).toContain('pos-items-mobile-icon-button');
     expect(newPricelistButton.className).toContain('pos-items-mobile-primary-button');
+    expect(newPricelistButton.className).toContain('h-10');
+    expect(newPricelistButton.className).toContain('w-10');
+    expect(newPricelistButton.className).toContain('sm:h-9');
     expect(newPricelistButton.className).toContain('sm:w-auto');
     expect(newPricelistButton.querySelector('span')?.className).toContain('hidden');
+    const newPricelistIcon = newPricelistButton.querySelector('svg');
+    expect(newPricelistIcon?.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(newPricelistIcon?.querySelector('path[d="M16 13h6"]')).toBeTruthy();
+    expect(newPricelistIcon?.querySelector('path[d="M19 10v6"]')).toBeTruthy();
     const card = screen.getByText('test 4').closest('article');
     expect(card).toBeTruthy();
     expect(card.className).toContain('p-2');

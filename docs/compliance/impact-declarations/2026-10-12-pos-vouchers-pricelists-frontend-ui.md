@@ -71,3 +71,5 @@ credentials were supplied.
   tests; calendar left/right swipe semantics and reduced-motion transitions are covered.
 - Voucher catalog/form extraction, responsive controls, pagination, and modal focus behavior are
   isolated from the unrelated POS current-sale and History-only edits.
+- Pricelist list/editor presentation modules, responsive editor sizing, publish/archive actions,
+  and their contract tests are isolated from terminal-only and text-size changes.
