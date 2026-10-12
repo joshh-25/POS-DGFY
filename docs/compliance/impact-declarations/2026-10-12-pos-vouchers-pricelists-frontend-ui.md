@@ -62,3 +62,8 @@ targeted ESLint passed without findings, the POS lint passed, the POS production
 architecture guardrails passed, and `git diff --check` passed. The local browser route rendered the
 POS terminal login wall; authenticated Voucher/Pricelist visual smoke was not automated because no
 credentials were supplied.
+
+### Atomic batch audit trail
+
+- Catalog workspace/search presentation is isolated from unrelated current-sale, History-only,
+  text-size, zoom, and terminal-workspace edits.
