@@ -1355,11 +1355,17 @@ const REPORT_PAYMENT_GROUP_LABELS = Object.freeze({
 });
 
 const REPORT_SOURCE_LABELS = Object.freeze({
-    in_store: 'In-Store',
-    online_store: 'Online Store',
+    in_store: 'Walk-in Sales',
+    online_store: 'Online Sales',
     delivery: 'Delivery',
     pickup: 'Pickup'
 });
+
+const normalizeReportOrderSource = (value) => (
+    String(value || '').trim().toLowerCase() === 'online_store'
+        ? 'online_store'
+        : 'in_store'
+);
 
 const REFUND_PAYMENT_STATUSES = new Set(['refund_pending', 'partial_refunded', 'refunded']);
 const REPORT_ADJUSTMENT_TYPES = new Set([
@@ -1623,12 +1629,39 @@ const toWeekKey = (value) => {
 
 const toDisplayPaymentGroup = (paymentType) => REPORT_PAYMENT_GROUP_LABELS[String(paymentType || '').trim().toLowerCase()] || 'Online';
 
+const mergePaymentBreakdownRows = (rows = []) => {
+    const groups = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((entry) => {
+        const paymentMethod = String(entry?.payment_method || '').trim() || 'Online';
+        const key = paymentMethod.toLowerCase();
+        const current = groups.get(key) || {
+            payment_method: paymentMethod,
+            total_transactions: 0,
+            gross_sales: 0,
+            net_sales: 0,
+            pos_profit_loss: 0
+        };
+        current.total_transactions += Number(entry?.total_transactions || 0);
+        current.gross_sales = round4(current.gross_sales + Number(entry?.gross_sales || 0));
+        current.net_sales = round4(current.net_sales + Number(entry?.net_sales || 0));
+        current.pos_profit_loss = round4(current.pos_profit_loss + Number(entry?.pos_profit_loss || 0));
+        groups.set(key, current);
+    });
+    return Array.from(groups.values()).map((entry) => ({
+        ...entry,
+        total_transactions: Number(entry.total_transactions || 0),
+        gross_sales: round4(entry.gross_sales),
+        net_sales: round4(entry.net_sales),
+        pos_profit_loss: round4(entry.pos_profit_loss)
+    }));
+};
+
 const resolveReportSourceLabel = (transaction = {}) => {
+    const orderSource = String(transaction?.order_source || '').trim().toLowerCase();
+    if (orderSource === 'online_store') return REPORT_SOURCE_LABELS.online_store;
     const orderMethod = String(transaction?.order_method || '').trim().toLowerCase();
     if (orderMethod === 'delivery') return REPORT_SOURCE_LABELS.delivery;
     if (orderMethod === 'pickup') return REPORT_SOURCE_LABELS.pickup;
-    const orderSource = String(transaction?.order_source || '').trim().toLowerCase();
-    if (orderSource === 'online_store') return REPORT_SOURCE_LABELS.online_store;
     return REPORT_SOURCE_LABELS.in_store;
 };
 
@@ -1781,13 +1814,32 @@ const serializeReportSummary = (lineRows = []) => {
     const netSales = sumBy(lineRows, (row) => row.net_sales);
     const cogs = sumBy(lineRows, (row) => row.cogs);
     const posProfitLoss = round4(netSales - cogs);
+    const isVoidedOrRefundedReportRow = (row = {}) => (
+        String(row?.transaction_status || '').trim().toLowerCase() === 'voided'
+        || REFUND_PAYMENT_STATUSES.has(String(row?.transaction_payment_status || '').trim().toLowerCase())
+    );
+    const recordedTransactions = uniqueCountBy(lineRows, (row) => row.transaction_id);
+    const voidedRefundedTransactions = uniqueCountBy(
+        (Array.isArray(lineRows) ? lineRows : []).filter(isVoidedOrRefundedReportRow),
+        (row) => row.transaction_id
+    );
+    const completedTransactions = uniqueCountBy(
+        (Array.isArray(lineRows) ? lineRows : []).filter((row) => {
+            if (isVoidedOrRefundedReportRow(row)) return false;
+            const status = String(row?.transaction_status || '').trim().toLowerCase();
+            return !status || status === 'completed';
+        }),
+        (row) => row.transaction_id
+    );
     return {
         gross_sales: grossSales,
         net_sales: netSales,
         cogs,
         pos_profit_loss: posProfitLoss,
         profit_margin: netSales > 0 ? round4((posProfitLoss / netSales) * 100) : 0,
-        total_transactions: uniqueCountBy(lineRows, (row) => row.transaction_id),
+        total_transactions: recordedTransactions,
+        completed_transactions: completedTransactions,
+        voided_refunded_transactions: voidedRefundedTransactions,
         total_items_sold: sumBy(lineRows, (row) => row.quantity),
         discounts: sumBy(lineRows, (row) => row.discount_amount),
         refunds_voids: sumBy(lineRows, (row) => row.refund_amount),
@@ -2070,7 +2122,7 @@ const buildPaymentBreakdown = (rows = []) => {
         const snapshotTransactionIds = new Set(rowsWithSnapshots.map((row) => String(row.transaction_id)));
         const legacyRows = rows.filter((row) => !snapshotTransactionIds.has(String(row.transaction_id)));
         const legacyBreakdown = legacyRows.length > 0 ? buildPaymentBreakdown(legacyRows) : [];
-        return [
+        return mergePaymentBreakdownRows([
             ...Array.from(groups.values()).map((entry) => ({
                 payment_method: entry.payment_method,
                 total_transactions: entry.transaction_ids.size,
@@ -2079,16 +2131,16 @@ const buildPaymentBreakdown = (rows = []) => {
                 pos_profit_loss: round4(entry.pos_profit_loss)
             })),
             ...legacyBreakdown
-        ];
+        ]);
     }
     const groups = groupRowsBy(rows, (row) => toDisplayPaymentGroup(row.payment_type));
-    return Array.from(groups.entries()).map(([label, entries]) => ({
+    return mergePaymentBreakdownRows(Array.from(groups.entries()).map(([label, entries]) => ({
         payment_method: label,
         total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
         gross_sales: sumBy(entries, (row) => row.gross_sales),
         net_sales: sumBy(entries, (row) => row.net_sales),
         pos_profit_loss: sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs)
-    }));
+    })));
 };
 
 const buildZReadingPaymentBreakdown = (rows = []) => {
@@ -2112,6 +2164,24 @@ const buildZReadingPaymentBreakdown = (rows = []) => {
         });
     });
     return normalizePosPaymentBreakdown(entries);
+};
+
+const buildZReadingOrderSourceBreakdown = (rows = []) => {
+    const groups = new Map();
+    rows.forEach((row) => {
+        const orderSource = normalizeReportOrderSource(row?.order_source);
+        const current = groups.get(orderSource) || {
+            order_source: orderSource,
+            source_label: REPORT_SOURCE_LABELS[orderSource] || orderSource,
+            count: 0,
+            amount: 0
+        };
+        current.count += 1;
+        current.amount = round4(current.amount + Number(row?.total_amount || 0));
+        groups.set(orderSource, current);
+    });
+    return Array.from(groups.values())
+        .sort((left, right) => Number(right.amount || 0) - Number(left.amount || 0));
 };
 
 const normalizeTransactionDeliveryProviderSnapshot = (value) => {
@@ -2155,6 +2225,18 @@ const buildOrderMethodBreakdown = (rows = []) => {
     const groups = groupRowsBy(rows, (row) => String(row.order_method || 'dine_in').trim().toLowerCase() || 'dine_in');
     return Array.from(groups.entries()).map(([orderMethod, entries]) => ({
         order_method: orderMethod,
+        total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
+        gross_sales: sumBy(entries, (row) => row.gross_sales),
+        net_sales: sumBy(entries, (row) => row.net_sales),
+        pos_profit_loss: sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs)
+    })).sort((left, right) => Number(right.net_sales || 0) - Number(left.net_sales || 0));
+};
+
+const buildOrderSourceBreakdown = (rows = []) => {
+    const groups = groupRowsBy(rows, (row) => normalizeReportOrderSource(row.order_source));
+    return Array.from(groups.entries()).map(([orderSource, entries]) => ({
+        order_source: orderSource,
+        source_label: REPORT_SOURCE_LABELS[orderSource] || orderSource,
         total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
         gross_sales: sumBy(entries, (row) => row.gross_sales),
         net_sales: sumBy(entries, (row) => row.net_sales),
@@ -2322,12 +2404,11 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 delivery_provider_breakdown: normalizeTransactionDeliveryProviderSnapshot(transaction.delivery_provider_breakdown),
                 payment_status: transaction.payment_status || null,
                 order_source: transaction.order_source || null,
+                source_label: resolveReportSourceLabel(transaction),
                 order_method: transaction.order_method || null,
                 total_amount: round4(transaction.total_amount),
                 gross_sales: round4(summary.gross_sales),
                 net_sales: round4(summary.net_sales),
-                cogs: round4(summary.cogs),
-                pos_profit_loss: round4(summary.net_sales - summary.cogs),
                 discount_amount: round4(summary.discount_amount),
                 vatable_sales: round4(summary.vatable_sales),
                 vat_amount: round4(summary.vat_amount),
@@ -2800,7 +2881,9 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
     const rows = [];
 
     (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
-        const isVoidedOrRefunded = transaction?.status === 'voided' || REFUND_PAYMENT_STATUSES.has(String(transaction?.payment_status || '').trim().toLowerCase());
+        const transactionStatus = String(transaction?.status || '').trim().toLowerCase();
+        const transactionPaymentStatus = String(transaction?.payment_status || '').trim().toLowerCase();
+        const isVoidedOrRefunded = transactionStatus === 'voided' || REFUND_PAYMENT_STATUSES.has(transactionPaymentStatus);
         const totalServiceFeeAmount = Number(transaction?.service_fee_amount || 0) + Number(transaction?.restaurant_service_charge_amount || 0);
         const vatAmount = Number(transaction?.vat_amount || 0);
         const discountAmount = resolveCanonicalTransactionDiscountAmount(transaction);
@@ -2898,6 +2981,8 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 transaction_id: transaction?.pos_transaction_id,
                 line_id: line?.line_id || null,
                 created_at: transaction?.created_at,
+                transaction_status: transactionStatus,
+                transaction_payment_status: transactionPaymentStatus,
                 cashier_id: transaction?.cashier?.user_id || transaction?.cashier_id || null,
                 cashier_name: transaction?.cashier?.username || null,
                 accepted_by: transaction?.accepted_by || null,
@@ -2971,6 +3056,9 @@ const buildReportBreakdownMetrics = (entries = []) => {
     return {
         quantity: round4(summary.total_items_sold),
         orders: summary.total_transactions,
+        total_transactions: summary.total_transactions,
+        completed_transactions: summary.completed_transactions,
+        voided_refunded_transactions: summary.voided_refunded_transactions,
         gross_sales: summary.gross_sales,
         discounts: summary.discounts,
         net_sales: summary.net_sales,
@@ -3320,6 +3408,7 @@ const buildReportPayloadFromTransactions = (
             payment_breakdown: buildPaymentBreakdown(normalizedLines),
             delivery_provider_breakdown: buildDeliveryProviderBreakdown(normalizedLines),
             order_method_breakdown: buildOrderMethodBreakdown(normalizedLines),
+            order_source_breakdown: buildOrderSourceBreakdown(normalizedLines),
             cashier_summary: cashierSummary,
             cash_reconciliation: Array.from(cashierReconciliation.values()),
             shift_summary: buildShiftSummary(normalizedLines),
@@ -3382,7 +3471,9 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
         rows.push(['COGS', round4(summary.cogs || 0)]);
         rows.push(['POS Profit/Loss', round4(summary.pos_profit_loss || 0)]);
         rows.push(['Profit Margin %', round4(summary.profit_margin || 0)]);
-        rows.push(['Transactions', Number.parseInt(summary.total_transactions || 0, 10) || 0]);
+        rows.push(['Recorded Transactions', Number.parseInt(summary.total_transactions || 0, 10) || 0]);
+        rows.push(['Completed Sales', Number.parseInt(summary.completed_transactions || 0, 10) || 0]);
+        rows.push(['Voided/Refunded', Number.parseInt(summary.voided_refunded_transactions || 0, 10) || 0]);
         rows.push(['Discounts', round4(summary.discounts || 0)]);
         rows.push(['VAT Sales', round4(summary.vatable_sales || 0)]);
         rows.push(['Refunds/Voids', round4(summary.refunds_voids || 0)]);
@@ -3442,7 +3533,7 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     if (normalizedSection === 'sales') {
         rows.push(['Sales Transactions']);
         rows.push([]);
-        rows.push(['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Order Method', 'Delivery Provider(s)', 'Discount (PHP)', 'Gross Sales (PHP)', 'Net Sales (PHP)', 'POS Profit/Loss (PHP)']);
+        rows.push(['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Sales Source', 'Order Method', 'Delivery Provider(s)', 'Discount (PHP)', 'Gross Sales (PHP)', 'Net Sales (PHP)', 'POS Profit/Loss (PHP)']);
         (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
             rows.push([
                 entry.created_at || '',
@@ -3451,6 +3542,7 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
                 Array.isArray(entry.payment_methods) && entry.payment_methods.length > 0
                     ? entry.payment_methods.map(toDisplayPaymentGroup).join(' + ')
                     : (entry.payment_type || ''),
+                entry.source_label || (normalizeReportOrderSource(entry.order_source) === 'online_store' ? REPORT_SOURCE_LABELS.online_store : REPORT_SOURCE_LABELS.in_store),
                 entry.order_method || '',
                 Array.isArray(entry.delivery_provider_breakdown)
                     ? entry.delivery_provider_breakdown.map((provider) => `${provider.display_label}: ${round4(provider.amount)}`).join(' + ')
@@ -3476,6 +3568,26 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     rows.push(['Payment Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
     (payload?.daily_report?.payment_breakdown || []).forEach((entry) => {
         rows.push([entry.payment_method, entry.total_transactions, round4(entry.net_sales), round4(entry.pos_profit_loss)]);
+    });
+    rows.push([]);
+    rows.push(['Sales Source', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
+    (payload?.daily_report?.order_source_breakdown || []).forEach((entry) => {
+        rows.push([
+            entry.source_label || (normalizeReportOrderSource(entry.order_source) === 'online_store' ? REPORT_SOURCE_LABELS.online_store : REPORT_SOURCE_LABELS.in_store),
+            entry.total_transactions,
+            round4(entry.net_sales),
+            round4(entry.pos_profit_loss)
+        ]);
+    });
+    rows.push([]);
+    rows.push(['Order Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
+    (payload?.daily_report?.order_method_breakdown || []).forEach((entry) => {
+        rows.push([
+            entry.order_method || '',
+            entry.total_transactions,
+            round4(entry.net_sales),
+            round4(entry.pos_profit_loss)
+        ]);
     });
     rows.push([]);
     rows.push(['Delivery Provider', 'Transactions', 'Amount']);
@@ -5282,7 +5394,7 @@ export const posRepository = {
 
         const paymentBreakdownRows = await PosTransaction.findAll({
             where,
-            attributes: ['pos_transaction_id', 'payment_type', 'total_amount', 'payment_breakdown', 'delivery_provider_breakdown'],
+            attributes: ['pos_transaction_id', 'payment_type', 'total_amount', 'payment_breakdown', 'delivery_provider_breakdown', 'order_source'],
             raw: true,
             transaction: options.transaction
         });
@@ -5306,7 +5418,6 @@ export const posRepository = {
             raw: true,
             transaction: options.transaction
         });
-
         const lineSummaryRows = PosTransactionLine
             ? await PosTransactionLine.findAll({
                 include: [{
@@ -5562,7 +5673,8 @@ export const posRepository = {
                 order_method: row.order_method,
                 count: Number.parseInt(row.count || 0, 10),
                 amount: round4(row.amount)
-            }))
+            })),
+            order_source_breakdown: buildZReadingOrderSourceBreakdown(paymentBreakdownRows)
         };
     },
 

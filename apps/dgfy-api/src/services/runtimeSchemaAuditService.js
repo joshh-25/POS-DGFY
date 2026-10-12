@@ -86,7 +86,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260914000002-create-pos-location-item-overrides.cjs',
     '20260914000003-add-job-order-location-scope.cjs',
     '20260914000004-create-pos-terminal-device-enrollment.cjs',
-    '20260921000002-add-employee-credit-split-tender.cjs'
+    '20260921000002-add-employee-credit-split-tender.cjs',
+    '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -287,6 +288,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'cancelled_at',
         'metadata'
     ],
+    pos_z_reading_snapshots: ['reading_payload_hash'],
     employee_credit_accounts: [
         'account_id',
         'user_id',
@@ -517,6 +519,11 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
     job_orders: {
         source_location_id: { allowNull: true },
         destination_location_id: { allowNull: true }
+    },
+    pos_transaction_adjustments: {
+        adjustment_type: {
+            enumValues: ['void', 'cash_refund', 'external_refund', 'provider_refund', 'employee_credit_reversal', 'return']
+        }
     },
     pos_transaction_lines: {
         stock_effect_type: { allowNull: false },

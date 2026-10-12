@@ -15,6 +15,7 @@ describe('Storefront guest checkout OTP contract', () => {
 
     expect(routesSource).toContain("/checkout/guest-otp/request");
     expect(routesSource).toContain("/checkout/guest-otp/verify");
+    expect(routesSource).toContain("/checkout/guest-otp/exchange");
     expect(validatorSource).toContain('guest_checkout_proof');
   });
 
@@ -40,6 +41,7 @@ describe('Storefront guest checkout OTP contract', () => {
     const submissionCallSource = appSource.slice(submissionCallStart, submissionCallEnd);
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/request");
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/verify");
+    expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/exchange");
     expect(hookSource).toContain('idempotency_key');
     expect(modelSource).toContain('RESEND_COOLDOWN_SECONDS = 60');
     expect(hookSource).toContain('RESEND_COOLDOWN_SECONDS');
@@ -49,6 +51,8 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(hookSource).toContain('Email verification could not be completed. Please try again.');
     expect(hookSource).toContain('delivery_status');
     expect(hookSource).toContain('Email verification code could not be delivered. Please try again later.');
+    expect(hookSource).toContain('guest_checkout_verification_grant');
+    expect(hookSource).toContain('readGuestCheckoutVerificationGrant');
     expect(sharedVerificationSource).toContain('Verify your email');
     expect(sharedVerificationSource).toContain('Send again in');
     expect(sharedVerificationSource).toContain('badgeLabel');

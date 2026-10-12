@@ -1,0 +1,794 @@
+                POS DGFY Location Switching Implementation Plan
+          Editable consolidated plan | Plan v1.0 | 27 September 2026
+                                    Project
+POS-DGFY - Global Location SwitchingPlan version1.0Revision date2026-09-27Plan statusNOT EXECUTION READYPlanning depthLevel 4 - critical multi-tenant, financial, inventory, authorization, and migration changePurpose. This editable document consolidates the complete Location Switching planning package into one Word document. It defines the recommended global location context, the existing Shift-controlled transition, module behavior, permissions, data ownership, verification, rollout, recovery, and execution handoff.
+Recommended approach
+Use a visible Current Location entry point in the global header and mobile sidebar. Route operating-location changes through the existing Shift workflow, and keep viewing-location access read-only. Do not implement a second unrestricted switching path.Plan contents
+PLAN-01  Executive Summary
+PLAN-02  Problem and Current State
+PLAN-03  Target Architecture and Data Model
+PLAN-04  Scope Requirements and Business Rules
+PLAN-05  Backend Permissions and Security
+PLAN-06  Frontend UX and Cross Module Behavior
+PLAN-07  Migration and Backward Compatibility
+PLAN-08  Testing Verification and Acceptance
+PLAN-09  Rollout Observability and Recovery
+PLAN-10  Risks Dependencies and Architecture Decisions
+PLAN-11  Final Recommendation and Execution Handoff
+PLAN-01  Executive Summary
+Objective
+Design a secure global Location Switching capability for the POS so changing the active branch updates every location-dependent
+module without mixing inventory, sales, cash, permissions, reports, settings, vouchers, price lists, affiliates, or audit history.
+Recommendation
+Add a visible Current Location entry point in the global header/sidebar, but keep the existing Shift workflow as the only authority for
+changing the operating location. Maintain separate operating-location and viewing-location contexts.
+Why this fits the existing system
+The backend already exposes pos:switch_location and POST /terminal/shifts/:id/switch-location.
+TerminalPage already tracks operatingLocationId, viewingLocationId, and queueLocationScopeId.
+The Shift UI already validates destination terminals, cash values, current carts, and offline operations.
+ADR 0009 and ADR 0031 already require location-scoped inventory, terminal binding, shift-safe transitions, and auditability.
+External research
+Square uses an explicit in-app Switch location action, location-specific reporting, inventory, devices, and permissions, and warns
+against switching with pending offline payments. Toast exposes a location selector while separating location access from
+per-location permissions.
+Sources: https://squareup.com/help/us/en/article/5580-manage-multiple-locations-with-square ;
+https://squareup.com/us/en/point-of-sale/features/multi-store ;
+https://support.toasttab.com/en/article/Assigning-Employees-to-Multiple-Locations ;
+https://support.toasttab.com/en/article/MLM-Permissions-Guide
+Plan status
+NOT EXECUTION READY: Phase 354 discovery is still required for voucher, price-list, affiliate, and setting scope, and the
+phase ledger must be reconciled with the existing Phase 354-357 location-access documents. The execution skill must
+not begin implementation until these gates are closed.
+Primary acceptance outcome
+An authorized user can move from one authorized operating location to another through an atomic, audited, shift-safe flow, while
+read-only users can view authorized location data without gaining transaction or mutation rights.
+PLAN-02  Problem and Current State
+Problem statement
+The POS needs one understandable location context, but operating a branch and merely viewing branch data have different safety
+requirements. A free global switch would risk cross-branch sales, stock, cash, queue, and audit errors; a Shift-only entry point is
+difficult to discover.
+Confirmed current state
+Area
+Evidence
+Classification
+Permission
+apps/dgfy-api/src/config/permissions.js:115 defines pos:switch_location.
+REUSE
+Operating transition
+apps/dgfy-api/src/routes/pos.js:343 exposes the governed shift switch endpoint.
+REUSE
+Frontend service
+packages/web-core/src/features/pos/services/posService.js:686 posts the transition.
+REUSE
+Context state
+TerminalPage.jsx:720-722 tracks operating, viewing, and queue scopes.
+EXTEND
+Admin viewing
+TerminalOperationsWorkspace.jsx:768-839 exposes Register Branch and Viewing Branch
+controls.
+EXTEND
+Shift UI
+TerminalOperationsWorkspace.jsx:1131+ contains Change Active Shift Location.
+REUSE
+Inventory authority
+ADR 0009 identifies item_location_stocks and location movements as stock truth.
+LEAVE UNCHANGED
+Current checkout baseline
+Branch: feat/DGFY-343-2067-pos-workflow-consolidation.
+Baseline commit observed during planning: 786cd4e8329db1a65398ce6aa7eb020ffc8f3b28.
+The working tree is dirty with unrelated application, generated, and local skill changes. Implementation must preserve them and
+must use a clean, explicitly selected worktree or branch.
+Root cause and secondary effects
+The root cause is not the absence of location logic. The system already has partial location context and a governed shift transition.
+The gap is that the context is not yet presented and reconciled as one cross-module product contract, and not every requested
+module has a confirmed scope contract.
+Secondary effect: users may interpret viewing a branch as operating that branch.
+Secondary effect: adding a global selector without request invalidation could display stale data from the previous branch.
+Secondary effect: modules with unclear scope could either leak data or unnecessarily block valid operations.
+Documentation constraint
+The main implementation phase ledger currently has a high-water mark below the location-access documents, while those
+documents define Phase 354 and runtime Phases 355-357. Reconcile the ledger before implementation; do not invent a new
+phase sequence.
+Stakeholders
+Stakeholder
+Need
+Risk
+Cashier
+Fast, obvious branch context and safe switch flow.
+Accidental sale or cash assignment to wrong branch.
+Branch manager
+Location-scoped operations, staff, stock, reports, and
+settings.
+Unauthorized cross-location mutation.
+Owner / administrator
+Authorized cross-location viewing and controlled
+administration.
+Overbroad access and confusing operating state.
+Finance / audit
+Stable historical reports and traceable transitions.
+Rewritten history or missing actor attribution.
+Engineering / operations
+Observable, reversible rollout and clear recovery.
+Partial transitions and difficult incident repair.
+PLAN-03  Target Architecture and Data Model
+Target context model
+LocationContext = {
+tenantId,
+operatingLocationId,
+viewingLocationId,
+terminalId,
+activeShiftId,
+queueLocationScopeId,
+contextVersion,
+transitionState
+}
+The frontend may display and coordinate this context, but the backend remains authoritative for permissions, terminal binding, shift
+ownership, location grants, and transaction location.
+Context semantics
+Context
+Controls
+Allowed changes
+Operating location
+Checkout, stock deductions, incoming queue, parked-sale
+payment/resume, cash drawer, shift.
+Only through governed shift transition or valid shift opening.
+Viewing location
+Read-only reports, audit, monitoring, historical data.
+Can change without changing register or shift when permission
+allows.
+Queue scope
+Incoming order visibility and operational refresh.
+Derived from active operating shift; not independently
+user-controlled.
+Source of truth
+Concept
+Authoritative owner
+Derived or historical behavior
+Location access
+Tenant user/location grants.
+Re-evaluate at every protected request.
+Terminal location
+Registered terminal record.
+Strict terminal mode binds the device to its registered location.
+Operating location
+Active shift.
+Cannot be changed by a client-only state update.
+Stock
+item_location_stocks and inventory movements.
+items.current_stock remains derived aggregate where applicable.
+Catalog identity
+Catalog item, SKU, category, and base-price records.
+Do not create branch copies of the same item.
+Completed sale
+Immutable transaction location snapshot.
+Later context changes do not rewrite it.
+Transition
+Atomic shift-location transition record.
+Records source, destination, actor, cash, reason, and outcome.
+Concept
+Authoritative owner
+Derived or historical behavior
+Audit
+Append-only tenant audit trail.
+Filter by location for viewing; do not create separate histories.
+ADR-001 - Global context with governed operating transition
+Decision: use a global header/sidebar entry point that dispatches to the existing Shift-owned operating transition, while preserving a
+separate read-only viewing context.
+Alternatives rejected: Shift-only switch for poor discoverability; unrestricted sidebar switch for safety risk; duplicate catalogs for data
+drift; separate audit stores for incomplete investigation.
+Consequences: more explicit context labels and refresh coordination are required, but the design reuses current contracts and is
+reversible through a feature flag.
+ADR-002 - Shared catalog, location-specific operational state
+Decision: keep item identity, SKU, category, and tenant-wide base price centralized; keep stock, availability, visibility, and any
+approved overrides location-aware. Add schema only when discovery proves a required location dimension is missing.
+Target state diagram
+User authentication
+|
+v
+Permission + location grant checks
+|
++--> Viewing context ----> Reports / Audit / Monitoring (read-only)
+|
++--> Operating context --> Terminal + Shift --> Sales / Stock / Queue
+PLAN-04  Scope Requirements and Business Rules
+In scope
+Global location entry point and context labels.
+Operating-location switching through the existing Shift workflow.
+Location-aware Items, stock, Add Item, sales, parked sales, queue, reports, shifts, settings, vouchers, price lists, affiliates, and
+audit.
+Server-side permissions, concurrency, idempotency, offline safety, testing, rollout, observability, and recovery.
+Out of scope
+GPS, Wi-Fi, IP, or automatic physical branch detection.
+Automatic conflict takeover or silent shift reassignment.
+Duplicate branch catalogs or destructive schema replacement.
+New offline login or branch transfer behavior not already supported by the contract.
+Functional requirements
+ID
+Requirement
+Priority
+Verification
+FR-001
+Authorized users can open a global Current Location entry point.
+P1
+Desktop/mobile UI test
+FR-002
+The UI distinguishes operating, viewing, and queue context.
+P1
+UI and E2E test
+FR-003
+An active operating switch uses the governed close/open shift flow.
+P0
+API integration test
+FR-004
+Only authorized destination locations and terminals are selectable.
+P0
+Authorization test
+FR-005
+Sales, stock, queue, parked sales, and payments use the operating location.
+P0
+Cross-module E2E
+FR-006
+Reports and audit support authorized viewing-location filters.
+P1
+Report/API test
+FR-007
+Settings, vouchers, price lists, and affiliates apply explicit scope rules.
+P1
+Module contract tests
+FR-008
+Every successful or rejected transition is traceable.
+P0
+Audit verification
+Quality, security, data, and operations requirements
+ID
+Requirement
+Priority
+NFR-001
+No stale request from the old context may overwrite the new context.
+P0
+NFR-002
+Switch submissions are idempotent and safe to retry.
+P0
+SEC-001
+Backend rejects forged tenant, location, terminal, shift, cashier, and operator identifiers.
+P0
+SEC-002
+Location permission is independent from action permission.
+P0
+DATA-001
+Every completed sale has exactly one immutable location snapshot.
+P0
+DATA-002
+Stock truth remains location-scoped and reconciliable.
+P0
+OPS-001
+Transition, denial, conflict, and reconciliation signals are observable.
+P1
+MIG-001
+Schema changes are additive and backward compatible until verified.
+P0
+Business rules
+ID
+Rule
+Failure behavior
+Affected areas
+BR-001
+A sale belongs to one operating location and active
+shift.
+Reject or preserve current state.
+Sales, inventory, reports, audit
+BR-002
+Switch permission does not grant destination
+access.
+Return 403.
+Authorization, UI
+BR-003
+No switch with unresolved cart, payment, or offline
+operation.
+Block with actionable reason.
+Checkout, shift, offline
+BR-004
+Source shift close and destination shift open are
+atomic.
+Keep source state; retry safely.
+Shift, cash, audit
+BR-005
+Viewing a location never grants mutation or
+incoming-queue access.
+Return 403 or read-only state.
+Reports, monitor, queue
+BR-006
+Parked sales retain origin location and shift
+ownership.
+Require explicit handoff policy.
+Parked sales, payments
+BR-007
+Historical transactions do not change when current
+context changes.
+Reconcile and block release if violated.
+Reports, finance
+BR-008
+Strict terminal mode requires a destination
+registered terminal.
+Reject destination.
+Terminal, shift
+Acceptance criteria
+AC-001: A permitted user can switch safely and the new location appears consistently in all affected modules.
+AC-002: An unassigned location, forged location ID, or missing permission is rejected server-side.
+AC-003: Pending offline work, unresolved cart, or concurrent transition cannot corrupt the shift.
+AC-004: Stock, queue, sales, reports, vouchers, pricing, affiliates, and audit use the correct context.
+AC-005: Desktop and mobile users can identify current context and understand blocked actions.
+AC-006: Rollback preserves historical transactions and supports reconciliation.
+PLAN-05  Backend Permissions and Security
+Backend strategy
+Reuse the existing switch-location endpoint and use case. Extend only the missing module scope checks discovered during Phase
+354. Keep controllers transport-only and enforce rules in use cases and repositories according to the repository architecture
+boundary.
+Authentication, authorization, and data scope
+Layer
+Question
+Required check
+Authentication
+Who is the caller?
+Authenticated tenant user, active account, valid session/operator.
+Authorization
+What may the caller do?
+pos:switch_location plus module-specific action permission.
+Data scope
+Which records may the caller access?
+Location grant, terminal assignment, shift ownership, and requested viewing scope.
+API behavior
+Reuse POST /pos/terminal/shifts/:id/switch-location.
+Validate shift ID, terminal pairing, destination location, destination terminal, closing cash, opening float, reason, notes, and
+idempotency key.
+Derive tenant, actor, cashier, source location, and current shift from trusted session and database state.
+Reject client attempts to override protected identity or scope fields.
+Return deterministic errors: 403 for authorization, 409 for conflict/state race, 422 for invalid input, and 5xx only for unexpected
+failures.
+Atomicity and idempotency
+Lock the source shift and destination terminal/shift records as required by the existing data model.
+Perform close/open transition and audit write in one transaction.
+Reuse idempotency keys so retries do not create duplicate transitions or cash events.
+Preserve the source state if any destination validation or write fails.
+Security checks
+ID
+Attack or failure
+Verification
+SEC-001
+Forged location_id or terminal_id.
+Direct API request with altered identifiers must fail.
+SEC-002
+Permission without location grant.
+User with pos:switch_location but no destination grant
+receives 403.
+SEC-003
+Viewing context used for mutation.
+Mutation request using viewing scope is rejected.
+SEC-004
+Cross-tenant identifier substitution.
+Tenant ownership query rejects foreign IDs.
+SEC-005
+Replay or duplicate submit.
+Same idempotency key returns the original outcome.
+SEC-006
+Sensitive audit/log leakage.
+Logs contain IDs and reasons, not passwords, tokens, or
+payment secrets.
+Backend exit criteria
+All protected APIs use trusted scope checks.
+Concurrency tests prove no double-open or cross-location shift state.
+Audit and reconciliation records are produced for success and failure.
+No new API duplicates the existing governed switch flow.
+PLAN-06  Frontend UX and Cross Module Behavior
+Navigation decision
+Place Current Location in the global header on desktop and in the mobile sidebar/menu. Clicking it opens the governed flow. Keep
+the detailed Change Active Shift Location form inside Shift as the canonical workflow, not as a second implementation.
+Context display
+UI element
+Display
+Safety behavior
+Global header
+Operating location, terminal, and shift status.
+Never imply that viewing a branch changes the register.
+Location selector
+Authorized destinations and read-only viewing choices.
+Hide unauthorized options; still enforce on server.
+Shift transition modal
+Destination, terminal, closing cash, opening float, reason, notes.
+Require preflight completion before submit.
+Read-only banner
+Viewing location and reason it is read-only.
+Disable mutation and queue actions.
+Loading state
+Context transition in progress.
+Block duplicate actions and stale navigation.
+Error state
+Permission, conflict, offline, or validation reason.
+Offer recovery action without auto-takeover.
+Operating switch workflow
+Open Current Location
+-> Run cart, payment, offline, permission, and terminal preflight
+-> Select authorized destination location and terminal
+-> Enter counted closing cash, opening float, reason, and notes
+-> Submit idempotent shift transition
+-> Refresh context and all dependent modules
+-> Confirm destination operating context
+Module behavior
+Module
+Operating location
+Viewing location
+Items / Add Item
+Load branch stock, availability, visibility, and permitted branch
+operations.
+Allow only authorized read/edit behavior defined by module
+permissions.
+Sales / checkout
+Use active shift, terminal, stock, parked sales, and queue.
+No checkout or payment mutation.
+Reports
+Default to operating branch where relevant.
+Allow authorized branch or multi-branch read-only filters.
+Shifts
+Owns transition, cash drawer, and terminal state.
+Read-only monitoring only.
+Settings
+Load branch and terminal settings while preserving tenant
+settings.
+Allow only permitted configuration viewing/editing.
+Module
+Operating location
+Viewing location
+Vouchers
+Apply location eligibility and redemption location.
+View definitions only if authorized.
+Price lists
+Load location assignment or override.
+View permitted price configuration.
+Affiliates
+Record attribution and eligibility location.
+Filter reporting by authorized location.
+Audit
+Write current operating context.
+Filter the tenant-wide trail by authorized location.
+Refresh and race handling
+Increment a context version before transition and abort or ignore old requests.
+Clear location-dependent caches and carts only according to the approved workflow.
+Refresh items, stock, queue, reports, shift, settings, vouchers, pricing, affiliate context, and audit filters after authoritative
+success.
+Do not refresh a module into a new location until the backend confirms the transition.
+Responsive and accessibility requirements
+Desktop header selector and mobile sidebar selector expose the same permission-aware flow.
+Labels explicitly say Operating Location or Viewing Location.
+Focus moves into the transition dialog and returns to the trigger after close.
+Warnings are readable without color alone and controls expose disabled reasons.
+PLAN-07  Migration and Backward Compatibility
+Migration position
+No migration is approved yet: First audit existing tables, indexes, constraints, repositories, and queries for vouchers,
+price lists, affiliates, settings, reports, and audit. Reuse existing location fields and transition records wherever present.
+Required discovery
+Map every affected entity to tenant, location, terminal, shift, and historical location fields.
+Find all APIs accepting location_id or equivalent filters and classify whether they derive or trust it.
+Find all reports and exports that aggregate without an explicit location scope.
+Confirm whether settings are stored by tenant, branch, terminal, or mixed scope.
+Confirm voucher, price-list, and affiliate ownership and eligibility models.
+Safe migration sequence
+Stage
+Action
+Exit evidence
+Prepare
+Add compatible indexes/columns only when justified; keep old reads/writes working.
+Migration tests and schema review pass.
+Backfill
+Populate location metadata from authoritative terminal, shift, transaction, or grant
+sources.
+Row counts and ownership parity pass.
+Validate
+Compare old and new aggregates, reports, and ownership.
+No unexplained drift.
+Switch reads
+Enable location-aware reads behind a feature flag.
+Pilot reads match expected data.
+Switch writes
+Enable location-aware writes and audit.
+Integration and reconciliation tests pass.
+Observe
+Monitor errors, totals, stock, permissions, and audit events.
+Observation window passes.
+Clean up
+Remove compatibility code only after explicit approval.
+Rollback window closed.
+Backward compatibility
+Existing terminals and current shift flows must continue working when the feature flag is off.
+Older clients must fail safely or remain on compatible APIs; do not require a new client for an existing safe path without a
+migration plan.
+Historical reports must remain stable and must not be recomputed from later branch configuration.
+Generated build artifacts and unrelated dirty-worktree changes are not migration inputs.
+Migration exit criteria
+Representative tenant data has been migrated in rehearsal.
+Foreign keys, unique constraints, indexes, ownership, null handling, reports, and performance are verified.
+Rollback and reconciliation are tested without deleting historical data.
+PLAN-08  Testing Verification and Acceptance
+Verification versus validation
+Verification proves the implementation follows the approved requirements. Validation proves that users can safely operate multiple
+branches without confusion or cross-location errors.
+Verification matrix
+ID
+Requirement or rule
+Method
+Evidence
+TEST-001
+FR-001 / FR-002
+Desktop and mobile UI
+Screenshots/video showing explicit operating/viewing labels.
+TEST-002
+FR-003 / BR-004
+Backend integration
+Atomic close/open transition and persisted audit event.
+TEST-003
+FR-004 / SEC-001 / SEC-002
+Authorization API
+403 for unassigned or forged destination.
+TEST-004
+BR-003
+Failure-path integration
+Pending offline/cart/payment blocks switch without mutation.
+TEST-005
+FR-005 / DATA-001 /
+DATA-002
+Database and E2E
+Sale, stock movement, queue, and report all use one location.
+TEST-006
+FR-006 / BR-007
+Report regression
+Historical location remains unchanged after switch.
+TEST-007
+FR-007
+Module contract tests
+Settings, voucher, pricing, affiliate scope is enforced.
+TEST-008
+NFR-001 / NFR-002
+Concurrency test
+No stale overwrite and duplicate transition is idempotent.
+TEST-009
+MIG-001
+Migration rehearsal
+Counts, constraints, ownership, reports, and rollback pass.
+TEST-010
+OPS-001
+Observability test
+Metrics, logs, alerts, and audit evidence appear.
+Required GIVEN / WHEN / THEN scenarios
+Given a user has access to Location A and B, when they switch with a clear cart and valid cash values, then the new shift and
+terminal context are Location B.
+Given a user lacks Location B access, when they submit destination B directly to the API, then the server returns 403 and
+Location A remains unchanged.
+Given pending offline operations, when the user selects another location, then the switch is blocked and no shift or cash state
+changes.
+Given two terminals target the same destination shift, when both submit, then one succeeds and the other receives a
+deterministic conflict.
+Given a sale completed at Location A, when an administrator views Location B, then the sale remains attributed to A.
+Given a parked sale belongs to Location A, when a cashier works at Location B, then it cannot be silently paid as a B sale.
+Test layers
+Layer
+Coverage
+Unit
+Scope policy, context reducer, transition validation, formatting, permission decisions.
+API
+Authorization, validation, idempotency, conflicts, tenant and location ownership.
+Database
+Constraints, locks, historical snapshots, inventory movements, migration parity.
+UI
+Selector, modal, disabled states, labels, mobile/desktop responsive behavior.
+E2E
+Login -> context selection -> shift -> sale -> stock -> report -> audit -> close.
+Security
+Direct API bypass, parameter tampering, cross-tenant and cross-location attempts.
+Recovery
+Timeout, retry, refresh, restart, failed migration, rollback, reconciliation.
+Performance
+Large item lists, reports, location filters, concurrent users, refresh storms.
+Acceptance gate
+No critical requirement may be marked verified without implementation evidence and verification evidence. A passing component
+test does not prove cross-module correctness.
+PLAN-09  Rollout Observability and Recovery
+Release strategy
+Use a server-authoritative feature flag and pilot rollout for one representative multi-location tenant before broader release. The flag
+must not bypass backend authorization or change historical data.
+Release sequence
+Run repository checks, migration rehearsal, security tests, regression tests, and E2E evidence.
+Deploy compatible backend and migration preparation.
+Enable the feature for internal users or one pilot tenant.
+Observe transition, stock, queue, report, permission, and audit signals.
+Expand location-by-location or tenant-by-tenant only after the observation gate passes.
+Success signals
+Signal
+Expected behavior
+Switch success rate
+Authorized valid switches succeed without retries or manual repair.
+Authorization failures
+Only expected denials; no unexpected cross-location access.
+Inventory parity
+Stock movements and reports reconcile by location.
+Cash/shift parity
+Closing/opening values and transitions reconcile.
+Queue isolation
+Incoming orders appear only for the active operating scope.
+Audit completeness
+Every transition has actor, source, destination, reason, and outcome.
+UX errors
+Users can understand and recover from blocked transitions.
+Immediate stop conditions
+Cross-tenant or cross-location data leakage.
+Incorrect inventory movement, cash total, or financial report.
+Missing or incorrect audit attribution.
+Partial shift transition or duplicate shift opening.
+Parked sale or incoming queue appears under the wrong location.
+Critical security, migration, or API failure.
+Rollback and recovery
+Disable the feature flag and restore safe application code/configuration.
+Keep additive schema changes in place until written data is reconciled.
+Reconcile transactions, stock, shifts, queue records, and audit events created during the incident.
+Preserve evidence, document root cause, update the plan and tests, and retry only after corrective verification.
+Operational evidence
+Capture deployment SHA, application/database version, feature-flag state, migration result, test evidence, metrics snapshot, audit
+sample, and rollback readiness before declaring release success.
+PLAN-10  Risks Dependencies and Architecture Decisions
+Dependency graph
+Phase 354 contract and discovery
+-> scope matrix and permission matrix
+-> Phase 355 backend enforcement
+-> Phase 356 shared context and UI
+-> module integration and report/audit validation
+-> Phase 357 hardening
+-> pilot rollout
+Parallelizable work
+The module-scope inventory can run in parallel with UX wireframes after the contract boundaries are fixed.
+API authorization tests and UI selector tests can be prepared in parallel once requirement IDs are approved.
+Migration rehearsal can begin after schema ownership is confirmed, without enabling production writes.
+Risk register
+ID
+Risk
+Likelihood / impact
+Mitigation and contingency
+RISK-001
+Client or stale request mixes locations.
+Medium / High
+Context versioning, aborts, server scope checks; disable feature if
+leakage appears.
+RISK-002
+Pending offline work is lost or assigned
+incorrectly.
+Medium / High
+Fail closed before switch; test reconnect and recovery.
+RISK-003
+Voucher/price/affiliate scope is guessed.
+High / High
+Phase 354 schema and route audit; keep plan NOT EXECUTION
+READY.
+RISK-004
+Strict terminal binding conflicts with
+branch switching.
+Medium / High
+Require destination enrolled terminal; document operator flow.
+RISK-005
+Historical reports change after
+configuration switch.
+Low / High
+Immutable transaction snapshots and report regression tests.
+RISK-006
+Dirty working tree contaminates
+implementation.
+High / Medium
+Use a clean dedicated worktree and baseline inventory.
+RISK-007
+Phase ledger numbering conflicts with
+location docs.
+Medium / Medium
+Reconcile ledger before Phase 355.
+RISK-008
+Global selector becomes an unsafe
+second switch path.
+Medium / High
+Selector dispatches only to governed Shift workflow.
+Architecture decisions
+ADR
+Decision
+Sections
+ADR-001
+Global entry point, Shift-owned operating transition, separate viewing context.
+PLAN-03, PLAN-06
+ADR-002
+Shared catalog identity with location-specific operational state.
+PLAN-03, PLAN-04, PLAN-07
+ADR-003
+Backend-derived scope and atomic/idempotent transition.
+PLAN-05, PLAN-08, PLAN-09
+ADR-004
+Pilot and feature-flag rollout with additive migration only.
+PLAN-07, PLAN-09
+Relative effort and feasibility
+Area
+Effort
+Reason
+Discovery and contract
+MEDIUM
+Existing foundations reduce greenfield work; module scope is incomplete.
+Backend enforcement
+HIGH
+Financial, inventory, authorization, and concurrency boundaries.
+Frontend context and UX
+MEDIUM
+Existing state exists but needs central coordination and responsive UI.
+Migration
+UNKNOWN to HIGH
+Depends on voucher, price-list, affiliate, and settings schema audit.
+Testing and rollout
+HIGH
+Requires cross-module, security, migration, simulation, and recovery evidence.
+PLAN-11  Final Recommendation and Execution Handoff
+Final recommendation
+Build a shared global location context with a visible header/sidebar entry point. Reuse the existing Shift-controlled
+operating-location transition. Keep viewing-location navigation read-only and separate from register operation. Extend only the
+module contracts proven incomplete by Phase 354 discovery.
+What must be built
+Global Current Location selector and explicit operating/viewing labels.
+Location context coordinator with stale-request protection and module refresh rules.
+Server-side location grants, module permissions, terminal binding, shift ownership, idempotency, and audit enforcement.
+Location-aware behavior for items, stock, Add Item, sales, parked sales, reports, shifts, settings, vouchers, price lists, affiliates,
+queue, and audit.
+Verification matrix, migration rehearsal, pilot rollout, observability, and recovery evidence.
+What must remain unchanged
+The existing Shift switch-location endpoint and governed close/open semantics.
+The shared catalog source of truth and location inventory ledger.
+Historical transaction location and audit history.
+Terminal pairing and strict device safety rules.
+Unrelated user changes in the current dirty working tree.
+Plan readiness audit
+Gate
+Status
+Reason
+Objective and problem
+PASS
+Defined in PLAN-01 and PLAN-02.
+Current state
+PASS WITH BASELINE
+CAUTION
+Existing code and docs inspected; working tree is dirty.
+Target architecture
+PASS
+Operating/viewing/queue contexts defined.
+Gate
+Status
+Reason
+Requirements and rules
+PASS
+FR, NFR, SEC, DATA, OPS, MIG, BR, and AC IDs defined.
+Security and data ownership
+PASS
+Backend authority and source-of-truth model defined.
+Migration
+NOT READY
+Voucher, price-list, affiliate, and settings schema audit pending.
+Verification
+READY TO EXECUTE LATER
+Matrix defined; evidence does not exist yet.
+Phase ledger
+NOT READY
+Ledger reconciliation required before Phase 355.
+Overall plan
+NOT EXECUTION READY
+Phase 354 discovery must close blocking unknowns.
+Execution handoff package
+When PLAN STATUS becomes EXECUTION READY, the ExecutionPlan skill must read the entire package: this master index, all
+plan sections, requirements, business rules, ADRs, risk register, verification matrix, migration and testing plans, acceptance
+criteria, deployment and rollback plans, assumptions, and known risks.
+First eligible implementation move
+Complete Phase 354 discovery and contract reconciliation in a clean dedicated worktree. Do not implement the global selector or
+database changes before the scope matrix, permission matrix, and module ownership audit are approved.
+Continuous phase sequence
+Use the existing governed sequence: Phase 354 contract/discovery, Phase 355 backend enforcement, Phase 356 POS UI/context
+integration, and Phase 357 hardening and acceptance. Reconcile the main phase ledger before recording new entries.
+Final decision
+PLAN STATUS: NOT EXECUTION READY: The plan is complete as a planning artifact, but implementation must wait for
+the documented discovery gates. This is intentional and protects inventory, financial history, authorization boundaries,
+and rollback safety.

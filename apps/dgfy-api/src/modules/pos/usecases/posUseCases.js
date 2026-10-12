@@ -1133,7 +1133,9 @@ export const buildExportPosReportsUseCase = ({
             ['VAT Sales', summary.vatable_sales || 0],
             ['VAT', summary.vat || 0],
             ['Net Sales', summary.net_sales || 0],
-            ['Transactions', summary.total_transactions || 0],
+            ['Recorded Transactions', summary.total_transactions || 0],
+            ['Completed Sales', summary.completed_transactions ?? summary.total_transactions ?? 0],
+            ['Voided/Refunded', summary.voided_refunded_transactions || 0],
             [],
             ['Discount', 'Type', 'Transactions', 'Discount Total', 'VAT Removed'],
             ...discountRows.map((row) => [row.discount_label, row.discount_type, row.transaction_count, row.discount_amount, row.vat_removed]),
@@ -1307,6 +1309,17 @@ const normalizeZReadingSummary = (summary = {}) => ({
             order_method: entry?.order_method || null,
             count: Number.parseInt(entry?.count || 0, 10),
             amount: round4(entry?.amount)
+        }))
+        : [],
+    order_source_breakdown: Array.isArray(summary?.order_source_breakdown)
+        ? summary.order_source_breakdown.map((entry) => ({
+            order_source: String(entry?.order_source || '').trim().toLowerCase() === 'online_store'
+                ? 'online_store'
+                : 'in_store',
+            source_label: String(entry?.source_label || '').trim()
+                || (String(entry?.order_source || '').trim().toLowerCase() === 'online_store' ? 'Online Sales' : 'Walk-in Sales'),
+            count: Number.parseInt(entry?.count || entry?.total_transactions || 0, 10),
+            amount: round4(entry?.amount ?? entry?.net_sales)
         }))
         : []
 });

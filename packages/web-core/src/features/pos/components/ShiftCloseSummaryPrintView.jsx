@@ -16,17 +16,50 @@ const PAPER_WIDTH_OPTIONS = [
     { value: '80mm', label: '80mm (3 1/8 in)' },
     { value: '57mm', label: '57mm (2 1/4 in)' }
 ];
+const paymentLabel = (entry) => (
+    String(entry?.payment_label || entry?.payment_type || '').replace(/_/g, ' ') || '-'
+);
+const orderMethodLabel = (value) => ({
+    dine_in: 'Dine In',
+    takeout: 'Takeout',
+    pickup: 'Pickup',
+    delivery: 'Delivery',
+    online: 'Online'
+}[String(value || '').trim().toLowerCase()] || String(value || '').replace(/[_-]/g, ' ') || '-');
+const formatCount = (value) => Number(value || 0).toLocaleString('en-US');
+const entryCount = (entry) => Number(entry?.count ?? entry?.total_transactions ?? entry?.transaction_count ?? 0);
+const entryAmount = (entry) => Number(entry?.amount ?? entry?.net_sales ?? 0);
+const hasBreakdownValue = (entry) => entryCount(entry) > 0 || entryAmount(entry) > 0;
 
 const Row = ({ name, value, strong = false }) => (
-    <div className={`flex items-start justify-between gap-3 ${strong ? 'border-t border-slate-300 pt-1 font-bold text-slate-950' : 'text-slate-700'}`}>
-        <span>{name}</span>
-        <span className="whitespace-nowrap text-right tabular-nums">{value}</span>
+    <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 ${strong ? 'border-t border-slate-300 pt-2 font-bold text-slate-950' : 'text-slate-700'}`}>
+        <span className="min-w-0 break-words">{name}</span>
+        <span className="shrink-0 whitespace-nowrap text-right font-mono tabular-nums">{value}</span>
     </div>
+);
+
+const BreakdownRow = ({ name, count, value }) => (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        <div className="min-w-0">
+            <p className="break-words font-semibold text-slate-900">{name}</p>
+            <p className="text-[10px] leading-4 text-slate-500">
+                {formatCount(count)} transaction{Number(count || 0) === 1 ? '' : 's'}
+            </p>
+        </div>
+        <span className="shrink-0 whitespace-nowrap text-right font-mono font-bold tabular-nums text-slate-950">{value}</span>
+    </div>
+);
+
+const SummarySection = ({ title, children, emphasis = false }) => (
+    <section className={`border-t border-slate-200 py-3 first:border-t-0 ${emphasis ? 'pt-2' : ''}`}>
+        <h3 className="mb-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{title}</h3>
+        {children}
+    </section>
 );
 
 export default function ShiftCloseSummaryPrintView({
     report,
-    currency = '\u20b1',
+    currency = '₱',
     onClose,
     onPrint,
     autoPrint = false,
@@ -49,8 +82,16 @@ export default function ShiftCloseSummaryPrintView({
     const cash = report.cash_summary || {};
     const sales = report.sales_summary || {};
     const payments = Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : [];
+    const orderMethods = Array.isArray(sales.order_method_breakdown) ? sales.order_method_breakdown : [];
+    const orderSources = Array.isArray(sales.order_source_breakdown) ? sales.order_source_breakdown : [];
     const deliveryProviders = parseDeliveryProviderSummary(sales.delivery_provider_breakdown);
     const adjustments = Array.isArray(sales.post_close_adjustments) ? sales.post_close_adjustments : [];
+    const visiblePayments = payments.filter(hasBreakdownValue);
+    const visibleOrderMethods = orderMethods.filter(hasBreakdownValue);
+    const visibleOrderSources = orderSources.filter(hasBreakdownValue);
+    const visibleDeliveryProviders = deliveryProviders.filter(hasBreakdownValue);
+    const transactionCount = Number(sales.transaction_count ?? sales.total_transactions ?? 0);
+    const totalAmount = Number(sales.total_amount ?? sales.net_sales ?? 0);
     const reportBusiness = report.business || {};
     const businessName = String(
         businessSettings.pos_business_name || reportBusiness.name || 'DGFY'
@@ -91,30 +132,72 @@ export default function ShiftCloseSummaryPrintView({
                             <p className="text-[11px] text-slate-700">Shift #: {shift.pos_terminal_shift_id || shift.shift_id || '\u2014'}</p>
                         </header>
 
-                        <section className="space-y-1 border-b border-dashed border-slate-300 py-3">
-                            <p className="mb-1 font-black uppercase">Payment method breakdown</p>
-                            {payments.length === 0 ? <Row name="No payments" value={formatCashierHistoryMoney(0, currency)} /> : payments.map((entry, index) => (
-                                <Row
+                        <SummarySection title="Sales summary" emphasis>
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 print:bg-white">
+                                <div className="flex items-end justify-between gap-3">
+                                    <span className="text-[10px] font-black uppercase tracking-wide text-[#1A4E8D]">Overall sales</span>
+                                    <span className="shrink-0 font-mono text-lg font-black leading-none tabular-nums text-[#1A4E8D]">{formatCashierHistoryMoney(totalAmount, currency)}</span>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between border-t border-blue-200 pt-2 text-[11px] print:border-slate-200">
+                                    <span className="text-slate-600">Transactions</span>
+                                    <span className="font-mono font-bold tabular-nums text-slate-950">{formatCount(transactionCount)}</span>
+                                </div>
+                            </div>
+                        </SummarySection>
+
+                        <SummarySection title="Payment methods">
+                            {visiblePayments.length === 0 ? (
+                                <p className="text-slate-500">No payments recorded.</p>
+                            ) : visiblePayments.map((entry, index) => (
+                                <BreakdownRow
                                     key={`${entry.payment_type || entry.payment_label || 'payment'}-${index}`}
-                                    name={`${formatCashierHistoryPaymentLabel(entry, '-')} (${entry.count || 0})`}
-                                    value={formatCashierHistoryMoney(entry.amount, currency)}
+                                    name={paymentLabel(entry) || formatCashierHistoryPaymentLabel(entry, '-')}
+                                    count={entryCount(entry)}
+                                    value={formatCashierHistoryMoney(entryAmount(entry), currency)}
                                 />
                             ))}
-                        </section>
+                        </SummarySection>
 
-                        <section className="space-y-1 border-b border-dashed border-slate-300 py-3">
-                            <p className="mb-1 font-black uppercase">Delivery provider breakdown</p>
-                            {deliveryProviders.length === 0 ? <Row name="No delivery provider sales" value="0" /> : deliveryProviders.map((entry, index) => (
-                                <Row
+                        {visibleOrderSources.length > 0 ? (
+                            <SummarySection title="Sales sources">
+                                {visibleOrderSources.map((entry, index) => (
+                                    <BreakdownRow
+                                        key={`${entry.order_source || 'source'}-${index}`}
+                                        name={entry.order_source === 'online_store' ? 'Online Sales' : 'Walk-in Sales'}
+                                        count={entryCount(entry)}
+                                        value={formatCashierHistoryMoney(entryAmount(entry), currency)}
+                                    />
+                                ))}
+                            </SummarySection>
+                        ) : null}
+
+                        {visibleOrderMethods.length > 0 ? (
+                            <SummarySection title="Order methods">
+                                {visibleOrderMethods.map((entry, index) => (
+                                    <BreakdownRow
+                                        key={`${entry.order_method || 'method'}-${index}`}
+                                        name={orderMethodLabel(entry.order_method)}
+                                        count={entryCount(entry)}
+                                        value={formatCashierHistoryMoney(entryAmount(entry), currency)}
+                                    />
+                                ))}
+                            </SummarySection>
+                        ) : null}
+
+                        <SummarySection title="Delivery providers">
+                            {visibleDeliveryProviders.length === 0 ? (
+                                <Row name="No delivery provider sales" value="0" />
+                            ) : visibleDeliveryProviders.map((entry, index) => (
+                                <BreakdownRow
                                     key={`${entry.provider_type || 'provider'}-${entry.provider_name || index}`}
-                                    name={`${formatDeliveryProviderSummaryLabel(entry)} (${Number(entry.transaction_count || 0).toLocaleString('en-US')})`}
-                                    value={formatCashierHistoryMoney(entry.amount, currency)}
+                                    name={formatDeliveryProviderSummaryLabel(entry)}
+                                    count={entryCount(entry)}
+                                    value={formatCashierHistoryMoney(entryAmount(entry), currency)}
                                 />
                             ))}
-                        </section>
+                        </SummarySection>
 
-                        <section className="space-y-1 py-3">
-                            <p className="mb-1 font-black uppercase">Cash reconciliation</p>
+                        <SummarySection title="Cash reconciliation">
                             <Row name="Opening/petty cash" value={formatCashierHistoryMoney(cash.opening_float_amount, currency)} />
                             <Row name="Cash sales" value={formatCashierHistoryMoney(cash.cash_sales_amount, currency)} />
                             <Row name="Cash in" value={formatCashierHistoryMoney(cash.cash_in_total, currency)} />
@@ -122,7 +205,7 @@ export default function ShiftCloseSummaryPrintView({
                             <Row name="Expected cash in drawer" value={formatCashierHistoryMoney(cash.expected_cash_amount, currency)} />
                             <Row name="Closing cash" value={reconciliationMoney(cash.closing_cash_amount, currency, 'Not closed')} />
                             <Row name="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
-                        </section>
+                        </SummarySection>
 
                         {adjustments.length > 0 ? (
                             <section className="space-y-2 border-t border-dashed border-slate-300 py-3">

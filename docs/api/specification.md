@@ -2776,6 +2776,13 @@ Item names and SKUs use the sale-time line snapshot; category names resolve
 from the current primary item folder, falling back to the legacy category or
 `Uncategorized`.
 
+The report-wide summary keeps `total_transactions` as the number of recorded
+transactions in the filtered scope and also exposes `completed_transactions`
+and `voided_refunded_transactions`. These counts are distinct transaction
+counts (not line counts), so exports and the POS report cards can show recorded
+activity separately from completed sales and voided/refunded activity without
+changing the monetary sales totals.
+
 #### GET /pos/reports/export
 
 The existing CSV export remains backward-compatible. Its `section` allowlist

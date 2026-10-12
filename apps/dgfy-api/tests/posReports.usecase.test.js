@@ -353,7 +353,9 @@ describe('POS reports usecases', () => {
                         vatable_sales: 98.2143,
                         vat: 11.7857,
                         net_sales: 110,
-                        total_transactions: 1
+                        total_transactions: 1,
+                        completed_transactions: 1,
+                        voided_refunded_transactions: 0
                     },
                     discount_breakdown: [],
                     cashier_summary: [],
@@ -389,6 +391,9 @@ describe('POS reports usecases', () => {
         expect(result.data.content).toContain(
             '"NFS-000140","2026-09-21 15:42:44 (Asia/Manila)","Admin","GCash + Cash","completed","110","110","0","98.2143","11.7857","110"'
         );
+        expect(result.data.content).toContain('"Recorded Transactions","1"');
+        expect(result.data.content).toContain('"Completed Sales","1"');
+        expect(result.data.content).toContain('"Voided/Refunded","0"');
         expect(getReportsOverviewUseCase).toHaveBeenCalledWith({
             query: { section: 'daily' },
             user: { user_id: 4 }

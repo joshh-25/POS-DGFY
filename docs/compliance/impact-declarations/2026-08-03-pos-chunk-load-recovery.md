@@ -1,10 +1,10 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-03
+last_reviewed: 2026-10-10
 declaration_id: 2026-08-03-pos-chunk-load-recovery
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.03
 verification_evidence: POS catalog performance contract tests,POS page shell contract tests,terminal view-mode contract tests,service worker caching contract tests,chunkLoadRecovery unit tests,ErrorBoundary chunk-recovery tests
@@ -76,3 +76,10 @@ assets are missing from a stale tab.
    counts).
 3. `npm run check:compliance -- --staged` passed with this declaration staged
    alongside the `frontend/src/features/pos/**` changes it covers.
+
+## Amendment — 2026-10-10 — Customer-display chunk recovery
+
+- Change: The standalone POS customer-display route is lazy-loaded through the existing chunk
+  retry/reload helper, preventing a stale deployed bundle from producing an unrecoverable blank
+  display window.
+- Validation: POS page-shell contract coverage and the existing chunk-recovery checks.

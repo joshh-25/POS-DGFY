@@ -1,0 +1,172 @@
+POS Branch Viewer And Safe Shift Opening Plan
+Location access inside Shift without global location switching
+Field
+Value
+ProjectPOS-DGFY / StagingPOSPlan typeRepository-grounded implementation plan; planning onlyPrepared2026-09-27Primary ownerPOS frontend and API teamsStatusPlan proposed; implementation not startedPhase numberingProvisional internal work packages LS-01 to LS-07; ledger slot must be reconciled before implementation
+Executive decision
+Yes, this behavior is technically appropriate, but it should not be implemented as a global location switch. Put one Location entry inside the existing Shift workspace. That entry opens a branch directory and makes the user choose between a read-only View Branch action and a normal Open Shift action. The current register location, cart, parked sale, drawer, operator session, and shift remain unchanged while viewing another branch.The existing sidebar Switch Location entry and the current admin branch monitor should be refactored into this model. The existing atomic shift-location switch remains a separate, privileged register operation for the cases already governed by ADR 0031 and ADR 0009; it must not be reused for View Branch and must not be presented as a takeover shortcut.Critical assessment
+The requested outcome is sound. The risky part is the phrase "enter the POS branch," because a normal POS entry currently couples branch context to terminal, shift, cart, queue, and mutation authority. Reusing that operating context for a viewer could expose checkout, claim a terminal, alter a parked sale, or make the viewer appear to own another cashier's drawer. The plan therefore uses two explicit contexts: operating context and branch-view context.Do not change operatingLocationId when View Branch is clicked. Add a separate branchViewLocationId and branchViewMode, or an equivalent typed context object.
+Do not create a fake shift, operator session, terminal claim, attendance row, cart, parked-sale claim, cash event, or payment session for a viewer.
+Do not let client-supplied location_id authorize access. Every read and mutation must re-check tenant, permission, location grant, terminal policy, shift ownership, and operator authority on the server.
+Do not let an occupied terminal be opened by another user. "View Branch" remains available where authorized; "Open Shift" is disabled with the identified cashier and terminal status.
+Do not use the existing pos:switch_location permission as the read-only viewing permission. It currently represents a governed register shift move and is too powerful for a viewer.
+Evidence and certainty
+Classification
+Finding
+CONFIRMEDThe current StagingPOS branch is StagingPOS at commit 9e40792b9. Existing user changes are present in TerminalOperationsWorkspace.jsx, TerminalPageLayout.jsx, and terminalResponsiveScroll.contract.test.js; the plan does not modify them.CONFIRMEDTerminalWorkspaceSidebar.jsx currently contains a dedicated Switch Location entry that routes to shift_controls.CONFIRMEDTerminalOperationsWorkspace.jsx already contains Register Branch, Viewing Branch, terminal occupancy, Branch Shift Monitor, and Change Active Shift Location controls.CONFIRMEDThe API already exposes GET /pos/admin/location-monitor and POST /pos/terminal/shifts/:id/switch-location. The monitor is gated by pos:switch_location and returns incoming orders plus open terminal shifts for one location.CONFIRMEDpos_terminal_shifts.location_id anchors the register shift; cashier_id is the opening-cash/shift owner. Operator sessions are a separate authority under ADR 0073.CONFIRMEDUserLocationGrant and location-scope helpers already enforce branch access for location-scoped reads and writes.INFERREDThe cleanest implementation is an additive read-only branch context that reuses location-scoped read use cases and existing terminal/shift facts rather than a new branch database or fake shift.UNKNOWNWhether every existing POS read surface already accepts an explicit read-only location scope. Each route must be inventoried before implementation; missing scope support is a delivery task, not a reason to bypass authorization.UNKNOWNWhether current operator-session rows are enabled in every StagingPOS tenant. The response must distinguish shift owner from current operator when the table is available, and fall back to shift owner only when the lifecycle contract is disabled.
+Current implementation and required correction
+Current surface
+Observed behavior
+Required plan change
+SidebarA top-level Switch Location button is visible and describes close/open behavior.Remove the standalone entry from the primary sidebar. Keep Shift as the single navigation entry and put Location inside Shift.Shift workspaceRegister branch and viewing branch are mixed with shift-open and admin-monitor controls.Create a dedicated Location pane with a branch directory, View Branch action, Open Shift action, and explicit status/reason states.Branch monitor APIReads one selected location and requires pos:switch_location.Create a read-only branch directory/overview contract with a separate view permission and grant-aware location list. Keep mutation authority separate.Operating stateoperatingLocationId drives catalog/dashboard and viewingLocationId is used for the admin monitor.Introduce a typed operating versus viewing context. Viewer context must never drive checkout or shift mutations.Open shiftExisting open shift flow has terminal/location checks and conflict behavior.Reuse it after a branch row is selected, but add explicit occupied-terminal and user-already-has-open-shift decisions. Never auto-close or take over.Shift location switchExisting switch endpoint performs governed close plus open transition.Keep it as a separate privileged advanced action. Do not call it for View Branch or normal first-time Open Shift.
+Target behavior
+Navigation and panel
+The sidebar shows the existing Shift entry. No separate global Switch Location entry appears in the primary navigation.
+Opening Shift shows the existing shift controls plus a Location button or tab. The button is available only when the authenticated user is allowed to view or operate a branch.
+The Location pane loads the authorized branch directory. Each row shows branch name, active/open status, terminal occupancy, current cashier or operator safe identity, and available actions.
+The pane labels the current operating branch separately from the selected viewing branch. A clear "Read-only branch view" banner appears whenever branchViewMode is active.
+Leaving branch view returns to the prior POS view and preserves the operating shift, cart, parked-sale state, terminal, and operator session.
+Branch directory and cashier status
+Show all active branches only to a user with tenant-wide branch-view authority. For a user with scoped authority, show only active locations granted to that user.
+For each registered active terminal, show Available, In use, Stale for recovery review, or Unavailable. Include the terminal label and safe cashier/operator display name only.
+Show the shift owner and current operator separately when operator sessions exist. Do not use current operator data to rewrite cashier_id or shift ownership.
+If a branch has no open shift on any eligible terminal, show "No active shift" and allow Open Shift only when the user has the relevant operating authority.
+If one terminal is occupied but another eligible terminal is free, show the free terminal as an opening option. If no eligible terminal is free, show View Branch only and the reason.
+View Branch
+The user clicks View Branch on a permitted branch row.
+The client stores branchViewLocationId and enters branchViewMode without changing operatingLocationId, activeTerminalId, activeShiftId, cart, parked sale, or operator session.
+The client requests read-only branch data with an explicit target location. The server validates the user grant or tenant-wide view authority for every request.
+The viewer may inspect location-scoped catalog/item availability, reports/history read surfaces, incoming order status, and shift/terminal monitoring only where the user already has the corresponding read permission.
+The viewer cannot add items to a sell cart, checkout, pay, split tender, park/resume/cancel a sale, claim a parked sale, change quantities or prices in an active sale, record cash, close or switch another shift, assign operators, edit items, edit settings, modify vouchers/pricelists/affiliates, or mutate orders.
+If a route does not have a safe read-only location scope, the UI must show "Not available in branch view" rather than silently falling back to the viewer's operating branch.
+Open Branch and Open Shift
+The user selects Open Shift from a branch row, not View Branch.
+The server rechecks authenticated tenant membership, active user state, pos:transact, target location grant, terminal registry eligibility, strict terminal binding, attendance/break rules, and whether the user already owns an open shift or active operator scope elsewhere.
+If the user owns an open shift elsewhere, return a stable conflict such as POS_OPERATOR_ACTIVE_ELSEWHERE. The UI offers View Branch and a link to resume the existing shift; it does not close, move, or transfer it.
+If the selected terminal is occupied, return TERMINAL_SHIFT_OCCUPIED with safe owner/status data. No takeover, cash transfer, auto-close, or drawer reassignment occurs.
+If the target terminal is free and all checks pass, continue through the existing normal opening flow for opening float and note. The resulting shift is owned by the authenticated opener and receives the target location anchor.
+After a successful open, exit branch view, set the new operating context from the server response, refresh shift/catalog/queue/dashboard state, and leave no stale data from the prior branch.
+Permission and scope model
+Add a dedicated POS read capability, preferably pos:branch_view, to distinguish "may inspect an authorized branch" from pos:switch_location, which remains a register shift move. Keep pos:transact as the authority to open a shift and perform checkout. Tenant-wide branch visibility must come from an explicit master-admin/administrator or existing business-admin all-branches authority, not from a role label alone.Actor or capability
+Branch list
+View Branch
+Open Shift
+View occupied cashier
+Takeover or shift move
+Master admin / tenant administrator with approved all-branch scopeAll active branchesYes, read-onlyOnly with pos:transact, grant/terminal rules, and no own open shiftSafe name/status onlyNo automatic takeover; governed action onlyManager with pos:branch_view and location grantsGranted active branchesYes, read-onlyOnly in granted branch with pos:transact and free eligible terminalSafe name/status onlyNo unless separately granted pos:switch_location and current shift rules passCashier with default permissionsCurrent/granted branches only if explicitly granted pos:branch_viewIf explicitly granted; never implied by pos:transactOnly if pos:transact, grant, terminal, attendance, and one-open-shift rules passOnly the data exposed by the branch-view permissionNoUser without pos:branch_viewNo branch directory beyond current operational contextNoExisting normal shift flow onlyNoNoAny viewer on an occupied terminalBranch remains visible if authorizedYesNo for that terminalYes, safe identity/statusNo
+Update the backend permission catalog and frontend fallback mirror together; the frontend live source remains the server role catalog.
+Do not silently grant pos:branch_view to all cashiers. If product wants cashier viewing, make it an explicit grant and test the default denial.
+Do not rely on the current tenantLocations.js reference to PERMISSIONS.BUSINESS_ADMIN unless the backend permission catalog is first reconciled; the checked StagingPOS permissions.js currently exposes no BUSINESS_ADMIN group while the frontend mirror and shared capabilities do. This is a confirmed permission-catalog inconsistency and must be resolved in the implementation work package.
+Backend and API plan
+Branch directory read model
+Add one read use case and endpoint rather than making the client call each branch independently. A suitable contract is GET /pos/branch-directory or GET /pos/locations/overview. The endpoint returns only locations in the caller scope and a bounded terminal occupancy summary.Response field
+Purpose
+Source / rule
+location_id, location_name, is_active, is_openBranch identity and statusTenantLocation; active locations onlyaccess_state, access_reasonExplain granted, denied, inactive, or unavailableUserLocationGrant plus tenant-wide authorityterminals[]Eligible terminal listTerminal registry and strict-device policyterminal_id, label, statusAvailable, occupied, stale, unavailableRegistry plus open shift stateshift_id, shift_ownerOccupied shift displayPosTerminalShift.cashier_id; safe display fields onlycurrent_operatorCurrent operator display when lifecycle is enabledPosTerminalOperatorSession; never replaces shift ownercan_view, can_open, can_switchServer-derived actions for this user and rowEffective permissions and scope; UI is not authorityreason_codeStable client behaviorExamples: NO_VIEW_PERMISSION, LOCATION_NOT_GRANTED, SHIFT_OCCUPIED, ACTIVE_ELSEWHERE, TERMINAL_UNAVAILABLE
+Read-only branch context
+Extend or replace the current admin location monitor use case with a dedicated read-only use case. Do not make read-only viewing depend on pos:switch_location.
+Require an explicit location_id on branch-view requests. Resolve it through the same tenant and location-scope helpers used by existing POS reads.
+Add a request context such as view_mode=branch_view only for read routes. Mutation use cases must ignore or reject this mode and continue to require the active operating shift/operator/terminal authority.
+Inventory catalog, item stock, reports, history, incoming-order, settings, voucher, pricelist, affiliate, audit, and parked-sale endpoints. Mark each as branch-view allowed, current-operating-only, or forbidden. Do not expose mutation-capable forms in the viewer shell.
+Use pagination and bounded result limits for branch directory, orders, history, and reports. Avoid one request per branch and avoid returning full transaction or customer payloads merely to show occupancy.
+Open shift and conflict contract
+Reuse POST /pos/terminal/shifts/open after adding explicit stable conflict codes and ensuring the transaction locks the authenticated user, target terminal, and relevant open-shift rows.
+Preserve same-terminal resume behavior. A retry must return the existing owned shift, not create a second row.
+Return 409 for the authenticated user already operating elsewhere or the target terminal already occupied; do not expose raw database errors.
+Keep POST /pos/terminal/shifts/:id/switch-location as the governed close-plus-open operation for its existing use case. It is not the View Branch path.
+Ensure strict device terminal policies remain binding. A viewer may inspect a strict terminal, but cannot use branch view to bypass device pairing or change the terminal home location.
+Audit and security
+Audit branch-view entry and exit as VIEW events with actor, tenant, viewed location, operating location, operating terminal, active shift ID if any, request ID, and timestamp. Do not store passwords, tokens, full cart snapshots, or unnecessary customer data.
+Audit denied branch-view attempts and occupied/open conflicts at a bounded rate or through existing security/audit conventions; include reason_code, not secrets.
+Audit normal shift opening through its existing shift audit path. Do not create financial or drawer evidence for View Branch.
+The branch directory must use safe cashier/operator identity fields. Never return credentials, PIN state, access tokens, or private account data.
+Re-read the current tenant user and effective permissions on protected mutations. Cached frontend permission state may only control display, never authorization.
+On permission revocation, location grant removal, user deactivation, or shift closure, the next branch-view refresh must fail closed or remove the row. The viewer must not retain stale action buttons.
+Frontend implementation plan
+Area
+Planned change
+TerminalWorkspaceSidebar.jsxRemove the top-level Switch Location card/entry. Keep Shift as the navigation owner. Update context labels so "Operating branch" and "Read-only viewing branch" cannot be confused.TerminalOperationsWorkspace.jsxAdd a Location pane/tab inside Shift. Replace mixed Register Branch/Viewing Branch controls with branch rows and explicit View Branch/Open Shift actions. Keep advanced shift-location transition separate.TerminalPage.jsxReplace the overloaded viewingLocationId/admin monitor coupling with a typed branch-view context. Preserve operatingLocationId for operating APIs and active shift state. Add enter/exit refresh and stale-response guards.posService.jsAdd branch-directory and branch-view read adapters. Keep shift-open and shift-location-switch adapters separate. Normalize stable reason codes.POS workspace shellWhen branchViewMode is true, render a read-only shell/banner and disable or remove sell/cart/payment/parked-sale/cash/shift-mutation actions. Do not rely only on CSS disabled states.Responsive behaviorThe branch directory must work on desktop and mobile/tablet. Use a full-width modal or Shift pane on narrow screens, and a table/card hybrid on web. Preserve current user changes to scroll behavior.
+Module impact boundaries
+Module
+Branch-view behavior
+Mutation rule
+Items / stockRead only; show stock for selected branch only when the caller has item/stock read permission.No add/edit/delete/import/stock adjustment from viewer.Sell / cartNot an operating surface in viewer mode.No add item, price change, park, resume, checkout, payment, void, refund, or cash action.Reports / historyLocation-scoped read only where existing report permission allows.Exports and sensitive financial mutations remain governed separately; do not broaden report permission.OrdersRead-only order/queue visibility if the existing order-view policy permits it.No accept, prepare, ready, complete, cash collection, or assignment action.ShiftBranch occupancy and shift status only; current user can view the selected branch.No close, cash event, operator takeover, force close, or location switch of another shift.Settings / terminal setupShow only safe read-only status if a read contract exists.No settings, terminal registry, pairing, device, tax, or branch edits.Vouchers, pricelists, affiliatesDo not automatically make these visible. Add explicit read contracts only where product permissions and location ownership support it.No authoring, lifecycle, rate, payout, or pricing mutation.AuditRead audit entries only if audit permission and location scope allow it; redact sensitive metadata.No audit deletion or alteration.
+Database and migration plan
+The preferred design is additive without a new branch-view session table. The viewer context is ephemeral browser state, and the durable sources of truth already exist: TenantLocation, UserLocationGrant, terminal registry data, PosTerminalShift, operator-session data when enabled, and audit_logs. Avoid persisting a fake viewer shift.Likely no schema migration is needed for the basic branch directory and viewer context if existing tables and audit columns are present.
+If a new pos:branch_view permission is added to the permission catalog, update role catalogs and run the repository-approved additive permission backfill/reconciliation. Do not mass-revoke existing grants automatically.
+If the branch directory exposes current operator status, verify the operator-session migration is present in every supported tenant schema. Missing schema must return an explicit unavailable state, not an empty "no cashier" result.
+Add indexes only when query plans show need, likely on open shift location/status and operator-session location/active state. Confirm existing indexes before adding duplicates.
+Any schema change must be implemented in apps/dgfy-migration-runner and reflected in tenant schema synchronization where required. The plan does not authorize a migration yet.
+Implementation work packages
+Package
+Scope
+Dependencies
+Evidence required
+LS-01 Contract and permission reconciliationResolve the backend/frontend permission catalog mismatch; define pos:branch_view scope and all-branch rule; inventory allowed read routes.ADR 0020, 0031, 0073; Phase 354-357 documentation; phase ledger reconciliation.Approved permission matrix, route inventory, no unresolved authority ambiguity.LS-02 Branch directory read modelImplement server use case, repository query, route, stable response schema, grant filtering, terminal occupancy and safe identities.LS-01; existing TenantLocation, UserLocationGrant, shift/operator models.Unit and API tests for tenant isolation, grant scope, all-branch scope, occupied/free terminals.LS-03 Safe open-shift decisionsHarden normal open flow with one-user/one-active-scope, terminal occupancy, strict device binding, attendance, idempotency and stable conflicts.Existing shift open/lifecycle use cases; ADR 0031/0073.Concurrent DB/API tests prove one winner, no takeover, no second shift, preserved first shift.LS-04 Shift Location UIMove location entry inside Shift; build branch list, cashier/terminal status, View Branch and Open Shift actions; remove standalone sidebar entry.LS-02 and LS-03; current StagingPOS UI files.Rendered desktop/mobile tests and responsive interaction evidence.LS-05 Read-only branch contextAdd explicit operating versus viewing context and disable/mask mutation surfaces; wire permitted read modules.LS-02; route inventory from LS-01.Direct mutation API denial with viewer context; no cart/parked-sale/shift leakage.LS-06 Audit and observabilityAdd branch-view entry/exit/denial evidence, reason codes, safe logging, refresh/revocation handling.LS-02 to LS-05; existing audit service.Audit assertions, redaction checks, stale permission and grant revocation tests.LS-07 Full verification and rolloutRun backend, frontend, migration/schema, security, browser, responsive, offline/reconnect and rollback checks.All prior packages; ledger phase assignment.Release-quality evidence packet and documented rollback.
+Verification strategy
+Backend tests
+Permission tests: default cashier denied; explicit branch-view grant allowed; manager/admin/master-admin scope behavior; pos:switch_location does not implicitly grant read-only view unless explicitly defined.
+Tenant and grant tests: cross-tenant location IDs return generic 403/404 as appropriate; unassigned locations are not listed or readable; inactive branches are not openable.
+Occupancy tests: occupied terminal returns a stable conflict; viewer can still read status; another user cannot close, switch, cash-adjust, claim parked sales, or mutate the occupied shift.
+One-active-scope concurrency: two opens for one user yield one durable shift/operator authority; the losing request returns a conflict; no auto-close, transfer, or extra financial rows.
+Read-only mutation tests: branch-view requests cannot execute checkout, payment, parked-sale, cash, shift, item, settings, order, voucher, pricelist, affiliate, or audit mutations.
+Operator attribution tests: shift owner and current operator remain separate; viewer identity is never written as cashier_id or operator session.
+Frontend and browser tests
+The sidebar has no standalone Switch Location entry; Shift contains the Location action.
+Branch rows show safe cashier/terminal status and correct buttons for free, occupied, inactive, unauthorized, and unavailable states.
+View Branch leaves the active shift, terminal, cart, parked sale, and operating branch unchanged; entering and exiting view refreshes data without stale branch responses.
+Viewer mode hides or disables mutation controls and displays a persistent read-only banner on desktop and mobile/tablet.
+Open Shift from a free branch uses the normal opening-float flow and becomes the new operating context only after the server succeeds.
+A user with an existing shift sees View Branch but not a takeover/open action for a different terminal; the original shift remains resumable.
+Offline and reconnect: branch directory becomes unavailable or stale with an explicit message; no offline viewer or shift-open action fabricates authority.
+Acceptance criteria
+A permitted user opens Shift, selects Location, sees the authorized branch directory, and sees who is operating each occupied terminal without seeing credentials or sensitive data.
+Clicking View Branch opens the selected POS branch as read-only and never changes the user's active shift, terminal, drawer, cart, parked sale, operator session, or operating branch.
+The viewer cannot sell, checkout, pay, park/resume/cancel/claim sales, record cash, close or switch another shift, edit catalog/settings, mutate orders, or alter voucher/pricelist/affiliate/audit data.
+A branch with no open shift and a free eligible terminal offers Open Shift only when the user has the required permission, active location grant, terminal eligibility, attendance state, and no existing active operating scope.
+A branch or terminal with an existing shift never offers takeover through this feature. The UI shows occupied status and the server returns a stable conflict if a race occurs.
+A user with an active shift can view other authorized branches without losing the active shift and can resume the original shift after leaving branch view.
+Strict device-terminal rules remain enforced, and no branch-view path bypasses terminal pairing or home-location binding.
+All branch-view entry, exit, denial, and open-shift conflict evidence is auditable without storing secrets.
+The plan's verification evidence proves desktop and mobile/tablet behavior, tenant isolation, permission scope, concurrent shift safety, and no mutation leakage.
+Rollout and rollback
+Release behind a tenant capability flag if the existing POS feature-flag pattern supports it. Default off until API, UI, and browser evidence pass.
+Roll out read-only branch directory first, then View Branch, then Open Shift. Do not enable shift-location mutation changes as part of this feature.
+Monitor 403/409 reason codes, branch-directory latency, read-scope failures, viewer-to-operating transitions, and audit write failures.
+Rollback by disabling the feature flag and hiding the Shift Location pane. Preserve all existing shifts, carts, parked sales, operator sessions, and audit history. Do not roll back by deleting data.
+If a permission backfill is introduced, its rollback must be an explicit reviewed permission reconciliation; never blindly overwrite stored permission arrays.
+Open questions and blockers before implementation
+Reconcile the authoritative phase ledger. The checked ledger currently ends at Phase 347, while separate reference documents mention future Phases 348-357. Assign this initiative a new non-conflicting ledger phase only after that discrepancy is resolved; LS-01 to LS-07 are deliberately provisional work-package labels.
+Confirm whether "all branches" means all active tenant locations for administrators or all locations granted to the signed-in user. This plan recommends tenant-wide visibility only for explicit administrator/master-admin authority and grant-scoped visibility for everyone else.
+Confirm the exact set of read-only modules to expose in branch view. This plan includes POS operational reads where already authorized but intentionally excludes settings, authoring, and financial/order mutations.
+Confirm the supported operator-session migration coverage across StagingPOS tenants before showing current operator separately from shift owner.
+Resolve the backend PERMISSIONS.BUSINESS_ADMIN reference mismatch before adding or reusing all-branch authorization. Do not build a new route around an undefined backend permission constant.
+Authoritative references used
+docs/START_HERE.md: Repository documentation lookup order and source-of-truth guidance.
+docs/architecture/ARCHITECTURE_BOUNDARIES.md: Route/controller/use-case/repository/model boundaries and server-owned authorization.
+docs/architecture/ARCHITECTURE_GOVERNANCE.md: Architecture classification, ADR strictness, security, data-integrity, and verification gates.
+docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md: Location-scoped stock, grants, shift location anchor, and no unsafe cross-location mutation.
+docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md: Capability-based permission model and location-scoped authorization.
+docs/architecture/adr/0028-dgfy-account-company-switching.md: Tenant/company identity boundaries and no credential leakage.
+docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md: Catalog, inventory, POS, and storefront ownership boundaries.
+docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md: Terminal, shift ownership, branch monitoring, switch authority, and no takeover.
+docs/architecture/adr/0044-pos-terminal-device-pairing.md: Device pairing and strict terminal home-location limits.
+docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md: Separation of shift owner, current operator, attendance, and branch movement.
+docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_354.md: Approved location-access contract and explicit no-auto-takeover rules.
+docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_355.md: Backend scope, one-active-operator rules, and phase boundaries.
+docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_357.md: Acceptance, concurrency, offline, audit, and rollout limits.
+docs/features/POS_CASHIER_TERMINAL_FLOW.md: Current cashier flow, default permissions, and shift/terminal expectations.
+docs/features/IMPLEMENTATION_PHASE_LEDGER.md: Authoritative phase sequence; currently inconsistent with future phase references and must be reconciled.
+packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx: Current sidebar location entry and operating/viewing labels.
+packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx: Current shift location, branch monitor, terminal occupancy, and switch controls.
+packages/web-core/src/features/pos/pages/TerminalPage.jsx: Current operating/viewing location state and monitor refresh behavior.
+apps/dgfy-api/src/modules/pos/usecases/posUseCases.js: Current admin location monitor permission and location-scope behavior.
+apps/dgfy-api/src/modules/pos/repositories/posRepository.js: Current open-shift-by-location query and cashier relation.
+apps/dgfy-api/src/routes/pos.js: Current POS shift and admin-monitor routes.
+apps/dgfy-api/src/config/permissions.js and packages/web-core/src/config/permissions_frontend.js: Current permission catalogs; the backend/frontend BUSINESS_ADMIN mismatch is a blocker.
+Plan consistency check
+No implementation code, database migration, permission backfill, branch configuration, or deployment was changed by creating this plan.
+The plan does not create a second global location switch. It consolidates branch discovery and branch viewing inside Shift while keeping operating context explicit.
+Every mutation path remains server-authorized by tenant, permission, location grant, terminal, shift ownership, operator scope, and strict-device policy.
+The plan preserves existing shift, parked-sale, cart, drawer, and operator ownership rather than introducing a viewer-owned financial state.
+The plan does not claim the feature is execution-ready until permission-catalog and phase-ledger inconsistencies are reconciled.

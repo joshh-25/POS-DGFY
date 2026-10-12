@@ -116,12 +116,12 @@ import {
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
+import { buildReturnPosTransactionUseCase } from './usecases/returnUseCases.js';
 import { posBranchDirectoryRepository } from './repositories/posBranchDirectoryRepository.js';
 import {
     buildGetPosBranchDirectoryUseCase,
     buildRecordPosBranchViewEventUseCase
 } from './usecases/posBranchDirectoryUseCases.js';
-import { buildReturnPosTransactionUseCase } from './usecases/returnUseCases.js';
 import {
     buildCreatePosDiscountRuleUseCase,
     buildDeletePosDiscountRuleUseCase,

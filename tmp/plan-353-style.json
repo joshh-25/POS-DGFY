@@ -1,0 +1,171 @@
+{
+  "input": "C:\\xampp\\htdocs\\POS-DGFY\\output\\plans\\00_POS_In_Terminal_Void_Approval_Popup_Plan.docx",
+  "fonts_by_char_count": {
+    "Aptos": 20114,
+    "Aptos Display": 40
+  },
+  "direct_run_formatting_runs": 328,
+  "direct_paragraph_formatting_paragraphs": 416,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 1,
+      "text": "POS In Terminal Void Approval Popup Plan",
+      "style": "Normal"
+    },
+    {
+      "para_index": 124,
+      "text": "Plan field",
+      "style": "Normal"
+    },
+    {
+      "para_index": 125,
+      "text": "Value",
+      "style": "Normal"
+    },
+    {
+      "para_index": 140,
+      "text": "Decision",
+      "style": "Normal"
+    },
+    {
+      "para_index": 141,
+      "text": "Plan position",
+      "style": "Normal"
+    },
+    {
+      "para_index": 158,
+      "text": "Classification",
+      "style": "Normal"
+    },
+    {
+      "para_index": 159,
+      "text": "Evidence",
+      "style": "Normal"
+    },
+    {
+      "para_index": 178,
+      "text": "Domain fact",
+      "style": "Normal"
+    },
+    {
+      "para_index": 179,
+      "text": "Authoritative owner",
+      "style": "Normal"
+    },
+    {
+      "para_index": 192,
+      "text": "Step",
+      "style": "Normal"
+    },
+    {
+      "para_index": 193,
+      "text": "Actor and surface",
+      "style": "Normal"
+    },
+    {
+      "para_index": 194,
+      "text": "Expected behavior",
+      "style": "Normal"
+    },
+    {
+      "para_index": 219,
+      "text": "In scope for Phase 353",
+      "style": "Normal"
+    },
+    {
+      "para_index": 220,
+      "text": "Explicitly out of scope",
+      "style": "Normal"
+    },
+    {
+      "para_index": 233,
+      "text": "ID",
+      "style": "Normal"
+    },
+    {
+      "para_index": 234,
+      "text": "Area",
+      "style": "Normal"
+    },
+    {
+      "para_index": 235,
+      "text": "Requirement",
+      "style": "Normal"
+    },
+    {
+      "para_index": 293,
+      "text": "Phase slice",
+      "style": "Normal"
+    },
+    {
+      "para_index": 294,
+      "text": "Work",
+      "style": "Normal"
+    },
+    {
+      "para_index": 295,
+      "text": "Gate",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 1,
+        "text": "POS In Terminal Void Approval Popup Plan",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "text": "Temporary POS-native reviewer surface for high-risk transaction voids",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "text": "",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "text": "This document is the plan requested by the user. It does not modify application code, database schema, production config",
+        "style": "Normal"
+      },
+      {
+        "para_index": 6,
+        "text": "Create a temporary approval workflow inside the standalone POS terminal for POS transaction void requests because the de",
+        "style": "Normal"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": "POS In Terminal Void Approval Popup Plan",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "run_text": "Temporary POS-native reviewer surface for high-risk transaction voids",
+        "style": "Normal"
+      },
+      {
+        "para_index": 124,
+        "run_text": "Plan field",
+        "style": "Normal"
+      },
+      {
+        "para_index": 125,
+        "run_text": "Value",
+        "style": "Normal"
+      },
+      {
+        "para_index": 126,
+        "run_text": "Repository",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}

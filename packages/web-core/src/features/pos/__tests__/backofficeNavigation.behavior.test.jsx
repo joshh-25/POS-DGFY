@@ -41,7 +41,10 @@ describe('POS Back Office boundary', () => {
       />
     );
 
-    expect(screen.getByTestId('pos-nav-settings')).toBeDefined();
+    const settingsButton = screen.getByTestId('pos-nav-settings');
+    expect(settingsButton).toBeDefined();
+    expect(settingsButton.querySelector('svg')?.classList.contains('lucide-settings')).toBe(true);
+    expect(settingsButton.querySelector('svg')?.classList.contains('lucide-settings-2')).toBe(false);
     expect(screen.queryByTestId('pos-nav-backoffice')).toBeNull();
   });
 

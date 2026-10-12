@@ -21,6 +21,8 @@ const businessSettings = {
     storefront_profile_image_url: '/uploads/acme-logo.png'
 };
 const salesSummary = {
+    transaction_count: 6,
+    total_amount: 705,
     payment_breakdown: paymentBreakdown,
     void_transaction_count: 2,
     void_amount: 125,
@@ -55,15 +57,25 @@ describe('close-report payment breakdown rendering', () => {
         [shiftMarkup, zReadingMarkup].forEach((markup) => {
             expect(markup).toContain('Acme Corporation');
             expect(markup).toContain('acme-logo.png');
-            expect(markup).toContain('Payment method breakdown');
-            expect(markup).toContain('Cash (2)');
-            expect(markup).toContain('GCash (1)');
-            expect(markup).toContain('Maya (0)');
-            expect(markup).toContain('Card (Credit/Debit) (1)');
-            expect(markup).toContain('Employee Credit (1)');
-            expect(markup).toContain('Other (1)');
+            expect(markup).toContain('Cash');
+            expect(markup).toContain('GCash');
+            expect(markup).toContain('Card (Credit/Debit)');
+            expect(markup).toContain('Employee Credit');
+            expect(markup).toContain('Other');
         });
-        expect(shiftMarkup).not.toContain('Transactions');
+        expect(shiftMarkup).toContain('Payment methods');
+        expect(shiftMarkup).toContain('Overall sales');
+        expect(shiftMarkup).toContain('₱705.00');
+        expect(shiftMarkup).toContain('>6</span>');
+        expect(shiftMarkup).not.toContain('Maya');
+        expect(zReadingMarkup).toContain('Payment method breakdown');
+        expect(zReadingMarkup).toContain('Maya (0)');
+        expect(zReadingMarkup).toContain('Cash (2)');
+        expect(zReadingMarkup).toContain('GCash (1)');
+        expect(zReadingMarkup).toContain('Card (Credit/Debit) (1)');
+        expect(zReadingMarkup).toContain('Employee Credit (1)');
+        expect(zReadingMarkup).toContain('Other (1)');
+        expect(shiftMarkup).toContain('Transactions');
         expect(shiftMarkup).not.toContain('Subtotal');
         expect(shiftMarkup).not.toContain('Discounts');
         expect(shiftMarkup).not.toContain('VAT');
@@ -75,7 +87,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingMarkup).toContain('Subtotal');
         expect(zReadingMarkup).toContain('Discounts');
         expect(zReadingMarkup).toContain('VAT');
-        expect(zReadingMarkup).toContain('Total sales');
+        expect(zReadingMarkup).toContain('Overall total');
         expect(zReadingMarkup).toContain('POS voids (2)');
         expect(zReadingMarkup).toContain('Generated:');
         expect(zReadingMarkup).toContain('2026');
@@ -113,12 +125,15 @@ describe('close-report payment breakdown rendering', () => {
             expect(text).toContain('Acme Corporation');
             expect(text).toContain('Cash (2)');
             expect(text).toContain('GCash (1)');
-            expect(text).toContain('Maya (0)');
             expect(text).toContain('Card (Credit/Debit) (1)');
             expect(text).toContain('Employee Credit (1)');
             expect(text).toContain('Other (1)');
         });
-        expect(shiftText).not.toContain('Transactions');
+        expect(shiftText).toContain('SALES SUMMARY');
+        expect(shiftText).toContain('Overall sales');
+        expect(shiftText).toContain('705.00');
+        expect(shiftText).toContain('Transactions');
+        expect(shiftText).not.toContain('Maya (0)');
         expect(shiftText).not.toContain('Subtotal');
         expect(shiftText).not.toContain('Discounts');
         expect(shiftText).not.toContain('VAT');
@@ -128,7 +143,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).toContain('Subtotal');
         expect(zReadingText).toContain('Discounts');
         expect(zReadingText).toContain('VAT');
-        expect(zReadingText).toContain('Total sales');
+        expect(zReadingText).toContain('Overall total');
         expect(zReadingText).toContain('POS voids (2)');
         expect(zReadingText).toContain('Generated:');
         expect(zReadingText).toContain('2026');
@@ -234,7 +249,10 @@ describe('close-report payment breakdown rendering', () => {
         expect(narrowText.split('\n').every((row) => row.length <= 32)).toBe(true);
         expect(wideText).toContain('-'.repeat(42));
         expect(narrowText).toContain('-'.repeat(32));
-        expect(narrowText).toContain('DELIVERY PROVIDER BREAKDOWN');
+        expect(narrowText).toContain('DELIVERY PROVIDERS');
+        expect(narrowText).toContain('SALES SUMMARY');
+        expect(narrowText).toContain('Overall sales');
+        expect(narrowText).not.toContain('Maya (0)');
     });
 
     it('does not show zero closing cash or variance before an open shift is closed', () => {
@@ -258,9 +276,9 @@ describe('close-report payment breakdown rendering', () => {
             />
         );
 
-        expect(markup).toContain('Closing cash</span><span class="whitespace-nowrap text-right tabular-nums">Not closed');
-        expect(markup).toContain('Variance</span><span class="whitespace-nowrap text-right tabular-nums">Pending close');
-        expect(markup).not.toContain('Closing cash</span><span class="whitespace-nowrap text-right tabular-nums">₱0.00');
-        expect(markup).not.toContain('Variance</span><span class="whitespace-nowrap text-right tabular-nums">₱0.00');
+        expect(markup).toMatch(/Closing cash<\/span><span[^>]*>Not closed<\/span>/);
+        expect(markup).toMatch(/Variance<\/span><span[^>]*>Pending close<\/span>/);
+        expect(markup).not.toMatch(/Closing cash<\/span><span[^>]*>₱0\.00<\/span>/);
+        expect(markup).not.toMatch(/Variance<\/span><span[^>]*>₱0\.00<\/span>/);
     });
 });

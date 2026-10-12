@@ -21,6 +21,20 @@ export const isIminWrapperRuntime = (windowObj = typeof window !== 'undefined' ?
 
 export const IMIN_PERFORMANCE_CLASS = 'dgfy-imin-performance';
 
+// The iMin emulator reports an unavailable built-in printer as a diagnostic
+// string. No-printer is a supported POS state (ADR 0053), so this expected
+// probe result must not become a cashier-facing error banner. Real print or
+// drawer failures retain their normal feedback path.
+export const isExpectedIminPrinterServiceUnavailable = (message = '', description = '') => {
+  const normalized = `${String(message || '')} ${String(description || '')}`
+    .toLowerCase()
+    .replace(/\s+/g, '');
+
+  return normalized.includes('iminprinterserviceisnotconnected')
+    && normalized.includes('serviceconnected=false')
+    && normalized.includes('serviceresolvable=false');
+};
+
 export const installIminPerformanceProfile = (
   windowObj = typeof window !== 'undefined' ? window : null
 ) => {
@@ -47,6 +61,7 @@ export const emitIminPosFeedback = (
   if (!normalizedMessage) return null;
   const normalizedTone = ['success', 'error', 'warning', 'info'].includes(tone) ? tone : 'info';
   const normalizedDescription = String(description || '').trim();
+  if (isExpectedIminPrinterServiceUnavailable(normalizedMessage, normalizedDescription)) return null;
   const normalizedDuration = Number(duration);
   const signature = `${normalizedTone}:${normalizedMessage}:${normalizedDescription}`;
   const now = Date.now();

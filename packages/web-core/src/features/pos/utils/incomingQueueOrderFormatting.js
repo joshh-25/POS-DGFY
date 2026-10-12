@@ -16,6 +16,15 @@ export const formatOrderAmount = (value) => {
   return `₱${(Number.isFinite(amount) ? amount : 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+export const formatOrderQuantity = (value) => {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return '0';
+  return quantity.toLocaleString('en-US', {
+    useGrouping: false,
+    maximumFractionDigits: 12
+  });
+};
+
 export const humanizeOrderStatus = (value) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
 
 // Phase 144 (#824): a downpayment order is persisted as COD (payment_type forced to 'cash' by
