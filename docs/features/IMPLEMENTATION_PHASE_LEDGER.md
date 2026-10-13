@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-13
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -28432,7 +28432,8 @@ is proposed pending tech-lead approval; its web dispositions are not binding unt
 - No explicit dependency blocks this documentation decision. Web runtime adoption depends on the
   #468 cursor contract, #800 server-validated terminal identity, and #999 web round-limiter
   reconciliation; these are follow-on implementation dependencies, not blockers for this record.
-- Current phase: 501; next phase number: 502.
+- Phase 501 identified 502 as the next phase number; this independent category-UX slice uses it.
+  Phase 501 offline-sync runtime migration remains gated by the dependencies above.
 
 ### Acceptance and validation evidence
 
@@ -28481,5 +28482,288 @@ validation passes.
 
 ### Next phase number
 
-Phase 502. Runtime migration has explicit follow-on dependencies; no implementation is authorized
-by this documentation phase.
+Phase 502 is the independent POS Items category-priority UX slice. Offline-sync runtime migration
+remains outside Phase 502 and gated by the dependencies above.
+
+## Phase 502 - POS Items category priority clarity
+
+### Initiative and release
+
+POS Items category-management usability / planned release.
+
+### Objective and scope
+
+Make the saved category priority understandable and operable in POS > Items > Categories by
+presenting one ordered list at every viewport size, a dedicated drag handle and visible position,
+keyboard/touch instructions, and clear save/conflict/failure feedback. Explain that this order
+controls the Storefront category selector and menu sections while products within each category
+remain alphabetical. Preserve category create/edit/activate/deactivate/delete/search behavior, the existing
+reorder API and data contract, Storefront product ordering, and existing responsive Items-grid
+behavior. No API, schema, database, or live Storefront invalidation changes.
+
+### Status
+
+`in_progress` — the category-priority UX and focused implementation evidence are prepared locally;
+merge and post-merge verification remain outstanding.
+
+### Dependencies
+
+- Existing POS category management workspace and `reorderFolders` contract.
+- Independent of Phase 501 offline-sync runtime work and its follow-on dependencies.
+- Existing Storefront category `sort_order` behavior and alphabetical product ordering remain the
+  behavior contract; no Storefront code changes are in scope.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Catalog, Inventory, POS, and
+Storefront Ownership Boundaries](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+[Tenant-Scoped POS Catalog Realtime Invalidation](../architecture/adr/0055-tenant-scoped-pos-catalog-realtime-invalidation.md),
+and [Item Multi-Category Membership](../architecture/adr/0080-item-multi-category-membership.md).
+
+### Implementation targets
+
+[POS category workspace](../../packages/web-core/src/features/pos/components/PosItemsCategoryManagementWorkspace.jsx),
+[POS category placement behavior tests](../../packages/web-core/src/features/pos/__tests__/categoryPlacement.behavior.test.jsx),
+and [shared POS responsive styles](../../packages/web-core/src/index.css).
+
+### Acceptance and validation evidence
+
+- [x] Categories render as one semantically ordered, single-column list on mobile, tablet, and
+      desktop; long category names wrap without hiding the priority or actions.
+- [x] Only the dedicated, touch-friendly keyboard-operable handle starts a reorder; edit/lifecycle
+      actions do not initiate dragging.
+- [x] Position labels reflect the saved full-list priority, including while a search is active;
+      search clearly explains that it must be cleared before reordering.
+- [x] Instructions state the Storefront category-selector/menu effect and preserve alphabetical
+      item order;
+      successful save, stale-order refresh, and failed-save rollback are announced accessibly.
+- [x] Existing create/edit/lifecycle, category persistence, Storefront ordering, and Items-grid
+      behavior remain unchanged; no API/schema/database changes are introduced.
+- [x] Focused POS tests, POS build, documentation lint, architecture checks, and
+      `git diff --check` pass.
+
+### Evidence
+
+The focused shared POS category suite passed 31 tests across 3 files, including saved reorder,
+search-disabled reorder, keyboard/pointer handle behavior, stale-order refresh, failed-save
+rollback, and alphabetical item order. The POS production build passed with 3,154 modules
+transformed; Vite reported existing mixed static/dynamic import chunk warnings. ESLint passed on the
+category workspace and behavior test with no lint findings (the React plugin emitted its
+non-fatal automatic-version notice). `npm run lint:docs` validated 35 governed docs and 103 ADRs;
+`npm run check:architecture` passed for 59 modules, 732 code files, and 108 controllers; and
+`git diff --check` passed. Read-only preview inspection at 375×812, 900×900, and 1440×900 confirmed
+the single-column order, legible narrow category names with actions below them, and larger-screen
+actions alongside category details. The temporary viewport override was reset. No category order
+or other business data was changed.
+
+### Rollback
+
+Revert only the category list/handle/status presentation, its responsive selector changes, focused
+test updates, and this Phase 502 entry. No persisted data, schema, API, or Storefront rollback is
+required.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] POS — verify category priority display, reorder, and persistence at phone, tablet, and desktop
+      sizes after deployment; owner: POS QA.
+- [ ] Storefront — verify the saved category order remains visible in the category selector and
+      menu sections for a tenant with categorized products; owner: Storefront QA.
+
+### Next phase number
+
+Phase 503. No explicit dependency.
+
+## Phase 503 - POS Items controls and notification popover polish
+
+### Initiative and release
+
+POS Items category-management usability / planned release.
+
+### Objective and scope
+
+Replace the always-visible category-order instruction panel with an explicit, reversible
+"Reorder categories" mode. Keep the existing save-on-drop contract, expose priority handles only
+while reordering, provide the exact success toast `Category order saved.`, and retain keyboard
+instructions in an accessible nonvisual description. Polish the adjacent category controls by
+reusing the shared POS history action buttons and emphasizing Save Categories. Clarify the F&B tab
+as "Item Options & Modifiers" with the existing sliders icon, and make the POS notification
+popover more compact with a 12px outer radius. Keep category authoring, API/data contracts,
+Storefront behavior, non-POS notification styles, and responsive category ordering unchanged. No
+API, schema, or persisted-data changes.
+
+### Status
+
+`in_progress` — implementation and focused validation are prepared locally; merge and post-merge
+verification remain outstanding.
+
+### Dependencies
+
+- Completed Phase 502 category-priority presentation and its validated responsive list.
+- Existing tenant-scoped `reorderFolders` endpoint and saved category `sort_order` behavior.
+- No explicit dependency on the separate Phase 501 offline-sync work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Catalog, Inventory, POS, and
+Storefront Ownership Boundaries](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+and [Dedicated DGFY Back Office](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md).
+This is a POS Items UI refinement within the existing category-management boundary; no ADR amendment
+or new ADR is needed.
+
+### Implementation targets
+
+[POS category workspace](../../packages/web-core/src/features/pos/components/PosItemsCategoryManagementWorkspace.jsx),
+[POS item editor and additional-category controls](../../packages/web-core/src/features/pos/components/PosItemsWorkspace.jsx),
+[POS Items tab navigation](../../packages/web-core/src/features/pos/components/PosItemsCatalogWorkspace.jsx),
+[POS notification popover](../../packages/web-core/src/features/pos/components/TerminalPageLayout.jsx),
+[shared POS table action button](../../packages/web-core/src/features/pos/components/PosTableActionButton.jsx),
+[category placement behavior tests](../../packages/web-core/src/features/pos/__tests__/categoryPlacement.behavior.test.jsx),
+and this phase ledger.
+
+### Acceptance and validation evidence
+
+- [x] The visible instruction panel is removed; keyboard instructions remain available to assistive
+      technology and as the category list description.
+- [x] A clear, responsive control enters and exits reorder mode; drag handles and priority positions
+      appear only while that mode is active.
+- [x] Each successful saved drop emits exactly `Category order saved.` only after server success;
+      failed and stale saves continue to restore/reconcile the authoritative order and report errors.
+- [x] Search cannot reorder a partial list; the concise clear-search guidance remains readable.
+- [x] Create/edit/lifecycle operations and the existing Storefront order contract remain intact.
+- [x] Category actions match the shared POS history icon-action sizing/design, and Save Categories
+      has a clear primary emphasis.
+- [x] The F&B tab is named "Item Options & Modifiers" and retains the reference-matching sliders
+      icon.
+- [x] The POS notification popover uses smaller type and a 12px outer radius without changing
+      non-POS notification styling or alert behavior.
+- [x] Focused tests, POS build, lint, responsive rendered inspection, required docs and architecture
+      checks, and `git diff --check` pass.
+
+### Evidence
+
+Focused POS tests: 5 files passed, 53 tests passed. POS production build passed (Vite reported
+mixed static/dynamic import warnings). ESLint exited successfully with warnings at surrounding
+hooks, the long Items workspace, and two test/source lint locations; no warnings were reported in
+the category workspace action changes. Rendered preview inspected at 819x759, 768x1024, and
+390x844; the POS notification popover measured a 12px radius and stayed within the phone viewport.
+The phone tab strip retains its established horizontal-scroll behavior at enlarged text sizes so
+the longer label is not compressed. The original preview viewport and Items tab were restored.
+`git diff --check` passed. This is presentation-only work within the existing POS surface; no API,
+data, or layer boundary changed, so no architecture check or ADR amendment was applicable. Required
+governed docs were reviewed; their `last_reviewed` metadata was checked.
+
+### Rollback
+
+Revert only the reorder-mode control, conditional handles/positions, toast behavior, related
+category/tab/notification presentation changes, focused test updates, and this Phase 503 ledger
+entry. No saved category order, API, schema, or Storefront rollback is required.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and implementation validation
+passes.
+
+### Post-merge verification
+
+- [ ] POS — verify the explicit Reorder Categories mode, save toast, category actions, and
+      Additional Categories save emphasis at phone, tablet, and desktop sizes; owner: POS QA.
+- [ ] POS shell — verify notification popover styling and matching bell/text control sizes across
+      POS views; owner: POS QA.
+
+### Next phase number
+
+Phase 504. No explicit dependency.
+
+## Phase 504 - Storefront category-priority ordering for multi-category products
+
+### Initiative and release
+
+POS Items category prioritization / Storefront catalog consistency.
+
+### Objective and scope
+
+Align the Storefront “All” product list with the reordered category selector. Each canonical item
+appears once, ordered by the earliest-ranked active category it belongs to (primary or secondary),
+then alphabetically by item name within that category. The ordered `menuSections` used by the
+category selector is the source of truth for product priority. Products with no valid category remain last.
+Selecting one category continues to show that category’s items alphabetically, and explicit price
+sorts retain their existing behavior. This shared product-catalog presentation is used by F&B,
+Retail, and Simple/MSME storefront modes. Services uses its separate service-category grouping and
+sorting model and is not changed by this phase. No API, schema, persistence, or category-membership
+changes.
+
+### Status
+
+`in_progress` — implementation and local validation are underway; this phase is not merged.
+
+### Dependencies
+
+- Completed Phase 344 category-first All-list presentation and its Storefront sorting contract.
+- Phase 502-503 category-prioritization authoring UX and saved `sort_order` contract; these phases
+  must be merged with this Storefront change or before it.
+- Existing Storefront primary/secondary category projection; no new data boundary is introduced.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Catalog, Inventory, POS, and
+Storefront Ownership Boundaries](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+and [Item Multi-Category Membership](../architecture/adr/0080-item-multi-category-membership.md).
+Classification: `within-existing-boundary`. Catalog remains the owner of category priority and
+membership; Storefront changes only its public product-list presentation. ADR 0080’s one-card-per-item
+All-list behavior is preserved, so no ADR amendment is needed.
+
+### Implementation targets
+
+[F&B catalog presentation sorter](../../apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.js),
+[focused sorter tests](../../apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.test.js),
+and this phase ledger.
+
+### Acceptance and validation evidence
+
+- [x] The unfiltered product list prioritizes the earliest-ranked category across primary and
+      secondary memberships, then alphabetizes products within that priority.
+- [x] Items with multiple categories still appear once in the All list; unassigned products remain
+      last.
+- [x] Category-specific lists remain alphabetical and explicit price sorts remain unchanged.
+- [x] Focused Storefront tests, targeted lint, documentation/ADR lint, and `git diff --check` pass.
+- [x] The Storefront production build passes after restoring the app's locked dependency versions.
+- [ ] Rendered product-order verification remains pending because the local Sy Side Resto preview
+      currently returns zero storefront-visible products/categories.
+
+### Evidence
+
+Focused Storefront model and view-model tests passed 21/21 across two files, including
+`buildFnbCatalogPresentation.test.js`. The sorter regression test deliberately gives item-level
+category ranks that conflict with the ordered `menuSections`, proving the selector's order wins;
+targeted ESLint passed, `npm run lint:docs` validated 35 governed docs and 103 ADRs, and
+`git diff --check` passed. The initial production build exposed an installed MapLibre mismatch
+(5.24.0 installed versus `^6.11.2` declared); `npm ci` restored the app's committed lockfile
+dependencies without changing package manifests, and the production build then passed with 2,486
+modules transformed. The PM2 Storefront preview was restarted from this checkout and now serves
+`Store v1.35.0`; the configured API health endpoint returned HTTP 200. However, the Sy Side Resto
+route on port 5175 reports zero storefront items/categories, while the user-provided screenshot shows
+nine. Therefore the updated bundle is live on the preview, but product ordering cannot yet be
+visually checked against that tenant. No tenant order or other business data was changed.
+
+### Rollback
+
+Revert only the All-list category-priority key, the focused presentation tests, and this Phase 504
+entry. No API, schema, stored category order, or tenant data rollback is required.
+
+### Post-merge verification
+
+- [ ] deployment — verify the reordered category selector and All product list together in the
+      deployed Storefront for a tenant with secondary-category items; owner: Storefront QA/release.
+      This blocks a production-verification claim, not the implementation merge.
+
+### Next phase number
+
+Phase 505. No explicit dependency.
