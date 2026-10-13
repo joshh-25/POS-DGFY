@@ -305,6 +305,61 @@ describe('company registration draft use cases', () => {
     }));
   });
 
+  it('logs private storage failures with stage and safe upload metadata while keeping the response generic', async () => {
+    const logger = { error: jest.fn() };
+    const repository = { findOwned: jest.fn().mockResolvedValue(draft()) };
+    const storage = {
+      persist: jest.fn().mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES', errno: -13, syscall: 'open' })),
+      remove: jest.fn()
+    };
+    const useCase = buildUploadCompanyRegistrationFileUseCase({ repository, storage, logger });
+
+    const result = await useCase({
+      draftId: draft().id,
+      dgfyAccount: account,
+      body: { category: 'profile_image' },
+      file: { originalname: 'logo.png', mimetype: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.message).toBe('Unable to save the registration file.');
+    expect(logger.error).toHaveBeenCalledWith('[RegistrationDraft] Failed to upload file', expect.objectContaining({
+      stage: 'persist', code: 'EACCES', category: 'profile_image', mimeType: 'image/png', fileSize: 8, draftId: draft().id
+    }));
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('logo.png');
+  });
+
+  it('logs landlord insert failures and removes the orphaned file', async () => {
+    const logger = { error: jest.fn() };
+    const storedFile = { storageKey: draft().id + '/55555555-5555-4555-8555-555555555555.png', sanitizedName: 'logo.png', sha256: 'c'.repeat(64), fileSize: 8 };
+    const repository = {
+      findOwned: jest.fn().mockResolvedValue(draft()),
+      findOwnedForUpdate: jest.fn().mockResolvedValue(draft()),
+      listActiveUploads: jest.fn().mockResolvedValue([]),
+      transaction: jest.fn((callback) => callback('tx')),
+      createUpload: jest.fn().mockRejectedValue(Object.assign(new Error('insert failed'), {
+        name: 'SequelizeDatabaseError',
+        original: { code: 'ER_BAD_FIELD_ERROR', sqlMessage: 'Unknown column' }
+      }))
+    };
+    const storage = { persist: jest.fn().mockResolvedValue(storedFile), remove: jest.fn().mockResolvedValue(undefined) };
+    const useCase = buildUploadCompanyRegistrationFileUseCase({ repository, storage, logger });
+
+    const result = await useCase({
+      draftId: draft().id,
+      dgfyAccount: account,
+      body: { category: 'profile_image' },
+      file: { originalname: 'logo.png', mimetype: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.message).toBe('Unable to save the registration file.');
+    expect(storage.remove).toHaveBeenCalledWith(storedFile.storageKey);
+    expect(logger.error).toHaveBeenCalledWith('[RegistrationDraft] Failed to upload file', expect.objectContaining({
+      stage: 'db_insert', code: 'ER_BAD_FIELD_ERROR', category: 'profile_image', mimeType: 'image/png', fileSize: 8, draftId: draft().id
+    }));
+  });
+
   it('replaces a staged image inside one transaction, retaining the old image unless the new row is saved', async () => {
     const previousUpload = {
       id: '44444444-4444-4444-8444-444444444444',
