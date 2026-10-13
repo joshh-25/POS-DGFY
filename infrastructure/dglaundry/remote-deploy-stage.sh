@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Runs ON the staging host (as the dedicated `dglaundry` user), from inside
-# /opt/dglaundry-stage/current. Invoked by .github/workflows/deploy-dglaundry.yml
+# Runs ON the staging host (as `sieitz`, the one shared user this host already
+# runs every app's deploys as -- DGFY's own DEV/STAGING stacks included; no
+# per-app OS user split exists anywhere on this box, staging or prod, so
+# DGLaundry doesn't get one either, see README.md's "Why one shared OS user"),
+# from inside /opt/dglaundry-stage/current. Invoked by
+# .github/workflows/deploy-dglaundry.yml
 # over SSH, with the GHCR login token piped in via the overall SSH session's
 # stdin -- never as an argv or env var on this host, matching
 # publish-platform.yml's existing discipline for the same reason.

@@ -15,8 +15,14 @@ name: Deploy DGLaundry (Stage)
 #     independent of the STAGING environment dgfy-platform's own deploys use
 #     -- a leaked/compromised key here can't touch dgfy-platform's own
 #     deploy path, and vice versa
-#   - its own dedicated, unprivileged OS user on the host (`dglaundry`,
-#     docker group only) -- not `sieitz`
+#   - the OS user is the one exception, by Pat's own call (#2387): this host
+#     runs every app -- DGFY's own DEV/STAGING included, and prod too -- as
+#     one shared `sieitz` user with no per-app split, and `docker` group
+#     membership is root-equivalent regardless, so a dedicated DGLaundry OS
+#     user would've added setup cost without a real trust boundary to show
+#     for it. SSH_TARGET is `sieitz@10.123.32.26`, same host, same user as
+#     dgfy-platform's own STAGING deploys -- only the credential (this
+#     environment's own SSH keypair) and the GHCR grant below stay separate
 #   - its own GHCR package-level Actions-access grant: each of
 #     Sieitzz/dglaundry's three dglaundry-{api,web,worker} packages grants
 #     Sieitzz/dgfy-platform read access directly in GHCR's own package
