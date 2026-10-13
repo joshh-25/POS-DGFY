@@ -62,7 +62,7 @@ export default function PricelistCreateDialog({
               <div className="flex items-center gap-1">
                 <Label htmlFor="copy-pricelist-from" className="text-[12px] font-bold text-slate-700 sm:text-[13px]">Copy prices from (optional)</Label>
                 <StorefrontSectionInfo label="Copy prices from" panelId="pos-pricelists-copy-prices-info" portal>
-                  <p>Copies the selected pricelist's current prices once. It is not a live link, so future changes to the source pricelist will not update this one.</p>
+                  <p>Copies the selected pricelist&apos;s current prices once. It is not a live link, so future changes to the source pricelist will not update this one.</p>
                 </StorefrontSectionInfo>
               </div>
               <Select value={copyFromId} onValueChange={onCopyFromChange}>

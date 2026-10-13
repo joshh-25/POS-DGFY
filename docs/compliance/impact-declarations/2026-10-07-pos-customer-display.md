@@ -1,10 +1,10 @@
 ---
 status: draft_pr
 owner: DGFY POS
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-10
 declaration_id: 2026-10-07-pos-customer-display
 classification: major
-surfaces: pos,terminal,settings
+surfaces: pos,terminal,settings,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.07
 verification_evidence: customer-display Vitest tests,real-time completion handoff tests,customer-display Playwright E2E,POS settings contract tests,POS lint,POS production build,git diff --check
@@ -57,6 +57,19 @@ persist, or alter a transaction.
   completed payment state.
 - POS lint and production build pass, and `git diff --check` reports no whitespace errors.
 - The repository compliance gate validates this declaration against the changed POS feature files.
+- The follow-up synchronization extraction is covered by the shared `posCustomerDisplaySync`
+  utility, the `usePosCustomerDisplaySync` hook, and their POS contract tests; it preserves the
+  same session-scoped, same-origin transport and does not add a backend or persistence path.
 - Follow-up blocker fix: restored the `Eye` icon import used by `POSCheckoutTerminalView.jsx`; this
   is a lint/runtime reference repair and does not change the feature's behavior or compliance
   surfaces.
+
+## Amendment — 2026-10-10 — Terminal display handoff integration
+
+- Change: The checkout terminal publishes the current safe cart projection through the shared
+  customer-display hook, and the terminal header can open the scoped customer-display window only
+  when tenant, terminal, and location identity are available.
+- Security boundary: The display remains read-only and same-origin; the terminal continues to own
+  checkout state and no payment or persistence path is added.
+- Validation: POS customer-display contract coverage, POS build/lint, and the repository compliance
+  gate.

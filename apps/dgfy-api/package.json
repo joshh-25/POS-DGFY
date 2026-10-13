@@ -1,6 +1,6 @@
 {
   "name": "sku-inventory-manager-backend",
-  "version": "1.41.0",
+  "version": "1.42.0",
   "description": "Backend API for SKU Inventory Manager",
   "type": "module",
   "main": "src/server.js",
@@ -147,7 +147,7 @@
     },
     "moment": "2.31.0",
     "nodemon": {
-      "minimatch": "3.1.5"
+      "minimatch": "10.2.5"
     },
     "path-to-regexp": "0.1.13",
     "picomatch": "2.3.2",

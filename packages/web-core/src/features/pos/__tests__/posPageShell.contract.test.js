@@ -20,6 +20,12 @@ describe('POS page shell and route ownership', () => {
     expect(skupervisorPage).not.toContain('ServicesPosQueue');
   });
 
+  it('routes the customer-display chunk through stale-build recovery', () => {
+    const main = read('apps/dgfy-pos/src/main.jsx');
+
+    expect(main).toContain("const CustomerDisplayPage = lazyWithChunkRetry(() => import('../../../packages/web-core/src/features/pos/pages/CustomerDisplayPage.jsx'));");
+  });
+
   it('keeps IMS merchant routes as compatibility handoffs while preserving internal admin routing', () => {
     const main = read('apps/dgfy-ims/src/main.jsx');
 

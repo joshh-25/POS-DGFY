@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import BusinessHoursRollerTimePicker from './BusinessHoursRollerTimePicker.jsx';
 import {
   STOREFRONT_BUSINESS_DAY_OPTIONS,
   applyStorefrontBusinessHoursRange,
@@ -11,6 +12,15 @@ import {
 } from './storefrontBusinessHours.js';
 
 const ALL_DAY_KEYS = STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => day.key);
+const COMPACT_DAY_LABELS = Object.freeze({
+  mon: 'M',
+  tue: 'Tu',
+  wed: 'W',
+  thu: 'Th',
+  fri: 'F',
+  sat: 'Sa',
+  sun: 'Su'
+});
 
 const toggleArrayValue = (values, value, checked) => {
   const set = new Set(Array.isArray(values) ? values : []);
@@ -139,6 +149,7 @@ function DayChip({
   accessibleLabel = label,
   checked,
   disabled,
+  compactCheck = false,
   onMouseDown,
   onMouseEnter,
   onClick,
@@ -155,13 +166,13 @@ function DayChip({
       aria-label={accessibleLabel}
       aria-pressed={checked}
       disabled={disabled}
-      className={`inline-flex min-h-11 select-none items-center gap-1 rounded-md border px-2.5 py-1 text-[12px] font-semibold transition sm:min-h-9 sm:gap-1.5 sm:rounded-lg sm:px-2.5 sm:py-1.5 ${checked ? checkedClasses : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#1A4E8D]'} ${disabled ? 'cursor-not-allowed opacity-60' : ''} ${className}`}
+      className={`relative inline-flex select-none items-center rounded-md border font-semibold transition ${compactCheck ? 'h-11 min-h-11 w-full min-w-0 justify-center gap-0 px-0.5 py-1 text-[11px] sm:h-9 sm:min-h-9 sm:rounded-lg sm:px-1' : 'min-h-11 gap-1 px-2.5 py-1 text-[12px] sm:min-h-9 sm:gap-1.5 sm:rounded-lg sm:px-2.5 sm:py-1.5'} ${checked ? checkedClasses : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#1A4E8D]'} ${disabled ? 'cursor-not-allowed opacity-60' : ''} ${className}`}
       onMouseDown={onMouseDown}
       onMouseEnter={onMouseEnter}
       onClick={onClick}
     >
       {checked && variant !== 'success' ? (
-        <svg viewBox="0 0 20 20" className="hidden h-3.5 w-3.5 sm:block" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg viewBox="0 0 20 20" aria-hidden="true" className={compactCheck ? 'pointer-events-none absolute right-1 top-1 h-2.5 w-2.5' : 'hidden h-3.5 w-3.5 sm:block'} fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M5 10.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       ) : null}
@@ -230,6 +241,9 @@ function ScheduleForm({
   openTime,
   closeTime,
   selectedDays,
+  compactDayLabels = false,
+  compactDaySelection = false,
+  registrationScheduleEditor = false,
   disabled,
   onAlwaysOpenChange,
   onOpenTimeChange,
@@ -238,6 +252,7 @@ function ScheduleForm({
   onCancel,
   onSubmit
 }) {
+  const [activeTimePicker, setActiveTimePicker] = useState(null);
   const allDaysSelected = selectedDays.length === ALL_DAY_KEYS.length;
   const hasDays = alwaysOpen || selectedDays.length > 0;
   const title = mode === 'edit' ? 'Edit Schedule Set' : 'Add New Schedule Set';
@@ -248,24 +263,65 @@ function ScheduleForm({
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600" aria-hidden="true">{mode === 'add' ? '+' : '✎'}</span>
         <div><h5 className="text-[13px] font-extrabold text-slate-950">{title}</h5><p className="mt-0.5 text-[11px] text-slate-500">{mode === 'add' ? 'Choose the hours and days for this schedule.' : 'Update the hours and days for this schedule.'}</p></div>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-blue-100 pb-3">
+      <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 ${registrationScheduleEditor ? '' : 'border-b border-blue-100 pb-3'}`}>
         <label className="inline-flex items-center gap-2 text-[12px] font-bold text-slate-900">
           <span>Open 24/7</span>
           <Switch checked={alwaysOpen} disabled={disabled} onCheckedChange={onAlwaysOpenChange} aria-label="Open 24/7 for this schedule" className={alwaysOpen ? 'bg-[#1A4E8D]' : 'bg-slate-200'} />
         </label>
       </div>
-      <div className="mt-3 grid gap-4 min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.5fr)_auto] min-[1200px]:items-end">
-        {!alwaysOpen ? <TimeField label="Open Time" value={openTime} disabled={disabled} onChange={(event) => onOpenTimeChange(event.target.value)} /> : <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-semibold text-[#1A4E8D]">Open all day</div>}
-        {!alwaysOpen ? <TimeField label="Close Time" value={closeTime} disabled={disabled} onChange={(event) => onCloseTimeChange(event.target.value)} /> : <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-semibold text-[#1A4E8D]">Every day</div>}
+      <div
+        data-testid={registrationScheduleEditor ? 'registration-schedule-fields' : undefined}
+        className={`mt-3 grid gap-4 ${registrationScheduleEditor ? 'min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.5fr)] min-[1200px]:items-start' : 'min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.5fr)_auto] min-[1200px]:items-end'}`}
+      >
+        {!alwaysOpen ? (
+          registrationScheduleEditor ? (
+            <BusinessHoursRollerTimePicker
+              label="Open Time"
+              value={openTime}
+              disabled={disabled}
+              open={activeTimePicker === 'open'}
+              onOpenChange={(isOpen) => setActiveTimePicker(isOpen ? 'open' : null)}
+              onChange={onOpenTimeChange}
+            />
+          ) : <TimeField label="Open Time" value={openTime} disabled={disabled} onChange={(event) => onOpenTimeChange(event.target.value)} />
+        ) : <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-semibold text-[#1A4E8D]">Open all day</div>}
+        {!alwaysOpen ? (
+          registrationScheduleEditor ? (
+            <BusinessHoursRollerTimePicker
+              label="Close Time"
+              value={closeTime}
+              disabled={disabled}
+              open={activeTimePicker === 'close'}
+              onOpenChange={(isOpen) => setActiveTimePicker(isOpen ? 'close' : null)}
+              onChange={onCloseTimeChange}
+            />
+          ) : <TimeField label="Close Time" value={closeTime} disabled={disabled} onChange={(event) => onCloseTimeChange(event.target.value)} />
+        ) : <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-semibold text-[#1A4E8D]">Every day</div>}
         <div className="min-w-0 border-l-0 min-[1200px]:border-l min-[1200px]:border-blue-100 min-[1200px]:pl-4">
           <div className="mb-1.5 flex items-center justify-between gap-2"><span className="text-[12px] font-bold text-slate-700">Applies to</span><button type="button" className="text-[11px] font-bold text-[#1A4E8D] disabled:opacity-50" disabled={disabled || alwaysOpen} onClick={() => onDayChange(allDaysSelected ? [] : ALL_DAY_KEYS)}>{allDaysSelected ? 'Clear all' : 'All days'}</button></div>
-          <div className="flex flex-wrap gap-1.5">
-            {STOREFRONT_BUSINESS_DAY_OPTIONS.slice(1).concat(STOREFRONT_BUSINESS_DAY_OPTIONS.slice(0, 1)).map((day) => <DayChip key={day.key} label={day.label} accessibleLabel={`Select ${day.label}`} checked={alwaysOpen || selectedDays.includes(day.key)} disabled={disabled || alwaysOpen} onClick={() => onDayChange(toggleArrayValue(selectedDays, day.key, !selectedDays.includes(day.key)))} />)}
+          <div className={compactDaySelection ? 'grid grid-cols-7 gap-0.5' : 'flex flex-wrap gap-1.5'}>
+            {STOREFRONT_BUSINESS_DAY_OPTIONS.slice(1).concat(STOREFRONT_BUSINESS_DAY_OPTIONS.slice(0, 1)).map((day) => (
+              <DayChip
+                key={day.key}
+                label={compactDayLabels ? COMPACT_DAY_LABELS[day.key] : day.label}
+                accessibleLabel={`Select ${compactDayLabels ? FULL_DAY_LABELS[day.key] : day.label}`}
+                checked={alwaysOpen || selectedDays.includes(day.key)}
+                disabled={disabled || alwaysOpen}
+                compactCheck={compactDaySelection}
+                onClick={() => onDayChange(toggleArrayValue(selectedDays, day.key, !selectedDays.includes(day.key)))}
+              />
+            ))}
           </div>
           {!hasDays ? <p role="alert" className="mt-1 text-[11px] font-semibold text-amber-700">Select at least one day to continue.</p> : null}
         </div>
-        <div className="flex gap-2 min-[1200px]:justify-end"><button type="button" className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-[12px] font-bold text-slate-700 sm:min-h-10" disabled={disabled} onClick={onCancel}>Cancel</button><button type="submit" className="min-h-11 rounded-lg bg-[#1A4E8D] px-4 text-[12px] font-extrabold text-white disabled:opacity-60 sm:min-h-10" disabled={disabled || !hasDays}>{mode === 'edit' ? 'Save Changes' : 'Add Schedule Set'}</button></div>
+        {!registrationScheduleEditor ? <div className="flex gap-2 min-[1200px]:justify-end"><button type="button" className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-[12px] font-bold text-slate-700 sm:min-h-10" disabled={disabled} onClick={onCancel}>Cancel</button><button type="submit" className="min-h-11 rounded-lg bg-[#1A4E8D] px-4 text-[12px] font-extrabold text-white disabled:opacity-60 sm:min-h-10" disabled={disabled || !hasDays}>{mode === 'edit' ? 'Save Changes' : 'Add Schedule Set'}</button></div> : null}
       </div>
+      {registrationScheduleEditor ? (
+        <div data-testid="registration-schedule-actions" className="mt-4 flex flex-wrap justify-end gap-2">
+          <button type="button" className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-[12px] font-bold text-slate-700 sm:min-h-10" disabled={disabled} onClick={onCancel}>Cancel</button>
+          <button type="submit" className="min-h-11 rounded-lg bg-[#1A4E8D] px-4 text-[12px] font-extrabold text-white disabled:opacity-60 sm:min-h-10" disabled={disabled || !hasDays}>{mode === 'edit' ? 'Save Changes' : 'Add Schedule Set'}</button>
+        </div>
+      ) : null}
     </form>
   );
 }
@@ -276,8 +332,15 @@ export default function StorefrontBusinessHoursScheduler({
   disabled = false,
   className = '',
   showHeader = true,
+  hideHeaderOnMobile = false,
+  headingLevel = 3,
   headerContent = null,
+  hideHeadingIcon = false,
+  compactDayLabels = false,
+  compactDaySelection = false,
   hideScheduleSummaryHeader = false,
+  unboxed = false,
+  registrationScheduleEditor = false,
   initialComposerOpen = false,
   draftNotice = '',
   onComposerClose,
@@ -489,20 +552,30 @@ export default function StorefrontBusinessHoursScheduler({
     if (editingSetKey) requestCloseComposer();
   };
 
+  const BusinessHoursHeading = headingLevel === 2 ? 'h2' : 'h3';
+  const businessHoursHeadingClassName = headingLevel === 2
+    ? 'text-base font-extrabold tracking-tight text-slate-950'
+    : 'text-[14px] font-extrabold text-slate-950';
+  const scheduleContainerClassName = unboxed
+    ? 'min-w-0'
+    : 'min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm';
+
   return (
     <div className={`min-w-0 max-w-full space-y-2 ${className} sm:space-y-3`}>
       {showHeader ? (
-        <div className="flex flex-row items-start justify-between gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
+        <div className={`${hideHeaderOnMobile ? 'hidden sm:flex' : 'flex'} flex-row items-start justify-between gap-2 rounded-xl ${unboxed ? 'border-0' : 'border border-slate-200'} bg-white px-2.5 py-2 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none`}>
           {headerContent || (
             <div className="flex min-w-0 items-start gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="4" y="5.5" width="16" height="14" rx="2" />
-                  <path d="M8 3.5v4M16 3.5v4M4 9.5h16M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01" strokeLinecap="round" />
-                </svg>
-              </span>
+              {!hideHeadingIcon ? (
+                <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <rect x="4" y="5.5" width="16" height="14" rx="2" />
+                    <path d="M8 3.5v4M16 3.5v4M4 9.5h16M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01" strokeLinecap="round" />
+                  </svg>
+                </span>
+              ) : null}
               <div className="min-w-0">
-                <h3 className="text-[14px] font-extrabold text-slate-950">Business Hours</h3>
+                <BusinessHoursHeading className={businessHoursHeadingClassName}>Business Hours</BusinessHoursHeading>
                 <p className="mt-0.5 text-[12px] leading-5 text-slate-500">Set when customers can place orders from your storefront.</p>
               </div>
             </div>
@@ -511,9 +584,9 @@ export default function StorefrontBusinessHoursScheduler({
         </div>
       ) : null}
 
-      <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className={scheduleContainerClassName}>
         {!hideScheduleSummaryHeader || !composerOpen ? (
-          <div className={`flex items-center gap-2 border-b border-slate-200 px-2.5 py-2 sm:gap-3 sm:px-4 sm:py-3 ${hideScheduleSummaryHeader ? 'justify-end' : 'flex-wrap justify-between max-sm:flex-col max-sm:items-stretch'}`}>
+          <div className={`flex items-center gap-2 sm:gap-3 ${unboxed ? 'pb-3' : 'border-b border-slate-200 px-2.5 py-2 sm:px-4 sm:py-3'} ${hideScheduleSummaryHeader ? 'justify-end' : 'flex-wrap justify-between max-sm:flex-col max-sm:items-stretch'}`}>
             {!hideScheduleSummaryHeader ? (
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600 sm:h-8 sm:w-8 sm:rounded-lg">
@@ -545,10 +618,10 @@ export default function StorefrontBusinessHoursScheduler({
         ) : null}
 
         {scheduleSets.length > 0 ? (
-          <div className="space-y-1.5 p-2.5 sm:space-y-0 sm:divide-y sm:divide-slate-100 sm:p-0">
+          <div className={`space-y-1.5 ${unboxed ? '' : 'p-2.5'} ${registrationScheduleEditor ? 'sm:space-y-2' : 'sm:space-y-0 sm:divide-y sm:divide-slate-100'} sm:p-0`}>
             {scheduleSets.map((set) => (
               <React.Fragment key={set.key}>
-              <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-0.5 rounded-lg bg-slate-50 px-2.5 py-2 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-3 sm:rounded-none sm:bg-white sm:px-4 sm:py-3 ${editingSetKey === set.key ? 'border border-blue-300 bg-blue-50/40 sm:border-x-0' : ''}`}>
+              <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-0.5 rounded-lg px-2.5 py-2 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-3 ${registrationScheduleEditor ? 'border border-slate-200 bg-white sm:rounded-lg' : 'bg-slate-50 sm:rounded-none sm:bg-white'} sm:px-4 sm:py-3 ${editingSetKey === set.key ? 'border border-blue-300 bg-blue-50/40' : ''}`}>
                 <div className="flex min-w-0 items-start gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 sm:h-8 sm:w-8">
                     <svg viewBox="0 0 24 24" className="h-3 w-3 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -600,14 +673,14 @@ export default function StorefrontBusinessHoursScheduler({
                   </button>
                 </div>
               </div>
-              {composerOpen && editingSetKey === set.key ? <ScheduleForm mode="edit" alwaysOpen={formAlwaysOpen} openTime={openTime} closeTime={closeTime} selectedDays={selectedDays} disabled={disabled} onAlwaysOpenChange={handleFormAlwaysOpenChange} onOpenTimeChange={setOpenTime} onCloseTimeChange={setCloseTime} onDayChange={setSelectedDays} onCancel={requestCloseComposer} onSubmit={handleSaveScheduleSet} /> : null}
+              {composerOpen && editingSetKey === set.key ? <ScheduleForm mode="edit" alwaysOpen={formAlwaysOpen} openTime={openTime} closeTime={closeTime} selectedDays={selectedDays} compactDayLabels={compactDayLabels} compactDaySelection={compactDaySelection} registrationScheduleEditor={registrationScheduleEditor} disabled={disabled} onAlwaysOpenChange={handleFormAlwaysOpenChange} onOpenTimeChange={setOpenTime} onCloseTimeChange={setCloseTime} onDayChange={setSelectedDays} onCancel={requestCloseComposer} onSubmit={handleSaveScheduleSet} /> : null}
               </React.Fragment>
             ))}
           </div>
         ) : (
           <div className="px-3 py-4 text-center text-[10px] text-slate-500 sm:px-4 sm:py-5 sm:text-[11px]">No open schedule sets yet.</div>
         )}
-        {composerOpen && !editingSetKey ? <ScheduleForm mode="add" alwaysOpen={formAlwaysOpen} openTime={openTime} closeTime={closeTime} selectedDays={selectedDays} disabled={disabled} onAlwaysOpenChange={handleFormAlwaysOpenChange} onOpenTimeChange={setOpenTime} onCloseTimeChange={setCloseTime} onDayChange={setSelectedDays} onCancel={requestCloseComposer} onSubmit={handleSaveScheduleSet} /> : null}
+        {composerOpen && !editingSetKey ? <ScheduleForm mode="add" alwaysOpen={formAlwaysOpen} openTime={openTime} closeTime={closeTime} selectedDays={selectedDays} compactDayLabels={compactDayLabels} compactDaySelection={compactDaySelection} registrationScheduleEditor={registrationScheduleEditor} disabled={disabled} onAlwaysOpenChange={handleFormAlwaysOpenChange} onOpenTimeChange={setOpenTime} onCloseTimeChange={setCloseTime} onDayChange={setSelectedDays} onCancel={requestCloseComposer} onSubmit={handleSaveScheduleSet} /> : null}
       </section>
 
       {pendingConflict ? (

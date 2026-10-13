@@ -60,10 +60,12 @@ services:
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
       PORT: 5100
+      COMPANY_REGISTRATION_PRIVATE_STORAGE_DIR: /app/private-uploads/company-registration
     volumes:
       - ./data/dgfy-api/uploads:/app/uploads
       - ./data/dgfy-api/storage:/app/storage
       - ./data/dgfy-api/logs:/app/logs
+      - ./data/dgfy-api/private-uploads:/app/private-uploads
     depends_on:
       mysql:
         condition: service_healthy

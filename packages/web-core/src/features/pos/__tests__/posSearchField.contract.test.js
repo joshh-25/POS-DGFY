@@ -11,7 +11,7 @@ const historySource = fs.readFileSync(path.resolve(__dirname, '../components/POS
 const reportsSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsToolbar.jsx'), 'utf8');
 const checkoutSource = fs.readFileSync(path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx'), 'utf8');
 const auditSource = fs.readFileSync(path.resolve(__dirname, '../components/AuditWorkspacePanel.jsx'), 'utf8');
-const itemsSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
+const itemsSource = fs.readFileSync(path.resolve(__dirname, '../components/PosItemsWorkspace.jsx'), 'utf8');
 const voucherSource = fs.readFileSync(path.resolve(__dirname, '../components/VoucherManagementPanel.jsx'), 'utf8');
 const pricelistSource = [
   '../pricelists/PricelistListView.jsx',
@@ -74,5 +74,12 @@ describe('POS shared search field contract', () => {
     expect(pricelistSource).toContain('placeholder="Search item by Name, SKU, or Barcode"');
     expect(pricelistSource.match(/variant="catalog"/g)).toHaveLength(2);
     expect(pricelistSource.match(/inputClassName=\{POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS\}/g)).toHaveLength(2);
+  });
+
+  it('keeps Vouchers and Pricelists card actions at the shared 36px action height', () => {
+    expect(voucherSource).toContain('h-9 min-w-0 w-auto flex-1');
+    expect(pricelistSource).toContain('h-9 min-w-0 w-auto flex-1');
+    expect(voucherSource).not.toContain('sm:h-8 sm:w-[6.5rem]');
+    expect(pricelistSource).not.toContain('sm:h-8 sm:w-[6.5rem]');
   });
 });

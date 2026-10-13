@@ -444,7 +444,7 @@ describe('DGFY auth and business registration routes', () => {
 
     expect(await screen.findByLabelText('Company Name')).toBeTruthy();
     expect(screen.queryByLabelText('Last Name')).toBeNull();
-    expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
+    expect(await screen.findByText('Business industry')).toBeTruthy();
 
     fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'micro_fnb' } });
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
@@ -497,7 +497,7 @@ describe('DGFY auth and business registration routes', () => {
 
     renderRoutes(['/register-company#business-registration']);
 
-    expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
+    expect(await screen.findByText('Business industry')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 

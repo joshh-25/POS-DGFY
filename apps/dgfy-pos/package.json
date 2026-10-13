@@ -1,6 +1,6 @@
 {
   "name": "dgfy-pos",
-  "version": "1.37.0",
+  "version": "1.38.0",
   "description": "DGFY standalone POS terminal, including the desktop Electron shell (issue #322 split from apps/dgfy-web).",
   "author": "DGFY",
   "type": "module",
@@ -10,6 +10,7 @@
     "build": "vite build",
     "build:desktop": "npm run build && electron-builder --config desktop/pos-electron/electron-builder.json",
     "preview": "vite preview",
+    "generate:order-alert-sounds": "node scripts/generate-order-alert-sounds.mjs",
     "lint": "eslint src vitePosOfflinePrecachePlugin.js --ext .js,.jsx",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -42,6 +43,7 @@
     "date-fns": "^2.30.0",
     "fuse.js": "^7.4.2",
     "jwt-decode": "^4.0.0",
+    "@breezystack/lamejs": "1.2.7",
     "katex": "^0.18.9",
     "lucide-react": "^0.294.0",
     "maplibre-gl": "^6.11.2",

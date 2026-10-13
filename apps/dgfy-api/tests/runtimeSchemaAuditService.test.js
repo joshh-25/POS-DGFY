@@ -86,7 +86,11 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260914000002-create-pos-location-item-overrides.cjs' },
         { name: '20260914000003-add-job-order-location-scope.cjs' },
         { name: '20260914000004-create-pos-terminal-device-enrollment.cjs' },
-        { name: '20260921000002-add-employee-credit-split-tender.cjs' }
+        { name: '20260921000002-add-employee-credit-split-tender.cjs' },
+        { name: '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs' },
+        { name: '20260926000001-create-company-registration-drafts-and-uploads.cjs' },
+        { name: '20261001000001-create-company-registration-uploads.cjs' },
+        { name: '20261008000001-extend-company-registration-uploads-for-drafts.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -415,7 +419,9 @@ const buildHealthySequelizeMock = () => ({
                     actor_shift_id: {},
                     actor_terminal_id: {},
                     actor_location_id: {},
-                    adjustment_type: {},
+                    adjustment_type: {
+                        type: "ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return')"
+                    },
                     tender_type: {},
                     amount: {},
                     currency: {},
@@ -438,6 +444,9 @@ const buildHealthySequelizeMock = () => ({
                     failed_at: {},
                     cancelled_at: {},
                     metadata: {}
+                },
+                pos_z_reading_snapshots: {
+                    reading_payload_hash: {}
                 },
                 pos_parked_sales: {
                     pos_parked_sale_id: {},
@@ -675,6 +684,38 @@ const buildHealthySequelizeMock = () => ({
                     access_limitation_reason: {},
                     customer_access_modes_enabled: {},
                     last_synced_at: {}
+                },
+                company_registration_drafts: {
+                    id: {},
+                    dgfy_account_id: {},
+                    registration_email_snapshot: {},
+                    status: {},
+                    current_step: {},
+                    draft_payload: {},
+                    submission_snapshot: {},
+                    legal_terms_snapshot: {},
+                    optimistic_version: {},
+                    submitted_at: {},
+                    reviewed_at: {},
+                    materialization_status: {},
+                    materialization_error: {},
+                    materialization_snapshot: {},
+                    materialized_tenant_id: {},
+                    materialized_application_id: {},
+                    materialized_at: {},
+                    created_at: {},
+                    updated_at: {}
+                },
+                company_registration_uploads: {
+                    id: {}, application_id: {}, attempt_id: {}, asset_kind: {},
+                    registration_draft_id: {}, dgfy_account_id: {}, category: {},
+                    storage_key: {}, original_filename: {}, original_name: {}, sanitized_name: {},
+                    mime_type: {}, byte_size: {}, file_size: {}, sha256: {},
+                    extraction_status: { type: "ENUM('not_started','queued','processing','succeeded','failed','not_applicable','pending','processed')" },
+                    review_status: {}, upload_status: {}, validation_status: {}, error_message: {},
+                    position: {}, uploaded_at: {}, expires_at: {}, revoked_at: {}, revoked_by_admin_id: {},
+                    removed_at: {}, removed_by_account_id: {}, purged_at: {}, metadata: {},
+                    created_at: {}, updated_at: {}
                 }
             };
 
@@ -737,6 +778,38 @@ describe('runtimeSchemaAuditService', () => {
             expect.objectContaining({ table: 'pos_transactions', column: 'service_fee_amount' }),
             expect.objectContaining({ table: 'pos_transactions', column: 'buyer_tin' }),
             expect.objectContaining({ table: 'pos_transactions', column: 'payment_collected_at' })
+        ]));
+    });
+
+    it('audits registration draft migrations, required upload columns, and extraction enum values', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20261008000001-extend-company-registration-uploads-for-drafts.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'company_registration_uploads') {
+                    delete table.upload_status;
+                    delete table.category;
+                    table.extraction_status = { type: "ENUM('not_started','queued','processing','succeeded','failed','not_applicable')" };
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({ sequelizeInstance: mock });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.missingColumns).toEqual(expect.arrayContaining([
+            { table: 'company_registration_uploads', column: 'upload_status' },
+            { table: 'company_registration_uploads', column: 'category' }
+        ]));
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'invalid_column_contract', table: 'company_registration_uploads', column: 'extraction_status' })
         ]));
     });
 
@@ -818,6 +891,47 @@ describe('runtimeSchemaAuditService', () => {
                 scope: 'migration',
                 type: 'missing_required_migration',
                 migration: requiredMigration
+            })
+        ]));
+    });
+
+    it('returns degraded when Annex B evidence migration or Z-reading evidence column is missing', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'pos_z_reading_snapshots') {
+                    const { reading_payload_hash, ...withoutPayloadHash } = table;
+                    return withoutPayloadHash;
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({ sequelizeInstance: mock });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.missingColumns).toContainEqual({
+            table: 'pos_z_reading_snapshots',
+            column: 'reading_payload_hash'
+        });
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'migration',
+                type: 'missing_required_migration',
+                migration: requiredMigration
+            }),
+            expect.objectContaining({
+                scope: 'schema',
+                type: 'missing_required_column',
+                table: 'pos_z_reading_snapshots',
+                column: 'reading_payload_hash'
             })
         ]));
     });

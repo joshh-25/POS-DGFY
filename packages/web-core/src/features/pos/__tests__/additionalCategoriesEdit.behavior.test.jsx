@@ -122,6 +122,26 @@ afterEach(() => {
 });
 
 describe('POS edit-item modal: Additional Categories (#1318)', () => {
+  it('keeps categories in one readable column for longer names', async () => {
+    const longCategoryName = 'Seasonal Favorites and Limited-Time Specials';
+    getFolders.mockResolvedValueOnce([
+      { folder_id: 10, name: 'Main Course', is_active: true, show_in_pos_filter: true },
+      { folder_id: 20, name: 'Beverages', is_active: true, show_in_pos_filter: true },
+      { folder_id: 40, name: longCategoryName, is_active: true, show_in_pos_filter: true }
+    ]);
+
+    render(<TerminalOperationsWorkspace {...buildProps({ canManageCategories: true })} />);
+    const section = await openEditAndGetSection();
+    const categoryGroup = within(section).getByRole('group', { name: 'Additional categories' });
+    const longNameCheckbox = within(categoryGroup).getByLabelText(longCategoryName);
+    const longNameRow = longNameCheckbox.closest('label');
+
+    expect(categoryGroup.className).toContain('grid-cols-1');
+    expect(categoryGroup.className).not.toContain('sm:grid-cols-2');
+    expect(longNameRow.className).toContain('min-w-0');
+    expect(longNameRow.querySelector('span').className).toContain('break-words');
+  });
+
   it('renders the section, excludes the primary category, and lets an authorized manager save a selection', async () => {
     render(<TerminalOperationsWorkspace {...buildProps({ canManageCategories: true })} />);
     const section = await openEditAndGetSection();
@@ -140,7 +160,10 @@ describe('POS edit-item modal: Additional Categories (#1318)', () => {
     expect(beveragesCheckbox.checked).toBe(true);
     expect(dessertsCheckbox.checked).toBe(false);
 
-    fireEvent.click(within(section).getByRole('button', { name: 'Save Additional Categories' }));
+    const saveCategoriesButton = within(section).getByRole('button', { name: 'Save Additional Categories' });
+    expect(saveCategoriesButton.className).toContain('bg-[#1A4E8D]');
+    expect(saveCategoriesButton.className).toContain('text-white');
+    fireEvent.click(saveCategoriesButton);
 
     await waitFor(() => expect(replaceItemFolders).toHaveBeenCalledWith(24, [20]));
   });
@@ -358,7 +381,7 @@ describe('POS edit-item modal: Additional Categories gate (#1318, source contrac
   it('gates the section on a real persisted item id, not just an open modal', () => {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const workspace = readSourceForContract(
-      path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx')
+      path.resolve(__dirname, '../components/PosItemsWorkspace.jsx')
     );
 
     expect(workspace).toContain(
@@ -372,7 +395,7 @@ describe('POS edit-item modal: Additional Categories gate (#1318, source contrac
   it('resolves the pending primary category the same way handleSave resolves the saved one (RF-1)', () => {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const workspace = readSourceForContract(
-      path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx')
+      path.resolve(__dirname, '../components/PosItemsWorkspace.jsx')
     );
 
     expect(workspace).toContain('const pendingPrimaryFolderId = useMemo(() => {');

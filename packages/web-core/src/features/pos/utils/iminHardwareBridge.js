@@ -270,6 +270,53 @@ export const playOrderAlertWithIminBridge = (soundType = 'new_order') => {
     };
 };
 
+export const stopOrderAlertWithIminBridge = () => {
+    const bridge = getIminBridge();
+    if (!bridge || typeof bridge.stopOrderAlert !== 'function') {
+        return { handled: false, result: null };
+    }
+
+    try {
+        const result = parseBridgeResult(
+            bridge.stopOrderAlert(),
+            'Order alert stopped.'
+        );
+
+        return {
+            handled: true,
+            result
+        };
+    } catch {
+        return {
+            handled: true,
+            result: {
+                success: false,
+                message: 'Order alert stop command failed.'
+            }
+        };
+    }
+};
+
+export const saveOrderAlertSoundWithIminBridge = (soundType, base64Data, mimeType = 'audio/wav') => {
+  const bridge = getIminBridge();
+  if (!bridge || typeof bridge.saveOrderAlertSound !== 'function') {
+    return { handled: false, result: null };
+  }
+
+  const normalizedSoundType = String(soundType || 'new_order').trim() || 'new_order';
+  const normalizedBase64Data = String(base64Data || '').trim();
+  const normalizedMimeType = String(mimeType || 'audio/wav').trim() || 'audio/wav';
+  const result = parseBridgeResult(
+    bridge.saveOrderAlertSound(normalizedSoundType, normalizedBase64Data, normalizedMimeType),
+    'Order alert sound saved on the device.'
+  );
+
+  return {
+    handled: true,
+    result
+  };
+};
+
 // One short, cashier-readable sentence for a failed print/drawer command,
 // replacing the long "Bluetooth receipt failed: ... | bindRequested=..." dump
 // the bridge otherwise returns verbatim. Diagnostics still travel in full on
@@ -809,9 +856,24 @@ const resolveOrderTicketItemName = (cartLine, index) => safeText(
 );
 
 const formatShiftSummaryValue = (value) => value == null ? '-' : Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatShiftSummaryCount = (value) => Number(value || 0).toLocaleString('en-US');
 const paymentBreakdownLabel = (entry) => safeText(
     entry?.payment_label || entry?.payment_type,
     'Other'
+);
+const shiftSummaryEntryCount = (entry) => Number(entry?.count ?? entry?.transaction_count ?? entry?.total_transactions ?? 0);
+const shiftSummaryEntryAmount = (entry) => Number(entry?.amount ?? entry?.net_sales ?? 0);
+const hasShiftSummaryValue = (entry) => shiftSummaryEntryCount(entry) > 0 || shiftSummaryEntryAmount(entry) > 0;
+const orderMethodSummaryLabel = (value) => ({
+    dine_in: 'Dine In',
+    takeout: 'Takeout',
+    pickup: 'Pickup',
+    delivery: 'Delivery',
+    online: 'Online'
+}[String(value || '').trim().toLowerCase()] || String(value || '').replace(/[_-]/g, ' ') || 'Other');
+const orderSourceSummaryLabel = (entry) => (
+    safeText(entry?.source_label)
+    || (String(entry?.order_source || '').trim().toLowerCase() === 'online_store' ? 'Online Sales' : 'Walk-in Sales')
 );
 const deliveryProviderSummaryLabel = (entry) => {
     const providerType = safeText(entry?.provider_type).toLowerCase();
@@ -831,6 +893,14 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
     const shift = shiftSummary?.shift || {};
     const cash = shiftSummary?.cash_summary || {};
     const sales = shiftSummary?.sales_summary || {};
+    const paymentBreakdown = (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : [])
+        .filter(hasShiftSummaryValue);
+    const orderSources = (Array.isArray(sales.order_source_breakdown) ? sales.order_source_breakdown : [])
+        .filter(hasShiftSummaryValue);
+    const orderMethods = (Array.isArray(sales.order_method_breakdown) ? sales.order_method_breakdown : [])
+        .filter(hasShiftSummaryValue);
+    const deliveryProviders = (Array.isArray(sales.delivery_provider_breakdown) ? sales.delivery_provider_breakdown : [])
+        .filter(hasShiftSummaryValue);
     const lines = [
         center(safeText(businessSettings?.pos_business_name, 'DGFY')),
         center('CASHIER SHIFT SALES SUMMARY'),
@@ -838,16 +908,35 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         `Terminal: ${safeText(shift.terminal_id)}`,
         `Shift: ${safeText(shift.pos_terminal_shift_id)}`,
         line(),
-        center('PAYMENT BREAKDOWN')
+        center('SALES SUMMARY'),
+        pair('Overall sales', formatShiftSummaryValue(sales.total_amount)),
+        pair('Transactions', formatShiftSummaryCount(sales.transaction_count)),
+        line(),
+        center('PAYMENT METHODS')
     ];
-    (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : []).forEach((entry) => {
-        lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatShiftSummaryValue(entry.amount)));
-    });
-    const deliveryProviders = Array.isArray(sales.delivery_provider_breakdown) ? sales.delivery_provider_breakdown : [];
+    if (paymentBreakdown.length === 0) {
+        lines.push(center('No payments recorded'));
+    } else {
+        paymentBreakdown.forEach((entry) => {
+            lines.push(pair(`${paymentBreakdownLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
+        });
+    }
+    if (orderSources.length > 0) {
+        lines.push(line(), center('SALES SOURCES'));
+        orderSources.forEach((entry) => {
+            lines.push(pair(`${orderSourceSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
+        });
+    }
+    if (orderMethods.length > 0) {
+        lines.push(line(), center('ORDER METHODS'));
+        orderMethods.forEach((entry) => {
+            lines.push(pair(`${orderMethodSummaryLabel(entry.order_method)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
+        });
+    }
     if (deliveryProviders.length > 0) {
-        lines.push(line(), center('DELIVERY PROVIDER BREAKDOWN'));
+        lines.push(line(), center('DELIVERY PROVIDERS'));
         deliveryProviders.forEach((entry) => {
-            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${entry.transaction_count || 0})`, formatShiftSummaryValue(entry.amount)));
+            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
         });
     }
     lines.push(
@@ -936,7 +1025,7 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, p
         pair('Subtotal', formatZReadingValue(summary.subtotal_amount)),
         pair('Discounts', formatZReadingValue(summary.discount_amount)),
         pair('VAT', formatZReadingValue(summary.vat_amount)),
-        pair('Total sales', formatZReadingValue(summary.total_amount)),
+        pair('Overall total', formatZReadingValue(summary.total_amount)),
         pair(`POS voids (${summary.void_transaction_count || 0})`, formatZReadingValue(summary.void_amount)),
         ...(reconciliation ? [
             line(),

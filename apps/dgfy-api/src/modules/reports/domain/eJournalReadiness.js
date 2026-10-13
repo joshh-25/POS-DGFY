@@ -525,7 +525,7 @@ export const parseEJournalText = (text) => {
 
 export const validateEJournalText = (text) => {
     const errors = [];
-    let records = [];
+    let records;
     try {
         records = parseEJournalText(text);
     } catch (error) {

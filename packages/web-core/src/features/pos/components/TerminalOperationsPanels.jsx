@@ -618,11 +618,15 @@ function IncomingQueueWorkspace({
     [adminMonitorOrders]
   );
   // The incoming endpoint intentionally returns one active lifecycle payload for all order
-  // methods. Keep Dine-In in that payload so the schedule remains live, but make the two F&B
-  // views mutually exclusive: Dine-In belongs only in Dine-in Schedule, while every other method
-  // remains in Active Queue.
-  const activeQueueOrders = sortedIncomingOrders.filter((order) => !isDineInOrder(order));
-  const adminActiveOrders = adminMonitorOrders.filter((order) => !isDineInOrder(order));
+  // methods. In F&B mode, Dine-In belongs only in Dine-in Schedule. Other workflow modes do not
+  // render that tab, so keep Dine-In in Active Queue there; otherwise a valid incoming order can
+  // trigger the notification modal but become impossible to progress from the Orders screen.
+  const activeQueueOrders = isFnbMode
+    ? sortedIncomingOrders.filter((order) => !isDineInOrder(order))
+    : sortedIncomingOrders;
+  const adminActiveOrders = isFnbMode
+    ? adminMonitorOrders.filter((order) => !isDineInOrder(order))
+    : adminMonitorOrders;
   const isDineInScheduleView = activeView === 'dine_in_schedule' && isFnbMode;
 
   // Phase 231 (#1290): the Active Queue's client-side delivery-run view filter. Purely a view
@@ -1603,18 +1607,6 @@ function IncomingQueueWorkspace({
                           <div className="flex items-center flex-1 min-w-0">
                             <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
                             <span className="text-xs font-semibold text-slate-900 break-words flex-1">{scheduledDineIn ? getDineInScheduleCountdownLabel(order, scheduleNow) : 'Immediate service'}</span>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {scheduledDineIn ? (
-                        <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
-                            <CalendarClock className="h-4 w-4" />
-                          </div>
-                          <div className="flex items-center flex-1 min-w-0">
-                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
-                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{getDineInScheduleCountdownLabel(order, scheduleNow)}</span>
                           </div>
                         </div>
                       ) : null}

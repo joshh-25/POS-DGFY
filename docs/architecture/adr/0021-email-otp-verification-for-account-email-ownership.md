@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-17
-last_reviewed: 2026-10-02
+last_reviewed: 2026-10-09
 review_by: 2026-11-17
 applies_to: auth, tenant_registration, tenant_user_invitations, profile_email_change, dgfy_accounts
 topic: email_otp_verification
@@ -82,3 +82,8 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 - Clause amended: Decision 14 (`default`)
 - Change: Mobile clients receive a tenant/email-bound verification grant after OTP success, retain it for at most 24 hours, and exchange it for a fresh short-lived checkout proof bound to the current idempotency key. Grant exchange rejects registered DGFY account emails with `DGFY_ACCOUNT_SIGN_IN_REQUIRED` after grant validation. The legacy direct proof remains additive for PWA compatibility while the separately tracked PWA issue adopts the exchange flow.
 - Validation: `apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js` covers the grant and exchange boundary.
+
+### 2026-10-09 — Storefront PWA checkout-remount restoration
+- Change: The Storefront PWA now adopts the existing verification-grant flow for guest checkout. After OTP success it retains only the signed tenant/email-bound grant for the server-declared 24-hour window, then exchanges that grant for a fresh proof bound to the current checkout idempotency key when the checkout remounts. Raw OTP codes, browser auth/session tokens, and the short-lived checkout proof are not persisted.
+- Security boundary: Grant exchange remains server-authoritative, rejects expired or cross-tenant grants, and rejects registered DGFY customer emails with `DGFY_ACCOUNT_SIGN_IN_REQUIRED`. Local storage is scoped by storefront slug and normalized email; storage failure falls back to the existing in-memory proof flow.
+- Validation: Storefront guest OTP hook remount/expiry tests, guest OTP contract test, Storefront lint, and Storefront production build.

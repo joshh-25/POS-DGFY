@@ -234,7 +234,8 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
   repository,
   storage,
   idGenerator = uuidv4,
-  logger
+  logger,
+  now = () => new Date()
 }) => async ({ draftId, dgfyAccount, body = {}, file }) => {
   if (!dgfyAccount?.id) return fail(authError());
   if (!file?.buffer) {
@@ -245,6 +246,11 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
     ));
   }
 
+  let stage = 'validate';
+  let category = null;
+  let mimeType = null;
+  const fileSize = Number.isFinite(file?.size) ? file.size : file?.buffer?.length ?? null;
+
   try {
     const draft = await repository.findOwned(draftId, dgfyAccount.id);
     if (!draft) return fail(notFoundError());
@@ -252,8 +258,16 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
       return fail(conflictError('Files cannot be changed after registration submission.'));
     }
 
-    const category = normalizeUploadCategory(body.category);
-    const mimeType = String(file.mimetype || '').trim().toLowerCase();
+    category = normalizeUploadCategory(body.category);
+    const replaceUploadId = String(body.replace_upload_id || '').trim();
+    if (replaceUploadId && category !== 'profile_image' && category !== 'cover_image') {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Only profile and cover images can replace an existing upload.',
+        { statusCode: 422, details: { error_code: 'REGISTRATION_REPLACEMENT_CATEGORY_INVALID', category } }
+      ));
+    }
+    mimeType = String(file.mimetype || '').trim().toLowerCase();
     if (!getAllowedUploadMimeTypes(category).includes(mimeType)) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -261,7 +275,25 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
         { statusCode: 422, details: { error_code: 'REGISTRATION_FILE_TYPE_INVALID', category, mime_type: mimeType } }
       ));
     }
-    validateCategoryCount(category, draft.uploads || []);
+    const activeDraftUploads = (draft.uploads || []).filter((upload) => upload.upload_status !== 'removed' && !upload.removed_at);
+    const existingReplacement = replaceUploadId
+      ? activeDraftUploads.find((upload) => String(upload.id) === replaceUploadId)
+      : null;
+    if (replaceUploadId && !existingReplacement) {
+      return fail(new DomainError(
+        DomainErrorCode.RESOURCE_NOT_FOUND,
+        'The registration image to replace was not found.',
+        { statusCode: 404 }
+      ));
+    }
+    if (existingReplacement && existingReplacement.category !== category) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'The replacement image must use the same category as the existing image.',
+        { statusCode: 422, details: { error_code: 'REGISTRATION_REPLACEMENT_CATEGORY_MISMATCH', category } }
+      ));
+    }
+    validateCategoryCount(category, activeDraftUploads.filter((upload) => String(upload.id) !== replaceUploadId));
     validateRegistrationFileSignature({
       buffer: file.buffer,
       mimeType,
@@ -269,6 +301,7 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
     });
 
     const uploadId = idGenerator();
+    stage = 'persist';
     const stored = await storage.persist({
       draftId,
       uploadId,
@@ -277,23 +310,69 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
       buffer: file.buffer
     });
 
+    stage = 'db_insert';
     try {
-      const existingCategoryUploads = (draft.uploads || []).filter((upload) => upload.category === category && upload.upload_status !== 'removed');
-      const upload = await repository.createUpload({
-        id: uploadId,
-        draftId,
-        dgfyAccountId: dgfyAccount.id,
-        category,
-        originalName: String(file.originalname || 'file').slice(0, 255),
-        sanitizedName: stored.sanitizedName,
-        mimeType,
-        fileSize: stored.fileSize,
-        storageKey: stored.storageKey,
-        sha256: stored.sha256,
-        position: existingCategoryUploads.length,
-        extractionStatus: category === 'menu_upload' ? 'pending' : 'not_applicable',
-        transaction: null
-      });
+      const saveUpload = async (transaction) => {
+        const lockedDraft = await repository.findOwnedForUpdate(draftId, dgfyAccount.id, transaction);
+        if (!lockedDraft) throw notFoundError();
+        if (lockedDraft.status !== REGISTRATION_DRAFT_STATUSES.DRAFT) {
+          throw conflictError('Files cannot be changed after registration submission.');
+        }
+
+        const activeUploads = await repository.listActiveUploads(draftId, dgfyAccount.id, transaction);
+        let replacement = null;
+        if (replaceUploadId) {
+          replacement = await repository.findOwnedUpload(replaceUploadId, draftId, dgfyAccount.id, transaction);
+          if (!replacement || replacement.upload_status === 'removed' || replacement.removed_at) {
+            throw new DomainError(
+              DomainErrorCode.RESOURCE_NOT_FOUND,
+              'The registration image to replace was not found.',
+              { statusCode: 404 }
+            );
+          }
+          if (replacement.category !== category) {
+            throw new DomainError(
+              DomainErrorCode.VALIDATION_FAILED,
+              'The replacement image must use the same category as the existing image.',
+              { statusCode: 422, details: { error_code: 'REGISTRATION_REPLACEMENT_CATEGORY_MISMATCH', category } }
+            );
+          }
+        }
+
+        const uploadsWithoutReplacement = activeUploads.filter((upload) => String(upload.id) !== replaceUploadId);
+        validateCategoryCount(category, uploadsWithoutReplacement);
+        if (replacement) {
+          const removed = await repository.removeUpload({
+            uploadId: replaceUploadId,
+            draftId,
+            dgfyAccountId: dgfyAccount.id,
+            removedAt: now(),
+            transaction
+          });
+          if (!removed) throw conflictError('This registration image changed before it could be replaced.');
+        }
+
+        const existingCategoryUploads = uploadsWithoutReplacement.filter((upload) => upload.category === category);
+        return repository.createUpload({
+          id: uploadId,
+          draftId,
+          dgfyAccountId: dgfyAccount.id,
+          category,
+          originalName: String(file.originalname || 'file').slice(0, 255),
+          sanitizedName: stored.sanitizedName,
+          mimeType,
+          fileSize: stored.fileSize,
+          storageKey: stored.storageKey,
+          sha256: stored.sha256,
+          position: existingCategoryUploads.length,
+          extractionStatus: category === 'menu_upload' ? 'pending' : 'not_applicable',
+          transaction
+        });
+      };
+
+      const upload = repository.transaction
+        ? await repository.transaction(saveUpload)
+        : await saveUpload(null);
       return ok({
         statusCode: 201,
         payload: {
@@ -311,7 +390,21 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
       throw error;
     }
   } catch (error) {
-    logger?.error?.('[RegistrationDraft] Failed to upload file', { error: error.message, draftId });
+    const original = error?.original || {};
+    const parent = error?.parent || {};
+    logger?.error?.('[RegistrationDraft] Failed to upload file', {
+      error: error?.message,
+      error_name: error?.name || null,
+      code: error?.code || error?.errno || original.code || original.errno || parent.code || parent.errno || null,
+      errno: error?.errno || original.errno || parent.errno || null,
+      syscall: error?.syscall || original.syscall || parent.syscall || null,
+      sql_message: original.sqlMessage || parent.sqlMessage || null,
+      stage,
+      draftId,
+      category,
+      mimeType,
+      fileSize
+    });
     return toFailure(error, 'Unable to save the registration file.');
   }
 };
@@ -324,32 +417,36 @@ export const buildRemoveCompanyRegistrationFileUseCase = ({
   if (!dgfyAccount?.id) return fail(authError());
 
   try {
-    const draft = await repository.findOwned(draftId, dgfyAccount.id);
-    if (!draft) return fail(notFoundError());
-    if (draft.status !== REGISTRATION_DRAFT_STATUSES.DRAFT) {
-      return fail(conflictError('Files cannot be changed after registration submission.'));
-    }
-    const upload = await repository.findOwnedUpload(uploadId, draftId, dgfyAccount.id);
-    if (!upload || upload.upload_status === 'removed') {
-      return fail(new DomainError(
-        DomainErrorCode.RESOURCE_NOT_FOUND,
-        'Registration upload not found.',
-        { statusCode: 404 }
-      ));
-    }
-    const removed = await repository.removeUpload({
-      uploadId,
-      draftId,
-      dgfyAccountId: dgfyAccount.id,
-      removedAt: now(),
-      transaction: null
-    });
-    if (!removed) return fail(conflictError('This registration upload was already changed.'));
+    const remove = async (transaction) => {
+      const draft = await repository.findOwnedForUpdate(draftId, dgfyAccount.id, transaction);
+      if (!draft) throw notFoundError();
+      if (draft.status !== REGISTRATION_DRAFT_STATUSES.DRAFT) {
+        throw conflictError('Files cannot be changed after registration submission.');
+      }
+      const upload = await repository.findOwnedUpload(uploadId, draftId, dgfyAccount.id, transaction);
+      if (!upload || upload.upload_status === 'removed' || upload.removed_at) {
+        throw new DomainError(
+          DomainErrorCode.RESOURCE_NOT_FOUND,
+          'Registration upload not found.',
+          { statusCode: 404 }
+        );
+      }
+      const removed = await repository.removeUpload({
+        uploadId,
+        draftId,
+        dgfyAccountId: dgfyAccount.id,
+        removedAt: now(),
+        transaction
+      });
+      if (!removed) throw conflictError('This registration upload was already changed.');
+      return { id: uploadId, status: 'removed' };
+    };
+    const removed = repository.transaction ? await repository.transaction(remove) : await remove(null);
     return ok({
       statusCode: 200,
       payload: {
         success: true,
-        data: { id: uploadId, status: 'removed' }
+        data: removed
       }
     });
   } catch (error) {

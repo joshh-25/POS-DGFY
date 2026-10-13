@@ -11,6 +11,7 @@ const terminalPageDialogLayerPath = path.resolve(__dirname, '../components/Termi
 const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const posItemsWorkspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
 const adminBranchShiftMonitorPath = path.resolve(__dirname, '../components/AdminBranchShiftMonitor.jsx');
 const shiftSessionSummaryPath = path.resolve(__dirname, '../components/ShiftSessionSummary.jsx');
 const posSettingsWorkspacePath = path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx');
@@ -32,6 +33,7 @@ const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutTerminalViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const posDiscountWorkspacePath = path.resolve(__dirname, '../components/POSDiscountWorkspace.jsx');
+const posTerminalViewModelPath = path.resolve(__dirname, '../hooks/usePosTerminalViewModel.js');
 const posCheckoutTerminalReceiptDialogsPath = path.resolve(__dirname, '../components/POSCheckoutTerminalReceiptDialogs.jsx');
 const posCheckoutWorkflowPath = path.resolve(__dirname, '../hooks/usePosCheckoutWorkflow.js');
 const posHistoryVoidWorkflowPath = path.resolve(__dirname, '../hooks/usePosHistoryVoidWorkflow.js');
@@ -54,6 +56,7 @@ describe('POS terminal view-mode contracts', () => {
   let terminalWorkspaceSidebarContent = '';
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
+  let posItemsWorkspaceContent = '';
   let adminBranchShiftMonitorContent = '';
   let shiftSessionSummaryContent = '';
   let posSettingsWorkspaceContent = '';
@@ -87,6 +90,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalWorkspaceSidebarContent = readSourceForContract(terminalWorkspaceSidebarPath);
     terminalSidebarPanelContent = readSourceForContract(terminalSidebarPanelPath);
     terminalOperationsWorkspaceContent = readSourceForContract(terminalOperationsWorkspacePath);
+    posItemsWorkspaceContent = readSourceForContract(posItemsWorkspacePath);
     adminBranchShiftMonitorContent = readSourceForContract(adminBranchShiftMonitorPath);
     shiftSessionSummaryContent = readSourceForContract(shiftSessionSummaryPath);
     posSettingsWorkspaceContent = readSourceForContract(posSettingsWorkspacePath);
@@ -178,6 +182,7 @@ describe('POS terminal view-mode contracts', () => {
   it('promotes Vouchers and Pricelists to top-level nav modes, out of the Settings tab strip', () => {
     expect(terminalPageContent).toContain("'settings_vouchers'");
     expect(terminalPageContent).toContain("'settings_pricelists'");
+    expect(terminalPageLayoutContent).toContain("settings_pricelists: 'Pricelists'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'settings_vouchers':");
     expect(terminalOperationsWorkspaceContent).toContain("case 'settings_pricelists':");
     expect(terminalPageContent).toContain('const canViewVouchers');
@@ -194,9 +199,9 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps always-available items sellable across both POS checkout surfaces', () => {
-    expect(terminalOperationsWorkspaceContent).toContain('pos_always_available');
-    expect(terminalOperationsWorkspaceContent).toContain('Always Available');
-    expect(terminalOperationsWorkspaceContent).toContain('max_capacity: Math.max(resolvedStock, 1)');
+    expect(posItemsWorkspaceContent).toContain('pos_always_available');
+    expect(posItemsWorkspaceContent).toContain('Always Available');
+    expect(posItemsWorkspaceContent).toContain('max_capacity: Math.max(resolvedStock, 1)');
     expect(posCheckoutTerminalContent).toContain("item?.pos_always_available === true");
     expect(skupervisorCheckoutTerminalContent).toContain("item?.pos_always_available === true");
   });
@@ -541,9 +546,7 @@ describe('POS terminal view-mode contracts', () => {
   it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
     expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
     expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
-    expect(terminalOperationsWorkspaceContent).toContain('const usesOwnPageFrame = isSettingsView');
-    expect(terminalOperationsWorkspaceContent).toContain("|| effectiveViewMode === 'reports'");
-    expect(terminalOperationsWorkspaceContent).toContain('|| SHIFT_WORKSPACE_MODES.has(effectiveViewMode);');
+    expect(terminalOperationsWorkspaceContent).toContain("const usesOwnPageFrame = isSettingsView\n    || effectiveViewMode === 'reports'\n    || SHIFT_WORKSPACE_MODES.has(effectiveViewMode);");
     expect(terminalOperationsWorkspaceContent).toContain('bare={usesOwnPageFrame}');
     expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
     expect(terminalOperationsPanelsContent).toContain('if (bare) {');
