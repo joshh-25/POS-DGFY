@@ -67,17 +67,35 @@ the same physical box:
 
 - **its own GitHub Environment**, `DGLAUNDRY_STAGE`, with its own `SSH_PRIVATE_KEY`/`SSH_TARGET`
   secrets — independent of the `STAGING` environment dgfy-platform's own deploys use, so a
-  leaked/compromised key on either side can't reach the other's deploy path.
-- **its own dedicated, unprivileged OS user on the host**, `dglaundry` (`docker` group only, no
-  `sudo`, no other group inherited from `sieitz`) — owns `/opt/dglaundry-stage` outright. This
-  replaces the host's current `root:dglaundry-secrets`-group approach to `secrets/`, whose group
-  turned out to have zero members in practice; one dedicated owning user sidesteps that class of
-  bug entirely rather than fixing the group.
+  leaked/compromised key on either side can't reach the other's deploy path. `SSH_TARGET` still
+  points at `sieitz@10.123.32.26` — same user, same host as dgfy-platform's own STAGING deploys
+  (see "Why one shared OS user" below) — only the key itself is independent.
 - **its own GHCR package-level Actions-access grant** — each of `Sieitzz/dglaundry`'s three
   `dglaundry-{api,web,worker}` packages grants `Sieitzz/dgfy-platform` read access directly in
   GHCR's own package settings (package → Settings → "Manage Actions access"). No PAT, no new
   stored secret, scoped to exactly those three packages — this is the only way
   `secrets.GITHUB_TOKEN` can pull a private package published from a *different* repo.
+
+### Why one shared OS user, not a dedicated `dglaundry` account
+
+An earlier version of this plan called for a dedicated, unprivileged `dglaundry` OS user,
+docker-group-only, owning `/opt/dglaundry-stage` outright. Dropped (Pat's call, #2387) once two
+facts were on the table together: **this host already runs every app — DGFY's own DEV/STAGING
+stacks, and prod too — as one shared `sieitz` user, with no per-app OS split anywhere**; and
+**`docker` group membership is root-equivalent regardless of which user holds it** (`docker run -v
+/:/host ... chroot /host sh` reaches real root), so a second, docker-group OS user wouldn't have
+been a real trust boundary against a determined compromise — only against accidental cross-
+contamination. Weighed against the extra setup/rotation cost of a second account and keypair, for
+a staging pilot, it wasn't worth it. `secrets/` is `sieitz:sieitz 0700` accordingly — not the
+earlier `root:dglaundry-secrets`-group scheme (that group had zero members and would have blocked
+`deploy-sops.sh` from writing to it entirely).
+
+What *does* stay independent: the `DGLAUNDRY_STAGE` GitHub Environment and its own SSH keypair
+(above), and the GHCR package grant (below) — those are cheap to keep separate and still let a
+leaked DGLaundry-workflow credential be revoked without touching dgfy-platform's own deploy
+secrets. If real OS-level isolation is wanted later (most plausibly for prod), the mechanism that
+would actually deliver it is rootless Docker or a user-namespaced context per app, not a second
+Linux user sharing the same `docker` group — out of scope here, flagged as a deliberate non-goal.
 
 ## Why this differs from `prod/dgfy/`'s SOPS pattern
 
@@ -99,10 +117,11 @@ check out compose files or run `docker compose` itself. `deploy-dglaundry.yml` i
 does that, end to end, via `remote-deploy-stage.sh`:
 
 ```sh
-# one-time per environment, on the host itself (not this repo), as the dedicated `dglaundry` user:
+# one-time per environment, on the host itself (not this repo), as `sieitz` (the one shared user
+# every app's deploys run as on this host -- see "Why one shared OS user" above):
 #   mkdir -p /opt/dglaundry-stage/{releases,secrets,public-keys,age,bin,dgfy-secrets-cache}
 #   (sops + age installed under .../bin, age identity generated under .../age)
-#   secrets/ is dglaundry:dglaundry 0700 -- owned outright by the one user that ever touches it
+#   secrets/ is sieitz:sieitz 0700 -- owned outright by the one user that ever touches it
 #   dgfy-secrets-cache/stage-dglaundry-secrets.env synced in from Sieitzz/dgfy-secrets's
 #   stage/dglaundry/secrets.env once, or on each rotation (deploy-sops.sh never fetches this
 #   itself -- no GitHub credential is provisioned on the host for that, deliberately)
