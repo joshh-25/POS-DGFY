@@ -11,14 +11,14 @@ cd /app
 # everything else -- the same pattern official images like postgres/mysql
 # use to handle bind-mounted data directory ownership.
 if [ "$(id -u)" = '0' ]; then
-  mkdir -p uploads/temp storage/temp-ai-exports logs
+  mkdir -p uploads/temp storage/temp-ai-exports logs private-uploads/company-registration
   # Best-effort: some bind mounts (e.g. a pre-populated read-only data
   # dump) can't be chown'd at all, or only partially -- don't let that
   # crash-loop the container. Ownership only matters for paths the app
   # actually needs to WRITE to (new uploads); read access to existing
   # files works regardless of uid ownership as long as the mode bits allow
   # it, which is the common case for a data dump extracted on the host.
-  chown -R app:app uploads storage logs 2>/dev/null || true
+  chown -R app:app uploads storage logs private-uploads 2>/dev/null || true
 
   # Preserve owner-only host permissions while making staged/provider keys
   # readable to the unprivileged API process. Host/SOPS files are mounted

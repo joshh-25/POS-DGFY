@@ -28,6 +28,7 @@ services:
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
       PORT: 5100
+      COMPANY_REGISTRATION_PRIVATE_STORAGE_DIR: /app/private-uploads/company-registration
       # Must match mysql's --max_connections in docker-compose.yml. The
       # backend compares its own pool budget against this at boot and
       # warns on a mismatch instead of failing later under load.
@@ -48,6 +49,7 @@ services:
       - ./data/dgfy-api/uploads:/app/uploads
       - ./data/dgfy-api/storage:/app/storage
       - ./data/dgfy-api/logs:/app/logs
+      - ./data/dgfy-api/private-uploads:/app/private-uploads
       # Mount one pre-created, read-only host directory. Individual file binds
       # make Docker create missing key paths as directories and can strand the
       # setup utility with incomplete key pairs. Root copies the required files
