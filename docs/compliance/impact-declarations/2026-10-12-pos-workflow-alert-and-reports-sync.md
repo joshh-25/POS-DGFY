@@ -11,8 +11,8 @@ verification_evidence: focused POS Vitest suites (43 tests), POS production buil
 rollback_note: Revert the POS report-source and order-method presentation changes, incoming-order alert/audio controls, Android playback controller, and this declaration together; existing authorization, payment, transaction, and tenant-data boundaries remain authoritative.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-12T18:05:00+08:00
-preflight_request_ref: NOT-EXECUTED-2026-10-12-POS-WORKFLOW-ALERT-REPORTS-SYNC
+preflight_run_at: 2026-10-13T03:16:12.477Z
+preflight_request_ref: PREFLIGHT-38340478717-2026-10-12-POS-WORKFLOW-ALERT-AND-REPORTS-SYNC
 ---
 
 # POS workflow alerts, report breakdowns, and develop synchronization
