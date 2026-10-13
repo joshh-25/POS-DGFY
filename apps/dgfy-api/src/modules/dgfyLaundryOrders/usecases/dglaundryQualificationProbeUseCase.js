@@ -149,7 +149,7 @@ export const buildDglaundryQualificationProbeUseCase = ({
     }
     const response = {
       externalOrderReference: DGLAUNDRY_QUALIFICATION_ORDER_REFERENCE,
-      state: responseState(refund, result.data?.payment_session?.status || session.status),
+      state: text(refund?.status) || responseState(refund, result.data?.payment_session?.status || session.status),
       paymentMode: 'test',
       companyId,
       locationId

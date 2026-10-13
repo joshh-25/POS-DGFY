@@ -25,7 +25,7 @@ export const buildDglaundryEventSpecimens = ({
     type: 'dgfy.laundry_order.payment_status_changed.v1',
     data: { companyId: 'specimen-company', locationId: 'specimen-location', externalOrderReference: 'DGLAUNDRY-EVENT-SPECIMEN-PAYMENT', externalTrackingReference: 'specimen-tracking-reference', payment: { owner: 'dgfy', status: 'paid', amountCentavos: 100, externalReference: 'pay_test_specimen', provider: 'paymongo' } }
   });
-  const sign = (body) => ({ method: 'POST', authority, path: eventPath, body, headers: signEvent({ method: 'POST', authority, path: eventPath, body }), generatedAt: now.toISOString() });
+  const sign = (body) => ({ method: 'POST', authority, path: eventPath, body, headers: signEvent({ method: 'POST', authority, path: eventPath, body, now }), generatedAt: now.toISOString() });
   const specimens = { normal: sign(normal), payment: sign(payment) };
   // Reuse the exact body and signature envelope to demonstrate replay detection.
   specimens['duplicate-payment'] = structuredClone(specimens.payment);
