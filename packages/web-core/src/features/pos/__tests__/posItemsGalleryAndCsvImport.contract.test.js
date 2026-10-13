@@ -4,13 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const workspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
+const terminalWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const carouselPath = path.resolve(__dirname, '../../../../Components/items/SelectedItemImageCarousel.jsx');
 const pagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
 const checkoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const pendingPreviewStorePath = path.resolve(__dirname, '../services/posPendingItemImagePreviewStore.js');
 const posCatalogServicePath = path.resolve(__dirname, '../../../services/posCatalogService.js');
 const workspace = fs.readFileSync(workspacePath, 'utf8');
+const terminalWorkspace = fs.readFileSync(terminalWorkspacePath, 'utf8');
 const carousel = fs.readFileSync(carouselPath, 'utf8');
 const page = fs.readFileSync(pagePath, 'utf8');
 const checkoutView = fs.readFileSync(checkoutViewPath, 'utf8');
@@ -67,10 +69,12 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
     expect(workspace).toContain('showCsvImport && canImportItems');
     expect(workspace).toContain('open={showCsvImport}');
     expect(workspace).toContain('onClick={() => setShowCsvImport(true)}');
-    expect(workspace.match(/Import Items/g)).toHaveLength(3);
+    expect(workspace).toContain('aria-label="Import Items"');
+    expect(workspace).toContain('<span className="pos-items-tablet-action-label">Import Items</span>');
+    expect(workspace).toContain('<span>Import Items</span>');
     expect(workspace).toContain('await Promise.all([loadItems(), loadPosFolders()]);');
-    expect(workspace).toContain("const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';");
-    expect(workspace).toContain("resolveUserPermissionList(terminalUser).includes('items:import')");
+    expect(terminalWorkspace).toContain("const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';");
+    expect(terminalWorkspace).toContain("resolveUserPermissionList(terminalUser).includes('items:import')");
     expect(page).not.toContain('canImportItems={canImportItems}');
   });
 

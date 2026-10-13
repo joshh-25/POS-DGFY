@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const workspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
 const layoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const paginationPath = path.resolve(__dirname, '../../../../Components/ui/pagination.jsx');
 
@@ -14,7 +14,7 @@ describe('POS item list pagination', () => {
 
     expect(workspace).toContain('const POS_ITEMS_PAGE_SIZE = 20;');
     expect(workspace).toContain('page_size: itemsPageSize');
-    expect(workspace).toContain('{paginatedItems.map((item) => {');
+    expect(workspace).toContain('const presentedItems = useMemo(() => paginatedItems.map((item) => {');
     expect(workspace).toContain('<GlobalPagination');
     expect(workspace).toContain('testId="pos-items-pagination"');
     expect(workspace).toContain('hidePageSizeSuffixOnMobile');

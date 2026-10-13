@@ -1403,8 +1403,38 @@ body.dgfy-pos-document-scroll-lock {
   display: contents;
 }
 
+/* Desktop POS keeps the terminal status in the title cluster instead of
+   letting the flexible title column push it toward the right-side actions. */
+@media screen and (min-width: 1024px) {
+  .dgfy-pos-topbar .dgfy-pos-header-title {
+    flex: 0 1 auto;
+  }
+
+  .dgfy-pos-topbar .dgfy-pos-header-page-title-group {
+    flex: 0 1 auto;
+    max-width: min(26rem, 38vw);
+  }
+
+  .dgfy-pos-topbar .dgfy-pos-header-terminal-row {
+    display: flex;
+    flex: 0 0 auto;
+  }
+
+  .dgfy-pos-topbar .dgfy-pos-header-terminal {
+    max-width: 15rem;
+    min-width: 0;
+  }
+
+  .dgfy-pos-topbar .dgfy-pos-header-terminal > span:first-of-type {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 /* Small tablets use the mobile header hierarchy: title above an unboxed
-   terminal and status line. Wider tablets keep the title and badge together. */
+   terminal and status line; desktop uses the title cluster above. */
 @media (min-width: 768px) and (max-width: 1023.98px) {
   .dgfy-pos-header-page-subtitle,
   .dgfy-pos-header-terminal-row {
@@ -3373,17 +3403,6 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 /* Catalog pagination owns the available width; keep the scrollbar from
    reserving an extra card column when the catalog becomes scrollable. */
 
-/* The POS item catalog is intentionally a stable four-row desktop viewport:
-   eight cards remain visible and the ninth card onward scrolls inside the
-   catalog instead of pushing the workspace footer down. The row height matches
-   the compact two-column item card at the normal POS text scale. */
-@media (min-width: 1280px) {
-.dgfy-pos-items-catalog-results {
-    grid-auto-rows: 6.75rem;
-    max-height: calc(4 * 6.75rem + 3 * 0.5rem);
-  }
-}
-
 /* Item Options shares the Items tab shell, so its manager, assignment panels,
    option rows, and controls use the same compact card contract as the item
    catalog. Keep this scope local to the feature so other POS configuration
@@ -5291,7 +5310,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     margin-top: 0.75rem;
   }
 
-  .pos-categories-mobile-grid {
+  .pos-categories-priority-list {
     gap: 0.75rem;
   }
 
@@ -5834,8 +5853,8 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     width: 1rem;
   }
 
-  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-priority-list {
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
   }
 
@@ -5907,9 +5926,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     padding-inline: 0.75rem;
   }
 
-  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-results.dgfy-pos-items-catalog-results,
-
-  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-grid {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-results.dgfy-pos-items-catalog-results {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -6302,6 +6319,64 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     padding-inline: 0.75rem;
     font-size: calc(0.75rem * var(--pos-text-size-scale, 1));
     white-space: nowrap;
+  }
+}
+
+@media screen and (min-width: 768px) and (max-width: 1023.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view table {
+    font-size: calc(0.6875rem * var(--pos-text-size-scale, 1));
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-item {
+    width: 27%;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-category {
+    width: 11%;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-sku {
+    width: 15%;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-price,
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-cost {
+    width: 10%;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-stock {
+    width: 9%;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-actions {
+    width: 18%;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view col.pos-items-list-column-profit,
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view .pos-items-list-profit-cell {
+    display: none;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view thead th:last-child {
+    text-align: center;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view th {
+    font-size: calc(0.625rem * var(--pos-text-size-scale, 1));
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view th,
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view td {
+    padding-inline: 0.25rem !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view tr > :first-child {
+    padding-left: 0.5rem !important;
+    padding-right: 0.375rem !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-list-view tr > :last-child {
+    padding-right: 0.5rem !important;
   }
 }
 
@@ -7072,6 +7147,41 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   outline-offset: 2px;
 }
 
+.pos-items-catalog-workspace .pos-items-category-reorder-button {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.pos-items-catalog-workspace .pos-items-category-reorder-button:not([aria-pressed="true"]) {
+  border-color: #bfdbfe;
+  background-color: #eff6ff;
+  color: #1a4e8d;
+}
+
+.pos-items-catalog-workspace .pos-items-category-reorder-button:not([aria-pressed="true"]):hover:not(:active):not(:focus-visible):not(:disabled) {
+  border-color: #93c5fd;
+  background-color: #dbeafe;
+  color: #143f73;
+}
+
+.pos-items-catalog-workspace .pos-items-category-reorder-button[aria-pressed="true"] {
+  border-color: #1a4e8d;
+  background-color: #1a4e8d;
+  color: #fff;
+}
+
+.pos-items-catalog-workspace .pos-items-category-reorder-button[aria-pressed="true"]:hover,
+
+.pos-items-catalog-workspace .pos-items-category-reorder-button[aria-pressed="true"]:focus-visible {
+  border-color: #143f73;
+  background-color: #143f73;
+  color: #fff;
+}
+
+.pos-items-catalog-workspace .pos-items-category-reorder-button:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
 .pos-items-options-workspace .pos-items-options-add-button {
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
@@ -7622,18 +7732,6 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   }
 }
 
-@media screen and (min-width: 1024px) {
-  body[data-pos-text-size="extra-large"] .pos-text-size-control__trigger {
-    width: 14rem;
-  }
-
-  body[data-pos-text-size="extra-large"] .pos-text-size-control__trigger > span {
-    overflow: visible;
-    text-overflow: clip;
-    white-space: nowrap;
-  }
-}
-
 @media screen and (max-width: 639.98px) {
   body[data-pos-text-size="large"] .pos-items-reference-mobile-card,
   body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card {
@@ -7967,11 +8065,8 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   }
 }
 
-/* Enlarged landscape-tablet headers must reserve space for the page title.
-   The terminal badge, text-size selector, notification button, and profile
-   currently consume enough width to collapse the title to one character at
-   115%/130%. Reduce only their tablet footprint and keep the title column at
-   a readable minimum; mobile and regular PC headers are unchanged. */
+/* Enlarged landscape-tablet headers keep the title and terminal badge
+   together; icon-only text sizing frees room without hiding terminal context. */
 @media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
        screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
   body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-shell,
@@ -7988,19 +8083,21 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 
   body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-title,
   body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-title {
-    min-width: 8rem;
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
-  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-title > div > div:first-child,
-  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-title > div > div:first-child {
-    flex: 1 1 8rem;
-    min-width: 8rem;
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-page-title-group,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-page-title-group {
+    flex: 0 1 auto;
+    max-width: min(26rem, 38vw);
+    min-width: 0;
   }
 
   body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-terminal,
   body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-terminal {
     flex: 0 1 auto;
-    max-width: 13.5rem;
+    max-width: 15rem;
     min-width: 0;
     gap: 0.375rem;
     padding-inline: 0.625rem;
@@ -8012,11 +8109,6 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-terminal-prefix,
-  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-terminal-prefix {
-    display: none;
   }
 
   body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-profile,
@@ -8034,13 +8126,6 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     gap: 0.5rem;
   }
 
-  body[data-pos-text-size="large"] .dgfy-pos-topbar .pos-text-size-control__trigger {
-    width: 10.5rem;
-  }
-
-  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger {
-    width: 10.5rem;
-  }
 }
 
 /* Category card actions are icon-only controls. Keep their width and height
@@ -8080,30 +8165,10 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     flex: 0 0 auto;
   }
 
-  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger > span {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger > svg:last-child {
-    flex: 0 0 auto;
-  }
-
   body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control [role="listbox"] {
     width: 13.5rem;
     max-width: calc(100vw - 1rem);
     overflow: hidden;
-  }
-
-  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger {
-    width: 12rem;
-    max-width: 100%;
-    gap: 0.375rem;
-    overflow: hidden;
-    padding-inline: 0.5rem;
   }
 
   body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__option {
@@ -8453,4 +8518,177 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   border-color: #143f73;
   background: #143f73;
   color: #fff;
+}
+
+/* POS > Items tablet/desktop catalog cards. Keep the phone composition above
+   this breakpoint; on wider screens, let content width decide the column
+   count while the width formula caps the grid at four items per row. */
+@media screen and (min-width: 768px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-results.pos-items-mobile-results.dgfy-pos-items-catalog-results {
+    align-items: stretch;
+    grid-auto-rows: max-content;
+    grid-template-columns: repeat(auto-fill, minmax(max(16rem, calc((100% - 1.5rem) / 4)), 1fr));
+    max-height: none;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-results .pos-items-reference-mobile-card {
+    display: none !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-card {
+    box-sizing: border-box;
+    display: flex;
+    height: auto;
+    min-height: 13rem;
+    padding: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-card-top {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-image {
+    height: 4.5rem;
+    width: 4.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-summary {
+    align-content: start;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-card-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-stock-status-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-metrics > div {
+    align-self: stretch;
+    overflow-wrap: anywhere;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-actions button {
+    box-sizing: border-box;
+    min-height: 2.25rem;
+    white-space: normal;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-results.pos-items-mobile-results.dgfy-pos-items-catalog-results {
+    grid-auto-rows: max-content;
+    grid-template-columns: repeat(auto-fill, minmax(max(18rem, calc((100% - 1.5rem) / 4)), 1fr));
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-card {
+    min-height: 13.25rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-actions button {
+    min-height: 2.75rem;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-results.pos-items-mobile-results.dgfy-pos-items-catalog-results {
+    grid-auto-rows: max-content;
+    grid-template-columns: repeat(auto-fill, minmax(max(20rem, calc((100% - 1.5rem) / 4)), 1fr));
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-card {
+    min-height: 13.5rem;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-actions button {
+    min-height: 2.75rem;
+  }
+}
+
+@media screen and (min-width: 768px) and (max-width: 1023.98px),
+       screen and (min-width: 768px) and (pointer: coarse) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-responsive-actions button {
+    min-height: 2.75rem;
+  }
+}
+
+/* POS > Items Grid/List presentation. The grid remains the default and the
+   phone cards stay available below 768px, even after resizing from List. */
+@media screen and (min-width: 768px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] [data-testid="pos-items-results"][data-view-mode="list"] {
+    display: block;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] [data-testid="pos-items-results"][data-view-mode="list"] > .pos-items-grid-entry {
+    display: none;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] [data-testid="pos-items-results"][data-view-mode="list"] > .pos-items-list-view {
+    display: block;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] [data-testid="pos-items-results"][data-view-mode="grid"] > .pos-items-list-view {
+    display: none;
+  }
+}
+
+@media screen and (max-width: 767.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] [data-testid="pos-items-results"][data-view-mode="list"] {
+    display: grid !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] [data-testid="pos-items-results"][data-view-mode="list"] > .pos-items-grid-entry {
+    display: block !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] [data-testid="pos-items-results"] > .pos-items-list-view {
+    display: none !important;
+  }
+}
+
+/* Tablet Items toolbar actions use compact icon-only buttons. The button
+   labels remain available to assistive technology through aria-label, while
+   desktop keeps its full text labels and phone controls keep their own layout. */
+@media screen and (min-width: 768px) and (max-width: 1199.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-tablet-action-label,
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button > span {
+    display: none;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-actions > .pos-items-primary-action,
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-actions > .pos-items-desktop-import-button {
+    box-sizing: border-box;
+    display: inline-flex;
+    width: 2.5rem;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-actions > button > svg {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    flex: 0 0 auto;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-actions {
+    display: contents;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button {
+    width: 2.5rem;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 2.5rem;
+    padding: 0;
+  }
 }
