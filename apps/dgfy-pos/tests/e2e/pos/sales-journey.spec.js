@@ -39,6 +39,15 @@ const stockForItem = async (page, authHeaders, itemId) => {
   return Number(item?.current_stock ?? item?.item?.current_stock);
 };
 
+const dismissStockAlertIfPresent = async (page) => {
+  const stockAlertDialog = page.getByRole('dialog')
+    .filter({ hasText: 'POS inventory needs attention before the next selling session.' });
+  if (await stockAlertDialog.isVisible().catch(() => false)) {
+    await stockAlertDialog.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await expect(stockAlertDialog).toBeHidden();
+  }
+};
+
 test('POS checkout decrements stock, opens history detail, and downloads sales CSV', async ({ page }, testInfo) => {
   const user = JSON.parse(execFileSync(process.execPath, [setupScript], {
     cwd: path.join(repositoryRoot, 'apps/dgfy-api'),
@@ -95,24 +104,38 @@ test('POS checkout decrements stock, opens history detail, and downloads sales C
   let closingCashAmount = 0;
   try {
     if (!openedShiftId) {
-      const openedShift = await authenticatedRequest(page, authHeaders, 'POST', '/pos/terminal/shifts/open', {
-        idempotency_key: `pos-sales-e2e-open-${Date.now()}`,
-        terminal_id: user.terminalId,
-        location_id: user.locationId,
-        opening_float_amount: 0,
-        opening_note: 'POS sales journey E2E',
-      });
-      openedShiftId = Number(openedShift?.shift?.pos_terminal_shift_id || openedShift?.pos_terminal_shift_id);
+      const unlockDialog = page.getByRole('dialog').filter({ hasText: 'Opening Cash' }).last();
+      if (!await unlockDialog.isVisible().catch(() => false)) {
+        await page.getByRole('button', { name: 'Unlock Terminal', exact: true }).click();
+      }
+      await expect(unlockDialog).toBeVisible();
+      await unlockDialog.getByLabel('Opening Cash').fill('0');
+      const openShiftResponsePromise = page.waitForResponse((response) => (
+        new URL(response.url()).pathname.endsWith('/api/v1/pos/terminal/shifts/open')
+      ));
+      await unlockDialog.getByRole('button', { name: 'Open Shift', exact: true }).click();
+      const openShiftResponse = await openShiftResponsePromise;
+      const openShiftBody = await readJson(openShiftResponse);
+      expect(openShiftResponse.ok(), JSON.stringify(openShiftBody)).toBe(true);
+      const openedShift = await authenticatedRequest(
+        page,
+        authHeaders,
+        'GET',
+        `/pos/terminal/shifts/current?terminal_id=${encodeURIComponent(user.terminalId)}`,
+      );
+      openedShiftId = Number(openedShift?.shift?.pos_terminal_shift_id || 0) || null;
       expect(openedShiftId).toBeGreaterThan(0);
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await expect(page.getByRole('heading', { name: 'POS Catalog' })).toBeVisible();
+      await expect(unlockDialog).toBeHidden();
     }
+
+    await dismissStockAlertIfPresent(page);
 
     const catalogSearch = page.locator('input[placeholder="Search POS-visible items..."]:visible').first();
     await expect(catalogSearch).toBeVisible();
     await catalogSearch.fill(itemName);
     const catalogItem = page.locator('p:visible').filter({ hasText: itemName }).first();
     await expect(catalogItem).toBeVisible();
+    await dismissStockAlertIfPresent(page);
     await catalogItem.click();
     const checkoutButton = page.getByRole('button', { name: 'Checkout', exact: true });
     await expect(checkoutButton).toBeEnabled();

@@ -15,6 +15,9 @@ const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
 const webServerPort = process.env.E2E_WEB_PORT || '5174';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
+const reporters = [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]];
+
+if (process.env.PLAYWRIGHT_JSON_OUTPUT_FILE) reporters.push(['json']);
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -26,7 +29,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  reporter: reporters,
   outputDir: 'test-results',
   use: {
     baseURL,

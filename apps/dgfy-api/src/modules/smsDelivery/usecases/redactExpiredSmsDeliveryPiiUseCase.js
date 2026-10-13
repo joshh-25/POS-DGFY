@@ -7,7 +7,7 @@ const MAX_REDACTION_BATCHES_PER_RUN = 100;
 export const redactExpiredSmsDeliveryPiiUseCase = async ({ repository = smsDeliveryLogRepository, now = new Date(), days = getSmsDeliveryLogRetentionDays() } = {}) => {
   const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   let redactedTotal = 0;
-  let redactedBatch = 0;
+  let redactedBatch;
   let batchCount = 0;
 
   do {
