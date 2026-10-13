@@ -468,26 +468,6 @@ export class PayMongoService {
         }
     }
 
-    async cancelPaymentIntent(paymentIntentId) {
-        try {
-            const cleanPaymentIntentId = String(paymentIntentId || '').trim();
-            if (!cleanPaymentIntentId.startsWith('pi_')) {
-                throw new Error('A valid PayMongo payment intent ID is required');
-            }
-
-            const response = await axios.post(
-                `${this.baseUrl}/payment_intents/${cleanPaymentIntentId}/cancel`,
-                {},
-                { headers: this.getAuthHeader() }
-            );
-            logger.info(`PayMongo payment intent cancelled: ${cleanPaymentIntentId}`);
-            return response.data.data;
-        } catch (error) {
-            logger.error('PayMongo Cancel Payment Intent Error:', error.response?.data || error.message);
-            throw error;
-        }
-    }
-
     async confirmSandboxQrphPayment({
         paymentIntentId,
         expectedAmount,

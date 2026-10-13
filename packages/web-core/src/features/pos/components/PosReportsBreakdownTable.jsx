@@ -195,6 +195,8 @@ export function PosReportsBreakdownSummary({ breakdown, data, currencySymbol = '
   const Icon = definition.icon;
   const itemsSold = Number(summary.total_items_sold ?? summary.quantity ?? 0);
   const transactions = Number(summary.total_transactions ?? summary.orders ?? 0);
+  const completedTransactions = Number(summary.completed_transactions ?? transactions);
+  const voidedRefundedTransactions = Number(summary.voided_refunded_transactions ?? 0);
   const isGraphView = summaryView === 'graph';
   const isHourly = breakdown === 'hourly';
 
@@ -236,7 +238,9 @@ export function PosReportsBreakdownSummary({ breakdown, data, currencySymbol = '
         <div className="grid min-w-0 grid-cols-2 gap-2.5 xl:grid-cols-5">
           <MetricCard label="Net Sales" value={money(summary.net_sales, currencySymbol)} />
           <MetricCard label="Gross Sales" value={money(summary.gross_sales, currencySymbol)} />
-          <MetricCard label="Transactions" value={transactions.toLocaleString('en-US')} />
+          <MetricCard label="Recorded Transactions" value={transactions.toLocaleString('en-US')} />
+          <MetricCard label="Completed Sales" value={completedTransactions.toLocaleString('en-US')} />
+          <MetricCard label="Voided/Refunded" value={voidedRefundedTransactions.toLocaleString('en-US')} />
           <MetricCard label="Items Sold" value={number(itemsSold)} />
           <MetricCard label="Profit" value={money(summary.profit ?? summary.pos_profit_loss, currencySymbol)} />
         </div>

@@ -165,6 +165,63 @@ describe('posRepository reports analytics', () => {
         }));
     });
 
+    it('separates online-store transactions from in-store sales in Z-reading totals', async () => {
+        mockFindAll.mockImplementation(async (options = {}) => {
+            const attributes = Array.isArray(options.attributes) ? options.attributes : [];
+            if (attributes.includes('order_source')) {
+                return [
+                    {
+                        pos_transaction_id: 601,
+                        order_source: null,
+                        payment_type: 'cash',
+                        total_amount: 90,
+                        payment_breakdown: null,
+                        delivery_provider_breakdown: null
+                    },
+                    {
+                        pos_transaction_id: 602,
+                        order_source: 'in_store',
+                        payment_type: 'cash',
+                        total_amount: 10,
+                        payment_breakdown: null,
+                        delivery_provider_breakdown: null
+                    },
+                    {
+                        pos_transaction_id: 603,
+                        order_source: 'online_store',
+                        payment_type: 'cash',
+                        total_amount: 50,
+                        payment_breakdown: null,
+                        delivery_provider_breakdown: null
+                    }
+                ];
+            }
+            return [];
+        });
+        mockLineFindAll.mockResolvedValue([]);
+
+        const result = await posRepository.getZReadingSummary({
+            startAt: new Date('2026-09-05T00:00:00.000Z'),
+            endAt: new Date('2026-09-06T00:00:00.000Z'),
+            locationId: 12
+        });
+
+        expect(result.order_source_breakdown).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                order_source: 'in_store',
+                source_label: 'Walk-in Sales',
+                count: 2,
+                amount: 100
+            }),
+            expect.objectContaining({
+                order_source: 'online_store',
+                source_label: 'Online Sales',
+                count: 1,
+                amount: 50
+            })
+        ]));
+    });
+
     it('exposes the first transaction date and Manila today as report display bounds', async () => {
         mockFindAll.mockResolvedValue([]);
         mockFindOne.mockResolvedValue({ created_at: '2026-05-01T16:00:00.000Z' });
@@ -349,7 +406,9 @@ describe('posRepository reports analytics', () => {
             discounts: 10,
             vat: 18,
             service_fees: 5,
-            total_transactions: 2
+            total_transactions: 2,
+            completed_transactions: 2,
+            voided_refunded_transactions: 0
         }));
         expect(result.daily_report.discount_breakdown).toEqual([
             expect.objectContaining({
@@ -368,6 +427,20 @@ describe('posRepository reports analytics', () => {
             }),
             expect.objectContaining({
                 order_method: 'online',
+                total_transactions: 1,
+                net_sales: 50
+            })
+        ]));
+        expect(result.daily_report.order_source_breakdown).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                order_source: 'in_store',
+                source_label: 'Walk-in Sales',
+                total_transactions: 1,
+                net_sales: 90
+            }),
+            expect.objectContaining({
+                order_source: 'online_store',
+                source_label: 'Online Sales',
                 total_transactions: 1,
                 net_sales: 50
             })
@@ -826,7 +899,10 @@ describe('posRepository reports analytics', () => {
             cogs: 30,
             pos_profit_loss: -30,
             profit_margin: 0,
-            is_loss: true
+            is_loss: true,
+            total_transactions: 1,
+            completed_transactions: 0,
+            voided_refunded_transactions: 1
         }));
         expect(result.daily_report.top_items).toHaveLength(1);
         expect(result.daily_report.top_items[0]).toEqual(expect.objectContaining({
@@ -1264,6 +1340,57 @@ describe('posRepository reports analytics', () => {
         const providerPredicate = where[Op.and].find((entry) => entry?.literal);
         expect(providerPredicate.literal).toContain('provider_type');
         expect(providerPredicate.literal).toContain("'other'");
+    });
+
+    it('merges snapshot and legacy rows into one payment method total', async () => {
+        mockFindAll.mockResolvedValue([
+            {
+                pos_transaction_id: 801,
+                created_at: '2026-09-05T03:00:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: 100,
+                total_amount: 100,
+                discount_amount: 0,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                vat_amount: 0,
+                payment_type: 'cash',
+                payment_breakdown: [{ payment_type: 'cash', amount: 100 }],
+                cashier_id: 9,
+                cashier: { user_id: 9, username: 'cashier-1' },
+                lines: [{ item_id: 801, quantity: 1, cost_snapshot: 0, line_subtotal: 100, item: { item_id: 801, name: 'Snapshot item', category: 'product', cost_per_unit: 0 } }]
+            },
+            {
+                pos_transaction_id: 802,
+                created_at: '2026-09-05T04:00:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: 50,
+                total_amount: 50,
+                discount_amount: 0,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                vat_amount: 0,
+                payment_type: 'cash',
+                cashier_id: 9,
+                cashier: { user_id: 9, username: 'cashier-1' },
+                lines: [{ item_id: 802, quantity: 1, cost_snapshot: 0, line_subtotal: 50, item: { item_id: 802, name: 'Legacy item', category: 'product', cost_per_unit: 0 } }]
+            }
+        ]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-09-05',
+            date_to: '2026-09-05'
+        });
+
+        expect(result.daily_report.payment_breakdown).toEqual([
+            expect.objectContaining({
+                payment_method: 'Cash',
+                total_transactions: 2,
+                net_sales: 150
+            })
+        ]);
     });
 
     it('reconciles a filtered GCash report with a GCash leg inside a Cash-primary split sale', async () => {

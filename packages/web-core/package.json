@@ -4,6 +4,9 @@
   "description": "Shared trunk (services, hooks, observability, shadcn component library, and the POS terminal feature) consumed by dgfy-ims, dgfy-pos, and dgfy-storefront.",
   "type": "module",
   "private": true,
+  "dependencies": {
+    "@breezystack/lamejs": "1.2.7"
+  },
   "exports": {
     "./*": "./src/*",
     "./Components/*": "./Components/*",

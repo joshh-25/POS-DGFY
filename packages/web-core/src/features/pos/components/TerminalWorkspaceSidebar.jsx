@@ -9,6 +9,7 @@ import {
   LogIn,
   Lock,
   Percent,
+  Settings,
   Settings2,
   ShieldCheck,
   ShoppingCart,
@@ -20,7 +21,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../../Components/ui/button.jsx';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
-import { isDineInOrder } from '../utils/dineInSchedule.js';
+import { resolvePosIncomingOrders } from '../utils/incomingOrderCount.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
@@ -112,15 +113,15 @@ export default function TerminalWorkspaceSidebar({
   const hasActiveShift = Boolean(shiftState?.shift);
   const isBranchReadOnlyView = Boolean(branchViewLocationId);
   const isAdminBranchMonitor = isBranchReadOnlyView || (!hasActiveShift && canViewAdminLocationMonitor);
-  const activeIncomingOrders = Array.isArray(incomingOrdersState?.orders)
-    ? incomingOrdersState.orders.filter((order) => !isDineInOrder(order))
-    : [];
-  const activeAdminOrders = Array.isArray(adminLocationMonitorState?.orders)
-    ? adminLocationMonitorState.orders.filter((order) => !isDineInOrder(order))
-    : [];
-  const incomingCount = canViewPos
-    ? (isAdminBranchMonitor ? activeAdminOrders.length : activeIncomingOrders.length)
-    : 0;
+  const incomingCount = resolvePosIncomingOrders({
+    showIncomingQueue,
+    canViewPos,
+    hasActiveShift,
+    canViewAdminLocationMonitor,
+    branchViewLocationId,
+    incomingOrdersState,
+    adminLocationMonitorState
+  }).length;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;
   const shouldShowPosOnlySetup = canAccessPosOnlySetup
@@ -400,7 +401,7 @@ export default function TerminalWorkspaceSidebar({
         <div className="space-y-2">
           <NavButton
             label="Settings"
-            icon={Settings2}
+            icon={Settings}
             active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)
               || (currentViewMode === 'terminal_setup' && settingsTargetViewMode === 'terminal_setup')}
             onClick={() => onSelectViewMode(settingsTargetViewMode)}

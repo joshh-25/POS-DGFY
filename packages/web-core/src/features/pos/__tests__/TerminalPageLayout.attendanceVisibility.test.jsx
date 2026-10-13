@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 
 vi.mock('../utils/iminHardwareBridge.js', () => ({
-  playOrderAlertWithIminBridge: vi.fn()
+  playOrderAlertWithIminBridge: vi.fn(),
+  stopOrderAlertWithIminBridge: vi.fn()
 }));
 
 vi.mock('../components/TerminalLockDrawer.jsx', () => ({

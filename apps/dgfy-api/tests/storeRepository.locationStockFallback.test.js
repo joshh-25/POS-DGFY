@@ -335,6 +335,40 @@ describe('storeRepository location-stock schema fallback', () => {
         }));
     });
 
+    it('omits missing responsive catalog image assets from the public catalog response', async () => {
+        itemFindAllMock.mockResolvedValue([
+            buildCatalogRow({
+                item_id: 670,
+                storefrontCatalogOverride: {
+                    storefront_visible: true,
+                    storefront_image_url: '/uploads/storefront-catalog/tenant-1/item-670-1785411123290-v2-23f94775/large.webp',
+                    storefront_image_gallery: JSON.stringify([
+                        {
+                            url: '/uploads/storefront-catalog/tenant-1/item-670-1785411123290-v2-23f94775/large.webp',
+                            is_primary: true,
+                            sort_order: 0
+                        }
+                    ])
+                }
+            })
+        ]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 670,
+            image_url: null,
+            image_variants: null,
+            image_gallery: []
+        }));
+    });
+
     it('findSellableItemsByIds keeps an untracked item available even with no per-location stock row (bug 5)', async () => {
         // Before this fix, a missing item_location_stocks row collapsed to
         // current_stock=0 for every item alike, wrongly reading as "out of

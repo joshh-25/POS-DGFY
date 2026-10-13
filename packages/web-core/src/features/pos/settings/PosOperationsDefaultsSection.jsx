@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { AlertTriangle, Banknote, CircleDollarSign, Clock, Edit3, Eye, MapPin, Monitor, Settings2, Volume2, X } from 'lucide-react';
+import { AlertTriangle, Banknote, BellRing, CircleDollarSign, Clock, Edit3, Eye, MapPin, Monitor, Settings2, Volume2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PosCashierCloseoutDefaultsModal from './PosCashierCloseoutDefaultsModal.jsx';
+import OrderAlertSoundOptions from './OrderAlertSoundOptions.jsx';
 
 const displayValue = (value, fallback = 'Not set') => {
   const normalized = String(value ?? '').trim();
@@ -62,6 +63,10 @@ function DirectToggle({ label, description, checked, onChange, disabled, pending
 export default function PosOperationsDefaultsSection({
   loading, savingTab, posForm, locations, incomingOrders,
   queueLocationScopeId, onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, locked,
+  onlineOrderSoundId = 'new_order', downloadedOrderAlertSoundIds = [], orderAlertSoundDownloadId = '',
+  previewingOrderAlertSoundId = '',
+  onSelectOrderAlertSound = () => {}, onDownloadOrderAlertSound = async () => false, onImportOrderAlertSound = async () => false, orderAlertSoundImporting = false, onPreviewOrderAlertSound = async () => false,
+  incomingOrderPopupEnabled = true, setIncomingOrderPopupEnabled = () => {},
   saveDefaults, onNavigateToOrders = () => {},
   customerDisplayEnabled = true,
   customerDisplayCanOpen = false,
@@ -197,6 +202,28 @@ export default function PosOperationsDefaultsSection({
                 disabled={!canEdit}
                 icon={Volume2}
               />
+              <DirectToggle
+                label="Incoming order popup"
+                checked={incomingOrderPopupEnabled === true}
+                onChange={() => setIncomingOrderPopupEnabled((current) => !current)}
+                disabled={!canEdit}
+                icon={BellRing}
+              />
+              <div className="sm:col-span-2">
+                <OrderAlertSoundOptions
+                  soundId={onlineOrderSoundId}
+                  downloadedSoundIds={downloadedOrderAlertSoundIds}
+                  downloadId={orderAlertSoundDownloadId}
+                  previewingSoundId={previewingOrderAlertSoundId}
+                  onSoundSelect={onSelectOrderAlertSound}
+                  onDownload={onDownloadOrderAlertSound}
+                  onImport={onImportOrderAlertSound}
+                  importing={orderAlertSoundImporting}
+                  onPreview={onPreviewOrderAlertSound}
+                  disabled={!canEdit}
+                  titleId="pos-order-alert-sound-options-title"
+                />
+              </div>
             </div>
           </>
         </div>

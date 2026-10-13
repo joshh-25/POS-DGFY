@@ -22,7 +22,7 @@ describe('POS reports overview table', () => {
   it('keeps all financial overview columns available at their responsive widths', () => {
     render(<PosReportsOverviewTable rows={rows} />);
 
-    ['Business Date', 'Transactions', 'Gross Sales (₱)', 'Net Sales (₱)', 'Discounts (₱)', 'Refunds/Voids (₱)'].forEach((label) => {
+    ['Business Date', 'Recorded Transactions', 'Gross Sales (₱)', 'Net Sales (₱)', 'Discounts (₱)', 'Refunds/Voids (₱)'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: label })).toBeTruthy();
     });
 
@@ -76,7 +76,7 @@ describe('POS reports overview table', () => {
     expect(within(card).queryByText('Business Date')).toBeNull();
     expect(card.querySelector('dl').className).toContain('space-y-1.5');
     expect(fields.map((field) => field.querySelector('dt')?.textContent)).toEqual([
-      'Transactions',
+      'Recorded Transactions',
       'Gross Sales (₱)'
     ]);
     expect(fields.map((field) => field.querySelector('dd')?.textContent)).toEqual([
@@ -103,7 +103,7 @@ describe('POS reports overview table', () => {
     expect(netSalesValue.className).toContain('text-[#15579B]');
     expect(within(details).getByText('Discounts (₱)', { selector: 'dt' }).nextElementSibling.textContent).toBe('₱23.25');
     expect(within(details).getByText('Refunds/Voids (₱)', { selector: 'dt' }).nextElementSibling.textContent).toBe('₱0.00');
-    expect(within(details).queryByText('Transactions', { selector: 'dt' })).toBeNull();
+    expect(within(details).queryByText('Recorded Transactions', { selector: 'dt' })).toBeNull();
     expect(within(details).queryByText('Gross Sales (₱)', { selector: 'dt' })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
 

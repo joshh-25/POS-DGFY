@@ -86,7 +86,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260914000002-create-pos-location-item-overrides.cjs' },
         { name: '20260914000003-add-job-order-location-scope.cjs' },
         { name: '20260914000004-create-pos-terminal-device-enrollment.cjs' },
-        { name: '20260921000002-add-employee-credit-split-tender.cjs' }
+        { name: '20260921000002-add-employee-credit-split-tender.cjs' },
+        { name: '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -415,7 +416,9 @@ const buildHealthySequelizeMock = () => ({
                     actor_shift_id: {},
                     actor_terminal_id: {},
                     actor_location_id: {},
-                    adjustment_type: {},
+                    adjustment_type: {
+                        type: "ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return')"
+                    },
                     tender_type: {},
                     amount: {},
                     currency: {},
@@ -438,6 +441,9 @@ const buildHealthySequelizeMock = () => ({
                     failed_at: {},
                     cancelled_at: {},
                     metadata: {}
+                },
+                pos_z_reading_snapshots: {
+                    reading_payload_hash: {}
                 },
                 pos_parked_sales: {
                     pos_parked_sale_id: {},
@@ -818,6 +824,47 @@ describe('runtimeSchemaAuditService', () => {
                 scope: 'migration',
                 type: 'missing_required_migration',
                 migration: requiredMigration
+            })
+        ]));
+    });
+
+    it('returns degraded when Annex B evidence migration or Z-reading evidence column is missing', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'pos_z_reading_snapshots') {
+                    const { reading_payload_hash, ...withoutPayloadHash } = table;
+                    return withoutPayloadHash;
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({ sequelizeInstance: mock });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.missingColumns).toContainEqual({
+            table: 'pos_z_reading_snapshots',
+            column: 'reading_payload_hash'
+        });
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'migration',
+                type: 'missing_required_migration',
+                migration: requiredMigration
+            }),
+            expect.objectContaining({
+                scope: 'schema',
+                type: 'missing_required_column',
+                table: 'pos_z_reading_snapshots',
+                column: 'reading_payload_hash'
             })
         ]));
     });

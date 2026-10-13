@@ -1677,6 +1677,11 @@
     font-size: max(16px, 1rem) !important;
   }
 
+  /* The time roller intentionally matches the 12px calendar day labels. */
+  .storefront-time-picker-input {
+    font-size: 12px !important;
+  }
+
   /* Keep the control at 16px to prevent iOS zoom while giving the catalog
      placeholder a quieter size on narrow screens. */
   .storefront-mobile-catalog-search::placeholder {

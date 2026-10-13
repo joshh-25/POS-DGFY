@@ -36,6 +36,7 @@ import { DISPLAY_RELEVANT_REASON_CODES } from '../modules/vouchers/usecases/vouc
 import { syncTenantGeoCatalog } from '../modules/geoSearch/services/geoCatalogSyncService.js';
 import { deriveStorefrontSlug, normalizeStorefrontSlug } from '../modules/shared/utils/storefrontSlug.js';
 import { resolveAdvertisedDeliveryFromPrice } from '../modules/deliveryPricing/index.js';
+import { storefrontAssetStorage } from '../modules/settings/repositories/storefrontAssetStorage.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'ops_workflow_mode',
@@ -295,6 +296,60 @@ const normalizeStorefrontGalleryImages = (value) => parseJsonArray(value)
     .filter(Boolean)
     .slice(0, 24)
     .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0));
+
+const isInternalStorefrontAsset = ({ url, path: storedPath } = {}) => Boolean(
+    normalizeStorefrontAssetUrl(url) || normalizeStorefrontAssetPath(storedPath)
+);
+
+const isAvailableStorefrontAsset = async ({ tenant, assetType, url = '', path: storedPath = '' } = {}) => {
+    try {
+        const available = await storefrontAssetStorage.isAvailable({
+            url: normalizeStorefrontAssetUrl(url),
+            path: normalizeStorefrontAssetPath(storedPath)
+        });
+        if (available) return true;
+    } catch (error) {
+        logger.warn('[StorefrontDiscoveryIndex] Failed to verify storefront asset availability', {
+            tenantId: tenant?.id || null,
+            assetType,
+            error: error?.message || 'unknown_error'
+        });
+    }
+
+    logger.warn('[StorefrontDiscoveryIndex] Omitting unavailable storefront asset from public snapshot', {
+        tenantId: tenant?.id || null,
+        assetType,
+        url: normalizeStorefrontAssetUrl(url) || null,
+        path: normalizeStorefrontAssetPath(storedPath) || null
+    });
+    return false;
+};
+
+const resolveAvailableStorefrontAssetUrl = async ({ tenant, key, rawValue }) => {
+    const normalized = sanitizeStorefrontAssetUrl({ tenant, key, rawValue });
+    if (!normalized) return null;
+    const available = await isAvailableStorefrontAsset({
+        tenant,
+        assetType: key,
+        url: normalized
+    });
+    return available ? normalized : null;
+};
+
+const filterAvailableStorefrontGalleryImages = async ({ tenant, images }) => {
+    const filtered = await Promise.all((images || []).map(async (entry) => {
+        if (!isInternalStorefrontAsset(entry)) return entry;
+        const available = await isAvailableStorefrontAsset({
+            tenant,
+            assetType: 'gallery',
+            url: entry.url,
+            path: entry.path
+        });
+        return available ? entry : null;
+    }));
+    return filtered.filter(Boolean);
+};
+
 const normalizeStorefrontDeliveryPartners = (value) => {
     const rows = parseJsonArray(value);
     const normalized = [];
@@ -480,6 +535,18 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
         }
     });
     const settings = toSettingsMap(settingsRows || []);
+    const [storefrontCoverImageUrl, storefrontProfileImageUrl] = await Promise.all([
+        resolveAvailableStorefrontAssetUrl({
+            tenant,
+            key: 'storefront_cover_image_url',
+            rawValue: settings.storefront_cover_image_url
+        }),
+        resolveAvailableStorefrontAssetUrl({
+            tenant,
+            key: 'storefront_profile_image_url',
+            rawValue: settings.storefront_profile_image_url
+        })
+    ]);
     const slug = deriveStoreSlug(tenant, settings.store_tenant_slug);
     // Note: the affiliate slug is intentionally NOT passed through
     // reserveStorefrontHandleForTenant — that table enforces one handle per tenant
@@ -853,7 +920,10 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
         : null;
     const storefrontUiV2Enabled = parseBoolean(settings.storefront_ui_v2_enabled, false);
     const storefrontCategories = normalizeStringList(settings.storefront_categories, 12, 60);
-    const storefrontGalleryImages = normalizeStorefrontGalleryImages(settings.storefront_gallery_images);
+    const storefrontGalleryImages = await filterAvailableStorefrontGalleryImages({
+        tenant,
+        images: normalizeStorefrontGalleryImages(settings.storefront_gallery_images)
+    });
     const storefrontDeliveryPartners = normalizeStorefrontDeliveryPartners(settings.storefront_delivery_partners);
     const storefrontFollowEnabled = parseBoolean(settings.storefront_follow_enabled, false);
     const storefrontShareEnabled = parseBoolean(settings.storefront_share_enabled, false);
@@ -905,16 +975,8 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
         access_capabilities: accessPolicy.access_capabilities,
         access_limitation_reason: accessPolicy.limitation_reason,
         customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled,
-        storefront_cover_image_url: sanitizeStorefrontAssetUrl({
-            tenant,
-            key: 'storefront_cover_image_url',
-            rawValue: settings.storefront_cover_image_url
-        }),
-        storefront_profile_image_url: sanitizeStorefrontAssetUrl({
-            tenant,
-            key: 'storefront_profile_image_url',
-            rawValue: settings.storefront_profile_image_url
-        }),
+        storefront_cover_image_url: storefrontCoverImageUrl,
+        storefront_profile_image_url: storefrontProfileImageUrl,
         storefront_tagline: toTrimmedString(settings.storefront_tagline, 120),
         storefront_about: toTrimmedString(settings.storefront_about, 1000),
         storefront_phone: toTrimmedString(settings.storefront_phone, 50),

@@ -5,7 +5,10 @@ import { formatDeliveryProviderBreakdown } from '../utils/posDeliveryProviders.j
 import { getPosReportSignedValueTone, getPosReportValueToneClass } from './posReportValueTones.js';
 
 const ORDER_METHOD_LABELS = Object.freeze({
-  dine_in: 'Walk-in', takeout: 'Takeout', pickup: 'Pickup', delivery: 'Delivery', online: 'Online'
+  dine_in: 'Dine In', takeout: 'Takeout', pickup: 'Pickup', delivery: 'Delivery', online: 'Online'
+});
+const ORDER_SOURCE_LABELS = Object.freeze({
+  in_store: 'Walk-in Sales', online_store: 'Online Sales'
 });
 const money = (value, currencySymbol = '₱') => `${String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const resolveCurrencySymbol = (currencySymbol = '₱') => String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol || '₱';
@@ -14,12 +17,16 @@ const formatDateTime = (value) => {
   if (!parsed || Number.isNaN(parsed.getTime())) return { date: '—', time: '' };
   return { date: parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), time: parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) };
 };
-const formatOrderMethod = (value) => {
+const normalizeOrderSource = (value) => String(value || '').trim().toLowerCase() === 'online_store' ? 'online_store' : 'in_store';
+const formatOrderSource = (value) => ORDER_SOURCE_LABELS[normalizeOrderSource(value)] || 'Walk-in Sales';
+const formatOrderMethod = (value, row = null) => {
   const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'dine_in' && normalizeOrderSource(row?.order_source) === 'online_store') return 'Dine In';
   return ORDER_METHOD_LABELS[normalized] || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase()) || '—';
 };
 const getPaymentMethodTone = () => getPosReportValueToneClass('secondary');
 const getOrderMethodTone = () => getPosReportValueToneClass('secondary');
+const getOrderSourceTone = () => getPosReportValueToneClass('secondary');
 const renderPaymentMethods = (row) => {
   const labels = formatPosTransactionPaymentMethods(row).split(' + ');
   return (
@@ -34,8 +41,12 @@ const renderPaymentMethods = (row) => {
   );
 };
 const renderOrderMethod = (row) => {
-  const label = formatOrderMethod(row?.order_method);
+  const label = formatOrderMethod(row?.order_method, row);
   return <span className={`font-semibold ${getOrderMethodTone(label)}`}>{label}</span>;
+};
+const renderOrderSource = (row) => {
+  const label = formatOrderSource(row?.order_source);
+  return <span className={`font-semibold ${getOrderSourceTone(label)}`}>{label}</span>;
 };
 const getInvoice = (row) => row?.invoice_number || row?.pos_transaction_id || '—';
 const getCashier = (row) => row?.cashier_name || (row?.cashier_id ? `Cashier #${row.cashier_id}` : '—');
@@ -45,7 +56,7 @@ const getNetSales = (row) => Number(row?.net_sales || 0);
 const getProfitLoss = (row) => Number(row?.pos_profit_loss || 0);
 const getProfitMargin = (row) => getNetSales(row) > 0 ? (getProfitLoss(row) / getNetSales(row)) * 100 : 0;
 const getDeliveryProviders = (row, currencySymbol = '₱') => formatDeliveryProviderBreakdown(row?.delivery_provider_breakdown, { currencySymbol }) || '—';
-const getSearchValue = (row) => [formatDateTime(row?.created_at).date, formatDateTime(row?.created_at).time, getInvoice(row), getCashier(row), formatPosTransactionPaymentMethods(row), getDeliveryProviders(row), formatOrderMethod(row?.order_method), getDiscount(row), getGrossSales(row), getNetSales(row), getProfitLoss(row), getProfitMargin(row)].join(' ').toLowerCase();
+const getSearchValue = (row) => [formatDateTime(row?.created_at).date, formatDateTime(row?.created_at).time, getInvoice(row), getCashier(row), formatPosTransactionPaymentMethods(row), getDeliveryProviders(row), formatOrderSource(row?.order_source), formatOrderMethod(row?.order_method, row), getDiscount(row), getGrossSales(row), getNetSales(row), getProfitLoss(row), getProfitMargin(row)].join(' ').toLowerCase();
 const renderSalesDetailsSections = (row, { columns, renderCell }) => {
   const fields = (keys) => keys.map((key) => {
     const column = columns.find((entry) => entry.key === key);
@@ -56,7 +67,7 @@ const renderSalesDetailsSections = (row, { columns, renderCell }) => {
     {
       key: 'transaction-information',
       title: 'Transaction Information',
-      fields: fields(['created_at', 'invoice_number', 'cashier_name', 'order_method', 'payment_methods', 'delivery_provider_breakdown'])
+      fields: fields(['created_at', 'invoice_number', 'cashier_name', 'order_source', 'order_method', 'payment_methods', 'delivery_provider_breakdown'])
     },
     {
       key: 'sales-summary',
@@ -72,9 +83,10 @@ export default function PosReportsSalesTable({ rows = [], currencySymbol = '₱'
     { key: 'created_at', label: 'Date/Time', valueTone: 'secondary', widthClass: 'w-[124px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: (row) => row?.created_at || '', getSortValue: (row) => new Date(row?.created_at || 0).getTime(), render: (row) => { const dateTime = formatDateTime(row?.created_at); return <span className="inline-flex flex-col leading-tight"><span>{dateTime.date}</span><span>{dateTime.time}</span></span>; } },
     { key: 'invoice_number', label: 'Transaction/Invoice', valueTone: 'primary', mobileLabelNoWrap: true, widthClass: 'w-[116px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getInvoice },
     { key: 'cashier_name', label: 'Cashier', widthClass: 'w-[100px]', required: true, visibility: { mobile: false, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getCashier },
+    { key: 'order_source', label: 'Sales Source', widthClass: 'w-[115px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: (row) => formatOrderSource(row?.order_source), render: renderOrderSource },
     { key: 'payment_methods', label: 'Payment Method', widthClass: 'w-[120px]', required: true, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true }, getValue: formatPosTransactionPaymentMethods, render: renderPaymentMethods },
     { key: 'delivery_provider_breakdown', label: 'Delivery Provider', widthClass: 'w-[150px]', visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true }, getValue: (row) => getDeliveryProviders(row, currencySymbol), render: (row) => <span className="font-semibold">{getDeliveryProviders(row, currencySymbol)}</span> },
-    { key: 'order_method', label: 'Order Method', widthClass: 'w-[105px]', visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, getValue: (row) => formatOrderMethod(row?.order_method), render: renderOrderMethod },
+    { key: 'order_method', label: 'Order Method', widthClass: 'w-[105px]', visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, getValue: (row) => formatOrderMethod(row?.order_method, row), render: renderOrderMethod },
     { key: 'discount_amount', label: `Discount (${symbol})`, valueTone: (row) => getPosReportSignedValueTone(getDiscount(row)), widthClass: 'w-[96px]', defaultVisible: false, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, align: 'left', numeric: true, getValue: getDiscount, render: (row) => money(getDiscount(row), currencySymbol) },
     { key: 'gross_sales', label: `Gross Sales (${symbol})`, valueTone: (row) => getPosReportSignedValueTone(getGrossSales(row)), widthClass: 'w-[112px]', defaultVisible: false, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, align: 'left', numeric: true, getValue: getGrossSales, render: (row) => money(getGrossSales(row), currencySymbol) },
     { key: 'net_sales', label: `Net Sales (${symbol})`, valueTone: (row) => getPosReportSignedValueTone(getNetSales(row), 'brand'), widthClass: 'w-[112px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, align: 'left', numeric: true, getValue: getNetSales, render: (row) => money(getNetSales(row), currencySymbol) },
@@ -82,5 +94,5 @@ export default function PosReportsSalesTable({ rows = [], currencySymbol = '₱'
     { key: 'pos_profit_loss', label: `POS Profit/Loss (${symbol})`, valueTone: (row) => getProfitLoss(row) < 0 ? 'danger' : getProfitLoss(row) > 0 ? 'brand' : 'secondary', widthClass: 'w-[124px]', required: true, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true }, align: 'left', numeric: true, getValue: getProfitLoss, render: (row) => <span className="font-black">{money(getProfitLoss(row), currencySymbol)}</span> }
   ], [currencySymbol, symbol]);
 
-  return <PosReportsResponsiveTable rows={rows} columns={columns} searchQuery={searchQuery} getSearchValue={getSearchValue} initialSort={{ key: 'created_at', direction: 'desc' }} ariaLabel="Sales transactions table" title="Sales transactions" detailsDialogTitle="Transaction Details" getDetailsSubtitle={getInvoice} renderDetailsSections={renderSalesDetailsSections} idPrefix="pos-reports-sales" caption="Sales transactions with date, cashier, payment, order method, sales, and profit or loss." emptyMessage="No sales transactions were recorded for the selected filters." searchEmptyMessage="No sales transactions match your search." resultLabel="sales transactions" showActions={false} />;
+  return <PosReportsResponsiveTable rows={rows} columns={columns} searchQuery={searchQuery} getSearchValue={getSearchValue} initialSort={{ key: 'created_at', direction: 'desc' }} ariaLabel="Sales transactions table" title="Sales transactions" detailsDialogTitle="Transaction Details" getDetailsSubtitle={getInvoice} renderDetailsSections={renderSalesDetailsSections} idPrefix="pos-reports-sales" caption="Sales transactions with separate Walk-in Sales and Online Sales sources, order method, sales, and profit or loss." emptyMessage="No sales transactions were recorded for the selected filters." searchEmptyMessage="No sales transactions match your search." resultLabel="sales transactions" showActions={false} />;
 }

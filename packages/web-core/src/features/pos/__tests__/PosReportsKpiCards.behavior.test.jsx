@@ -23,7 +23,7 @@ describe('POS reports KPI cards', () => {
     const profitCard = screen.getByText('Profit (₱)').closest('article');
 
     expect(grid.className).toContain('grid-cols-2');
-    expect(grid.className).toContain('xl:grid-cols-5');
+    expect(grid.className).toContain('xl:grid-cols-7');
     expect(profitCard.className).toContain('col-span-2');
     expect(profitCard.className).toContain('xl:col-span-1');
     expect(profitCard.className).toContain('py-2.5');
@@ -38,7 +38,7 @@ describe('POS reports KPI cards', () => {
     render(
       <PosReportsKpiCards
         summaryCards={{ total_sales: 1000000, gross_sales: 1100000, total_transactions: 100000, pos_profit_loss: 123456 }}
-        dailySummary={{ discounts: 100000 }}
+        dailySummary={{ total_transactions: 100000, completed_transactions: 99999, voided_refunded_transactions: 1, discounts: 100000 }}
         comparison={{ previous: { net_sales: 0, gross_sales: 0, total_transactions: 0, discounts: 0, pos_profit_loss: 0 } }}
       />
     );
@@ -46,7 +46,12 @@ describe('POS reports KPI cards', () => {
     expect(screen.getByText('Total Sales (₱)')).toBeTruthy();
     expect(screen.getByText('₱1,000,000.00')).toBeTruthy();
     expect(screen.getByText('₱1,100,000.00')).toBeTruthy();
+    expect(screen.getByText('Recorded Transactions')).toBeTruthy();
+    expect(screen.getByText('Completed Sales')).toBeTruthy();
+    expect(screen.getByText('Voided/Refunded')).toBeTruthy();
     expect(screen.getByText('100,000')).toBeTruthy();
+    expect(screen.getByText('99,999')).toBeTruthy();
+    expect(screen.getByText('1')).toBeTruthy();
     expect(screen.getByText('₱100,000.00')).toBeTruthy();
     expect(screen.getByText('Profit (₱)')).toBeTruthy();
     expect(screen.getByText('₱123,456.00')).toBeTruthy();

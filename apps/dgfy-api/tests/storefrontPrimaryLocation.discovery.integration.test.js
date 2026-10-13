@@ -183,8 +183,8 @@ describe('storefront primary location integration', () => {
         expect(initialProfile.status).toBe(200);
         expect(initialProfile.body.success).toBe(true);
         expect(Number(initialProfile.body.data.location_id)).toBe(Number(firstLocation.data.location_id));
-        expect(initialProfile.body.data.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
-        expect(initialProfile.body.data.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
+        expect(initialProfile.body.data.storefront_cover_image_url).toBeNull();
+        expect(initialProfile.body.data.storefront_profile_image_url).toBeNull();
 
         const promoteSecondLocation = await runInTenantContext(() => updateTenantLocationUseCase({
             locationId: secondLocation.data.location_id,
@@ -234,8 +234,8 @@ describe('storefront primary location integration', () => {
         expect(updatedProfile.body.success).toBe(true);
         expect(Number(updatedProfile.body.data.location_id)).toBe(Number(secondLocation.data.location_id));
         expect(updatedProfile.body.data.location_name).toBe('Branch 2');
-        expect(updatedProfile.body.data.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
-        expect(updatedProfile.body.data.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
+        expect(updatedProfile.body.data.storefront_cover_image_url).toBeNull();
+        expect(updatedProfile.body.data.storefront_profile_image_url).toBeNull();
 
         const discoveryList = await request(app)
             .get('/api/v1/storefront/discovery');
@@ -244,7 +244,7 @@ describe('storefront primary location integration', () => {
             ? discoveryList.body.data.stores.find((row) => String(row.slug || '') === tenantSlug)
             : null;
         expect(alphaRow).toBeTruthy();
-        expect(alphaRow.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
-        expect(alphaRow.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
+        expect(alphaRow.storefront_cover_image_url).toBeNull();
+        expect(alphaRow.storefront_profile_image_url).toBeNull();
     });
 });
