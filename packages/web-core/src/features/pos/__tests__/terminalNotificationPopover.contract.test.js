@@ -21,16 +21,69 @@ describe('POS notification popover layout contract', () => {
 
   it('keeps the notification pointer aligned near the triggering bell', () => {
     expect(layoutSource).toContain(
-      'absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]'
+      "pointer: 'absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#EFF6FF]'"
+    );
+    expect(layoutSource).toContain(
+      "pointer: 'absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]'"
     );
     expect(layoutSource).not.toContain('absolute left-1/2 top-0 z-10 h-5 w-5');
   });
 
-  it('keeps the compact mobile/tablet notification count inside the bell control', () => {
+  it('uses the reference light treatment on POS while preserving other-surface styles', () => {
+    expect(layoutSource).toContain('const notificationPopoverClasses = IS_DGFY_POS_SURFACE');
+    expect(layoutSource).toContain(
+      "header: 'border-b border-blue-100 bg-[#EFF6FF] px-5 py-4'"
+    );
+    expect(layoutSource).toContain(
+      "footerAction: 'block w-full text-center text-xs font-bold text-[#2563EB]"
+    );
+    expect(layoutSource).toContain(
+      "header: 'bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-white'"
+    );
+    expect(layoutSource).toContain(
+      "border border-blue-200 bg-blue-50 text-[#1A4E8D] transition-colors hover:bg-blue-100"
+    );
+  });
+
+  it('uses a 12px corner radius and smaller type on the POS notification popover', () => {
+    expect(layoutSource).toContain(
+      "panel: 'overflow-hidden rounded-[12px] border border-blue-200 bg-white shadow-xl shadow-slate-950/10'"
+    );
+    expect(layoutSource).toContain("title: 'text-sm font-extrabold text-[#0F172A]'");
+    expect(layoutSource).toContain("subtitle: 'mt-1 text-[11px] leading-4 text-[#64748B]'");
+    expect(layoutSource).toContain("itemTitle: 'text-xs font-extrabold text-[#0F172A]'");
+    expect(layoutSource).toContain("itemDescription: 'mt-1 text-[11px] leading-4 text-[#64748B]'");
+    expect(layoutSource).toContain('itemAction: \'mt-2 inline-flex text-[11px] font-bold uppercase tracking-wide text-[#2563EB]\'');
+    expect(layoutSource).toContain("emptyTitle: 'text-xs font-semibold text-[#0F172A]'");
+    expect(layoutSource).toContain("emptyDescription: 'mt-1 text-[11px] text-[#64748B]'");
+    expect(layoutSource).toContain("footerAction: 'block w-full text-center text-xs font-bold text-[#2563EB]");
+    expect(layoutSource).not.toContain("panel: 'overflow-hidden rounded-3xl border border-blue-200");
+  });
+
+  it('keeps the live order count and current Incoming Queue actions', () => {
+    expect(layoutSource).toContain("title: `${incomingOrders.length} incoming order${incomingOrders.length === 1 ? '' : 's'}`");
+    expect(layoutSource).toContain("actionLabel: 'Open Orders'");
+    expect(layoutSource).toContain("handleSelectViewMode('incoming_queue')");
+    expect(layoutSource).toContain('Show all notifications');
+  });
+
+  it('keeps POS notification and text controls the same size across breakpoints', () => {
+    expect(layoutSource).toContain(
+      "'relative grid h-10 w-10 shrink-0 place-items-center lg:hidden'"
+    );
+    expect(layoutSource).toContain(
+      "'relative hidden h-10 w-10 shrink-0 place-items-center lg:grid'"
+    );
+    expect(layoutSource).toContain(
+      "'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#1A4E8D] transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1'"
+    );
+    expect(layoutSource).toContain('renderNotificationButton(compactBellClassName, 20)');
+    expect(layoutSource).toContain(
+      'renderNotificationButton(desktopBellClassName, IS_DGFY_POS_SURFACE ? 20 : 24)'
+    );
     expect(layoutSource).toContain(
       "absolute right-0.5 top-0.5 z-10 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 px-0 text-[9px] font-black leading-none text-white"
     );
     expect(layoutSource).toContain('data-testid="pos-notification-badge"');
-    expect(layoutSource).not.toContain('absolute -right-1.5 -top-1.5 grid h-4.5 w-4.5');
   });
 });
