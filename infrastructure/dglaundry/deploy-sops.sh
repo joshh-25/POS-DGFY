@@ -59,7 +59,18 @@ while IFS='=' read -r key value; do
   fi
   name="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
   printf '%s' "$value" > "$SECRETS_DIR/$name"
-  chmod 640 "$SECRETS_DIR/$name"
+  # 644, not 640 -- these are consumed via Docker Compose's file-based
+  # `secrets:` construct, which bind-mounts this exact host file straight
+  # into the container at /run/secrets/<name> with its host permissions
+  # intact (no UID remap). The app process inside the container runs as
+  # whatever UID the image defines, which has no reason to share sieitz's
+  # GID -- group-readable access bought nothing (confirmed live: migrate
+  # failed with EACCES on mysql_migration_url before this fix). secrets/
+  # itself stays 0700 sieitz-owned (see deploy-dglaundry.yml's host setup),
+  # so a world-readable file bit here still can't be reached by any other
+  # host user or process -- only a process with a bind mount into this
+  # exact file (i.e. these containers) ever sees it.
+  chmod 644 "$SECRETS_DIR/$name"
   echo "  wrote $SECRETS_DIR/$name"
 done < <("$SOPS_BIN" decrypt --input-type dotenv "$CIPHERTEXT_CACHE")
 

@@ -125,6 +125,17 @@ does that, end to end, via `remote-deploy-stage.sh`:
 #   dgfy-secrets-cache/stage-dglaundry-secrets.env synced in from Sieitzz/dgfy-secrets's
 #   stage/dglaundry/secrets.env once, or on each rotation (deploy-sops.sh never fetches this
 #   itself -- no GitHub credential is provisioned on the host for that, deliberately)
+#
+#   Two EXTERNAL Docker networks must also exist before the first dispatch -- the vendored
+#   compose file declares both `external: true` on purpose (so this Compose project can never
+#   create or widen them itself) and never creates them; docker-compose.proxy.yml's own comment
+#   already called this out as "must be created by the deployment owner" but nothing had done it
+#   (caught live on the first real dispatch, #2387). Names come from stage.env's
+#   DGLAUNDRY_EDGE_NETWORK / DGLAUNDRY_EGRESS_NETWORK -- read the actual values from that file
+#   rather than assuming the compose file's bare defaults, since stage.env overrides the egress
+#   one:
+#     docker network create "$(grep -m1 '^DGLAUNDRY_EDGE_NETWORK=' stage.env | cut -d= -f2)"
+#     docker network create "$(grep -m1 '^DGLAUNDRY_EGRESS_NETWORK=' stage.env | cut -d= -f2)"
 
 gh workflow run deploy-dglaundry.yml -f confirm=true
 ```
