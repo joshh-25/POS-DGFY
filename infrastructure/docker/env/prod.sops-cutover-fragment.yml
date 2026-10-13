@@ -140,6 +140,7 @@
 #       REDIS_URL: redis://redis:6379
 #       PORT: 5100
 #       DB_MAX_CONNECTIONS: 200
+#       COMPANY_REGISTRATION_PRIVATE_STORAGE_DIR: /app/private-uploads/company-registration
 #
 #       # --- bucket B: boot-required (BASE_REQUIRED_KEYS) ---
 #       # CORRECTED 2026-08-29 (real production incident during Phase 183's execution,
@@ -339,6 +340,7 @@
 #       - ./data/dgfy-api/uploads:/app/uploads
 #       - ./data/dgfy-api/storage:/app/storage
 #       - ./data/dgfy-api/logs:/app/logs
+#       - ./data/dgfy-api/private-uploads:/app/private-uploads
 #
 # secrets:
 #   dgfy-oidc-private-key:

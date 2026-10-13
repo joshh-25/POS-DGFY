@@ -246,6 +246,11 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
     ));
   }
 
+  let stage = 'validate';
+  let category = null;
+  let mimeType = null;
+  const fileSize = Number.isFinite(file?.size) ? file.size : file?.buffer?.length ?? null;
+
   try {
     const draft = await repository.findOwned(draftId, dgfyAccount.id);
     if (!draft) return fail(notFoundError());
@@ -253,7 +258,7 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
       return fail(conflictError('Files cannot be changed after registration submission.'));
     }
 
-    const category = normalizeUploadCategory(body.category);
+    category = normalizeUploadCategory(body.category);
     const replaceUploadId = String(body.replace_upload_id || '').trim();
     if (replaceUploadId && category !== 'profile_image' && category !== 'cover_image') {
       return fail(new DomainError(
@@ -262,7 +267,7 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
         { statusCode: 422, details: { error_code: 'REGISTRATION_REPLACEMENT_CATEGORY_INVALID', category } }
       ));
     }
-    const mimeType = String(file.mimetype || '').trim().toLowerCase();
+    mimeType = String(file.mimetype || '').trim().toLowerCase();
     if (!getAllowedUploadMimeTypes(category).includes(mimeType)) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -296,6 +301,7 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
     });
 
     const uploadId = idGenerator();
+    stage = 'persist';
     const stored = await storage.persist({
       draftId,
       uploadId,
@@ -304,6 +310,7 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
       buffer: file.buffer
     });
 
+    stage = 'db_insert';
     try {
       const saveUpload = async (transaction) => {
         const lockedDraft = await repository.findOwnedForUpdate(draftId, dgfyAccount.id, transaction);
@@ -383,7 +390,21 @@ export const buildUploadCompanyRegistrationFileUseCase = ({
       throw error;
     }
   } catch (error) {
-    logger?.error?.('[RegistrationDraft] Failed to upload file', { error: error.message, draftId });
+    const original = error?.original || {};
+    const parent = error?.parent || {};
+    logger?.error?.('[RegistrationDraft] Failed to upload file', {
+      error: error?.message,
+      error_name: error?.name || null,
+      code: error?.code || error?.errno || original.code || original.errno || parent.code || parent.errno || null,
+      errno: error?.errno || original.errno || parent.errno || null,
+      syscall: error?.syscall || original.syscall || parent.syscall || null,
+      sql_message: original.sqlMessage || parent.sqlMessage || null,
+      stage,
+      draftId,
+      category,
+      mimeType,
+      fileSize
+    });
     return toFailure(error, 'Unable to save the registration file.');
   }
 };

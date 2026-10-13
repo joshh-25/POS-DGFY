@@ -73,6 +73,7 @@ services:
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
       PORT: 5100
+      COMPANY_REGISTRATION_PRIVATE_STORAGE_DIR: /app/private-uploads/company-registration
       # Required even while SMS_PROVIDER=unconfigured because production-mode
       # startup validates the keyed recipient-hash secret unconditionally.
       SMS_PHONE_HASH_SECRET: ${SMS_PHONE_HASH_SECRET:?must be configured in the stage .env}
@@ -82,6 +83,7 @@ services:
       - ./data/dgfy-api/uploads:/app/uploads
       - ./data/dgfy-api/storage:/app/storage
       - ./data/dgfy-api/logs:/app/logs
+      - ./data/dgfy-api/private-uploads:/app/private-uploads
     ports:
       - "127.0.0.1:6000:5100"
     depends_on:
