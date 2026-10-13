@@ -355,6 +355,7 @@ export default function TerminalPageLayout({
       fnb_service: 'F&B service',
       items: 'Items',
       settings_vouchers: 'Vouchers',
+      settings_pricelists: 'Pricelists',
       services: 'Services',
       audit: 'Audit',
       incoming_queue: 'Orders',
@@ -511,7 +512,8 @@ export default function TerminalPageLayout({
     && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
   const isVoucherManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_vouchers';
-  const isFullBleedCatalogWorkspace = isItemsCatalogWorkspace || isVoucherManagementWorkspace;
+  const isPricelistManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_pricelists';
+  const isFullBleedCatalogWorkspace = isItemsCatalogWorkspace || isVoucherManagementWorkspace || isPricelistManagementWorkspace;
   const workspacePaneClassName = isCheckoutWorkspaceMode || isFullBleedCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : `dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y ${hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`;

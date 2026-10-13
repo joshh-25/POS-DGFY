@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../../src/lib/utils.js'
 
@@ -46,13 +46,15 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(',')
 
-const Dialog = ({ open, onOpenChange, overlayClassName, mobileSheet = false, children }) => {
+const Dialog = ({ open, onOpenChange, overlayClassName, layerClassName = '', mobileSheet = false, children }) => {
   const rootRef = useRef(null)
   const restoreFocusRef = useRef(null)
 
-  if (open && !restoreFocusRef.current && typeof document !== 'undefined') {
-    restoreFocusRef.current = document.activeElement
-  }
+  useLayoutEffect(() => {
+    if (open && !restoreFocusRef.current && typeof document !== 'undefined') {
+      restoreFocusRef.current = document.activeElement
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return undefined
@@ -75,7 +77,7 @@ const Dialog = ({ open, onOpenChange, overlayClassName, mobileSheet = false, chi
         ref={rootRef}
         data-dialog-root="true"
         data-dialog-mobile-sheet={mobileSheet ? 'true' : undefined}
-        className={cn('fixed inset-0 z-[100] flex items-center justify-center', mobileSheet ? 'max-md:items-end' : '')}
+        className={cn('fixed inset-0 z-[100] flex items-center justify-center', layerClassName, mobileSheet ? 'max-md:items-end' : '')}
       >
         <div
           data-dialog-overlay="true"

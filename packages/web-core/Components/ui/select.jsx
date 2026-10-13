@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useCallback, useState, useRef, useEffect } from 'react'
 import { cn } from '../../src/lib/utils.js'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -8,28 +8,14 @@ const Select = ({ children, value, onValueChange, ...props }) => {
   const [open, setOpen] = useState(false)
   const [selectedValue, setSelectedValue] = useState(value || '')
   const [selectedLabel, setSelectedLabel] = useState('')
-  const [items, setItems] = useState({})
 
-  // Sync selectedValue with value prop when it changes externally
-  useEffect(() => {
-    if (value !== undefined && value !== selectedValue) {
-      setSelectedValue(value)
-      // If we already have the label for this value, update selectedLabel
-      if (items[value]) {
-        setSelectedLabel(items[value])
-      }
-    }
-  }, [value, items])
+  const effectiveValue = value !== undefined ? value : selectedValue
 
-  const registerItem = (val, label) => {
-    setItems(prev => {
-      if (prev[val] === label) return prev;
-      return { ...prev, [val]: label };
-    });
-    if (val === selectedValue) {
+  const registerItem = useCallback((val, label) => {
+    if (val === effectiveValue) {
       setSelectedLabel(label);
     }
-  };
+  }, [effectiveValue])
 
   const handleValueChange = (newValue, newLabel) => {
     setSelectedValue(newValue)
@@ -43,7 +29,6 @@ const Select = ({ children, value, onValueChange, ...props }) => {
   const selectContent = childrenArray.find(child => {
     return React.isValidElement(child) && child.type === SelectContent
   })
-  const effectiveValue = value !== undefined ? value : selectedValue
   const optionLabel = getSelectedOptionLabel(selectContent?.props?.children, effectiveValue)
 
   return (
@@ -65,7 +50,7 @@ const Select = ({ children, value, onValueChange, ...props }) => {
 
 const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) => {
   const contextValue = React.useContext(SelectContext)
-  const { open, setOpen, selectedValue, selectContent } = contextValue
+  const { open, setOpen, selectContent } = contextValue
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
 
@@ -131,7 +116,7 @@ const SelectItem = React.forwardRef(({ className, children, value, ...props }, r
     if (value !== undefined && children) {
       registerItem(value, children);
     }
-  }, [value, children]);
+  }, [value, children, registerItem]);
 
   return (
     <div

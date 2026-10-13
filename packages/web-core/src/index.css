@@ -2385,6 +2385,49 @@ html.dgfy-imin-performance [class~="transition-all"] {
   cursor: pointer;
 }
 
+@keyframes dgfy-pos-calendar-slide-next {
+  from {
+    opacity: 0.35;
+    transform: translate3d(1rem, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes dgfy-pos-calendar-slide-previous {
+  from {
+    opacity: 0.35;
+    transform: translate3d(-1rem, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.pos-date-range-calendar-month-content {
+  will-change: transform, opacity;
+}
+
+.pos-date-range-calendar-month-transition-next {
+  animation: dgfy-pos-calendar-slide-next 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pos-date-range-calendar-month-transition-previous {
+  animation: dgfy-pos-calendar-slide-previous 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-date-range-calendar-month-content {
+    animation: none !important;
+    will-change: auto;
+  }
+}
+
 /* Keep transaction action cells above row content when the history table uses
    a narrow scrolling layout. PC-style tablet mode overrides the sticky
    positioning below so its columns inherit the desktop flow. */
@@ -8131,6 +8174,51 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   box-shadow: 0 0 0 2px #c7dcf3;
 }
 
+/* Keep every voucher field on the same label/control baseline when labels
+   include required markers, help affordances, or wrapped text. */
+.pos-voucher-form-modal .pos-voucher-form-grid {
+  align-items: stretch;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-grid > .pos-voucher-form-field {
+  align-self: stretch;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :where(label, .pos-voucher-form-label-row) {
+  min-width: 0;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > label {
+  display: block;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-field > :where(input, textarea, button[role="combobox"]) {
+  width: 100%;
+}
+
+.pos-voucher-form-modal .pos-voucher-form-grid > .pos-voucher-form-field > :where(input, button[role="combobox"]) {
+  margin-top: auto !important;
+}
+
 @media screen and (min-width: 640px) {
   .pos-voucher-card-row { align-items: stretch; }
   .pos-voucher-card-icon {
@@ -8258,7 +8346,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 }
 
 @media (max-width: 639.98px) {
-  .pos-vouchers-workspace-shell {
+  .pos-catalog-workspace-shell {
     --pos-items-mobile-gutter: 0.5rem;
     padding: 0 var(--pos-items-mobile-gutter) 1rem;
     padding-inline: var(--pos-items-mobile-gutter) !important;
@@ -8266,7 +8354,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     background: #fff;
     box-shadow: none;
   }
-  .pos-vouchers-workspace-shell .dgfy-pos-history-pagination-footer { margin-top: 0 !important; }
+  .pos-catalog-workspace-shell .dgfy-pos-history-pagination-footer { margin-top: 0 !important; }
 }
 
 @media screen and (min-width: 1280px) and (orientation: landscape) {
