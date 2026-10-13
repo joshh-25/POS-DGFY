@@ -153,6 +153,10 @@ bun.lock
 # Legacy standalone POS Android caches and build products.
 /Standalone POS/.gradle/
 /Standalone POS/**/build/
+/Standalone POS/app/src/main/assets/index.android.bundle
+
+# Local temporary artifacts.
+/tmp/
 
 # Migration runner report output (apps/dgfy-migration-runner local invocations)
 /tmp/dgfy-migration-reports/
