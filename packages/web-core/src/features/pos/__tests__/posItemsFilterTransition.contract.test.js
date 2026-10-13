@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
-const workspacePath = path.resolve(testDirectory, '../components/TerminalOperationsWorkspace.jsx');
+const workspacePath = path.resolve(testDirectory, '../components/PosItemsWorkspace.jsx');
 const workspace = fs.readFileSync(workspacePath, 'utf8');
 
 describe('POS Items filter transitions', () => {
@@ -39,5 +39,17 @@ describe('POS Items filter transitions', () => {
     expect(mobileOpen).toContain('setShowMobileFilters(true);');
     expect(desktopToggle).toContain('setShowMobileFilters(false);');
     expect(desktopToggle).toContain('setShowDesktopFilters((visible) => !visible);');
+  });
+
+  it('uses native keyboard-operable radio groups for the desktop filters', () => {
+    expect(workspace).toContain('const filterRadioGroupId = React.useId();');
+    expect(workspace.match(/type="radio"/g) || []).toHaveLength(2);
+    expect(workspace).toContain('name={`pos-items-category-filter-${filterRadioGroupId}`}');
+    expect(workspace).toContain('name={`pos-items-stock-filter-${filterRadioGroupId}`}');
+    expect(workspace).toContain('checked={isSelected}');
+    expect(workspace).toContain('focus-within:ring-4 focus-within:ring-blue-100');
+    expect(workspace).not.toContain('role="radiogroup"');
+    expect(workspace).not.toContain('role="radio"');
+    expect(workspace).not.toContain('aria-checked={isSelected}');
   });
 });

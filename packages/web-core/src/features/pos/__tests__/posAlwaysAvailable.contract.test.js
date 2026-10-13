@@ -24,7 +24,7 @@ describe('POS Always Available contract', () => {
       '../components/POSCheckoutTerminalView.jsx',
     ].map((relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')).join('\n');
     const catalogWorkflow = fs.readFileSync(path.resolve(__dirname, '../hooks/usePosCatalogWorkflow.js'), 'utf8');
-    const workspace = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
+    const workspace = fs.readFileSync(path.resolve(__dirname, '../components/PosItemsWorkspace.jsx'), 'utf8');
     const settings = fs.readFileSync(path.resolve(__dirname, '../settings/PosDiscountAutomationSection.jsx'), 'utf8');
     const settingsModel = fs.readFileSync(path.resolve(__dirname, '../utils/settingsWorkspaceModel.js'), 'utf8');
     expect(checkout).toContain('item?.is_best_seller === true');

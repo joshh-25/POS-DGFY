@@ -13,15 +13,14 @@ const POS_TEXT_SIZE_LABELS = Object.freeze({
     'extra-large': 'Extra large (130%)'
 });
 
-const POS_TEXT_SIZE_TRIGGER_CLASS_NAME = 'inline-flex h-8 w-8 items-center justify-center rounded-xl border-0 bg-transparent text-[#1A4E8D] shadow-none transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 lg:h-10 lg:w-10';
+const POS_TEXT_SIZE_TRIGGER_CLASS_NAME = 'inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#A5C8F8] bg-white text-[#1A4E8D] shadow-none transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
 const POS_TEXT_SIZE_MENU_CLASS_NAME = 'absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 ring-1 ring-slate-900/5';
 
 export default function PosTextSizeControl({
     id = 'pos-text-size-control',
     value = DEFAULT_POS_TEXT_SIZE,
     onChange = () => {},
-    className = '',
-    desktopLabeled = false
+    className = ''
 }) {
     const normalizedValue = normalizePosTextSize(value);
     const selectedLabel = POS_TEXT_SIZE_LABELS[normalizedValue];
@@ -41,11 +40,11 @@ export default function PosTextSizeControl({
             title={`Text size: ${selectedLabel}`}
             appearance="toolbar"
             className={`pos-text-size-control relative flex items-center ${className}`}
-            triggerClassName={`${POS_TEXT_SIZE_TRIGGER_CLASS_NAME} ${desktopLabeled ? 'lg:h-10 lg:w-[12.5rem] lg:justify-between lg:gap-2 lg:rounded-xl lg:border lg:border-slate-200 lg:bg-white lg:px-3 lg:text-[#0F172A]' : ''}`}
+            triggerClassName={POS_TEXT_SIZE_TRIGGER_CLASS_NAME}
             menuClassName={POS_TEXT_SIZE_MENU_CLASS_NAME}
             optionClassName="pos-text-size-control__option"
-            valueClassName={`min-w-0 truncate text-[11px] font-extrabold ${desktopLabeled ? 'hidden lg:inline' : 'hidden'}`}
-            chevronClassName="ml-0.5 h-3 w-3 shrink-0 text-[#1A4E8D] lg:h-3 lg:w-3"
+            valueClassName="hidden"
+            chevronClassName="hidden"
             startAdornment={(
                 <Type
                     className="h-5 w-5 shrink-0 text-[#1A4E8D] lg:h-5 lg:w-5"

@@ -41,7 +41,7 @@ describe('POS Items modal viewport contract', () => {
   });
 
   it.each([
-    ['Add/Edit Item', 'src/features/pos/components/TerminalOperationsWorkspace.jsx'],
+    ['Add/Edit Item', 'src/features/pos/components/PosItemsWorkspace.jsx'],
     ['Create Service', 'src/features/pos/components/PosServiceCatalogCreateModal.jsx'],
     ['Edit Service', 'src/features/pos/components/PosServiceCatalogEditModal.jsx'],
     ['Product scanner', 'src/features/inventory/components/ProductQrScannerModal.jsx']
@@ -52,7 +52,7 @@ describe('POS Items modal viewport contract', () => {
   });
 
   it('keeps Add and Edit Item actions outside their scrolling bodies', () => {
-    const source = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const source = read('src/features/pos/components/PosItemsWorkspace.jsx');
     expect(source.match(/className="[^"]*\bpos-items-modal-panel\b[^"]*"/g)).toHaveLength(2);
     expect(source.match(/className="[^"]*\bpos-items-catalog-form-modal\b[^"]*"/g)).toHaveLength(2);
     expect(source.match(/className="[^"]*\bpos-items-modal-scroll-region\b[^"]*"/g)).toHaveLength(2);
@@ -60,7 +60,7 @@ describe('POS Items modal viewport contract', () => {
   });
 
   it('keeps Add and Edit footer actions in one shared tablet button row', () => {
-    const source = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const source = read('src/features/pos/components/PosItemsWorkspace.jsx');
     const css = read('src/index.css');
 
     expect(source.match(/pos-items-modal-footer-actions/g)).toHaveLength(2);
@@ -171,7 +171,7 @@ describe('POS Items modal viewport contract', () => {
   });
 
   it('locks background scrolling and closes custom item modals from Escape', () => {
-    const source = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const source = read('src/features/pos/components/PosItemsWorkspace.jsx');
     expect(source).toContain('const releaseScrollLock = acquireModalScrollLock();');
     expect(source).toContain("event.key !== 'Escape'");
     expect(source).toContain("document.addEventListener('keydown', handleKeyDown, true)");
