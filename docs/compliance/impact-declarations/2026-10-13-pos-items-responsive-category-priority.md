@@ -11,8 +11,8 @@ verification_evidence: 29 POS test files and 244 tests passed,POS and Storefront
 rollback_note: Revert the POS Items catalog/category presentation changes and this declaration; no API, schema, migration, or persisted category-order rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-13T08:54:30Z
-preflight_request_ref: NOT-EXECUTED-2026-10-13-POS-ITEMS-RESPONSIVE-CATEGORY-PRIORITY
+preflight_run_at: 2026-10-13T10:22:30.477Z
+preflight_request_ref: PREFLIGHT-38382156508-2026-10-13-POS-ITEMS-RESPONSIVE-CATEGORY-PRIORITY
 ---
 
 # POS Items Responsive Catalog and Category Priority
