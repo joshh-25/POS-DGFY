@@ -10,6 +10,7 @@ const mockOpenEphemeralConnection = jest.fn();
 const mockGetTenantModels = jest.fn();
 const mockBumpCacheVersion = jest.fn();
 const mockInvalidateSharedSignature = jest.fn();
+const mockStorefrontAssetIsAvailable = jest.fn();
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
     Tenant: {
@@ -66,6 +67,12 @@ jest.unstable_mockModule('../src/modules/geoSearch/services/geoCatalogSyncServic
     syncTenantGeoCatalog: jest.fn().mockResolvedValue(undefined)
 }));
 
+jest.unstable_mockModule('../src/modules/settings/repositories/storefrontAssetStorage.js', () => ({
+    storefrontAssetStorage: {
+        isAvailable: mockStorefrontAssetIsAvailable
+    }
+}));
+
 const {
     reconcileStorefrontDiscoveryIndex,
     syncStorefrontDiscoveryIndexForTenant
@@ -86,6 +93,7 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
             name: 'ephemeral-tenant-connection',
             close: jest.fn().mockResolvedValue(undefined)
         });
+        mockStorefrontAssetIsAvailable.mockResolvedValue(true);
         mockIndexDestroy.mockResolvedValue(0);
         mockIndexCount.mockResolvedValue(0);
     });
@@ -132,6 +140,53 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
             supports_dine_in: false,
             active_location_snapshot: [expect.objectContaining({ location_id: 10, supports_pickup: false })]
         }));
+    });
+
+    it('omits unavailable branding and gallery assets from the public snapshot', async () => {
+        const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'stale-assets' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' },
+                { setting_key: 'storefront_cover_image_url', setting_value: '/uploads/storefront-assets/tenant-1/cover.png' },
+                { setting_key: 'storefront_profile_image_url', setting_value: '/uploads/storefront-assets/tenant-1/profile.png' },
+                {
+                    setting_key: 'storefront_gallery_images',
+                    setting_value: JSON.stringify([
+                        { path: 'storefront-assets/tenant-1/gallery-1.png', url: '/uploads/storefront-assets/tenant-1/gallery-1.png' },
+                        { path: 'storefront-assets/tenant-1/gallery-2.png', url: '/uploads/storefront-assets/tenant-1/gallery-2.png' }
+                    ])
+                }
+            ])
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation: { findAll: jest.fn().mockResolvedValue([{
+                location_id: 10,
+                name: 'Main',
+                address_line: 'Main Road',
+                latitude: 10.72,
+                longitude: 122.56,
+                is_active: true,
+                is_primary_storefront: true,
+                is_open: true
+            }]) },
+            Item: { findAll: jest.fn().mockResolvedValue([]) },
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock: { findAll: jest.fn().mockResolvedValue([]) }
+        });
+        mockStorefrontAssetIsAvailable.mockResolvedValue(false);
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        const snapshot = mockIndexCreate.mock.calls[0][0];
+        expect(snapshot.storefront_cover_image_url).toBeNull();
+        expect(snapshot.storefront_profile_image_url).toBeNull();
+        expect(snapshot.storefront_gallery_images).toEqual([]);
+        expect(mockStorefrontAssetIsAvailable).toHaveBeenCalledTimes(4);
     });
 
     // #2159: the public index row is what Storefront discovery serves, so a revoked/exhausted/

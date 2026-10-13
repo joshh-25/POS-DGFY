@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatCustomerPhone,
   formatDeliveryCoordinates,
+  formatOrderQuantity,
   parseDeliveryCoords
 } from '../incomingQueueOrderFormatting.js';
 
@@ -19,5 +20,15 @@ describe('incoming queue delivery contact formatting', () => {
   it('trims a customer phone and avoids rendering an empty value', () => {
     expect(formatCustomerPhone(' 09171234567 ')).toBe('09171234567');
     expect(formatCustomerPhone('')).toBe('Not provided');
+  });
+
+  it('removes database precision padding from whole order quantities', () => {
+    expect(formatOrderQuantity('1.000000000000')).toBe('1');
+    expect(formatOrderQuantity(2)).toBe('2');
+  });
+
+  it('preserves meaningful fractional order quantities', () => {
+    expect(formatOrderQuantity('1.250000000000')).toBe('1.25');
+    expect(formatOrderQuantity('0.000000000001')).toBe('0.000000000001');
   });
 });

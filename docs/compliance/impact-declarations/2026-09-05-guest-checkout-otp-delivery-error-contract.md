@@ -1,11 +1,11 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-09-05
+last_reviewed: 2026-10-10
 related_adr: docs/architecture/adr/0021-email-otp-verification-for-account-email-ownership.md
 declaration_id: 2026-09-05-guest-checkout-otp-delivery-error-contract
 classification: major
-surfaces: payments,settings
+surfaces: payments,settings,pos,terminal
 reason_codes_impacted: ALLOWED,SERVICE_UNAVAILABLE
 policy_version: 2026.09.05
 verification_evidence: apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js -- actually executed (Jest), 6 passing (1 new),apps/dgfy-api/tests/emailOtpService.test.js -- actually executed (Jest), 19 passing (2 updated for the new explicit delivery_status write),apps/dgfy-api/tests/addPendingEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), 6 passing (new),apps/dgfy-api/tests/serverStartupEmailVerification.unit.test.js -- actually executed (Jest), 4 passing (new, added per pr-reviewer RF-6),apps/dgfy-api/tests/fixEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/authEmailOtpTenantScope.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/tenantHandler.emailOtp.test.js -- actually executed (Jest), unchanged, regression-clean,node --check on every changed apps/dgfy-api .js file and the new migration .cjs file,node scripts/check-app-version-bump.js and node scripts/propose-version-level.js -- confirmed a dgfy-api MINOR bump (1.2.2 -> 1.3.0, matching the bare feat commit's proposed level, corrected from an earlier patch-only bump per pr-reviewer RF-1) and a dgfy-migration-runner patch bump (1.1.0 -> 1.1.1), both PASS
@@ -130,6 +130,16 @@ one blocker and several should-fixes/nits. All addressed in the same PR, same co
 No change to this declaration's `classification`, `surfaces`, or `reason_codes_impacted` -- these
 are all fixes/refinements within the scope already declared above, not a new compliance-sensitive
 surface.
+
+## Amendment — 2026-10-10 — Storefront PWA checkout-remount restoration
+
+- Change: Storefront guest checkout now retains the existing signed tenant/email-bound verification
+  grant for the server-declared 24-hour window and exchanges it for a fresh idempotency-bound
+  checkout proof after a checkout remount.
+- Security boundary: Raw OTP codes, browser authentication/session tokens, and short-lived checkout
+  proofs remain non-persistent. Grant exchange stays server-authoritative and clears expired,
+  rejected, or cross-store grants.
+- Validation: Storefront guest OTP remount/expiry tests, contract tests, lint, and production build.
 
 ## Amendment — 2026-09-05, re-review (pr-reviewer RF-1/RF-2, second round)
 

@@ -1,8 +1,11 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Eye, Info, Menu, UserRound } from 'lucide-react';
+import { Bell, Eye, Info, Menu, MonitorUp, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
-import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
+import {
+  startOrderAlertSoundLoop,
+  stopOrderAlertSoundLoop
+} from '../utils/orderAlertSounds.js';
 import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import {
@@ -13,13 +16,16 @@ import {
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
 import IminTerminalFeedback from './IminTerminalFeedback.jsx';
+import IncomingOrderNotificationDialog from './IncomingOrderNotificationDialog.jsx';
 import PosTextSizeControl from './PosTextSizeControl.jsx';
 import PosAttendancePanel from './PosAttendancePanel.jsx';
 import { loadIncomingQueueWorkspace } from './terminalWorkspaceChunks.js';
+import { resolvePosIncomingOrders } from '../utils/incomingOrderCount.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const MAX_NOTIFICATION_ITEMS = 5;
+const ONLINE_ORDER_SOUND_ONLY_DURATION_MS = 7_000;
 const loadPOSCheckoutTerminal = () => import('./POSCheckoutTerminal.jsx');
 const loadFnbDiningPanel = () => import('../../fnb/components/FnbDiningPanel.jsx');
 const loadTerminalOperationsWorkspace = () => import('./TerminalOperationsWorkspace.jsx');
@@ -191,6 +197,12 @@ export default function TerminalPageLayout({
     canRecoverStaleShifts = false,
     handleForceCloseStaleShift = async () => false,
     onlineOrderSoundEnabled = true,
+    onlineOrderSoundId = 'new_order',
+    downloadedOrderAlertSoundIds = [],
+    orderAlertSoundDownloadId = '',
+    previewingOrderAlertSoundId = '',
+    orderAlertSoundImporting = false,
+    incomingOrderPopupEnabled = true,
     customerDisplayEnabled = true,
     customerDisplayCanOpen = false,
     customerDisplayStatus = 'closed',
@@ -290,6 +302,11 @@ export default function TerminalPageLayout({
     onStorefrontSetupSaved = async () => {},
     onStorefrontContentStateChange = () => {},
     setOnlineOrderSoundEnabled = () => {},
+    onSelectOrderAlertSound = () => {},
+    onDownloadOrderAlertSound = async () => false,
+    onImportOrderAlertSound = async () => false,
+    onPreviewOrderAlertSound = async () => false,
+    setIncomingOrderPopupEnabled = () => {},
     posTextSize = 'normal',
     onPosTextSizeChange = () => {},
     queuedTerminalOperationCount,
@@ -333,6 +350,7 @@ export default function TerminalPageLayout({
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [capabilityNotice, setCapabilityNotice] = useState(null);
   const [fnbCheckoutContext, setFnbCheckoutContext] = useState(null);
+  const [incomingOrderNotificationQueue, setIncomingOrderNotificationQueue] = useState([]);
   const hasHydratedIncomingOrdersRef = useRef(false);
   const seenIncomingOrderIdsRef = useRef(new Set());
   const lastOrderAlertAtRef = useRef(0);
@@ -361,12 +379,50 @@ export default function TerminalPageLayout({
   const workspaceCheckoutBlockedReason = isBranchReadOnlyView
     ? 'Read-only branch view: selling, checkout, and cash mutations are disabled.'
     : checkoutBlockedReason;
+  const customerDisplayTenantId = String(
+    offlineSnapshotScope?.tenantId || terminalUser?.company?.id || ''
+  ).trim();
+  const customerDisplayLocationId = Number(workspaceLocationId || 0);
+  const customerDisplayReady = Boolean(
+    customerDisplayTenantId
+    && normalizedActiveTerminalId
+    && Number.isSafeInteger(customerDisplayLocationId)
+    && customerDisplayLocationId > 0
+  );
+  const openCustomerDisplay = useCallback(() => {
+    if (!customerDisplayReady || typeof window === 'undefined') return;
+
+    const params = new URLSearchParams({
+      tenant_id: customerDisplayTenantId,
+      terminal_id: normalizedActiveTerminalId,
+      location_id: String(customerDisplayLocationId)
+    });
+    const displayUrl = new URL(window.location.href);
+    displayUrl.search = '';
+    displayUrl.hash = `/customer-display?${params.toString()}`;
+    const displayWindow = window.open(displayUrl.toString(), 'dgfy-pos-customer-display');
+    displayWindow?.focus?.();
+  }, [customerDisplayLocationId, customerDisplayReady, customerDisplayTenantId, normalizedActiveTerminalId]);
   const operatorScopeKey = `${operatingLocationId || ''}:${normalizedActiveTerminalId}:${activeShiftId || ''}`;
   const incomingOrders = useMemo(() => (
-    showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
-      ? incomingOrdersState.orders
-      : []
-  ), [incomingOrdersState, showIncomingQueue]);
+    resolvePosIncomingOrders({
+      showIncomingQueue,
+      canViewPos: workspaceCanViewPos,
+      hasActiveShift: Boolean(shiftState?.shift),
+      canViewAdminLocationMonitor: canViewBranchLocations,
+      branchViewLocationId,
+      incomingOrdersState,
+      adminLocationMonitorState
+    })
+  ), [
+    adminLocationMonitorState,
+    branchViewLocationId,
+    canViewBranchLocations,
+    incomingOrdersState,
+    shiftState?.shift,
+    showIncomingQueue,
+    workspaceCanViewPos
+  ]);
   const activeHeaderTitle = useMemo(() => {
     const titles = {
       checkout: 'POS Catalog',
@@ -411,6 +467,7 @@ export default function TerminalPageLayout({
         description: 'Review and process new online orders.',
         actionLabel: 'Open Orders',
         onClick: () => {
+          stopOrderAlertSoundLoop();
           setNotificationsOpen(false);
           handleSelectViewMode('incoming_queue');
         }
@@ -426,42 +483,78 @@ export default function TerminalPageLayout({
     hasHydratedIncomingOrdersRef.current = false;
     seenIncomingOrderIdsRef.current = new Set();
     lastOrderAlertAtRef.current = 0;
+    setIncomingOrderNotificationQueue([]);
+    stopOrderAlertSoundLoop();
   }, [queueLocationScopeId]);
 
+  useEffect(() => () => {
+    stopOrderAlertSoundLoop();
+  }, [onlineOrderSoundEnabled, onlineOrderSoundId, queueLocationScopeId]);
+
   useEffect(() => {
-    if (onlineOrderSoundEnabled !== true) return;
+    if (posViewMode === 'incoming_queue') {
+      stopOrderAlertSoundLoop();
+    }
+  }, [posViewMode]);
+
+  useEffect(() => {
     if (incomingOrdersState?.loading) return;
     if (String(incomingOrdersState?.accessState || '').trim() !== 'allowed') return;
 
-    const currentOrderIds = incomingOrders
-      .map((order) => String(order?.pos_transaction_id || '').trim())
-      .filter(Boolean);
+    const currentOrders = incomingOrders.filter((order) => String(order?.pos_transaction_id || '').trim());
+    const currentOrderIds = currentOrders.map((order) => String(order.pos_transaction_id).trim());
 
     if (!hasHydratedIncomingOrdersRef.current) {
       hasHydratedIncomingOrdersRef.current = true;
       seenIncomingOrderIdsRef.current = new Set(currentOrderIds);
+      if (!incomingOrderPopupEnabled) {
+        setIncomingOrderNotificationQueue((previous) => (previous.length > 0 ? [] : previous));
+      }
       return;
     }
 
     const seenIds = seenIncomingOrderIdsRef.current;
-    const hasNewIncomingOrder = currentOrderIds.some((orderId) => !seenIds.has(orderId));
-    if (!hasNewIncomingOrder) return;
-
-    const now = Date.now();
-    if ((now - lastOrderAlertAtRef.current) >= 1000) {
-      try {
-        playOrderAlertWithIminBridge('new_order');
-      } catch {
-        // Browser and non-iMin surfaces should stay silent.
+    const newOrders = currentOrders.filter((order) => !seenIds.has(String(order.pos_transaction_id).trim()));
+    if (newOrders.length === 0) {
+      if (!incomingOrderPopupEnabled) {
+        setIncomingOrderNotificationQueue((previous) => (previous.length > 0 ? [] : previous));
       }
-      lastOrderAlertAtRef.current = now;
+      return;
     }
 
-    currentOrderIds.forEach((orderId) => {
-      seenIds.add(orderId);
+    newOrders.forEach((order) => {
+      seenIds.add(String(order.pos_transaction_id).trim());
     });
-  }, [incomingOrders, incomingOrdersState?.accessState, incomingOrdersState?.loading, onlineOrderSoundEnabled]);
-  const notificationCount = notifications.length;
+
+    if (!incomingOrderPopupEnabled) {
+      setIncomingOrderNotificationQueue((previous) => (previous.length > 0 ? [] : previous));
+    } else {
+      setIncomingOrderNotificationQueue((previous) => {
+        const queuedIds = new Set(previous.map((order) => String(order?.pos_transaction_id || '').trim()));
+        const uniqueNewOrders = newOrders.filter((order) => !queuedIds.has(String(order.pos_transaction_id).trim()));
+        return uniqueNewOrders.length > 0 ? [...previous, ...uniqueNewOrders] : previous;
+      });
+    }
+
+    const now = Date.now();
+    if (onlineOrderSoundEnabled === true && (now - lastOrderAlertAtRef.current) >= 1000) {
+      startOrderAlertSoundLoop(onlineOrderSoundId, incomingOrderPopupEnabled
+        ? undefined
+        : { durationMs: ONLINE_ORDER_SOUND_ONLY_DURATION_MS });
+      lastOrderAlertAtRef.current = now;
+    }
+  }, [incomingOrderPopupEnabled, incomingOrders, incomingOrdersState?.accessState, incomingOrdersState?.loading, onlineOrderSoundEnabled, onlineOrderSoundId]);
+  const activeIncomingOrderNotification = incomingOrderNotificationQueue[0] || null;
+  const dismissIncomingOrderNotification = useCallback(() => {
+    stopOrderAlertSoundLoop();
+    setIncomingOrderNotificationQueue((previous) => previous.slice(1));
+  }, []);
+  const viewIncomingOrder = useCallback(() => {
+    dismissIncomingOrderNotification();
+    setNotificationsOpen(false);
+    void handleSelectViewMode('incoming_queue');
+  }, [dismissIncomingOrderNotification, handleSelectViewMode]);
+  const notificationCount = incomingOrders.length;
   const primaryNotificationAction = notifications[0]?.onClick || null;
   const companyRows = Array.isArray(accessibleCompanies) ? accessibleCompanies : [];
   const currentCompanyId = String(terminalUser?.company?.id || '').trim();
@@ -921,6 +1014,20 @@ export default function TerminalPageLayout({
               onChange={onPosTextSizeChange}
               desktopLabeled
             />
+            {!locked && posViewMode === 'checkout' ? (
+              <button
+                type="button"
+                onClick={openCustomerDisplay}
+                disabled={!customerDisplayReady}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-extrabold text-[#1A4E8D] shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45 sm:h-10 sm:px-3"
+                aria-label="Open customer display"
+                title={customerDisplayReady ? 'Open customer display' : 'A terminal location is required'}
+                data-testid="pos-open-customer-display"
+              >
+                <MonitorUp className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden lg:inline">Customer display</span>
+              </button>
+            ) : null}
             <div
               data-testid="pos-header-park-slot"
               className={posViewMode === 'checkout'
@@ -1329,6 +1436,12 @@ export default function TerminalPageLayout({
                 canRecoverStaleShifts={workspaceCanRecoverStaleShifts}
                 handleForceCloseStaleShift={handleForceCloseStaleShift}
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
+                onlineOrderSoundId={onlineOrderSoundId}
+                downloadedOrderAlertSoundIds={downloadedOrderAlertSoundIds}
+                orderAlertSoundDownloadId={orderAlertSoundDownloadId}
+                previewingOrderAlertSoundId={previewingOrderAlertSoundId}
+                orderAlertSoundImporting={orderAlertSoundImporting}
+                incomingOrderPopupEnabled={incomingOrderPopupEnabled}
                 customerDisplayEnabled={customerDisplayEnabled}
                 customerDisplayCanOpen={customerDisplayCanOpen}
                 customerDisplayStatus={customerDisplayStatus}
@@ -1365,6 +1478,11 @@ export default function TerminalPageLayout({
                 onStorefrontSetupSaved={onStorefrontSetupSaved}
                 onStorefrontContentStateChange={onStorefrontContentStateChange}
                 setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+                onSelectOrderAlertSound={onSelectOrderAlertSound}
+                onDownloadOrderAlertSound={onDownloadOrderAlertSound}
+                onImportOrderAlertSound={onImportOrderAlertSound}
+                onPreviewOrderAlertSound={onPreviewOrderAlertSound}
+                setIncomingOrderPopupEnabled={setIncomingOrderPopupEnabled}
                 hardwareDriverLabel={hardwareDriverLabel}
                 hardwareStatus={hardwareStatus}
                 hardwareLoading={hardwareLoading}
@@ -1415,6 +1533,11 @@ export default function TerminalPageLayout({
           onPosTextSizeChange={onPosTextSizeChange}
         />
       </Suspense>
+      <IncomingOrderNotificationDialog
+        order={activeIncomingOrderNotification}
+        onClose={dismissIncomingOrderNotification}
+        onViewOrder={viewIncomingOrder}
+      />
       </main>
     </div>
   );

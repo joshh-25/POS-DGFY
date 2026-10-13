@@ -6,7 +6,7 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
-import CustomerDisplayPage from '../../../packages/web-core/src/features/pos/pages/CustomerDisplayPage.jsx';
+const CustomerDisplayPage = lazyWithChunkRetry(() => import('../../../packages/web-core/src/features/pos/pages/CustomerDisplayPage.jsx'));
 import { publishPosUpdateNoticeState } from '../../../packages/web-core/src/features/pos/utils/posUpdateNotice.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
@@ -30,7 +30,10 @@ import {
   resetAnalyticsIdentity,
   setAnalyticsContext
 } from '../../../packages/web-core/src/observability/analyticsClient.js';
-import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
+import {
+  lazyWithChunkRetry,
+  reloadOnceForChunkFailure
+} from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
 import { installIminPerformanceProfile } from '../../../packages/web-core/src/utils/iminRuntimeFeedback.js';
 import '../../../packages/web-core/src/index.css';
 import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';

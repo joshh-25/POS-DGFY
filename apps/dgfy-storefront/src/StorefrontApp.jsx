@@ -1191,6 +1191,7 @@ export default function StorefrontApp() {
   const {
     accountDisplayName,
     accountIdentityRawName,
+    accountIdentityRawUsername,
     accountIdentityRawPhone,
     accountIdentityRawEmail,
     accountIdentityName,
@@ -2288,6 +2289,7 @@ export default function StorefrontApp() {
     checkoutVoucherCode,
     customerEmail,
     customerName,
+    customerUsername: accountIdentityRawUsername,
     customerPhone,
     customerPin,
     deliveryAddress: resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin }),

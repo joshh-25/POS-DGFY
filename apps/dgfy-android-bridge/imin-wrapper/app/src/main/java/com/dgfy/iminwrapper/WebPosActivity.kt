@@ -5,10 +5,6 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.media.AudioManager
-import android.media.Ringtone
-import android.media.RingtoneManager
-import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -47,6 +43,8 @@ class WebPosActivity : AppCompatActivity() {
     private lateinit var statusMessage: TextView
     private lateinit var statusRetryButton: Button
     private lateinit var drawerController: DrawerController
+    private lateinit var orderAlertSoundStore: OrderAlertSoundStore
+    private lateinit var orderAlertPlaybackController: OrderAlertPlaybackController
     private lateinit var iminBridge: IminBridge
     private lateinit var deviceKeyService: IminDeviceKeyService
     private lateinit var deviceProofExecutor: ExecutorService
@@ -55,8 +53,6 @@ class WebPosActivity : AppCompatActivity() {
     private var logoAnimating = false
     private var lastLoadedUrl: String? = null
     private var activeMessageDialog: AlertDialog? = null
-    private var orderAlertRingtone: Ringtone? = null
-    private var orderAlertToneGenerator: ToneGenerator? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,8 +67,8 @@ class WebPosActivity : AppCompatActivity() {
         statusMessage = findViewById(R.id.status_message)
         statusRetryButton = findViewById(R.id.status_retry_button)
         drawerController = DrawerController(this)
-        orderAlertToneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
-        orderAlertRingtone = resolveOrderAlertRingtone()
+        orderAlertSoundStore = OrderAlertSoundStore(this)
+        orderAlertPlaybackController = OrderAlertPlaybackController(this, orderAlertSoundStore)
         requestBluetoothPermissions()
         statusRetryButton.setOnClickListener { clearWebRuntimeAndReload() }
 
@@ -114,8 +110,14 @@ class WebPosActivity : AppCompatActivity() {
             onShowMessage = { title, message ->
                 runOnUiThread { showNativeMessage(title, message) }
             },
-            onPlayOrderAlert = {
-                runOnUiThread { playOrderAlert() }
+            onPlayOrderAlert = { soundType ->
+                orderAlertPlaybackController.play(soundType)
+            },
+            onStopOrderAlert = {
+                orderAlertPlaybackController.stop()
+            },
+            onSaveOrderAlertSound = { soundType, base64Data, mimeType ->
+                orderAlertSoundStore.save(soundType, base64Data, mimeType)
             },
             onAsyncResult = { requestId, resultJson ->
                 runOnUiThread { dispatchIminAsyncResult(requestId, resultJson) }
@@ -211,10 +213,7 @@ class WebPosActivity : AppCompatActivity() {
     override fun onDestroy() {
         activeMessageDialog?.dismiss()
         activeMessageDialog = null
-        orderAlertRingtone?.stop()
-        orderAlertRingtone = null
-        orderAlertToneGenerator?.release()
-        orderAlertToneGenerator = null
+        orderAlertPlaybackController.release()
         if (::deviceProofExecutor.isInitialized) {
             deviceProofExecutor.shutdownNow()
         }
@@ -291,41 +290,6 @@ class WebPosActivity : AppCompatActivity() {
             .setPositiveButton("OK", null)
             .create()
         activeMessageDialog?.show()
-    }
-
-    private fun resolveOrderAlertRingtone(): Ringtone? {
-        val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: return null
-
-        return try {
-            RingtoneManager.getRingtone(applicationContext, notificationUri)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun playOrderAlert() {
-        if (isFinishing || isDestroyed) return
-
-        val ringtone = orderAlertRingtone
-        if (ringtone != null) {
-            try {
-                if (ringtone.isPlaying) {
-                    ringtone.stop()
-                }
-                ringtone.play()
-                return
-            } catch (_: Exception) {
-                // Fall back to a short notification tone if the ringtone cannot play.
-            }
-        }
-
-        try {
-            orderAlertToneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 250)
-        } catch (_: Exception) {
-            // Ignore tone playback failures to avoid crashing the POS shell.
-        }
     }
 
     private fun dispatchIminAsyncResult(requestId: String, resultJson: String) {

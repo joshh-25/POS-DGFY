@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useGuestCheckoutOtp } from './useGuestCheckoutOtp.js';
+import {
+  buildGuestCheckoutVerificationGrantStorageKey,
+  GUEST_CHECKOUT_GRANT_EXCHANGE_ENDPOINT,
+  writeGuestCheckoutVerificationGrant
+} from '../model/guestCheckoutOtp.js';
 
 const buildProps = (requestJson) => ({
   customerEmail: 'guest@example.com',
@@ -10,6 +15,10 @@ const buildProps = (requestJson) => ({
   requestJson,
   selectedStore: { slug: 'masu-cafe' },
   toast: { success: vi.fn() }
+});
+
+afterEach(() => {
+  window.localStorage.clear();
 });
 
 describe('useGuestCheckoutOtp delivery handling', () => {
@@ -125,7 +134,8 @@ describe('useGuestCheckoutOtp delivery handling', () => {
     expect(result.current.guestCheckoutOtpVerified).toBe(true);
     expect(result.current.guestCheckoutProof).toEqual({
       email: 'guest@example.com',
-      proof: 'signed-guest-proof-value'
+      proof: 'signed-guest-proof-value',
+      storeSlug: 'masu-cafe'
     });
     expect(props.toast.success).toHaveBeenCalledWith('Email verified. You can now place your order.');
   });
@@ -170,8 +180,79 @@ describe('useGuestCheckoutOtp delivery handling', () => {
     expect(result.current.guestCheckoutOtpVerified).toBe(true);
     expect(result.current.guestCheckoutProof).toEqual({
       email: 'guest@example.com',
-      proof: 'signed-guest-proof-value'
+      proof: 'signed-guest-proof-value',
+      storeSlug: 'masu-cafe'
     });
+  });
+
+  it('persists the signed grant and exchanges it for a fresh proof after a checkout remount', async () => {
+    const requestJson = vi.fn()
+      .mockResolvedValueOnce({
+        guest_checkout_proof: 'signed-guest-proof-value',
+        guest_checkout_verification_grant: 'signed-guest-grant-value',
+        verification_grant_expires_in: 86400
+      })
+      .mockResolvedValueOnce({ guest_checkout_proof: 'fresh-guest-proof-value' });
+    const props = buildProps(requestJson);
+    const firstHook = renderHook(() => useGuestCheckoutOtp(props));
+
+    act(() => firstHook.result.current.handleGuestCheckoutOtpCodeChange('528372'));
+    await act(async () => {
+      await firstHook.result.current.handleVerifyGuestCheckoutOtp();
+    });
+
+    const storageKey = buildGuestCheckoutVerificationGrantStorageKey({
+      storeSlug: 'masu-cafe',
+      email: 'guest@example.com'
+    });
+    expect(window.localStorage.getItem(storageKey)).toContain('signed-guest-grant-value');
+    firstHook.unmount();
+
+    const secondHook = renderHook(() => useGuestCheckoutOtp(props));
+    await waitFor(() => expect(secondHook.result.current.guestCheckoutOtpVerified).toBe(true));
+
+    expect(secondHook.result.current.guestCheckoutProof).toEqual({
+      email: 'guest@example.com',
+      proof: 'fresh-guest-proof-value',
+      storeSlug: 'masu-cafe'
+    });
+    expect(requestJson).toHaveBeenNthCalledWith(
+      2,
+      GUEST_CHECKOUT_GRANT_EXCHANGE_ENDPOINT,
+      expect.objectContaining({
+        body: expect.objectContaining({
+          verification_grant: 'signed-guest-grant-value',
+          email: 'guest@example.com'
+        })
+      })
+    );
+    secondHook.unmount();
+  });
+
+  it('clears an expired verification grant and requires a new email verification', async () => {
+    const storageKey = buildGuestCheckoutVerificationGrantStorageKey({
+      storeSlug: 'masu-cafe',
+      email: 'guest@example.com'
+    });
+    writeGuestCheckoutVerificationGrant({
+      storeSlug: 'masu-cafe',
+      email: 'guest@example.com',
+      grant: 'expired-guest-grant-value',
+      expiresIn: 3600
+    });
+    const requestJson = vi.fn().mockRejectedValue(Object.assign(
+      new Error('Guest email verification has expired. Verify your email again.'),
+      { errorCode: 'AUTHENTICATION_FAILED' }
+    ));
+    const onOtpExpired = vi.fn();
+    const props = { ...buildProps(requestJson), onOtpExpired };
+    const { result } = renderHook(() => useGuestCheckoutOtp(props));
+
+    await waitFor(() => expect(onOtpExpired).toHaveBeenCalledOnce());
+
+    expect(result.current.guestCheckoutOtpVerified).toBe(false);
+    expect(result.current.guestCheckoutOtpError).toContain('Guest email verification has expired');
+    expect(window.localStorage.getItem(storageKey)).toBeNull();
   });
 
   it('rotates the proof and idempotency key after an order completes', async () => {

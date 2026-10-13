@@ -116,14 +116,23 @@ describe('Dine-in Schedule tab', () => {
     expect(screen.queryByText('Pickup Guest')).toBeNull();
     expect(screen.getByText('Serve By')).toBeTruthy();
     expect(screen.getByText('Upcoming')).toBeTruthy();
+    expect(screen.getAllByText('Timing')).toHaveLength(2);
     expect(screen.getAllByText('Immediate service').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/In \d{2,}h \d{2}m \d{2}s/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/In \d{2,}h \d{2}m \d{2}s/)).toHaveLength(1);
   });
 
   it('does not render the schedule tab outside F&B mode', () => {
     render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
 
     expect(screen.queryByRole('tab', { name: /Dine-in Schedule/i })).toBeNull();
+  });
+
+  it('keeps Dine-In orders actionable in Active Queue when the schedule tab is unavailable', () => {
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'msme' })} />);
+
+    expect(screen.queryByRole('tab', { name: /Dine-in Schedule/i })).toBeNull();
+    expect(screen.getAllByText('Scheduled Guest').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Start Preparing', exact: true })).toBeTruthy();
   });
 
   it('shows and filters the schedule tab in the read-only admin branch monitor', () => {

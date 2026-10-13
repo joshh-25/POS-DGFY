@@ -39,6 +39,12 @@ for f in "$AGE_KEY_FILE" "$CIPHERTEXT_CACHE"; do
 done
 [ -x "$SOPS_BIN" ] || SOPS_BIN="sops"
 [ -d "$SECRETS_DIR" ] || { echo "Missing $SECRETS_DIR -- create it first (see README.md)" >&2; exit 1; }
+# The 644 file permissions below rely entirely on this directory staying
+# 0700 -- enforce it here rather than trusting whatever umask created it
+# (a plain `mkdir -p` under the default 022 umask would leave it 0755,
+# silently widening every secret file to world-readable at the directory
+# level too -- PR #2453 review, RF-1).
+chmod 700 "$SECRETS_DIR"
 
 export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 
@@ -59,7 +65,18 @@ while IFS='=' read -r key value; do
   fi
   name="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
   printf '%s' "$value" > "$SECRETS_DIR/$name"
-  chmod 640 "$SECRETS_DIR/$name"
+  # 644, not 640 -- these are consumed via Docker Compose's file-based
+  # `secrets:` construct, which bind-mounts this exact host file straight
+  # into the container at /run/secrets/<name> with its host permissions
+  # intact (no UID remap). The app process inside the container runs as
+  # whatever UID the image defines, which has no reason to share sieitz's
+  # GID -- group-readable access bought nothing (confirmed live: migrate
+  # failed with EACCES on mysql_migration_url before this fix). secrets/
+  # itself stays 0700 sieitz-owned (see deploy-dglaundry.yml's host setup),
+  # so a world-readable file bit here still can't be reached by any other
+  # host user or process -- only a process with a bind mount into this
+  # exact file (i.e. these containers) ever sees it.
+  chmod 644 "$SECRETS_DIR/$name"
   echo "  wrote $SECRETS_DIR/$name"
 done < <("$SOPS_BIN" decrypt --input-type dotenv "$CIPHERTEXT_CACHE")
 

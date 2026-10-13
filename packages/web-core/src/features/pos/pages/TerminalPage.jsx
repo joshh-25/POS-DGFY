@@ -171,6 +171,17 @@ import {
   readCustomerDisplayEnabled,
   writeCustomerDisplayEnabled
 } from '../utils/customerDisplayPreference.js';
+import {
+  downloadOrderAlertSound,
+  formatOrderAlertSoundKilobytes,
+  getOrderAlertSoundById,
+  importOrderAlertSound,
+  readStoredDownloadedOrderAlertSoundIds,
+  readStoredOrderAlertSoundId,
+  startOrderAlertSoundLoop,
+  stopOrderAlertSoundLoop,
+  writeStoredOrderAlertSoundId
+} from '../utils/orderAlertSounds.js';
 import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { publishPosLocationContext } from '../utils/posLocationContext.js';
@@ -192,6 +203,7 @@ const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 const POS_LAST_VIEW_STORAGE_PREFIX = 'pos_terminal_last_view_v1';
 const POS_VIEW_MODE_QUERY_KEY = 'view';
 const ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY = 'pos_online_order_sound_enabled_v1';
+const ONLINE_ORDER_POPUP_ENABLED_STORAGE_KEY = 'pos_online_order_popup_enabled_v1';
 const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
 const TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
 const TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY = 'pos_terminal_admin_lock_context_v1';
@@ -530,6 +542,16 @@ export default function TerminalPage() {
   });
   const [onlineOrderSoundEnabled, setOnlineOrderSoundEnabled] = useState(() => {
     const stored = String(safeLocalStorageGet(ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY) || '').trim().toLowerCase();
+    if (!stored) return false;
+    return stored !== '0' && stored !== 'false' && stored !== 'off';
+  });
+  const [onlineOrderSoundId, setOnlineOrderSoundId] = useState(() => readStoredOrderAlertSoundId());
+  const [downloadedOrderAlertSoundIds, setDownloadedOrderAlertSoundIds] = useState(() => readStoredDownloadedOrderAlertSoundIds());
+  const [orderAlertSoundDownloadId, setOrderAlertSoundDownloadId] = useState('');
+  const [orderAlertSoundImporting, setOrderAlertSoundImporting] = useState(false);
+  const [previewingOrderAlertSoundId, setPreviewingOrderAlertSoundId] = useState('');
+  const [incomingOrderPopupEnabled, setIncomingOrderPopupEnabled] = useState(() => {
+    const stored = String(safeLocalStorageGet(ONLINE_ORDER_POPUP_ENABLED_STORAGE_KEY) || '').trim().toLowerCase();
     if (!stored) return true;
     return stored !== '0' && stored !== 'false' && stored !== 'off';
   });
@@ -3584,6 +3606,94 @@ export default function TerminalPage() {
   }, [onlineOrderSoundEnabled]);
 
   useEffect(() => {
+    writeStoredOrderAlertSoundId(onlineOrderSoundId);
+  }, [onlineOrderSoundId]);
+
+  useEffect(() => () => {
+    stopOrderAlertSoundLoop();
+  }, []);
+
+  const handleSelectOrderAlertSound = useCallback((soundId) => {
+    const sound = getOrderAlertSoundById(soundId);
+    if (!sound.isDefault && !sound.isImported && !downloadedOrderAlertSoundIds.includes(sound.id)) {
+      toast.error('Download this sound to the device before selecting it.');
+      return false;
+    }
+    if (previewingOrderAlertSoundId) {
+      stopOrderAlertSoundLoop();
+      setPreviewingOrderAlertSoundId('');
+    }
+    setOnlineOrderSoundId(sound.id);
+    return true;
+  }, [downloadedOrderAlertSoundIds, previewingOrderAlertSoundId]);
+
+  const handleDownloadOrderAlertSound = useCallback(async (soundId) => {
+    setOrderAlertSoundDownloadId(String(soundId || '').trim());
+    try {
+      const downloadedIds = await downloadOrderAlertSound(soundId);
+      setDownloadedOrderAlertSoundIds(downloadedIds);
+      toast.success('Sound downloaded to this device.');
+      return true;
+    } catch (error) {
+      toast.error(error?.message || 'The order alert sound could not be downloaded.');
+      return false;
+    } finally {
+      setOrderAlertSoundDownloadId('');
+    }
+  }, []);
+
+  const handleImportOrderAlertSound = useCallback(async (file) => {
+    setOrderAlertSoundImporting(true);
+    try {
+      const sound = await importOrderAlertSound(file);
+      if (previewingOrderAlertSoundId) {
+        stopOrderAlertSoundLoop();
+        setPreviewingOrderAlertSoundId('');
+      }
+      setOnlineOrderSoundId(sound.id);
+      toast.success(`Imported ${sound.label} (${formatOrderAlertSoundKilobytes(sound.compressedBytes)}).`);
+      return true;
+    } catch (error) {
+      toast.error(error?.message || 'The audio file could not be imported.');
+      return false;
+    } finally {
+      setOrderAlertSoundImporting(false);
+    }
+  }, [previewingOrderAlertSoundId]);
+
+  const handlePreviewOrderAlertSound = useCallback(async (soundId) => {
+    const normalizedSoundId = getOrderAlertSoundById(soundId).id;
+
+    if (previewingOrderAlertSoundId === normalizedSoundId) {
+      stopOrderAlertSoundLoop();
+      setPreviewingOrderAlertSoundId('');
+      return true;
+    }
+
+    try {
+      startOrderAlertSoundLoop(normalizedSoundId, {
+        onFinished: () => {
+          setPreviewingOrderAlertSoundId((current) => (
+            current === normalizedSoundId ? '' : current
+          ));
+        }
+      });
+      setPreviewingOrderAlertSoundId(normalizedSoundId);
+      return true;
+    } catch {
+      toast.error('This device could not play the selected sound.');
+      return false;
+    }
+  }, [previewingOrderAlertSoundId]);
+
+  useEffect(() => {
+    safeLocalStorageSet(
+      ONLINE_ORDER_POPUP_ENABLED_STORAGE_KEY,
+      incomingOrderPopupEnabled ? '1' : '0'
+    );
+  }, [incomingOrderPopupEnabled]);
+
+  useEffect(() => {
     if (!activeTerminalId) return;
     setFormData((prev) => (
       prev.terminalId === activeTerminalId
@@ -6395,6 +6505,7 @@ export default function TerminalPage() {
     try {
       const response = await updateOnlineOrderStatus(normalizedId, payload);
       if (nextStatus === 'confirmed') {
+        stopOrderAlertSoundLoop();
         try {
           await printOnlineOrderReceiptById(normalizedId, {
             automatic: true,
@@ -6841,6 +6952,7 @@ export default function TerminalPage() {
     retryPrint = false,
     printOrder = false
   } = {}) => {
+    stopOrderAlertSoundLoop();
     if (!isOnline) {
       toast.error('Reconnect to the internet before opening or printing an online order.');
       return;
@@ -6886,6 +6998,7 @@ export default function TerminalPage() {
   const handleIncomingOrderModalOpenChange = useCallback((open) => {
     setIncomingOrderModalOpen(open);
     if (!open) {
+      stopOrderAlertSoundLoop();
       setIncomingOrderDetail(null);
       setIncomingOrderPrintLoading(false);
     }
@@ -7766,6 +7879,12 @@ function PosRestorationLoadingScreen() {
           canRecoverStaleShifts={terminalUser?.is_master_admin === true}
           handleForceCloseStaleShift={handleForceCloseStaleShift}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
+          onlineOrderSoundId={onlineOrderSoundId}
+          downloadedOrderAlertSoundIds={downloadedOrderAlertSoundIds}
+          orderAlertSoundDownloadId={orderAlertSoundDownloadId}
+           orderAlertSoundImporting={orderAlertSoundImporting}
+          previewingOrderAlertSoundId={previewingOrderAlertSoundId}
+          incomingOrderPopupEnabled={incomingOrderPopupEnabled}
           customerDisplayEnabled={customerDisplayEnabled}
           customerDisplayCanOpen={customerDisplayStatus.canOpen}
           customerDisplayStatus={customerDisplayStatus.status}
@@ -7881,6 +8000,11 @@ function PosRestorationLoadingScreen() {
           onStorefrontSetupSaved={handleStorefrontSetupSaved}
           onStorefrontContentStateChange={handleStorefrontContentStateChange}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          onSelectOrderAlertSound={handleSelectOrderAlertSound}
+          onDownloadOrderAlertSound={handleDownloadOrderAlertSound}
+           onImportOrderAlertSound={handleImportOrderAlertSound}
+          onPreviewOrderAlertSound={handlePreviewOrderAlertSound}
+          setIncomingOrderPopupEnabled={setIncomingOrderPopupEnabled}
           posTextSize={posTextSize}
           onPosTextSizeChange={handlePosTextSizeChange}
           setPosViewMode={commitViewModeSelection}

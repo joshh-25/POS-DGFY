@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useRef } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { usePosTerminalViewModel } from '../hooks/usePosTerminalViewModel.js';
 import { useCustomerDisplaySync } from '../hooks/useCustomerDisplaySync.js';
+import { usePosCustomerDisplaySync } from '../hooks/usePosCustomerDisplaySync.js';
 
 const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));
 
@@ -68,6 +69,18 @@ export default function POSCheckoutTerminal(props) {
         customerDisplay.customerDisplayStatusLabel,
         onCustomerDisplayStatusChange
     ]);
+
+    usePosCustomerDisplaySync({
+        scope: props.offlineSnapshotScope,
+        terminalId: props.terminalId,
+        locationId: props.selectedLocationId,
+        cart: terminalViewModel.safeCart,
+        subtotal: terminalViewModel.cartSubtotal,
+        total: terminalViewModel.cartTotal,
+        itemCount: terminalViewModel.cartTotalQuantity,
+        currency: terminalViewModel.setupCurrency,
+        businessName: terminalViewModel.setupMeta?.businessSettings?.pos_business_name
+    });
 
     return (
         <Suspense fallback={<div className="flex h-full min-h-0 items-center justify-center text-sm text-slate-500">Loading POS terminal…</div>}>

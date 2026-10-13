@@ -1,0 +1,448 @@
+                   POS In Terminal Void Approval Popup Plan
+     Temporary POS-native reviewer surface for high-risk transaction voids
+Plan field
+Value
+Repository
+C:\xampp\htdocs\POS-DGFY
+Plan type
+Evidence-based implementation plan; no implementation performed
+Plan version
+1.0
+As of
+2026-09-29
+Proposed repository phase
+Phase 353  --  Temporary POS Native Void Approval Surface
+Current highest authoritative phase
+Phase 352  --  Business registration hardening and release validation
+Status
+Planned; not approved for implementation
+
+This document is the plan requested by the user. It does not modify application code, database schema, production configuration, the authoritative phase ledger, or deployment state.
+1. Rewritten request
+Create a temporary approval workflow inside the standalone POS terminal for POS transaction void requests because the dedicated Back Office reviewer surface is not available in production. Preserve the existing server-side approval lifecycle, tenant-wide reviewer authorization, requester self-review prohibition, audit trail, atomic execution, and separate refund workflow. Make the POS popup easy to disable and remove after the dedicated Back Office is deployed and verified.
+2. Executive decision
+Proceed with a temporary POS-native approval popup and pending-approval queue for POS transaction voids only. Reuse the existing approval request table and existing approval decision API. The popup is a reviewer interface, not an authorization mechanism and not a second transaction-mutation owner.
+Decision
+Plan position
+Approval source of truth
+Existing business_admin_approval_requests rows and the canonical POS exception approval use case.
+Reviewer authority
+Existing authenticated DGFY tenant user with tenant-wide Business Admin scope and business_admin:high_risk:approve, or master/admin authority already accepted by the backend.
+POS role
+Temporary reviewer surface only. POS remains the owner of the transaction void lifecycle; Inventory remains the owner of stock movement reversal.
+Self-review
+Always blocked by the backend. The popup must also disable the controls and explain why.
+Data model
+No new approval table and no new transaction status. Use the existing request, audit, idempotency, and canonical execution records.
+Initial scope
+pos_void only. Parked-sale cancellation, refunds, force-close, and new approval categories remain out of scope.
+Temporary control
+A POS-only feature flag hides the new surface. Server-side authorization remains mandatory regardless of the flag.
+Removal trigger
+Dedicated Back Office issue #1354 is deployed, its approval workspace passes live acceptance, and a controlled POS removal release is approved.
+
+3. Critical assessment
+The request is logically sound only if the POS popup is treated as a temporary decision surface over the existing approval contract. A UI-only shortcut would be unsafe: a cashier could alter the client request, call the API directly, or approve a request without the required tenant-wide authority. The backend must remain the final authority for every list and decision operation.
+The phrase `Back Office does not exist' has two separate meanings in the evidence. The repository contains a POS-hosted Business Admin workspace, but the live POS host was serving an older artifact that did not contain the current Back Office route or approval strings. Therefore this plan covers both the temporary POS surface and a production artifact verification gate. The popup cannot appear in a stale bundle until the correct POS build is deployed.
+A second risk is manager handoff. This plan does not invent a manager PIN, store passwords, or silently replace the cashier's session. The first implementation should allow approval only in an already authenticated POS session that satisfies the reviewer policy. A non-reviewer sees a pending handoff state and must use the existing POS account-switch or manager-session process. Any new same-terminal credential flow is a separate security design and is not part of this phase.
+4. Evidence and confidence
+Classification
+Evidence
+Confirmed  --  authoritative
+The authoritative phase ledger ends at Phase 352. Continuous numbering therefore makes Phase 353 the next eligible repository phase; earlier Phase 347 and 348 entries remain historical and are not renumbered.
+Confirmed  --  authoritative
+ADR 0086 requires a reasoned pending approval for a POS void, canonical POS execution on approval, unchanged transaction and stock on rejection, audit evidence, self-review blocking, and atomic idempotent execution.
+Confirmed  --  code
+POST /api/v1/pos/transactions/:id/void already creates a pending pos_void request in the normal path. The approval decision path already calls the canonical void use case.
+Confirmed  --  code
+GET /business-admin/approvals and POST /business-admin/approvals/:id/(approve|reject) already exist. The backend requires tenant-wide high-risk approval authority and rejects a requester's own decision.
+Confirmed  --  code
+The POS history hook currently tells the operator that the request was sent to Back Office and reloads history. The history panel already owns the reasoned void dialog.
+Confirmed  --  live observation
+On 2026-09-29, the live /backoffice/login path returned an empty shell for its nested relative asset path, while the hash route served `Route not available' and the live bundle lacked current Back Office and approval strings. This is artifact drift or an older deployment, not evidence that the backend contract is absent.
+Inferred
+The production gap is primarily a missing or stale POS frontend artifact. The production API rollout gate and tenant allowlist still require a live authenticated check before implementation is enabled.
+Assumed for this plan
+`For a while' means until the dedicated Back Office product is deployed and verified. The temporary surface is POS-only and is removed by a later controlled release.
+Unknown and must be verified
+Whether the target production tenant currently passes BUSINESS_ADMIN_DASHBOARD_ENABLED, which manager account will review, and whether operations require same-terminal approval instead of an already authenticated manager POS session.
+
+5. Repository and architectural constraints
+The mandatory architecture lookup was completed in this order: docs/START_HERE.md; docs/architecture/ARCHITECTURE_BOUNDARIES.md; docs/architecture/ARCHITECTURE_GOVERNANCE.md; the ADR index and relevant ADRs; domain API, database, testing, and release documentation. The read-only architecture check passed: ArchitectureGuardrails checked 56 modules and 666 code files, and ControllerBoundary checked 103 controller files with no unauthorized model imports.
+Follow routes --> controllers --> use cases --> repositories --> models. The popup must not import models, call repositories, or implement void logic in the browser.
+Keep the temporary reviewer UI in the POS terminal flow. The shared POS terminal is in packages/web-core, but enable the new surface only for the standalone POS surface using the existing VITE_APP_SURFACE distinction. Do not expand this change into IMS UI.
+Do not revive the old apps/dgfy-web path. Do not create a second Back Office product or a second approval owner.
+Because ADR 0086 currently says Back Office supplies the reviewer decision surface, the implementation PR must add a dated amendment explaining that POS is a temporary reviewer surface while the logical approval contract and owner remain unchanged. This is an untagged/default clause, so an amendment is the correct governance path; a superseding ADR is not needed.
+A normal implementation branch targets develop. Production promotion follows the authoritative release policy; this planning task does not merge, deploy, or modify main.
+6. Current state and source of truth
+6.1 Existing request flow
+The POS history panel collects a required reason of 3 - 255 characters and calls the history workflow hook.
+The hook calls voidPosTransaction through the existing POS service. The route enforces pos:void, terminal context, validation, and the existing shift/admin rules.
+The use case creates a business_admin_approval_requests row with action_type pos_void, an immutable target payload, reason, requester, payload hash, idempotency key, and audit evidence. The sale and stock remain unchanged while pending.
+The current UI shows a success toast that says the request was sent to Back Office. The plan changes this copy and opens the temporary POS approval handoff dialog, but does not change the server mutation semantics.
+6.2 Existing decision flow
+The approval list API requires authenticated Business Admin access, tenant-wide scope, and business_admin:high_risk:approve or accepted master/admin authority.
+The decision API locks the request, validates immutable evidence and target integrity, rejects requester self-review, and handles already executed/rejected requests idempotently.
+Approval invokes the canonical POS void use case inside the same transaction and then marks the approval executed. Rejection leaves the transaction and inventory unchanged. Internal void remains distinct from cash/provider refund workflows.
+Domain fact
+Authoritative owner
+Approval request, status, reason, reviewer, decision note, timestamps
+Tenant-local business_admin_approval_requests and canonical approval use cases
+POS transaction status, void evidence, linked parked-sale reversal
+POS canonical command owner
+Stock movement and FIFO reversal
+Inventory command owner invoked by POS approval execution
+Reviewer identity and permission
+Authenticated DGFY tenant session and Business Admin access policy
+Temporary popup state
+POS browser memory only; never authoritative and never persisted as approval truth
+Refund of paid money
+Existing tender-specific refund workflows; not part of void approval
+
+7. Target user flow
+The target flow deliberately keeps the request and decision inside the POS while preserving the current server contract.
+Step
+Actor and surface
+Expected behavior
+1
+Cashier or authorized POS operator; POS History
+Open Void Transaction, enter a reason, and submit. Existing pos:void permission and shift guards remain active.
+2
+API
+Create or replay the existing pending pos_void approval. Return the approval request identity and pending status. Do not void the sale or reverse stock.
+3
+POS popup
+Immediately show `Void awaiting manager approval' with receipt/invoice, amount, branch, requester, reason, and request time. Explain that money is not refunded by this action.
+4
+Authorized reviewer; same POS surface
+Open `Pending approvals' from the popup or POS History. The queue loads only pending pos_void requests through the existing approval list API.
+5
+Reviewer dialog
+Display immutable request details and an optional decision note. Approve and Reject are available only when the authenticated reviewer is authorized and is not the requester.
+6
+API and canonical owner
+Call the existing approve/reject endpoint. The backend re-checks tenant scope, permission, self-review, target integrity, status, and idempotency. The client cannot supply an approved transaction mutation.
+7
+POS feedback
+On approval, show executed/voided and refresh history. On rejection, show rejected and unchanged. On stale/race conflict, refresh the queue and explain that another reviewer or state change won.
+8
+After the temporary period
+Disable the POS-only surface after the dedicated Back Office is live and accepted. Pending approval records remain in the canonical system; removal is UI-only unless a separate data-retention decision is made.
+
+7.1 Reviewer session boundary
+The first release must not add a new manager password or PIN. An authorized manager must be signed in through the existing DGFY/POS session or use the existing POS account-switch/takeover process. If the active session is the requester or lacks tenant-wide approval authority, the popup must show a non-actionable pending state and tell the operator that another authorized reviewer is required. Session switching must follow ADR 0026 cookie/CSRF rules and ADR 0031's explicit account-switch boundary; the popup must never copy credentials into browser storage or logs.
+8. Scope boundaries
+In scope for Phase 353
+Explicitly out of scope
+Temporary standalone POS popup and pending pos_void queue.
+A new approval table, migration, or transaction status.
+POS History request handoff, reviewer queue, decision dialog, refresh, and error states.
+New manager PIN, local password, biometric, or credential storage.
+Thin shared web-core service wrappers over existing approval endpoints.
+A new approval API owner or direct client-side void execution.
+Server gate verification and, only if required by live evidence, a narrowly scoped approval rollout gate.
+Broadly enabling all Business Admin routes for every tenant as a workaround.
+Backend/frontend tests, accessible desktop/tablet/mobile rendering, and production artifact verification.
+Parked-sale cancellation, refund approval, force-close approval, payment reversal, or cash drawer refund changes.
+Dated ADR 0086 amendment and a removal checklist.
+IMS approval UI, Storefront changes, dedicated Back Office replacement, or schema cleanup.
+
+9. Requirements
+ID
+Area
+Requirement
+FR-001
+Request handoff
+After a successful pending void request, POS opens a clear in-terminal pending approval popup and displays the approval request identity.
+FR-002
+Reviewer queue
+An authorized reviewer can open a POS queue containing pending pos_void requests with target, amount, location, requester, reason, and age.
+FR-003
+Decision
+An authorized reviewer can approve or reject through the existing business-admin approval endpoints and may provide the existing bounded decision note.
+FR-004
+Result
+The popup shows pending, approved/executed, rejected, unauthorized, stale/conflict, and unavailable states without claiming a mutation before server confirmation.
+FR-005
+Recovery
+Refresh/retry is safe. The UI deduplicates by approval_request_id and never resubmits the void request merely because a decision request timed out.
+BR-001
+Pending semantics
+A pending request leaves transaction and stock unchanged.
+BR-002
+Canonical execution
+Only an approved pending pos_void request invokes the canonical POS void use case.
+BR-003
+Self-review
+The requester cannot approve or reject their own request. UI disabling is secondary to backend rejection.
+BR-004
+Atomicity
+Approval state and canonical void execution remain atomic and idempotent under concurrent reviewers and retries.
+BR-005
+Refund boundary
+Void approval does not refund captured money; existing tender-specific refund workflows remain separate.
+PERM-001
+Reviewer authorization
+Server enforcement requires Business Admin access, all-tenant scope, and business_admin:high_risk:approve, with existing master/admin exceptions.
+SEC-001
+Tenant isolation
+The browser sends only an approval request ID and decision note. The server loads and locks the tenant-local row and verifies immutable target evidence.
+SEC-002
+Credential safety
+No password, access token, refresh token, reviewer PIN, or tenant context is stored in localStorage/sessionStorage, logs, or the approval payload.
+SEC-003
+CSRF/session
+Unsafe requests reuse the existing cookie-backed session, CSRF, refresh, and retry behavior.
+UI-001
+Accessible popup
+Dialog focus, Escape handling, focus return, body-scroll locking, busy state, error announcement, and keyboard operation match existing POS dialog conventions.
+UI-002
+Responsive POS
+The queue and decision dialog work at the repository's desktop, tablet, and mobile POS viewport gates without horizontal overflow.
+AUD-001
+Evidence
+Existing request, decision, rejection, execution, actor, reason, note, and timestamps remain visible through the canonical audit path.
+OPS-001
+Temporary control
+The POS-only surface can be disabled without changing pending request data or weakening the server approval contract.
+REP-001
+Production proof
+The deployed POS asset must contain the new surface and be verified against the intended release SHA before enabling the workflow.
+
+10. Implementation design
+10.1 Backend and API
+Do not create a new void approval endpoint. Reuse GET /business-admin/approvals?status=pending and POST /business-admin/approvals/:id/approve or /reject.
+Keep apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminApprovalUseCase.js as the reviewer authorization boundary and apps/dgfy-api/src/modules/pos/usecases/posExceptionApprovalUseCases.js as the canonical decision/execution boundary.
+Add or update transport tests only where the temporary surface exposes a missing contract: pending list filtering to pos_void, bounded note validation, 401/403 behavior, self-review denial, idempotent replay, and race/conflict behavior.
+Before adding middleware, perform a live authenticated check of requireBusinessAdminDashboardEnabled. If the target tenant returns BUSINESS_ADMIN_DASHBOARD_DISABLED, use a tenant-scoped rollout configuration or add a narrowly scoped approval-only gate; never remove the dashboard gate from all other routes and never grant pos:void users reviewer authority.
+If an approval-only gate is needed, document it as temporary configuration with an explicit removal condition in the same ADR amendment. The gate must still enforce existing tenant capability, reviewer scope, high-risk permission, self-review, and canonical action support.
+10.2 Shared POS frontend
+Extend packages/web-core/src/features/pos/hooks/usePosHistoryVoidWorkflow.js with pending approval state, reviewer queue loading, decision loading, selected request, and safe refresh behavior. Keep the existing transaction history and refund workflow state separate.
+Add a thin packages/web-core/src/features/pos/services/posApprovalService.js wrapper around the existing API client. It may call the canonical /business-admin/approvals routes but must not contain authorization decisions or mutation logic.
+Add a focused POSInlineVoidApprovalDialog component, or equivalent focused component, under packages/web-core/src/features/pos/components. It should render the request handoff, pending queue, decision note, decision result, and error states without importing apps/dgfy-pos BusinessAdminPage.jsx.
+Extend packages/web-core/src/features/pos/components/POSTransactionHistoryPanel.jsx to replace `sent to Back Office' copy with accurate `awaiting manager approval' copy and expose the popup/queue entry point.
+Thread an explicit inlineVoidApprovalEnabled prop from TerminalPageLayout through POSCheckoutTerminal. Enable it only on the existing standalone POS surface using VITE_APP_SURFACE === 'pos' and the temporary feature flag. Leave the IMS surface unchanged.
+Derive reviewer affordances from terminalUser's current identity only as a display optimization. Match the backend policy for master/admin, business_admin:access, business_admin:view_all_branches, and business_admin:high_risk:approve. Treat every 401/403 as authoritative and remove or disable action controls after the response.
+10.3 Session and handoff design
+The popup must distinguish requester from reviewer using the server-returned requester identity or the current terminal user identity; it must not infer approval from possession of pos:void.
+If the current user is not an eligible reviewer, show `Pending manager approval' and a safe handoff instruction. Do not present a fake approval button that will predictably fail.
+If an authorized manager is already signed in, allow the queue to open in the same POS surface. If a manager must take over the terminal, use the existing account-switch/takeover boundary and preserve the active shift rules; do not implement a new credential modal in this phase.
+Do not persist approval queue data as an offline mutation. If the network is unavailable, show the last known state only as stale and require a fresh server read before a decision.
+10.4 Data and migration impact
+No schema migration is expected. The existing business_admin_approval_requests table already supports pos_void, required reason, immutable payload, request hash, idempotency, status, decision actor, decision note, and execution timestamps. The implementation must prove this with existing migration/schema tests rather than adding a duplicate table or a client-owned approval status.
+11. Exact implementation sequence
+Phase slice
+Work
+Gate
+353.1 Contract and rollout preparation
+Confirm the live API gate and target manager identity; add the ADR 0086 amendment; define the standalone-POS feature flag and removal criterion; write the frontend/API contract tests before UI work.
+No code path is enabled in production. Block if the target tenant cannot access the existing canonical approval API without a safe, tenant-scoped rollout decision.
+353.2 Backend contract hardening
+Reuse existing approval routes and use cases; add only missing transport validation, pos_void filtering, authorization, self-review, idempotency, and rollout-gate coverage. Add a narrow approval-only gate only if live evidence requires it.
+All backend tests prove that a pending request does not mutate the sale or stock and that approval still executes the canonical owner.
+353.3 POS data/controller layer
+Add the shared web-core service wrapper and hook state for immediate request handoff, queue refresh, decision submission, selected row, and terminal error handling. Keep refund state independent.
+Hook/service tests cover duplicate request responses, decision timeout, 403, 409 race, refresh, and result mapping.
+353.4 POS popup and queue UI
+Add the accessible dialog/queue, update History copy, wire the current POS identity and feature flag, and keep the new surface standalone-POS-only.
+Desktop, tablet, and mobile renders show the correct states with no overflow; requester controls are disabled and reviewer controls are server-confirmed.
+353.5 Integrated verification
+Run API tests, POS Vitest, POS lint/build, targeted Playwright E2E, architecture/docs/ADR checks, and rendered browser evidence. Add a cashier-to-manager test using two distinct users and one self-review negative test.
+All acceptance evidence is SHA-bound to the candidate. No implementation is marked complete on local-only tests if the authenticated browser gate is outstanding.
+353.6 Controlled rollout and removal tracking
+Promote through the repository release policy, verify the correct POS asset on pos.dgfy.ph, enable the feature for the intended tenant/surface, monitor decision errors, and record the Back Office replacement/removal condition.
+Production proof confirms the popup exists in the deployed artifact, the API decision is authorized and audited, and rollback can disable the UI without data loss.
+
+12. Verification matrix
+Surface
+Target
+Assertions
+Evidence
+API  --  request
+Existing pos void route and use case
+Reason validation, pos:void, tenant/location/shift guards, pending response, duplicate pending request behavior
+apps/dgfy-api/tests/posVoid.route.transport.test.js plus focused use-case tests
+API  --  list
+Existing business admin approval list
+Unauthorized, assigned-scope, no-high-risk, disabled-tenant, pos_void filtering, requester identity
+business admin approval route/use-case tests
+API  --  decision
+Existing approval decision use case
+Approve, reject, requester self-review, stale target, second reviewer race, idempotent replay, rollback
+apps/dgfy-api/tests/posExceptionApprovalUseCases.test.js plus decision transport tests
+Frontend  --  hook
+usePosHistoryVoidWorkflow
+Pending handoff, queue refresh, decision state, 401/403/409, timeout without duplicate request
+packages/web-core/src/features/pos/hooks/__tests__/usePosHistoryVoidWorkflow.test.jsx
+Frontend  --  panel
+POSTransactionHistoryPanel and inline dialog
+Reason, accessible dialog, pending copy, requester disabled, reviewer decision, result refresh
+posTransactionHistory.behavior tests and new focused dialog tests
+E2E  --  two users
+POS History and popup
+Cashier submits; separate authorized reviewer opens queue; reviewer approves; history reflects void
+apps/dgfy-pos/tests/e2e/pos/ temporary approval spec
+E2E  --  negative
+POS security and lifecycle
+Cashier cannot list/decide; requester cannot self-review; rejection leaves transaction unchanged; refund remains separate
+POS Playwright plus API evidence
+Responsive UI
+Standalone POS desktop/tablet/mobile
+No horizontal overflow; focus trap; Escape; touch targets; busy/error states
+Existing POS viewport matrix and rendered screenshots/trace evidence
+Production accuracy
+pos.dgfy.ph
+Correct root/hash route, current asset hash, feature flag present, no stale `Route not available', live approval proof
+Deployment manifest, browser console/network capture, and deployed-change accuracy review
+
+12.1 Validation commands
+Architecture baseline: npm run check:architecture (passed during planning).
+Backend targeted suite: npm --prefix apps/dgfy-api test -- --runTestsByPath tests/posExceptionApprovalUseCases.test.js tests/posVoid.route.transport.test.js.
+POS unit/contract suite: npm --prefix apps/dgfy-pos test -- --run packages/web-core/src/features/pos/hooks/__tests__/usePosHistoryVoidWorkflow.test.jsx packages/web-core/src/features/pos/__tests__/posTransactionHistory.behavior.test.jsx; adapt to the repository's Vitest path resolution if the runner rejects package paths.
+POS lint and production build: npm --prefix apps/dgfy-pos run lint and npm run build:pos.
+Documentation and ADR checks: npm run lint:docs and npm run check:adr.
+Browser verification: npm --prefix apps/dgfy-pos run test:e2e with the authenticated POS profile and the repository's desktop/tablet/mobile evidence procedure. Do not substitute a route screenshot for a proof that a decision was server-authorized and audited.
+13. Security and failure handling
+Condition
+Required behavior
+Current user is the requester
+Show request details and pending state; disable Approve/Reject. If a decision is attempted, display the backend self-review error without changing state.
+Current user has pos:void but not high-risk approval
+They may request if existing guards permit, but cannot list or decide approvals. The popup must not imply that pos:void grants review authority.
+Assigned-scope reviewer
+Backend returns 403 because high-risk decisions require all scope. UI shows that tenant-wide review authority is required.
+401 or expired session
+Stop decision controls, use the existing cookie-backed refresh/session flow, and require a fresh server read. Never cache credentials or replay a stale decision automatically.
+403 permission/tenant gate
+Keep the request pending and show a safe operational message. Do not fall back to direct void or local approval.
+409 stale target or another reviewer
+Reload the approval row and transaction history. Treat the server result as final; do not retry blindly.
+Decision request times out
+Show unknown/pending, then refresh by approval request ID or queue. Do not submit a second approve call solely because the browser timed out.
+Backend executes but UI closes
+A later queue/history refresh must show executed/voided. Existing idempotent approval execution prevents duplicate transaction mutation.
+Network offline
+Disable decisions and display stale/unavailable state. Do not queue approval decisions as offline terminal operations.
+Production bundle is stale
+Do not claim the feature is live. Stop rollout, identify the deployed SHA/image, and follow release verification before enabling the flag.
+Paid transaction
+Void approval records the internal void only. Show a separate instruction for tender-specific refund handling; do not auto-refund.
+
+14. Rollout, rollback, and removal
+14.1 Release inventory
+Included if changed: apps/dgfy-api route/middleware/tests; packages/web-core POS service, hook, dialog, panel, and tests; apps/dgfy-pos environment/route wiring, E2E, and build evidence; ADR 0086 amendment; phase ledger entry for Phase 353 when implementation is approved.
+Excluded: apps/dgfy-ims, apps/dgfy-storefront, migration runner, payment/refund use cases, parked-sale cancellation behavior, and a new Back Office application.
+The implementation PR must follow docs/ai/PR.md, use a Conventional Commit, target develop for ordinary work, scan changed files for DO NOT COMMIT markers, and group commits by domain if the change is split into logical batches.
+14.2 Enablement
+Land the implementation through the normal develop --> staging --> main promotion policy. Do not merge main from this planning task and do not treat a merged main commit as proof that production was deployed.
+Verify the production deploy artifact and deployed SHA. The observed live stale bundle must be corrected before functional acceptance begins.
+Run an authenticated smoke with a requester and a different all-scope reviewer. Verify the approval request, decision, canonical void, audit event, and UI result.
+Enable the POS-only flag for the intended production surface/tenant. Keep reviewer authority unchanged and monitor 403, 409, decision-failure, and queue-refresh telemetry for the first release window.
+14.3 Rollback
+Preferred rollback is to disable the POS UI flag or redeploy the previous POS artifact. Pending approval rows remain safe and reviewable through the canonical API/Back Office when available; rollback must not delete requests, directly void transactions, or rewrite audit evidence. If a backend rollout gate or transport change was introduced, revert only that compatible change after confirming that existing pending requests remain readable and no committed approval is reversed.
+14.4 Removal criteria
+Dedicated Back Office #1354 approval workspace is deployed at the intended production host and passes live authenticated acceptance.
+The Back Office path can list, approve, reject, audit, and recover the same pos_void requests without depending on the temporary popup.
+Operations confirm that managers no longer need the POS reviewer surface, and the removal PR includes a migration/retention decision for no data because the canonical approval rows remain valid.
+The POS flag is disabled, the inline components and service wrappers are removed in a follow-up phase, and ADR 0086 is amended again to close the temporary exception.
+15. Acceptance criteria
+A cashier with pos:void can submit a reasoned void request from POS History and receives a pending approval popup. The transaction and inventory are unchanged while pending.
+An already authenticated all-scope high-risk reviewer can open the pending pos_void queue inside standalone POS and approve or reject without opening a Back Office route.
+The requester cannot approve or reject the same request, even if the browser is tampered with or the decision endpoint is called directly.
+Approval executes the existing canonical POS void use case exactly once, records the expected audit evidence, and returns an idempotent result on replay.
+Rejection leaves the transaction and stock unchanged and is visible as rejected in the popup/queue.
+The popup never treats a void as a refund and never triggers a tender-specific refund automatically.
+Unauthorized, assigned-scope, expired-session, stale-target, timeout, and offline states fail closed with actionable UI copy.
+The feature is visible only in the standalone POS surface and is disabled cleanly when the temporary flag is off.
+Desktop, tablet, and mobile POS browser evidence passes, including focus, Escape, busy, error, and no-overflow checks.
+Production evidence proves the deployed artifact contains this change and matches the intended release SHA; a stale bundle is a failed gate, not a pass.
+No schema migration, duplicate approval owner, new credential store, or IMS surface is introduced.
+16. Risks, assumptions, and explicit blockers
+Item
+Impact
+Resolution
+Production POS artifact is stale
+The new popup cannot be observed even if code is correct.
+Treat deployed asset/SHA verification as a hard Phase 353 gate and correct deployment through the release policy.
+Business Admin rollout gate may be disabled
+Existing approval endpoints may return BUSINESS_ADMIN_DASHBOARD_DISABLED.
+Perform an authenticated target-tenant check. Use existing allowlist/configuration or design a narrow approval-only gate; never remove all route protection.
+Same-terminal manager handoff is not fully specified
+Changing the active session could affect shift ownership and terminal state.
+First release supports an already authenticated reviewer and existing POS account-switch/takeover boundary only. Add a separate approved security design if a new in-popup login is required.
+Shared web-core fan-out
+A shared POS change can affect more than one app surface.
+Gate with VITE_APP_SURFACE === 'pos', run web-core contract tests, and verify IMS does not receive the new reviewer UI.
+Dirty worktree
+Unrelated registration, Android build, generated artifact, and other user changes are present.
+Do not stage, clean, reset, or overwrite them. Implementation must begin from a clean, accounted-for branch/worktree.
+Temporary feature becomes permanent
+A workaround can become a second long-term approval surface.
+Record #1354 removal criteria, owner, and a follow-up phase in the ADR/issue before enablement.
+
+17. Phase ledger position
+The authoritative ledger at docs/features/IMPLEMENTATION_PHASE_LEDGER.md ends with Phase 352, which remains in_progress. The previously discussed Phase 347 and Phase 348 references are historical or belong to another initiative; they must not be deleted or renumbered to make room for this work.
+Ledger field
+Phase 353 value
+Phase number
+353
+Initiative and release
+POS high-risk void approval continuity; temporary production Back Office gap
+Objective and scope
+Add an in-terminal POS popup and reviewer queue for pos_void while preserving the existing canonical approval lifecycle.
+Status
+planned; not approved or implemented
+Dependencies
+Phase 345 lifecycle foundation; ADR 0086; existing approval API and tenant reviewer policy; corrected POS production artifact.
+Acceptance evidence
+Backend authorization/lifecycle tests, POS unit/contract/E2E tests, responsive rendered evidence, production SHA/asset verification, and authenticated two-user approval proof.
+Completion date
+Not applicable until implementation and deployed QA pass.
+Relevant links
+ADR 0086; docs/features/backoffice.md; docs/api/specification.md; docs/database/schema.md; POS history hook/panel; business admin approval use cases.
+Next eligible phase
+354, only after Phase 353 acceptance gates pass. Re-check the authoritative ledger before reserving it.
+
+Because this task requested a plan only, it does not write the Phase 353 entry into the tracked ledger. The implementation handoff must add or reserve that entry without changing existing phase history.
+18. Consistency audit
+Architecture: The plan preserves routes/controllers/use cases/repositories/models and does not add a browser-side mutation owner.
+Security: The plan preserves HttpOnly cookie authority, CSRF, tenant scope, high-risk permission, self-review denial, no credential storage, and fail-closed errors.
+Data: The plan uses the existing approval row, payload integrity, idempotency, audit, and canonical POS/Inventory execution. No destructive data operation is proposed.
+Frontend boundaries: The plan targets standalone POS and shared web-core only where the POS terminal already consumes it; IMS is explicitly excluded and tested for non-regression.
+Production: The plan treats the observed stale live artifact as a hard rollout blocker and does not claim that main or a merged commit is deployed.
+Phase numbering: The plan uses the next authoritative number, Phase 353, and preserves all historical numbering.
+Documentation: The plan cites the authoritative architecture and governance docs, ADR 0086, API/database/testing docs, and current implementation paths. Reference-only Back Office documentation is used as context, not as a higher authority than the ADR or architecture docs.
+19. References consulted
+Reference
+Use in this plan
+Repository operating rules
+AGENTS.md  --  mandatory documentation lookup, architecture governance, continuous phase numbering, release and merge constraints.
+Architecture entry point
+docs/START_HERE.md  --  source precedence and required lookup order.
+Architecture boundary
+docs/architecture/ARCHITECTURE_BOUNDARIES.md  --  routes/controllers/use cases/repositories/models and validation commands.
+Architecture governance
+docs/architecture/ARCHITECTURE_GOVERNANCE.md  --  cross-boundary classification, ADR amendment policy, security/audit/release gates.
+Approval lifecycle
+docs/architecture/adr/0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md  --  authoritative void approval, ownership, self-review, atomicity, audit, and validation.
+Frontend split
+docs/architecture/adr/0071-frontend-split-into-three-apps.md  --  POS/shared web-core deployment boundary and interim POS administration direction.
+Session authority
+docs/architecture/adr/0026-browser-session-cookie-authority.md  --  HttpOnly cookies, CSRF, refresh, and credential storage rules.
+Terminal safety
+docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md  --  DGFY identity, shift-safe navigation, account switch, and POS authority.
+Back Office context
+docs/features/backoffice.md  --  POS as interim merchant back-office surface and existing approval workspace/API ownership.
+API contract
+docs/api/specification.md  --  approval list/decision and POS void/refund boundaries.
+Database contract
+docs/database/schema.md  --  approval request action types, immutable payload, and canonical handler ownership.
+Testing
+docs/testing/README.md  --  app layout, POS build/test surfaces, and rendered browser evidence requirements.
+Release
+docs/ops/RELEASE_CANDIDATE_POLICY.md  --  promotion flow, manual production dispatch, and deployed artifact accuracy.
+Current code
+apps/dgfy-api approval routes/use cases; packages/web-core POS history workflow/panel; apps/dgfy-pos Business Admin service/page and standalone POS entrypoint.
+
+Final recommendation
+Approve this plan for implementation only after confirming the production API gate and the manager session model. The implementation should be a small, reversible POS surface over the existing approval lifecycle, with Phase 353 as the next repository phase. It should not weaken approval, create a competing data model, or pretend that the stale production artifact is already fixed.

@@ -1,5 +1,6 @@
-import { AlertCircle, CheckCircle2, Loader2, MapPin, Monitor, Printer, Volume2 } from 'lucide-react';
+import { AlertCircle, BellRing, CheckCircle2, Loader2, MapPin, Monitor, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import OrderAlertSoundOptions from './OrderAlertSoundOptions.jsx';
 
 const displayValue = (value, fallback = 'Not set') => {
   const normalized = String(value ?? '').trim();
@@ -44,30 +45,84 @@ export function TerminalQueueScopeField({ queueLocationScopeId, locations = [], 
 export function TerminalSoundField({
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
+  onlineOrderSoundId = 'new_order',
+  downloadedOrderAlertSoundIds = [],
+  orderAlertSoundDownloadId = '',
+  previewingOrderAlertSoundId = '',
+  onSelectOrderAlertSound = () => {},
+  onDownloadOrderAlertSound = async () => false,
+  onImportOrderAlertSound = async () => false,
+  orderAlertSoundImporting = false,
+  onPreviewOrderAlertSound = async () => false,
   locked = false,
   loading = false
 }) {
   const enabled = onlineOrderSoundEnabled === true;
 
   return (
-    <div className="flex min-w-0 items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white px-3 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-[#1A4E8D]">
-          <Volume2 className="h-4 w-4" aria-hidden="true" />
-        </div>
+    <div className="min-w-0 space-y-3 rounded-xl border border-slate-100 bg-white px-3 py-3 sm:col-span-2">
+      <div className="flex min-w-0 items-center justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[13px] font-bold text-[#0F172A] sm:text-[14px]">Online order sound</p>
           <p className="mt-0.5 text-[11px] font-medium leading-4 text-[#64748B]">
-            Local device setting for this terminal. Mute or enable the APK chime for new online orders.
+            Local device setting for this terminal. New devices start muted; existing saved preferences stay unchanged.
           </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-label="Online order sound"
+          aria-checked={enabled}
+          onClick={() => setOnlineOrderSoundEnabled((current) => !current)}
+          disabled={locked || loading}
+          className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span className={`pointer-events-none absolute inline-flex h-6 w-11 items-center rounded-full border-2 border-transparent px-0.5 transition-colors motion-reduce:transition-none ${enabled ? 'bg-[#1A4E8D]' : 'bg-slate-200'}`}>
+            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          </span>
+        </button>
+      </div>
+      <OrderAlertSoundOptions
+        soundId={onlineOrderSoundId}
+        downloadedSoundIds={downloadedOrderAlertSoundIds}
+        downloadId={orderAlertSoundDownloadId}
+        previewingSoundId={previewingOrderAlertSoundId}
+        onSoundSelect={onSelectOrderAlertSound}
+        onDownload={onDownloadOrderAlertSound}
+        onImport={onImportOrderAlertSound}
+        importing={orderAlertSoundImporting}
+        onPreview={onPreviewOrderAlertSound}
+        disabled={locked || loading}
+        titleId="terminal-order-alert-sound-options-title"
+      />
+    </div>
+  );
+}
+
+export function TerminalIncomingOrderPopupField({
+  incomingOrderPopupEnabled = true,
+  setIncomingOrderPopupEnabled = () => {},
+  locked = false,
+  loading = false
+}) {
+  const enabled = incomingOrderPopupEnabled === true;
+
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white px-3 py-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-[#1A4E8D]">
+          <BellRing className="h-4 w-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[13px] font-bold text-[#0F172A] sm:text-[14px]">Incoming order popup</p>
         </div>
       </div>
       <button
         type="button"
         role="switch"
-        aria-label="Online order sound"
+        aria-label="Incoming order popup"
         aria-checked={enabled}
-        onClick={() => setOnlineOrderSoundEnabled((current) => !current)}
+        onClick={() => setIncomingOrderPopupEnabled((current) => !current)}
         disabled={locked || loading}
         className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:opacity-60"
       >
@@ -174,6 +229,17 @@ export default function TerminalLocalControlsSection({
   locations,
   onlineOrderSoundEnabled,
   setOnlineOrderSoundEnabled,
+  onlineOrderSoundId = 'new_order',
+  downloadedOrderAlertSoundIds = [],
+  orderAlertSoundDownloadId = '',
+  previewingOrderAlertSoundId = '',
+  onSelectOrderAlertSound = () => {},
+  onDownloadOrderAlertSound = async () => false,
+  onImportOrderAlertSound = async () => false,
+  orderAlertSoundImporting = false,
+  onPreviewOrderAlertSound = async () => false,
+  incomingOrderPopupEnabled = true,
+  setIncomingOrderPopupEnabled = () => {},
   locked,
   loading,
   terminalIdOptions,
@@ -225,6 +291,21 @@ export default function TerminalLocalControlsSection({
         <TerminalSoundField
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          onlineOrderSoundId={onlineOrderSoundId}
+          downloadedOrderAlertSoundIds={downloadedOrderAlertSoundIds}
+          orderAlertSoundDownloadId={orderAlertSoundDownloadId}
+          previewingOrderAlertSoundId={previewingOrderAlertSoundId}
+          onSelectOrderAlertSound={onSelectOrderAlertSound}
+          onDownloadOrderAlertSound={onDownloadOrderAlertSound}
+          onImportOrderAlertSound={onImportOrderAlertSound}
+          orderAlertSoundImporting={orderAlertSoundImporting}
+          onPreviewOrderAlertSound={onPreviewOrderAlertSound}
+          locked={locked}
+          loading={loading}
+        />
+        <TerminalIncomingOrderPopupField
+          incomingOrderPopupEnabled={incomingOrderPopupEnabled}
+          setIncomingOrderPopupEnabled={setIncomingOrderPopupEnabled}
           locked={locked}
           loading={loading}
         />

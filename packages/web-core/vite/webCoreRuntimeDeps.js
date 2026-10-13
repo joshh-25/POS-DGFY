@@ -27,6 +27,7 @@ export const WEB_CORE_RUNTIME_DEPS = [
   'date-fns',
   'fuse.js',
   'katex',
+  '@breezystack/lamejs',
   'lucide-react',
   'maplibre-gl',
   'posthog-js',

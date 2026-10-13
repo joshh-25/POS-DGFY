@@ -267,6 +267,8 @@ const AGGREGATE_COMPARE = Object.freeze({
 });
 
 const isAggregatePromotionPr = () => {
+  if (isLocalStagedMerge) return true;
+
   const baseRef = String(process.env.GITHUB_BASE_REF || '').trim();
   const headRef = String(process.env.GITHUB_HEAD_REF || '').trim();
   if (!baseRef || !headRef) return false;
@@ -319,6 +321,14 @@ const runCommand = (command, { allowFail = false } = {}) => {
     throw error;
   }
 };
+
+// A local merge stages the full diff from the merged branch, including declarations that were
+// already validated when their originating changes landed. Keep validating declaration structure
+// and preflight metadata, but do not recompute each historical declaration against the combined
+// surface set of the merge. CI promotion merges use the explicit base/head allowlist above.
+const isLocalStagedMerge = useStaged && Boolean(
+  runCommand('git rev-parse -q --verify MERGE_HEAD', { allowFail: true })
+);
 
 const splitLines = (raw) => (
   String(raw || '')
@@ -551,10 +561,12 @@ const validateDeclarationFile = (filePath) => {
   }
 
   if (isAggregatePromotionPr()) {
+    const validationContext = isLocalStagedMerge
+      ? 'local merge staged for a merge commit; originating declarations retain their prior classification/surface evidence'
+      : `aggregate promotion ${process.env.GITHUB_HEAD_REF} -> ${process.env.GITHUB_BASE_REF}; already validated against its own originating PR`;
     console.log(
       `[check:compliance] Skipping bundled classification/surface re-check for ${filePath} `
-      + `(aggregate promotion ${process.env.GITHUB_HEAD_REF} -> ${process.env.GITHUB_BASE_REF}; `
-      + 'already validated against its own originating PR).'
+      + `(${validationContext}).`
     );
   } else {
     const minimumClassification = inferMinimumClassificationFromSensitiveFiles(sensitiveFiles);
@@ -631,7 +643,21 @@ if (sensitiveFiles.length === 0) {
 }
 
 const declarationFiles = changedFiles.filter(isDeclarationFile);
-if (declarationFiles.length === 0) {
+const existingDeclarationFiles = declarationFiles.filter((filePath) => (
+  fs.existsSync(path.join(REPO_ROOT, filePath))
+));
+const deletedDeclarationFiles = declarationFiles.filter((filePath) => (
+  !fs.existsSync(path.join(REPO_ROOT, filePath))
+));
+
+if (deletedDeclarationFiles.length > 0) {
+  console.warn(
+    '[check:compliance] Deleted declaration files are excluded from validation: '
+    + deletedDeclarationFiles.join(', ')
+  );
+}
+
+if (existingDeclarationFiles.length === 0) {
   console.error('[check:compliance] Compliance-sensitive files changed without a declaration file.');
   console.error('[check:compliance] Sensitive files:');
   sensitiveFiles.forEach((file) => console.error(`  - ${file}`));
@@ -639,14 +665,14 @@ if (declarationFiles.length === 0) {
   process.exit(1);
 }
 
-const aggregateDeclarationFiles = declarationFiles.filter((filePath) => {
+const aggregateDeclarationFiles = existingDeclarationFiles.filter((filePath) => {
   const frontMatter = parseFrontMatter(fs.readFileSync(path.join(REPO_ROOT, filePath), 'utf8'));
   return frontMatter
     && frontMatter.declaration_id === AGGREGATE_COMPARE.declarationId
     && frontMatter.aggregate_scope === 'pr-2054-develop-compare';
 });
 const useAggregateDeclaration = isPr2054AggregateCompare() && aggregateDeclarationFiles.length === 1;
-const declarationsToValidate = useAggregateDeclaration ? aggregateDeclarationFiles : declarationFiles;
+const declarationsToValidate = useAggregateDeclaration ? aggregateDeclarationFiles : existingDeclarationFiles;
 
 if (useAggregateDeclaration) {
   console.log(

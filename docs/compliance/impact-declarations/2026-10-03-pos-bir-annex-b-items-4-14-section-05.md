@@ -1,10 +1,10 @@
 ---
 status: draft_pr
 owner: DGFY Platform
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-10
 declaration_id: 2026-10-03-pos-bir-annex-b-items-4-14-section-05
 classification: regulatory
-surfaces: pos,terminal,compliance,settings
+surfaces: pos,terminal,compliance,settings,payments
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,AUTHORIZATION_FAILED,INTERNAL_ERROR
 policy_version: 2026.10.03
 verification_evidence: apps/dgfy-api/tests/eJournalReadiness.unit.test.js -- 5 passing,apps/dgfy-api/tests/businessAdminEvidence.usecase.test.js -- 4 passing,apps/dgfy-api/tests/businessAdminEvidence.transport.test.js -- 1 passing,npm run check:architecture:dgfy-api -- passed,npm --prefix apps/dgfy-pos run build -- passed,npm run check:annex-b-section-05 -- passed,npm run test:annex-b-section-05 -- passed
@@ -62,3 +62,13 @@ tax-practitioner, or external grammar approval.
 - Every catalog view, successful export, failed source read, serializer failure,
   and bounds rejection has an AuditLog event where the audit repository is
   available.
+
+## Amendment — 2026-10-10 — Runtime report and schema readiness checks
+
+- Change: Runtime schema readiness now requires the Annex B evidence migration, the Z-reading
+  snapshot payload hash column, and the controlled adjustment-type enum values. POS report rows no
+  longer expose cost-of-goods or profit/loss fields from the transaction summary.
+- Security boundary: This remains a read/readiness contract; no fiscal transaction, payment,
+  historical snapshot, or database row is mutated by the audit or report mapper.
+- Validation: Runtime schema audit and e-journal readiness tests, POS report contract tests, and
+  the repository compliance/whitespace checks.

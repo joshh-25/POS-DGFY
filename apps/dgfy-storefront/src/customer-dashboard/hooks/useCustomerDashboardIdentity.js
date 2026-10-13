@@ -80,6 +80,11 @@ export function useCustomerDashboardIdentity({
     dgfySessionAccount?.name
   ]);
 
+  const accountIdentityRawUsername = useMemo(
+    () => String(accountPanel?.me?.username || dgfySessionAccount?.username || '').trim(),
+    [accountPanel?.me?.username, dgfySessionAccount?.username]
+  );
+
   const accountIdentityRawPhone = useMemo(
     () => String(accountPanel?.me?.phone || dgfySessionAccount?.phone || '').trim(),
     [accountPanel?.me?.phone, dgfySessionAccount?.phone]
@@ -128,6 +133,7 @@ export function useCustomerDashboardIdentity({
   return useMemo(() => ({
     accountDisplayName,
     accountIdentityRawName,
+    accountIdentityRawUsername,
     accountIdentityRawPhone,
     accountIdentityRawEmail,
     accountIdentityName: accountDisplayName,
@@ -139,6 +145,7 @@ export function useCustomerDashboardIdentity({
     accountIdentityInitials,
     accountIdentityRawEmail,
     accountIdentityRawName,
+    accountIdentityRawUsername,
     accountIdentityRawPhone
   ]);
 }
