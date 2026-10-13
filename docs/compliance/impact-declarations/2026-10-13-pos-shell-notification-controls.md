@@ -11,8 +11,8 @@ verification_evidence: POS notification and text-size control contract tests pas
 rollback_note: Revert the POS notification and text-size control presentation changes and this declaration; no notification, authorization, or persisted-data behavior rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-13T08:54:30Z
-preflight_request_ref: NOT-EXECUTED-2026-10-13-POS-SHELL-NOTIFICATION-CONTROLS
+preflight_run_at: 2026-10-13T10:22:30.479Z
+preflight_request_ref: PREFLIGHT-38382156508-2026-10-13-POS-SHELL-NOTIFICATION-CONTROLS
 ---
 
 # POS Shell Notification and Text Controls
