@@ -39,6 +39,12 @@ for f in "$AGE_KEY_FILE" "$CIPHERTEXT_CACHE"; do
 done
 [ -x "$SOPS_BIN" ] || SOPS_BIN="sops"
 [ -d "$SECRETS_DIR" ] || { echo "Missing $SECRETS_DIR -- create it first (see README.md)" >&2; exit 1; }
+# The 644 file permissions below rely entirely on this directory staying
+# 0700 -- enforce it here rather than trusting whatever umask created it
+# (a plain `mkdir -p` under the default 022 umask would leave it 0755,
+# silently widening every secret file to world-readable at the directory
+# level too -- PR #2453 review, RF-1).
+chmod 700 "$SECRETS_DIR"
 
 export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 

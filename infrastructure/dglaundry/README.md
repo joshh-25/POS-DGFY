@@ -131,11 +131,15 @@ does that, end to end, via `remote-deploy-stage.sh`:
 #   create or widen them itself) and never creates them; docker-compose.proxy.yml's own comment
 #   already called this out as "must be created by the deployment owner" but nothing had done it
 #   (caught live on the first real dispatch, #2387). Names come from stage.env's
-#   DGLAUNDRY_EDGE_NETWORK / DGLAUNDRY_EGRESS_NETWORK -- read the actual values from that file
-#   rather than assuming the compose file's bare defaults, since stage.env overrides the egress
-#   one:
-#     docker network create "$(grep -m1 '^DGLAUNDRY_EDGE_NETWORK=' stage.env | cut -d= -f2)"
-#     docker network create "$(grep -m1 '^DGLAUNDRY_EGRESS_NETWORK=' stage.env | cut -d= -f2)"
+#   DGLAUNDRY_EDGE_NETWORK / DGLAUNDRY_EGRESS_NETWORK -- stage.env itself doesn't exist on the
+#   host until deploy-dglaundry.yml's own "Copy release artifacts" step runs (so `grep ...
+#   stage.env` fails here, pre-dispatch, with nothing to read yet -- PR #2453 review, RF-2), so
+#   read the current values from THIS repo's own copy (infrastructure/dglaundry/stage.env)
+#   before running this on the host. As of this writing that's:
+#     docker network create dgfy-dglaundry-edge
+#     docker network create dglaundry-stage-egress
+#   If stage.env's DGLAUNDRY_EDGE_NETWORK/DGLAUNDRY_EGRESS_NETWORK values are ever rotated,
+#   update the two names above to match, in the same commit as that rotation.
 
 gh workflow run deploy-dglaundry.yml -f confirm=true
 ```
