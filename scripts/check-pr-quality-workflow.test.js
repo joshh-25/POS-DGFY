@@ -116,6 +116,25 @@ test('quality job failure evidence remains wired from every step through the rep
   assert.ok(checkQualityJobFailureWiring(withoutOutcome).some((problem) => problem.includes('dgfy-api-quality does not report step run_api_lint')));
 });
 
+test('POS sales E2E writes and uploads staged JSON, HTML, and SHA-bound run evidence', () => {
+  const job = realWorkflow.split('\n  pos-sales-e2e-quality:\n')[1].split('\n  frontend-budgets-quality:\n')[0];
+  const playwrightConfig = read('apps/dgfy-pos/playwright.config.js');
+
+  assert.ok(job, 'pos-sales-e2e-quality job must exist');
+  assert.match(playwrightConfig, /\['html', \{ outputFolder: 'playwright-report', open: 'never' \}\]/);
+  assert.match(playwrightConfig, /if \(process\.env\.PLAYWRIGHT_JSON_OUTPUT_FILE\) reporters\.push\(\['json'\]\)/);
+  assert.match(job, /PLAYWRIGHT_JSON_OUTPUT_FILE: test-results\/pos-sales-results\.json/);
+  assert.match(job, /echo "exit_status=\$status" >> "\$GITHUB_OUTPUT"/);
+  assert.match(job, /stage_dir="\$RUNNER_TEMP\/pos-sales-evidence"/);
+  assert.match(job, /sha: process\.env\.POS_SALES_EVIDENCE_SHA/);
+  assert.match(job, /run_outcome: process\.env\.POS_SALES_RUN_OUTCOME/);
+  assert.match(job, /exit_status: exitStatus/);
+  assert.match(job, /test-results\/pos-sales-results\.json/);
+  assert.match(job, /run outcome=\$\{POS_SALES_RUN_OUTCOME:-unknown\}, exit status=\$\{POS_SALES_EXIT_STATUS:-unknown\}/);
+  assert.match(job, /path: \$\{\{ runner\.temp \}\}\/pos-sales-evidence/);
+  assert.doesNotMatch(job, /path: apps\/dgfy-pos\/test-results/);
+});
+
 test('repository promotion quality contract remains internally consistent', () => {
   assert.deepEqual(checkPrQualityWorkflow({
     prChecksText: read('.github/workflows/pr-checks.yml'),
