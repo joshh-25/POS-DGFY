@@ -32,7 +32,7 @@ describe('POS mobile focus zoom contracts', () => {
     const css = readSource('src/index.css');
     const scanner = readSource('src/features/pos/components/POSBarcodeScanner.jsx');
     const skupervisorScanner = readSource('src/features/pos/components/SkupervisorPOSBarcodeScanner.jsx');
-    const posItems = readSource('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const posItems = readSource('src/features/pos/components/PosItemsWorkspace.jsx');
     const sharedItemModal = readSource('Components/items/ItemFormModal.jsx');
 
     expect(css).toContain('@supports (-webkit-touch-callout: none)');

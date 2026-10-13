@@ -17,6 +17,14 @@ const terminalOperationsSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx'),
   'utf8'
 );
+const posItemsWorkspaceSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/components/PosItemsWorkspace.jsx'),
+  'utf8'
+);
+const posItemsCatalogWorkspaceSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/components/PosItemsCatalogWorkspace.jsx'),
+  'utf8'
+);
 const checkoutViewSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
   'utf8'
@@ -95,8 +103,8 @@ describe('iMin POS performance profile contract', () => {
   });
 
   it('commits both operations panes immediately on iMin while retaining browser transitions', () => {
-    const tabChangeBodies = [...terminalOperationsSource.matchAll(
-      /const handleTabChange = useCallback\(\(nextTab\) => \{([\s\S]*?)\n\x20{2}\}, \[activeTab, clearAnimationTimers, isIminRuntime\]\);/g
+    const tabChangeBodies = [...`${terminalOperationsSource}\n${posItemsCatalogWorkspaceSource}`.matchAll(
+      /const handleTabChange = useCallback\(\(nextTab\) => \{([\s\S]*?)\n\x20{2}\}, \[[^\]]*\]\);/g
     )].map((match) => match[1]);
 
     expect(tabChangeBodies).toHaveLength(2);
@@ -109,7 +117,7 @@ describe('iMin POS performance profile contract', () => {
       expect(browserBranchStart).toBeGreaterThan(iminBranchStart);
       expect(body.slice(iminBranchStart, browserBranchStart)).not.toContain('window.setTimeout');
     });
-    expect(terminalOperationsSource).toContain('isIminWrapperRuntime, posToast as toast');
+    expect(posItemsWorkspaceSource).toContain("import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';");
   });
 
   it('keeps POS item cards readable when disabled and removes locked-surface filter cost on iMin', () => {
@@ -138,14 +146,14 @@ describe('iMin POS performance profile contract', () => {
       'PosServiceCatalogCreateModal',
       'PosServiceCatalogEditModal'
     ].forEach((componentName) => {
-      expect(terminalOperationsSource).toContain(`const ${componentName} = lazyWithChunkRetry`);
+      expect(posItemsWorkspaceSource).toContain(`const ${componentName} = lazyWithChunkRetry`);
     });
-    expect(terminalOperationsSource).not.toContain("import PosItemImageViewer from './PosItemImageViewer.jsx';");
-    expect(terminalOperationsSource).not.toContain("import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';");
-    expect(terminalOperationsSource).not.toContain("import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';");
-    expect(terminalOperationsSource).toContain('{showCreateServiceModal ? (');
-    expect(terminalOperationsSource).toContain('{editingServiceItem ? (');
-    expect(terminalOperationsSource).toContain('{itemImagePreview ? (');
+    expect(posItemsWorkspaceSource).not.toContain("import PosItemImageViewer from './PosItemImageViewer.jsx';");
+    expect(posItemsWorkspaceSource).not.toContain("import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';");
+    expect(posItemsWorkspaceSource).not.toContain("import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';");
+    expect(posItemsWorkspaceSource).toContain('{showCreateServiceModal ? (');
+    expect(posItemsWorkspaceSource).toContain('{editingServiceItem ? (');
+    expect(posItemsWorkspaceSource).toContain('{itemImagePreview ? (');
   });
 
   it('defers the large operations workspace on iMin and prefetches the selected view on intent', () => {
@@ -166,7 +174,10 @@ describe('iMin POS performance profile contract', () => {
       'VoucherManagementPanel',
       'PricelistManagementPanel'
     ].forEach((componentName) => {
-      expect(terminalOperationsSource).toContain(`const ${componentName} = lazyWithChunkRetry`);
+      const source = ['PosFnbModifiersWorkspace', 'PosServiceOptionsWorkspace'].includes(componentName)
+        ? posItemsCatalogWorkspaceSource
+        : terminalOperationsSource;
+      expect(source).toContain(`const ${componentName} = lazyWithChunkRetry`);
     });
     // The remaining optional settings panels are owned (and deferred) by the
     // settings boundary, not the operations workspace: each renders behind a
@@ -197,8 +208,8 @@ describe('iMin POS performance profile contract', () => {
       expect(source).not.toContain('from ./TerminalStorefrontStatusCard.jsx');
     });
     expect(terminalOperationsSource).toContain('<Suspense fallback={null}>');
-    expect(terminalOperationsSource).toContain('showCsvImport && canImportItems');
-    expect(terminalOperationsSource).toContain('externalQrScannerOpen ? (');
+    expect(posItemsWorkspaceSource).toContain('showCsvImport && canImportItems');
+    expect(posItemsWorkspaceSource).toContain('externalQrScannerOpen ? (');
   });
 
   it('defers the incoming order queue and warms it on Orders intent', () => {

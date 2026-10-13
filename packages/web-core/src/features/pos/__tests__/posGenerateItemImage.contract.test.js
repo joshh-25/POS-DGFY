@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const workspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
 
 describe('POS edit-item "Generate Image (AI)" entry point', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');

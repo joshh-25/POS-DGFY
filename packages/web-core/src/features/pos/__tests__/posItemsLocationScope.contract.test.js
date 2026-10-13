@@ -10,7 +10,7 @@ const readComponent = (fileName) => fs.readFileSync(path.join(componentsDirector
 
 describe('POS Items location-scoped catalog contract', () => {
   it('does not fall back to the tenant-wide inventory endpoint', () => {
-    const itemsWorkspace = readComponent('TerminalOperationsWorkspace.jsx');
+    const itemsWorkspace = readComponent('PosItemsWorkspace.jsx');
     const optionsWorkspace = readComponent('PosFnbModifiersWorkspace.jsx');
 
     expect(itemsWorkspace).not.toContain('getItems({ limit: 1000 })');
@@ -20,7 +20,7 @@ describe('POS Items location-scoped catalog contract', () => {
   });
 
   it('requires an authorized location for both catalog surfaces', () => {
-    const itemsWorkspace = readComponent('TerminalOperationsWorkspace.jsx');
+    const itemsWorkspace = readComponent('PosItemsWorkspace.jsx');
     const optionsWorkspace = readComponent('PosFnbModifiersWorkspace.jsx');
 
     expect(itemsWorkspace).toContain('fetchPosCatalogPage({');
@@ -35,7 +35,8 @@ describe('POS Items location-scoped catalog contract', () => {
     const locationsStateStart = terminalPage.indexOf('const [locationsState, setLocationsState] = useState({');
     const locationsStateEnd = terminalPage.indexOf('});', locationsStateStart);
     const initialLocationsState = terminalPage.slice(locationsStateStart, locationsStateEnd);
-    const itemsWorkspace = readComponent('TerminalOperationsWorkspace.jsx');
+    const itemsWorkspace = readComponent('PosItemsWorkspace.jsx');
+    const terminalWorkspace = readComponent('TerminalOperationsWorkspace.jsx');
 
     expect(locationsStateStart).toBeGreaterThan(-1);
     expect(initialLocationsState).toContain('loading: false');
@@ -43,7 +44,7 @@ describe('POS Items location-scoped catalog contract', () => {
     expect(terminalPage).toContain('const [itemsLocationScopeLoading, setItemsLocationScopeLoading] = useState(true);');
     expect(terminalPage).toContain('setItemsLocationScopeLoading(false);');
     expect(terminalPage).toContain('itemsLocationScopeLoading={itemsLocationScopeLoading}');
-    expect(itemsWorkspace).toContain('itemsLocationScopeLoading = false');
-    expect(itemsWorkspace).toContain('locationsLoading={(locationsState?.loading === true) || itemsLocationScopeLoading}');
+    expect(terminalWorkspace).toContain('itemsLocationScopeLoading = false');
+    expect(terminalWorkspace).toContain('locationsLoading={(locationsState?.loading === true) || itemsLocationScopeLoading}');
   });
 });

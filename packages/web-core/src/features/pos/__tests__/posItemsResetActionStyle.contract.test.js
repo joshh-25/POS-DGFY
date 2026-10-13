@@ -10,7 +10,7 @@ const stylesheetPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS > Items Reset All styling', () => {
   it('uses the reference default and hover colors for every Reset All action in Items', () => {
-    const terminalWorkspace = fs.readFileSync(path.join(workspaceDir, 'TerminalOperationsWorkspace.jsx'), 'utf8');
+    const terminalWorkspace = fs.readFileSync(path.join(workspaceDir, 'PosItemsWorkspace.jsx'), 'utf8');
     const optionGroupManager = fs.readFileSync(path.join(workspaceDir, 'PosFnbModifierManager.jsx'), 'utf8');
     const optionsWorkspace = fs.readFileSync(path.join(workspaceDir, 'PosFnbModifiersWorkspace.jsx'), 'utf8');
     const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
