@@ -90,6 +90,8 @@ test('the action forwards the sanitized S3 failure reason to its output and reco
   const { actionText } = sourceInputs();
   assert.match(actionText, /failure_reason:\n\s+description: Sanitized S3 failure classification when fallback fails\.\n\s+value: \$\{\{ steps\.s3_fallback\.outputs\.failure_reason \}\}/);
   assert.match(actionText, /S3_FAILURE_REASON: \$\{\{ steps\.s3_fallback\.outputs\.failure_reason \}\}/);
+  assert.match(actionText, /diagnose-readback-failure:\n\s+description: Run safe S3 GetObject comparisons when direct readback fails\.\n\s+required: false\n\s+default: 'false'/);
+  assert.match(actionText, /S3_DIAGNOSE_READBACK_FAILURE: \$\{\{ inputs\.diagnose-readback-failure \}\}/);
 });
 
 test('S3 fallback is conditional on GitHub artifact failure and not primary success', () => {
@@ -222,6 +224,14 @@ test('S3 uploader reports the AWS CLI exit code for a failed direct readback', (
     '  echo "aws-cli/2.0.0 Python/3.0"',
     '  exit 0',
     'fi',
+    'if [[ "${1:-}" == "s3api" && "${2:-}" == "get-object" ]]; then',
+    '  echo "An error occurred (SignatureDoesNotMatch) when calling the GetObject operation" >&2',
+    '  exit 24',
+    'fi',
+    'if [[ "${1:-}" == "s3" && "${2:-}" == "presign" ]]; then',
+    '  echo "https://s3.example.invalid/object?X-Amz-Signature=fake-bearer-token"',
+    '  exit 0',
+    'fi',
     'if [[ "${1:-}" == "s3" && "${2:-}" == "cp" && "${3:-}" == s3://* ]]; then',
     '  echo "An error occurred (SignatureDoesNotMatch) when calling the GetObject operation" >&2',
     '  exit 23',
@@ -230,11 +240,23 @@ test('S3 uploader reports the AWS CLI exit code for a failed direct readback', (
     '',
   ].join('\n'), { mode: 0o755 });
   fs.writeFileSync(path.join(fakeBin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(fakeBin, 'curl'), [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'output_path=""',
+    'while (($#)); do',
+    '  if [[ "$1" == "--output" ]]; then output_path="$2"; shift 2; else shift; fi',
+    'done',
+    'printf evidence > "$output_path"',
+    'printf 200',
+    '',
+  ].join('\n'), { mode: 0o755 });
 
   const sourcePath = path.join(temporaryRoot, 'evidence.json');
   const outputPath = path.join(temporaryRoot, 'outputs', 'github-output.txt');
+  const summaryPath = path.join(temporaryRoot, 'summary.md');
   fs.mkdirSync(path.dirname(outputPath));
-  fs.writeFileSync(sourcePath, '{"evidence":true}\n');
+  fs.writeFileSync(sourcePath, 'evidence');
 
   try {
     const result = spawnSync('bash', [path.join(ROOT, 'scripts/ci-s3-upload.sh'), sourcePath, 'evidence'], {
@@ -248,6 +270,7 @@ test('S3 uploader reports the AWS CLI exit code for a failed direct readback', (
         ARTIFACT_S3_ACCESS_KEY_ID: 'fake-access-key',
         AWS_SECRET_ACCESS_KEY: 'fake-secret',
         GITHUB_OUTPUT: outputPath,
+        GITHUB_STEP_SUMMARY: summaryPath,
         RUNNER_TEMP: runnerTemp,
         GITHUB_REPOSITORY: 'Sieitzz/dgfy-platform',
         GITHUB_WORKFLOW: 'Readback failure test',
@@ -255,12 +278,24 @@ test('S3 uploader reports the AWS CLI exit code for a failed direct readback', (
         GITHUB_RUN_ATTEMPT: '1',
         GITHUB_JOB: 's3-readback-test',
         SOURCE_COMMIT_SHA: '0123456789abcdef0123456789abcdef01234567',
+        S3_DIAGNOSE_READBACK_FAILURE: 'true',
       },
     });
 
     assert.equal(result.status, 1, result.stderr);
+    const logs = `${result.stdout}\n${result.stderr}`;
     assert.match(result.stderr, /S3 direct readback failed \(S3 service error SignatureDoesNotMatch; AWS CLI exit code 23\)/);
+    assert.match(logs, /AWS CLI version: aws-cli\/2\.0\.0/);
+    assert.match(logs, /s3api GetObject: failed \(S3 service error SignatureDoesNotMatch; exit code 24\)/);
+    assert.match(logs, /Presigned GET: verified \(HTTP 200\); SHA-256/);
+    assert.doesNotMatch(logs, /fake-bearer-token/);
     assert.match(fs.readFileSync(outputPath, 'utf8'), /failure_reason=S3 service error SignatureDoesNotMatch/);
+    assert.doesNotMatch(fs.readFileSync(outputPath, 'utf8'), /fake-bearer-token/);
+    assert.match(fs.readFileSync(summaryPath, 'utf8'), /S3 readback diagnostics/);
+    assert.match(fs.readFileSync(summaryPath, 'utf8'), /`s3api GetObject`: failed \(S3 service error SignatureDoesNotMatch; exit code 24\)/);
+    assert.match(fs.readFileSync(summaryPath, 'utf8'), /Presigned GET: verified \(HTTP 200\); SHA-256/);
+    assert.match(fs.readFileSync(summaryPath, 'utf8'), /Presigned URL omitted/);
+    assert.doesNotMatch(fs.readFileSync(summaryPath, 'utf8'), /fake-bearer-token/);
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }

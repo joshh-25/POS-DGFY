@@ -29,6 +29,10 @@ inputs:
   s3-secret-access-key:
     description: S3 credential from a repository secret.
     required: true
+  diagnose-readback-failure:
+    description: Run safe S3 GetObject comparisons when direct readback fails.
+    required: false
+    default: 'false'
 outputs:
   storage_status:
     description: github, s3-fallback, failed, or missing.
@@ -111,6 +115,7 @@ runs:
         SOURCE_COMMIT_SHA: ${{ inputs.source-sha }}
         EVIDENCE_PATH: ${{ inputs.path }}
         S3_ARTIFACT_NAME: ${{ inputs.name }}
+        S3_DIAGNOSE_READBACK_FAILURE: ${{ inputs.diagnose-readback-failure }}
       run: bash scripts/ci-s3-upload.sh "$EVIDENCE_PATH" "$S3_ARTIFACT_NAME"
 
     - name: Record evidence storage result

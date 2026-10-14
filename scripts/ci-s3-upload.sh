@@ -55,6 +55,98 @@ write_output() {
   printf '%s=%s\n' "$name" "$value" >> "$GITHUB_OUTPUT"
 }
 
+run_s3_readback_diagnostics() {
+  local cli_version
+  local s3api_status='failed'
+  local s3api_exit_code=''
+  local s3api_failure_reason=''
+  local s3api_sha256=''
+  local presigned_status='presign_failed'
+  local presigned_http_status='000'
+  local presigned_failure_reason=''
+  local presigned_sha256=''
+  local presigned_url=''
+  local curl_exit_code=0
+
+  cli_version="$("$aws_bin" --version 2>&1 | head -n1 | tr -d '\r')"
+  cli_version="${cli_version%% *}"
+  if [[ ! "$cli_version" =~ ^aws-cli/[0-9]+(\.[0-9]+)*$ ]]; then
+    cli_version='unavailable'
+  fi
+
+  if "$aws_bin" s3api get-object \
+    --bucket "$ARTIFACT_S3_BUCKET" --key "$object_key" "$tmp_dir/s3api-readback" \
+    --endpoint-url "$endpoint_url" --cli-connect-timeout 15 --cli-read-timeout 60 \
+    >"$tmp_dir/s3api-readback.log" 2>&1; then
+    if [[ -f "$tmp_dir/s3api-readback" ]]; then
+      s3api_sha256="$(sha256sum "$tmp_dir/s3api-readback" | cut -d ' ' -f1)"
+      if [[ "$s3api_sha256" == "$source_sha256" ]]; then
+        s3api_status='verified'
+      else
+        s3api_status='checksum_mismatch'
+      fi
+    else
+      s3api_status='missing_output'
+    fi
+  else
+    s3api_exit_code=$?
+    s3api_failure_reason="$(aws_failure_reason "$tmp_dir/s3api-readback.log")"
+  fi
+
+  if presigned_url="$("$aws_bin" s3 presign "$object_uri" --endpoint-url "$endpoint_url" --expires-in 300 2>"$tmp_dir/diagnostic-presign.log")" && [[ -n "$presigned_url" ]]; then
+    presigned_status='request_failed'
+    if presigned_http_status="$(curl --connect-timeout 15 --max-time 60 --silent --show-error \
+      --output "$tmp_dir/presigned-readback-diagnostic" --write-out '%{http_code}' \
+      "$presigned_url" 2>"$tmp_dir/presigned-curl.log")"; then
+      if [[ "$presigned_http_status" == '200' && -f "$tmp_dir/presigned-readback-diagnostic" ]]; then
+        presigned_sha256="$(sha256sum "$tmp_dir/presigned-readback-diagnostic" | cut -d ' ' -f1)"
+        if [[ "$presigned_sha256" == "$source_sha256" ]]; then
+          presigned_status='verified'
+        else
+          presigned_status='checksum_mismatch'
+        fi
+      else
+        if [[ "$presigned_http_status" == '200' ]]; then
+          presigned_status='missing_output'
+        else
+          presigned_status='http_failure'
+        fi
+      fi
+    else
+      curl_exit_code=$?
+      presigned_http_status='000'
+      presigned_failure_reason="curl request failed (exit code $curl_exit_code)"
+    fi
+  else
+    presigned_status='presign_failed'
+    presigned_failure_reason="$(aws_failure_reason "$tmp_dir/diagnostic-presign.log")"
+  fi
+
+  echo "::group::S3 readback diagnostics"
+  echo "AWS CLI version: $cli_version"
+  echo "s3api GetObject: $s3api_status${s3api_failure_reason:+ ($s3api_failure_reason; exit code $s3api_exit_code)}${s3api_sha256:+; SHA-256 $s3api_sha256}"
+  echo "Presigned GET: $presigned_status (HTTP $presigned_http_status)${presigned_failure_reason:+; $presigned_failure_reason}${presigned_sha256:+; SHA-256 $presigned_sha256}"
+  echo "::endgroup::"
+
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    local s3api_details="$s3api_status"
+    local presigned_details="$presigned_status (HTTP $presigned_http_status)"
+    [[ -z "$s3api_failure_reason" ]] || s3api_details+=" ($s3api_failure_reason; exit code $s3api_exit_code)"
+    [[ -z "$s3api_sha256" ]] || s3api_details+="; SHA-256 $s3api_sha256"
+    [[ -z "$presigned_failure_reason" ]] || presigned_details+="; $presigned_failure_reason"
+    [[ -z "$presigned_sha256" ]] || presigned_details+="; SHA-256 $presigned_sha256"
+    if ! {
+      printf '\n### S3 readback diagnostics\n\n'
+      printf -- '- AWS CLI version: `%s`.\n' "$cli_version"
+      printf -- '- `s3api GetObject`: %s.\n' "$s3api_details"
+      printf -- '- Presigned GET: %s.\n' "$presigned_details"
+      printf -- '- Presigned URL omitted.\n'
+    } >>"$GITHUB_STEP_SUMMARY"; then
+      echo "::warning::Could not append S3 readback diagnostics to the GitHub Actions step summary." >&2
+    fi
+  fi
+}
+
 if [[ "$#" -ne 2 ]]; then
   fail "Usage: ci-s3-upload.sh <local-file-or-directory-path> <artifact-name>"
 fi
@@ -215,6 +307,9 @@ while true; do
     rc=$?
   fi
   if (( readback_attempt >= readback_max_attempts )); then
+    if [[ "${S3_DIAGNOSE_READBACK_FAILURE:-false}" == 'true' ]]; then
+      run_s3_readback_diagnostics
+    fi
     fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
   fi
   echo "::warning::S3 direct readback attempt $readback_attempt/$readback_max_attempts failed ($(aws_failure_reason "$tmp_dir/download.log")); retrying after $((readback_attempt * 10))s."
