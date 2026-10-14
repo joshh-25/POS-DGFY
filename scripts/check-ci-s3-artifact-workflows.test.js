@@ -113,6 +113,7 @@ test('security scanning completes both scanners before the final independent sto
   assert.match(semgrep, /continue-on-error: true/);
   assert.doesNotMatch(semgrep, /s3_upload|storage_status/);
   assert.match(workflow, /if: always\(\) && steps\.s3_upload\.outputs\.storage_status == 'failed'/);
+  assert.match(workflow, /diagnose-readback-failure: true/);
 });
 
 test('promotion quality evidence fails visibly through its existing per-step outcome path', () => {

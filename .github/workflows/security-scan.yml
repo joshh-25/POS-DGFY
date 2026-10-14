@@ -107,6 +107,7 @@ jobs:
           s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
           s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
           s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          diagnose-readback-failure: true
       - name: Upload and verify a large evidence object
         # This manual S3 multipart diagnostic does not store workflow evidence and remains S3-direct.
         if: github.event_name == 'workflow_dispatch' && inputs.large_object_test_bytes != ''
