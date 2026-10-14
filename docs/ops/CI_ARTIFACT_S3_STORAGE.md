@@ -126,12 +126,14 @@ and [S3 Lifecycle Recipes](https://github.com/seaweedfs/seaweedfs/wiki/S3-Lifecy
   free space sooner, then allow usage reporting to catch up.
 - **S3 `SignatureDoesNotMatch` during readback.** Check the gateway's key mapping and SigV4
   configuration across all replicas, using endpoint-side logs to distinguish the cause. An object
-  may have been written, but it is not verified evidence unless direct and presigned readbacks
-  match the source checksum. The Security Scanning workflow can opt into failure diagnostics that
-  record the AWS CLI version, an explicit `s3api GetObject` result, and a presigned GET's HTTP
-  status and checksum. The presigned URL is never written to the logs, outputs, or summary. Compare
-  these results with endpoint-side request host and forwarded-header logs to distinguish direct
-  SigV4 signing from proxy forwarding behavior.
+  may have been written, but it is not verified evidence unless both the direct `s3api GetObject`
+  and presigned GET match the source checksum. The uploader uses the direct API call for checksum
+  verification; [AWS CLI `get-object`](https://docs.aws.amazon.com/cli/latest/reference/s3api/get-object.html)
+  writes the response body to the requested local file. The Security Scanning workflow can opt into
+  failure diagnostics that record the AWS CLI version, the direct API result, and a presigned GET's
+  HTTP status and checksum. The diagnostic presigned URL is never written to the logs, outputs, or
+  summary. Compare these results with endpoint-side request host and forwarded-header logs to
+  distinguish direct SigV4 signing from proxy forwarding behavior.
 - **Promotion quality evidence is advisory.** The operator-dispatched promotion quality suite
   reports storage outcomes but does not gate promotion. Its evidence enforcement steps remain
   `continue-on-error: true`; this is an intentional exception to the required-workflow failure
