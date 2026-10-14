@@ -194,6 +194,29 @@ describe('quadruperGeocodeProvider', () => {
             expect(result.results[0].address_line.startsWith("Peri Todd's Burger")).toBe(true);
         });
 
+        it('returns 7-Eleven stores, not the street, for a digit-led business name', async () => {
+            const sevenEleven = {
+                type: 'Feature',
+                properties: {
+                    osm_key: 'shop', osm_value: 'convenience', type: 'house', name: '7-Eleven', street: 'Rizal Street',
+                    locality: 'Iloilo Central Business District', district: 'City Proper', city: 'Iloilo City', state: 'Western Visayas'
+                },
+                geometry: { type: 'Point', coordinates: [122.57, 10.69] }
+            };
+            global.fetch = routeByQuery({
+                '7-Eleven Rizal Street': { features: [sevenEleven] },
+                '7 Eleven Rizal Street': { features: [sevenEleven] },
+                'Eleven Rizal Street': { features: [RIZAL_STREET] }
+            });
+
+            for (const query of ['7-Eleven Rizal Street', '7 Eleven Rizal Street']) {
+                const result = await quadruperGeocodeProvider.searchAddresses({ query, limit: 5 });
+                expect(result.results).toHaveLength(1);
+                expect(result.results[0].precision).toBe('house');
+                expect(result.results[0].address_line.startsWith('7-Eleven, Rizal Street')).toBe(true);
+            }
+        });
+
         it('still answers from the street search when the full query fails', async () => {
             global.fetch = routeByQuery({ 'Rizal Street': { features: [RIZAL_STREET] } });
 

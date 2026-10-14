@@ -22,6 +22,10 @@ const CAINTA_HOUSE_52 = {
     osm_key: 'building', osm_value: 'yes', type: 'house', name: null, housenumber: '52',
     street: 'Saint Anthony Street', locality: 'Rodfer Ⅱ', city: 'Cainta', state: 'Rizal'
 };
+const SEVEN_ELEVEN_ON_RIZAL_STREET = {
+    osm_key: 'shop', osm_value: 'convenience', type: 'house', name: '7-Eleven', housenumber: null,
+    street: 'Rizal Street', locality: 'Iloilo Central Business District', district: 'City Proper', city: 'Iloilo City', state: 'Western Visayas'
+};
 const UNIVERSITY_ON_RIZAL_STREET = {
     osm_key: 'amenity', osm_value: 'university', type: 'house', name: 'University of Iloilo',
     street: 'Rizal Street', locality: 'Iloilo Central Business District', district: 'City Proper', city: 'Iloilo City'
@@ -33,12 +37,17 @@ describe('parseHouseNumberQuery', () => {
         ['  52A Rizal St', '52A', 'Rizal St'],
         ['#52-A Rizal St, Jaro', '52-A', 'Rizal St, Jaro'],
         ['No. 7 Gen. Luna Street', '7', 'Gen. Luna Street'],
-        ['52, Rizal Street', '52', 'Rizal Street']
+        ['52, Rizal Street', '52', 'Rizal Street'],
+        ['12-B2 Rizal Street', '12-B2', 'Rizal Street'],
+        ['52-1 Rizal Street', '52-1', 'Rizal Street']
     ])('splits %p into number and street part', (query, houseNumber, remainder) => {
         expect(parseHouseNumberQuery(query)).toEqual({ houseNumber, remainder });
     });
 
-    it.each(['Rizal Street', '2nd Street', '21st Avenue', '52', '52 Street', 'Space Bar'])(
+    it.each([
+        'Rizal Street', '2nd Street', '21st Avenue', '52', '52 Street', 'Space Bar',
+        '7-Eleven Rizal Street', '7-Eleven, Jaro', '7Eleven Rizal Street'
+    ])(
         'returns null for %p', (query) => {
             expect(parseHouseNumberQuery(query)).toBeNull();
         }
@@ -60,6 +69,14 @@ describe('matchesTypedStreet', () => {
 
     it('rejects a street whose only link to the query is the province name', () => {
         expect(matchesTypedStreet('Saint Anthony Street', CAINTA_HOUSE_52, typed('Rizal Street'))).toBe(false);
+    });
+
+    it('rejects a street named after a typed locality when the street word is the province', () => {
+        const jaroStreetInRizal = {
+            osm_key: 'highway', osm_value: 'residential', type: 'street', name: 'Jaro Street',
+            locality: 'DM 10', city: 'Cainta', state: 'Rizal'
+        };
+        expect(matchesTypedStreet('Jaro Street', jaroStreetInRizal, typed('Rizal Street, Jaro'))).toBe(false);
     });
 
     it('rejects a typed word the feature cannot explain', () => {
@@ -108,6 +125,25 @@ describe('mapHouseNumberSearch', () => {
             streetPayload: { features: [] }
         })).toEqual([]);
         expect(mapHouseNumberSearch({ ...base, fullPayload: null, streetPayload: undefined })).toEqual([]);
+    });
+
+    it('returns [] when the number is part of a business name the plain search found', () => {
+        expect(mapHouseNumberSearch({
+            houseNumber: '7',
+            remainder: 'Eleven Rizal Street',
+            limit: 8,
+            fullPayload: { features: [feature(SEVEN_ELEVEN_ON_RIZAL_STREET)] },
+            streetPayload: { features: [feature(ILOILO_RIZAL_STREET)] }
+        })).toEqual([]);
+    });
+
+    it('does not treat a named place on the typed street as a business-name query', () => {
+        const results = mapHouseNumberSearch({
+            ...base,
+            fullPayload: { features: [feature(UNIVERSITY_ON_RIZAL_STREET), feature(SEVEN_ELEVEN_ON_RIZAL_STREET)] },
+            streetPayload: { features: [feature(ILOILO_RIZAL_STREET)] }
+        });
+        expect(results.map((result) => result.precision)).toEqual(['street']);
     });
 
     it('collapses identical labels and honours the limit', () => {
