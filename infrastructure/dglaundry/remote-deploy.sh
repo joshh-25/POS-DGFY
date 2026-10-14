@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Runs ON the staging host (as `sieitz`, the one shared user this host already
-# runs every app's deploys as -- DGFY's own DEV/STAGING stacks included; no
-# per-app OS user split exists anywhere on this box, staging or prod, so
-# DGLaundry doesn't get one either, see README.md's "Why one shared OS user"),
-# from inside /opt/dglaundry-stage/current. Invoked by
-# .github/workflows/deploy-dglaundry.yml
-# over SSH, with the GHCR login token piped in via the overall SSH session's
-# stdin -- never as an argv or env var on this host, matching
-# publish-platform.yml's existing discipline for the same reason.
+# Runs ON either the staging or prod host (as whichever shared deploy user
+# that host already runs every app's deploys as -- `sieitz` on staging,
+# `gha` on prod; no per-app OS user split exists anywhere on either box, so
+# DGLaundry doesn't get one either, see README.md's "Why one shared OS
+# user"), from inside <host-root>/current (/opt/dglaundry-stage on staging,
+# /opt/dglaundry on prod). Invoked by .github/workflows/deploy-dglaundry.yml
+# (staging) or deploy-dglaundry-prod.yml (prod) over SSH, with the GHCR
+# login token piped in via the overall SSH session's stdin -- never as an
+# argv or env var on this host, matching publish-platform.yml's existing
+# discipline for the same reason. Environment-agnostic itself: every path
+# is passed in as an argument (see Usage below), not derived from the
+# filename or hardcoded -- this file is identical for both environments.
 #
 # The `trap ... EXIT` below is what actually delivers "the host never stores
 # a GHCR credential": docker login's result lives in this user's
@@ -40,7 +43,7 @@
 # that without losing failure propagation -- `up` itself exits non-zero if
 # `migrate` fails, same as before.
 #
-# Usage: GITHUB_ACTOR=<actor> bash remote-deploy-stage.sh <secrets-dir> <env-file>
+# Usage: GITHUB_ACTOR=<actor> bash remote-deploy.sh <secrets-dir> <env-file>
 # (GHCR token read from stdin)
 set -euo pipefail
 

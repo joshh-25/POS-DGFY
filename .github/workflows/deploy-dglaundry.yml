@@ -3,7 +3,7 @@ name: Deploy DGLaundry (Stage)
 # Pulls DGLaundry's three pinned, private GHCR images and brings up its own
 # Docker Compose stack on the staging host -- WITHOUT the host ever storing
 # a GHCR credential. The actual login/pull/up/logout sequence runs on the
-# host via infrastructure/dglaundry/remote-deploy-stage.sh, with the GHCR
+# host via infrastructure/dglaundry/remote-deploy.sh, with the GHCR
 # token piped in over this workflow's SSH connection and logged out via a
 # trap that fires on every exit path, success or failure -- see that
 # script's own header for why that matters.
@@ -147,10 +147,10 @@ jobs:
             infrastructure/dglaundry/stage.env \
             infrastructure/dglaundry/deploy-sops.sh \
             infrastructure/dglaundry/provision-migration-identity.sh \
-            infrastructure/dglaundry/remote-deploy-stage.sh \
+            infrastructure/dglaundry/remote-deploy.sh \
             "$SSH_TARGET:$RELEASE_DIR/"
           ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
-            "chmod +x '$RELEASE_DIR/deploy-sops.sh' '$RELEASE_DIR/provision-migration-identity.sh' '$RELEASE_DIR/remote-deploy-stage.sh' && ln -sfn '$RELEASE_DIR' '$HOST_ROOT/current'"
+            "chmod +x '$RELEASE_DIR/deploy-sops.sh' '$RELEASE_DIR/provision-migration-identity.sh' '$RELEASE_DIR/remote-deploy.sh' && ln -sfn '$RELEASE_DIR' '$HOST_ROOT/current'"
 
       - name: Materialize secrets (deploy-sops.sh)
         env:
@@ -166,7 +166,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
-            "cd /opt/dglaundry-stage/current && GITHUB_ACTOR=$GITHUB_ACTOR bash remote-deploy-stage.sh /opt/dglaundry-stage/secrets stage.env" \
+            "cd /opt/dglaundry-stage/current && GITHUB_ACTOR=$GITHUB_ACTOR bash remote-deploy.sh /opt/dglaundry-stage/secrets stage.env" \
             <<< "$GITHUB_TOKEN"
 
       - name: Clean up deploy credentials
