@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-14
 applies_to: ci_artifact_storage
 topic: s3_artifact_storage
 ---
@@ -116,6 +116,26 @@ the stated retention.
 
 SeaweedFS lifecycle references: [S3 Lifecycle](https://github.com/seaweedfs/seaweedfs/wiki/S3-Lifecycle)
 and [S3 Lifecycle Recipes](https://github.com/seaweedfs/seaweedfs/wiki/S3-Lifecycle-Recipes).
+
+## Failure modes
+
+- **GitHub artifact quota exhaustion.** GitHub can reject artifact creation after the repository's
+  artifact storage quota is reached. The quota error observed in
+  [run 38504422230](https://github.com/Sieitzz/dgfy-platform/actions/runs/38504422230) says usage is
+  recalculated every 6–12 hours. Evidence retention is 30 days; prune unneeded older artifacts to
+  free space sooner, then allow usage reporting to catch up.
+- **S3 `SignatureDoesNotMatch` during readback.** Check the gateway's key mapping and SigV4
+  configuration across all replicas, using endpoint-side logs to distinguish the cause. An object
+  may have been written, but it is not verified evidence unless direct and presigned readbacks
+  match the source checksum.
+- **Promotion quality evidence is advisory.** The operator-dispatched promotion quality suite
+  reports storage outcomes but does not gate promotion. Its evidence enforcement steps remain
+  `continue-on-error: true`; this is an intentional exception to the required-workflow failure
+  behavior.
+
+This repository is private, so workflow step summaries are visible to repository readers with
+Actions access. A verified 48-hour presigned URL in a summary is a bearer link and can be used by
+anyone who obtains it until it expires.
 
 ## GitHub artifact API scope
 
