@@ -71,7 +71,13 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     adminSelectComplianceMode: noopHandler,
     adminUpgradeComplianceMode: noopHandler,
     adminForceNonCompliant: noopHandler,
-    resubmitRegistration: noopHandler
+    resubmitRegistration: noopHandler,
+    listAdminCompanyRegistrationDrafts: noopHandler,
+    listCompanyRegistrationUploads: noopHandler,
+    downloadCompanyRegistrationUpload: noopHandler,
+    downloadCompanyRegistrationMenuArchive: noopHandler,
+    approveAdminCompanyRegistrationDraft: noopHandler,
+    retryAdminCompanyRegistrationDraftMaterialization: noopHandler
 }));
 
 jest.unstable_mockModule('../src/middleware/auth.js', () => ({

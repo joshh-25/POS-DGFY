@@ -47,6 +47,9 @@ Parse with `scripts/chain-target.js` (`parseChainInvocation`) — never by hand:
 | `plan` (default) | Resolve target, read the same authoritative docs and code/tests `planner` requires, decide from evidence, write a decision-complete `dgfy-planner-handoff/v1` artifact (normally `.tmp/plan-<issue>.md`) | Code edits, Worker/Reviewer tabs, PR creation, merge, deploy |
 | `build` | Same planning phase plus the full worker/reviewer campaign below | Merge past `pr-reviewer` policy, `main` merges, deploy |
 
+Plan mode preserves `execution_route`, `target_branch`, and `hotfix` unchanged in the ready
+artifact. A `hotfix`/`main` Build stops at `approve()`; `merge()` already refuses `main`.
+
 The default is `plan`, and `parseChainInvocation` reports `modeSource:
 default|explicit` — defaulting is documented here and observable in every
 pre-dispatch report, so no mode ever silently creates a Worker/Reviewer tab.

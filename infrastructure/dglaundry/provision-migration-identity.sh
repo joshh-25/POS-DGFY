@@ -73,7 +73,7 @@ echo "== provisioning migration identity '${MIG_USER}'@'%' scoped to \`${MIG_SCH
 
 cd "$RELEASE_DIR"
 # Only docker-compose.production.yml -- no surebizcorp-lean.yml overlay, see
-# remote-deploy-stage.sh's header comment for why (PR #2448 review, RF-2).
+# remote-deploy.sh's header comment for why (PR #2448 review, RF-2).
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.production.yml)
 
 # Root password never leaves the mysql container -- read from its own

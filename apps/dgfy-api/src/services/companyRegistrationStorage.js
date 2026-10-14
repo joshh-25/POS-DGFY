@@ -17,7 +17,7 @@ export const COMPANY_REGISTRATION_PRIVATE_STORAGE_ROOT = path.resolve(
 
 const resolveStoragePath = (storageKey) => {
   const normalizedKey = String(storageKey || '').replace(/\\/g, '/');
-  if (!normalizedKey || path.isAbsolute(normalizedKey) || normalizedKey.includes('\0')) {
+  if (!normalizedKey || path.isAbsolute(normalizedKey) || path.win32.isAbsolute(normalizedKey) || normalizedKey.includes('\0')) {
     throw new Error('Invalid company registration storage key.');
   }
   const root = path.resolve(COMPANY_REGISTRATION_PRIVATE_STORAGE_ROOT);

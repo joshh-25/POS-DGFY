@@ -23,7 +23,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/${ENV_NAME}.env"
 [ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE" >&2; exit 1; }
 
-HOST_ROOT="/opt/dglaundry-${ENV_NAME}"
+case "$ENV_NAME" in
+  stage) HOST_ROOT="/opt/dglaundry-stage" ;;
+  # No "-prod" suffix -- unlike sieitz-dgfy-remote (which hosts dev+stage side by side and needs
+  # the suffix to disambiguate), the prod host runs exactly one DGLaundry environment, matching
+  # /opt/dgfy-platform having no suffix there either.
+  prod) HOST_ROOT="/opt/dglaundry" ;;
+esac
 AGE_KEY_FILE="$HOST_ROOT/age/keys.txt"
 # Cached ciphertext, synced from Sieitzz/dgfy-secrets's
 # <env>/dglaundry/secrets.env whenever it's rotated -- this script does not
@@ -69,13 +75,15 @@ while IFS='=' read -r key value; do
   # `secrets:` construct, which bind-mounts this exact host file straight
   # into the container at /run/secrets/<name> with its host permissions
   # intact (no UID remap). The app process inside the container runs as
-  # whatever UID the image defines, which has no reason to share sieitz's
-  # GID -- group-readable access bought nothing (confirmed live: migrate
-  # failed with EACCES on mysql_migration_url before this fix). secrets/
-  # itself stays 0700 sieitz-owned (see deploy-dglaundry.yml's host setup),
-  # so a world-readable file bit here still can't be reached by any other
-  # host user or process -- only a process with a bind mount into this
-  # exact file (i.e. these containers) ever sees it.
+  # whatever UID the image defines, which has no reason to share this
+  # environment's deploy user's GID -- group-readable access bought
+  # nothing (confirmed live: migrate failed with EACCES on
+  # mysql_migration_url before this fix). secrets/ itself stays 0700,
+  # owned outright by whichever OS user this environment's deploy workflow
+  # uses (sieitz for stage, gha for prod -- see each workflow's own host
+  # setup), so a world-readable file bit here still can't be reached by
+  # any other host user or process -- only a process with a bind mount
+  # into this exact file (i.e. these containers) ever sees it.
   chmod 644 "$SECRETS_DIR/$name"
   echo "  wrote $SECRETS_DIR/$name"
 done < <("$SOPS_BIN" decrypt --input-type dotenv "$CIPHERTEXT_CACHE")
@@ -85,12 +93,12 @@ echo "== secrets materialized. =="
 echo
 echo "This script still only materializes secrets -- it does not check out"
 echo "compose files or run 'docker compose' itself. .github/workflows/"
-echo "deploy-dglaundry.yml (remote-deploy-stage.sh) does that end to end,"
-echo "including calling this script, for the normal path."
+echo "deploy-dglaundry.yml / deploy-dglaundry-prod.yml (remote-deploy.sh) does"
+echo "that end to end, including calling this script, for the normal path."
 echo
 echo "To bring the stack up by hand instead, from \$HOST_ROOT/current (only"
 echo "docker-compose.production.yml -- no surebizcorp-lean.yml overlay, see"
-echo "remote-deploy-stage.sh's header comment for why):"
+echo "remote-deploy.sh's header comment for why):"
 echo
 echo "  docker compose --env-file $ENV_FILE -f docker-compose.production.yml up -d mysql"
 echo "  docker compose --env-file $ENV_FILE -f docker-compose.production.yml up -d api worker gateway"

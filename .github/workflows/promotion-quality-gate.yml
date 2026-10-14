@@ -1884,6 +1884,7 @@ jobs:
           timeout --signal=TERM --kill-after=60s 1500s npm run test:pos-sales-e2e
           status=$?
           echo "POS sales Playwright duration: $((SECONDS - started)) seconds" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "exit_status=$status" >> "$GITHUB_OUTPUT"
           if [ "$status" -eq 124 ] || [ "$status" -eq 137 ] || [ "$status" -eq 143 ]; then
             echo "::warning::POS sales E2E exceeded the controlled 25-minute timeout; salvaging artifacts and outcome reporting."
             {
@@ -1908,6 +1909,42 @@ jobs:
           REDIS_URL: redis://127.0.0.1:6379
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/pos-sales-results.json
+
+      - name: Prepare POS sales evidence
+        continue-on-error: true
+        id: prepare_pos_sales_evidence
+        if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
+        shell: bash
+        env:
+          POS_SALES_EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          POS_SALES_RUN_OUTCOME: ${{ steps.run_pos_sales_e2e.outcome }}
+          POS_SALES_EXIT_STATUS: ${{ steps.run_pos_sales_e2e.outputs.exit_status }}
+        run: |
+          set -euo pipefail
+          stage_dir="$RUNNER_TEMP/pos-sales-evidence"
+          mkdir -p "$stage_dir/playwright-report" "$stage_dir/test-results"
+          if [[ -d apps/dgfy-pos/playwright-report ]]; then
+            cp -R apps/dgfy-pos/playwright-report/. "$stage_dir/playwright-report/"
+          fi
+          if [[ -d apps/dgfy-pos/test-results ]]; then
+            cp -R apps/dgfy-pos/test-results/. "$stage_dir/test-results/"
+          fi
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const exitStatus = /^\d+$/.test(process.env.POS_SALES_EXIT_STATUS || '')
+            ? Number(process.env.POS_SALES_EXIT_STATUS)
+            : null;
+          const evidence = {
+            sha: process.env.POS_SALES_EVIDENCE_SHA,
+            run_outcome: process.env.POS_SALES_RUN_OUTCOME,
+            exit_status: exitStatus
+          };
+          const evidencePath = path.join(process.env.RUNNER_TEMP, 'pos-sales-evidence', 'evidence.json');
+          fs.writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+          NODE
 
       # Mirrors the API test-matrix / F&B browser evidence uploads elsewhere in this file --
       # if-no-files-found: error (a missing artifact is real signal, not something to swallow),
@@ -1916,9 +1953,12 @@ jobs:
         continue-on-error: true
         id: validate_pos_sales_e2e_evidence
         if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
+        env:
+          POS_SALES_RUN_OUTCOME: ${{ steps.run_pos_sales_e2e.outcome }}
+          POS_SALES_EXIT_STATUS: ${{ steps.run_pos_sales_e2e.outputs.exit_status }}
         run: |
-          if [[ ! -d apps/dgfy-pos/test-results ]] || ! find apps/dgfy-pos/test-results -type f -print -quit | grep -q .; then
-            echo "::error::POS sales E2E evidence is missing or empty: apps/dgfy-pos/test-results"
+          if [[ ! -s "$RUNNER_TEMP/pos-sales-evidence/test-results/pos-sales-results.json" ]]; then
+            echo "::error::POS sales E2E JSON evidence is missing or empty; run outcome=${POS_SALES_RUN_OUTCOME:-unknown}, exit status=${POS_SALES_EXIT_STATUS:-unknown}"
             exit 1
           fi
 
@@ -1928,7 +1968,7 @@ jobs:
         if: always() && steps.run_pos_sales_e2e.outcome != 'skipped'
         uses: ./.github/actions/upload-evidence
         with:
-          path: apps/dgfy-pos/test-results
+          path: ${{ runner.temp }}/pos-sales-evidence
           name: pos-sales-e2e-${{ github.sha }}
           retention-days: 30
           source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1963,6 +2003,7 @@ jobs:
           STEP_OUTCOMES: |
             Fail on evidence storage failure|${{ steps.enforce_evidence_storage.outcome }}
             Validate POS sales e2e evidence|${{ steps.validate_pos_sales_e2e_evidence.outcome }}
+            Prepare POS sales evidence|${{ steps.prepare_pos_sales_evidence.outcome }}
             Start service containers|${{ steps.start_services.outcome }}
             Wait for service containers|${{ steps.wait_services.outcome }}
             Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}

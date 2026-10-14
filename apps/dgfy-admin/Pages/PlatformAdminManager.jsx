@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import * as adminService from '@/services/adminService';
 
-const PERMISSIONS = ['admin.feedback', 'admin.tenants', 'admin.dgfy_accounts', 'admin.payments', 'admin.pricing', 'admin.hosting', 'admin.invoices'];
+const PERMISSIONS = ['admin.feedback', 'admin.contact_inquiries', 'admin.tenants', 'admin.dgfy_accounts', 'admin.payments', 'admin.pricing', 'admin.hosting', 'admin.invoices'];
 
 export default function PlatformAdminManager() {
   const [users, setUsers] = useState([]); const [username, setUsername] = useState(''); const [password, setPassword] = useState(''); const [permissions, setPermissions] = useState([]); const [editingUserId, setEditingUserId] = useState(null); const [readiness, setReadiness] = useState(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);

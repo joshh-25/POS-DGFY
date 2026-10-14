@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-14
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -28767,3 +28767,402 @@ entry. No API, schema, stored category order, or tenant data rollback is require
 ### Next phase number
 
 Phase 505. No explicit dependency.
+
+## Phase 505 - Storefront Contact Us Pin4MS form embed
+
+### Initiative and release
+
+Discovery Contact Us / Release 1.
+
+### Objective and scope
+
+Embed the active Pin4MS inquiry form on the public Storefront `/contact-us` route using its
+provider-generated `?embed=1` URL and responsive height of 600px on desktop and 560px on mobile.
+Allow only the Pin4MS form origin through the Storefront Content Security Policy, retain the
+existing discovery navigation, and provide a direct form link as a fallback. No DGFY submission
+API, database persistence, or Admin submissions view is introduced by this phase.
+
+### Status
+
+`in_progress` — implementation and local validation are underway; the phase is not merged.
+
+### Dependencies
+
+- The Contact Us route, shared Discovery navigation, and page shell in the current
+  `feat/discovery-contact-us-submissions` worktree.
+- Pin4MS form activation and exact allowed-host configuration for the public Storefront hostname.
+  Provider-side state is user-managed and is not changed here. The current provider response does
+  not yet include the local preview host; because the preview uses an IPv4 address and non-default
+  port 5175 while Pin4MS documents hostname-only entries, use a supported staging hostname unless
+  Pin4MS confirms that its policy can authorize the local origin.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Catalog, Inventory, POS, and
+Storefront Ownership Boundaries](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+and [Frontend Split into Three Apps](../architecture/adr/0071-frontend-split-into-three-apps.md).
+Classification: `within-existing-boundary`. Storefront owns this public page; the integration is a
+static cross-origin iframe and does not alter API, database, or submission ownership boundaries. No
+ADR amendment is needed.
+
+### Implementation targets
+
+[Contact Us page](../../apps/dgfy-storefront/src/discovery/pages/ContactUsPage.jsx),
+[page styles](../../apps/dgfy-storefront/src/discovery/pages/ContactUsPage.css),
+[page tests](../../apps/dgfy-storefront/src/discovery/pages/ContactUsPage.test.jsx),
+[Storefront CSP meta policy](../../apps/dgfy-storefront/index.html),
+[development and preview CSP headers](../../apps/dgfy-storefront/vite.config.js), and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] The page embeds `https://pin4ms.bblabs.dev/f/dgfy-gateway-1?embed=1` with an accessible title,
+      lazy loading, 600px desktop / 560px mobile height, and the supplied referrer policy.
+- [x] A direct standalone-form link remains available if the iframe does not work.
+- [x] Storefront meta, development, and preview CSP policies allow only
+      `https://pin4ms.bblabs.dev` as a frame source while retaining `frame-ancestors 'none'`.
+- [x] Focused Contact Us tests, Storefront lint/build, documentation lint, architecture checks, and
+      `git diff --check` pass; Storefront lint has warnings but no errors, and the build reports its
+      existing large-chunk advisory.
+- [ ] Rendered local preview is checked at desktop and mobile widths; provider host allowlisting
+      and an in-frame test submission are confirmed without using real customer data.
+
+### Evidence
+
+The focused Contact Us test file passes 5/5 tests. Targeted ESLint passes; full Storefront lint
+completes with 0 errors and 136 warnings across the app. The production build succeeds with a
+large-chunk advisory. `npm run lint:docs` validates 35 governed docs and 103 ADRs;
+`npm run check:architecture` and `git diff --check` pass. The local preview sends the intended
+`frame-src https://pin4ms.bblabs.dev` header and its built HTML contains the same source. Desktop
+(1440px) and mobile (375px) rendered checks show no horizontal overflow. A read-only GET to the
+Pin4MS embed returns HTTP 200, but its current `frame-ancestors` response lists only `dgfy.ph`
+origins, not the local preview, and Chrome confirms the provider policy blocks the frame. The
+local preview uses port 5175; a hostname-only CSP source without that port does not match a
+non-default port. No form was submitted. Provider allowlist and rendered submission verification
+remain pending; use a supported staging hostname on the default HTTPS port or have Pin4MS support
+the exact preview origin.
+
+Validation rerun on 2026-10-14: Contact Us tests pass 5/5, the Storefront build succeeds, and
+Storefront lint has zero errors (136 warnings). The local LAN preview renders the Contact Us route
+and fallback link, but the iframe's inner document remains `about:blank`; provider-origin
+verification remains blocked. No submission was sent. The broader four-file discovery regression
+run is inconclusive: 2 files passed and 2 failed (57 tests: 14 passed, 43 failed, 6 uncaught
+errors) after Vite denied a MapLibre worker import from the Storefront `node_modules` junction into
+the base XAMPP checkout. Rerun with dependencies isolated to this worktree before treating those
+regression results as application failures.
+
+### Rollback
+
+Revert the Contact Us iframe, its focused tests/styles, the Pin4MS `frame-src` additions, and this
+phase entry. No API, schema, or stored submission rollback is required.
+
+### Post-merge verification
+
+- [ ] provider — confirm Pin4MS accepts the production Storefront hostname and the intended preview
+      hostname, and verify a test submission reaches the configured form destination; owner:
+      Storefront QA / form owner. This blocks a provider-verified production claim, not the code
+      merge.
+- [ ] deployment — verify the deployed `/contact-us` page loads the embedded form and fallback link
+      on desktop and mobile; owner: Storefront QA/release. This blocks a production-verified claim.
+
+### Next phase number
+
+Phase 506. No explicit dependency.
+
+## Phase 506 - Platform Admin Contact Inquiries and Pin4MS credential setup
+
+### Initiative and release
+
+Discovery Contact Us / Release 1.
+
+### Objective and scope
+
+Add a responsive Contact Inquiries workspace to the separate DGFY Platform Admin app. Provide a
+Pin4MS API-key entry and replacement flow that stores the key only through the authenticated API,
+encrypts it before landlord-database persistence, and displays configuration status without
+returning the saved value. Add an honest empty-state inbox that explains submission reading is not
+connected yet. Do not fetch or store Pin4MS submissions in this phase because the provider read-API
+contract has not been supplied. The product retention choice for a future DGFY-side copy is active
+for 60 days from the original submission time, then archived until an Admin deletes it; deletion
+semantics and the provider's timestamp remain to be confirmed before implementation.
+
+### Status
+
+in_progress
+
+### Dependencies
+
+- Phase 505's public Contact Us form embed.
+- Platform Admin's existing session, page-grant, API authentication, and audit-log patterns.
+- A 32-byte encryption secret provisioned for the API environment through its approved secret
+  store. The secret must not be committed or returned to the browser.
+- Pin4MS read-API documentation is not a dependency for this configuration screen; it remains a
+  dependency for the later submission-sync phase. The user's selected DGFY retention rule is 60
+  active days followed by archive, with archived records kept until an Admin deletes them.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Platform Admin Identity
+and Page RBAC](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[SOPS and age Encrypted Secrets at Rest](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[Platform Admin App Boundary](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin Route Permission Matrix](../testing/platform-admin-route-permission-matrix.md), and
+[Contact Inquiry Provider Configuration](../architecture/adr/0096-contact-inquiry-provider-configuration.md).
+The feature stays within the existing Admin/API/landlord-database boundaries. It adds one delegable
+page permission, encrypted provider configuration, and a new additive migration. No Pin4MS
+submission data is imported.
+
+### Implementation targets
+
+[Contact Inquiries Admin page](../../apps/dgfy-admin/Pages/ContactInquiriesDashboard.jsx),
+[Admin routing and navigation](../../apps/dgfy-admin/src/main.jsx),
+[Admin API service](../../apps/dgfy-admin/src/services/adminService.js),
+[Admin page tests](../../apps/dgfy-admin/src/pages/__tests__/ContactInquiriesDashboard.test.jsx),
+[Pin4MS API module](../../apps/dgfy-api/src/modules/contactInquiries/README.md),
+[API permission tests](../../apps/dgfy-api/tests/platformAdminRouteClassification.test.js),
+[credential encryption tests](../../apps/dgfy-api/tests/pin4msCredentialCrypto.test.js),
+[credential transport tests](../../apps/dgfy-api/tests/pin4msCredentialTransport.test.js),
+[Platform Admin permission matrix](../testing/platform-admin-route-permission-matrix.md),
+the [landlord migration](../../apps/dgfy-migration-runner/migrations/20261014000001-create-contact-inquiry-provider-config.cjs),
+and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] A permitted Platform Admin can open Contact Inquiries; other delegated accounts cannot reach
+      the page or API without admin.contact_inquiries.
+- [x] Admin can enter or replace a generated Pin4MS API key only over HTTPS or a trusted local
+      loopback connection; insecure LAN HTTP and missing encryption-secret configurations fail
+      closed.
+- [x] The API encrypts the key before repository persistence; status responses, audit snapshots, and
+      browser storage never contain the submitted key.
+- [x] The inbox says submission sync is not connected and shows no fabricated records.
+- [x] API crypto and route-permission tests, Admin lint/build and page checks, documentation lint,
+      ADR validation, architecture checks, and git diff --check pass.
+- [x] Migration is reviewed and available for deployment; it is not run against any environment as
+      part of this implementation task.
+
+### Evidence
+
+Earlier focused checks recorded 3/3 Admin tests and 36/36 API permission, crypto, and transport
+tests. The Admin build and targeted ESLint had zero errors and two existing warnings. Runtime
+migration state and any previously saved provider credential are not verified by this code-only
+validation; do not infer that a key is absent or that the migration has not been applied.
+
+Validation rerun on 2026-10-14: Admin tests pass 3/3, API tests pass 36/36, both Admin and
+Storefront production builds succeed, and Admin lint has zero errors (two warnings). Documentation
+lint validates 35 governed docs and 104 ADRs; architecture guardrails and controller-boundary
+checks pass. The migration was not run as part of this validation.
+
+### Rollback
+
+Revert the Admin route and page, the API module and route, permission mapping, and this phase's
+additive migration. Before rolling back an environment where the migration was applied, follow the
+repository's migration rollback procedure; do not manually drop the configuration table. If a real
+key was saved, revoke it in Pin4MS and remove the stored credential through an approved follow-up
+operation before removing the encryption secret.
+
+### Post-merge verification
+
+- [ ] operations — provision the dedicated encryption secret in each intended API environment
+      before enabling key entry; owner: API operations.
+- [ ] database — apply and verify the additive landlord migration through the governed migration
+      runner; owner: API operations.
+- [ ] provider — obtain Pin4MS submission-read API details and confirm authorization, pagination,
+      rate limits, canonical submission timestamp, and whether deletion can be propagated upstream;
+      owner: Contact Us/form owner. The DGFY-side 60-day active / archived-until-Admin-deletion
+      policy is selected, but its deletion semantics must be made explicit before implementation.
+- [ ] deployment — verify authorized and denied Platform Admin accounts, HTTPS key replacement,
+      and the honest inbox empty state in the deployed Admin app; owner: Platform Admin QA.
+
+### Next phase number
+
+Phase 507. Blocked on the Pin4MS read-API contract and the remaining deletion-semantics decision.
+
+## Phase 507 - Pin4MS submission sync and Admin inbox
+
+### Initiative and release
+
+Discovery Contact Us / Release 1.
+
+### Objective and scope
+
+After the Pin4MS read-API contract is supplied and reviewed, securely sync the form's submissions
+into the DGFY Platform Admin Contact Inquiries inbox. Persist only the fields required for inquiry
+handling, support resumable/idempotent pagination, and separate active from archived records. Keep
+records active for 60 days from the provider's canonical submission time, then archive them. Retain
+archived records until an authorized Admin deletes them; finalize whether that delete is hard or
+recoverable before implementing it. Provider-side deletion is separate and must not be implied by a
+DGFY delete action unless Pin4MS explicitly supports it and the contract authorizes it.
+
+### Status
+
+`blocked` — the Pin4MS submission-read API guide has not been supplied. The API contract, canonical
+timestamp, rate limits, and deletion behavior cannot be safely inferred.
+
+### Dependencies
+
+- Pin4MS's official read-API guide or equivalent provider confirmation: endpoint, method, auth
+  header, response fields, pagination/cursor behavior, rate limits, errors, and timestamp semantics.
+- Phase 506's migration and encrypted configuration deployed, with the dedicated encryption secret
+  provisioned in each target API environment.
+- Review of the provider contract, PII minimization, sync/retry behavior, and Admin delete semantics.
+- ADR 0096's proposed provider-configuration record updated and approved under ADR 0039 before any
+  persisted submission-read implementation begins.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [Platform Admin Identity
+and Page RBAC](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[SOPS and age Encrypted Secrets at Rest](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[Platform Admin App Boundary](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+and [Contact Inquiry Provider Configuration](../architecture/adr/0096-contact-inquiry-provider-configuration.md).
+This phase spans the existing Admin, API, and landlord-database boundaries. ADR 0096 is proposed,
+not binding; approval and any required amendment must follow ADR 0039.
+
+### Implementation targets
+
+Provisional targets are the [Contact Inquiries Admin page](../../apps/dgfy-admin/Pages/ContactInquiriesDashboard.jsx),
+[Admin API service](../../apps/dgfy-admin/src/services/adminService.js), [API module](../../apps/dgfy-api/src/modules/contactInquiries/README.md),
+[provider-config migration](../../apps/dgfy-migration-runner/migrations/20261014000001-create-contact-inquiry-provider-config.cjs),
+[Admin page tests](../../apps/dgfy-admin/src/pages/__tests__/ContactInquiriesDashboard.test.jsx),
+[credential encryption tests](../../apps/dgfy-api/tests/pin4msCredentialCrypto.test.js), and
+[credential transport tests](../../apps/dgfy-api/tests/pin4msCredentialTransport.test.js). Finalize
+the submission schema and new sync-test paths only after the provider contract is reviewed; do not
+add a provider read endpoint or submission table before that review.
+
+### Acceptance and validation evidence
+
+- [ ] Provider requests occur only server-side; API keys and submission PII are excluded from
+      browser storage, audit snapshots, and logs.
+- [ ] Pagination is resumable and duplicate/retried pages do not create duplicate inquiries.
+- [ ] The inbox accurately distinguishes active, archived, and deleted records and provides loading,
+      empty, error, denied, and retry states.
+- [ ] Records archive at 60 days from the provider's canonical submission time; Admin delete follows
+      the approved hard-delete or recoverable-delete decision.
+- [ ] Rate limits, transient failures, malformed responses, and partial syncs are handled without
+      losing the last successful cursor or overstating sync success.
+- [ ] RBAC, encryption, migration, API contract, retention, and responsive Admin tests pass.
+
+### Evidence
+
+No provider read or sync implementation has been started. This phase remains blocked pending the
+Pin4MS read-API guide and the deletion-semantics decision; no provider requests or submissions have
+been made for this phase.
+
+### Post-merge verification
+
+- [ ] provider — verify the approved Pin4MS read contract and run a designated synthetic submission
+      through the form and sync; no real customer PII is used.
+- [ ] operations — confirm the sync is healthy, rate-limit handling is observable without logging
+      secrets or submission content, and the 60-day archive job is active.
+- [ ] Admin QA — verify a permitted Admin can review, archive, and delete records while denied
+      accounts remain blocked at both UI and API layers.
+
+### Next phase number
+
+Phase 508. No explicit dependency.
+
+## Phase 508 - Preserve explicit hotfix intent through Planner handoff (#2482)
+
+### Initiative and release
+
+Agent workflow, current release.
+
+### Objective and scope
+
+Carry an operator's explicit hotfix instruction and selected target branch through ready Planner
+artifacts so the Worker can validate and follow the existing incident-responder manual route.
+Unmarked or legacy plans retain the ordinary `develop` route. Issue evidence and route ambiguity
+must fail closed rather than silently changing a hotfix into a `develop` PR.
+
+Scope is repository documentation and agent-skill text. Runtime code, workflow YAML, merge
+authority, and deployment authority are unchanged.
+
+### Status
+
+`in_progress` — implementation and validation are complete; PR review and merge remain
+outstanding.
+
+### Dependencies
+
+Issue #2482 defines the scope. Phases 325 (#1842), 341 (#861/#2006), and 483 (#2346) provide the
+existing manual-hotfix and Planner/Worker handoff contracts; none is an explicit blocking
+dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), [Planner/Worker compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+and [Issue taxonomy](../process/ISSUE-TAXONOMY.md). Classification: `no-architecture-impact`;
+this updates role procedure and handoff documentation, preserves the existing release/version/
+compliance obligations by reference, and does not amend an ADR.
+
+### Implementation targets
+
+[Handoff template](../../.agents/skills/planner/references/plan-handoff-template.md),
+[Planner](../../.agents/skills/planner/SKILL.md),
+[Worker](../../.agents/skills/implement/SKILL.md),
+[Incident Responder](../../.agents/skills/incident-responder/SKILL.md),
+[Planner/Worker compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+[Chain](../../.agents/skills/chain/SKILL.md),
+[PR Reviewer](../../.agents/skills/pr-reviewer/SKILL.md),
+[AGENTS.md](../../AGENTS.md), and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] New ready artifacts explicitly record `execution_route` and `target_branch`; hotfix artifacts
+      record the operator instruction, target rationale, and required main eligibility facts.
+- [x] Legacy artifacts with both route fields absent normalize to `develop`/`develop`; malformed
+      and partial route data hard-stop.
+- [x] Planner hotfix intent requires explicit operator direction; issue wording alone stays on
+      `develop`; unclear targets or missing main eligibility facts produce `needs-decision`.
+- [x] Worker validates the route against the live issue, follows matching hotfix targets without
+      asking the operator to repeat the instruction, and never downgrades a route problem.
+- [x] Incident Responder recognizes the ready operator-marked artifact trigger and retains its
+      applicable eligibility, review, release-note, compliance, merge, deployment, and back-port
+      safeguards.
+- [x] PR Reviewer checks route/target against PR base; Chain preserves route fields and stops
+      hotfix/main at approval; repo-wide authorization text names the added trigger.
+- [x] The handoff scenarios for ordinary, main-hotfix, staging-hotfix, missing eligibility,
+      ambiguous target, unmarked production mention, malformed combinations, partial route fields,
+      and legacy fields pass the manual walkthrough; the result table is in the PR Testing Evidence.
+- [x] `npm run lint:docs`, `npm run check:agent-surfaces`, `npm run check:architecture`,
+      `npm run check:compliance`,
+      `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=fix/agents-carry-explicit-hotfix-intent-through node scripts/check-app-version-bump.js`,
+      and `git diff --check` pass.
+- [ ] PR review is complete; this phase does not merge or deploy.
+
+### Evidence
+
+Local docs, agent-surface, architecture, and compliance checks passed after rebasing onto current
+`develop`. The explicit PR-context version-floor check passed. Its initial bare invocation fell
+back to `HEAD~1` and included unrelated app changes from merge commit #2476; that earlier result was
+superseded by the explicit PR-context rerun. The manual route walkthrough passed for ordinary
+develop, main and staging hotfixes, missing eligibility, ambiguous target, unmarked production
+mention, invalid and partial pairs, and legacy artifacts. The result table is recorded in the PR's
+Testing Evidence. PR review remains outstanding.
+
+### Rollback
+
+Revert the handoff route fields and compatibility rules, related Planner/Worker/Incident Responder/
+Chain/PR Reviewer/AGENTS.md guidance, and this Phase 508 entry. No runtime, workflow, data, merge
+authority, or deployment rollback is required.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation implementation is merged and its named
+implementation validation passes.
+
+### Post-merge verification
+
+- [x] None — docs-only role guidance; no deployment, provider, or operational verification applies.
+
+### Next phase number
+
+Phase 509. No explicit dependency.
