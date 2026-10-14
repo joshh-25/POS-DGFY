@@ -6,6 +6,7 @@ export const PLATFORM_ADMIN_PERMISSION_KEYS = Object.freeze({
   PRICING: 'admin.pricing',
   HOSTING: 'admin.hosting',
   INVOICES: 'admin.invoices',
+  CONTACT_INQUIRIES: 'admin.contact_inquiries',
   PARTNER_INTEGRATIONS: 'admin.partner_integrations'
 });
 
