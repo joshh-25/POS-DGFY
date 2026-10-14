@@ -285,7 +285,7 @@ test('S3 uploader reports the AWS CLI exit code for a failed direct readback', (
 
     assert.equal(result.status, 1, result.stderr);
     const logs = `${result.stdout}\n${result.stderr}`;
-    assert.match(result.stderr, /S3 direct readback failed \(S3 service error SignatureDoesNotMatch; AWS CLI exit code 23\)/);
+    assert.match(result.stderr, /S3 direct readback failed \(S3 service error SignatureDoesNotMatch; AWS CLI exit code 24\)/);
     assert.match(logs, /AWS CLI version: aws-cli\/2\.0\.0/);
     assert.match(logs, /s3api GetObject: failed \(S3 service error SignatureDoesNotMatch; exit code 24\)/);
     assert.match(logs, /Presigned GET: verified \(HTTP 200\); SHA-256/);

@@ -56,11 +56,10 @@ write_output() {
 }
 
 run_s3_readback_diagnostics() {
+  local s3api_exit_code="$1"
+  local s3api_log_file="$2"
   local cli_version
-  local s3api_status='failed'
-  local s3api_exit_code=''
-  local s3api_failure_reason=''
-  local s3api_sha256=''
+  local s3api_failure_reason
   local presigned_status='presign_failed'
   local presigned_http_status='000'
   local presigned_failure_reason=''
@@ -68,29 +67,11 @@ run_s3_readback_diagnostics() {
   local presigned_url=''
   local curl_exit_code=0
 
+  s3api_failure_reason="$(aws_failure_reason "$s3api_log_file")"
   cli_version="$("$aws_bin" --version 2>&1 | head -n1 | tr -d '\r')"
   cli_version="${cli_version%% *}"
   if [[ ! "$cli_version" =~ ^aws-cli/[0-9]+(\.[0-9]+)*$ ]]; then
     cli_version='unavailable'
-  fi
-
-  if "$aws_bin" s3api get-object \
-    --bucket "$ARTIFACT_S3_BUCKET" --key "$object_key" "$tmp_dir/s3api-readback" \
-    --endpoint-url "$endpoint_url" --cli-connect-timeout 15 --cli-read-timeout 60 \
-    >"$tmp_dir/s3api-readback.log" 2>&1; then
-    if [[ -f "$tmp_dir/s3api-readback" ]]; then
-      s3api_sha256="$(sha256sum "$tmp_dir/s3api-readback" | cut -d ' ' -f1)"
-      if [[ "$s3api_sha256" == "$source_sha256" ]]; then
-        s3api_status='verified'
-      else
-        s3api_status='checksum_mismatch'
-      fi
-    else
-      s3api_status='missing_output'
-    fi
-  else
-    s3api_exit_code=$?
-    s3api_failure_reason="$(aws_failure_reason "$tmp_dir/s3api-readback.log")"
   fi
 
   if presigned_url="$("$aws_bin" s3 presign "$object_uri" --endpoint-url "$endpoint_url" --expires-in 300 2>"$tmp_dir/diagnostic-presign.log")" && [[ -n "$presigned_url" ]]; then
@@ -124,15 +105,13 @@ run_s3_readback_diagnostics() {
 
   echo "::group::S3 readback diagnostics"
   echo "AWS CLI version: $cli_version"
-  echo "s3api GetObject: $s3api_status${s3api_failure_reason:+ ($s3api_failure_reason; exit code $s3api_exit_code)}${s3api_sha256:+; SHA-256 $s3api_sha256}"
+  echo "s3api GetObject: failed ($s3api_failure_reason; exit code $s3api_exit_code)"
   echo "Presigned GET: $presigned_status (HTTP $presigned_http_status)${presigned_failure_reason:+; $presigned_failure_reason}${presigned_sha256:+; SHA-256 $presigned_sha256}"
   echo "::endgroup::"
 
   if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-    local s3api_details="$s3api_status"
+    local s3api_details="failed ($s3api_failure_reason; exit code $s3api_exit_code)"
     local presigned_details="$presigned_status (HTTP $presigned_http_status)"
-    [[ -z "$s3api_failure_reason" ]] || s3api_details+=" ($s3api_failure_reason; exit code $s3api_exit_code)"
-    [[ -z "$s3api_sha256" ]] || s3api_details+="; SHA-256 $s3api_sha256"
     [[ -z "$presigned_failure_reason" ]] || presigned_details+="; $presigned_failure_reason"
     [[ -z "$presigned_sha256" ]] || presigned_details+="; SHA-256 $presigned_sha256"
     if ! {
@@ -291,16 +270,19 @@ else
   fail_aws_operation "S3 upload" "$tmp_dir/upload.log" "$rc"
 fi
 
-# Diagnostic retry (#2329): a 100MB+ multipart-completed object returned a 403 on the very next
-# HeadObject (issued internally by `aws s3 cp` before it downloads) immediately after upload --
-# https://github.com/Sieitzz/dgfy-platform/actions/runs/37754268626. Retrying with backoff isolates
-# whether this is SeaweedFS eventual consistency on multipart completion (readback succeeds after a
-# short delay) versus a real, permanent permission/config problem (every attempt 403s the same way).
+# Retry (#2329): a 100MB+ multipart-completed object previously returned a 403 on the immediate
+# HeadObject issued internally by `aws s3 cp` before download --
+# https://github.com/Sieitzz/dgfy-platform/actions/runs/37754268626. Keep bounded backoff around
+# direct GetObject to distinguish SeaweedFS multipart visibility delays from a persistent failure.
 readback_attempt=1
 readback_max_attempts=5
 while true; do
-  if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
-    --endpoint-url "$endpoint_url" --only-show-errors --no-progress \
+  # Run 38567225921 showed `aws s3 cp` readback failing with SignatureDoesNotMatch while this direct
+  # GetObject API call and the presigned GET both verified the same source checksum. Use the
+  # explicit API operation for evidence verification instead of the failing transfer-manager path.
+  if "$aws_bin" s3api get-object \
+    --bucket "$ARTIFACT_S3_BUCKET" --key "$object_key" "$tmp_dir/direct-readback" \
+    --endpoint-url "$endpoint_url" --cli-connect-timeout 15 --cli-read-timeout 60 \
     >"$tmp_dir/download.log" 2>&1; then
     break
   else
@@ -308,7 +290,7 @@ while true; do
   fi
   if (( readback_attempt >= readback_max_attempts )); then
     if [[ "${S3_DIAGNOSE_READBACK_FAILURE:-false}" == 'true' ]]; then
-      run_s3_readback_diagnostics
+      run_s3_readback_diagnostics "$rc" "$tmp_dir/download.log"
     fi
     fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
   fi
