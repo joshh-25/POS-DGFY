@@ -211,8 +211,9 @@ while true; do
     --endpoint-url "$endpoint_url" --only-show-errors --no-progress \
     >"$tmp_dir/download.log" 2>&1; then
     break
+  else
+    rc=$?
   fi
-  rc=$?
   if (( readback_attempt >= readback_max_attempts )); then
     fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
   fi

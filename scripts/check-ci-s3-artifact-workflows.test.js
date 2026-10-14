@@ -202,3 +202,66 @@ test('S3 uploader exposes a sanitized AWS error and preserves the failure if its
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 });
+
+test('S3 uploader reports the AWS CLI exit code for a failed direct readback', (t) => {
+  const sha256sum = spawnSync('sha256sum', ['--version'], { encoding: 'utf8' });
+  if (sha256sum.error?.code === 'ENOENT') {
+    t.skip('sha256sum is unavailable on this platform');
+    return;
+  }
+
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-s3-readback-failure-'));
+  const fakeBin = path.join(temporaryRoot, 'bin');
+  const runnerTemp = path.join(temporaryRoot, 'runner-temp');
+  fs.mkdirSync(fakeBin);
+  fs.mkdirSync(runnerTemp);
+  fs.writeFileSync(path.join(fakeBin, 'aws'), [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'if [[ "${1:-}" == "--version" ]]; then',
+    '  echo "aws-cli/2.0.0 Python/3.0"',
+    '  exit 0',
+    'fi',
+    'if [[ "${1:-}" == "s3" && "${2:-}" == "cp" && "${3:-}" == s3://* ]]; then',
+    '  echo "An error occurred (SignatureDoesNotMatch) when calling the GetObject operation" >&2',
+    '  exit 23',
+    'fi',
+    'exit 0',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(fakeBin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+
+  const sourcePath = path.join(temporaryRoot, 'evidence.json');
+  const outputPath = path.join(temporaryRoot, 'outputs', 'github-output.txt');
+  fs.mkdirSync(path.dirname(outputPath));
+  fs.writeFileSync(sourcePath, '{"evidence":true}\n');
+
+  try {
+    const result = spawnSync('bash', [path.join(ROOT, 'scripts/ci-s3-upload.sh'), sourcePath, 'evidence'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ''}`,
+        ARTIFACT_S3_ENDPOINT: 'https://s3.example.invalid',
+        ARTIFACT_S3_BUCKET: 'private-bucket',
+        ARTIFACT_S3_ACCESS_KEY_ID: 'fake-access-key',
+        AWS_SECRET_ACCESS_KEY: 'fake-secret',
+        GITHUB_OUTPUT: outputPath,
+        RUNNER_TEMP: runnerTemp,
+        GITHUB_REPOSITORY: 'Sieitzz/dgfy-platform',
+        GITHUB_WORKFLOW: 'Readback failure test',
+        GITHUB_RUN_ID: '43',
+        GITHUB_RUN_ATTEMPT: '1',
+        GITHUB_JOB: 's3-readback-test',
+        SOURCE_COMMIT_SHA: '0123456789abcdef0123456789abcdef01234567',
+      },
+    });
+
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /S3 direct readback failed \(S3 service error SignatureDoesNotMatch; AWS CLI exit code 23\)/);
+    assert.match(fs.readFileSync(outputPath, 'utf8'), /failure_reason=S3 service error SignatureDoesNotMatch/);
+  } finally {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
