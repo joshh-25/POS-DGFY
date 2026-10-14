@@ -191,8 +191,9 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   remains actively-incident-only. Also carries a mandatory compliance-preflight reconciliation step for any
   hotfix diff touching an outstanding `NOT-EXECUTED-*` declaration (#1700, `npm run
   compliance:reconcile-local` — see that role's own SKILL.md), never waivable via #1007 or its own
-  `main`-merge override. Only runs when explicitly authorized — either an active incident session,
-  or an explicit `/hotfix` invocation; a detected hotfix-shaped request with neither only proposes.
+  `main`-merge override. Only runs when explicitly authorized — an active incident session, an
+  explicit `/hotfix` invocation, or a `ready` Planner artifact with operator-marked
+  `execution_route: hotfix`; a detected hotfix-shaped request with none of these only proposes.
   @.agents/skills/incident-responder/SKILL.md
 - **Notes/Intake** (#331/#645) — primes on stakeholder-meeting topics beforehand, captures pasted
   notes verbatim during the meeting with live ADR/doc conflict flagging, then compiles a routed
