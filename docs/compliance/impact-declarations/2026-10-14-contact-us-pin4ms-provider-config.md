@@ -35,7 +35,7 @@ The repository path rules require the regulatory floor because this change touch
 - API-key submission must use HTTPS, except trusted loopback development, and authorization is enforced by the API rather than only by the UI.
 - Provider-key status responses and audit data must not reveal the key.
 - This change does not retrieve or persist contact submissions. The 60-day active / archived-until-admin-deletion retention decision applies only to a future DGFY-side copy and does not imply deletion from Pin4MS.
-- The required request-time preflight is pending and must be reconciled to real `no_breach` evidence before this declaration is eligible for the compliance gate.
+- The required request-time preflight passed on 2026-10-14 and was reconciled to `no_breach` / `ALLOWED` under request ref `PREFLIGHT-LOCAL-1791973320703-2026-10-14-CONTACT-US-PIN4MS-PROVIDER-CONFIG`.
 
 ## Verification Evidence
 
