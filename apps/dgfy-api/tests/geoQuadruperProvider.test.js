@@ -140,4 +140,80 @@ describe('quadruperGeocodeProvider', () => {
         expect(url.searchParams.get('limit')).toBe('15');
         expect(url.searchParams.get('distance_sort')).toBe('true');
     });
+
+    describe('house-number queries (#2484)', () => {
+        const RIZAL_STREET = {
+            type: 'Feature',
+            properties: {
+                osm_key: 'highway', osm_value: 'secondary', type: 'street', name: 'Rizal Street',
+                locality: 'Iloilo Central Business District', district: 'City Proper', city: 'Iloilo City', state: 'Western Visayas'
+            },
+            geometry: { type: 'Point', coordinates: [122.57, 10.69] }
+        };
+        const CAINTA_HOUSE = {
+            type: 'Feature',
+            properties: {
+                osm_key: 'building', osm_value: 'yes', type: 'house', housenumber: '52',
+                street: 'Saint Anthony Street', locality: 'Rodfer Ⅱ', city: 'Cainta', state: 'Rizal'
+            },
+            geometry: { type: 'Point', coordinates: [121.1, 14.6] }
+        };
+
+        const routeByQuery = (byQuery) => jest.fn(async (url) => {
+            const q = new URL(url).searchParams.get('q');
+            return byQuery[q] === undefined ? jsonResponse({}, 500) : jsonResponse(byQuery[q]);
+        });
+
+        it('searches the street part alone and returns street-level results with the typed number', async () => {
+            global.fetch = routeByQuery({
+                '52 Rizal Street': { features: [CAINTA_HOUSE] },
+                'Rizal Street': { features: [RIZAL_STREET] }
+            });
+
+            const result = await quadruperGeocodeProvider.searchAddresses({ query: '52 Rizal Street', limit: 5 });
+
+            expect(global.fetch).toHaveBeenCalledTimes(2);
+            const streetCall = global.fetch.mock.calls
+                .map(([url]) => new URL(url))
+                .find((url) => url.searchParams.get('q') === 'Rizal Street');
+            expect(streetCall.searchParams.get('limit')).toBe('20');
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0].address_line.startsWith('52 Rizal Street, ')).toBe(true);
+            expect(result.results[0].precision).toBe('street');
+        });
+
+        it('falls back to the plain results when no street matches', async () => {
+            global.fetch = routeByQuery({
+                '5 Star Bakery': { features: [ILOILO_FEATURE] },
+                'Star Bakery': { features: [] }
+            });
+
+            const result = await quadruperGeocodeProvider.searchAddresses({ query: '5 Star Bakery', limit: 5 });
+
+            expect(result.results).toHaveLength(1);
+            expect(result.results[0].address_line.startsWith("Peri Todd's Burger")).toBe(true);
+        });
+
+        it('still answers from the street search when the full query fails', async () => {
+            global.fetch = routeByQuery({ 'Rizal Street': { features: [RIZAL_STREET] } });
+
+            const result = await quadruperGeocodeProvider.searchAddresses({ query: '52 Rizal Street', limit: 5 });
+
+            expect(result.results[0].precision).toBe('street');
+        });
+
+        it('returns the transport-failure sentinel when both searches fail', async () => {
+            global.fetch = routeByQuery({});
+
+            await expect(quadruperGeocodeProvider.searchAddresses({ query: '52 Rizal Street', limit: 5 })).resolves.toBeUndefined();
+        });
+
+        it('makes a single request when the query has no house number', async () => {
+            global.fetch = routeByQuery({ 'Rizal Street': { features: [RIZAL_STREET] } });
+
+            await quadruperGeocodeProvider.searchAddresses({ query: 'Rizal Street', limit: 5 });
+
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+    });
 });
