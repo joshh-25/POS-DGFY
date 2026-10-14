@@ -32,6 +32,13 @@ fail_aws_operation() {
   local reason
 
   reason="$(aws_failure_reason "$log_file")"
+  # Share only the allowlisted classification with later workflow steps. Preserve the original AWS
+  # failure if GitHub's output file is unavailable or cannot be written.
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    if ! write_output failure_reason "$reason"; then
+      echo "::warning::Could not write the sanitized S3 failure reason to the GitHub Actions output file." >&2
+    fi
+  fi
   # The AWS CLI's non-debug error output for a failed S3 call never includes credential material
   # -- only the request URL, HTTP status, and the service's response body -- so printing it is
   # safe and gives the real error code/message instead of just the generic classification above.

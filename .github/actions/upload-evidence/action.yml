@@ -48,6 +48,9 @@ outputs:
   upload_status:
     description: Existing S3 uploader status when fallback was attempted.
     value: ${{ steps.s3_fallback.outputs.upload_status }}
+  failure_reason:
+    description: Sanitized S3 failure classification when fallback fails.
+    value: ${{ steps.s3_fallback.outputs.failure_reason }}
   object_uri:
     description: S3 object URI when fallback was attempted.
     value: ${{ steps.s3_fallback.outputs.object_uri }}
@@ -130,6 +133,7 @@ runs:
         GITHUB_ARTIFACT_URL: ${{ steps.github_upload.outputs.artifact-url }}
         GITHUB_ARTIFACT_DIGEST: ${{ steps.github_upload.outputs.artifact-digest }}
         S3_OUTCOME: ${{ steps.s3_fallback.outcome }}
+        S3_FAILURE_REASON: ${{ steps.s3_fallback.outputs.failure_reason }}
         S3_STATUS: ${{ steps.s3_fallback.outputs.upload_status }}
         S3_URI: ${{ steps.s3_fallback.outputs.object_uri }}
         S3_SIZE_BYTES: ${{ steps.s3_fallback.outputs.size_bytes }}
