@@ -118,6 +118,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0093 | [Third-Party Partner Integration, Engine Authority, and Attachments](0093-third-party-partner-integration-engine-authority-and-attachments.md) | `proposed` | third_party_partner_integration_contract | 2027-04-10 | 5 |
 | 0094 | [Outbound SMS delivery contract, log, and PII retention](0094-outbound-sms-delivery-contract-log-and-pii-retention.md) | `amended` | outbound_sms_delivery_contract_and_log | 2027-04-10 | 0 |
 | 0095 | [Offline POS Sync Contract Convergence](0095-offline-pos-sync-contract-convergence.md) | `proposed` | pos_offline_sync_contract | 2027-04-10 | 4 |
+| 0096 | [Contact Inquiry Provider Configuration](0096-contact-inquiry-provider-configuration.md) | `proposed` | contact_inquiry_provider_configuration | 2027-04-14 | 0 |
 
 ## Renumbered (collision stubs)
 

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: platform-security
-last_reviewed: 2026-07-28
+last_reviewed: 2026-10-14
 applies_to: platform_admin_routes
 topic: platform_admin_page_authorization
 ---
@@ -13,6 +13,7 @@ The backend resolves current session and database permissions on every Platform 
 
 | Route family | Required authority |
 | --- | --- |
+| `/api/v1/admin/contact-inquiries*` | `admin.contact_inquiries` |
 | `/api/v1/admin/feedback*` | `admin.feedback` |
 | `/api/v1/admin/tenants/pricing*` | `admin.pricing` |
 | `/api/v1/admin/tenants/*` | `admin.tenants` |
