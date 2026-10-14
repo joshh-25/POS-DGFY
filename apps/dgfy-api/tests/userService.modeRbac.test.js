@@ -2,6 +2,8 @@ import { jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
 import {
   importUsersFromCSV,
+  updatePosApprovalPin,
+  updateUserPermissions,
   updateUserRole
 } from '../src/services/userService.js';
 
@@ -148,6 +150,57 @@ describe('userService mode-aware RBAC persistence', () => {
       role_preset_key: 'services_scheduler',
       role_preset_status: 'current'
     }));
+  });
+
+  it('returns effective staff-role permissions after an explicit permission update', async () => {
+    const admin = createUser({
+      user_id: 1,
+      username: 'admin',
+      role: 'admin',
+      is_master_admin: true
+    });
+    const target = createUser({
+      user_id: 2,
+      permissions: [],
+      staffRole: {
+        is_active: true,
+        capabilities: ['pos:discount_authorize']
+      }
+    });
+    const { User } = createDbMocks({
+      userById: {
+        1: admin,
+        2: target
+      }
+    });
+
+    const result = await updateUserPermissions(1, 2, [], false);
+
+    expect(User.findOne).toHaveBeenCalled();
+    expect(target.update).toHaveBeenCalledWith({ permissions: [], is_master_admin: false });
+    expect(result.permissions).toEqual(['pos:discount_authorize']);
+  });
+
+  it('keeps approval PIN configuration blocked for users without discount authorization', async () => {
+    const admin = createUser({
+      user_id: 1,
+      username: 'admin',
+      role: 'admin',
+      is_master_admin: true
+    });
+    const target = createUser({ user_id: 2, role: 'cashier', permissions: [] });
+    createDbMocks({
+      userById: {
+        1: admin,
+        2: target
+      }
+    });
+
+    await expect(updatePosApprovalPin(1, 2, { pin: '1234' })).rejects.toMatchObject({
+      statusCode: 422,
+      message: 'Grant POS discount authorization before configuring an approval PIN'
+    });
+    expect(target.update).not.toHaveBeenCalled();
   });
 
   it('rejects explicit empty location ids for assigned-scope presets in multi-location tenants', async () => {

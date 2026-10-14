@@ -862,7 +862,7 @@ export default function TerminalPageLayout({
                 className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition hover:bg-blue-50"
               >
                 <span>
-                  <span className="block text-sm font-bold text-[#0F172A]">My Day Close PIN</span>
+                  <span className="block text-sm font-bold text-[#0F172A]">My global POS PIN</span>
                   <span className="mt-0.5 block text-xs text-[#64748B]">Set or change the PIN for this company.</span>
                 </span>
                 <span className="text-xs font-extrabold text-[#1A4E8D]">Manage</span>

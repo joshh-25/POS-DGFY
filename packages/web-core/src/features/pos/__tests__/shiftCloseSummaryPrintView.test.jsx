@@ -60,12 +60,12 @@ describe('ShiftCloseSummaryPrintView', () => {
         );
 
         expect(screen.getByRole('dialog', { name: /shift 8/i })).toBeTruthy();
-        expect(screen.getByText('Payment method breakdown')).toBeTruthy();
+        expect(screen.getByText('Payment methods')).toBeTruthy();
         expect(screen.getByText('Cash reconciliation')).toBeTruthy();
         expect(screen.getByText('Closing cash')).toBeTruthy();
         expect(screen.getByText('Post-close adjustment accountability')).toBeTruthy();
         expect(screen.getByText(/Actioned by Admin One/)).toBeTruthy();
-        expect(screen.queryByText('Sales summary')).toBeNull();
+        expect(screen.getByText('Sales summary')).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
         expect(screen.getByRole('combobox', { name: 'Paper' }).textContent).toContain('80mm (3 1/8 in)');
     });

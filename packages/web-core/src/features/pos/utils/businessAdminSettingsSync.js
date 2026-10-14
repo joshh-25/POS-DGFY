@@ -124,16 +124,16 @@ export const shouldRefreshBusinessAdminSettingsUpdate = ({
     && eventBranchId === currentBranchId;
 };
 
-// OPIS (issue #2052) lives on another origin, so its saves never reach POS through the
-// same-origin CustomEvent/localStorage/BroadcastChannel paths above. Instead POS
-// revalidates its canonical settings when it regains focus/visibility or reconnects
+// OPIS (issue #2052) lives on another origin, so saves cannot reach the other app through
+// same-origin CustomEvent/localStorage/BroadcastChannel paths. Both apps therefore
+// revalidate their canonical settings when they regain focus/visibility or reconnect
 // after offline state. Duplicate triggers are coalesced behind a minimum interval; the
 // caller owns the actual refresh (scoped hydration that must not change tenant, reset
 // checkout, close a shift, overwrite dirty settings, or silently reprice an active
 // sale). No realtime service and no cross-origin token messaging.
 export const OPIS_SETTINGS_REFRESH_MIN_INTERVAL_MS = 15000;
 
-export const installPosFocusSettingsRefresh = (
+export const installCrossAppSettingsRefresh = (
   refresh,
   windowObj = typeof window === 'undefined' ? null : window,
   { minIntervalMs = OPIS_SETTINGS_REFRESH_MIN_INTERVAL_MS } = {}
@@ -182,5 +182,8 @@ export const installPosFocusSettingsRefresh = (
     windowObj.removeEventListener('online', handleOnline);
   };
 };
+
+// Backward-compatible name retained for existing POS callers and tests.
+export const installPosFocusSettingsRefresh = installCrossAppSettingsRefresh;
 
 export { BUSINESS_ADMIN_SETTINGS_CHANNEL, BUSINESS_ADMIN_SETTINGS_STORAGE_KEY };

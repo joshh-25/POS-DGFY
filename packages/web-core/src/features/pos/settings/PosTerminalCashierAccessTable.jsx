@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Info, KeyRound, ListChecks, ShieldCheck, Trash2, UserRoundPlus, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
+import { hasPosDiscountAuthorization, resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import { POS_TABLE_HEADER_STANDARD_CLASS, POS_TABLE_SURFACE_CLASS } from '../components/PosTableSurface.jsx';
 import PosSearchField from '../components/PosSearchField.jsx';
 
@@ -224,14 +224,13 @@ function MobileCashierTable({
   discountApproversLoading,
   canManageDiscountApprovalPins,
   discountAuthorizationSavingUserId,
-  setApprovalPinUser,
-  setApprovalPin,
   dayCloseOperators,
   dayCloseOperatorsLoading,
   canManageDayClosePins,
   dayCloseAccessSavingUserId,
-  setDayClosePinUser,
   cashierVoidAccessSavingUserId,
+  cashierPinSavingUserId,
+  onOpenCashierPin = async () => {},
   updateDiscountAuthorization,
   updateDayCloseAccess,
   updateCashierVoidAccess,
@@ -273,9 +272,7 @@ function MobileCashierTable({
               const cashierPermissions = resolveUserPermissionList(cashier);
               const discountRecord = discountApprovers.find((entry) => Number(entry?.user_id) === Number(cashier?.user_id)) || cashier;
               const dayCloseRecord = dayCloseOperators.find((entry) => Number(entry?.user_id) === Number(cashier?.user_id)) || cashier;
-              const hasDiscountAccess = discountRecord?.is_master_admin === true
-                || ['admin', 'manager'].includes(String(discountRecord?.role || '').toLowerCase())
-                || resolveUserPermissionList(discountRecord).includes('pos:discount_authorize');
+              const hasDiscountAccess = hasPosDiscountAuthorization(discountRecord);
               const hasDayCloseAccess = dayCloseRecord?.is_master_admin === true
                 || resolveUserPermissionList(dayCloseRecord).includes('pos:close_day');
               const hasVoidAccess = cashierPermissions.includes('pos:void');
@@ -301,25 +298,11 @@ function MobileCashierTable({
                       testId={`mobile-pos-cashier-discount-toggle-${cashier.user_id}`}
                       layout="inline"
                     />
-                    {canManageDiscountApprovalPins ? (
-                      hasDiscountAccess ? (
-                        <Button
-                          type="button"
-                          variant="default"
-                          className="mt-2 h-7 rounded-md border border-teal-600 bg-teal-600 px-2 text-[10px] font-extrabold text-white hover:bg-teal-700 hover:text-white focus-visible:ring-teal-500"
-                          onClick={() => {
-                            setApprovalPinUser(discountRecord);
-                            setApprovalPin('');
-                          }}
-                          disabled={permissionDisabled || savingDiscountAccess}
-                        >
-                          <KeyRound className="mr-1 h-3 w-3" />
-                          {discountRecord?.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}
-                        </Button>
-                      ) : (
-                        <span className="mt-1 block text-[11px] font-medium leading-4 text-slate-400">Enable access to set PIN</span>
-                      )
-                    ) : null}
+                    {hasDiscountAccess ? (
+                      <span className="mt-1 block text-[11px] font-medium leading-4 text-slate-500">Uses global POS PIN</span>
+                    ) : (
+                      <span className="mt-1 block text-[11px] font-medium leading-4 text-slate-400">Enable access to use global PIN</span>
+                    )}
                   </td>
                   <td className="px-2 py-2.5">
                     <PermissionSwitch
@@ -331,21 +314,8 @@ function MobileCashierTable({
                       testId={`mobile-pos-cashier-day-close-toggle-${cashier.user_id}`}
                       layout="inline"
                     />
-                    {canManageDayClosePins && hasDayCloseAccess ? (
-                      dayCloseRecord?.pos_day_close_pin_configured ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="mt-2 h-7 rounded-md px-2 text-[10px] font-extrabold text-blue-700"
-                          onClick={() => setDayClosePinUser(dayCloseRecord)}
-                          disabled={permissionDisabled || savingDayCloseAccess}
-                        >
-                          <KeyRound className="mr-1 h-3 w-3" />
-                          Reset PIN
-                        </Button>
-                      ) : (
-                        <span className="mt-1 block text-[11px] font-medium leading-4 text-amber-700">PIN setup pending</span>
-                      )
+                    {hasDayCloseAccess ? (
+                      <span className="mt-1 block text-[11px] font-medium leading-4 text-slate-500">Uses global POS PIN</span>
                     ) : null}
                   </td>
                   <td className="px-2 py-2.5">
@@ -369,6 +339,17 @@ function MobileCashierTable({
                         layout="inline"
                       />
                     </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      data-testid={`mobile-pos-cashier-pin-${cashier.user_id}`}
+                      className="mt-2 h-7 rounded-md px-2 text-[10px] font-extrabold text-blue-700"
+                      onClick={() => onOpenCashierPin(cashier)}
+                      disabled={permissionDisabled || savingVoidAccess || Number(cashierPinSavingUserId) === Number(cashier?.user_id)}
+                    >
+                      <KeyRound className="mr-1 h-3 w-3" />
+                      {cashier?.pos_global_pin_configured || cashier?.pos_cashier_pin_configured ? 'Reset global PIN' : 'Set global PIN'}
+                    </Button>
                   </td>
                   <td className="px-2 py-2.5 text-right align-middle">
                     <TerminalAssignmentControl
@@ -514,15 +495,14 @@ export default function PosTerminalCashierAccessTable({
   canManageDiscountApprovalPins,
   updateDiscountAuthorization,
   discountAuthorizationSavingUserId,
-  setApprovalPinUser,
-  setApprovalPin,
   dayCloseOperators,
   dayCloseOperatorsLoading,
   canManageDayClosePins,
   updateDayCloseAccess,
   dayCloseAccessSavingUserId,
-  setDayClosePinUser,
   cashierVoidAccessSavingUserId,
+  cashierPinSavingUserId,
+  onOpenCashierPin = async () => {},
   updateCashierVoidAccess,
   updateCashierDrawerAccess,
   canRemoveCashiers = false,
@@ -629,14 +609,13 @@ export default function PosTerminalCashierAccessTable({
             discountApproversLoading={discountApproversLoading}
             canManageDiscountApprovalPins={canManageDiscountApprovalPins}
             discountAuthorizationSavingUserId={discountAuthorizationSavingUserId}
-            setApprovalPinUser={setApprovalPinUser}
-            setApprovalPin={setApprovalPin}
             dayCloseOperators={dayCloseOperators}
             dayCloseOperatorsLoading={dayCloseOperatorsLoading}
             canManageDayClosePins={canManageDayClosePins}
             dayCloseAccessSavingUserId={dayCloseAccessSavingUserId}
-            setDayClosePinUser={setDayClosePinUser}
             cashierVoidAccessSavingUserId={cashierVoidAccessSavingUserId}
+            cashierPinSavingUserId={cashierPinSavingUserId}
+            onOpenCashierPin={onOpenCashierPin}
             updateDiscountAuthorization={updateDiscountAuthorization}
             updateDayCloseAccess={updateDayCloseAccess}
             updateCashierVoidAccess={updateCashierVoidAccess}
@@ -666,7 +645,7 @@ export default function PosTerminalCashierAccessTable({
               />
               <PermissionColumnHeader
                 label="Cashier Void and Cash Authorization"
-                description="Controls separate POS void and cash refund or drawer adjustment permissions."
+                description="Controls separate POS void and cash permissions. Protected actions use this cashier&apos;s one global POS PIN."
                 className="pos-cashier-permission-subheader"
               />
               <span role="columnheader" data-pos-cashier-terminals-header="true">Assigned terminals</span>
@@ -677,9 +656,7 @@ export default function PosTerminalCashierAccessTable({
                 const cashierPermissions = resolveUserPermissionList(cashier);
                 const discountRecord = discountApprovers.find((entry) => Number(entry?.user_id) === Number(cashier?.user_id)) || cashier;
                 const dayCloseRecord = dayCloseOperators.find((entry) => Number(entry?.user_id) === Number(cashier?.user_id)) || cashier;
-                const hasDiscountAccess = discountRecord?.is_master_admin === true
-                  || ['admin', 'manager'].includes(String(discountRecord?.role || '').toLowerCase())
-                  || resolveUserPermissionList(discountRecord).includes('pos:discount_authorize');
+                const hasDiscountAccess = hasPosDiscountAuthorization(discountRecord);
                 const hasDayCloseAccess = dayCloseRecord?.is_master_admin === true
                   || resolveUserPermissionList(dayCloseRecord).includes('pos:close_day');
                 const hasVoidAccess = cashierPermissions.includes('pos:void');
@@ -708,25 +685,11 @@ export default function PosTerminalCashierAccessTable({
                           testId={`pos-cashier-discount-toggle-${cashier.user_id}`}
                           layout="inline"
                         />
-                        {canManageDiscountApprovalPins ? (
-                          hasDiscountAccess ? (
-                            <Button
-                              type="button"
-                              variant="default"
-                              className="h-7 rounded-md border border-teal-600 bg-teal-600 px-2 text-[10px] font-extrabold text-white hover:bg-teal-700 hover:text-white focus-visible:ring-teal-500"
-                              onClick={() => {
-                                setApprovalPinUser(discountRecord);
-                                setApprovalPin('');
-                              }}
-                              disabled={locked || loading || savingDiscountAccess}
-                            >
-                              <KeyRound className="mr-1 h-3 w-3" />
-                              {discountRecord?.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}
-                            </Button>
-                          ) : (
-                            <span className="block text-[11px] font-medium leading-4 text-slate-400">Enable access to set PIN</span>
-                          )
-                        ) : null}
+                        {hasDiscountAccess ? (
+                          <span className="block text-[11px] font-medium leading-4 text-slate-500">Uses global POS PIN</span>
+                        ) : (
+                          <span className="block text-[11px] font-medium leading-4 text-slate-400">Enable access to use global PIN</span>
+                        )}
                       </div>
                     </div>
                     <div role="cell" data-pos-cashier-permission="day-close" aria-label={`Day close access for ${cashierLabel}`} className="min-w-0">
@@ -740,21 +703,8 @@ export default function PosTerminalCashierAccessTable({
                           testId={`pos-cashier-day-close-toggle-${cashier.user_id}`}
                           layout="inline"
                         />
-                        {canManageDayClosePins && hasDayCloseAccess ? (
-                          dayCloseRecord?.pos_day_close_pin_configured ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-7 rounded-md px-2 text-[10px] font-extrabold text-blue-700"
-                              onClick={() => setDayClosePinUser(dayCloseRecord)}
-                              disabled={locked || loading || savingDayCloseAccess}
-                            >
-                              <KeyRound className="mr-1 h-3 w-3" />
-                              Reset PIN
-                            </Button>
-                          ) : (
-                            <span className="block text-[11px] font-medium leading-4 text-amber-700">PIN setup pending</span>
-                          )
+                        {hasDayCloseAccess ? (
+                          <span className="block text-[11px] font-medium leading-4 text-slate-500">Uses global POS PIN</span>
                         ) : null}
                       </div>
                     </div>
@@ -779,6 +729,17 @@ export default function PosTerminalCashierAccessTable({
                           layout="grid-cell"
                         />
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        data-testid={`pos-cashier-pin-${cashier.user_id}`}
+                        className="mt-2 h-7 rounded-md px-2 text-[10px] font-extrabold text-blue-700"
+                        onClick={() => onOpenCashierPin(cashier)}
+                        disabled={locked || loading || savingVoidAccess || Number(cashierPinSavingUserId) === Number(cashier?.user_id)}
+                      >
+                        <KeyRound className="mr-1 h-3 w-3" />
+                        {cashier?.pos_global_pin_configured || cashier?.pos_cashier_pin_configured ? 'Reset global PIN' : 'Set global PIN'}
+                      </Button>
                     </div>
                     <div role="cell" data-pos-cashier-terminals-cell="true" className="relative min-w-0">
                       <TerminalAssignmentControl

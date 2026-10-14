@@ -72,7 +72,7 @@ export default function PosDiscountAutomationSection({
           <div className="min-w-0">
             <p className="text-[12px] font-extrabold text-amber-950">Allow employee discount self-approval</p>
             <p className="mt-0.5 text-[11px] leading-4 text-amber-800">
-              Let the cashier receiving an Employee discount authorize it with their configured POS approval PIN. Self-approvals remain in the transaction audit.
+              Let the cashier receiving an Employee discount authorize it with their configured global POS PIN. Self-approvals remain in the transaction audit.
             </p>
           </div>
           <Switch

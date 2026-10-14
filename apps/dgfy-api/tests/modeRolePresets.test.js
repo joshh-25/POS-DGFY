@@ -111,6 +111,7 @@ describe('mode-aware role preset catalog', () => {
     expect(permissions).toContain('fnb:menu:view');
     expect(permissions).toContain('fnb:dining:view');
     expect(permissions).toContain('fnb:checks:manage');
+    expect(permissions).toContain('pos:void');
     expect(permissions).not.toContain('pos:close_day');
   });
 
@@ -228,7 +229,7 @@ describe('mode-aware role preset catalog', () => {
     });
 
     it('bumps ROLE_CATALOG_VERSION so cached clients refetch the new catalog', () => {
-      expect(ROLE_CATALOG_VERSION).toBe('2026-10-06.mode-aware-rbac-v5');
+      expect(ROLE_CATALOG_VERSION).toBe('2026-10-13.mode-aware-rbac-v6');
     });
   });
 });

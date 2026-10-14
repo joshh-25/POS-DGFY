@@ -16,3 +16,10 @@ export const resolveUserPermissionList = (user) => {
     return [];
   }
 };
+
+export const hasPosDiscountAuthorization = (user) => {
+  const role = String(user?.role || '').trim().toLowerCase();
+  return user?.is_master_admin === true
+    || ['admin', 'manager'].includes(role)
+    || resolveUserPermissionList(user).includes('pos:discount_authorize');
+};

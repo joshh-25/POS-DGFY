@@ -30,6 +30,23 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
         type: DataTypes.DECIMAL(24, 12),
         allowNull: false
     },
+    voided_quantity: {
+        type: DataTypes.DECIMAL(24, 12),
+        allowNull: false,
+        defaultValue: 0
+    },
+    voided_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    voided_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    void_reason: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
     unit_of_measure: {
         type: DataTypes.STRING(50),
         allowNull: true
@@ -101,7 +118,8 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
     updatedAt: 'updated_at',
     indexes: [
         { fields: ['pos_transaction_id'] },
-        { fields: ['item_id'] }
+        { fields: ['item_id'] },
+        { fields: ['voided_at'] }
     ]
 });
 

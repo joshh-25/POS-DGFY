@@ -31,7 +31,7 @@ const terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8'
 
 describe('POS discount approver management contract', () => {
   it('keeps discount authorization setup inside POS settings', () => {
-    expect(terminalWorkspaceContent).toContain('POS Discount Authorization');
+    expect(terminalWorkspaceContent).toContain('POS discount authorization enabled');
     expect(terminalWorkspaceContent).toContain('updateDiscountAuthorization');
     expect(terminalWorkspaceContent).toContain("aria-label={`Can authorize discounts for");
     expect(userManagementContent).not.toContain('POS Discount Approval PIN');
@@ -42,22 +42,23 @@ describe('POS discount approver management contract', () => {
     expect(userManagementContent).not.toContain('pos_approval_pin_hash');
   });
 
-  it('makes the same write-only approval PIN management available in POS settings', () => {
-    expect(terminalWorkspaceContent).toContain('POS Discount Authorization');
+  it('makes the same write-only global PIN management available in POS settings', () => {
+    expect(terminalWorkspaceContent).toContain('updateDiscountAuthorization');
     expect(terminalWorkspaceContent).toContain('canManageDiscountApprovalPins = terminalUser?.is_master_admin === true');
     expect(terminalWorkspaceContent).toContain('getAllUsers({ include_invitations: false })');
     expect(terminalWorkspaceContent).toContain("['admin', 'manager'].includes");
     expect(terminalWorkspaceContent).toContain("resolveUserPermissionList(user).includes('pos:discount_authorize')");
-    expect(terminalWorkspaceContent).toContain('updatePosApprovalPin(approvalPinUser.user_id');
-    expect(terminalWorkspaceContent).toContain("saveApprovalPin({ clear: true })");
+    expect(terminalWorkspaceContent).toContain('updatePosCashierPin(userId, { pin: normalizedPin })');
+    expect(terminalWorkspaceContent).not.toContain('updatePosApprovalPin(approvalPinUser.user_id');
+    expect(terminalWorkspaceContent).not.toContain("saveApprovalPin({ clear: true })");
     expect(terminalWorkspaceContent).toContain("updateUserPermissions(userId, nextPermissions)");
     expect(terminalWorkspaceContent).not.toContain('pos_approval_pin_hash');
   });
 
   it('keeps authorized employees visible while marking missing PIN setup', () => {
-    expect(terminalWorkspaceContent).toContain('pos_approval_pin_configured');
-    expect(checkoutRenderContent).toContain('PIN not configured');
-    expect(checkoutRenderContent).toContain('disabled={approver.pos_approval_pin_configured !== true}');
+    expect(terminalWorkspaceContent).toContain('pos_global_pin_configured');
+    expect(checkoutRenderContent).toContain('Global PIN not configured');
+    expect(checkoutRenderContent).toContain('disabled={!hasGlobalPosPin(approver)}');
     expect(checkoutRenderContent).toContain('autoComplete="one-time-code"');
     expect(checkoutRenderContent).toContain('type="text"');
     expect(checkoutRenderContent).toContain('WebkitTextSecurity');

@@ -23,8 +23,18 @@ import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSA
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
 import { buildLegacyDgfyLinkStatus } from './dgfyLegacyAccessPolicy.js';
 import { hasEffectivePermission, resolveEffectivePermissions } from '../utils/userPermissions.js';
+import {
+  hasConfiguredPosGlobalPin,
+  hasConfiguredPosPinForAction
+} from '../modules/pos/domain/posGlobalPinPolicy.js';
 
 const hasPermission = hasEffectivePermission;
+const isEnabledFlag = (value) => (
+  value === true
+  || value === 1
+  || value === '1'
+  || (typeof value === 'string' && value.trim().toLowerCase() === 'true')
+);
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
@@ -508,6 +518,7 @@ export const getAllUsers = async (options = {}) => {
       'is_master_admin',
       'pos_approval_pin_hash',
       'pos_day_close_pin_hash',
+      'pos_cashier_pin_hash',
       'invitation_status',
       'invitation_expires_at',
       'invitation_delivery_status',
@@ -534,8 +545,10 @@ export const getAllUsers = async (options = {}) => {
       created_at: user.created_at,
       permissions: resolveEffectivePermissions(user),
       is_master_admin: user.is_master_admin,
-      pos_approval_pin_configured: Boolean(String(user.pos_approval_pin_hash || '').trim()),
-      pos_day_close_pin_configured: Boolean(String(user.pos_day_close_pin_hash || '').trim()),
+      pos_global_pin_configured: hasConfiguredPosGlobalPin(user),
+      pos_approval_pin_configured: hasConfiguredPosPinForAction(user, ['pos_approval_pin_hash']),
+      pos_day_close_pin_configured: hasConfiguredPosPinForAction(user, ['pos_day_close_pin_hash']),
+      pos_cashier_pin_configured: hasConfiguredPosGlobalPin(user),
       invitation_status: user.invitation_status || null,
       invitation_expires_at: user.invitation_expires_at || null,
       invitation_delivery_status: user.invitation_delivery_status || null,
@@ -851,7 +864,7 @@ export const updateUserPermissions = async (adminUserId, targetUserId, permissio
 
   return {
     user_id: targetUser.user_id,
-    permissions: targetUser.permissions,
+    permissions: resolveEffectivePermissions(targetUser),
     is_master_admin: targetUser.is_master_admin
   };
 };
@@ -881,14 +894,26 @@ export const updatePosApprovalPin = async (adminUserId, targetUserId, { pin = ''
 
   const normalizedPin = String(pin || '').trim();
   if (clear !== true && !/^[0-9]{4,12}$/.test(normalizedPin)) {
-    throw createError('POS approval PIN must contain 4 to 12 digits', 422);
+    throw createError('Global POS PIN must contain 4 to 12 digits', 422);
   }
-  const posApprovalPinHash = clear === true ? null : await hashPassword(normalizedPin);
-  await targetUser.update({ pos_approval_pin_hash: posApprovalPinHash });
+  const posGlobalPinHash = clear === true ? null : await hashPassword(normalizedPin);
+  await User.sequelize.transaction(async (transaction) => {
+    await targetUser.update({
+      pos_cashier_pin_hash: posGlobalPinHash,
+      pos_approval_pin_hash: null,
+      pos_day_close_pin_hash: null,
+      pos_cashier_pin_failed_attempts: 0,
+      pos_cashier_pin_locked_until: null,
+      pos_cashier_pin_changed_at: clear === true ? null : new Date()
+    }, { transaction });
+  });
   return {
     user_id: targetUser.user_id,
     username: targetUser.username,
-    pos_approval_pin_configured: Boolean(posApprovalPinHash)
+    pos_global_pin_configured: Boolean(posGlobalPinHash),
+    pos_approval_pin_configured: Boolean(posGlobalPinHash),
+    pos_day_close_pin_configured: Boolean(posGlobalPinHash),
+    pos_cashier_pin_configured: Boolean(posGlobalPinHash)
   };
 };
 
@@ -914,7 +939,14 @@ export const updatePosDayClosePin = async (adminUserId, targetUserId, { clear = 
   }
 
   await User.sequelize.transaction(async (transaction) => {
-    await targetUser.update({ pos_day_close_pin_hash: null }, { transaction });
+    await targetUser.update({
+      pos_cashier_pin_hash: null,
+      pos_approval_pin_hash: null,
+      pos_day_close_pin_hash: null,
+      pos_cashier_pin_failed_attempts: 0,
+      pos_cashier_pin_locked_until: null,
+      pos_cashier_pin_changed_at: null
+    }, { transaction });
     if (!AuditLog) throw new Error('AuditLog model is unavailable');
     await AuditLog.create({
       user_id: adminUser.user_id,
@@ -927,7 +959,10 @@ export const updatePosDayClosePin = async (adminUserId, targetUserId, { clear = 
   return {
     user_id: targetUser.user_id,
     username: targetUser.username,
-    pos_day_close_pin_configured: false
+    pos_global_pin_configured: false,
+    pos_approval_pin_configured: false,
+    pos_day_close_pin_configured: false,
+    pos_cashier_pin_configured: false
   };
 };
 
@@ -939,12 +974,19 @@ const persistOwnPosDayClosePin = async (user, pin, {
   const AuditLog = dbStore.get('AuditLog');
   const normalizedPin = String(pin || '').trim();
   if (!/^[0-9]{4,12}$/.test(normalizedPin)) {
-    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
+    throw createError('Global POS PIN must contain 4 to 12 digits', 422);
   }
 
-  const posDayClosePinHash = await hashPassword(normalizedPin);
+  const posGlobalPinHash = await hashPassword(normalizedPin);
   await User.sequelize.transaction(async (transaction) => {
-    await user.update({ pos_day_close_pin_hash: posDayClosePinHash }, { transaction });
+    await user.update({
+      pos_cashier_pin_hash: posGlobalPinHash,
+      pos_approval_pin_hash: null,
+      pos_day_close_pin_hash: null,
+      pos_cashier_pin_failed_attempts: 0,
+      pos_cashier_pin_locked_until: null,
+      pos_cashier_pin_changed_at: new Date()
+    }, { transaction });
     if (!AuditLog) throw new Error('AuditLog model is unavailable');
     await AuditLog.create({
       user_id: user.user_id,
@@ -954,6 +996,7 @@ const persistOwnPosDayClosePin = async (user, pin, {
       changes: {
         operation: 'self_service_configure',
         pin_configured: true,
+        pin_scope: 'global_pos_pin',
         credential_authority: credentialAuthority,
         ...(dgfyAccountId ? { dgfy_account_id: dgfyAccountId } : {})
       }
@@ -964,27 +1007,32 @@ const persistOwnPosDayClosePin = async (user, pin, {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
-    pos_day_close_pin_configured: true
+    pos_global_pin_configured: true,
+    pos_approval_pin_configured: true,
+    pos_day_close_pin_configured: true,
+    pos_cashier_pin_configured: true
   };
 };
 
-const findEligibleOwnDayClosePinUser = async (userId) => {
+const findEligibleOwnPosGlobalPinUser = async (userId) => {
   const User = dbStore.get('User');
   const user = await findVisibleUserById(User, userId);
   if (!user) throw notFoundError('User not found');
-  if (!user.is_active || !resolveEffectivePermissions(user).includes('pos:close_day')) {
-    throw createError('You need close-day permission to configure a POS Day Close PIN', 403);
+  const canUsePos = isEnabledFlag(user.is_master_admin)
+    || resolveEffectivePermissions(user).includes('pos:transact');
+  if (!user.is_active || !canUsePos) {
+    throw createError('You need POS transaction permission to configure a global POS PIN', 403);
   }
   return user;
 };
 
 export const updateOwnPosDayClosePin = async (userId, { currentPassword = '', pin = '' } = {}) => {
-  const user = await findEligibleOwnDayClosePinUser(userId);
+  const user = await findEligibleOwnPosGlobalPinUser(userId);
 
   const normalizedPassword = String(currentPassword || '');
   const normalizedPin = String(pin || '').trim();
   if (!/^[0-9]{4,12}$/.test(normalizedPin)) {
-    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
+    throw createError('Global POS PIN must contain 4 to 12 digits', 422);
   }
   if (!await comparePassword(normalizedPassword, user.password_hash)) {
     throw createError('Current account password is incorrect', 401);
@@ -1001,7 +1049,7 @@ export const updateOwnPosDayClosePinForVerifiedDgfyAccount = async (
   if (!normalizedDgfyAccountId) {
     throw createError('Verified DGFY account context is required', 401);
   }
-  const user = await findEligibleOwnDayClosePinUser(userId);
+  const user = await findEligibleOwnPosGlobalPinUser(userId);
   return persistOwnPosDayClosePin(user, pin, {
     credentialAuthority: 'dgfy_account',
     dgfyAccountId: normalizedDgfyAccountId
@@ -1535,6 +1583,9 @@ export const listLocalCashiers = async (adminUserId) => {
       'is_active',
       'permissions',
       'is_master_admin',
+      'pos_approval_pin_hash',
+      'pos_day_close_pin_hash',
+      'pos_cashier_pin_hash',
       'created_at'
     ],
     where: buildVisibleWhere({ role: 'cashier', is_active: true }),
@@ -1560,6 +1611,8 @@ export const listLocalCashiers = async (adminUserId) => {
     is_active: cashier.is_active,
     permissions: resolveEffectivePermissions(cashier),
     is_master_admin: cashier.is_master_admin,
+    pos_global_pin_configured: hasConfiguredPosGlobalPin(cashier),
+    pos_cashier_pin_configured: hasConfiguredPosGlobalPin(cashier),
     location_ids: locationsByUserId.get(Number(cashier.user_id)) || []
   }));
 };

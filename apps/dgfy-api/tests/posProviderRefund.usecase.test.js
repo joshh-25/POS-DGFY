@@ -367,6 +367,40 @@ describe('POS provider-owned refund use case', () => {
         expect(fixture.state.adjustments).toHaveLength(0);
     });
 
+    it('rejects cash tenders before any provider request, even with stale provider fields', async () => {
+        const fixture = buildFixture({
+            transactionOverrides: {
+                payment_type: 'cash',
+                payment_provider: 'paymongo',
+                payment_reference: 'pay_cash-169',
+                payment_session_reference: 'CPS-CASH-169',
+                payment_breakdown: JSON.stringify([
+                    { payment_type: 'cash', amount: 250 },
+                    { payment_type: 'gcash', amount: 0 }
+                ])
+            }
+        });
+        const createCommerceRefund = buildCommerceRefundUseCase('succeeded');
+        const useCase = buildProviderRefundPosTransactionUseCase({
+            posRepository: fixture.posRepository,
+            commercePaymentRepository: fixture.commercePaymentRepository,
+            createCommercePaymentRefundUseCase: createCommerceRefund,
+            paymongoService: fixture.paymongoService
+        });
+
+        const result = await runInTenantContext(fixture.sequelize, () => useCase(buildRequest({
+            idempotency_key: 'provider-refund-cash'
+        })));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'POS_PROVIDER_REFUND_CASH_TENDER_UNSUPPORTED'
+        }));
+        expect(fixture.paymongoService.getPayment).not.toHaveBeenCalled();
+        expect(createCommerceRefund).not.toHaveBeenCalled();
+        expect(fixture.state.adjustments).toHaveLength(0);
+    });
+
     it('rejects a commerce session whose amount does not match the POS total', async () => {
         const fixture = buildFixture({ sessionOverrides: { total_amount_centavos: 24900 } });
         const createCommerceRefund = buildCommerceRefundUseCase('succeeded');

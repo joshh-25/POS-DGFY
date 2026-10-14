@@ -144,6 +144,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         item_discount_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `item_discount_snapshot` JSON NULL COMMENT 'Server-calculated item-specific discount snapshot; global sale discounts remain separate'"
+        }),
+        voided_quantity: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `voided_quantity` DECIMAL(24,12) NOT NULL DEFAULT 0 COMMENT 'Quantity voided from this POS transaction line'"
+        }),
+        voided_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `voided_at` DATETIME NULL COMMENT 'Timestamp of the latest line-level void'"
+        }),
+        voided_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `voided_by` INTEGER NULL COMMENT 'Actor responsible for the latest line-level void'"
+        }),
+        void_reason: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `void_reason` VARCHAR(255) NULL COMMENT 'Reason for the latest line-level void'"
         })
     }),
     items: Object.freeze({

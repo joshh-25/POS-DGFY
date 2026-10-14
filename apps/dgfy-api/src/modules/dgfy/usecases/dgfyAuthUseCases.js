@@ -684,14 +684,14 @@ export const buildConfigureDgfyCompanyDayClosePinUseCase = ({
     if (!account?.id || !normalizedTenantId || !currentPassword || !pin) {
         return fail(new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'Company, current account password, and Day Close PIN are required.',
+            'Company, current account password, and Global POS PIN are required.',
             { statusCode: 400 }
         ));
     }
     if (!/^[0-9]{4,12}$/.test(pin)) {
         return fail(new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'POS Day Close PIN must contain 4 to 12 digits.',
+            'Global POS PIN must contain 4 to 12 digits.',
             { statusCode: 422 }
         ));
     }
@@ -715,7 +715,7 @@ export const buildConfigureDgfyCompanyDayClosePinUseCase = ({
             payload: {
                 success: true,
                 data: configured,
-                message: 'POS Day Close PIN configured successfully.'
+                message: 'Global POS PIN configured successfully.'
             }
         });
     } catch (error) {
@@ -732,7 +732,7 @@ export const buildConfigureDgfyCompanyDayClosePinUseCase = ({
                         : DomainErrorCode.INTERNAL_ERROR;
         return fail(new DomainError(
             errorCode,
-            error?.message || 'Unable to configure the POS Day Close PIN.',
+            error?.message || 'Unable to configure the Global POS PIN.',
             { statusCode, cause: error }
         ));
     }
@@ -1000,7 +1000,14 @@ export const buildListDgfyAccountCompaniesUseCase = ({
 }) => async ({ account, currentTenantToken = '' }) => {
     await repository.mirrorPendingInvitationsForAccount?.(account);
     await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
-    const memberships = await repository.listMemberships(account.id);
+    // Keep historical membership rows for audit/account history, but never
+    // expose a removed or declined row as an available company. A removed
+    // membership must remain non-switchable even when an older account record
+    // still exists for the same tenant.
+    const memberships = (await repository.listMemberships(account.id) || []).filter((membership) => {
+        const status = String(membership?.status || '').trim().toLowerCase();
+        return status === 'accepted' || status === 'pending';
+    });
     const registrationApplications = await repository.listRegistrationApplications?.(account.id) || [];
     try {
         await ensureRejectedCompanyRegistrationNotifications?.({

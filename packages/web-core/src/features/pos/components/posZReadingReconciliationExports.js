@@ -33,6 +33,7 @@ const getDailySalesCheckRows = (data, {
   const zVoids = hasZVoidActivity
     ? `${formatCount(data.z_void_transaction_count)} · ${formatAmount(data.z_void_amount)}`
     : '—';
+  const paymentBreakdown = Array.isArray(data.z_payment_breakdown) ? data.z_payment_breakdown : [];
   const formatTimestamp = (value) => value && typeof formatDateTime === 'function' ? formatDateTime(value) : '—';
   const rows = [
     ['Business date', data.business_date || businessDate || '—'],
@@ -53,6 +54,19 @@ const getDailySalesCheckRows = (data, {
     ['Date & time generated', formatTimestamp(data.generated_at)],
     ['Checked at', formatTimestamp(data.evaluated_at)]
   );
+
+  if (data.snapshot_persisted === true) {
+    rows.push(['Payment breakdown (saved Z-reading)', '']);
+    if (paymentBreakdown.length === 0) {
+      rows.push(['Payments', 'No payment entries recorded']);
+    } else {
+      paymentBreakdown.forEach((entry) => {
+        const label = entry.payment_label || String(entry.payment_type || 'Other payment').replace(/_/g, ' ');
+        const count = formatCount(entry.count);
+        rows.push([label, `${formatAmount(entry.amount)} · ${count} ${Number(entry.count || 0) === 1 ? 'payment' : 'payments'}`]);
+      });
+    }
+  }
 
   return rows;
 };

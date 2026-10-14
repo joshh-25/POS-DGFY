@@ -94,6 +94,7 @@ export default function PosZReadingHistoryTable({
   const paymentBreakdown = Array.isArray(detailSummary.payment_breakdown) ? detailSummary.payment_breakdown : [];
   const deliveryProviderBreakdown = parseDeliveryProviderSummary(detailSummary.delivery_provider_breakdown);
   const capturedRefunds = detailSnapshot.refunds || {};
+  const capturedItemVoids = detailSnapshot.item_voids || {};
   const capturedReceipts = detailSnapshot.receipt_ranges || {};
   const capturedShifts = detailSnapshot.captured && Array.isArray(detailSnapshot.shifts)
     ? detailSnapshot.shifts
@@ -173,8 +174,14 @@ export default function PosZReadingHistoryTable({
             title: 'Adjustments',
             fields: [
               DetailField({
-                label: 'Voids (count · amount)',
-                value: `${formatCount(detailSummary.void_transaction_count)} · ${formatMoney(detailSummary.void_amount, currencySymbol)}`
+                label: 'Whole-transaction voids (count · amount)',
+                value: `${formatCount(detailSummary.void_transaction_count)} · ${formatMoney(detailSummary.transaction_void_amount ?? detailSummary.void_amount, currencySymbol)}`
+              }),
+              DetailField({
+                label: 'Voided items (count · amount)',
+                value: detailSnapshot.captured
+                  ? `${formatCount(capturedItemVoids.item_count)} · ${formatMoney(capturedItemVoids.amount, currencySymbol)}`
+                  : 'Not captured'
               }),
               DetailField({
                 label: 'Completed refunds (count · amount)',
@@ -274,7 +281,8 @@ export default function PosZReadingHistoryTable({
                       <AuditDataList items={[
                         ['Shift reference', shift.shift_id ? `#${shift.shift_id}` : 'Not recorded'],
                         ['Opening float', formatCapturedMoney(shift.cash?.opening_float_amount, currencySymbol)],
-                        ['Shift voids', `${formatCount(shift.adjustments?.void_transaction_count)} · ${formatMoney(shift.adjustments?.void_amount, currencySymbol)}`],
+                        ['Shift whole-transaction voids', `${formatCount(shift.adjustments?.void_transaction_count)} · ${formatMoney(shift.adjustments?.void_amount, currencySymbol)}`],
+                        ['Shift voided items', `${formatCount(shift.adjustments?.voided_item_count)} · ${formatMoney(shift.adjustments?.item_void_amount, currencySymbol)}`],
                         ['Completed shift refunds', `${formatCount(shift.adjustments?.refunds?.succeeded_count)} · ${formatCapturedMoney(shift.adjustments?.refunds?.succeeded_amount, currencySymbol)}`],
                         ['Sales invoices', formatInvoiceRange(shift.receipt_ranges?.sales)],
                         ['Voided invoices', formatInvoiceRange(shift.receipt_ranges?.voids)],

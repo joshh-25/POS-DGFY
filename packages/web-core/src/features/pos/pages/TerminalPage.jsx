@@ -67,6 +67,11 @@ import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/se
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getOnboardingStatus } from '@/services/onboardingService.js';
+import {
+  installCrossAppSettingsRefresh,
+  shouldRefreshBusinessAdminSettingsUpdate,
+  subscribeToBusinessAdminSettingsUpdates
+} from '../utils/businessAdminSettingsSync.js';
 import api, { onApiOutcome } from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import {
@@ -310,6 +315,13 @@ const CASHIER_ALLOWED_VIEW_MODES = new Set([
   'fnb_service',
   'terminal_setup'
 ]);
+// Transaction history stays outside the baseline cashier surface because it exposes governed
+// post-sale actions. Cashiers granted the explicit POS void permission can enter it to submit
+// an item or transaction void request; approval administration remains administrator-only.
+const isCashierAllowedViewMode = (viewMode, canVoidTransactions = false) => (
+  CASHIER_ALLOWED_VIEW_MODES.has(viewMode)
+  || (viewMode === 'history' && canVoidTransactions)
+);
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
   terminalSetup: 'pos-section-terminal-setup',
@@ -1194,6 +1206,7 @@ export default function TerminalPage() {
     && !isCashierRole;
   const canViewAllCashierHistory = hasPermission('business_admin:branches:view_all');
   const canTransactPos = hasPermission('pos:transact');
+  const canVoidTransactions = hasPermission('pos:void');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAccessPosOnlySetup = canViewPos;
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
@@ -1236,10 +1249,10 @@ export default function TerminalPage() {
       .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
       .filter((mode) => mode !== 'terminal_setup' || canAccessPosOnlySetup || canAccessSettingsDirectly);
     if (normalizedRole === 'cashier') {
-      return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
+      return roleScopedModes.filter((mode) => isCashierAllowedViewMode(mode, canVoidTransactions));
     }
     return roleScopedModes;
-  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canReviewVoidApprovals, canViewAudit, canViewVouchers, isCashierRole, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canReviewVoidApprovals, canViewAudit, canViewVouchers, canVoidTransactions, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -1463,13 +1476,13 @@ export default function TerminalPage() {
   const resolveRestorablePosView = useCallback((candidateView) => {
     const normalizedView = String(candidateView || '').trim();
     if (!normalizedView || normalizedView === 'receipt' || !activeViewModes.includes(normalizedView)) return '';
-    if (isCashierRole && !CASHIER_ALLOWED_VIEW_MODES.has(normalizedView)) return '';
+    if (isCashierRole && !isCashierAllowedViewMode(normalizedView, canVoidTransactions)) return '';
     if (normalizedView === 'incoming_queue' && !canViewPos) return '';
     if (normalizedView === 'items' && !canViewPos && !canManageCategories) return '';
     if (normalizedView === 'services' && !canAccessServiceOperations) return '';
     if (normalizedView === 'audit' && !canViewAudit) return '';
     return normalizedView;
-  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewAudit, canViewPos, isCashierRole]);
+  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewAudit, canViewPos, canVoidTransactions, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
     const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep, workflowMode);
@@ -2379,26 +2392,29 @@ export default function TerminalPage() {
 
   const printClosedShiftSummary = useCallback(async (closeResult, {
     reason = 'shift_close_report',
-    openBrowserFallback = true
+    openBrowserFallback = true,
+    paperWidth
   } = {}) => {
     const report = closeResult || null;
     const shiftId = Number(report?.shift?.pos_terminal_shift_id || 0);
     if (!report || !Number.isInteger(shiftId) || shiftId <= 0) return false;
+    const isXReading = report?.report_type === 'x_reading';
     try {
       const outcome = await posHardware.printShiftSummary({
         shiftId,
         shiftSummary: report,
+        readingType: isXReading ? 'x_reading' : 'shift_summary',
         businessSettings: terminalMeta.businessSettings,
         terminalId: sanitizeTerminalId(activeTerminalId) || report?.shift?.terminal_id || undefined,
         reason,
         idempotencyKey: createIdempotencyKey('pos-shift-summary-print'),
         copies: 1,
-        paperWidth: readPosPaperWidthPreference(
+        paperWidth: paperWidth || readPosPaperWidthPreference(
           sanitizeTerminalId(activeTerminalId) || report?.shift?.terminal_id
         )
       });
       if (outcome?.success) {
-        toast.success('Cashier shift sales summary printed.');
+        toast.success(isXReading ? 'X-reading printed.' : 'Cashier shift sales summary printed.');
         return true;
       }
       if (openBrowserFallback) {
@@ -2407,8 +2423,8 @@ export default function TerminalPage() {
         setClosedShiftReportOpen(true);
       }
       toast.message(outcome?.message || (openBrowserFallback
-        ? 'No printer is configured. The shift sales summary is opening for browser printing.'
-        : 'No printer is configured. Use Print Shift Summary from the post-shift screen.'));
+        ? `No printer is configured. The ${isXReading ? 'X-reading' : 'shift sales summary'} is opening for browser printing.`
+        : `No printer is configured. Use Print ${isXReading ? 'X-reading' : 'Shift Summary'} from the post-shift screen.`));
       return false;
     } catch (error) {
       if (openBrowserFallback) {
@@ -2417,8 +2433,8 @@ export default function TerminalPage() {
         setClosedShiftReportOpen(true);
       }
       toast.message(error?.response?.data?.message || (openBrowserFallback
-        ? 'Shift closed. The sales summary is available for browser printing.'
-        : 'Shift closed. Use Print Shift Summary from the post-shift screen.'));
+        ? `The ${isXReading ? 'X-reading' : 'shift sales summary'} is available for browser printing.`
+        : `Use Print ${isXReading ? 'X-reading' : 'Shift Summary'} from the post-shift screen.`));
       return false;
     }
   }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
@@ -2440,7 +2456,8 @@ export default function TerminalPage() {
         summary: report.summary || {},
         z_counter_value: report.counters?.z_counter || 0,
         reset_counter_value: report.counters?.reset_counter || 0,
-        lifetime_grand_total_cents: report.counters?.lifetime_grand_total_cents || 0
+        lifetime_grand_total_cents: report.counters?.lifetime_grand_total_cents || 0,
+        lifetime_grand_total: report.counters?.lifetime_grand_total ?? null
       }
     };
 
@@ -2608,7 +2625,7 @@ export default function TerminalPage() {
 
   const openMyDayClosePin = useCallback(() => {
     if (!canCloseDay) {
-      toast.error('You need close-day permission to configure a Day Close PIN.');
+      toast.error('You need close-day permission to configure a global POS PIN.');
       return;
     }
     setMyDayClosePinForm({ currentPassword: '', pin: '', confirmation: '' });
@@ -2622,11 +2639,11 @@ export default function TerminalPage() {
       return;
     }
     if (!/^\d{4,12}$/.test(pin)) {
-      toast.error('Enter a 4 to 12 digit Day Close PIN.');
+      toast.error('Enter a 4 to 12 digit global POS PIN.');
       return;
     }
     if (pin !== confirmation) {
-      toast.error('Day Close PIN confirmation does not match.');
+      toast.error('Global POS PIN confirmation does not match.');
       return;
     }
     setMyDayClosePinSaving(true);
@@ -2634,9 +2651,9 @@ export default function TerminalPage() {
       await updateOwnPosDayClosePin({ currentPassword, pin });
       setMyDayClosePinOpen(false);
       setMyDayClosePinForm({ currentPassword: '', pin: '', confirmation: '' });
-      toast.success('Your POS Day Close PIN is ready.');
+      toast.success('Your global POS PIN is ready.');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to configure your POS Day Close PIN.');
+      toast.error(error?.response?.data?.message || 'Failed to configure your global POS PIN.');
     } finally {
       setMyDayClosePinSaving(false);
     }
@@ -2644,7 +2661,7 @@ export default function TerminalPage() {
 
   const confirmCloseDay = useCallback(async () => {
     if (!/^\d{4,12}$/.test(zReadingClosePin)) {
-      toast.error('Enter your 4 to 12 digit POS Day Close PIN.');
+      toast.error('Enter your 4 to 12 digit global POS PIN.');
       return false;
     }
 
@@ -2682,7 +2699,7 @@ export default function TerminalPage() {
     }
   }, [printZReading, refreshDayCloseReadiness, zReadingClosePin]);
 
-  const handleViewShiftSummary = useCallback(async () => {
+  const handleViewShiftSummary = useCallback(async (requestedReportType = 'shift_summary') => {
     if (!shiftState?.shift) {
       toast.error('Open a shift before viewing its sales summary.');
       return;
@@ -2714,6 +2731,8 @@ export default function TerminalPage() {
       setShiftState(freshShiftState);
       setClosedShiftReportAutoPrint(false);
       setClosedShiftReport({
+        report_type: requestedReportType === 'x_reading' ? 'x_reading' : 'shift_summary',
+        ...(requestedReportType === 'x_reading' ? { generated_at: new Date().toISOString() } : {}),
         shift: freshShiftState.shift,
         cash_summary: freshShiftState.cashSummary || {},
         sales_summary: freshShiftState.salesSummary || {}
@@ -2726,6 +2745,10 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, operatingLocationId, shiftState.shift]);
 
+  const handleViewXReading = useCallback(() => {
+    void handleViewShiftSummary('x_reading');
+  }, [handleViewShiftSummary]);
+
   const handleViewCashierHistoryShift = useCallback((record) => {
     if (!record?.shift) {
       toast.error('The selected cashier shift summary is unavailable.');
@@ -2733,6 +2756,7 @@ export default function TerminalPage() {
     }
     setClosedShiftReportAutoPrint(false);
     setClosedShiftReport({
+      report_type: 'shift_summary',
       shift: record.shift,
       cash_summary: record.cash_summary || {},
       sales_summary: record.sales_summary || {}
@@ -5027,7 +5051,7 @@ export default function TerminalPage() {
         authenticatedCashierId: cashierUser.user_id
       });
       if (entryMode === 'takeover' && !/^[0-9]{4,12}$/.test(pin)) {
-        toast.error('A different cashier must enter their 4 to 12 digit POS cashier PIN.');
+        toast.error('A different cashier must enter their 4 to 12 digit global POS PIN.');
         return;
       }
 
@@ -7320,6 +7344,54 @@ export default function TerminalPage() {
     }
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
 
+  useEffect(() => {
+    if (!activeTenantId || typeof window === 'undefined') return undefined;
+
+    // Re-read the canonical permission and terminal snapshot when OPIS or another
+    // same-origin settings surface changes it. The refresh is scoped and must not
+    // change tenant, reset checkout, close a shift, overwrite dirty settings, or
+    // silently reprice an active sale.
+    const refreshScopedSettings = () => {
+      setSettingsRefreshKey((previous) => previous + 1);
+      const refreshTasks = [
+        hydrateUser({ suppressGlobalErrors: true }),
+        hydrateTerminalMeta({ suppressGlobalErrors: true }),
+        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
+      ];
+      if (!locked && canViewPos) {
+        refreshTasks.push(refreshOperationalContext({ suppressGlobalErrors: true }));
+      }
+      return Promise.all(refreshTasks).catch(() => {
+        // The POS remains usable on its current snapshot when a background refresh fails.
+      });
+    };
+
+    const unsubscribeSync = subscribeToBusinessAdminSettingsUpdates((payload) => {
+      if (!shouldRefreshBusinessAdminSettingsUpdate({
+        payload,
+        activeTenantId,
+        activeBranchId: Number(
+          shiftState?.shift?.location_id
+          || operatingLocationId
+          || viewingLocationId
+          || queueLocationScopeId
+          || terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id
+          || 0
+        )
+      })) return;
+      void refreshScopedSettings();
+    });
+
+    // OPIS is served from another origin, so its save cannot arrive through the
+    // same-origin channel. Revalidate when POS regains focus/visibility or reconnects.
+    const uninstallFocusRefresh = installCrossAppSettingsRefresh(() => refreshScopedSettings());
+    return () => {
+      unsubscribeSync();
+      uninstallFocusRefresh();
+    };
+  }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);
+
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;
 
@@ -7713,6 +7785,7 @@ function PosRestorationLoadingScreen() {
               handleTenantSetupDataChanged,
               handleTerminalUnlockSubmit,
               handleViewStockAlertItems,
+              handleViewXReading,
               hardwareMessage,
               hardwareLoading: posHardware.loading,
               incomingOrderDetail,
@@ -7950,6 +8023,7 @@ function PosRestorationLoadingScreen() {
           handleCloseShift={handleCloseShift}
           handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
+          handleViewXReading={handleViewXReading}
           cashierHistoryState={cashierHistoryState}
           refreshCashierHistory={refreshCashierHistory}
           handleViewCashierHistoryShift={handleViewCashierHistoryShift}

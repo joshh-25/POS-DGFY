@@ -727,13 +727,14 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('exposes a current shift summary action without auto-printing it', () => {
-    expect(terminalPageContent).toContain('const handleViewShiftSummary = useCallback(async () => {');
+    expect(terminalPageContent).toContain("const handleViewShiftSummary = useCallback(async (requestedReportType = 'shift_summary') => {");
+    expect(terminalPageContent).toContain('const handleViewXReading = useCallback(() => {');
     expect(terminalPageContent).toContain('const currentShiftResult = await fetchCurrentTerminalShift({');
     expect(terminalPageContent).toContain("summary: false");
     expect(terminalOperationsWorkspaceContent).toContain('<ShiftSessionSummary');
     expect(shiftSessionSummaryContent).toContain("summaryLoading ? 'Refreshing...' : 'View Summary'");
     expect(terminalPageContent).toContain('setClosedShiftReportAutoPrint(false);');
-    expect(terminalPageContent).toContain('title={closedShiftReportAutoPrint || closedShiftReport?.shift?.closed_at');
+    expect(terminalPageContent).toContain("title={closedShiftReport?.report_type === 'x_reading'");
     expect(terminalPageContent).toContain("? 'Cashier Shift Sales Summary'");
     expect(terminalPageContent).toContain(": 'Current Shift Sales Summary'");
     expect(shiftSessionSummaryContent).toContain('onClick={onViewSummary}');

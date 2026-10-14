@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCcw } from 'lucide-react';
+import { Receipt, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PosShiftRefreshButton from './PosShiftRefreshButton.jsx';
 import PosShiftStateNotice from './PosShiftStateNotice.jsx';
@@ -36,6 +36,7 @@ function ShiftMetric({ row }) {
 export default function ShiftSessionSummary({
   summaryRows = [],
   onViewSummary = () => {},
+  onViewXReading = () => {},
   onRefresh = () => {},
   summaryLoading = false,
   refreshLoading = false,
@@ -87,6 +88,16 @@ export default function ShiftSessionSummary({
           >
             {summaryLoading ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
             {summaryLoading ? 'Refreshing...' : 'View Summary'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 min-w-0 flex-1 rounded-lg border-blue-200 px-3 text-xs font-extrabold text-[#1A4E8D] hover:bg-blue-50 sm:flex-none sm:w-auto"
+            onClick={onViewXReading}
+            disabled={locked || closeLoading || summaryLoading}
+          >
+            <Receipt className="mr-2 h-4 w-4" aria-hidden="true" />
+            X-reading
           </Button>
           <PosShiftRefreshButton
             label="Refresh shift data"

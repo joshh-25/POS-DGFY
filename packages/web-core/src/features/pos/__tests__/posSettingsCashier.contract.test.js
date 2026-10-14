@@ -61,6 +61,15 @@ const confirmActionDialogSource = fs.readFileSync(path.resolve(__dirname, '../..
 const attendanceCardSource = fs.readFileSync(path.resolve(__dirname, '../components/PosCashierAttendanceSettingsCard.jsx'), 'utf8');
 
 describe('regular POS Setup cashier management contract', () => {
+  it('refreshes canonical permissions after OPIS changes the shared account', () => {
+    expect(terminalPageSource).toContain('subscribeToBusinessAdminSettingsUpdates');
+    expect(terminalPageSource).toContain('shouldRefreshBusinessAdminSettingsUpdate');
+    expect(terminalPageSource).toContain('installCrossAppSettingsRefresh');
+    expect(terminalPageSource).toContain('setSettingsRefreshKey((previous) => previous + 1)');
+    expect(workspaceSource).toContain('}, [loadCashierAccounts, settingsRefreshKey]);');
+    expect(workspaceSource).toContain('}, [loadDayCloseOperators, settingsRefreshKey]);');
+  });
+
   it('renders DGFY cashier invitation management inside terminal settings', () => {
     expect(workspaceSource).toContain('Invite DGFY accounts and assign one or more store locations first.');
     expect(workspaceSource).toContain('getCashiersForLocation(selectedTerminal.location_id)');

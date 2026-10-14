@@ -76,8 +76,7 @@ const createTextLayout = (paperWidth = '80mm') => {
 
     const center = (value) => {
         const rawText = safeText(value);
-        if (!isNarrow && rawText.length >= columns) return rawText;
-        const text = isNarrow ? truncateText(rawText, columns) : rawText;
+        const text = truncateText(rawText, columns);
         const left = Math.floor((columns - text.length) / 2);
         return `${' '.repeat(left)}${text}`;
     };
@@ -87,7 +86,6 @@ const createTextLayout = (paperWidth = '80mm') => {
         const right = safeText(value);
         const space = columns - left.length - right.length;
         if (space > 1) return `${left}${' '.repeat(space)}${right}`;
-        if (!isNarrow) return `${left} ${right}`;
 
         const fittedRight = truncateText(right, Math.max(1, columns - 2));
         const fittedLeft = truncateText(left, Math.max(1, columns - fittedRight.length - 1));
@@ -130,10 +128,10 @@ const createTextLayout = (paperWidth = '80mm') => {
     const pushCenteredWrapped = (rows, value) => {
         wrapText(value).forEach((row) => rows.push(center(row)));
     };
-    const fitRows = (rows) => isNarrow ? rows.flatMap((row) => {
+    const fitRows = (rows) => rows.flatMap((row) => {
         const text = String(row ?? '');
         return text.length <= columns ? [text] : wrapText(text, columns);
-    }) : rows;
+    }).map((row) => truncateText(row, columns));
 
     return { columns, line, center, pair, wrapText, pushCenteredWrapped, fitRows };
 };
@@ -855,7 +853,7 @@ const resolveOrderTicketItemName = (cartLine, index) => safeText(
     `Item #${cartLine?.item_id || index + 1}`
 );
 
-const formatShiftSummaryValue = (value) => value == null ? '-' : Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatShiftSummaryMoney = (value) => value == null ? '-' : money(value);
 const formatShiftSummaryCount = (value) => Number(value || 0).toLocaleString('en-US');
 const paymentBreakdownLabel = (entry) => safeText(
     entry?.payment_label || entry?.payment_type,
@@ -882,8 +880,17 @@ const deliveryProviderSummaryLabel = (entry) => {
     if (providerType === 'grab') return 'Grab';
     return safeText(entry?.display_label || providerType, 'Delivery provider');
 };
+const formatHardwareDateTime = (value) => {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('en-PH', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Manila'
+    });
+};
 
-export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings = {}, paperWidth = '80mm' } = {}) => {
+export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings = {}, paperWidth = '80mm', readingType = 'shift_summary' } = {}) => {
     const {
         line,
         center,
@@ -899,18 +906,31 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         .filter(hasShiftSummaryValue);
     const orderMethods = (Array.isArray(sales.order_method_breakdown) ? sales.order_method_breakdown : [])
         .filter(hasShiftSummaryValue);
-    const deliveryProviders = (Array.isArray(sales.delivery_provider_breakdown) ? sales.delivery_provider_breakdown : [])
+    const deliveryProviders = parsePaymentBreakdown(sales.delivery_provider_breakdown)
         .filter(hasShiftSummaryValue);
+    const isXReading = readingType === 'x_reading';
     const lines = [
         center(safeText(businessSettings?.pos_business_name, 'DGFY')),
-        center('CASHIER SHIFT SALES SUMMARY'),
+        center(isXReading ? 'X-READING / CURRENT SHIFT' : 'CASHIER SHIFT SALES SUMMARY'),
         `Business date: ${safeText(shift.business_date)}`,
         `Terminal: ${safeText(shift.terminal_id)}`,
         `Shift: ${safeText(shift.pos_terminal_shift_id)}`,
+        ...(shiftSummary.generated_at ? [`Generated: ${formatHardwareDateTime(shiftSummary.generated_at)}`] : []),
         line(),
         center('SALES SUMMARY'),
-        pair('Overall sales', formatShiftSummaryValue(sales.total_amount)),
+        pair(isXReading ? 'Net sales' : 'Overall sales', formatShiftSummaryMoney(sales.total_amount)),
         pair('Transactions', formatShiftSummaryCount(sales.transaction_count)),
+        pair('Items sold', formatShiftSummaryCount(sales.item_count)),
+        pair('Subtotal', formatShiftSummaryMoney(sales.subtotal_amount)),
+        pair('Discounts', formatShiftSummaryMoney(sales.discount_amount)),
+        pair('VATable sales', formatShiftSummaryMoney(sales.vatable_sales)),
+        pair('VAT', formatShiftSummaryMoney(sales.vat_amount)),
+        pair('VAT-exempt sales', formatShiftSummaryMoney(sales.vat_exempt_sales)),
+        pair('Zero-rated sales', formatShiftSummaryMoney(sales.zero_rated_sales)),
+        pair(`POS voids (${formatShiftSummaryCount(sales.void_transaction_count)})`, formatShiftSummaryMoney(sales.transaction_void_amount ?? sales.void_amount)),
+        pair(`Item voids (${formatShiftSummaryCount(sales.item_voided_item_count)})`, formatShiftSummaryMoney(sales.item_void_amount ?? 0)),
+        pair('Total voids', formatShiftSummaryMoney(sales.void_amount)),
+        pair('Refunds', formatShiftSummaryMoney(sales.refund_amount)),
         line(),
         center('PAYMENT METHODS')
     ];
@@ -918,44 +938,45 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         lines.push(center('No payments recorded'));
     } else {
         paymentBreakdown.forEach((entry) => {
-            lines.push(pair(`${paymentBreakdownLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
+            lines.push(pair(`${paymentBreakdownLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryMoney(shiftSummaryEntryAmount(entry))));
         });
     }
     if (orderSources.length > 0) {
         lines.push(line(), center('SALES SOURCES'));
         orderSources.forEach((entry) => {
-            lines.push(pair(`${orderSourceSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
+            lines.push(pair(`${orderSourceSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryMoney(shiftSummaryEntryAmount(entry))));
         });
     }
     if (orderMethods.length > 0) {
         lines.push(line(), center('ORDER METHODS'));
         orderMethods.forEach((entry) => {
-            lines.push(pair(`${orderMethodSummaryLabel(entry.order_method)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
+            lines.push(pair(`${orderMethodSummaryLabel(entry.order_method)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryMoney(shiftSummaryEntryAmount(entry))));
         });
     }
-    if (deliveryProviders.length > 0) {
-        lines.push(line(), center('DELIVERY PROVIDERS'));
+    lines.push(line(), center('DELIVERY PROVIDERS'));
+    if (deliveryProviders.length === 0) {
+        lines.push(pair('No delivery provider sales', '0'));
+    } else {
         deliveryProviders.forEach((entry) => {
-            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryValue(shiftSummaryEntryAmount(entry))));
+            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatShiftSummaryMoney(shiftSummaryEntryAmount(entry))));
         });
     }
     lines.push(
         line(),
         center('CASH RECONCILIATION'),
-        pair('Opening float', formatShiftSummaryValue(cash.opening_float_amount)),
-        pair('Cash sales', formatShiftSummaryValue(cash.cash_sales_amount)),
-        pair('Cash in', formatShiftSummaryValue(cash.cash_in_total)),
-        pair('Cash out', formatShiftSummaryValue(cash.cash_out_total)),
-        pair('Expected cash', formatShiftSummaryValue(cash.expected_cash_amount)),
-        pair('Closing cash', formatShiftSummaryValue(cash.closing_cash_amount)),
-        pair('Variance', formatShiftSummaryValue(cash.cash_variance_amount)),
-        line(),
-        center('Keep with cashier close evidence.')
+        pair('Opening/petty cash', formatShiftSummaryMoney(cash.opening_float_amount)),
+        pair('Cash sales', formatShiftSummaryMoney(cash.cash_sales_amount)),
+        pair('Cash in', formatShiftSummaryMoney(cash.cash_in_total)),
+        pair('Cash out', formatShiftSummaryMoney(cash.cash_out_total)),
+        pair('Expected cash in drawer', formatShiftSummaryMoney(cash.expected_cash_amount)),
+        pair('Closing cash', formatShiftSummaryMoney(cash.closing_cash_amount)),
+        pair('Variance', formatShiftSummaryMoney(cash.cash_variance_amount)),
+        line()
     );
     return fitRows(lines).join('\n');
 };
 
-export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings = {}, paperWidth = '80mm' }) => {
+export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings = {}, paperWidth = '80mm', readingType = 'shift_summary' }) => {
     const bridge = getIminBridge();
     if (!bridge || (
         typeof bridge.printReceiptAsync !== 'function'
@@ -966,7 +987,7 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
 
     const raw = sendIminTextPrint({
         bridge,
-        receiptText: formatIminShiftSummaryText({ shiftSummary, businessSettings, paperWidth }),
+        receiptText: formatIminShiftSummaryText({ shiftSummary, businessSettings, paperWidth, readingType }),
         fallbackMessage: 'Shift sales summary print command sent.'
     });
     return mapMaybePromise(raw, (value) => {
@@ -983,16 +1004,8 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
     });
 };
 
-const formatZReadingValue = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const formatZReadingGeneratedAt = (value) => {
-    const date = value ? new Date(value) : null;
-    if (!date || Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleString('en-PH', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone: 'Asia/Manila'
-    });
-};
+const formatZReadingValue = (value) => money(value);
+const formatZReadingGeneratedAt = formatHardwareDateTime;
 const formatZReadingReconciliationStatus = (value) => ({
     matched: 'MATCHED',
     variance: 'VARIANCE FOUND',
@@ -1013,6 +1026,11 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, p
     const reading = zReading?.z_reading || {};
     const summary = reading?.summary || {};
     const reconciliation = reading?.reconciliation || reading?.z_reading_reconciliation || null;
+    const paymentBreakdown = Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : [];
+    const orderSources = Array.isArray(summary.order_source_breakdown) ? summary.order_source_breakdown : [];
+    const orderMethods = Array.isArray(summary.order_method_breakdown) ? summary.order_method_breakdown : [];
+    const deliveryProviders = parsePaymentBreakdown(summary.delivery_provider_breakdown)
+        .filter(hasShiftSummaryValue);
     const lines = [
         center(safeText(businessSettings?.pos_business_name, 'DGFY')),
         center('Z-READING / CLOSE DAY'),
@@ -1022,16 +1040,23 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, p
         `Generated: ${formatZReadingGeneratedAt(reading.generated_at)}`,
         line(),
         pair('Transactions', summary.transaction_count || 0),
+        pair('Items sold', summary.item_count || 0),
         pair('Subtotal', formatZReadingValue(summary.subtotal_amount)),
         pair('Discounts', formatZReadingValue(summary.discount_amount)),
+        pair('VATable sales', formatZReadingValue(summary.vatable_sales)),
         pair('VAT', formatZReadingValue(summary.vat_amount)),
+        pair('VAT-exempt sales', formatZReadingValue(summary.vat_exempt_sales)),
+        pair('Zero-rated sales', formatZReadingValue(summary.zero_rated_sales)),
         pair('Overall total', formatZReadingValue(summary.total_amount)),
-        pair(`POS voids (${summary.void_transaction_count || 0})`, formatZReadingValue(summary.void_amount)),
+        pair(`POS voids (${summary.void_transaction_count || 0})`, formatZReadingValue(summary.transaction_void_amount ?? summary.void_amount)),
+        pair(`Item voids (${summary.item_voided_item_count || 0})`, formatZReadingValue(summary.item_void_amount ?? 0)),
+        pair('Total voids', formatZReadingValue(summary.void_amount)),
+        pair('Refunds', formatZReadingValue(summary.refund_amount)),
         ...(reconciliation ? [
             line(),
             center('REPORT RECONCILIATION'),
             pair('Status', formatZReadingReconciliationStatus(reconciliation.status)),
-            pair('Report recognized', formatOptionalZReadingValue(reconciliation.report_recognized_sales)),
+            pair('Report recognized sales', formatOptionalZReadingValue(reconciliation.report_recognized_sales)),
             pair('Z-reading total', formatOptionalZReadingValue(reconciliation.z_total_amount)),
             pair('Difference', formatOptionalZReadingValue(reconciliation.variance)),
             pair('Report refunds/voids', formatOptionalZReadingValue(reconciliation.report_refunds_voids)),
@@ -1041,14 +1066,35 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, p
         line(),
         center('PAYMENT BREAKDOWN')
     ];
-    (Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : []).forEach((entry) => {
-        lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatZReadingValue(entry.amount)));
-    });
-    const deliveryProviders = Array.isArray(summary.delivery_provider_breakdown) ? summary.delivery_provider_breakdown : [];
-    if (deliveryProviders.length > 0) {
-        lines.push(line(), center('DELIVERY PROVIDER BREAKDOWN'));
+    if (paymentBreakdown.length === 0) {
+        lines.push(pair('No payments', '0'));
+    } else {
+        paymentBreakdown.forEach((entry) => {
+            lines.push(pair(`${paymentBreakdownLabel(entry)} (${formatShiftSummaryCount(entry.count)})`, formatZReadingValue(entry.amount)));
+        });
+    }
+    lines.push(line(), center('SALES SOURCE BREAKDOWN'));
+    if (orderSources.length === 0) {
+        lines.push(pair('No source sales', '0'));
+    } else {
+        orderSources.forEach((entry) => {
+            lines.push(pair(`${orderSourceSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatZReadingValue(shiftSummaryEntryAmount(entry))));
+        });
+    }
+    lines.push(line(), center('ORDER METHOD BREAKDOWN'));
+    if (orderMethods.length === 0) {
+        lines.push(pair('No order methods', '0'));
+    } else {
+        orderMethods.forEach((entry) => {
+            lines.push(pair(`${orderMethodSummaryLabel(entry.order_method)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatZReadingValue(shiftSummaryEntryAmount(entry))));
+        });
+    }
+    lines.push(line(), center('DELIVERY PROVIDER BREAKDOWN'));
+    if (deliveryProviders.length === 0) {
+        lines.push(pair('No delivery provider sales', '0'));
+    } else {
         deliveryProviders.forEach((entry) => {
-            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${entry.transaction_count || 0})`, formatZReadingValue(entry.amount)));
+            lines.push(pair(`${deliveryProviderSummaryLabel(entry)} (${formatShiftSummaryCount(shiftSummaryEntryCount(entry))})`, formatZReadingValue(shiftSummaryEntryAmount(entry))));
         });
     }
     lines.push(
@@ -1056,9 +1102,12 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, p
         center('FISCAL COUNTERS'),
         pair('Z counter', reading.z_counter_value || 0),
         pair('Reset counter', reading.reset_counter_value || 0),
-        line(),
-        center('Provider refunds reconciled separately.'),
-        center('Keep with day-end close evidence.')
+        pair('Lifetime grand total', formatZReadingValue(
+            reading.lifetime_grand_total == null
+                ? Number(reading.lifetime_grand_total_cents || 0) / 100
+                : reading.lifetime_grand_total
+        )),
+        line()
     );
     return fitRows(lines).join('\n');
 };

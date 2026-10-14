@@ -867,6 +867,35 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(syncButton.className).toContain('w-10');
     });
 
+    it('requires a numeric refund passcode before confirming a transaction void', async () => {
+        const onVoidTransaction = vi.fn().mockResolvedValue(undefined);
+        render(<POSTransactionHistoryPanel {...buildPanelProps({ onVoidTransaction })} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Void transaction INV-001' }));
+
+        const confirmButton = screen.getByRole('button', { name: 'Confirm Transaction Void' });
+        expect(confirmButton.disabled).toBe(true);
+
+        fireEvent.change(screen.getByLabelText('Void reason'), {
+            target: { value: 'Customer refund approved' }
+        });
+        fireEvent.change(screen.getByLabelText('Authorized user global POS PIN'), {
+            target: { value: '2468' }
+        });
+        expect(confirmButton.disabled).toBe(false);
+
+        fireEvent.click(confirmButton);
+
+        await waitFor(() => {
+            expect(onVoidTransaction).toHaveBeenCalledWith(
+                historyRow,
+                'Customer refund approved',
+                [],
+                '2468'
+            );
+        });
+    });
+
     it('shows the temporary POS void approval popup only for an authorized reviewer', async () => {
         const approvalRequest = {
             business_admin_approval_request_id: 501,

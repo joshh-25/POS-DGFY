@@ -87,7 +87,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260914000003-add-job-order-location-scope.cjs',
     '20260914000004-create-pos-terminal-device-enrollment.cjs',
     '20260921000002-add-employee-credit-split-tender.cjs',
-    '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs'
+    '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs',
+    '20261013000001-add-pos-item-void-state.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -386,7 +387,11 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'stock_exempt_reason',
         'item_name_snapshot',
         'sku_snapshot',
-        'item_discount_snapshot'
+        'item_discount_snapshot',
+        'voided_quantity',
+        'voided_at',
+        'voided_by',
+        'void_reason'
     ],
     pos_terminal_shifts: [
         'pos_terminal_shift_id',

@@ -310,7 +310,7 @@ export const usePosHistoryVoidWorkflow = ({
         setVoidApprovalQueueError('');
     }, [voidApprovalDecisionLoading]);
 
-    const handleVoidHistoryTransaction = useCallback(async (historyRow, reason) => {
+    const handleVoidHistoryTransaction = useCallback(async (historyRow, reason, voidedLines = [], refundPasscode = '') => {
         const posTransactionId = Number(historyRow?.pos_transaction_id);
         if (!Number.isInteger(posTransactionId) || posTransactionId <= 0) {
             toast.error('Invalid POS transaction reference.');
@@ -327,16 +327,29 @@ export const usePosHistoryVoidWorkflow = ({
 
         setVoidingTransactionId(posTransactionId);
         try {
+            const normalizedVoidedLines = (Array.isArray(voidedLines) ? voidedLines : [])
+                .map((line) => ({
+                    line_id: Number(line?.line_id),
+                    quantity: Number(line?.quantity)
+                }))
+                .filter((line) => Number.isInteger(line.line_id) && line.line_id > 0 && Number.isFinite(line.quantity) && line.quantity > 0);
             const voidPayload = {
                 reason,
-                terminal_id: normalizedTerminalId || undefined
+                terminal_id: normalizedTerminalId || undefined,
+                ...(String(refundPasscode || '').trim() ? {
+                    refund_passcode: String(refundPasscode).trim()
+                } : {}),
+                ...(normalizedVoidedLines.length > 0 ? {
+                    voided_lines: normalizedVoidedLines,
+                    idempotency_key: `pos-item-void-${posTransactionId}-${Date.now()}`
+                } : {})
             };
             if (activeShiftId) voidPayload.shift_id = activeShiftId;
             const voidResult = await voidPosTransaction(posTransactionId, voidPayload);
             const approvalPending = voidResult?.pending === true;
             toast.success(approvalPending
                 ? 'Void request submitted. The sale and stock stay unchanged until manager approval.'
-                : 'POS transaction voided.');
+                : normalizedVoidedLines.length > 0 ? 'Selected POS item voided.' : 'POS transaction voided.');
             await loadHistory(historyPage);
             if (approvalPending && inlineVoidApprovalEnabled) {
                 setVoidApprovalSelectedRequest(voidResult?.approval_request || null);
@@ -350,6 +363,15 @@ export const usePosHistoryVoidWorkflow = ({
                     toast.warning('The transaction was voided, but shift totals could not refresh automatically.');
                 }
             }
+            if (!approvalPending && voidResult?.item_voided && voidResult?.financial_outcome?.refund_required) {
+                setRefundWorkflowTransaction({
+                    ...(voidResult.transaction || historyRow),
+                    pos_transaction_id: posTransactionId,
+                    financial_outcome: voidResult.financial_outcome,
+                    item_void_adjustment_id: voidResult.adjustment?.pos_transaction_adjustment_id || null
+                });
+            }
+            return voidResult;
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Failed to void POS transaction.');
             throw error;
@@ -427,12 +449,15 @@ export const usePosHistoryVoidWorkflow = ({
         }
 
         setRefundWorkflowLoading(true);
-        setRefundWorkflowTransaction({ ...historyRow, pos_transaction_id: posTransactionId });
+        const itemVoidAdjustmentId = historyRow?.item_void_adjustment_id || null;
+        setRefundWorkflowTransaction({ ...historyRow, pos_transaction_id: posTransactionId, item_void_adjustment_id: itemVoidAdjustmentId });
         try {
             const detail = await fetchPosTransactionById(posTransactionId, {
                 location_id: selectedLocationId || undefined
             });
-            setRefundWorkflowTransaction(detail || null);
+            setRefundWorkflowTransaction(detail
+                ? { ...detail, item_void_adjustment_id: itemVoidAdjustmentId || detail.item_void_adjustment_id || null }
+                : null);
         } catch (error) {
             setRefundWorkflowTransaction(null);
             toast.error(buildMissingFieldsMessage(error) || error?.response?.data?.message || 'Failed to load refund requirements.');
@@ -461,7 +486,8 @@ export const usePosHistoryVoidWorkflow = ({
             idempotency_key: idempotencyKey,
             reason,
             terminal_id: normalizedTerminalId || undefined,
-            shift_id: activeShiftId || undefined
+            shift_id: activeShiftId || undefined,
+            item_void_adjustment_id: refundWorkflowTransaction?.item_void_adjustment_id || undefined
         };
 
         setRefundWorkflowSubmitting(true);
@@ -491,10 +517,10 @@ export const usePosHistoryVoidWorkflow = ({
                 throw new Error('This transaction requires manual review; no automatic refund action is authorized.');
             }
 
-            const refreshed = await fetchPosTransactionById(transactionId, {
-                location_id: selectedLocationId || undefined
-            });
-            setRefundWorkflowTransaction(refreshed || null);
+            // The refund action is complete at this point. Close the modal
+            // immediately so a successful toast cannot leave a stale
+            // completed-refund form open for another submission.
+            setRefundWorkflowTransaction(null);
             await loadHistory(historyPage);
             toast.success('Refund evidence recorded.');
         } catch (error) {

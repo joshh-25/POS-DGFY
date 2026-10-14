@@ -19,15 +19,19 @@ describe('ShiftSessionSummary', () => {
   });
 
   it('emphasizes View Summary as the primary action and keeps refresh secondary', () => {
-    render(<ShiftSessionSummary />);
+    const onViewXReading = vi.fn();
+    render(<ShiftSessionSummary onViewXReading={onViewXReading} />);
 
     const summaryButton = screen.getByRole('button', { name: 'View Summary' });
     const refreshButton = screen.getByRole('button', { name: 'Refresh shift data' });
+    const xReadingButton = screen.getByRole('button', { name: 'X-reading' });
 
     expect(summaryButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
     expect(summaryButton.classList.contains('text-white')).toBe(true);
     expect(refreshButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
     expect(refreshButton.classList.contains('text-white')).toBe(true);
+    fireEvent.click(xReadingButton);
+    expect(onViewXReading).toHaveBeenCalledTimes(1);
   });
 
   it('shows a recoverable alert while retaining the current shift summary', () => {
