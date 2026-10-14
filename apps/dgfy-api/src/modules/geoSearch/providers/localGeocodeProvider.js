@@ -13,7 +13,7 @@ const PRECISION_RANK = {
 };
 
 const EMPTY_COMPONENTS = Object.freeze({
-    street: null, locality: null, district: null, city: null, state: null, postcode: null
+    housenumber: null, street: null, locality: null, district: null, city: null, state: null, postcode: null
 });
 
 const provenance = () => ({
