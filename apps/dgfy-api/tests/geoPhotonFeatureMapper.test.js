@@ -1,6 +1,7 @@
 import {
     QUADRUPER_PROVIDER,
     composeAddressLine,
+    composeForwardAddressLine,
     mapComponents,
     mapForwardSearchResponse,
     mapLandmarks,
@@ -78,11 +79,11 @@ describe('mapPrecision', () => {
 describe('mapComponents', () => {
     it('returns every address field, nulling the absent ones', () => {
         expect(mapComponents(ILOILO_RESTAURANT_PROPERTIES)).toEqual({
-            street: 'Jalandoni Street', locality: 'Bakhaw', district: 'Jaro',
+            housenumber: null, street: 'Jalandoni Street', locality: 'Bakhaw', district: 'Jaro',
             city: 'Iloilo City', state: 'Western Visayas', postcode: '5000'
         });
         expect(mapComponents({})).toEqual({
-            street: null, locality: null, district: null, city: null, state: null, postcode: null
+            housenumber: null, street: null, locality: null, district: null, city: null, state: null, postcode: null
         });
     });
 });
@@ -198,5 +199,70 @@ describe('mapForwardSearchResponse', () => {
         expect(mapForwardSearchResponse({ features: [{ properties: { name: 'X' } }] })).toEqual([]);
         expect(mapForwardSearchResponse({ features: [] })).toEqual([]);
         expect(mapForwardSearchResponse(null)).toEqual([]);
+    });
+});
+
+// Recorded live from https://quadruper.com/geocode on 2026-10-14 (#2484).
+const CAINTA_HOUSE_PROPERTIES = {
+    osm_key: 'building', osm_value: 'yes', type: 'house', name: null, housenumber: '52',
+    street: 'Saint Anthony Street', locality: 'Rodfer Ⅱ', city: 'Cainta', state: 'Rizal',
+    country: 'Philippines', countrycode: 'PH'
+};
+
+const SPACE_BAR_PROPERTIES = {
+    osm_key: 'amenity', osm_value: 'cafe', type: 'house', name: 'Space Bar', street: 'Ibarra Street',
+    locality: 'Aurora Subdivision', district: 'City Proper', city: 'Iloilo City',
+    state: 'Western Visayas', country: 'Philippines', countrycode: 'PH'
+};
+
+const ILOILO_RIZAL_STREET_PROPERTIES = {
+    osm_key: 'highway', osm_value: 'secondary', type: 'street', name: 'Rizal Street',
+    locality: 'Iloilo Central Business District', district: 'City Proper', city: 'Iloilo City',
+    state: 'Western Visayas', country: 'Philippines', countrycode: 'PH'
+};
+
+describe('composeForwardAddressLine (#2484)', () => {
+    it('places the street after a named place', () => {
+        expect(composeForwardAddressLine(SPACE_BAR_PROPERTIES))
+            .toBe('Space Bar, Ibarra Street, Aurora Subdivision, City Proper, Iloilo City');
+    });
+
+    it('leads with house number and street when Photon has a house number', () => {
+        expect(composeForwardAddressLine(CAINTA_HOUSE_PROPERTIES))
+            .toBe('52 Saint Anthony Street, Rodfer Ⅱ, Cainta, Rizal, Philippines');
+    });
+
+    it('reads a street feature\'s name as its street, without repeating it', () => {
+        expect(composeForwardAddressLine(ILOILO_RIZAL_STREET_PROPERTIES))
+            .toBe('Rizal Street, Iloilo Central Business District, City Proper, Iloilo City, Western Visayas');
+    });
+
+    it('prefixes a supplied house number to the street', () => {
+        expect(composeForwardAddressLine(ILOILO_RIZAL_STREET_PROPERTIES, { houseNumber: '52' }))
+            .toBe('52 Rizal Street, Iloilo Central Business District, City Proper, Iloilo City, Western Visayas');
+    });
+
+    it('drops a house number that has no street to attach to', () => {
+        expect(composeForwardAddressLine({ type: 'house', housenumber: '52', city: 'Oton', state: 'Iloilo' }))
+            .toBe('Oton, Iloilo, Philippines');
+    });
+});
+
+describe('mapForwardSearchResponse components (#2484)', () => {
+    it('reports the house number and the street of a street feature', () => {
+        const [house] = mapForwardSearchResponse({ features: [feature(CAINTA_HOUSE_PROPERTIES, 121.1, 14.6)] });
+        expect(house.components.housenumber).toBe('52');
+        expect(house.components.street).toBe('Saint Anthony Street');
+
+        const [street] = mapForwardSearchResponse({ features: [feature(ILOILO_RIZAL_STREET_PROPERTIES, 122.57, 10.69)] });
+        expect(street.precision).toBe('street');
+        expect(street.components.street).toBe('Rizal Street');
+    });
+
+    it('leaves reverse-geocode labels unchanged', () => {
+        const result = mapReverseGeocodeResponse({
+            features: [feature(SPACE_BAR_PROPERTIES, 122.5650, 10.7000)]
+        }, { latitude: 10.7, longitude: 122.565 });
+        expect(result.address_line).toBe('Aurora Subdivision, City Proper, Iloilo City, Western Visayas, Philippines');
     });
 });
