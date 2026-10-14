@@ -167,11 +167,12 @@ branch selector does not turn those fields into branch-local data.
 ### 2026-10-06 — F&B cashier inherits the standard cashier baseline
 
 The `fnb_cashier` preset now composes `DEFAULT_ROLE_PERMISSIONS.cashier` and adds
-only its F&B-specific dashboard, menu, dining, and check capabilities. This makes
-the mode-native F&B role consistent with the standard cashier role, including
-`pos:shift_close`, while keeping `pos:close_day` and cash-drawer adjustment out of
-the cashier baseline. The role catalog version is `2026-10-06.mode-aware-rbac-v5`
-so cached Team Access clients refetch the corrected preset.
+its governed POS void authority plus the F&B-specific dashboard, menu, dining, and
+check capabilities. This makes the mode-native F&B role consistent with the
+standard cashier role, including `pos:shift_close`, while keeping `pos:close_day`
+and cash-drawer adjustment out of the cashier baseline. The role catalog version
+is `2026-10-13.mode-aware-rbac-v6` so cached Team Access clients refetch the
+corrected preset.
 
 This remains an additive role-preset change with no schema migration. Existing
 users whose stored explicit permissions came from the previous `fnb_cashier`

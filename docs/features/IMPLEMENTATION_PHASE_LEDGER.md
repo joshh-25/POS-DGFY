@@ -28483,3 +28483,78 @@ validation passes.
 
 Phase 502. Runtime migration has explicit follow-on dependencies; no implementation is authorized
 by this documentation phase.
+
+## Phase 502 - Unified Global POS PIN for Cashier Protected Actions
+
+### Initiative and release
+
+Unify the tenant-local cashier PIN used by protected POS actions while keeping
+permissions, scope, attendance, shift, and manager-approval policies separate.
+
+### Objective and scope
+
+Give each tenant-local POS user one write-only global PIN. A cashier configures
+their own PIN from the selected company card in **DGFY Account → Business**;
+OPIS remains the admin surface for permissions and PIN reset. Reuse the existing `users.pos_cashier_pin_hash` field for
+operator authentication/takeover, governed discounts, item or transaction
+void/refund confirmation, cash-drawer/refund actions, and Z-reading/day-close
+confirmation. Remove the separate visible approval/day-close PIN controls from
+the settings experience. IMS is not a configuration surface for this feature.
+
+### Status
+
+`in_progress` — implementation and focused validation are complete in the
+worktree; merge, deployment, and operational UI verification remain outstanding.
+
+### Dependencies
+
+- ADR 0031 and ADR 0073 define the terminal, attendance, operator-session, and
+  protected-action boundaries.
+- Existing tenant-local PIN hash storage and the current POS authorization
+  policies are reused. No schema or migration is introduced.
+- Legacy approval/day-close hashes remain only as a compatibility fallback until
+  the global PIN is saved or reset; saving/resetting clears those hashes and
+  lockout state.
+
+### Acceptance and validation evidence
+
+- [x] DGFY Account → Business exposes one self-service Global POS PIN action
+      on each selected company card for eligible cashiers; OPIS retains the
+      admin permission and reset controls.
+- [x] Saving/resetting writes the canonical global hash, clears legacy hashes
+      and lockout state, and returns configuration flags rather than secrets.
+- [x] Protected POS policies resolve the canonical hash and preserve separate
+      permission, scope, attendance, shift, and manager-approval checks.
+- [x] Backend focused tests pass: 4 suites, 77 tests.
+- [x] Frontend focused contract/behavior tests pass: 4 files, 63 tests.
+- [x] Architecture guardrails pass: 60 modules and 739 code files checked.
+- [x] POS and OPIS production builds pass.
+- [x] `git diff --check` and changed-file syntax validation pass.
+
+### Links
+
+- Architecture: ADR 0031 and ADR 0073 amendments for Phase 502.
+- Product flow: `docs/features/POS_CASHIER_TERMINAL_FLOW.md`.
+- Implementation: `posGlobalPinPolicy`, POS authorization policies,
+  `posRepository`, `userService`, operator authority use cases, and shared POS
+  settings/action surfaces.
+
+### Completion date
+
+Not complete. Set only after the worktree is merged and the deployed OPIS/POS
+flow is operationally verified with one global PIN across the authorized action
+paths.
+
+### Post-merge verification
+
+- [ ] Configure one cashier global PIN in DGFY Account → Business and verify
+      the same PIN works only for that cashier's separately granted protected
+      POS actions; verify OPIS can still reset it as admin.
+- [ ] Verify an unauthorized action remains blocked even when the global PIN
+      is correct, and verify a different tenant/company cannot use the PIN.
+- [ ] Verify reset invalidates the previous PIN and clears any legacy
+      approval/day-close credential state.
+
+### Next phase number
+
+Phase 503. No explicit dependency.
