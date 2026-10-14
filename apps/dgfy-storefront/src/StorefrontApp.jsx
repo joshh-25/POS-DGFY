@@ -370,7 +370,6 @@ export const __storefrontTrackingTestUtils = {
 const AUTO_QUOTE_DEBOUNCE_MS = 350;
 const dgfyHeaderLogo = '/dgfy-logo.png';
 const dgfySymbolLogo = '/dgfy-symbologo.png';
-const dgfyBusinessOwnerPhoto = '/man.webp';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
@@ -830,7 +829,6 @@ export default function StorefrontApp() {
     handleDiscoveryMenuToggle,
     handleDiscoveryNavItemClick
   } = useDiscoveryNavActions({
-    activeDiscoveryNavItem,
     isDiscoveryMobileViewport,
     setActiveDiscoveryNavItem,
     setIsDiscoveryNavMenuOpen
@@ -4379,9 +4377,7 @@ export default function StorefrontApp() {
     accountIdentityRawEmail,
     activeDiscoveryNavItem,
     desktopCategoryRailRef,
-    dgfyBusinessOwnerPhoto,
     dgfyHeaderLogo,
-    dgfySymbolLogo,
     discoveryCoords,
     discoveryInteractiveAreaRef,
     discoveryLayout,
@@ -4425,7 +4421,6 @@ export default function StorefrontApp() {
     mobileCategoryRailRef,
     normalizeStorefrontCategories,
     normalizeStorefrontReviewSummary,
-    openBusinessRegistrationFlow,
     openCanonicalDgfyAuth,
     openCustomerDashboard,
     openDiscoveryFaqIndex,

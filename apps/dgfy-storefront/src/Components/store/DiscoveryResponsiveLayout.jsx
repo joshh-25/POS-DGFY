@@ -75,6 +75,8 @@ export const getDiscoveryLayoutTokens = (viewportMode = 'desktop') => (
 
 const cx = (...parts) => parts.filter(Boolean).join(' ');
 
+export const DISCOVERY_NAV_ITEMS = Object.freeze(['Explore', 'Solutions', 'Contact Us']);
+
 const MOBILE_MENU_META = Object.freeze({
   Explore: { icon: Home, badge: null },
   Solutions: { icon: Puzzle, badge: null },

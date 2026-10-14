@@ -6,6 +6,7 @@ describe('Platform Admin protected-route classification', () => {
     ['/api/v1/admin/tenant-intake/proposals/id-1/confirm', ['admin.tenants', 'admin.dgfy_accounts']],
     ['/api/v1/admin/tenant-intake/capabilities', ['admin.tenants', 'admin.dgfy_accounts']],
     ['/api/v1/admin/feedback', ['admin.feedback']],
+    ['/api/v1/admin/contact-inquiries/pin4ms/config', ['admin.contact_inquiries']],
     ['/api/v1/admin/tenants', ['admin.tenants']],
     ['/api/v1/admin/tenants/pricing', ['admin.pricing']],
     // Issue #178 Phase 17: applying a template to ONE already-provisioned

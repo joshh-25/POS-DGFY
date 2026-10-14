@@ -4,6 +4,7 @@ import {
     Lock,
     LogOut,
     MessageSquare,
+    Mail,
     Building2,
     ChevronLeft,
     ChevronRight,
@@ -25,6 +26,7 @@ import * as adminService from '@/services/adminService';
 
 const SIDEBAR_ITEMS = [
     { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare, permission: 'admin.feedback' },
+    { path: '/admin/contact-inquiries', label: 'Contact Inquiries', icon: Mail, permission: 'admin.contact_inquiries' },
     { path: '/admin/tenants', label: 'Tenants', icon: Building2, permission: 'admin.tenants' },
     { path: '/admin/dgfy-accounts', label: 'DGFY Accounts', icon: UsersRound, permission: 'admin.dgfy_accounts' },
     { path: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'admin.payments' },
