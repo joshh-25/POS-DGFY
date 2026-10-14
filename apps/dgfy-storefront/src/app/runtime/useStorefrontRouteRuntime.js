@@ -2,14 +2,20 @@ import { useEffect, useState } from 'react';
 
 import {
   readRouteSlug,
+  readStoreQrToken,
   readStoreItemId,
   readStoreReviewToken,
   readStoreServiceItemId,
   readStoreSubpage,
+  STORE_CATEGORIES_SUBPAGE,
   setCustomStorefrontRouteContext
 } from '../routing/storefrontRouting.js';
 import { toSlug } from '../../shared/utils/storefrontFormatters.js';
 import { isKnownDgfyPlatformHost } from '../../shared/utils/storefrontPlatformHost.js';
+
+const readQrAwareStoreSubpage = () => (
+  readStoreSubpage() || (readStoreQrToken() ? STORE_CATEGORIES_SUBPAGE : null)
+);
 
 /**
  * Owns the browser route state used by the storefront shell.
@@ -20,7 +26,7 @@ import { isKnownDgfyPlatformHost } from '../../shared/utils/storefrontPlatformHo
  */
 export function useStorefrontRouteRuntime() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
-  const [routeSubpage, setRouteSubpage] = useState(() => readStoreSubpage());
+  const [routeSubpage, setRouteSubpage] = useState(() => readQrAwareStoreSubpage());
   const [routeServiceItemId, setRouteServiceItemId] = useState(() => readStoreServiceItemId());
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
@@ -53,7 +59,7 @@ export function useStorefrontRouteRuntime() {
         if (context.routing_mode !== 'custom_domain') return;
         setCustomStorefrontRouteContext(context);
         setRouteSlug(toSlug(context.slug));
-        setRouteSubpage(readStoreSubpage());
+        setRouteSubpage(readQrAwareStoreSubpage());
         setRouteServiceItemId(readStoreServiceItemId());
         setRouteItemId(readStoreItemId());
       })

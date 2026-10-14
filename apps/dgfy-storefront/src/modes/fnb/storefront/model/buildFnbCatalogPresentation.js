@@ -41,8 +41,9 @@ function sortItems(items, sortOption, categoryFirst = false) {
  * `resolveSectionIdentity`), never the normalized `sectionKey` display text. Two distinct folders
  * whose names normalize identically produce two `menuSections` entries with the same `sectionKey`
  * but different `sectionIdentity`; resolving/matching by `sectionKey` here would make the second
- * one permanently unreachable through the toolbar. `sectionKey`/`sectionLabel` stay available on
- * `activeSectionModel` for display only.
+ * one permanently unreachable through the toolbar. An explicitly selected section also resolves
+ * when a QR-filtered catalog contains only that one section. `sectionKey`/`sectionLabel` stay
+ * available on `activeSectionModel` for display only.
  */
 export function buildFnbCatalogPresentation({
   activeSection,
@@ -54,8 +55,7 @@ export function buildFnbCatalogPresentation({
   const menuSections = Array.isArray(fnbViewModel?.menuSections)
     ? fnbViewModel.menuSections
     : [];
-  const hasMultipleSections = menuSections.length > 1;
-  const resolvedSection = hasMultipleSections && menuSections.some((section) => section.sectionIdentity === activeSection)
+  const resolvedSection = activeSection && menuSections.some((section) => section.sectionIdentity === activeSection)
     ? activeSection
     : '';
   const activeSectionModel = resolvedSection

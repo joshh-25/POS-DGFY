@@ -141,6 +141,43 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
     expect(window.location.href).toBe('');
   });
 
+  it('configures the cashier Global POS PIN through the DGFY Account tenant route', async () => {
+    const deps = buildDeps();
+    deps.requestJson.mockResolvedValue({ configured: true });
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.configureOwnBusinessGlobalPin(
+      { tenant_id: 'tenant-pos' },
+      { currentPassword: 'current-password', pin: '1234' }
+    );
+
+    expect(deps.startDgfyTenantSession).not.toHaveBeenCalled();
+    expect(deps.requestJson).toHaveBeenCalledWith('/api/v1/dgfy/account/companies/tenant-pos/pos-global-pin', {
+      method: 'PUT',
+      authToken: 'dgfy-token',
+      body: { current_password: 'current-password', pin: '1234' },
+      cache: 'no-store'
+    });
+    expect(deps.buildPosDgfyHandoffUrl).not.toHaveBeenCalled();
+  });
+
+  it('reads tenant-scoped Global POS PIN capability without activating a POS session', async () => {
+    const deps = buildDeps();
+    deps.startDgfyTenantSession.mockResolvedValue({
+      permissions: ['pos:transact'],
+      pos_global_pin_configured: true,
+      can_configure_pos_global_pin: true,
+      company: { token: 'tenant-token' }
+    });
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await expect(result.current.getOwnBusinessGlobalPinStatus({ tenant_id: 'tenant-pos' })).resolves.toEqual({
+      canConfigureGlobalPin: true,
+      pinConfigured: true
+    });
+    expect(deps.startDgfyTenantSession).toHaveBeenCalledWith({ tenantId: 'tenant-pos', accessScope: 'pos' }, 'dgfy-token', { activate: false });
+  });
+
   it('keeps Storefront in place and reports an error when the POS handoff token cannot be minted', async () => {
     const deps = buildDeps();
     deps.createDgfyHandoff.mockRejectedValue(new Error('network error'));

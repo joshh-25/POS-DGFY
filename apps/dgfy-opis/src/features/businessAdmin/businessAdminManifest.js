@@ -13,6 +13,7 @@ import {
   Hotel,
   LayoutDashboard,
   Package,
+  QrCode,
   Receipt,
   RefreshCw,
   ScrollText,
@@ -44,6 +45,7 @@ const SalesPage = lazy(() => import('../../../../../packages/web-core/src/featur
 const ReportsPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx'));
 const AiChatPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/AiChatPage.jsx'));
 const LegacyPromosPage = lazy(() => import('./LegacyPromosPage.jsx'));
+const QrCodeManagementPage = lazy(() => import('../qrCodes/QrCodeManagementPage.jsx'));
 
 const BUSINESS_ADMIN_ACCESS_PERMISSION = 'business_admin:access';
 
@@ -96,6 +98,7 @@ export const BACKOFFICE_MANIFEST = Object.freeze({
   approvals: module('Settings', 'approvals', 'Approvals', 'Review high-risk requests. Execution stays with the canonical POS command owner.', ShieldCheck),
   onboarding: module('Settings', 'onboarding', 'POS onboarding', 'Track the current business, branch, and workflow readiness contract.', CheckCircle2),
   storefront: module('Settings', 'storefront', 'Storefront', 'Review storefront-facing readiness while keeping public commerce ownership in Storefront.', Store),
+  'qr-codes': module('Settings', 'qr-codes', 'QR codes', 'Create branch-scoped catalog and category QR links with live storefront synchronization.', QrCode, QrCodeManagementPage),
   company: module('Settings', 'company', 'Company', 'Review company registration, storefront readiness, location, hours, and private upload status.', Building2),
   settings: module('Settings', 'settings', 'Settings', 'Back Office owns business and branch configuration; terminal-only controls remain in POS.', Settings),
   'ai-chat': module('Settings', 'ai-chat', 'Business assistant', 'Use the assistant for this business from the POS Back Office.', Sparkles, AiChatPage)

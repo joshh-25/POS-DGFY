@@ -39,6 +39,22 @@ describe('buildFnbCatalogPresentation', () => {
     expect(result.visibleItems.map((item) => item.item_id)).toEqual(['b']);
   });
 
+  it('resolves an explicitly selected section when a QR catalog contains one section', () => {
+    const result = buildFnbCatalogPresentation({
+      activeSection: 'folder:10',
+      fnbViewModel: {
+        menuItems: fnbViewModel.menuItems.slice(0, 1),
+        menuSections: [fnbViewModel.menuSections[0]]
+      },
+      page: 1,
+      pageSize: 8,
+      sortOption: 'name_asc'
+    });
+
+    expect(result.resolvedSection).toBe('folder:10');
+    expect(result.visibleItems.map((item) => item.item_id)).toEqual(['a']);
+  });
+
   it('does not resolve a section by its sectionKey display text alone', () => {
     // The reviewer's exact concern: matching by the normalized `sectionKey` text instead of the
     // stable `sectionIdentity` would let this resolve -- it must not.

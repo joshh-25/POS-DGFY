@@ -128,6 +128,15 @@ describe('OPIS "Open POS terminal" links (issue #2052 follow-up)', () => {
   });
 });
 
+describe('OPIS/POS settings synchronization', () => {
+  it('revalidates canonical settings after returning from the separate POS origin', () => {
+    expect(businessAdminPageSource).toContain('installCrossAppSettingsRefresh');
+    expect(businessAdminPageSource).toContain("activeSection !== 'settings'");
+    expect(businessAdminPageSource).toContain('if (settingsDirty) return undefined;');
+    expect(businessAdminPageSource).toContain('setReloadNonce((value) => value + 1)');
+  });
+});
+
 describe('OPIS page routes', () => {
   it('resolves known pages and falls back to the dashboard', () => {
     expect(createPageUrl('Sales')).toBe('/sales');

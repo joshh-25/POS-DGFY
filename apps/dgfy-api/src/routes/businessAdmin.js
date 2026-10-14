@@ -7,10 +7,15 @@ import { requireBusinessAdminDashboardEnabled } from '../modules/businessAdmin/m
 const router = express.Router();
 
 router.use(authenticate);
-router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
 router.use(requireBusinessAdminDashboardEnabled);
 
+// OPIS needs the shared bootstrap to render tenant-facing Back Office modules that do not
+// depend on POS, including storefront QR management. Keep the POS capability gate on the
+// operational endpoints below instead of blocking the entire OPIS shell.
 router.get('/bootstrap', businessAdminHandlers.getBootstrap);
+
+router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
+
 router.get('/company', businessAdminHandlers.getCompany);
 router.get('/overview', businessAdminHandlers.getOverview);
 router.get('/multi-company/overview', businessAdminHandlers.getMultiCompanyOverview);

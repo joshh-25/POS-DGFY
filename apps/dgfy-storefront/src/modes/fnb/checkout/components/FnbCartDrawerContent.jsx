@@ -18,6 +18,7 @@ export function FnbCartDrawerContent({
   cartTotal,
   fnbOrderBrand,
   getLineTotal,
+  goStoreCategoriesPage,
   goStoreCatalogPage,
   goStoreOrderPage,
   isDesktopCheckout,
@@ -202,7 +203,7 @@ export function FnbCartDrawerContent({
                     type="button"
                     onClick={() => {
                       setIsCheckoutOpen(false);
-                      goStoreCatalogPage();
+                      (goStoreCategoriesPage || goStoreCatalogPage)();
                       setTimeout(() => {
                         const el = document.getElementById('storefront-catalog-section');
                         if (el) {
