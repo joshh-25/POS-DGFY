@@ -11,6 +11,18 @@ issue_type: issue | epic
 planning_head: <commit sha>
 generated_at: <ISO-8601 timestamp>
 status: ready | needs-decision
+execution_route: develop | hotfix
+target_branch: develop | main | staging
+# Valid pairs: develop/develop, hotfix/main, hotfix/staging.
+# Full contract: docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md.
+hotfix: # Include only when execution_route is hotfix.
+  operator_instruction: "<verbatim operator text or flag given to the Planner>"
+  target_rationale: "<why main or staging, following incident-responder step 2>"
+  eligibility: # Include only when target_branch is main.
+    affected_behavior: "<issue evidence, with issue/comment citation>"
+    why_not_wait: "<why the next scheduled promotion is too late>"
+    harm_from_delay: "<expected harm or risk from delay>"
+    timing_context: "<discovery/deployment timing and next promotion timing>"
 ```
 
 ## Ready checklist
@@ -21,6 +33,7 @@ status: ready | needs-decision
 - [ ] Acceptance evidence (tests, commands, or manual checks) is defined.
 - [ ] Known assumptions the Worker may rely on are distinguished from decisions that need a
       pause.
+- [ ] Execution route and target branch are recorded and, for a hotfix, validated.
 
 # Plan: #<number> — <title>
 
@@ -59,6 +72,7 @@ status: ready | needs-decision
 ## Worker handoff
 
 <Implementation-specific instructions. Do not merge or deploy.>
+Route: <develop → develop | hotfix → main | hotfix → staging>
 
 Run:
 

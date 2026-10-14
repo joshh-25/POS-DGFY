@@ -29063,3 +29063,106 @@ been made for this phase.
 ### Next phase number
 
 Phase 508. No explicit dependency.
+
+## Phase 508 - Preserve explicit hotfix intent through Planner handoff (#2482)
+
+### Initiative and release
+
+Agent workflow, current release.
+
+### Objective and scope
+
+Carry an operator's explicit hotfix instruction and selected target branch through ready Planner
+artifacts so the Worker can validate and follow the existing incident-responder manual route.
+Unmarked or legacy plans retain the ordinary `develop` route. Issue evidence and route ambiguity
+must fail closed rather than silently changing a hotfix into a `develop` PR.
+
+Scope is repository documentation and agent-skill text. Runtime code, workflow YAML, merge
+authority, and deployment authority are unchanged.
+
+### Status
+
+`in_progress` — implementation and validation are complete; PR review and merge remain
+outstanding.
+
+### Dependencies
+
+Issue #2482 defines the scope. Phases 325 (#1842), 341 (#861/#2006), and 483 (#2346) provide the
+existing manual-hotfix and Planner/Worker handoff contracts; none is an explicit blocking
+dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), [Planner/Worker compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+and [Issue taxonomy](../process/ISSUE-TAXONOMY.md). Classification: `no-architecture-impact`;
+this updates role procedure and handoff documentation, preserves the existing release/version/
+compliance obligations by reference, and does not amend an ADR.
+
+### Implementation targets
+
+[Handoff template](../../.agents/skills/planner/references/plan-handoff-template.md),
+[Planner](../../.agents/skills/planner/SKILL.md),
+[Worker](../../.agents/skills/implement/SKILL.md),
+[Incident Responder](../../.agents/skills/incident-responder/SKILL.md),
+[Planner/Worker compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+[Chain](../../.agents/skills/chain/SKILL.md),
+[PR Reviewer](../../.agents/skills/pr-reviewer/SKILL.md),
+[AGENTS.md](../../AGENTS.md), and this ledger.
+
+### Acceptance and validation evidence
+
+- [x] New ready artifacts explicitly record `execution_route` and `target_branch`; hotfix artifacts
+      record the operator instruction, target rationale, and required main eligibility facts.
+- [x] Legacy artifacts with both route fields absent normalize to `develop`/`develop`; malformed
+      and partial route data hard-stop.
+- [x] Planner hotfix intent requires explicit operator direction; issue wording alone stays on
+      `develop`; unclear targets or missing main eligibility facts produce `needs-decision`.
+- [x] Worker validates the route against the live issue, follows matching hotfix targets without
+      asking the operator to repeat the instruction, and never downgrades a route problem.
+- [x] Incident Responder recognizes the ready operator-marked artifact trigger and retains its
+      applicable eligibility, review, release-note, compliance, merge, deployment, and back-port
+      safeguards.
+- [x] PR Reviewer checks route/target against PR base; Chain preserves route fields and stops
+      hotfix/main at approval; repo-wide authorization text names the added trigger.
+- [x] The handoff scenarios for ordinary, main-hotfix, staging-hotfix, missing eligibility,
+      ambiguous target, unmarked production mention, malformed combinations, partial route fields,
+      and legacy fields pass the manual walkthrough; the result table is in the PR Testing Evidence.
+- [x] `npm run lint:docs`, `npm run check:agent-surfaces`, `npm run check:architecture`,
+      `npm run check:compliance`,
+      `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=fix/agents-carry-explicit-hotfix-intent-through node scripts/check-app-version-bump.js`,
+      and `git diff --check` pass.
+- [ ] PR review is complete; this phase does not merge or deploy.
+
+### Evidence
+
+Local docs, agent-surface, architecture, and compliance checks passed after rebasing onto current
+`develop`. The explicit PR-context version-floor check passed. Its initial bare invocation fell
+back to `HEAD~1` and included unrelated app changes from merge commit #2476; that earlier result was
+superseded by the explicit PR-context rerun. The manual route walkthrough passed for ordinary
+develop, main and staging hotfixes, missing eligibility, ambiguous target, unmarked production
+mention, invalid and partial pairs, and legacy artifacts. The result table is recorded in the PR's
+Testing Evidence. PR review remains outstanding.
+
+### Rollback
+
+Revert the handoff route fields and compatibility rules, related Planner/Worker/Incident Responder/
+Chain/PR Reviewer/AGENTS.md guidance, and this Phase 508 entry. No runtime, workflow, data, merge
+authority, or deployment rollback is required.
+
+### Completion date
+
+Not complete. Set only after the scoped documentation implementation is merged and its named
+implementation validation passes.
+
+### Post-merge verification
+
+- [x] None — docs-only role guidance; no deployment, provider, or operational verification applies.
+
+### Next phase number
+
+Phase 509. No explicit dependency.
