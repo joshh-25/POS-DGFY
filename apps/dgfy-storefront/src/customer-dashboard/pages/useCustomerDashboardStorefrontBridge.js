@@ -45,6 +45,8 @@ export function useCustomerDashboardStorefrontBridge({
   handleOpenBusinessPos,
   getOwnBusinessDayCloseStatus,
   configureOwnBusinessDayClosePin,
+  getOwnBusinessGlobalPinStatus,
+  configureOwnBusinessGlobalPin,
   resolveStorefrontMetaForAccountEntry,
   withAssetOrigin,
   savedCustomerDetails,
@@ -97,6 +99,8 @@ export function useCustomerDashboardStorefrontBridge({
     handleOpenBusinessPos,
     getOwnBusinessDayCloseStatus,
     configureOwnBusinessDayClosePin,
+    getOwnBusinessGlobalPinStatus,
+    configureOwnBusinessGlobalPin,
     resolveStorefrontMetaForAccountEntry,
     withAssetOrigin
   }), [
@@ -126,6 +130,8 @@ export function useCustomerDashboardStorefrontBridge({
     handleOpenBusinessPos,
     getOwnBusinessDayCloseStatus,
     configureOwnBusinessDayClosePin,
+    getOwnBusinessGlobalPinStatus,
+    configureOwnBusinessGlobalPin,
     handleRejectDgfyCompanyInvitation,
     handleRequestCashout,
     handleSaveAccountAddress,

@@ -1,0 +1,134 @@
+.contact-us-page {
+  min-height: 100vh;
+  overflow: hidden;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.contact-us-page__header-shell {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 10px 20px 0;
+}
+
+.contact-us-page__main {
+  box-sizing: border-box;
+  width: 100%;
+  padding: clamp(28px, 4vw, 48px) 20px clamp(64px, 9vw, 112px);
+}
+
+.contact-us-page__content {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.contact-us-page__eyebrow {
+  color: #1a4e8d;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+}
+
+.contact-us-page__title {
+  margin: 12px 0 0;
+  color: #0f172a;
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+}
+
+.contact-us-page__intro {
+  max-width: 640px;
+  margin: 16px 0 0;
+  color: #64748b;
+  font-size: clamp(15px, 1.6vw, 18px);
+  line-height: 1.7;
+}
+
+.contact-us-page__form-section {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  margin-top: clamp(28px, 4vw, 40px);
+}
+
+.contact-us-page__embed-frame-wrap {
+  box-sizing: border-box;
+  margin-top: 0;
+  width: 100%;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.contact-us-page__embed-frame {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 600px;
+  border: 0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.contact-us-page__embed-frame:focus-visible {
+  outline: 3px solid #1a4e8d;
+  outline-offset: 3px;
+}
+
+.contact-us-page__embed-fallback {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.contact-us-page__embed-fallback a {
+  color: #1a4e8d;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.contact-us-page__embed-fallback a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid #1a4e8d;
+  outline-offset: 3px;
+}
+
+@media (max-width: 767px) {
+  .contact-us-page__main {
+    padding: 32px 16px 72px;
+  }
+
+  .contact-us-page__form-section {
+    margin-top: 28px;
+  }
+
+  .contact-us-page__embed-frame {
+    height: 560px;
+  }
+
+}
+
+@media (max-width: 839px) {
+  .contact-us-page__header-shell {
+    padding: 6px 12px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contact-us-page *,
+  .contact-us-page *::before,
+  .contact-us-page *::after {
+    scroll-behavior: auto !important;
+  }
+}

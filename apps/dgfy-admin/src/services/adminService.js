@@ -116,6 +116,21 @@ export const getCurrentAdmin = async () => {
     return response.data;
 };
 
+export const getPin4msProviderConfigStatus = async () => (
+    await adminApi.get('/admin/contact-inquiries/pin4ms/config', {
+        ...requireAdminAuthConfig(),
+        skipGlobalErrorToast: true
+    })
+).data?.data;
+
+export const savePin4msProviderApiKey = async (apiKey) => (
+    await adminApi.put(
+        '/admin/contact-inquiries/pin4ms/config',
+        { api_key: apiKey },
+        { ...requireAdminAuthConfig(), skipGlobalErrorToast: true }
+    )
+).data?.data;
+
 export const listPlatformInvoices = async () => (await adminApi.get('/admin/invoices', requireAdminAuthConfig())).data;
 export const listEligiblePlatformInvoiceApplications = async () => (await adminApi.get('/admin/invoices/eligible-applications', requireAdminAuthConfig())).data;
 export const createPlatformInvoiceDraft = async (payload) => (await adminApi.post('/admin/invoices/drafts', payload, requireAdminAuthConfig())).data;

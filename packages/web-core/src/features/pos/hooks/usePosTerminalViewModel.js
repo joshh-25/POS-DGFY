@@ -1247,7 +1247,7 @@ export function usePosTerminalViewModel({
                 const shiftCashierApprover = Number.isInteger(shiftCashierId) && shiftCashierId > 0
                     ? toArray(approvers).find((approver) => (
                         Number(approver?.user_id) === shiftCashierId
-                        && approver?.pos_approval_pin_configured === true
+                        && (approver?.pos_global_pin_configured === true || approver?.pos_approval_pin_configured === true)
                     ))
                     : null;
                 resolvedDraft = {
@@ -1310,8 +1310,8 @@ export function usePosTerminalViewModel({
             return;
         }
         const selectedApprover = safeDiscountApprovers.find((approver) => Number(approver?.user_id) === approvalUserId);
-        if (!selectedApprover?.pos_approval_pin_configured) {
-            toast.error('This employee does not have a POS approval PIN configured yet.');
+        if (!selectedApprover?.pos_global_pin_configured && !selectedApprover?.pos_approval_pin_configured) {
+            toast.error('This employee does not have a global POS PIN configured yet.');
             return;
         }
         if (!/^\d{4,12}$/.test(String(discountDraft.manager_pin || '').trim())) {

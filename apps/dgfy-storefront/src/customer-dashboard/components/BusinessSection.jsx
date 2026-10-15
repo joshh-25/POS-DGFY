@@ -21,7 +21,7 @@ export function BusinessSection({
   submitBusinessStepUpAction,
   onRegisterBusiness,
   onOpenBusinessPos,
-  onOpenBusinessDayClose,
+  onOpenBusinessGlobalPin,
   resolveBusinessAssetUrl,
   getBusinessCoverUrl,
   getBusinessProfileUrl,
@@ -145,9 +145,9 @@ export function BusinessSection({
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
-                    <button type="button" aria-label={`Day Close for ${name}`} disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, padding: '0 8px', whiteSpace: 'nowrap' }}>
+                    <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessGlobalPin?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, padding: '0 8px', whiteSpace: 'nowrap' }}>
                       <KeyRound size={15} />
-                      Day Close
+                      PIN
                     </button>
                     <button type="button" aria-label={`Go to POS for ${name}`} disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, boxShadow: '0 3px 8px rgba(26,78,141,0.18)', padding: '0 8px', whiteSpace: 'nowrap' }}>
                       <Calculator size={15} />
@@ -196,9 +196,9 @@ export function BusinessSection({
                     <div style={{ flex: 1, minHeight: 24 }} />
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
-                      <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, borderRadius: 10, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, padding: '0 8px' }}>
+                      <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessGlobalPin?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, borderRadius: 10, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, padding: '0 8px' }}>
                         <KeyRound size={16} />
-                        Day Close
+                        PIN
                       </button>
                       <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, borderRadius: 10, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, boxShadow: '0 4px 12px rgba(26,78,141,0.2)', padding: '0 8px' }}>
                         <Calculator size={16} />

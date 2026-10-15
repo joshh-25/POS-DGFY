@@ -89,10 +89,14 @@ describe('DGLaundry booking payment session', () => {
         mappingRepository: mappingRepository(),
         allowQualificationFixture: true
       });
-      const result = await useCase({ payload: payload({ mode: 'fixed', __qualification_fixture: true }) });
+      const result = await useCase({ payload: payload({
+        mode: 'fixed',
+        __qualification_fixture: true,
+        lines: [{ mode: 'fixed', variantId: 'fixed-1', quantity: 1, externalLineReference: 'line-fixed' }]
+      }) });
 
       expect(result.success).toBe(true);
-      expect(result.data.booking_group.children[0].externalOrderReference).toBe('DGLAUNDRY-QUALIFICATION-SANDBOX-0001');
+      expect(result.data.payment_session.booking_group.children[0].externalOrderReference).toBe('DGLAUNDRY-QUALIFICATION-SANDBOX-0001');
       expect(partnerClient.prepareBookingGroup).toHaveBeenCalledWith(expect.objectContaining({ externalOrderReference: 'DGLAUNDRY-QUALIFICATION-SANDBOX-0001' }));
     } finally {
       if (previousNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previousNodeEnv;

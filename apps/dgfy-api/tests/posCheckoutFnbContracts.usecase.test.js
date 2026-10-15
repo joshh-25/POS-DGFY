@@ -2900,6 +2900,78 @@ describe('POS checkout F&B contracts', () => {
         }), expect.objectContaining({ transaction: expect.any(Object), lock: true }));
     });
 
+    it('executes a cashier void with an authorized refund passcode and records the approver', async () => {
+        const transactionRow = {
+            pos_transaction_id: 1791,
+            invoice_number: 'INV-REFUND-PASSCODE-001',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const createAuditLog = jest.fn().mockResolvedValue(null);
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901, cashierId: 12 })),
+            listActivePosRefundPasscodeApprovers: jest.fn().mockResolvedValue([{
+                user_id: 99,
+                username: 'Manager One',
+                role: 'manager',
+                is_active: true,
+                pos_approval_pin_hash: await bcrypt.hash('2468', 4)
+            }]),
+            findPendingBusinessAdminApprovalRequest: jest.fn().mockResolvedValue(null),
+            createBusinessAdminApprovalRequest: jest.fn(),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...transactionRow, ...payload })),
+            createPosTransactionAdjustment: jest.fn(async (payload) => ({
+                ...payload,
+                adjustment_reference: payload.adjustment_reference
+            })),
+            createAuditLog
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 1791,
+            payload: {
+                reason: 'Customer refund approved',
+                refund_passcode: '2468',
+                shift_id: 901,
+                terminal_id: 'TERM-01'
+            },
+            user: { user_id: 12, role: 'cashier' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.authorization_mode).toBe('refund_passcode');
+        expect(result.data.transaction).toEqual(expect.objectContaining({ status: 'voided' }));
+        expect(posRepository.createBusinessAdminApprovalRequest).not.toHaveBeenCalled();
+        expect(posRepository.createPosTransactionAdjustment).toHaveBeenCalledWith(expect.objectContaining({
+            metadata: expect.objectContaining({
+                authorization_mode: 'refund_passcode',
+                refund_passcode_approver_id: 99
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_transaction_voided',
+            changes: expect.objectContaining({
+                authorization_mode: 'refund_passcode',
+                refund_passcode_approver_id: 99
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
     it('rejects an administrator void when the transaction is outside the registered terminal location', async () => {
         const updateTransactionLifecycle = jest.fn();
         const transactionRow = {

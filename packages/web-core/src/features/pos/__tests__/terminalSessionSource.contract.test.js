@@ -34,6 +34,14 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('throw lookupError;');
   });
 
+  it('scopes restored DGFY memberships after the email lookup resolves', () => {
+    expect(terminalPageSource).toContain('const accessibleCompanies = normalizeAccessibleCompanies(payload);');
+    expect(terminalPageSource).toContain('dgfyAccessibleCompaniesRef.current = accessibleCompanies;');
+    expect(terminalPageSource).toContain('companies: scopeDgfyCompaniesToEmailLookup(accessibleCompanies, {');
+    expect(terminalPageSource).toContain('const accessibleCompanies = dgfyAccessibleCompaniesRef.current;');
+    expect(terminalPageSource).toContain('companies: emailScopedCompanies');
+  });
+
   it('keeps company lookup pending through a transient API cold start', () => {
     expect(terminalPageSource).toContain('COMPANY_LOOKUP_MAX_RETRIES');
     expect(terminalPageSource).toContain('isRetryableCompanyLookupError(error)');
@@ -115,11 +123,14 @@ describe('TerminalPage session contract', () => {
   });
 
   it('falls back to governed legacy POS unlock when DGFY account login rejects tenant-local credentials', () => {
-    expect(terminalPageSource).toContain('performLegacyTerminalUnlock({ email, password, selectedTerminalId })');
+    expect(terminalPageSource).toContain('performLegacyTerminalUnlock({');
+    expect(terminalPageSource).toContain('companyToken: selectedCompanyToken');
     expect(terminalPageSource).toContain('if (isCompanyTokenResolutionError(error)) {');
     expect(terminalPageSource).not.toContain('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
     expect(terminalPageSource).toContain('loginWithCredentials(');
     expect(terminalPageSource).toContain('resolveCompanyTokenForEmailIdentifier(email, currentCompanyToken)');
+    expect(terminalPageSource).toContain('const terminalBootstrap = await hydrateTerminalMeta({ suppressGlobalErrors: true });');
+    expect(terminalPageSource).toContain('validateSelectedTerminalForUnlock(resolvedTerminalId, { registryEntries: hydratedRegistry })');
   });
 
   it('redirects DGFY accounts without accessible businesses back to the customer dashboard instead of leaving them in POS', () => {

@@ -224,6 +224,7 @@ describe('POS walk-in cash refund use case', () => {
     it('ignores zero-value checkout payment template rows for a single-tender cash refund', async () => {
         const fixture = buildFixture({
             transactionOverrides: {
+                payment_type: null,
                 payment_breakdown: [
                     { payment_type: 'cash', count: 1, amount: 150 },
                     { payment_type: 'gcash', count: 0, amount: 0 },

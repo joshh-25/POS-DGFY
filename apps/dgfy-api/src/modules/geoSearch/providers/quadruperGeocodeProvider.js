@@ -4,6 +4,7 @@ import {
     mapForwardSearchResponse,
     mapReverseGeocodeResponse
 } from '../mappers/photonFeatureMapper.js';
+import { mapHouseNumberSearch, parseHouseNumberQuery } from '../mappers/houseNumberQuery.js';
 
 // An unknown parameter makes the service return HTTP 400, so parameter NAMES are fixed here
 // and user input is only ever a parameter VALUE.
@@ -77,16 +78,35 @@ export const quadruperGeocodeProvider = {
 
     searchAddresses: async ({ query, limit, biasLatitude, biasLongitude }) => {
         const biased = hasBias(biasLatitude, biasLongitude);
-        const search = buildQuery(FORWARD_PARAM_ALLOWLIST, {
-            q: query,
-            limit: Math.min(Number(limit) || 8, MAX_FORWARD_LIMIT),
+        const cappedLimit = Math.min(Number(limit) || 8, MAX_FORWARD_LIMIT);
+        const fetchForward = (q, requestLimit = cappedLimit) => fetchJson(`${geocodeConfig.baseUrl}/api?${buildQuery(FORWARD_PARAM_ALLOWLIST, {
+            q,
+            limit: requestLimit,
             lang: 'en',
             bbox: geocodeConfig.phBbox,
             lat: biased ? biasLatitude : undefined,
             lon: biased ? biasLongitude : undefined
-        });
+        })}`);
 
-        const payload = await fetchJson(`${geocodeConfig.baseUrl}/api?${search}`);
+        // #2484: a leading house number is resolved to street level; see houseNumberQuery.js.
+        const houseNumberQuery = parseHouseNumberQuery(query);
+        const [payload, streetPayload] = await Promise.all([
+            fetchForward(query),
+            // Photon collapses same-named streets after applying `limit` (verified live: `Rizal Street`
+            // returns 1 street at limit=6, 3 at limit=8), so the street search asks for the maximum.
+            houseNumberQuery ? fetchForward(houseNumberQuery.remainder, MAX_FORWARD_LIMIT) : null
+        ]);
+
+        if (houseNumberQuery) {
+            const streetResults = mapHouseNumberSearch({
+                fullPayload: payload,
+                streetPayload,
+                ...houseNumberQuery,
+                limit: cappedLimit
+            });
+            if (streetResults.length > 0) return { results: streetResults };
+        }
+
         if (payload === null || payload === undefined) return undefined;
 
         const results = mapForwardSearchResponse(payload);

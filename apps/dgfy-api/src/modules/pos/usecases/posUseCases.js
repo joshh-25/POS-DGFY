@@ -75,8 +75,16 @@ import {
 import { calculatePosItemDiscounts } from '../domain/posItemDiscountCalculator.js';
 import { resolvePosItemDiscount } from '../domain/posItemDiscountPolicy.js';
 import { resolvePosVoidFinancialOutcome } from '../domain/posVoidFinancialOutcome.js';
+import {
+    buildPosItemVoidFinancialOutcome,
+    buildPosItemVoidTransactionUpdate,
+    isPosItemVoidAdjustment,
+    normalizePosItemVoidLines,
+    roundPosItemVoidAmount
+} from '../domain/posItemVoid.js';
 import { buildAdjustmentEvidenceDocument, buildFiscalReceiptEvidence, buildReadingEvidencePayload, validateFiscalDocumentSnapshot } from '../domain/fiscalEvidenceContract.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
+import { verifyPosRefundPasscode } from '../domain/posRefundPasscodePolicy.js';
 import { verifyPosDayCloseOperator } from '../domain/posDayClosePinPolicy.js';
 import { authorizePosShiftMutation } from '../domain/posShiftAuthorizationPolicy.js';
 import {
@@ -739,6 +747,10 @@ const toPublicPosTransactionAdjustment = (value) => {
         cancelled_at: serialized.cancelled_at || null,
         created_at: serialized.created_at || null,
         updated_at: serialized.updated_at || null,
+         evidence_scope: metadata.evidence_scope || null,
+         item_voided: metadata.item_voided === true,
+         item_void_adjustment_id: metadata.item_void_adjustment_id || null,
+         voided_lines: Array.isArray(metadata.voided_lines) ? metadata.voided_lines : [],
         financial_outcome: metadata.financial_outcome || null
     };
 };
@@ -1264,8 +1276,11 @@ const normalizeZReadingSummary = (summary = {}) => ({
     discount_item_count: round4(summary?.discount_item_count),
     total_cost: round4(summary?.total_cost),
     void_transaction_count: Number.parseInt(summary?.void_transaction_count || 0, 10),
+    transaction_void_amount: round4(summary?.transaction_void_amount),
+    item_void_amount: round4(summary?.item_void_amount),
     void_amount: round4(summary?.void_amount),
     voided_item_count: round4(summary?.voided_item_count),
+    item_voided_item_count: round4(summary?.item_voided_item_count),
     post_close_void_transaction_count: Number.parseInt(summary?.post_close_void_transaction_count || 0, 10),
     post_close_void_amount: round4(summary?.post_close_void_amount),
     post_close_voided_item_count: round4(summary?.post_close_voided_item_count),
@@ -1283,8 +1298,11 @@ const normalizeZReadingSummary = (summary = {}) => ({
             discount_item_count: round4(entry?.discount_item_count),
             total_cost: round4(entry?.total_cost),
             void_transaction_count: Number.parseInt(entry?.void_transaction_count || 0, 10),
+            transaction_void_amount: round4(entry?.transaction_void_amount),
+            item_void_amount: round4(entry?.item_void_amount),
             void_amount: round4(entry?.void_amount),
             voided_item_count: round4(entry?.voided_item_count),
+            item_voided_item_count: round4(entry?.item_voided_item_count),
             refund_amount: round4(entry?.refund_amount),
             refunded_item_count: round4(entry?.refunded_item_count),
             provider_refunds_included: entry?.provider_refunds_included === true,
@@ -6303,6 +6321,9 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const activeTerminalId = sanitizeTerminalId(payload.terminal_id) || null;
         const terminalLocationId = parsePositiveInt(payload.terminal_location_id);
         const requestedVoidIdempotencyKey = String(payload.idempotency_key || '').trim();
+        const refundPasscode = String(payload.refund_passcode || '').trim();
+        const requestedVoidedLines = Array.isArray(payload.voided_lines) ? payload.voided_lines : [];
+        const isItemVoidRequest = requestedVoidedLines.length > 0;
         const expectedStatus = String(payload.expected_status || '').trim().toLowerCase() || null;
         const expectedServerVersion = String(payload.expected_server_version || '').trim() || null;
         const adminApprovalBypass = isPosAdminOperator(user);
@@ -6371,6 +6392,58 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 );
             }
 
+            let normalizedItemVoidLines = null;
+            let itemVoidAmount = null;
+            if (isItemVoidRequest) {
+                if (String(existing.status || '').trim().toLowerCase() === 'voided') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'A voided POS transaction cannot receive an item-level void',
+                        { statusCode: 409, details: { reason_code: 'POS_ITEM_VOID_TRANSACTION_ALREADY_VOIDED' } }
+                    );
+                }
+                const existingPaymentStatus = String(existing.payment_status || '').trim().toLowerCase();
+                if (['refunded', 'refund_pending'].includes(existingPaymentStatus)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Resolve the existing refund before voiding another transaction item',
+                        { statusCode: 409, details: { reason_code: 'POS_ITEM_VOID_REFUND_IN_PROGRESS', payment_status: existingPaymentStatus } }
+                    );
+                }
+                normalizedItemVoidLines = normalizePosItemVoidLines({
+                    requestedLines: requestedVoidedLines,
+                    transactionLines: existing.lines
+                });
+                itemVoidAmount = roundPosItemVoidAmount(
+                    normalizedItemVoidLines.reduce((total, line) => total + Number(line.line_subtotal || 0), 0)
+                );
+                if (itemVoidAmount <= 0) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Selected item void amount must be greater than zero',
+                        { statusCode: 422, details: { reason_code: 'POS_ITEM_VOID_AMOUNT_ZERO' } }
+                    );
+                }
+            }
+
+            let refundPasscodeAuthorization = null;
+            if (refundPasscode) {
+                if (typeof posRepository.listActivePosRefundPasscodeApprovers !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'POS refund passcode authorization is unavailable.',
+                        { statusCode: 503, details: { reason_code: 'POS_REFUND_PASSCODE_AUTHORIZATION_UNAVAILABLE' } }
+                    );
+                }
+                const approvers = await posRepository.listActivePosRefundPasscodeApprovers({ transaction });
+                refundPasscodeAuthorization = await verifyPosRefundPasscode({
+                    approvers,
+                    passcode: refundPasscode
+                });
+            }
+            const refundPasscodeAuthorized = Boolean(refundPasscodeAuthorization?.user_id);
+            const refundPasscodeApproverId = parsePositiveInt(refundPasscodeAuthorization?.user_id);
+
             if (activeShiftId && !trustedMobileReplay && !approvalAuthorized) {
                 await assertOpenShiftForPosMutation({
                     posRepository,
@@ -6400,7 +6473,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 });
             }
             const supersededApprovalRequest = !approvalAuthorized
-                && adminApprovalBypass
+                && (adminApprovalBypass || refundPasscodeAuthorized)
                 && typeof posRepository.findPendingBusinessAdminApprovalRequest === 'function'
                 ? await posRepository.findPendingBusinessAdminApprovalRequest({
                     actionType: 'pos_void',
@@ -6421,7 +6494,9 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     supersededApprovalRequestId,
                     {
                         status: 'cancelled',
-                        approval_note: 'Cancelled because an administrator executed the POS void directly.'
+                        approval_note: refundPasscodeAuthorized && !adminApprovalBypass
+                            ? 'Cancelled because a refund passcode authorized the POS void directly.'
+                            : 'Cancelled because an administrator executed the POS void directly.'
                     },
                     { transaction, lock: true }
                 );
@@ -6436,13 +6511,15 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             const auditShiftId = transactionShiftId || activeShiftId || null;
             const authorizationMode = approvalAuthorized
                 ? 'back_office_approval'
-                : (trustedMobileReplay
-                    ? 'mobile_offline_replay'
-                    : (adminApprovalBypass
-                        ? (adminShiftBypass ? 'admin_shift_bypass' : 'admin_bypass')
-                        : 'cashier_shift'));
+                : (refundPasscodeAuthorized
+                    ? 'refund_passcode'
+                    : (trustedMobileReplay
+                        ? 'mobile_offline_replay'
+                        : (adminApprovalBypass
+                            ? (adminShiftBypass ? 'admin_shift_bypass' : 'admin_bypass')
+                            : 'cashier_shift')));
 
-            if (!approvalAuthorized && !adminApprovalBypass) {
+            if (!approvalAuthorized && !adminApprovalBypass && !refundPasscodeAuthorized) {
                 if (String(existing.status || '').trim().toLowerCase() === 'voided') {
                     throw new DomainError(
                         DomainErrorCode.CONFLICT,
@@ -6461,7 +6538,19 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 const approvalPayload = {
                     transaction_id: normalizedTransactionId,
                     invoice_number: existing.invoice_number || null,
-                    amount: round4(Number(existing.total_amount || 0)),
+                    amount: isItemVoidRequest
+                        ? itemVoidAmount
+                        : round4(Number(existing.total_amount || 0)),
+                    item_void: isItemVoidRequest,
+                    ...(isItemVoidRequest
+                        ? {
+                            voided_lines: normalizedItemVoidLines.map((line) => ({
+                                line_id: line.line_id,
+                                quantity: line.quantity,
+                                line_subtotal: line.line_subtotal
+                            }))
+                        }
+                        : {}),
                     location_id: transactionLocationId,
                     terminal_id: activeTerminalId || existing.terminal_id || null,
                     shift_id: activeShiftId || transactionShiftId || null,
@@ -6509,10 +6598,14 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     location_id: transactionLocationId,
                     reason,
                     changes: {
-                        event: 'pos_transaction_void_requested',
+                        event: isItemVoidRequest
+                            ? 'pos_transaction_item_void_requested'
+                            : 'pos_transaction_void_requested',
                         approval_request_id: approvalRequest.business_admin_approval_request_id,
                         invoice_number: existing.invoice_number || null,
-                        amount: round4(Number(existing.total_amount || 0)),
+                        amount: approvalPayload.amount,
+                        item_void: isItemVoidRequest,
+                        voided_lines: isItemVoidRequest ? normalizedItemVoidLines : undefined,
                         requested_by: actorUserId,
                         reason,
                         authorization_mode: trustedMobileReplay ? 'mobile_offline_replay' : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift')
@@ -6545,32 +6638,35 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 payment_status: paymentStatusBeforeVoid,
                 amount: round4(Number(existing.total_amount || 0)),
                 authorization_mode: authorizationMode,
+                refund_passcode_approver_id: refundPasscodeApproverId,
                 financial_outcome: financialOutcome
             };
             const voidAdjustmentRequestHash = hashPayload(voidAdjustmentPayload);
-            const existingVoidAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
-                normalizedTransactionId,
-                voidAdjustmentIdempotencyKey,
-                { transaction, lock: true }
-            );
-            if (existingVoidAdjustment) {
-                if (String(existingVoidAdjustment.request_hash || '') !== voidAdjustmentRequestHash) {
-                    throw new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        'POS void evidence already exists for a different request',
-                        { statusCode: 409 }
-                    );
+            if (!isItemVoidRequest) {
+                const existingVoidAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
+                    normalizedTransactionId,
+                    voidAdjustmentIdempotencyKey,
+                    { transaction, lock: true }
+                );
+                if (existingVoidAdjustment) {
+                    if (String(existingVoidAdjustment.request_hash || '') !== voidAdjustmentRequestHash) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'POS void evidence already exists for a different request',
+                            { statusCode: 409 }
+                        );
+                    }
+                    if (ownsTransaction) await transaction.commit();
+                    return ok({
+                        transaction: toSerializable(existing),
+                        stock_reversals: [],
+                        authorization_mode: authorizationMode,
+                        transaction_shift_id: transactionShiftId,
+                        financial_outcome: financialOutcome,
+                        idempotent_replay: true,
+                        replay_outcome: 'idempotent_replay'
+                    });
                 }
-                if (ownsTransaction) await transaction.commit();
-                return ok({
-                    transaction: toSerializable(existing),
-                    stock_reversals: [],
-                    authorization_mode: authorizationMode,
-                    transaction_shift_id: transactionShiftId,
-                    financial_outcome: financialOutcome,
-                    idempotent_replay: true,
-                    replay_outcome: 'idempotent_replay'
-                });
             }
             if (existing.status === 'voided') {
                 throw new DomainError(
@@ -6595,6 +6691,388 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     'POS transaction changed before the offline void was applied',
                     { statusCode: 409, details: { reason_code: 'MOBILE_VOID_VERSION_CONFLICT', expected_server_version: expectedServerVersion, actual_server_version: actualServerVersion } }
                 );
+            }
+
+            if (isItemVoidRequest) {
+                const originalCashierId = parsePositiveInt(existing.cashier_id);
+                const tenderType = String(existing.payment_type || 'unknown').trim().toLowerCase() || 'unknown';
+                const paymentStatusBeforeVoid = String(existing.payment_status || 'unknown').trim().toLowerCase() || 'unknown';
+                if (tenderType === 'employee_credit' || paymentStatusBeforeVoid === 'employee_credit') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Employee Credit item voids require a dedicated credit reversal workflow',
+                        { statusCode: 409, details: { reason_code: 'POS_ITEM_VOID_EMPLOYEE_CREDIT_UNSUPPORTED' } }
+                    );
+                }
+
+                const financialOutcome = buildPosItemVoidFinancialOutcome(existing, itemVoidAmount);
+                const normalizedLineEvidence = normalizedItemVoidLines.map((line) => ({
+                    line_id: line.line_id,
+                    item_id: line.item_id,
+                    item_name: line.item_name,
+                    original_quantity: line.original_quantity,
+                    previous_voided_quantity: line.previous_voided_quantity,
+                    quantity: line.quantity,
+                    voided_quantity: line.voided_quantity,
+                    remaining_quantity: line.remaining_quantity,
+                    sale_price: line.sale_price,
+                    line_subtotal: line.line_subtotal
+                }));
+                const lineSelectionHash = hashPayload(normalizedLineEvidence);
+                const itemVoidIdempotencyKey = requestedVoidIdempotencyKey
+                    || `pos-item-void:${normalizedTransactionId}:${lineSelectionHash.slice(0, 32)}`;
+                const itemVoidAdjustmentPayload = {
+                    pos_transaction_id: normalizedTransactionId,
+                    reason,
+                    actor_user_id: actorUserId,
+                    actor_shift_id: activeShiftId || null,
+                    actor_terminal_id: activeTerminalId || null,
+                    actor_location_id: terminalLocationId || null,
+                    original_cashier_id: originalCashierId,
+                    original_shift_id: transactionShiftId,
+                    original_terminal_id: existing.terminal_id || null,
+                    original_location_id: transactionLocationId,
+                    tender_type: tenderType,
+                    payment_status: paymentStatusBeforeVoid,
+                    amount: itemVoidAmount,
+                    authorization_mode: authorizationMode,
+                    refund_passcode_approver_id: refundPasscodeApproverId,
+                    voided_lines: normalizedLineEvidence,
+                    financial_outcome: financialOutcome
+                };
+                const itemVoidAdjustmentRequestHash = hashPayload(itemVoidAdjustmentPayload);
+                const existingItemVoidAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
+                    normalizedTransactionId,
+                    itemVoidIdempotencyKey,
+                    { transaction, lock: true }
+                );
+                if (existingItemVoidAdjustment) {
+                    if (String(existingItemVoidAdjustment.request_hash || '') !== itemVoidAdjustmentRequestHash) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'POS item void evidence already exists for a different request',
+                            { statusCode: 409 }
+                        );
+                    }
+                    const replayedTransaction = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                    if (ownsTransaction) await transaction.commit();
+                    return ok({
+                        transaction: toSerializable(replayedTransaction),
+                        adjustment: existingItemVoidAdjustment,
+                        voided_lines: normalizedLineEvidence,
+                        stock_reversals: [],
+                        authorization_mode: authorizationMode,
+                        transaction_shift_id: transactionShiftId,
+                        financial_outcome: financialOutcome,
+                        item_voided: true,
+                        idempotent_replay: true,
+                        replay_outcome: 'idempotent_replay'
+                    });
+                }
+
+                const sourceLinesById = new Map((Array.isArray(existing.lines) ? existing.lines : []).map((line) => [
+                    parsePositiveInt(line?.line_id),
+                    toSerializable(line) || line
+                ]));
+                const selectedLines = normalizedItemVoidLines.map((line) => ({
+                    ...(sourceLinesById.get(line.line_id) || {}),
+                    line_id: line.line_id,
+                    quantity: line.quantity,
+                    item_id: line.item_id,
+                    item_name_snapshot: line.item_name,
+                    fnb_modifiers_snapshot: line.fnb_modifiers_snapshot
+                }));
+                const itemMap = new Map(selectedLines.map((line) => [
+                    parsePositiveInt(line.item_id),
+                    line
+                ]).filter(([itemId]) => itemId));
+                const productCompositions = itemMap.size > 0
+                    && typeof posRepository.listProductCompositionsForItems === 'function'
+                    ? await posRepository.listProductCompositionsForItems([...itemMap.keys()], {
+                        transaction,
+                        lock: true,
+                        locationId: transactionLocationId
+                    })
+                    : [];
+                const recipePlan = buildFnbRecipeConsumptionPlan({
+                    lines: selectedLines,
+                    itemMap,
+                    compositions: productCompositions,
+                    locationId: transactionLocationId,
+                    validateAvailability: false
+                });
+                const stockIssuePlan = buildPosInventoryIssuePlan({
+                    preparedLines: selectedLines,
+                    recipeMovementPlanByPreparedLine: recipePlan.movementsByLineIndex,
+                    locationId: transactionLocationId,
+                    referenceType: 'POS',
+                    referenceId: String(normalizedTransactionId),
+                    sourceLabel: `POS item void ${existing.invoice_number || normalizedTransactionId}`
+                });
+                const stockReversals = [];
+                const voidStockChangedItemIds = new Set();
+                if (stockIssuePlan.length > 0) {
+                    if (typeof posRepository.listStockMovementsForPosTransaction !== 'function') {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Stock movement lookup is unavailable for this POS item void',
+                            { statusCode: 503, details: { reason_code: 'POS_ITEM_VOID_STOCK_MOVEMENT_LOOKUP_UNAVAILABLE' } }
+                        );
+                    }
+                    const originalStockMovements = await posRepository.listStockMovementsForPosTransaction(
+                        normalizedTransactionId,
+                        { transaction }
+                    );
+                    const priorItemVoidAdjustments = typeof posRepository.listPosTransactionAdjustmentsForTransaction === 'function'
+                        ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedTransactionId, { transaction, lock: true })
+                        : [];
+                    const previouslyReversedByItem = new Map();
+                    (Array.isArray(priorItemVoidAdjustments) ? priorItemVoidAdjustments : [])
+                        .filter((adjustment) => adjustment?.adjustment_type === 'void')
+                        .forEach((adjustment) => {
+                            const metadata = adjustment?.metadata && typeof adjustment.metadata === 'object'
+                                ? adjustment.metadata
+                                : {};
+                            (Array.isArray(metadata.stock_reversals) ? metadata.stock_reversals : []).forEach((reversal) => {
+                                const key = `${parsePositiveInt(reversal?.item_id) || 0}:${parsePositiveInt(reversal?.location_id) || transactionLocationId || 0}`;
+                                previouslyReversedByItem.set(
+                                    key,
+                                    round4((previouslyReversedByItem.get(key) || 0) + Number(reversal?.quantity || 0))
+                                );
+                            });
+                        });
+                    const availableOriginalByItem = new Map();
+                    (Array.isArray(originalStockMovements) ? originalStockMovements : []).forEach((movement) => {
+                        const itemId = parsePositiveInt(movement?.item_id);
+                        const locationId = parsePositiveInt(movement?.location_id) || transactionLocationId || 0;
+                        const issuedQuantity = Math.abs(Number(movement?.quantity || 0));
+                        if (!itemId || !Number.isFinite(issuedQuantity) || issuedQuantity <= 0) return;
+                        const key = `${itemId}:${locationId}`;
+                        availableOriginalByItem.set(key, round4((availableOriginalByItem.get(key) || 0) + issuedQuantity));
+                    });
+                    const requestedByItem = new Map();
+                    stockIssuePlan.forEach((movement) => {
+                        const key = `${parsePositiveInt(movement.item_id) || 0}:${parsePositiveInt(movement.location_id) || transactionLocationId || 0}`;
+                        requestedByItem.set(key, round4((requestedByItem.get(key) || 0) + Number(movement.quantity || 0)));
+                    });
+                    for (const [key, requestedQuantity] of requestedByItem.entries()) {
+                        const availableQuantity = round4(
+                            (availableOriginalByItem.get(key) || 0) - (previouslyReversedByItem.get(key) || 0)
+                        );
+                        if (requestedQuantity > availableQuantity + 0.000001) {
+                            throw new DomainError(
+                                DomainErrorCode.CONFLICT,
+                                'Selected item void does not match the transaction inventory evidence',
+                                {
+                                    statusCode: 409,
+                                    details: {
+                                        reason_code: 'POS_ITEM_VOID_STOCK_EVIDENCE_MISMATCH',
+                                        item_id: Number(key.split(':')[0]) || null,
+                                        requested_quantity: requestedQuantity,
+                                        available_quantity: availableQuantity
+                                    }
+                                }
+                            );
+                        }
+                    }
+                    const returnStockForVoidedSale = stockCommands?.returnStockForVoidedSale;
+                    if (typeof returnStockForVoidedSale !== 'function') {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Inventory return command is unavailable for this POS item void',
+                            { statusCode: 503, details: { reason_code: 'POS_ITEM_VOID_STOCK_REVERSAL_UNAVAILABLE' } }
+                        );
+                    }
+                    for (const movement of stockIssuePlan) {
+                        const itemId = parsePositiveInt(movement.item_id);
+                        const quantity = round4(movement.quantity);
+                        const locationId = parsePositiveInt(movement.location_id) || transactionLocationId || null;
+                        const reversal = await returnStockForVoidedSale({
+                            item_id: itemId,
+                            quantity,
+                            movement_type: 'return',
+                            location_id: locationId,
+                            reference_type: 'POS',
+                            reference_id: String(normalizedTransactionId),
+                            notes: `POS item void reversal for ${existing.invoice_number || normalizedTransactionId}`
+                        }, actorUserId, transaction);
+                        const reversalMovementId = parsePositiveInt(reversal?.movement_id);
+                        if (!reversalMovementId) {
+                            throw new DomainError(
+                                DomainErrorCode.CONFLICT,
+                                'Inventory did not confirm the POS item void reversal',
+                                { statusCode: 503, details: { reason_code: 'POS_ITEM_VOID_STOCK_REVERSAL_NOT_PERSISTED', item_id: itemId } }
+                            );
+                        }
+                        if (itemId) voidStockChangedItemIds.add(itemId);
+                        stockReversals.push({
+                            item_id: itemId,
+                            quantity,
+                            location_id: locationId,
+                            reversal_movement_id: reversalMovementId
+                        });
+                    }
+                }
+
+                const voidedAt = new Date();
+                const fiscalEvent = existing.document_type === 'fiscal_invoice' && typeof posRepository.createFiscalEvent === 'function'
+                    ? await posRepository.createFiscalEvent({
+                        pos_transaction_id: normalizedTransactionId,
+                        event_type: 'reversal',
+                        document_type: existing.document_type,
+                        invoice_number: existing.invoice_number,
+                        terminal_id: existing.terminal_id || null,
+                        fiscal_document_hash: existing.fiscal_document_hash || null,
+                        payload: {
+                            adjustment_type: 'item_void',
+                            reason,
+                            amount: itemVoidAmount,
+                            voided_lines: normalizedLineEvidence
+                        },
+                        actor_user_id: actorUserId,
+                        occurred_at: voidedAt
+                    }, { transaction })
+                    : null;
+
+                for (const line of normalizedItemVoidLines) {
+                    const updatedLine = await posRepository.updatePosTransactionLine(line.line_id, {
+                        voided_quantity: line.voided_quantity,
+                        voided_at: voidedAt,
+                        voided_by: actorUserId,
+                        void_reason: reason
+                    }, { transaction, lock: true });
+                    if (!updatedLine) {
+                        throw new DomainError(
+                            DomainErrorCode.RESOURCE_NOT_FOUND,
+                            'The POS transaction line was not found while applying the item void',
+                            { statusCode: 404, details: { reason_code: 'POS_ITEM_VOID_LINE_UPDATE_NOT_FOUND', line_id: line.line_id } }
+                        );
+                    }
+                }
+
+                const transactionLineSnapshots = (Array.isArray(existing.lines) ? existing.lines : [])
+                    .map((line) => toSerializable(line) || line);
+                const transactionTotalsUpdate = buildPosItemVoidTransactionUpdate({
+                    transaction: existing,
+                    lines: transactionLineSnapshots.map((line) => {
+                        const selectedLine = normalizedItemVoidLines.find((entry) => entry.line_id === parsePositiveInt(line?.line_id));
+                        return selectedLine
+                            ? { ...line, voided_quantity: selectedLine.voided_quantity }
+                            : line;
+                    }),
+                    voidedAmount: itemVoidAmount
+                });
+                const totalsUpdatedTransaction = await posRepository.updateTransactionLifecycle(
+                    normalizedTransactionId,
+                    transactionTotalsUpdate,
+                    { transaction, lock: true }
+                );
+                if (!totalsUpdatedTransaction) {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'POS transaction totals could not be recalculated after the item void',
+                        { statusCode: 500, details: { reason_code: 'POS_ITEM_VOID_TOTALS_UPDATE_FAILED' } }
+                    );
+                }
+
+                const voidAdjustment = await posRepository.createPosTransactionAdjustment({
+                    adjustment_reference: `POS-ITEM-VOID-${normalizedTransactionId}-${itemVoidAdjustmentRequestHash.slice(0, 8)}`.slice(0, 40),
+                    pos_transaction_id: normalizedTransactionId,
+                    original_cashier_id: originalCashierId,
+                    original_shift_id: transactionShiftId,
+                    original_terminal_id: existing.terminal_id || null,
+                    original_location_id: transactionLocationId,
+                    actor_user_id: actorUserId,
+                    actor_shift_id: activeShiftId || null,
+                    actor_terminal_id: activeTerminalId || null,
+                    actor_location_id: terminalLocationId || null,
+                    adjustment_type: 'void',
+                    tender_type: tenderType,
+                    amount: itemVoidAmount,
+                    currency: 'PHP',
+                    status: 'succeeded',
+                    reason,
+                    idempotency_key: itemVoidIdempotencyKey,
+                    request_hash: itemVoidAdjustmentRequestHash,
+                    completed_at: voidedAt,
+                    metadata: {
+                        evidence_scope: 'pos_item_void',
+                        item_voided: true,
+                        operator_session_id: operatorSessionId,
+                        authorization_mode: authorizationMode,
+                        refund_passcode_approver_id: refundPasscodeApproverId,
+                        approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
+                        approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
+                        approved_by: approvalAuthorized ? actorUserId : null,
+                        payment_status_before_void: paymentStatusBeforeVoid,
+                        transaction_shift_id: transactionShiftId,
+                        actor_shift_id: activeShiftId || null,
+                        voided_lines: normalizedLineEvidence,
+                        stock_reversals: stockReversals,
+                        fiscal_event_hash: fiscalEvent?.event_hash || null,
+                        financial_outcome: financialOutcome
+                    }
+                }, { transaction });
+                if (!voidAdjustment || String(voidAdjustment.request_hash || '') !== itemVoidAdjustmentRequestHash) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'POS item void evidence could not be recorded consistently',
+                        { statusCode: 409 }
+                    );
+                }
+
+                await posRepository.createAuditLog({
+                    user_id: actorUserId,
+                    entity_type: 'pos_transaction',
+                    entity_id: normalizedTransactionId,
+                    action: 'UPDATE',
+                    event_type: 'pos_transaction_item_voided',
+                    terminal_id: activeTerminalId || existing.terminal_id || null,
+                    shift_id: auditShiftId,
+                    location_id: existing.location_id || null,
+                    reason,
+                    changes: {
+                        event: 'pos_transaction_item_voided',
+                        operator_session_id: operatorSessionId,
+                        invoice_number: existing.invoice_number || null,
+                        amount: itemVoidAmount,
+                        voided_lines: normalizedLineEvidence,
+                        stock_reversals: stockReversals,
+                        fiscal_event_hash: fiscalEvent?.event_hash || null,
+                        adjustment_reference: voidAdjustment.adjustment_reference,
+                        authorization_mode: authorizationMode,
+                        refund_passcode_approver_id: refundPasscodeApproverId,
+                        financial_outcome: financialOutcome
+                    }
+                }, { transaction });
+
+                const updated = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                const afterItemVoidCommit = async () => {
+                    await publishPosStockChange({
+                        publishCatalogChange,
+                        tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
+                        reason: 'pos_item_void_stock_changed',
+                        itemIds: [...voidStockChangedItemIds]
+                    });
+                };
+                if (ownsTransaction) {
+                    await transaction.commit();
+                    await afterItemVoidCommit();
+                } else if (typeof transaction.afterCommit === 'function') {
+                    transaction.afterCommit(afterItemVoidCommit);
+                }
+
+                return ok({
+                    transaction: toSerializable(updated),
+                    adjustment: toSerializable(voidAdjustment),
+                    voided_lines: normalizedLineEvidence,
+                    stock_reversals: stockReversals,
+                    authorization_mode: authorizationMode,
+                    transaction_shift_id: transactionShiftId,
+                    financial_outcome: financialOutcome,
+                    item_voided: true,
+                    idempotent_replay: false
+                });
             }
 
             if (typeof posRepository.listStockMovementsForPosTransaction !== 'function') {
@@ -6797,6 +7275,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     evidence_scope: 'internal_void_only',
                     operator_session_id: operatorSessionId,
                     authorization_mode: authorizationMode,
+                    refund_passcode_approver_id: refundPasscodeApproverId,
                     approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
                     superseded_approval_request_id: supersededApprovalRequestId,
                     approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
@@ -6838,6 +7317,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     original_cashier_id: originalCashierId,
                     voided_by: actorUserId,
                     authorization_mode: authorizationMode,
+                    refund_passcode_approver_id: refundPasscodeApproverId,
                     approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
                     superseded_approval_request_id: supersededApprovalRequestId,
                     approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
@@ -7663,13 +8143,19 @@ export const buildGetPosTransactionByIdUseCase = ({
                 ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedId)
                 : [];
             const adjustmentEvidence = (Array.isArray(adjustments) ? adjustments : [])
-                .map((adjustment) => ({
-                    ...toPublicPosTransactionAdjustment(adjustment),
-                    adjustment_document: buildAdjustmentEvidenceDocument({
-                        adjustment,
-                        transaction: data
-                    })
-                }));
+                .map((adjustment) => {
+                    const publicAdjustment = {
+                        ...toPublicPosTransactionAdjustment(adjustment),
+                        adjustment_document: buildAdjustmentEvidenceDocument({
+                            adjustment,
+                            transaction: data
+                        })
+                    };
+                    if (isPosItemVoidAdjustment(adjustment)) {
+                        publicAdjustment.financial_outcome = buildPosItemVoidFinancialOutcome(data, adjustment.amount);
+                    }
+                    return publicAdjustment;
+                });
             const latestFinancialOutcome = [...adjustmentEvidence]
                 .reverse()
                 .find((adjustment) => adjustment.financial_outcome)?.financial_outcome || null;
@@ -8158,8 +8644,13 @@ export const buildListPosZReadingsUseCase = ({
                         vat_exempt_sales: amountValue('vat_exempt_sales'),
                         zero_rated_sales: amountValue('zero_rated_sales'),
                         void_transaction_count: countValue('void_transaction_count'),
+                        transaction_void_amount: amountValue('transaction_void_amount'),
+                        item_void_amount: amountValue('item_void_amount'),
                         void_amount: amountValue('void_amount'),
+                        voided_item_count: amountValue('voided_item_count'),
+                        item_voided_item_count: amountValue('item_voided_item_count'),
                         refund_amount: amountValue('refund_amount'),
+                        refunded_item_count: amountValue('refunded_item_count'),
                         item_count: amountValue('item_count')
                     }
                 };

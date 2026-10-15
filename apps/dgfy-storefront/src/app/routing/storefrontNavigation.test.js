@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildBookingTarget,
+  buildCategoriesTarget,
   buildCanonicalStorefrontTarget,
   buildCatalogTarget,
   buildItemDetailTarget,
@@ -18,6 +19,8 @@ describe('storefront branch navigation', () => {
       .toBe('/tenant-store/space-bar-2193ed/item?item=81&location_id=2');
     expect(buildBookingTarget('space-bar-2193ed', { locationId: 2 }))
       .toBe('/tenant-store/space-bar-2193ed/book?location_id=2');
+    expect(buildCategoriesTarget('space-bar-2193ed', { locationId: 2, qrToken: 'DGFYQR_test-token' }))
+      .toBe('/tenant-store/space-bar-2193ed/categories?location_id=2&qr_token=DGFYQR_test-token');
   });
 
   it('canonicalizes the current route without dropping the selected branch', () => {
@@ -28,6 +31,12 @@ describe('storefront branch navigation', () => {
       locationId: 2
     })).toBe('/tenant-store/space-bar-2193ed/item?item=81&location_id=2');
 
+    expect(buildCanonicalStorefrontTarget({
+      storeSlug: 'space-bar-2193ed',
+      routeSubpage: 'categories',
+      locationId: 2
+    })).toBe('/tenant-store/space-bar-2193ed/categories?location_id=2');
+
     expect(buildStorefrontHistoryState({
       storeSlug: 'space-bar-2193ed',
       locationId: 2
@@ -36,5 +45,10 @@ describe('storefront branch navigation', () => {
       storeSubpage: null,
       locationId: 2
     });
+  });
+
+  it('keeps a branch-scoped QR token while navigating into an item', () => {
+    expect(buildItemDetailTarget('space-bar-2193ed', '81', { locationId: 2, qrToken: 'DGFYQR_test-token' }))
+      .toBe('/tenant-store/space-bar-2193ed/item?item=81&location_id=2&qr_token=DGFYQR_test-token');
   });
 });

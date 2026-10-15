@@ -26,6 +26,28 @@ blocker. The artifact must identify the same open issue, identify this repositor
 content. Reject unrecognized schemas, malformed content, `needs-decision`, identity mismatches, or
 materially stale/conflicting plans before editing.
 
+Validate routing after those identity and status checks, using the compatibility contract above.
+The route fields are `execution_route`, `target_branch`, and `hotfix`; the valid pairs are
+`develop`/`develop`, `hotfix`/`main`, and `hotfix`/`staging`.
+If both `execution_route` and `target_branch` are absent, treat the artifact as legacy and use
+`develop`/`develop`. If only one is absent, either value is unknown, or the pair is not one of the
+contract's valid combinations, hard-stop before editing. A `develop`/`develop` artifact has no
+`hotfix` block; a `hotfix`/`main` artifact requires the operator instruction, target rationale,
+and all four eligibility facts; a `hotfix`/`staging` artifact requires the operator instruction
+and target rationale.
+
+For a valid `hotfix` artifact, revalidate the live issue and its evidence. The issue must still be
+open and the target rationale must still support the chosen branch. For `main`, confirm all four
+eligibility facts still hold and nothing in the live issue contradicts them. Treat the recorded
+`hotfix.operator_instruction` as the explicit manual hotfix invocation; do not ask the operator to
+repeat it. Continue through the applicable steps in
+`.agents/skills/incident-responder/SKILL.md`'s "Manual entry point — `/hotfix`" by reference,
+including its target-specific branch, `build_api` preflight, release-note, compliance, fast-track
+review, and back-port requirements. Apply each under the incident-responder procedure's
+main/staging scope; release-note and back-port steps apply only to `main`. The existing
+first-live-run report-only policy still applies if this is Incident Responder's first live run; the
+artifact trigger grants no exemption. The Worker still does not merge or deploy.
+
 The handoff is a planning snapshot, not a replacement for the issue or authoritative repository
 documentation. Re-validate the issue and relevant docs at implementation time; those sources win
 over the artifact if they changed, and the Worker must surface a material conflict before editing.
@@ -41,9 +63,11 @@ of each option; request a Planner refresh only when the plan or issue needs a re
 correction.
 
 For an artifact-backed PR, add a compact `## Plan Handoff` section to the PR body containing the
-issue number, artifact path, planning head, scope summary, and acceptance summary. The local `.tmp`
-file is ignored and must never be force-added merely to make it available to a reviewer. If no
-planner artifact is supplied, the existing Worker workflow remains unchanged.
+issue number, artifact path, planning head, `Route:` and `Target:` lines, scope summary, and
+acceptance summary. For a hotfix, link the issue or comment evidence used to validate the route and
+main eligibility facts. The local `.tmp` file is ignored and must never be force-added merely to
+make it available to a reviewer. If no planner artifact is supplied, the existing Worker workflow
+remains unchanged.
 
 ## Resolving gaps found during implementation
 
@@ -58,6 +82,9 @@ test; do not duplicate or weaken that test here.
   exact decision needed, and consequence of each option, then report that a Planner refresh is
   needed. Appending to the existing artifact is the low-friction path: the next Planner refresh can
   resume from the block instead of requiring a full re-briefing.
+- A missing, partial, malformed, unsupported, stale, or contradicted route is a blocking decision.
+  Record the route evidence and exact mismatch in `## Worker escalation`; never downgrade a hotfix
+  artifact to `develop`.
 
 This escalation record is in addition to, and does not replace, the existing hard stop for a
 missing, malformed, or materially stale or conflicting handoff.
@@ -81,7 +108,7 @@ inventing new detection:
 |---|---|---|
 | New/changed files under `apps/dgfy-migration-runner/migrations/` | High blast radius, effectively irreversible once run | Ask before committing; a human confirms direction/correctness first |
 | `.husky/pre-commit`'s `check:compliance` step reports a missing/required declaration | Classifying `major`/`regulatory` impact is a human judgment call, not something to self-certify | Ask; a human writes or approves the `docs/compliance/impact-declarations/*.md` file (shape: `scripts/check-compliance-impact.js:196-220`) |
-| The PR's base would be `staging` or `main` | Those are promotion PRs — human-initiated every time so far | Never open one; this skill's PRs always target `develop` (already `docs/ai/PR.md`'s rule — never deviate). **Named exceptions:** an `incident-responder` hand-off may direct a hotfix off `main` or `staging`; a `promoter` hand-off may direct a release-only repair off and into `release/<candidate_id>` after staging qualification (#1542 follow-up). Follow either explicit hand-off rather than refusing, and apply the originating role's branch and review rules |
+| The PR's base would be `staging` or `main` | Those are promotion PRs — human-initiated every time so far | Never open one; this skill's PRs always target `develop` (already `docs/ai/PR.md`'s rule — never deviate). **Named exceptions:** an `incident-responder` hand-off may direct a hotfix off `main` or `staging`; a `promoter` hand-off may direct a release-only repair off and into `release/<candidate_id>` after staging qualification (#1542 follow-up); and a `ready` planner artifact with `execution_route: hotfix` and a matching `target_branch` may direct the same hotfix bases. Follow the explicit hand-off rather than refusing, and apply the originating role's branch and review rules |
 | Anything that would dispatch a deploy workflow, SSH to a server, or mutate `/opt/dgfy-platform` | No approval gate exists on a deploy dispatch; a mistake there is live | Ask, always. Read-only checks (log tail, `docker buildx imagetools inspect`) are fine — nothing that changes server state runs unattended. This row is Worker-scoped — `promoter` (#331/#512) holds its own, narrower tier that permits unattended DEV/STAGING deploy dispatch as part of a promotion; that's a different role's checkpoint table, not a carve-out in this one |
 | Force-push, branch deletion, or rewriting already-pushed shared history | Not recoverable by a second party | Ask |
 | No GitHub issue exists yet for the work | Repo SOP (`docs/process/ISSUE-TAXONOMY.md`) — every PR needs a linked issue | File one first, then proceed |
@@ -94,9 +121,12 @@ of these triggers actually firing (or correctly not firing) in practice.
 
 ## Workflow
 
-1. **Branch off fresh `origin/develop`**, one branch per logical change, in a dedicated worktree
+1. **Branch off fresh `origin/<target_branch>`**, one branch per logical change, in a dedicated worktree
    when working on more than one thing in parallel (e.g. `git worktree add ../dgfy-platform-<x>`).
    Never commit directly to a local `develop` — always branch first, even for something small.
+   Use the validated artifact target when present; legacy or unmarked work uses `develop`. For a
+   hotfix, follow the incident-responder manual-entry steps by reference and do not branch from
+   `develop` when the target is `main` or `staging`.
    Once branched, set the linked issue's board `Status` to `In progress` — see "Board transitions"
    below.
    When checking phase eligibility, do not stop because another phase is `in_progress` or because
@@ -104,9 +134,11 @@ of these triggers actually firing (or correctly not firing) in practice.
    (see `AGENTS.md` and the ledger's "Phase Sequencing and Lifecycle Rules").
 2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
    `feature/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, among others — matching the change's
-   actual kind. (`ci/` was previously missing from that file despite being in heavy real use for
-   workflow-only changes; it has since been added — confirmed live in the file, 2026-08-16 — so
-   this is no longer a gap to route around.)
+   actual kind. Name a planner-routed hotfix branch to show its target (for example,
+   `fix/hotfix-<issue>` for `main`, or `fix/staging-<issue>` for `staging`), while keeping the
+   target branch itself out of the PR head. (`ci/` was previously missing from that file despite
+   being in heavy real use for workflow-only changes; it has since been added — confirmed live in
+   the file, 2026-08-16 — so this is no longer a gap to route around.)
 3. **Commit** using Conventional Commits, batched by domain, per `docs/ai/PR.md` — read that file
    for the exact format rather than relying on this summary; it's short and it's the source of
    truth, not this skill. If this task's own branch isn't off `develop` (e.g. a `staging`/`release/*`
@@ -165,7 +197,8 @@ of these triggers actually firing (or correctly not firing) in practice.
    **Whichever tiers actually ran, post the results as a PR comment** (`gh pr comment`) once the
    PR exists — not folded into the original body after the fact. Tier 0 is the exception: it runs
    *before* the PR exists, so it lands in the initial body instead, per above.
-5. **Open the PR** against `develop`, following `docs/ai/PR.md`'s body format (`## Summary` +
+5. **Open the PR** against the validated `target_branch` (default `develop`), following
+   `docs/ai/PR.md`'s body format (`## Summary` +
    `## Testing Evidence` at minimum), linking the issue with `Closes #N` or `Refs #N` per
    `docs/process/ISSUE-TAXONOMY.md`'s linkage rule. For an artifact-backed PR, include the compact
    `## Plan Handoff` provenance section described above. It may include an `Assumptions:` sub-list

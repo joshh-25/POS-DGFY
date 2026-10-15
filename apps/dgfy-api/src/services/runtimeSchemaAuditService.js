@@ -90,7 +90,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260926000001-create-company-registration-drafts-and-uploads.cjs',
     '20261001000001-create-company-registration-uploads.cjs',
     '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs',
-    '20261008000001-extend-company-registration-uploads-for-drafts.cjs'
+    '20261008000001-extend-company-registration-uploads-for-drafts.cjs',
+    '20261013000001-add-pos-item-void-state.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -443,7 +444,11 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'stock_exempt_reason',
         'item_name_snapshot',
         'sku_snapshot',
-        'item_discount_snapshot'
+        'item_discount_snapshot',
+        'voided_quantity',
+        'voided_at',
+        'voided_by',
+        'void_reason'
     ],
     pos_terminal_shifts: [
         'pos_terminal_shift_id',

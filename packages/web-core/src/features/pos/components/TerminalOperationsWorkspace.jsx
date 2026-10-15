@@ -195,6 +195,7 @@ function ShiftControlsWorkspace({
   handleCloseShift,
   handleCloseDay = () => {},
   handleViewShiftSummary = () => {},
+  handleViewXReading = () => {},
   cashierHistoryState = { loading: false, records: [], pagination: null, errorMessage: '' },
   refreshCashierHistory = async () => {},
   handleViewCashierHistoryShift = () => {},
@@ -1528,6 +1529,7 @@ function ShiftControlsWorkspace({
         <ShiftSessionSummary
           summaryRows={summaryRows}
           onViewSummary={handleViewShiftSummary}
+          onViewXReading={handleViewXReading}
           onRefresh={refreshOperationalContext}
           summaryLoading={shiftActionLoading.summary}
           refreshLoading={shiftState?.loading}
@@ -1879,6 +1881,7 @@ export default function TerminalOperationsWorkspace({
   handleCloseShift,
   handleCloseDay = () => {},
   handleViewShiftSummary = () => {},
+  handleViewXReading = () => {},
   cashierHistoryState = { loading: false, records: [], pagination: null, errorMessage: '' },
   refreshCashierHistory = async () => {},
   handleViewCashierHistoryShift = () => {},
@@ -2133,6 +2136,7 @@ export default function TerminalOperationsWorkspace({
           handleCloseShift={handleCloseShift}
           handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
+          handleViewXReading={handleViewXReading}
           cashierHistoryState={cashierHistoryState}
           refreshCashierHistory={refreshCashierHistory}
           handleViewCashierHistoryShift={handleViewCashierHistoryShift}
@@ -2191,6 +2195,7 @@ export default function TerminalOperationsWorkspace({
           handleCloseShift={handleCloseShift}
           handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
+          handleViewXReading={handleViewXReading}
           cashierHistoryState={cashierHistoryState}
           refreshCashierHistory={refreshCashierHistory}
           handleViewCashierHistoryShift={handleViewCashierHistoryShift}

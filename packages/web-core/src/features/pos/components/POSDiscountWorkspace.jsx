@@ -38,6 +38,8 @@ import {
 } from '../utils/posDiscountSelection.js';
 
 export const POS_DISCOUNT_TYPE_OPTIONS = POS_DISCOUNT_FALLBACK_OPTIONS;
+const hasGlobalPosPin = (approver) => approver?.pos_global_pin_configured === true
+    || approver?.pos_approval_pin_configured === true;
 
 export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = false }) {
     const {
@@ -661,13 +663,13 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                 <BadgeCheck className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                 <select autoComplete="off" value={discountDraft.approver_user_id || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))} disabled={discountApproversLoading} className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-[11px] font-medium">
                                     <option value="">{discountApproversLoading ? 'Loading authorized employees...' : 'Select authorized employee'}</option>
-                                    {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id} disabled={approver.pos_approval_pin_configured !== true}>{approver.username} ({approver.role}){approver.pos_approval_pin_configured === true ? '' : ' — PIN not configured'}</option>)}
+                                    {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id} disabled={!hasGlobalPosPin(approver)}>{approver.username} ({approver.role}){hasGlobalPosPin(approver) ? '' : ' — Global PIN not configured'}</option>)}
                                 </select>
                                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                             </div>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-[#0F172A]">Employee PIN <span className="text-rose-500">*</span></label>
+                            <label className="text-[11px] font-semibold text-[#0F172A]">Employee global POS PIN <span className="text-rose-500">*</span></label>
                             <div className="relative">
                                 <Lock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                 <Input name="pos_discount_approval_pin" autoComplete="one-time-code" autoCorrect="off" spellCheck={false} data-1p-ignore="true" data-lpignore="true" data-bwignore="true" style={{ WebkitTextSecurity: showDiscountPin ? 'none' : 'disc' }} className="h-9 pl-8 pr-8 text-[11px]" placeholder="Enter employee PIN" type="text" inputMode="numeric" value={discountDraft.manager_pin || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, manager_pin: event.target.value }))} />
@@ -677,7 +679,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                             </div>
                         </div>
                     </div>
-                    {!discountApproversLoading && safeDiscountApprovers.length > 0 && !safeDiscountApprovers.some((approver) => approver.pos_approval_pin_configured === true) && <p className="text-xs font-medium leading-snug text-amber-700">Authorized employees are listed, but each needs a POS approval PIN before they can approve a discount.</p>}
+                    {!discountApproversLoading && safeDiscountApprovers.length > 0 && !safeDiscountApprovers.some(hasGlobalPosPin) && <p className="text-xs font-medium leading-snug text-amber-700">Authorized employees are listed, but each needs a global POS PIN before they can approve a discount.</p>}
                     {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-xs font-medium leading-snug text-amber-700">No authorized employees are configured. Ask an administrator to grant discount authorization.</p>}
                     <div className="grid grid-cols-2 gap-2 pt-1">
                         <Button type="button" variant="outline" onClick={onCancel} className="h-9 w-full min-w-0 border-slate-300 bg-white text-xs text-[#0F172A] hover:border-[#1A4E8D] hover:bg-[#EFF7FF] hover:text-[#1A4E8D]">Cancel</Button>

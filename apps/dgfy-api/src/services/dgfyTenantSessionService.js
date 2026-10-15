@@ -114,14 +114,20 @@ export const createTenantSessionForDgfyAccount = async ({
       }).catch(() => null);
     }
 
+    const permissions = resolveEffectivePermissions(user);
+
     return {
       user_id: user.user_id,
       username: user.username,
       email: user.email,
       phone_number: user.phone_number || null,
       role: user.role,
-      permissions: resolveEffectivePermissions(user),
-      pos_day_close_pin_configured: Boolean(String(user.pos_day_close_pin_hash || '').trim()),
+      permissions,
+      pos_global_pin_configured: Boolean(String(user.pos_cashier_pin_hash || '').trim()),
+      // Keep the legacy response field for older POS clients. The canonical
+      // global PIN is valid for day close as well.
+      pos_day_close_pin_configured: Boolean(String(user.pos_cashier_pin_hash || user.pos_day_close_pin_hash || '').trim()),
+      can_configure_pos_global_pin: isMasterAdmin || permissions.includes('pos:transact'),
       is_master_admin: isMasterAdmin,
       onboarding,
       token,

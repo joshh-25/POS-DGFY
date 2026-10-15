@@ -26,7 +26,9 @@ const rows = [
     adjustment_type: 'void',
     amount: 125,
     original_cashier_name: 'Mary A.',
-    reason: 'Duplicate order'
+    reason: 'Duplicate order',
+    item_voided: true,
+    voided_lines: [{ item_id: 179, item_name: 'Casino Ethyl Alcohol', quantity: 1, voided_quantity: 1 }]
   }
 ];
 
@@ -36,7 +38,7 @@ describe('POS reports adjustments table', () => {
   it('renders prioritized adjustment columns without an actions column', () => {
     render(<PosReportsAdjustmentsTable rows={rows} />);
 
-    ['Date/Time', 'Type', 'Reference No.', 'Order No.', 'Cashier', 'Amount (₱)', 'Affected Sales'].forEach((label) => {
+    ['Date/Time', 'Type', 'Reference No.', 'Order No.', 'Voided Item(s)', 'Cashier', 'Amount (₱)', 'Affected Sales'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: new RegExp(label.replace(/[().]/g, '\\$&')) })).toBeTruthy();
     });
     expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
@@ -46,6 +48,7 @@ describe('POS reports adjustments table', () => {
     expect(screen.getAllByText('ORD-00034').length).toBeGreaterThan(0);
     expect(screen.getAllByText('John D.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱250.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Casino Ethyl Alcohol × 1').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–2 of 2 adjustments')).toBeTruthy();
 
   });

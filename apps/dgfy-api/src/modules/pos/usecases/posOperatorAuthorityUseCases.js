@@ -614,7 +614,7 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
                 throw operatorError(DomainErrorCode.AUTHORIZATION_FAILED, 'Manager permission is required to reset a cashier PIN.', 403);
             }
             const pin = normalizePin(payload.pin);
-            if (!PIN_PATTERN.test(pin)) throw operatorError(DomainErrorCode.VALIDATION_FAILED, 'Cashier PIN must contain 4 to 12 digits.', 422);
+            if (!PIN_PATTERN.test(pin)) throw operatorError(DomainErrorCode.VALIDATION_FAILED, 'Global POS PIN must contain 4 to 12 digits.', 422);
             return await executeTransaction(async (transaction) => {
                 if (resolveFeature && locationId) await requireFeature({ resolveFeature, locationId });
                 const target = await repository.findUserById({ userId: targetUserId, transaction, lock: true });
@@ -626,6 +626,8 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
                     userId: targetUserId,
                     payload: {
                         pos_cashier_pin_hash: pinHash,
+                        pos_approval_pin_hash: null,
+                        pos_day_close_pin_hash: null,
                         pos_cashier_pin_failed_attempts: 0,
                         pos_cashier_pin_locked_until: null,
                         pos_cashier_pin_changed_at: now()

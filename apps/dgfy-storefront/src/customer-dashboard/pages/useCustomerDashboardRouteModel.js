@@ -73,6 +73,8 @@ export function useCustomerDashboardRouteModel({
     onOpenBusinessPos: actions.handleOpenBusinessPos,
     onGetBusinessDayCloseStatus: actions.getOwnBusinessDayCloseStatus,
     onConfigureBusinessDayClosePin: actions.configureOwnBusinessDayClosePin,
+    onGetBusinessGlobalPinStatus: actions.getOwnBusinessGlobalPinStatus,
+    onConfigureBusinessGlobalPin: actions.configureOwnBusinessGlobalPin,
     onGoDiscovery: actions.onGoDiscovery
   }), [
     actions.clearSavedCustomerDetailsForDevice,
@@ -89,6 +91,8 @@ export function useCustomerDashboardRouteModel({
     actions.handleOpenBusinessPos,
     actions.configureOwnBusinessDayClosePin,
     actions.getOwnBusinessDayCloseStatus,
+    actions.configureOwnBusinessGlobalPin,
+    actions.getOwnBusinessGlobalPinStatus,
     actions.handleRejectDgfyCompanyInvitation,
     actions.handleRequestCashout,
     actions.handleSaveAccountAddress,

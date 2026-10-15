@@ -91,6 +91,8 @@ describe('DGFY tenant session authority normalization', () => {
     });
 
     expect(session.is_master_admin).toBe(true);
+    expect(session.can_configure_pos_global_pin).toBe(true);
+    expect(session.pos_global_pin_configured).toBe(false);
     expect(session.onboarding).toEqual({ completed: false });
     expect(mockGetOnboardingStatus).toHaveBeenCalledWith({ storeNameBaseline: 'Test Tenant' });
   });

@@ -114,6 +114,64 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(true);
   });
 
+  it('shows legacy company selection as the existing inline dropdown after login', () => {
+    const setFormData = vi.fn();
+
+    render(<TerminalLockDrawer {...buildProps({
+      formData: { ...buildProps().formData, email: 'admin@test.com', legacyCompanyToken: '' },
+      setFormData,
+      emailCompanyLookup: {
+        status: 'multiple',
+        email: 'admin@test.com',
+        companies: [
+          { company_token: 'token-masu', company_name: 'Masu Cafe' },
+          { company_token: 'token-second', company_name: 'Second Company' }
+        ]
+      },
+      onLegacySubmit: vi.fn(),
+      legacyCompanySelectionOpen: true,
+      onLegacyCompanySelectionOpenChange: vi.fn(),
+      onLegacyCompanySelectionSubmit: vi.fn()
+    })} />);
+
+    expect(screen.queryByRole('dialog', { name: 'Select company' })).toBeNull();
+    expect(screen.getByLabelText('Company')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to POS' }).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText('Company'));
+    expect(screen.getByRole('option', { name: 'Masu Cafe' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Second Company' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('option', { name: 'Second Company' }));
+
+    const updateFormData = setFormData.mock.calls.at(-1)?.[0];
+    expect(updateFormData({ ...buildProps().formData, email: 'admin@test.com' })).toMatchObject({
+      legacyCompanyToken: 'token-second'
+    });
+  });
+
+  it('submits the selected legacy company through the inline continue action', () => {
+    const onLegacyCompanySelectionSubmit = vi.fn();
+    render(<TerminalLockDrawer {...buildProps({
+      formData: {
+        ...buildProps().formData,
+        email: 'admin@test.com',
+        legacyCompanyToken: 'token-masu'
+      },
+      emailCompanyLookup: {
+        status: 'multiple',
+        email: 'admin@test.com',
+        companies: [{ company_token: 'token-masu', company_name: 'Masu Cafe' }]
+      },
+      legacyCompanySelectionOpen: true,
+      onLegacyCompanySelectionOpenChange: vi.fn(),
+      onLegacyCompanySelectionSubmit
+    })} />);
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Continue to POS' }).closest('form'));
+
+    expect(onLegacyCompanySelectionSubmit).toHaveBeenCalledOnce();
+    expect(onLegacyCompanySelectionSubmit).toHaveBeenCalledWith('token-masu');
+  });
+
   it('removes standalone cashier-password login and keeps dated legacy access', () => {
     render(<TerminalLockDrawer {...buildProps({
       onLegacySubmit: vi.fn()

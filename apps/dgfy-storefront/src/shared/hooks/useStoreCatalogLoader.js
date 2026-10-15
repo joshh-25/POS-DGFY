@@ -24,12 +24,20 @@ import { classifyStoreCatalogError } from '../model/storefrontErrorMessages.js';
 import { buildStorefrontLoadFailureState } from '../model/storefrontLoadState.js';
 import { useStorefrontStore } from '../../store/useStorefrontStore.js';
 
-export const buildCatalogRequestUrl = ({ isServicesMode = false, isLaundryMode = false, locationId = null } = {}) => {
+export const buildCatalogRequestUrl = ({ isServicesMode = false, isLaundryMode = false, locationId = null, qrToken = '' } = {}) => {
   const basePath = isLaundryMode
     ? '/api/v1/store/laundry/catalog'
     : (isServicesMode ? '/api/v1/store/services/catalog' : '/api/v1/store/catalog');
-  const query = new URLSearchParams(isLaundryMode ? {} : { limit: '120' });
+  const normalizedQrToken = String(qrToken || '').trim();
+  const query = new URLSearchParams(isLaundryMode ? {} : {
+    // QR destinations are category/catalog entry points, so request the API's
+    // full storefront page rather than the smaller normal browsing page.
+    limit: normalizedQrToken ? '200' : '120'
+  });
   if (locationId != null) query.set('location_id', String(locationId));
+  if (!isServicesMode && !isLaundryMode && normalizedQrToken) {
+    query.set('qr_token', normalizedQrToken);
+  }
   return `${basePath}?${query.toString()}`;
 };
 
@@ -62,7 +70,8 @@ export function useStoreCatalogLoader({
   setSelectedStore,
   setRouteSlug,
   preferredStoreLocationSelection,
-  voucherCode
+  voucherCode,
+  qrToken = ''
 }) {
   const catalog = useStorefrontStore((state) => state.catalog.items);
   const setCatalog = useStorefrontStore((state) => state.catalogSetItems);
@@ -128,11 +137,14 @@ export function useStoreCatalogLoader({
     const paymentCapabilitiesPatch = catalogData?.payment_capabilities
       ? { payment_capabilities: catalogData.payment_capabilities }
       : null;
+    const qrTargetPatch = Object.prototype.hasOwnProperty.call(catalogData || {}, 'qr_target')
+      ? { qr_target: catalogData.qr_target || null }
+      : null;
     // Phase 142 (#823): always applied (not conditional like the two above) -- see
     // buildPaymentModeStorePatch's own comment for why.
     const paymentModePatch = buildPaymentModeStorePatch(catalogData);
-    if (accessPatch || capabilityPatch || paymentCapabilitiesPatch || paymentModePatch) {
-      setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch, ...paymentModePatch } : prev));
+    if (accessPatch || capabilityPatch || paymentCapabilitiesPatch || paymentModePatch || qrTargetPatch) {
+      setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch, ...paymentModePatch, ...qrTargetPatch } : prev));
     }
     setCatalog(
       Array.isArray(catalogData?.payload?.entries)
@@ -245,7 +257,8 @@ export function useStoreCatalogLoader({
           routeSubpage,
           routeServiceItemId,
           routeItemId,
-          locationId: preferredStoreLocationSelection?.locationId
+          locationId: preferredStoreLocationSelection?.locationId,
+          qrToken
         });
         if (!isCurrentStorefrontTarget(canonicalPath)) {
           window.history.replaceState(buildStorefrontHistoryState({
@@ -253,7 +266,8 @@ export function useStoreCatalogLoader({
             storeSubpage: routeSubpage,
             serviceItemId: routeServiceItemId,
             itemId: routeItemId,
-            locationId: preferredStoreLocationSelection?.locationId
+            locationId: preferredStoreLocationSelection?.locationId,
+            qrToken
           }), '', canonicalPath);
         }
         setRouteSlug(toSlug(profile.slug));
@@ -270,7 +284,8 @@ export function useStoreCatalogLoader({
           routeSubpage,
           routeServiceItemId,
           routeItemId,
-          locationId
+          locationId,
+          qrToken
         });
         if (!isCurrentStorefrontTarget(canonicalPath)) {
           window.history.replaceState(buildStorefrontHistoryState({
@@ -278,7 +293,8 @@ export function useStoreCatalogLoader({
             storeSubpage: routeSubpage,
             serviceItemId: routeServiceItemId,
             itemId: routeItemId,
-            locationId
+            locationId,
+            qrToken
           }), '', canonicalPath);
         }
       };
@@ -300,7 +316,7 @@ export function useStoreCatalogLoader({
       // locations fetch itself throws before reaching the branch below.
       const isLaundryStorefront = normalizeBusinessMode(profile?.workflow_mode || profile?.ops_workflow_mode) === 'laundry';
       const catalogUrl = (locationId = null) => {
-        const base = buildCatalogRequestUrl({ isServicesMode: isServicesStorefront, isLaundryMode: isLaundryStorefront, locationId });
+        const base = buildCatalogRequestUrl({ isServicesMode: isServicesStorefront, isLaundryMode: isLaundryStorefront, locationId, qrToken });
         return isLaundryStorefront ? base : withVoucherCodeParam(base, voucherCodeRef.current);
       };
       const speculativeCatalogPromise = requestJson(catalogUrl(), { storeSlug: profile.slug, signal })
@@ -387,7 +403,7 @@ export function useStoreCatalogLoader({
       }
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       applyCatalogResponse(catalogData);
-      lastCatalogKeyRef.current = `${profile.slug}::${resolvedCatalogLocationId ?? ''}::${voucherCodeRef.current || ''}`;
+      lastCatalogKeyRef.current = `${profile.slug}::${resolvedCatalogLocationId ?? ''}::${voucherCodeRef.current || ''}::${qrToken || ''}`;
     } catch (error) {
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
@@ -411,7 +427,7 @@ export function useStoreCatalogLoader({
       }
     }
   // voucherCode is deliberately NOT a dependency here -- see voucherCodeRef's own comment above.
-  }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage, setCatalog, setCatalogError, setLoadingCatalog, setPrimaryLocationId, setRouteSlug, setSelectedLocationId, setSelectedStore, setStoreLocations]);
+  }, [applyCatalogResponse, preferredStoreLocationSelection, qrToken, routeItemId, routeServiceItemId, routeSubpage, setCatalog, setCatalogError, setLoadingCatalog, setPrimaryLocationId, setRouteSlug, setSelectedLocationId, setSelectedStore, setStoreLocations]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
     if (!routeSlug) return;
@@ -435,7 +451,7 @@ export function useStoreCatalogLoader({
       // mid-flight and this effect's deps change before openStoreBySlug's
       // own catalog request has even landed, firing a redundant one.
       if (storeLoadInFlightRef.current) return;
-      const catalogKey = `${selectedStore.slug}::${selectedLocationId ?? ''}::${voucherCode || ''}`;
+      const catalogKey = `${selectedStore.slug}::${selectedLocationId ?? ''}::${voucherCode || ''}::${qrToken || ''}`;
       // Already fetched (by openStoreBySlug or a prior run of this effect)
       // -- a re-render that doesn't actually change the resolved
       // store+location shouldn't refetch. refreshStorePageForTenantSetup
@@ -454,7 +470,8 @@ export function useStoreCatalogLoader({
         const catalogBase = buildCatalogRequestUrl({
           isServicesMode: mode === 'services',
           isLaundryMode: mode === 'laundry',
-          locationId: selectedLocationId
+          locationId: selectedLocationId,
+          qrToken
         });
         const catalogQuery = mode === 'laundry' ? catalogBase : withVoucherCodeParam(catalogBase, voucherCode);
         // No `cache: 'no-store'` (issue #282, Phase B) -- see openStoreBySlug's
@@ -483,7 +500,7 @@ export function useStoreCatalogLoader({
       // Superseded requests must also release any overlay for this effect's location.
       completeBranchSwitchFeedback(selectedLocationId);
     };
-    }, [applyCatalogResponse, completeBranchSwitchFeedback, isStorePage, selectedStore?.ops_workflow_mode, selectedStore?.slug, selectedStore?.workflow_mode, selectedLocationId, setCatalog, setCatalogError, setLoadingCatalog, voucherCode]);
+    }, [applyCatalogResponse, completeBranchSwitchFeedback, isStorePage, qrToken, selectedStore?.ops_workflow_mode, selectedStore?.slug, selectedStore?.workflow_mode, selectedLocationId, setCatalog, setCatalogError, setLoadingCatalog, voucherCode]);
 
   const handleBranchMenuSelection = useCallback((nextValue) => {
     const requestedLocationId = nextValue ? Number(nextValue) : null;
@@ -508,7 +525,8 @@ export function useStoreCatalogLoader({
         routeSubpage,
         routeServiceItemId,
         routeItemId,
-        locationId: nextLocationId
+        locationId: nextLocationId,
+        qrToken
       });
       if (!isCurrentStorefrontTarget(canonicalPath)) {
         window.history.replaceState(buildStorefrontHistoryState({
@@ -516,13 +534,14 @@ export function useStoreCatalogLoader({
           storeSubpage: routeSubpage,
           serviceItemId: routeServiceItemId,
           itemId: routeItemId,
-          locationId: nextLocationId
+          locationId: nextLocationId,
+          qrToken
         }), '', canonicalPath);
       }
     }
     setSelectedLocationId(nextLocationId);
     setHasSelectedBranchFromMenu(true);
-  }, [routeItemId, routeServiceItemId, routeSubpage, selectedLocationId, selectedStore?.slug, setBranchSwitchFeedback, setSelectedLocationId, setHasSelectedBranchFromMenu, storeLocations]);
+  }, [qrToken, routeItemId, routeServiceItemId, routeSubpage, selectedLocationId, selectedStore?.slug, setBranchSwitchFeedback, setSelectedLocationId, setHasSelectedBranchFromMenu, storeLocations]);
 
   useEffect(() => () => {
     if (branchSwitchFeedbackTimerRef.current) clearTimeout(branchSwitchFeedbackTimerRef.current);

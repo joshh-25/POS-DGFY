@@ -243,16 +243,30 @@ export const changeDgfyPassword = async (req, res) => {
     });
 };
 
-export const configureDgfyCompanyDayClosePin = async (req, res) => {
+const configureDgfyCompanyPin = async (req, res, fallbackErrorMessage) => {
     const result = await configureDgfyCompanyDayClosePinUseCase({
         account: req.dgfyAccount,
         tenantId: req.params?.tenant_id,
         body: req.body
     });
     return sendUseCaseResult(res, result, {
-        fallbackErrorMessage: 'DGFY Day Close PIN configuration failed'
+        fallbackErrorMessage
     });
 };
+
+// The old export and route remain for existing POS clients. New DGFY Account
+// users use the explicit Global POS PIN route below.
+export const configureDgfyCompanyDayClosePin = (req, res) => configureDgfyCompanyPin(
+    req,
+    res,
+    'DGFY Day Close PIN configuration failed'
+);
+
+export const configureDgfyCompanyGlobalPin = (req, res) => configureDgfyCompanyPin(
+    req,
+    res,
+    'DGFY Global POS PIN configuration failed'
+);
 
 export const requestDgfyEmailVerification = async (req, res) => {
     const result = await requestDgfyEmailVerificationUseCase({

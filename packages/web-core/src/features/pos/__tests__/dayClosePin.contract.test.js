@@ -10,14 +10,14 @@ const readSource = (relativePath) => fs.readFileSync(
 );
 
 describe('POS Day Close PIN contract', () => {
-  it('requires a personal Day Close PIN before the terminal submits close day', () => {
+  it('requires the cashier global PIN before the terminal submits close day', () => {
     const terminalPageSource = [
       readSource('src/features/pos/pages/TerminalPage.jsx'),
       readSource('src/features/pos/components/TerminalPageDialogLayer.jsx')
     ].join('\n');
     const posServiceSource = readSource('src/features/pos/services/posService.js');
 
-    expect(terminalPageSource).toContain('Your POS Day Close PIN');
+    expect(terminalPageSource).toContain('Your global POS PIN');
     expect(terminalPageSource).toContain('closePosDay(null, { dayClosePin: zReadingClosePin })');
     expect(posServiceSource).toContain('day_close_pin: dayClosePin');
     expect(posServiceSource).toContain("api.get('/pos/z-reading/close-readiness'");
@@ -42,13 +42,13 @@ describe('POS Day Close PIN contract', () => {
 
     expect(workspaceSource).toContain('Day Close Access');
     expect(workspaceSource).toContain("{user.email || 'No account email'}");
-    expect(workspaceSource).toContain('Cashier setup pending');
+    expect(workspaceSource).toContain('Uses the global POS PIN');
     expect(workspaceSource).toContain('Can generate Z-reading');
     expect(workspaceSource).toContain("Array.from(new Set([...permissions, 'pos:close_day']))");
     expect(workspaceSource).toContain("permissions.filter((permission) => permission !== 'pos:close_day')");
     expect(workspaceSource).toContain('updateUserPermissions(userId, nextPermissions)');
     expect(workspaceSource).toContain('Built-in access');
-    expect(terminalPageSource).toContain('My POS Day Close PIN');
+    expect(terminalPageSource).toContain('My global POS PIN');
     expect(terminalPageSource).toContain('updateOwnPosDayClosePin({ currentPassword, pin })');
     expect(userServiceSource).toContain('/users/me/pos-day-close-pin');
   });

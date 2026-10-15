@@ -77,6 +77,7 @@ import Pricelist from './Pricelist.js';
 import PricelistItem from './PricelistItem.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
+import StorefrontQrCode from './StorefrontQrCode.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import EmployeeAttendanceSession from './EmployeeAttendanceSession.js';
@@ -224,6 +225,7 @@ import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
 import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
 import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
 import PlatformAdminAuditLogFactory from './Landlord/PlatformAdminAuditLog.js';
+import ContactInquiryProviderConfigFactory from './Landlord/ContactInquiryProviderConfig.js';
 import CompanyRegistrationApplicationFactory from './Landlord/CompanyRegistrationApplication.js';
 import CompanyRegistrationAttemptFactory from './Landlord/CompanyRegistrationAttempt.js';
 import CompanyRegistrationEventFactory from './Landlord/CompanyRegistrationEvent.js';
@@ -317,6 +319,7 @@ const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
 const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
 const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
 const PlatformAdminAuditLog = PlatformAdminAuditLogFactory(sequelize);
+const ContactInquiryProviderConfig = ContactInquiryProviderConfigFactory(sequelize);
 const CompanyRegistrationApplication = CompanyRegistrationApplicationFactory(sequelize);
 const CompanyRegistrationAttempt = CompanyRegistrationAttemptFactory(sequelize);
 const CompanyRegistrationEvent = CompanyRegistrationEventFactory(sequelize);
@@ -867,6 +870,10 @@ Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontC
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
 StorefrontLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+StorefrontQrCode.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+TenantLocation.hasMany(StorefrontQrCode, { foreignKey: 'location_id', as: 'storefrontQrCodes' });
+StorefrontQrCode.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
+ItemFolder.hasMany(StorefrontQrCode, { foreignKey: 'folder_id', as: 'storefrontQrCodes' });
 // onUpdate/onDelete pinned to RESTRICT: cashier_id is the base column of the STORED generated
 // column active_operator_user_id, and MySQL forbids ON UPDATE CASCADE/SET NULL/SET DEFAULT on
 // a generated column's base column (see 20260724000001-enforce-one-open-shift-per-operator.cjs).
@@ -1312,6 +1319,7 @@ const db = {
   PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
+  StorefrontQrCode,
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -1461,6 +1469,7 @@ const db = {
   ,PlatformAdminPermission
   ,PlatformAdminSession
   ,PlatformAdminAuditLog
+  ,ContactInquiryProviderConfig
   ,CompanyRegistrationApplication
   ,CompanyRegistrationAttempt
   ,CompanyRegistrationEvent
@@ -1559,6 +1568,7 @@ export {
   PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
+  StorefrontQrCode,
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -1708,6 +1718,7 @@ export {
   PlatformAdminPermission,
   PlatformAdminSession,
   PlatformAdminAuditLog,
+  ContactInquiryProviderConfig,
   CompanyRegistrationApplication,
   CompanyRegistrationAttempt,
   CompanyRegistrationEvent,

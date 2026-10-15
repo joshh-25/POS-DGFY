@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Build a local implementation handoff for an existing open issue or epic; explicit invocation only.
-argument-hint: "<open issue or epic number>"
+argument-hint: "<open issue or epic number> [--hotfix [main|staging]]"
 disable-model-invocation: true
 ---
 

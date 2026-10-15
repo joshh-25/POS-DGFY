@@ -7,27 +7,28 @@ const readSource = (relativePath) => fs.readFileSync(
   'utf8'
 );
 
-describe('POS Day Close PIN self-service contract', () => {
-  it('keeps PIN configuration scoped to the authenticated close-day operator', () => {
+describe('POS Global PIN self-service contract', () => {
+  it('keeps PIN configuration scoped to the authenticated POS operator', () => {
     const routes = readSource('src/routes/users.js');
     const validator = readSource('src/validators/userValidator.js');
     const service = readSource('src/services/userService.js');
 
     expect(routes).toContain("router.put('/me/pos-day-close-pin', authenticate");
     expect(validator).toContain('updateOwnPosDayClosePinSchema');
-    expect(service).toContain("resolveEffectivePermissions(user).includes('pos:close_day')");
+    expect(service).toContain("resolveEffectivePermissions(user).includes('pos:transact')");
     expect(service).toContain('comparePassword(normalizedPassword, user.password_hash)');
     expect(service).toContain("entity_type: 'pos_day_close_pin'");
     expect(service).toContain("operation: 'self_service_configure'");
   });
 
-  it('uses the global DGFY credential authority for DGFY Business PIN setup', () => {
+  it('uses the global DGFY credential authority for DGFY Business Global PIN setup', () => {
     const dgfyRoutes = readSource('src/routes/dgfy.js');
     const dgfyUseCases = readSource('src/modules/dgfy/usecases/dgfyAuthUseCases.js');
     const tenantSessionService = readSource('src/services/dgfyTenantSessionService.js');
     const userService = readSource('src/services/userService.js');
 
     expect(dgfyRoutes).toContain("router.put('/account/companies/:tenant_id/pos-day-close-pin', authenticateDgfyAccount");
+    expect(dgfyRoutes).toContain("router.put('/account/companies/:tenant_id/pos-global-pin', authenticateDgfyAccount");
     expect(dgfyUseCases).toContain('comparePassword(currentPassword, account.password_hash)');
     expect(tenantSessionService).toContain('findAcceptedMembership({ account, tenantId })');
     expect(tenantSessionService).toContain('updateOwnPosDayClosePinForVerifiedDgfyAccount(user.user_id');
@@ -52,7 +53,7 @@ describe('POS Day Close PIN self-service contract', () => {
   });
 
   // Consolidated from tests/dgfyTenantSessionService.contract.test.js (#1441)
-  it('binds DGFY Day Close PIN setup to the accepted membership tenant user', () => {
+  it('binds DGFY Global PIN setup to the accepted membership tenant user', () => {
     const service = readSource('src/services/dgfyTenantSessionService.js');
 
     expect(service).toContain('configureTenantDayClosePinForDgfyAccount');

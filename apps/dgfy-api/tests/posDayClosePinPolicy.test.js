@@ -19,7 +19,7 @@ describe('POS Day Close PIN policy', () => {
             pin: '1234'
         })).rejects.toMatchObject({
             code: DomainErrorCode.AUTHORIZATION_FAILED,
-            message: 'Your POS Day Close PIN is not configured. Set your personal PIN from DGFY Business before closing the day.',
+            message: 'Your global POS PIN is not configured. Set your personal PIN from DGFY Business before closing the day.',
             details: { reason_code: 'DAY_CLOSE_PIN_NOT_CONFIGURED' }
         });
 

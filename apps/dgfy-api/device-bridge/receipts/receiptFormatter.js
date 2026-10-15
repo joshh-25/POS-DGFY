@@ -148,19 +148,33 @@ export const buildReceiptLines = (receipt = {}, { width = 48 } = {}) => {
   return output;
 };
 
-export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
+export const buildShiftSummaryLines = (payload = {}, { readingType = 'shift_summary', width = 48 } = {}) => {
   const normalizedWidth = clampWidth(width);
   const business = payload?.business || {};
   const shift = payload?.shift || {};
   const cash = payload?.cash_summary || {};
   const sales = payload?.sales_summary || {};
   const divider = '-'.repeat(normalizedWidth);
+  const isXReading = readingType === 'x_reading';
   const lines = [
     business.name || 'DGFY',
-    'CASHIER SHIFT SALES SUMMARY',
+    isXReading ? 'X-READING / CURRENT SHIFT' : 'CASHIER SHIFT SALES SUMMARY',
     shift.business_date ? `Business date: ${shift.business_date}` : '',
     shift.terminal_id ? `Terminal: ${shift.terminal_id}` : '',
     shift.pos_terminal_shift_id ? `Shift: ${shift.pos_terminal_shift_id}` : '',
+    divider,
+    'SALES SUMMARY',
+    buildKeyValueLine(isXReading ? 'Net sales' : 'Overall sales', money(sales.total_amount), normalizedWidth),
+    buildKeyValueLine('Transactions', String(sales.transaction_count || 0), normalizedWidth),
+    buildKeyValueLine('Items sold', String(sales.item_count || 0), normalizedWidth),
+    buildKeyValueLine('Subtotal', money(sales.subtotal_amount), normalizedWidth),
+    buildKeyValueLine('Discounts', money(sales.discount_amount), normalizedWidth),
+    buildKeyValueLine('VATable sales', money(sales.vatable_sales), normalizedWidth),
+    buildKeyValueLine('VAT', money(sales.vat_amount), normalizedWidth),
+    buildKeyValueLine('VAT-exempt sales', money(sales.vat_exempt_sales), normalizedWidth),
+    buildKeyValueLine('Zero-rated sales', money(sales.zero_rated_sales), normalizedWidth),
+    buildKeyValueLine('POS voids', money(sales.void_amount), normalizedWidth),
+    buildKeyValueLine('Refunds', money(sales.refund_amount), normalizedWidth),
     divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);
@@ -217,11 +231,16 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     reading.generated_at ? `Generated: ${formatGeneratedAt(reading.generated_at)}` : '',
     divider,
     buildKeyValueLine('Transactions', String(summary.transaction_count || 0), normalizedWidth),
+    buildKeyValueLine('Items sold', String(summary.item_count || 0), normalizedWidth),
     buildKeyValueLine('Subtotal', money(summary.subtotal_amount), normalizedWidth),
     buildKeyValueLine('Discounts', money(summary.discount_amount), normalizedWidth),
+    buildKeyValueLine('VATable sales', money(summary.vatable_sales), normalizedWidth),
     buildKeyValueLine('VAT', money(summary.vat_amount), normalizedWidth),
+    buildKeyValueLine('VAT-exempt sales', money(summary.vat_exempt_sales), normalizedWidth),
+    buildKeyValueLine('Zero-rated sales', money(summary.zero_rated_sales), normalizedWidth),
     buildKeyValueLine('Total sales', money(summary.total_amount), normalizedWidth),
     buildKeyValueLine('POS voids', money(summary.void_amount), normalizedWidth),
+    buildKeyValueLine('Refunds', money(summary.refund_amount), normalizedWidth),
     ...(reconciliation ? [
       divider,
       'REPORT RECONCILIATION',
@@ -262,6 +281,13 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     'FISCAL COUNTERS',
     buildKeyValueLine('Z counter', String(reading.z_counter_value || 0), normalizedWidth),
     buildKeyValueLine('Reset counter', String(reading.reset_counter_value || 0), normalizedWidth),
+    buildKeyValueLine(
+      'Lifetime grand total',
+      money(reading.lifetime_grand_total == null
+        ? Number(reading.lifetime_grand_total_cents || 0) / 100
+        : reading.lifetime_grand_total),
+      normalizedWidth
+    ),
     divider,
     'Provider refunds are reconciled separately.',
     'Keep this report with the day-end close evidence.'

@@ -230,6 +230,28 @@ above remain unchanged.
   delivery, hardening, end-to-end proof, rollout, and deployment require later
   separately approved phases.
 
+### 2026-10-14: Global POS PIN Reuse Across Protected Actions (Phase 502)
+
+- The operator's personal POS PIN is one write-only global credential for the
+  tenant-local POS user. It is reused for operator authentication/takeover,
+  governed discounts, item or transaction void/refund confirmation,
+  cash-drawer/refund actions, and Z-reading/day-close confirmation when the
+  corresponding permission is granted.
+- Reusing one PIN does not merge authorization. The server independently
+  checks tenant membership, location and terminal scope, attendance/shift
+  state, action permissions, and any required manager approval before applying
+  a protected mutation.
+- The canonical hash is `users.pos_cashier_pin_hash`; saving or resetting it
+  clears legacy approval/day-close hashes and lockout state. Legacy hashes may
+  be read only as a transition fallback until the global PIN is configured.
+  PIN material and hashes are never returned to clients or shared across
+  companies.
+- OPIS owns admin permission and PIN-reset controls. A cashier configures
+  their own tenant-local global PIN from the selected company card in DGFY
+  Account → Business after re-entering the DGFY account password. IMS is not
+  a configuration surface for this feature. No schema or migration is
+  introduced.
+
 ## References
 
 - `docs/architecture/adr/0026-browser-session-cookie-authority.md`

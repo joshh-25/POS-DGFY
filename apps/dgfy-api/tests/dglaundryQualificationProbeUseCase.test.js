@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { buildDglaundryQualificationProbeUseCase, DGLAUNDRY_QUALIFICATION_ORDER_REFERENCE } from '../src/modules/dgfyLaundryOrders/usecases/dglaundryQualificationProbeUseCase.js';
 
 const originalEnvironment = { ...process.env };
+const fixedNow = new Date('2026-10-08T10:00:00.000Z');
 const fixtureSession = () => ({
   session_id: 71,
   public_reference: 'CPS-QUALIFICATION-0001',
@@ -11,7 +12,7 @@ const fixtureSession = () => ({
   provider_payment_id: 'pay_test_qualification',
   provider_payment_intent_id: 'pi_test_qualification',
   total_amount_centavos: 1000,
-  expires_at: new Date(Date.now() - 1000),
+  expires_at: new Date(fixedNow.getTime() - 1000),
   checkout_payload: {
     external_order_reference: DGLAUNDRY_QUALIFICATION_ORDER_REFERENCE,
     external_tracking_reference: 'tracking-ref',
@@ -52,7 +53,7 @@ const makeUseCase = (kind, overrides = {}) => {
     paymongoService: { retrievePaymentIntent: jest.fn(async () => ({ id: 'pi_test_qualification', attributes: { status: 'expired' } })) },
     createRefundUseCase: jest.fn(async () => ({ success: true, data: { refund: { status: 'succeeded', refund_id: 'refund-1', amount_centavos: 1000 }, payment_session: session } })),
     partnerClient: { cancelOrder: jest.fn(async () => ({})), updateOrder: jest.fn(async () => ({})) },
-    now: () => new Date('2026-10-08T10:00:00.000Z'),
+    now: () => fixedNow,
     ...overrides
   };
   return { useCase: buildDglaundryQualificationProbeUseCase(dependencies), dependencies };

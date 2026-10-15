@@ -26,6 +26,8 @@ const salesSummary = {
     payment_breakdown: paymentBreakdown,
     void_transaction_count: 2,
     void_amount: 125,
+    voided_item_count: 1,
+    item_voided_item_count: 1,
     post_close_void_transaction_count: 1,
     post_close_void_amount: 125
 };
@@ -76,11 +78,12 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingMarkup).toContain('Employee Credit (1)');
         expect(zReadingMarkup).toContain('Other (1)');
         expect(shiftMarkup).toContain('Transactions');
-        expect(shiftMarkup).not.toContain('Subtotal');
-        expect(shiftMarkup).not.toContain('Discounts');
-        expect(shiftMarkup).not.toContain('VAT');
+        expect(shiftMarkup).toContain('Subtotal');
+        expect(shiftMarkup).toContain('Discounts');
+        expect(shiftMarkup).toContain('VAT');
         expect(shiftMarkup).not.toContain('Total sales (excluding opening cash)');
-        expect(shiftMarkup).not.toContain('POS voids');
+        expect(shiftMarkup).toContain('POS voids');
+        expect(shiftMarkup).toContain('Item voids');
         expect(shiftMarkup).toContain('Opening/petty cash');
         expect(shiftMarkup).toContain('Expected cash in drawer');
         expect(zReadingMarkup).toContain('Transactions');
@@ -89,13 +92,35 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingMarkup).toContain('VAT');
         expect(zReadingMarkup).toContain('Overall total');
         expect(zReadingMarkup).toContain('POS voids (2)');
+        expect(zReadingMarkup).toContain('Item voids');
         expect(zReadingMarkup).toContain('Generated:');
         expect(zReadingMarkup).toContain('2026');
         expect(zReadingMarkup).toContain('Report reconciliation');
         expect(zReadingMarkup).toContain('MATCHED');
         expect(zReadingMarkup).toContain('Report recognized sales');
         expect(zReadingMarkup).toContain('Checked');
+        expect(zReadingMarkup).toContain('Lifetime grand total');
         expect(zReadingMarkup).not.toContain('Lifetime total');
+    });
+
+    it('labels an open-shift X-reading consistently in browser and iMin output', () => {
+        const xReadingMarkup = renderToStaticMarkup(
+            <ShiftCloseSummaryPrintView
+                report={{ report_type: 'x_reading', generated_at: '2026-08-19T12:00:00.000Z', sales_summary: salesSummary }}
+                businessSettings={businessSettings}
+            />
+        );
+        const xReadingText = formatIminShiftSummaryText({
+            shiftSummary: { sales_summary: salesSummary },
+            businessSettings,
+            readingType: 'x_reading'
+        });
+
+        expect(xReadingMarkup).toContain('X-Reading / Current Shift');
+        expect(xReadingMarkup).toContain('Net sales');
+        expect(xReadingMarkup).toContain('X-reading is read-only and does not close the shift');
+        expect(xReadingText).toContain('X-READING / CURRENT SHIFT');
+        expect(xReadingText).toContain('Net sales');
     });
 
     it('uses the same method labels for iMin shift-summary and Z-reading text', () => {
@@ -134,17 +159,19 @@ describe('close-report payment breakdown rendering', () => {
         expect(shiftText).toContain('705.00');
         expect(shiftText).toContain('Transactions');
         expect(shiftText).not.toContain('Maya (0)');
-        expect(shiftText).not.toContain('Subtotal');
-        expect(shiftText).not.toContain('Discounts');
-        expect(shiftText).not.toContain('VAT');
+        expect(shiftText).toContain('Subtotal');
+        expect(shiftText).toContain('Discounts');
+        expect(shiftText).toContain('VAT');
         expect(shiftText).not.toContain('Total sales');
-        expect(shiftText).not.toContain('POS voids');
+        expect(shiftText).toContain('POS voids');
+        expect(shiftText).toContain('Item voids');
         expect(zReadingText).toContain('Transactions');
         expect(zReadingText).toContain('Subtotal');
         expect(zReadingText).toContain('Discounts');
         expect(zReadingText).toContain('VAT');
         expect(zReadingText).toContain('Overall total');
         expect(zReadingText).toContain('POS voids (2)');
+        expect(zReadingText).toContain('Item voids');
         expect(zReadingText).toContain('Generated:');
         expect(zReadingText).toContain('2026');
         expect(zReadingText).toContain('REPORT RECONCILIATION');
@@ -152,8 +179,149 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).toContain('Report recognized');
         expect(zReadingText).toContain('Difference');
         expect(zReadingText).toContain('Checked');
-        expect(zReadingText).toContain('Provider refunds reconciled separately.');
+        expect(zReadingText).toContain('Lifetime grand total');
         expect(zReadingText).not.toContain('Lifetime total');
+    });
+
+    it('keeps only the generated timestamp after X/Z printer report details', () => {
+        const reportSummary = {
+            ...salesSummary,
+            post_close_adjustments: [{
+                adjustment_type: 'cash_refund',
+                amount: 40,
+                status: 'completed',
+                actor_name: 'April Kaoli',
+                actor_shift_id: 8,
+                adjustment_reference: 'REF-20260925-0008',
+                event_at: '2026-09-25T12:05:00.000Z'
+            }]
+        };
+        const xText = formatIminShiftSummaryText({
+            shiftSummary: {
+                generated_at: '2026-09-25T12:00:00.000Z',
+                sales_summary: reportSummary
+            },
+            businessSettings,
+            readingType: 'x_reading'
+        });
+        const zText = formatIminZReadingText({
+            zReading: {
+                z_reading: {
+                    generated_at: '2026-09-25T12:00:00.000Z',
+                    summary: reportSummary
+                }
+            },
+            businessSettings
+        });
+
+        [xText, zText].forEach((text) => {
+            expect(text).toContain('Generated:');
+            expect(text).not.toContain('POST-CLOSE ADJUSTMENT ACCOUNTABILITY');
+            expect(text).not.toContain('cash refund');
+            expect(text).not.toContain('Actioned by');
+            expect(text).not.toContain('REF-20260925-0008');
+            expect(text).not.toContain('Keep with');
+        });
+        expect(xText).not.toContain('X-reading is read-only');
+        expect(zText).not.toContain('Branch total includes');
+        expect(zText).not.toContain('Provider refunds are reconciled separately');
+    });
+
+    it('keeps X/Z printer reports within the selected paper width and mirrors browser sections', () => {
+        const reportSummary = {
+            ...salesSummary,
+            item_count: 8,
+            subtotal_amount: 900,
+            discount_amount: 20,
+            vatable_sales: 700,
+            vat_amount: 84,
+            vat_exempt_sales: 180,
+            zero_rated_sales: 0,
+            transaction_void_amount: 125,
+            item_void_amount: 90,
+            refund_amount: 40,
+            order_source_breakdown: [
+                { order_source: 'online_store', count: 2, amount: 450 }
+            ],
+            order_method_breakdown: [
+                { order_method: 'dine_in', count: 3, amount: 500 }
+            ],
+            delivery_provider_breakdown: [
+                { provider_type: 'foodpanda', transaction_count: 1, amount: 250 }
+            ],
+            post_close_adjustments: [
+                {
+                    adjustment_type: 'cash_refund',
+                    amount: 40,
+                    status: 'completed',
+                    actor_name: 'April Kaoli',
+                    actor_shift_id: 8,
+                    adjustment_reference: 'REF-20260925-0008',
+                    event_at: '2026-09-25T12:05:00.000Z'
+                }
+            ]
+        };
+        const shiftSummary = {
+            generated_at: '2026-09-25T12:00:00.000Z',
+            shift: {
+                business_date: '2026-09-25',
+                terminal_id: 'COUNTER-01',
+                pos_terminal_shift_id: 8
+            },
+            cash_summary: {
+                opening_float_amount: 1000,
+                cash_sales_amount: 700,
+                cash_in_total: 25,
+                cash_out_total: 10,
+                expected_cash_amount: 1715,
+                closing_cash_amount: 1715,
+                cash_variance_amount: 0
+            },
+            sales_summary: reportSummary
+        };
+        const zReading = {
+            z_reading: {
+                business_date: '2026-09-25',
+                location_id: 1,
+                reading_identifier: 'Z-000008',
+                generated_at: '2026-09-25T12:00:00.000Z',
+                summary: reportSummary,
+                z_counter_value: 8,
+                reset_counter_value: 2,
+                lifetime_grand_total: 12345
+            }
+        };
+
+        ['80mm', '57mm'].forEach((paperWidth) => {
+            const maxColumns = paperWidth === '80mm' ? 42 : 32;
+            const xText = formatIminShiftSummaryText({
+                shiftSummary,
+                businessSettings,
+                paperWidth,
+                readingType: 'x_reading'
+            });
+            const zText = formatIminZReadingText({ zReading, businessSettings, paperWidth });
+
+            expect(xText.split('\n').every((row) => row.length <= maxColumns)).toBe(true);
+            expect(zText.split('\n').every((row) => row.length <= maxColumns)).toBe(true);
+            expect(xText).toContain('DELIVERY PROVIDERS');
+            expect(zText).toContain('SALES SOURCE BREAKDOWN');
+            expect(zText).toContain('ORDER METHOD BREAKDOWN');
+            expect(zText).toContain('DELIVERY PROVIDER BREAKDOWN');
+        });
+
+        const wideXText = formatIminShiftSummaryText({
+            shiftSummary,
+            businessSettings,
+            paperWidth: '80mm',
+            readingType: 'x_reading'
+        });
+        expect(wideXText).toContain('POS voids (2)');
+        expect(wideXText).toContain('Item voids (1)');
+        expect(wideXText).toContain('Opening/petty cash');
+        expect(wideXText).toContain('Expected cash in drawer');
+        expect(wideXText).toContain('Generated:');
+        expect(wideXText).not.toContain('POST-CLOSE ADJUSTMENT ACCOUNTABILITY');
     });
 
     it('formats iMin shift summaries within the selected 57mm paper width', () => {

@@ -39,6 +39,38 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>` (Claude) or
   post a comment solely because the section is absent; if it's relevant to Worker's later `Closes`
   vs. `Refs` choice, note it under the plan's Risks/Non-goals and move on.
 
+### Execution route
+
+Record `execution_route` and `target_branch` in every new handoff artifact, including an ordinary
+`develop` plan. Use the field combinations and required evidence in
+`docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`; that document is the single source for the
+route contract. The fields are `execution_route`, `target_branch`, and `hotfix`; valid pairs are
+`develop`/`develop`, `hotfix`/`main`, and `hotfix`/`staging`.
+
+Set `execution_route: hotfix` only when the operator explicitly marks the Planner request. The
+canonical forms are `--hotfix`, `--hotfix main`, and `--hotfix staging`; a sentence is
+unambiguous only when it directly tells the Planner to treat this plan as a hotfix. Record the
+actual operator text or flag verbatim in
+`hotfix.operator_instruction`. Never infer hotfix intent from the issue title, labels, body,
+urgency, or a generic mention of production. With no explicit operator instruction, record
+`develop`/`develop`.
+
+For an operator-marked hotfix, follow the branch-selection rule in
+`.agents/skills/incident-responder/SKILL.md`'s manual-entry procedure. A named target must be
+supported by the live issue evidence; otherwise mark the plan `needs-decision`. If the operator
+did not name a target and the issue does not settle `main` versus `staging`, mark
+`needs-decision` and name the branch ambiguity. Do not default an unclear hotfix to `develop`.
+
+For `main`, verify the open issue records all four manual-eligibility facts: affected production
+behavior, why the next scheduled promotion cannot be awaited, harm from delay, and timing context.
+Cite the issue or its comments and copy the evidence into the artifact's `hotfix.eligibility`
+fields. If any fact is missing or contradicted, mark `needs-decision`, name that exact fact, and
+withhold the `/implement` command. For `staging`, record why the fix can safely ride the next
+promotion in `hotfix.target_rationale`; the four-fact direct-main test is not required.
+
+Missing `## Acceptance criteria` remains non-blocking (#1908); do not conflate it with main-hotfix
+eligibility.
+
 ### What `ready` means
 
 `ready` means the Worker can begin implementation without guessing about product intent or scope.
@@ -69,7 +101,7 @@ the issue identity, planning commit, status (`ready` or `needs-decision`), objec
 behavior/evidence, required changes, interfaces/types, affected files or subsystems, tests,
 acceptance criteria, risks, non-goals, and the exact Worker handoff.
 
-`status: ready` means every item in the template's five-item **Ready checklist** is satisfied. It
+`status: ready` means every item in the template's six-item **Ready checklist** is satisfied. It
 does not mean every file or line is prescribed: the Worker is expected to resolve routine
 implementation gaps using the shared test in `references/escalation-boundary.md`.
 
@@ -98,6 +130,7 @@ When status is `ready`, finish with exactly this copyable handoff shape:
 
 ```text
 Plan is built.
+Route: <develop → develop | hotfix → main (operator-marked) | hotfix → staging (operator-marked)>
 Handoff: /implement @.tmp/plan-<issue>.md
 ```
 

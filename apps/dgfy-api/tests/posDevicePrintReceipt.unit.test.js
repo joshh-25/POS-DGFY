@@ -327,6 +327,44 @@ describe('buildPrintPosShiftSummaryUseCase', () => {
             locationId: 1
         }, { transaction: undefined });
     });
+
+    it('prints an X-reading for an open shift without closing or mutating the shift', async () => {
+        const posRepository = buildPosRepositoryStub();
+        posRepository.getTerminalShiftById.mockResolvedValue({
+            ...await posRepository.getTerminalShiftById(),
+            status: 'open',
+            closed_at: null,
+            closing_cash_amount: null,
+            cash_variance_amount: null
+        });
+        const deviceDriver = {
+            id: 'lan_escpos_bridge',
+            printShiftSummary: jest.fn().mockResolvedValue({ ok: true, result: { copies: 1 } })
+        };
+        const useCase = buildPrintPosShiftSummaryUseCase({ posRepository, deviceDriver });
+
+        const result = await useCase({
+            shiftId: 9,
+            payload: { reading_type: 'x_reading', reason: 'x_reading_manual_print' },
+            user: { user_id: 1 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.reading_type).toBe('x_reading');
+        expect(deviceDriver.printShiftSummary).toHaveBeenCalledWith(expect.objectContaining({
+            reading_type: 'x_reading',
+            shift_summary: expect.objectContaining({
+                shift: expect.objectContaining({ status: 'open' })
+            })
+        }));
+        expect(posRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            changes: expect.objectContaining({
+                operation: 'print_x_reading',
+                reading_type: 'x_reading'
+            })
+        }));
+        expect(posRepository.getPostCloseVoidSummaryForShift).not.toHaveBeenCalled();
+    });
 });
 
 describe('buildPrintPosZReadingUseCase', () => {

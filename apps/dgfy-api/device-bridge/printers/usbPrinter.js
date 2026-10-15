@@ -176,12 +176,13 @@ export const printReceiptPayload = async ({ receipt, copies = 1 } = {}) => {
   });
 };
 
-export const printShiftSummaryPayload = async ({ shiftSummary, copies = 1 } = {}) => {
+export const printShiftSummaryPayload = async ({ shiftSummary, readingType = 'shift_summary', copies = 1 } = {}) => {
   if (!shiftSummary || typeof shiftSummary !== 'object' || Array.isArray(shiftSummary)) {
     throw new Error('shift summary payload is required');
   }
 
   const summaryLines = buildShiftSummaryLines(shiftSummary, {
+    readingType,
     width: runtimeConfig.printerWidth
   });
   const safeCopies = Math.max(1, Math.min(Number.parseInt(copies, 10) || 1, 3));

@@ -63,7 +63,10 @@ import {
 } from './businessAdminSettingsModel.js';
 import SettingsWorkspace from '../../../../../packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx';
 import { resolveAppAssetUrl } from '../../../../../packages/web-core/src/utils/assetUrl.js';
-import { publishBusinessAdminSettingsUpdated } from '../../../../../packages/web-core/src/features/pos/utils/businessAdminSettingsSync.js';
+import {
+    installCrossAppSettingsRefresh,
+    publishBusinessAdminSettingsUpdated
+} from '../../../../../packages/web-core/src/features/pos/utils/businessAdminSettingsSync.js';
 import { DGFY_COMPANY_SELECT_ROUTE } from '../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 import {
     isPosLocationContextForTenant,
@@ -3123,6 +3126,19 @@ export default function BusinessAdminPage() {
     }, []);
 
     useEffect(() => { loadBootstrap(); }, [loadBootstrap]);
+
+    useEffect(() => {
+        if (activeSection !== 'settings' || typeof window === 'undefined') return undefined;
+
+        // POS and OPIS use separate browser origins, so POS permission changes cannot
+        // arrive through same-origin storage or BroadcastChannel events. Revalidate the
+        // settings workspace when OPIS regains focus, while protecting unsaved edits.
+        return installCrossAppSettingsRefresh(() => {
+            if (settingsDirty) return undefined;
+            setReloadNonce((value) => value + 1);
+            return loadBootstrap();
+        });
+    }, [activeSection, loadBootstrap, settingsDirty]);
 
     const requestedItemId = useMemo(() => {
         if (activeSection !== 'orders') return '';

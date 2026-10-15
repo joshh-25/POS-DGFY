@@ -7,6 +7,7 @@ import {
     acceptDgfyInvitation,
     changeDgfyPassword,
     configureDgfyCompanyDayClosePin,
+    configureDgfyCompanyGlobalPin,
     completeDgfyLegacyLink,
     completeDgfyPasswordReset,
     createDgfyHandoff,
@@ -123,6 +124,7 @@ router.post('/account/companies/:tenant_id/transfer-ownership', authLimiter, aut
 router.post('/account/companies/:tenant_id/pos-device-challenge', authLimiter, authenticateDgfyAccount, validatePosTerminalDeviceChallenge, issueDgfyPosDeviceChallenge);
 router.post('/account/companies/:tenant_id/pos-session', authLimiter, authenticateDgfyAccount, startDgfyPosSession);
 router.put('/account/companies/:tenant_id/pos-day-close-pin', authenticateDgfyAccount, authLimiter, configureDgfyCompanyDayClosePin);
+router.put('/account/companies/:tenant_id/pos-global-pin', authenticateDgfyAccount, authLimiter, configureDgfyCompanyGlobalPin);
 router.get('/legacy-link/status', authenticate, getDgfyLegacyLinkStatus);
 router.post('/legacy-link/request-email-otp', authLimiter, authenticate, requestDgfyLegacyLinkEmailOtp);
 router.post('/legacy-link/complete', authLimiter, authenticate, completeDgfyLegacyLink);

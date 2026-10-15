@@ -1,19 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, ExternalLink, KeyRound, X } from 'lucide-react';
 
-export function BusinessPosLaunchModal({ company, intent = 'pos', dayCloseLoading = false, dayCloseStatus = null, dayCloseError = '', onClose, onOpenInNewTab, onConfigureDayClosePin, theme }) {
+export function BusinessPosLaunchModal({ company, intent = 'pos', globalPinLoading = false, globalPinStatus = null, globalPinError = '', onClose, onOpenInNewTab, onConfigureGlobalPin, theme }) {
   const stayButtonRef = useRef(null);
   const passwordInputRef = useRef(null);
   const onCloseRef = useRef(onClose);
   const companyName = String(company?.company_name || company?.name || 'this business').trim();
   const companyKey = String(company?.tenant_id || company?.tenantId || company?.id || companyName).trim();
   const modalOpen = Boolean(company);
-  const isDayClose = intent === 'day_close' || intent === 'day_close_pin';
-  const canConfigureDayClosePin = isDayClose && dayCloseStatus?.canCloseDay === true;
+  const isGlobalPin = intent === 'global_pin' || intent === 'global_pos_pin';
+  const isPinSetup = isGlobalPin;
+  const pinStatus = globalPinStatus;
+  const canConfigurePin = pinStatus?.canConfigureGlobalPin === true;
   const [form, setForm] = useState({ currentPassword: '', pin: '', confirmation: '' });
   const [visibleFields, setVisibleFields] = useState({ currentPassword: false, pin: false, confirmation: false });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -21,13 +24,13 @@ export function BusinessPosLaunchModal({ company, intent = 'pos', dayCloseLoadin
 
   useEffect(() => {
     if (!modalOpen) return undefined;
-    (canConfigureDayClosePin ? passwordInputRef : stayButtonRef).current?.focus();
+    (canConfigurePin && !successMessage ? passwordInputRef : stayButtonRef).current?.focus();
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onCloseRef.current?.();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canConfigureDayClosePin, companyKey, modalOpen]);
+  }, [canConfigurePin, companyKey, modalOpen, successMessage]);
 
   if (!company) return null;
 
@@ -60,24 +63,29 @@ export function BusinessPosLaunchModal({ company, intent = 'pos', dayCloseLoadin
     );
   };
 
-  const submitDayClosePin = async (event) => {
+  const submitPin = async (event) => {
     event.preventDefault();
     if (submitting) return;
     if (!form.currentPassword) return setError('Enter your current account password.');
-    if (!/^\d{4,12}$/.test(form.pin)) return setError('Enter a 4 to 12 digit Day Close PIN.');
-    if (form.pin !== form.confirmation) return setError('Day Close PIN confirmation does not match.');
-    if (typeof onConfigureDayClosePin !== 'function') return setError('Day Close PIN setup is unavailable right now.');
+    const pinLabel = 'PIN';
+    if (!/^\d{4,12}$/.test(form.pin)) return setError(`Enter a 4 to 12 digit ${pinLabel}.`);
+    if (form.pin !== form.confirmation) return setError(`${pinLabel} confirmation does not match.`);
+    if (typeof onConfigureGlobalPin !== 'function') return setError('PIN setup is unavailable right now.');
     setSubmitting(true);
     setError('');
     try {
-      await onConfigureDayClosePin({ currentPassword: form.currentPassword, pin: form.pin });
+      await onConfigureGlobalPin({ currentPassword: form.currentPassword, pin: form.pin });
+      setForm({ currentPassword: '', pin: '', confirmation: '' });
+      setVisibleFields({ currentPassword: false, pin: false, confirmation: false });
+      setSuccessMessage(`PIN saved. This is your global PIN for permitted POS actions in ${companyName}.`);
+      setSubmitting(false);
     } catch (submitError) {
-      setError(submitError?.payload?.message || submitError?.message || 'Failed to configure your Day Close PIN.');
+      setError(submitError?.payload?.message || submitError?.message || `Failed to configure your ${pinLabel}.`);
       setSubmitting(false);
     }
   };
 
-  const isDayClosePinFormValid = Boolean(form.currentPassword)
+  const isPinFormValid = Boolean(form.currentPassword)
     && /^\d{4,12}$/.test(form.pin)
     && form.pin === form.confirmation;
 
@@ -86,43 +94,50 @@ export function BusinessPosLaunchModal({ company, intent = 'pos', dayCloseLoadin
       <section
         role="dialog"
         aria-modal="true"
-        aria-labelledby={isDayClose ? 'dgfy-day-close-pin-title' : 'dgfy-pos-launch-title'}
-        aria-describedby={isDayClose ? 'dgfy-day-close-pin-description' : 'dgfy-pos-launch-description'}
+        aria-labelledby={isPinSetup ? 'dgfy-global-pos-pin-title' : 'dgfy-pos-launch-title'}
+        aria-describedby={isPinSetup ? 'dgfy-global-pos-pin-description' : 'dgfy-pos-launch-description'}
         style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 'min(460px, calc(100% - 32px))', borderRadius: 18, border: `1px solid ${theme.border}`, background: theme.surface, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', padding: 22 }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
           <div>
-            <h3 id={isDayClose ? 'dgfy-day-close-pin-title' : 'dgfy-pos-launch-title'} style={{ margin: 0, color: theme.text, fontSize: 20, fontWeight: 800 }}>
-              {isDayClose ? 'Day Close' : 'Open DGFY POS?'}
+            <h3 id={isPinSetup ? 'dgfy-global-pos-pin-title' : 'dgfy-pos-launch-title'} style={{ margin: 0, color: theme.text, fontSize: 20, fontWeight: 800 }}>
+              {isGlobalPin ? 'PIN' : 'Open DGFY POS?'}
             </h3>
-            <p id={isDayClose ? 'dgfy-day-close-pin-description' : 'dgfy-pos-launch-description'} style={{ margin: '8px 0 0', color: theme.muted, fontSize: 14, lineHeight: 1.55 }}>
-              {isDayClose
-                ? <>Check your Day Close access for <strong>{companyName}</strong>. Your PIN is private and is used only to confirm a Z-reading.</>
+            <p id={isPinSetup ? 'dgfy-global-pos-pin-description' : 'dgfy-pos-launch-description'} style={{ margin: '8px 0 0', color: theme.muted, fontSize: 14, lineHeight: 1.55 }}>
+              {isGlobalPin
+                ? <>Set the one PIN you use for permitted POS actions in <strong>{companyName}</strong>. This PIN is global for this company, while access is still controlled by your permissions.</>
                 : <>Open <strong>{companyName}</strong> in DGFY POS while keeping this Storefront page open.</>}
             </p>
           </div>
-          <button type="button" aria-label="Close POS launch dialog" onClick={onClose} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.muted, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <button type="button" aria-label={isGlobalPin ? 'Close PIN dialog' : 'Close POS launch dialog'} onClick={onClose} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.muted, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <X size={18} />
           </button>
         </div>
-        {isDayClose ? dayCloseLoading ? (
-          <p style={{ margin: '22px 0 0', color: theme.muted }}>Checking your Day Close access...</p>
-        ) : dayCloseError ? (
-          <><p role="alert" style={{ margin: '22px 0 0', color: '#B42318', fontSize: 13 }}>{dayCloseError}</p><div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}><button ref={stayButtonRef} type="button" onClick={onClose} style={{ minHeight: 42, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text, padding: '0 15px', fontSize: 14, fontWeight: 700 }}>Close</button></div></>
-        ) : !canConfigureDayClosePin ? (
-          <><p role="status" style={{ margin: '22px 0 0', borderRadius: 10, background: '#FFF7ED', color: '#9A3412', padding: 12, fontSize: 13, lineHeight: 1.5 }}>Your manager must enable <strong>Can close day and generate Z-reading</strong> before you can create a PIN.</p><div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}><button ref={stayButtonRef} type="button" onClick={onClose} style={{ minHeight: 42, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text, padding: '0 15px', fontSize: 14, fontWeight: 700 }}>Close</button></div></>
+        {isPinSetup ? globalPinLoading ? (
+          <p style={{ margin: '22px 0 0', color: theme.muted }}>Checking your PIN access...</p>
+        ) : globalPinError ? (
+          <><p role="alert" style={{ margin: '22px 0 0', color: '#B42318', fontSize: 13 }}>{globalPinError}</p><div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}><button ref={stayButtonRef} type="button" onClick={onClose} style={{ minHeight: 42, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text, padding: '0 15px', fontSize: 14, fontWeight: 700 }}>Close</button></div></>
+        ) : !canConfigurePin ? (
+          <><p role="status" style={{ margin: '22px 0 0', borderRadius: 10, background: '#FFF7ED', color: '#9A3412', padding: 12, fontSize: 13, lineHeight: 1.5 }}>Your account must have <strong>POS transaction access</strong> in this company before you can create a PIN.</p><div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}><button ref={stayButtonRef} type="button" onClick={onClose} style={{ minHeight: 42, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text, padding: '0 15px', fontSize: 14, fontWeight: 700 }}>Close</button></div></>
+        ) : successMessage ? (
+          <div style={{ display: 'grid', gap: 16, marginTop: 22 }}>
+            <p role="status" style={{ margin: 0, borderRadius: 10, background: '#ECFDF3', color: '#166534', padding: 14, fontSize: 13, lineHeight: 1.55, fontWeight: 700 }}>{successMessage}</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button ref={stayButtonRef} type="button" onClick={onClose} style={{ minHeight: 42, borderRadius: 10, border: 'none', background: theme.primary, color: '#fff', padding: '0 16px', fontSize: 14, fontWeight: 800 }}>Done</button>
+            </div>
+          </div>
         ) : (
-          <form onSubmit={submitDayClosePin} style={{ display: 'grid', gap: 14, marginTop: 22 }}>
-            <p role="status" style={{ margin: 0, borderRadius: 10, background: dayCloseStatus?.pinConfigured ? '#ECFDF3' : theme.infoBg, color: dayCloseStatus?.pinConfigured ? '#166534' : theme.primary, padding: 12, fontSize: 13 }}>{dayCloseStatus?.pinConfigured ? 'PIN ready. You can change your personal PIN here.' : 'You are authorized. Set your personal PIN to confirm Z-readings.'}</p>
+          <form onSubmit={submitPin} style={{ display: 'grid', gap: 14, marginTop: 22 }}>
+            <p role="status" style={{ margin: 0, borderRadius: 10, background: pinStatus?.pinConfigured ? '#ECFDF3' : theme.infoBg, color: pinStatus?.pinConfigured ? '#166534' : theme.primary, padding: 12, fontSize: 13 }}>{pinStatus?.pinConfigured ? 'PIN ready. You can change your PIN here.' : 'You are authorized. Set your PIN. It will be global for permitted POS actions in this company.'}</p>
             {renderSensitiveInput({ field: 'currentPassword', label: 'Current account password', autoComplete: 'current-password' })}
-            {renderSensitiveInput({ field: 'pin', label: 'New Day Close PIN', inputMode: 'numeric', autoComplete: 'new-password', placeholder: '4 to 12 digits' })}
+            {renderSensitiveInput({ field: 'pin', label: 'New PIN', inputMode: 'numeric', autoComplete: 'new-password', placeholder: '4 to 12 digits' })}
             {renderSensitiveInput({ field: 'confirmation', label: 'Confirm new PIN', inputMode: 'numeric', autoComplete: 'new-password', placeholder: 'Re-enter PIN' })}
             {error ? <p role="alert" style={{ margin: 0, color: '#B42318', fontSize: 13 }}>{error}</p> : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
               <button ref={stayButtonRef} type="button" onClick={onClose} disabled={submitting} style={{ minHeight: 42, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text, padding: '0 15px', fontSize: 14, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}>Cancel</button>
-              <button type="submit" disabled={submitting || !isDayClosePinFormValid} style={{ minHeight: 42, borderRadius: 10, border: 'none', background: theme.primary, color: '#fff', padding: '0 16px', fontSize: 14, fontWeight: 800, cursor: submitting || !isDayClosePinFormValid ? 'not-allowed' : 'pointer', opacity: submitting || !isDayClosePinFormValid ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <button type="submit" disabled={submitting || !isPinFormValid} style={{ minHeight: 42, borderRadius: 10, border: 'none', background: theme.primary, color: '#fff', padding: '0 16px', fontSize: 14, fontWeight: 800, cursor: submitting || !isPinFormValid ? 'not-allowed' : 'pointer', opacity: submitting || !isPinFormValid ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <KeyRound size={16} />
-                {submitting ? 'Saving...' : (dayCloseStatus?.pinConfigured ? 'Change my PIN' : 'Set my PIN')}
+                {submitting ? 'Saving...' : (pinStatus?.pinConfigured ? 'Change PIN' : 'Set PIN')}
               </button>
             </div>
           </form>

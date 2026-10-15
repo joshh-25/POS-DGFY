@@ -993,6 +993,7 @@ const cashDrawerEventSchema = Joi.object({
 
 const cashRefundPosTransactionSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    item_void_adjustment_id: Joi.number().integer().positive().allow(null).optional(),
     shift_id: Joi.number().integer().positive().required(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
@@ -1002,6 +1003,7 @@ const cashRefundPosTransactionSchema = Joi.object({
 
 const externalRefundPosTransactionSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    item_void_adjustment_id: Joi.number().integer().positive().allow(null).optional(),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
@@ -1013,6 +1015,7 @@ const externalRefundPosTransactionSchema = Joi.object({
 
 const providerRefundPosTransactionSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    item_void_adjustment_id: Joi.number().integer().positive().allow(null).optional(),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
@@ -1311,6 +1314,7 @@ const devicePrintShiftSummarySchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     copies: Joi.number().integer().min(1).max(3).default(1),
     paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
+    reading_type: Joi.string().valid('shift_summary', 'x_reading').default('shift_summary'),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     client_driver_id: Joi.string().trim().max(60).optional(),
@@ -1353,8 +1357,16 @@ const fiscalPrintEventSchema = Joi.object({
 
 const voidPosTransactionSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required(),
+    refund_passcode: Joi.string().trim().pattern(/^\d{4,12}$/).optional().messages({
+        'string.pattern.base': 'refund_passcode must contain 4 to 12 digits'
+    }),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
-    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    voided_lines: Joi.array().items(Joi.object({
+        line_id: Joi.number().integer().positive().required(),
+        quantity: Joi.number().positive().precision(4).required()
+    }).unknown(false)).min(1).max(100).optional()
 });
 
 const returnPosTransactionSchema = Joi.object({
