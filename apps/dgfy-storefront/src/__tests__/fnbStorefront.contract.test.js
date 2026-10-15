@@ -98,7 +98,7 @@ describe('Food & Beverage storefront contract', () => {
     const errorStateIndex = detailsSource.indexOf('if (!item && loadError)');
     const unavailableStateIndex = detailsSource.indexOf('if (!item) {');
 
-    expect(appSource).toContain('!isFnbDetailsSubpage && (');
+    expect(appSource).toContain('!isServicesTrackingPage && !isFnbDetailsSubpage && !isCategoriesSubpage && (');
     expect(appSource).toContain('<StorefrontLoadBoundary');
     expect(appSource).toContain('hasStoreProfile={Boolean(selectedStore)}');
     expect(appSource).toContain('(isFnbDetailsSubpage || loadingCatalog || catalogError || catalogPermitted)');

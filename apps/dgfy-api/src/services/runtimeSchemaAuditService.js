@@ -94,7 +94,7 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20261013000001-add-pos-item-void-state.cjs'
 ]);
 
-const REQUIRED_TABLE_COLUMNS = Object.freeze({
+export const REQUIRED_TABLE_COLUMNS = Object.freeze({
     tenants: [
         'id',
         'name',
@@ -565,7 +565,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     ]
 });
 
-const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
+export const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
     items: {
         category: {
             enumValues: ['raw_material', 'packaging', 'product', 'supplies', 'service']
@@ -621,7 +621,7 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
     }
 });
 
-const OPTIONAL_TABLE_COLUMNS = Object.freeze({
+export const OPTIONAL_TABLE_COLUMNS = Object.freeze({
     tenants: ['subscription_status', 'current_period_end', 'payment_method', 'rejection_reason']
 });
 
