@@ -2534,6 +2534,32 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_drawer_handoff_events_fk_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
+    // Created by migration 20261013000002-create-storefront-qr-codes.cjs. QR metadata is
+    // tenant-local and must be repaired for tenants restored or provisioned without the
+    // migration's fan-out table. Its foreign keys reference base tenant tables that are
+    // intentionally not part of this backfill registry.
+    storefront_qr_codes: Object.freeze({
+        sql: "CREATE TABLE `storefront_qr_codes` ("
+            + " `storefront_qr_code_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `public_token` VARCHAR(64) NOT NULL,"
+            + " `location_id` INT NOT NULL,"
+            + " `target_type` VARCHAR(20) NOT NULL DEFAULT 'catalog',"
+            + " `folder_id` INT NULL,"
+            + " `label` VARCHAR(120) NULL,"
+            + " `design` JSON NULL,"
+            + " `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `created_by` INT NULL,"
+            + " `updated_by` INT NULL,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`storefront_qr_code_id`),"
+            + " UNIQUE KEY `uq_storefront_qr_codes_public_token` (`public_token`),"
+            + " KEY `idx_storefront_qr_codes_location_active` (`location_id`,`is_active`),"
+            + " KEY `idx_storefront_qr_codes_target` (`location_id`,`target_type`,`folder_id`),"
+            + " CONSTRAINT `fk_storefront_qr_codes_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE CASCADE ON UPDATE RESTRICT,"
+            + " CONSTRAINT `fk_storefront_qr_codes_folder` FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // Phase 257 (#1318) — secondary item/category memberships. FKs reference
     // `items`/`item_folders`, both base tables never in this registry and
     // always present, so no ordering constraint on this entry. See ADR 0080.
@@ -3205,7 +3231,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-08.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-15.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

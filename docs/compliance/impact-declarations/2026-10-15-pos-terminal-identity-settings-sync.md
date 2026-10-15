@@ -4,7 +4,7 @@ owner: DGFY POS
 last_reviewed: 2026-10-15
 declaration_id: 2026-10-15-pos-terminal-identity-settings-sync
 classification: major
-surfaces: pos,terminal,settings
+surfaces: pos,terminal,settings,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.07
 verification_evidence: POS terminal contract suite (137 tests), POS profile settings behavior test (5 tests), POS API identity synchronization tests (15 tests), POS production build, architecture checks, changed API source lint, git diff --check, repository compliance gate

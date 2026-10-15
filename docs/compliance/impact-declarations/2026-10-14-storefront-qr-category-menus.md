@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-10-14
 declaration_id: 2026-10-14-storefront-qr-category-menus
 classification: major
-surfaces: api,storefront,opis,database,payments
+surfaces: api,storefront,opis,database,payments,pos,terminal,settings
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.14
 verification_evidence: API architecture guardrails and controller-boundary checks, tenant schema coverage check for the QR migration, focused QR API/OPIS/Storefront tests, POS and Storefront production builds
