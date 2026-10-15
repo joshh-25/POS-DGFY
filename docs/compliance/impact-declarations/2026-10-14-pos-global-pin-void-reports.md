@@ -11,8 +11,8 @@ verification_evidence: API architecture guardrails, tenant schema coverage for t
 rollback_note: Revert the global PIN, cashier authorization, duplicate-shift recovery guidance, item-level void/refund, X/Z report, printer, and item-void migration changes together with this declaration. Existing transaction and payment records remain authoritative.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-14T16:41:01+08:00
-preflight_request_ref: NOT-EXECUTED-2026-10-14-POS-GLOBAL-PIN-VOID-REPORTS
+preflight_run_at: 2026-10-15T06:30:21.674Z
+preflight_request_ref: PREFLIGHT-38692238771-2026-10-14-POS-GLOBAL-PIN-VOID-REPORTS
 ---
 
 # POS global PIN, duplicate-shift recovery, item void/refund, and X/Z report workflows

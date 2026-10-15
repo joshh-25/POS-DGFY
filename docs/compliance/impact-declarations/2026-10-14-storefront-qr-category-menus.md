@@ -11,8 +11,8 @@ verification_evidence: API architecture guardrails and controller-boundary check
 rollback_note: Revert the QR management API, migration, OPIS module, and Storefront category-route changes together. The migration is additive and rollback must preserve existing catalog categories and products.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-14T16:41:01+08:00
-preflight_request_ref: NOT-EXECUTED-2026-10-14-STOREFRONT-QR-CATEGORY-MENUS
+preflight_run_at: 2026-10-15T06:30:21.682Z
+preflight_request_ref: PREFLIGHT-38692238771-2026-10-14-STOREFRONT-QR-CATEGORY-MENUS
 ---
 
 # Storefront QR category menus

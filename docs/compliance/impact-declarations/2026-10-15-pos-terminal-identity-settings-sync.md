@@ -11,8 +11,8 @@ verification_evidence: POS terminal contract suite (137 tests), POS profile sett
 rollback_note: Revert the POS terminal identity selection, profile email and password synchronization, terminal lock/unlock diagnostics, the focused tests, the lint cleanup, and this declaration together; no database schema or migration is introduced, and existing tenant authorization, payment, fiscal, shift, and transaction boundaries remain authoritative.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-15T12:30:00+08:00
-preflight_request_ref: NOT-EXECUTED-2026-10-15-POS-IDENTITY-SETTINGS
+preflight_run_at: 2026-10-15T06:30:21.682Z
+preflight_request_ref: PREFLIGHT-38692238771-2026-10-15-POS-TERMINAL-IDENTITY-SETTINGS-SYNC
 ---
 
 # POS terminal identity and settings synchronization
