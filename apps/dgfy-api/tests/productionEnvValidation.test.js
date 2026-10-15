@@ -42,6 +42,98 @@ describe('production environment validation', () => {
     expect(result.errors).toEqual([]);
   });
 
+  it('warns without failing when a backend DSN is set and Sentry is not enabled', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123'
+      }
+    });
+
+    expect(result.shouldFail).toBe(false);
+    expect(result.warnings).toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
+  });
+
+  it('warns without failing when SENTRY_ENABLED=false and a backend DSN is set', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123',
+        SENTRY_ENABLED: 'false'
+      }
+    });
+
+    expect(result.shouldFail).toBe(false);
+    expect(result.warnings).toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
+  });
+
+  it('warns when Sentry is enabled with a backend DSN but no environment', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123',
+        SENTRY_ENABLED: 'true',
+        SENTRY_ENVIRONMENT: ''
+      }
+    });
+
+    expect(result.warnings).toContain(
+      'SENTRY_ENABLED=true but SENTRY_ENVIRONMENT is empty; events will be filed under "unknown"'
+    );
+  });
+
+  it('does not warn about Sentry when it is enabled with an environment and backend DSN', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123',
+        SENTRY_ENABLED: 'true',
+        SENTRY_ENVIRONMENT: 'PROD'
+      }
+    });
+
+    expect(result.warnings).not.toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
+    expect(result.warnings).not.toContain(
+      'SENTRY_ENABLED=true but SENTRY_ENVIRONMENT is empty; events will be filed under "unknown"'
+    );
+  });
+
+  it('does not warn about Sentry when no backend DSN is configured', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        SENTRY_ENABLED: 'true',
+        SENTRY_ENVIRONMENT: ''
+      }
+    });
+
+    expect(result.warnings).not.toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
+    expect(result.warnings).not.toContain(
+      'SENTRY_ENABLED=true but SENTRY_ENVIRONMENT is empty; events will be filed under "unknown"'
+    );
+  });
+
+  it('recognizes the legacy SENTRY_DSN name', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        SENTRY_DSN: 'https://public@example.ingest.sentry.io/123'
+      }
+    });
+
+    expect(result.warnings).toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
+  });
+
   it('requires Redis when the production DGLaundry partner integration is enabled', () => {
     const result = validateProductionEnv({
       env: {
