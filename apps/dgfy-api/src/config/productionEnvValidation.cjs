@@ -438,6 +438,20 @@ const validatePaymentConfig = (env, errors, warnings) => {
   }
 };
 
+const validateSentryConfig = (env, warnings) => {
+  const hasBackendDsn = hasValue(env, 'SENTRY_BACKEND_DSN') || hasValue(env, 'SENTRY_DSN');
+  if (!hasBackendDsn) return;
+
+  if (!isTruthy(env.SENTRY_ENABLED)) {
+    warnings.push('A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry');
+    return;
+  }
+
+  if (!hasValue(env, 'SENTRY_ENVIRONMENT')) {
+    warnings.push('SENTRY_ENABLED=true but SENTRY_ENVIRONMENT is empty; events will be filed under "unknown"');
+  }
+};
+
 const validateProductionEnv = ({ env = process.env, profile = null, strictProduction = false } = {}) => {
   const errors = [];
   const warnings = [];
@@ -483,6 +497,7 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
   validateRateLimits(env, errors);
   validateProfilePolicy({ profile: normalizedProfile, env, errors });
   validatePaymentConfig(env, errors, warnings);
+  validateSentryConfig(env, warnings);
   validateDglaundryProviderConfig(env, errors);
 
   if (normalizedNodeEnv && normalizedNodeEnv !== 'production') {
