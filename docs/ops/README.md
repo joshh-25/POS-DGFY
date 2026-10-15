@@ -21,6 +21,8 @@ Key runbooks:
 13. `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` — planned production secrets
     cutover (ADR 0060), not yet executed; see that ADR for the decision and
     this runbook for the phased plan + rollback.
+14. `docs/ops/LOCAL_STAGING_RECOVERY_RUNBOOK.md` — temporary local Lima clone
+    and Cloudflare Tunnel fallback for staging outages.
 
 Production deploys only on a manual dispatch of `deploy-main.yml` (renamed
 from `build-main.yml`, which lost its `push: [main]` trigger 2026-08-14,

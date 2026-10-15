@@ -218,6 +218,12 @@
       "topic": "third_party_partner_contract",
       "expected_status": "reference",
       "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/ops/LOCAL_STAGING_RECOVERY_RUNBOOK.md",
+      "topic": "local_staging_recovery",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }
