@@ -12,8 +12,10 @@ describe('storefront business registration approval handoff', () => {
     const source = fs.readFileSync(sourcePath, 'utf8');
 
     expect(source).toContain("toast.success('Registration submitted for approval.')");
-    expect(source).toContain('const applicationId = registrationData.application_id;');
-    expect(source).toContain('buildBusinessRegistrationSubmissionPath(applicationId)');
+    expect(source).toContain('if (registrationData.registration_id)');
+    expect(source).toContain('buildBusinessRegistrationSubmissionPath(registrationData.registration_id)');
+    expect(source).toContain('if (registrationData.application_id)');
+    expect(source).toContain('buildBusinessRegistrationSubmissionPath(registrationData.application_id)');
     expect(source).not.toContain('window.location.assign(resolveSkupervisorUrl(`/register-company/status/${registrationData.application_id}`))');
     expect(source).not.toContain('Proceed to POS');
     expect(source).not.toContain('startDgfyTenantSession');
