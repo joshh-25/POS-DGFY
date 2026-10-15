@@ -8,6 +8,7 @@ import {
   isCurrentStorefrontTarget
 } from '../routing/storefrontNavigation.js';
 import {
+  readStoreLocationId,
   STORE_ORDER_SUBPAGE,
   STORE_TRACK_SUBPAGE
 } from '../routing/storefrontRouting.js';
@@ -46,7 +47,8 @@ export function useStorefrontOrderNavigation({
   setSelectedTrackingPin,
   setSimpleOrderStep,
   setTrackingPinInput,
-  trackingPinInput
+  trackingPinInput,
+  qrToken = ''
 }) {
   const goStoreOrderForDiscovery = useCallback((slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
@@ -68,15 +70,17 @@ export function useStorefrontOrderNavigation({
   const goStoreOrderPage = useCallback(({ initialTab } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
+    const resolvedLocationId = selectedLocationId ?? readStoreLocationId();
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized)
       .filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const resolvedInitialTab = initialTab || 'checkout';
-    const target = buildOrderTarget(normalized, { locationId: selectedLocationId });
+    const target = buildOrderTarget(normalized, { locationId: resolvedLocationId, qrToken });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
         storeSubpage: STORE_ORDER_SUBPAGE,
-        locationId: selectedLocationId
+        locationId: resolvedLocationId,
+        qrToken
       }), '', target);
     }
     setRouteSlug(normalized);
@@ -95,18 +99,20 @@ export function useStorefrontOrderNavigation({
     setSimpleOrderStep(checkoutResult ? 4 : 1);
     setCheckoutTab(resolvedInitialTab);
     setIsCheckoutOpen(false);
-  }, [checkoutResult, routeSlug, selectedLocationId, selectedStore?.slug, selectedTrackingPin, setCheckoutTab, setFnbOrderStep, setIsCheckoutOpen, setPendingOrderInitialTab, setRouteItemId, setRouteServiceItemId, setRouteSlug, setRouteSubpage, setSelectedTrackingPin, setSimpleOrderStep, setTrackingPinInput, trackingPinInput]);
+  }, [checkoutResult, qrToken, routeSlug, selectedLocationId, selectedStore?.slug, selectedTrackingPin, setCheckoutTab, setFnbOrderStep, setIsCheckoutOpen, setPendingOrderInitialTab, setRouteItemId, setRouteServiceItemId, setRouteSlug, setRouteSubpage, setSelectedTrackingPin, setSimpleOrderStep, setTrackingPinInput, trackingPinInput]);
 
   const goStoreTrackPage = useCallback(({ pin = '', storeSlug = '', serviceHandoff = '' } = {}) => {
     const normalized = toSlug(storeSlug || selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
+    const resolvedLocationId = selectedLocationId ?? readStoreLocationId();
     const normalizedPin = String(pin || selectedTrackingPin || trackingPinInput || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
-    const target = buildTrackTarget(normalized, normalizedPin, { locationId: selectedLocationId });
+    const target = buildTrackTarget(normalized, normalizedPin, { locationId: resolvedLocationId, qrToken });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
         storeSubpage: STORE_TRACK_SUBPAGE,
-        locationId: selectedLocationId
+        locationId: resolvedLocationId,
+        qrToken
       }), '', target);
     }
     setRouteSlug(normalized);
@@ -124,7 +130,7 @@ export function useStorefrontOrderNavigation({
     setSimpleOrderStep(checkoutResult ? 4 : 1);
     setCheckoutTab('track');
     setIsCheckoutOpen(false);
-  }, [checkoutResult, isServicesMode, routeSlug, selectedLocationId, selectedStore?.slug, selectedTrackingPin, setCheckoutTab, setFnbOrderStep, setIsCheckoutOpen, setPendingOrderInitialTab, setRouteItemId, setRouteServiceItemId, setRouteSlug, setRouteSubpage, setSelectedTrackingPin, setSimpleOrderStep, setTrackingPinInput, trackingPinInput]);
+  }, [checkoutResult, isServicesMode, qrToken, routeSlug, selectedLocationId, selectedStore?.slug, selectedTrackingPin, setCheckoutTab, setFnbOrderStep, setIsCheckoutOpen, setPendingOrderInitialTab, setRouteItemId, setRouteServiceItemId, setRouteSlug, setRouteSubpage, setSelectedTrackingPin, setSimpleOrderStep, setTrackingPinInput, trackingPinInput]);
 
   return { goStoreOrderForDiscovery, goStoreOrderPage, goStoreTrackPage };
 }

@@ -136,6 +136,30 @@ describe('usePosHistoryVoidWorkflow', () => {
         expect(result.current.voidingTransactionId).toBe(null);
     });
 
+    it('sends the refund passcode with a selected item void', async () => {
+        const { result } = renderHistory({
+            canVoidTransactions: true,
+            isAdminOperator: false,
+            activeShiftId: 42
+        });
+
+        await act(async () => {
+            await result.current.handleVoidHistoryTransaction(
+                { pos_transaction_id: 7 },
+                'Customer refund approved',
+                [{ line_id: 12, quantity: 1 }],
+                '2468'
+            );
+        });
+
+        expect(voidPosTransaction).toHaveBeenCalledWith(7, expect.objectContaining({
+            reason: 'Customer refund approved',
+            refund_passcode: '2468',
+            voided_lines: [{ line_id: 12, quantity: 1 }],
+            shift_id: 42
+        }));
+    });
+
     it('refreshes the parent financial context after a successful void', async () => {
         const onFinancialMutationCompleted = vi.fn().mockResolvedValue(undefined);
         const { result } = renderHistory({
@@ -338,6 +362,7 @@ describe('usePosHistoryVoidWorkflow', () => {
             terminal_id: 'COUNTER-01',
             idempotency_key: expect.stringMatching(/^pos-refund-7-/)
         }));
+        expect(result.current.refundWorkflowTransaction).toBe(null);
     });
 
     it('records external reversal evidence without inventing an admin shift', async () => {

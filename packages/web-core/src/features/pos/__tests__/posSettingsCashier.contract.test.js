@@ -39,6 +39,7 @@ const directToggleSource = operationsDefaultsSource.slice(
   operationsDefaultsSource.indexOf('export default')
 );
 const operationsSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
+const itemsWorkspaceSource = fs.readFileSync(path.resolve(__dirname, '../components/PosItemsWorkspace.jsx'), 'utf8');
 const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/TerminalPage.jsx'), 'utf8');
 const sidebarSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx'), 'utf8');
 const tenantSetupModalSource = fs.readFileSync(path.resolve(__dirname, '../components/PosTenantSetupModal.jsx'), 'utf8');
@@ -61,6 +62,15 @@ const confirmActionDialogSource = fs.readFileSync(path.resolve(__dirname, '../..
 const attendanceCardSource = fs.readFileSync(path.resolve(__dirname, '../components/PosCashierAttendanceSettingsCard.jsx'), 'utf8');
 
 describe('regular POS Setup cashier management contract', () => {
+  it('refreshes canonical permissions after OPIS changes the shared account', () => {
+    expect(terminalPageSource).toContain('subscribeToBusinessAdminSettingsUpdates');
+    expect(terminalPageSource).toContain('shouldRefreshBusinessAdminSettingsUpdate');
+    expect(terminalPageSource).toContain('installCrossAppSettingsRefresh');
+    expect(terminalPageSource).toContain('setSettingsRefreshKey((previous) => previous + 1)');
+    expect(workspaceSource).toContain('}, [loadCashierAccounts, settingsRefreshKey]);');
+    expect(workspaceSource).toContain('}, [loadDayCloseOperators, settingsRefreshKey]);');
+  });
+
   it('renders DGFY cashier invitation management inside terminal settings', () => {
     expect(workspaceSource).toContain('Invite DGFY accounts and assign one or more store locations first.');
     expect(workspaceSource).toContain('getCashiersForLocation(selectedTerminal.location_id)');
@@ -250,14 +260,14 @@ describe('regular POS Setup cashier management contract', () => {
   it('keeps Settings modal fields mobile-safe and uses the DGFY primary color', () => {
     expect(terminalModalSource).toContain('text-[13px] font-extrabold text-[#0F172A] sm:text-[14px]');
     expect(closeoutModalSource).toContain('text-[16px] font-extrabold text-[#0F172A]');
-    expect(workspaceSource).toContain('id="pos-approval-pin"');
+    expect(workspaceSource).toContain('id="pos-cashier-pin"');
     expect(workspaceSource).toContain('className="mt-1 text-[16px] sm:text-[14px]"');
     expect(invitationModalSource).toContain('className="pl-9 text-[16px] sm:text-[14px]"');
     expect(invitationModalSource).toContain('className="text-[16px] sm:text-[14px]"');
     expect(confirmActionDialogSource).toContain('text-[16px] font-normal');
     expect(invitationModalSource).toContain('bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73]');
     expect(workspaceSource).toContain('className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"');
-    expect(confirmActionDialogSource).toContain("className={destructive ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-600' : confirmClassName}");
+    expect(confirmActionDialogSource).toContain("confirmClassName || (destructive ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-600' : '')");
     expect(workspaceSource).toContain('confirmClassName="min-h-9 min-w-0 flex-1 bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] focus-visible:ring-[#1A4E8D] sm:flex-none sm:text-[14px]"');
     expect(invitationModalSource).not.toContain('bg-teal-600 hover:bg-teal-700');
     expect(workspaceSource).not.toContain('bg-teal-600 hover:bg-teal-700');
@@ -387,7 +397,8 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0');
     expect(workspaceSource).toContain('min-[1024px]:flex-1 min-[1024px]:justify-center');
     expect(workspaceSource).toContain('items-end gap-3 px-1');
-    expect(workspaceSource).toContain('px-2 py-3 text-[14px] font-bold whitespace-nowrap');
+    expect(workspaceSource).toContain("mobileGridClass ? 'w-full min-w-0 justify-center whitespace-normal px-2 text-center' : 'shrink-0 px-2 whitespace-nowrap'");
+    expect(workspaceSource).toContain("'py-3 text-[14px] font-bold text-[#0F172A] transition-colors'");
   });
 
   it('centers interior settings tabs when the mobile tab rail overflows', () => {
@@ -440,6 +451,26 @@ describe('regular POS Setup cashier management contract', () => {
     expect(profilePaneSource).not.toContain('Shared across IMS and POS.');
     expect(profilePaneSource).not.toContain('Phone number stays shared across the same tenant account used by IMS and POS.');
     expect(profilePaneSource).not.toContain('<Info');
+  });
+
+  it('keeps email verification scoped to actual email changes', () => {
+    expect(workspaceSource).toContain('requestEmailChangeOtp({ email })');
+    expect(workspaceSource).toContain('const emailChanged = normalizeProfileEmail(savedProfileForm.email) !== normalizeProfileEmail(baselineEmail);');
+    expect(workspaceSource).toContain('if (emailChanged) {');
+    expect(workspaceSource).toContain('profileUpdate.email_otp_code = String(emailOtpCode || \'\').trim();');
+    expect(profilePaneSource).toContain('Email verification code');
+    expect(profilePaneSource).toContain('onSave({ emailOtpCode: emailChanged ? emailOtpCode : \'\' })');
+    expect(profilePaneSource).toContain('onChange={(event) => setEmailOtpCode(event.target.value.replace(/\\D/g, \'\').slice(0, 6))}');
+  });
+
+  it('keeps password changes inside the authenticated profile flow', () => {
+    expect(workspaceSource).toContain('import {\n  getAllUsers,\n  changePassword,');
+    expect(workspaceSource).toContain('await changePassword({ currentPassword, newPassword });');
+    expect(workspaceSource).toContain('onChangePassword={handlePasswordChange}');
+    expect(profilePaneSource).toContain('Current password');
+    expect(profilePaneSource).toContain('Confirm new password');
+    expect(profilePaneSource).toContain('onChangePassword({ currentPassword, newPassword })');
+    expect(profilePaneSource).toContain('newPassword.length < 8');
   });
 
   it('keeps the mobile profile editor compact with inline actions', () => {
@@ -497,7 +528,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(cashierTableSource).toContain('inline-flex min-w-0 items-center gap-2');
     expect(cashierTableSource).toContain('inline-grid max-w-full grid-cols-[minmax(0,max-content)_auto] items-center gap-x-2 gap-y-2');
     expect(cashierTableSource).toContain('flex flex-col items-start gap-2');
-    expect(cashierTableSource).toContain('block text-[11px] font-medium leading-4 text-slate-400">Enable access to set PIN</span>');
+    expect(cashierTableSource).toContain('block text-[11px] font-medium leading-4 text-slate-400">Enable access to use global PIN</span>');
     expect(cashierTableSource).toContain('layout="inline"');
     expect(cashierTableSource).toContain('layout="grid-cell"');
     expect(cashierTableSource).toContain('inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform');
@@ -563,10 +594,11 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalSectionSource).toContain('block text-[14px] font-extrabold leading-5 text-[#0F172A]');
   });
 
-  it('emphasizes cashier Set PIN with a solid teal action style', () => {
-    expect(cashierTableSource).toContain('variant="default"');
-    expect(cashierTableSource).toContain('border border-teal-600 bg-teal-600 px-2 text-[10px] font-extrabold text-white');
-    expect(cashierTableSource).toContain('hover:bg-teal-700 hover:text-white');
+  it('exposes one global PIN action for each cashier', () => {
+    expect(cashierTableSource).toContain('Set global PIN');
+    expect(cashierTableSource).toContain('Reset global PIN');
+    expect(cashierTableSource).toContain('data-testid={`pos-cashier-pin-${cashier.user_id}`}');
+    expect(cashierTableSource).toContain('className="mt-2 h-7 rounded-md px-2 text-[10px] font-extrabold text-blue-700"');
   });
 
   it('keeps cashier POS void authorization inside POS Settings and preserves other permissions', () => {
@@ -881,7 +913,8 @@ describe('regular POS Setup cashier management contract', () => {
     expect(storefrontPaneSource).toContain("handleStorefrontGroupSave('basic', { ...storefrontForm, storefrontHours: nextHours })");
     expect(storefrontPaneSource).toContain('showHeader={!inlinePreview}');
     expect(storefrontHoursSchedulerSource).toContain('showHeader = true');
-    expect(storefrontHoursSchedulerSource).toContain('mt-3 grid gap-4 min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.5fr)_auto] min-[1200px]:items-end');
+    expect(storefrontHoursSchedulerSource).toContain('className={`mt-3 grid gap-4 ${registrationScheduleEditor ?');
+    expect(storefrontHoursSchedulerSource).toContain("'min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.5fr)_auto] min-[1200px]:items-end'");
     expect(storefrontHoursSchedulerSource).toContain('grid min-w-0 grid-cols-2 gap-2 sm:gap-3');
     expect(storefrontHoursSchedulerSource).toContain('Add Schedule Set');
     expect(storefrontHoursSchedulerSource).toContain('aria-label={`Edit ${formatScheduleDayLabel(set.dayKeys)} schedule`}');
@@ -921,6 +954,6 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalPageSource).toContain("const canEditItems = hasPermission('items:edit');");
     expect(terminalPageSource).not.toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
     expect(terminalPageSource).toContain("const canDeleteItems = !isCashierRole && hasPermission('items:delete');");
-    expect(operationsSource).toContain('{canDeleteItems && (');
+    expect(itemsWorkspaceSource).toContain('{canDeleteItems && (');
   });
 });

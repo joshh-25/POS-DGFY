@@ -275,6 +275,15 @@ export const fetchPosSetupCashiers = async () => {
     return response.data?.data?.cashiers || [];
 };
 
+export const updatePosCashierPin = async (userId, { pin, locationId = null } = {}) => {
+    const response = await api.post('/pos/operator/pin/reset', {
+        user_id: userId,
+        pin,
+        ...(locationId ? { location_id: locationId } : {})
+    });
+    return response.data?.data;
+};
+
 export const fetchPosDeviceStatus = async () => {
     const response = await api.get('/pos/device/status', {
         // Device status is a background capability probe. In tablet/APK deployments
@@ -470,6 +479,7 @@ const shouldRetryClientResultAudit = (error) => {
 // response cannot create duplicate audit rows.
 export const reportPosDeviceClientResult = async ({
     operation,
+    readingType,
     transactionId,
     shiftId,
     businessDate,
@@ -499,6 +509,7 @@ export const reportPosDeviceClientResult = async ({
             return printPosShiftSummary(shiftId, {
                 idempotency_key: idempotencyKey,
                 terminal_id: terminalId || undefined,
+                reading_type: readingType || undefined,
                 reason: reason || 'client_driver_report',
                 client_driver_id: driverId,
                 client_result: result

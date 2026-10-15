@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { installPosFocusSettingsRefresh } from '../businessAdminSettingsSync.js';
+import {
+  installCrossAppSettingsRefresh,
+  installPosFocusSettingsRefresh
+} from '../businessAdminSettingsSync.js';
 
 const createFakeWindow = () => {
   const listeners = new Map();
@@ -27,11 +30,11 @@ const createFakeWindow = () => {
   };
 };
 
-describe('installPosFocusSettingsRefresh (issue #2052)', () => {
+describe('installCrossAppSettingsRefresh (issue #2052)', () => {
   it('refreshes on focus and on becoming visible', () => {
     const windowObj = createFakeWindow();
     const refresh = vi.fn(() => Promise.resolve());
-    installPosFocusSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
+    installCrossAppSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
 
     windowObj.emit('focus');
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -47,7 +50,7 @@ describe('installPosFocusSettingsRefresh (issue #2052)', () => {
     const windowObj = createFakeWindow();
     windowObj.document.visibilityState = 'hidden';
     const refresh = vi.fn(() => Promise.resolve());
-    installPosFocusSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
+    installCrossAppSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
 
     windowObj.emit('focus');
     expect(refresh).not.toHaveBeenCalled();
@@ -56,7 +59,7 @@ describe('installPosFocusSettingsRefresh (issue #2052)', () => {
   it('coalesces duplicate triggers behind the minimum interval', () => {
     const windowObj = createFakeWindow();
     const refresh = vi.fn(() => Promise.resolve());
-    installPosFocusSettingsRefresh(refresh, windowObj, { minIntervalMs: 60_000 });
+    installCrossAppSettingsRefresh(refresh, windowObj, { minIntervalMs: 60_000 });
 
     windowObj.emit('focus');
     windowObj.emit('focus');
@@ -67,7 +70,7 @@ describe('installPosFocusSettingsRefresh (issue #2052)', () => {
   it('refreshes on reconnect only after an offline transition', () => {
     const windowObj = createFakeWindow();
     const refresh = vi.fn(() => Promise.resolve());
-    installPosFocusSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
+    installCrossAppSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
 
     windowObj.emit('online');
     expect(refresh).not.toHaveBeenCalled();
@@ -85,7 +88,7 @@ describe('installPosFocusSettingsRefresh (issue #2052)', () => {
   it('survives refresh failures and unsubscribes cleanly', async () => {
     const windowObj = createFakeWindow();
     const refresh = vi.fn(() => Promise.reject(new Error('offline snapshot')));
-    const uninstall = installPosFocusSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
+    const uninstall = installCrossAppSettingsRefresh(refresh, windowObj, { minIntervalMs: 0 });
 
     expect(() => windowObj.emit('focus')).not.toThrow();
     await Promise.resolve();
@@ -100,7 +103,11 @@ describe('installPosFocusSettingsRefresh (issue #2052)', () => {
   });
 
   it('is a no-op without a window or refresh callback', () => {
-    expect(installPosFocusSettingsRefresh(null, createFakeWindow())).toBeTypeOf('function');
-    expect(installPosFocusSettingsRefresh(vi.fn(), null)).toBeTypeOf('function');
+    expect(installCrossAppSettingsRefresh(null, createFakeWindow())).toBeTypeOf('function');
+    expect(installCrossAppSettingsRefresh(vi.fn(), null)).toBeTypeOf('function');
+  });
+
+  it('keeps the legacy POS helper name as a compatibility alias', () => {
+    expect(installPosFocusSettingsRefresh).toBe(installCrossAppSettingsRefresh);
   });
 });

@@ -109,6 +109,36 @@ describe('TerminalLockDrawer DGFY access UI', () => {
     expect(onDayCloseSubmit).toHaveBeenCalledTimes(1);
   });
 
+  it('hides the stale email lookup while the authenticated company selector is active', () => {
+    render(
+      <TerminalLockDrawer
+        drawerOpen
+        formData={{ ...baseFormData, email: 'admin@example.test' }}
+        setFormData={vi.fn()}
+        dgfyPosState={{
+          authenticated: true,
+          companies: [
+            { tenant_id: 'tenant-1', company_name: 'Masu Cafe' },
+            { tenant_id: 'tenant-2', company_name: 'Second Company' }
+          ]
+        }}
+        emailCompanyLookup={{
+          status: 'single',
+          email: 'admin@example.test',
+          companies: [{ company_name: 'Masu Cafe' }]
+        }}
+        submitting={false}
+        onSubmit={vi.fn()}
+        onLegacySubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Masu Cafe')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Company' }));
+    expect(screen.getByRole('option', { name: 'Masu Cafe' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Second Company' })).toBeTruthy();
+  });
+
   it('does not render a duplicate inline sign-in failure block', () => {
     render(
       <TerminalLockDrawer

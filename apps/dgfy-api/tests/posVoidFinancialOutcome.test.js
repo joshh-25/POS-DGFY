@@ -30,6 +30,25 @@ describe('POS void financial outcome classification', () => {
         }));
     });
 
+    it('classifies serialized cash breakdowns with zero-value template rows as cash', () => {
+        expect(resolvePosVoidFinancialOutcome({
+            payment_status: 'paid',
+            payment_type: null,
+            payment_breakdown: JSON.stringify([
+                { payment_type: 'cash', count: 1, amount: 90 },
+                { payment_type: 'gcash', count: 0, amount: 0 },
+                { payment_type: 'maya', count: 0, amount: 0 },
+                { payment_type: 'card', count: 0, amount: 0 }
+            ]),
+            total_amount: 90
+        })).toEqual(expect.objectContaining({
+            refund_method: 'cash',
+            tender_ownership: 'merchant_owned',
+            next_action: 'record_cash_refund_with_cash_drawer_event',
+            reason_code: 'CASH_REFUND_REQUIRED'
+        }));
+    });
+
     it('requires external reversal evidence for merchant-owned digital tender', () => {
         expect(resolvePosVoidFinancialOutcome({
             payment_status: 'paid',

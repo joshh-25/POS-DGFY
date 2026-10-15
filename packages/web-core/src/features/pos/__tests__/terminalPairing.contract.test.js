@@ -56,7 +56,7 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain('takeOverPosRegister({');
     expect(terminalPageSource).toContain('user_id: cashierUser.user_id');
     expect(terminalPageDialogLayerSource).toContain('Another cashier taking over?');
-    expect(terminalPageDialogLayerSource).toContain('POS Cashier PIN <span');
+    expect(terminalPageDialogLayerSource).toContain('Global POS PIN <span');
     expect(terminalPageDialogLayerSource).toContain('(different cashier only)');
     expect(terminalPageDialogLayerSource).toContain('The shift owner resumes automatically.');
     expect(terminalPageDialogLayerSource).toContain('Continue to POS');
@@ -73,6 +73,9 @@ describe('POS terminal pairing contract', () => {
 
     expect(failurePanel).toContain('Could not open shift');
     expect(failurePanel).toContain('{unlockFailure.message}');
+    expect(failurePanel).toContain('Resume Existing Shift');
+    expect(failurePanel).toContain('X-reading is read-only');
+    expect(failurePanel).toContain('Z-reading becomes available after the shift is closed');
     expect(failurePanel).not.toContain('metaParts');
     expect(failurePanel).not.toContain('requestPath');
     expect(failurePanel).not.toContain('status');

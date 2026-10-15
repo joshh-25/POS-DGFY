@@ -3155,6 +3155,26 @@ export const buildListStoreCatalogUseCase = ({
                 );
             }
 
+            const qrToken = String(query.qr_token || '').trim();
+            let qrTarget = null;
+            if (qrToken) {
+                const qrResolution = await storeRepository.resolvePublicStorefrontQrCode({
+                    token: qrToken,
+                    requestedLocationId
+                });
+                if (qrResolution.status !== 'resolved') {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        qrResolution.reason_code === 'QR_CODE_BRANCH_MISMATCH'
+                            ? 'This QR code is only available for its assigned branch.'
+                            : 'This QR code is inactive or unavailable.',
+                        { statusCode: 404, details: { reason_code: qrResolution.reason_code || 'QR_CODE_NOT_FOUND' } }
+                    );
+                }
+                qrTarget = qrResolution.qr_code;
+            }
+            const effectiveLocationId = qrTarget?.location_id || requestedLocationId;
+
             const [accessPolicy, paymentCapabilities, paymentMode] = await Promise.all([
                 resolveStorefrontAccessPolicy({ storeRepository }),
                 resolveStorefrontPaymentCapabilities({
@@ -3218,7 +3238,8 @@ export const buildListStoreCatalogUseCase = ({
                 storeRepository.listStoreCatalog({
                     search: query.search,
                     limit: query.limit,
-                    location_id: requestedLocationId
+                    location_id: effectiveLocationId,
+                    folder_id: qrTarget?.target_type === 'category' ? qrTarget.folder_id : null
                 }),
                 attributionEnrollmentId
                     ? resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
@@ -3244,7 +3265,7 @@ export const buildListStoreCatalogUseCase = ({
             const serializedItems = (Array.isArray(items) ? items : [])
                 .filter((item) => hasExplicitSalePrice(item))
                 .map((item) => (
-                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, requestedLocationId, voucherDisplay)
+                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, effectiveLocationId, voucherDisplay)
                 ));
 
             return ok({
@@ -3259,7 +3280,16 @@ export const buildListStoreCatalogUseCase = ({
                 workflow_mode: workflowMode,
                 enabled_capabilities: enabledCapabilities,
                 payment_capabilities: paymentCapabilitiesWithCash,
-                payment_mode: paymentMode
+                payment_mode: paymentMode,
+                qr_target: qrTarget
+                    ? {
+                        target_type: qrTarget.target_type,
+                        label: qrTarget.label,
+                        location_id: qrTarget.location_id,
+                        folder_id: qrTarget.folder_id,
+                        folder_name: qrTarget.folder?.name || null
+                    }
+                    : null
             });
         } catch (error) {
             if (error instanceof DomainError) {
@@ -3320,6 +3350,44 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                     barcode: null,
                     cart_allowed: false,
                     checkout_allowed: false
+                });
+            }
+
+            if (code.startsWith('DGFYQR_')) {
+                const qrResolution = await storeRepository.resolvePublicStorefrontQrCode({
+                    token: code,
+                    requestedLocationId
+                });
+                if (qrResolution.status !== 'resolved') {
+                    return ok({
+                        status: qrResolution.status,
+                        kind: 'storefront_qr',
+                        reason_code: qrResolution.reason_code || 'QR_CODE_NOT_RESOLVED',
+                        access_policy: accessPolicy,
+                        qr_target: null,
+                        item: null,
+                        barcode: { code, normalized_code: code, source: 'storefront_qr', scope: 'catalog', symbology: 'qr' },
+                        cart_allowed: false,
+                        checkout_allowed: false
+                    });
+                }
+                const qrCode = qrResolution.qr_code;
+                return ok({
+                    status: 'resolved',
+                    kind: 'storefront_qr',
+                    reason_code: null,
+                    access_policy: accessPolicy,
+                    qr_target: {
+                        target_type: qrCode.target_type,
+                        label: qrCode.label,
+                        location_id: qrCode.location_id,
+                        folder_id: qrCode.folder_id,
+                        folder_name: qrCode.folder?.name || null
+                    },
+                    item: null,
+                    barcode: { code, normalized_code: code, source: 'storefront_qr', scope: 'catalog', symbology: 'qr' },
+                    cart_allowed: accessPolicy?.access_capabilities?.cart === true,
+                    checkout_allowed: accessPolicy?.access_capabilities?.checkout === true
                 });
             }
 

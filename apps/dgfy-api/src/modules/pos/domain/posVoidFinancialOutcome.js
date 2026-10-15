@@ -3,8 +3,21 @@ const EXISTING_REFUND_PAYMENT_STATUSES = new Set(['refund_pending', 'partial_ref
 
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
+const parsePaymentBreakdown = (value) => {
+    let parsed = value;
+    if (typeof parsed === 'string') {
+        try {
+            parsed = JSON.parse(parsed);
+        } catch {
+            parsed = [];
+        }
+    }
+    return Array.isArray(parsed) ? parsed : [];
+};
+
 const normalizePaymentTypes = (paymentBreakdown = []) => [...new Set(
-    (Array.isArray(paymentBreakdown) ? paymentBreakdown : [])
+    parsePaymentBreakdown(paymentBreakdown)
+        .filter((entry) => Number(entry?.amount) > 0)
         .map((entry) => normalize(entry?.payment_type))
         .filter(Boolean)
 )];
@@ -31,10 +44,11 @@ const buildOutcome = ({
 
 export const resolvePosVoidFinancialOutcome = (transaction = {}) => {
     const paymentStatus = normalize(transaction.payment_status);
-    const paymentType = normalize(transaction.payment_type);
+    const primaryPaymentType = normalize(transaction.payment_type);
     const paymentProvider = normalize(transaction.payment_provider);
     const amount = Math.round((Number(transaction.total_amount) || 0) * 10000) / 10000;
     const paymentTypes = normalizePaymentTypes(transaction.payment_breakdown);
+    const paymentType = paymentTypes.length === 1 ? paymentTypes[0] : primaryPaymentType;
     const isSplitTender = paymentTypes.length > 1;
 
     if (UNPAID_PAYMENT_STATUSES.has(paymentStatus)) {
@@ -57,7 +71,7 @@ export const resolvePosVoidFinancialOutcome = (transaction = {}) => {
         });
     }
 
-    if (paymentStatus === 'employee_credit' || paymentType === 'employee_credit') {
+    if (paymentStatus === 'employee_credit' || primaryPaymentType === 'employee_credit') {
         return buildOutcome({
             refundRequired: false,
             refundState: 'not_required',

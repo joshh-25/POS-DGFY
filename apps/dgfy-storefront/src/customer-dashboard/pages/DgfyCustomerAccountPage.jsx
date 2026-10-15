@@ -74,8 +74,8 @@ export function DgfyCustomerAccountPage({
   resolveStorefrontMeta,
   resolveBusinessAssetUrl,
   onOpenBusinessPos,
-  onGetBusinessDayCloseStatus,
-  onConfigureBusinessDayClosePin,
+  onGetBusinessGlobalPinStatus,
+  onConfigureBusinessGlobalPin,
   onGoDiscovery,
   accountAddressActionId = '',
   accountPayoutActionId = '',
@@ -153,23 +153,22 @@ export function DgfyCustomerAccountPage({
     setPosLaunchRequest(null);
     onOpenBusinessPos?.(company, { openInNewTab: true });
   };
-  const openBusinessDayClose = async (company) => {
-    setPosLaunchRequest({ company, intent: 'day_close', loading: true, status: null, error: '' });
+  const openBusinessGlobalPin = async (company) => {
+    setPosLaunchRequest({ company, intent: 'global_pin', loading: true, status: null, error: '' });
     try {
-      if (typeof onGetBusinessDayCloseStatus !== 'function') throw new Error('Day Close access is unavailable right now.');
-      const status = await onGetBusinessDayCloseStatus(company);
-      setPosLaunchRequest({ company, intent: 'day_close', loading: false, status, error: '' });
+      if (typeof onGetBusinessGlobalPinStatus !== 'function') throw new Error('PIN access is unavailable right now.');
+      const status = await onGetBusinessGlobalPinStatus(company);
+      setPosLaunchRequest({ company, intent: 'global_pin', loading: false, status, error: '' });
     } catch (error) {
-      setPosLaunchRequest({ company, intent: 'day_close', loading: false, status: null, error: String(error?.message || 'Unable to check Day Close access.') });
+      setPosLaunchRequest({ company, intent: 'global_pin', loading: false, status: null, error: String(error?.message || 'Unable to check PIN access.') });
     }
   };
-  const configureBusinessDayClosePin = async (credentials) => {
+  const configureBusinessGlobalPin = async (credentials) => {
     const company = posLaunchRequest?.company;
-    if (!company || typeof onConfigureBusinessDayClosePin !== 'function') {
-      throw new Error('Day Close PIN setup is unavailable right now.');
+    if (!company || typeof onConfigureBusinessGlobalPin !== 'function') {
+      throw new Error('PIN setup is unavailable right now.');
     }
-    await onConfigureBusinessDayClosePin(company, credentials);
-    setPosLaunchRequest(null);
+    await onConfigureBusinessGlobalPin(company, credentials);
   };
   const submitReviewComposer = async () => {
     if (reviewSubmitting || !reviewComposer?.activity?.activity_id || !reviewComposer?.target?.target_type) return;
@@ -256,7 +255,7 @@ export function DgfyCustomerAccountPage({
     loyalty: <LoyaltySection isMobileViewport={isMobileViewport} loyalty={loyalty} transactions={loyaltyTransactions} EmptyState={EmptyState} formatDate={formatCustomerDate} prettyStatus={prettyCustomerStatus} theme={theme} />,
     affiliate: <AffiliateSection enrollments={affiliateEnrollments} earnings={affiliateEarnings} earningsByStore={affiliateEarningsByStore} payoutMethods={affiliatePayoutMethods} onSavePayoutMethod={onSavePayoutMethod} onDeletePayoutMethod={onDeletePayoutMethod} onSetDefaultPayoutMethod={onSetDefaultPayoutMethod} accountPayoutActionId={accountPayoutActionId} cashouts={affiliateCashouts} onRequestCashout={onRequestCashout} onCancelCashout={onCancelCashout} accountCashoutActionId={accountCashoutActionId} affiliateAccessStatus={accountPanel?.affiliateAccessStatus || 'unknown'} isAccountPanelLoading={Boolean(accountPanel?.loading)} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} money={formatCustomerMoney} formatDate={formatCustomerDate} theme={theme} />,
     account: <AccountSettingsSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} overviewPhone={overviewPhone} overviewEmail={overviewEmail} profileVerification={profileVerification} />,
-    business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={(company, options = {}) => setPosLaunchRequest({ company, intent: options.intent || 'pos' })} onOpenBusinessDayClose={openBusinessDayClose} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessRoleLabel={(company) => getCustomerBusinessRoleLabel(company, prettyCustomerStatus)} getBusinessStatusLabel={businessStatusLabel} />
+    business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={(company, options = {}) => setPosLaunchRequest({ company, intent: options.intent || 'pos' })} onOpenBusinessGlobalPin={openBusinessGlobalPin} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessRoleLabel={(company) => getCustomerBusinessRoleLabel(company, prettyCustomerStatus)} getBusinessStatusLabel={businessStatusLabel} />
   };
 
   return (
@@ -265,7 +264,7 @@ export function DgfyCustomerAccountPage({
         {views[activeNav] || views.overview}
       </CustomerDashboardShell>
       <ReviewComposerModal composer={reviewComposer} setComposer={setReviewComposer} submitting={reviewSubmitting} error={reviewError} onClose={closeReviewComposer} onSubmit={submitReviewComposer} theme={theme} />
-      <BusinessPosLaunchModal key={`${posLaunchRequest?.company?.tenant_id || posLaunchRequest?.company?.tenantId || posLaunchRequest?.company?.id || 'closed'}:${posLaunchRequest?.intent || 'pos'}`} company={posLaunchRequest?.company} intent={posLaunchRequest?.intent} dayCloseLoading={posLaunchRequest?.loading === true} dayCloseStatus={posLaunchRequest?.status || null} dayCloseError={posLaunchRequest?.error || ''} onClose={closePosLaunchModal} onOpenInNewTab={openBusinessPosInNewTab} onConfigureDayClosePin={configureBusinessDayClosePin} theme={theme} />
+      <BusinessPosLaunchModal key={`${posLaunchRequest?.company?.tenant_id || posLaunchRequest?.company?.tenantId || posLaunchRequest?.company?.id || 'closed'}:${posLaunchRequest?.intent || 'pos'}`} company={posLaunchRequest?.company} intent={posLaunchRequest?.intent} globalPinLoading={posLaunchRequest?.loading === true} globalPinStatus={posLaunchRequest?.status || null} globalPinError={posLaunchRequest?.error || ''} onClose={closePosLaunchModal} onOpenInNewTab={openBusinessPosInNewTab} onConfigureGlobalPin={configureBusinessGlobalPin} theme={theme} />
     </>
   );
 }

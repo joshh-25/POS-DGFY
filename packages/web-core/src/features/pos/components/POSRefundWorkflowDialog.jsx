@@ -13,8 +13,30 @@ import { Input } from '@/components/ui/input';
 const money = (value, currency = '₱') => `${String(currency).toUpperCase() === 'PHP' ? '₱' : currency}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
-const resolveWorkflow = (transaction = {}) => {
+const parsePaymentBreakdown = (value) => {
+    let parsed = value;
+    if (typeof parsed === 'string') {
+        try {
+            parsed = JSON.parse(parsed);
+        } catch {
+            parsed = [];
+        }
+    }
+    return Array.isArray(parsed) ? parsed : [];
+};
+
+export const resolvePosRefundWorkflow = (transaction = {}) => {
     const outcome = transaction?.financial_outcome || {};
+    const primaryPaymentType = normalize(transaction.payment_type);
+    const paymentTypes = [...new Set(
+        parsePaymentBreakdown(transaction.payment_breakdown)
+            .filter((entry) => Number(entry?.amount) > 0)
+            .map((entry) => normalize(entry?.payment_type))
+            .filter(Boolean)
+    )];
+    if (paymentTypes.length > 1) return 'split';
+    if ((paymentTypes.length === 1 ? paymentTypes[0] : primaryPaymentType) === 'cash') return 'cash';
+
     const nextAction = normalize(outcome.next_action);
     if (nextAction === 'record_cash_refund_with_cash_drawer_event') return 'cash';
     if (nextAction === 'record_external_reversal_reference') return 'external';
@@ -55,7 +77,7 @@ export default function POSRefundWorkflowDialog({
     onOpenChange = () => {},
     onSubmit = async () => {}
 }) {
-    const workflow = resolveWorkflow(transaction);
+    const workflow = resolvePosRefundWorkflow(transaction);
     const copy = workflowCopy[workflow];
     const outcome = transaction?.financial_outcome || {};
     const allocations = useMemo(() => (

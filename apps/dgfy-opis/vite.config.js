@@ -14,6 +14,7 @@ const __dirname = path.dirname(__filename);
 // the same way as the other three apps. Alias key is unchanged -- only its target moved.
 // See docs/architecture/frontend-split-sync.md.
 const webCoreRoot = path.resolve(__dirname, '../../packages/web-core');
+const sharedConstantsRoot = path.resolve(__dirname, '../../packages/shared-constants');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
 const appSurface = 'opis';
@@ -123,7 +124,7 @@ export default defineConfig({
     // source tree available in dev so a clean Vite restart serves the same
     // modules that the production build consumes.
     fs: {
-      allow: [__dirname, webCoreRoot]
+      allow: [__dirname, webCoreRoot, sharedConstantsRoot]
     },
     headers: devSecurityHeaders,
     proxy: proxyTargets

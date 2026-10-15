@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { toSlug } from '../utils/storefrontFormatters.js';
 import {
   buildBookingTarget,
+  buildCategoriesTarget,
   buildCatalogTarget,
   buildServiceDetailTarget,
   buildStorefrontHistoryState,
@@ -12,10 +13,12 @@ import {
   readRouteSlug,
   readStoreLocationId,
   readStoreItemId,
+  readStoreQrToken,
   readStoreReviewToken,
   readStoreServiceItemId,
   readStoreSubpage,
   STORE_BOOKING_SUBPAGE,
+  STORE_CATEGORIES_SUBPAGE,
   STORE_SERVICE_SUBPAGE,
   TENANT_STORE_BASE_PATH
 } from '../../app/routing/storefrontRouting.js';
@@ -55,19 +58,21 @@ export function useStorefrontNavigation({
   setCatalog,
   setCatalogError,
   setDiscoveryAppliedFilters,
-  setActiveDiscoveryNavItem
+  setActiveDiscoveryNavItem,
+  qrToken = ''
 }) {
   const openServiceDetail = (service) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const serviceItemId = String(service?.item_id || '').trim();
     if (!normalized || !serviceItemId || typeof window === 'undefined') return;
-    const target = buildServiceDetailTarget(normalized, serviceItemId, { locationId: selectedLocationId });
+    const target = buildServiceDetailTarget(normalized, serviceItemId, { locationId: selectedLocationId, qrToken });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
         storeSubpage: STORE_SERVICE_SUBPAGE,
         serviceItemId,
-        locationId: selectedLocationId
+        locationId: selectedLocationId,
+        qrToken
       }), '', target);
     }
     setSelectedServiceDetail(service);
@@ -111,12 +116,13 @@ export function useStorefrontNavigation({
   const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = buildBookingTarget(normalized, { locationId: selectedLocationId });
+    const target = buildBookingTarget(normalized, { locationId: selectedLocationId, qrToken });
     if (!isCurrentStorefrontTarget(target)) {
       window.history.pushState(buildStorefrontHistoryState({
         storeSlug: normalized,
         storeSubpage: STORE_BOOKING_SUBPAGE,
-        locationId: selectedLocationId
+        locationId: selectedLocationId,
+        qrToken
       }), '', target);
     }
     setRouteSlug(normalized);
@@ -132,12 +138,36 @@ export function useStorefrontNavigation({
   const goStoreCatalogPage = () => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = buildCatalogTarget(normalized, { locationId: selectedLocationId });
+    const target = buildCatalogTarget(normalized, { locationId: selectedLocationId, qrToken });
     if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized, locationId: selectedLocationId }), '', target);
+      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized, locationId: selectedLocationId, qrToken }), '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
+    setRouteServiceItemId(null);
+    setRouteItemId(null);
+    setShowFnbMobileOrderSummary(false);
+    setIsCheckoutOpen(false);
+    setCheckoutTab?.('checkout');
+    setFnbOrderStep(3);
+    setSimpleOrderStep(1);
+  };
+
+  const goStoreCategoriesPage = () => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (!normalized || typeof window === 'undefined') return;
+    const resolvedLocationId = selectedLocationId ?? readStoreLocationId();
+    const target = buildCategoriesTarget(normalized, { locationId: resolvedLocationId, qrToken });
+    if (!isCurrentStorefrontTarget(target)) {
+      window.history.pushState(buildStorefrontHistoryState({
+        storeSlug: normalized,
+        storeSubpage: STORE_CATEGORIES_SUBPAGE,
+        locationId: resolvedLocationId,
+        qrToken
+      }), '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_CATEGORIES_SUBPAGE);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setShowFnbMobileOrderSummary(false);
@@ -185,7 +215,7 @@ export function useStorefrontNavigation({
         setCheckoutTab?.('checkout');
       }
       setRouteSlug(nextRouteSlug);
-      setRouteSubpage(readStoreSubpage());
+      setRouteSubpage(readStoreSubpage() || (readStoreQrToken() ? STORE_CATEGORIES_SUBPAGE : null));
       setRouteServiceItemId(readStoreServiceItemId());
       setRouteItemId(readStoreItemId());
       setRouteReviewToken(readStoreReviewToken());
@@ -201,6 +231,7 @@ export function useStorefrontNavigation({
     closeServiceDetail,
     goStore,
     goStoreBookingPage,
+    goStoreCategoriesPage,
     goStoreCatalogPage,
     goDiscovery
   };

@@ -16,9 +16,9 @@ export default function PosOperationsAccessSection({
   customerDisplayEnabled = true, customerDisplayCanOpen = false, customerDisplayStatus = 'closed', customerDisplayStatusLabel = 'Not connected',
   onCustomerDisplayEnabledChange = () => {}, onOpenCustomerDisplay = () => null, onEndCustomerDisplay = () => {},
   discountApprovers, discountApproversLoading, loadDiscountApprovers,
-  updateDiscountAuthorization, discountAuthorizationSavingUserId, setApprovalPinUser, setApprovalPin,
+  updateDiscountAuthorization, discountAuthorizationSavingUserId, onOpenGlobalPin = async () => {}, globalPinSavingUserId = null,
   dayCloseOperators, dayCloseOperatorsLoading, loadDayCloseOperators, updateDayCloseAccess,
-  dayCloseAccessSavingUserId, setDayClosePinUser,
+  dayCloseAccessSavingUserId,
   showPosDefaultsEditor = true,
   showAttendanceEditor = true,
   showTeamAccessEditor = true,
@@ -135,14 +135,13 @@ export default function PosOperationsAccessSection({
           loadDiscountApprovers={loadDiscountApprovers}
           updateDiscountAuthorization={updateDiscountAuthorization}
           discountAuthorizationSavingUserId={discountAuthorizationSavingUserId}
-          setApprovalPinUser={setApprovalPinUser}
-          setApprovalPin={setApprovalPin}
+          onOpenGlobalPin={onOpenGlobalPin}
+          globalPinSavingUserId={globalPinSavingUserId}
           dayCloseOperators={dayCloseOperators}
           dayCloseOperatorsLoading={dayCloseOperatorsLoading}
           loadDayCloseOperators={loadDayCloseOperators}
           updateDayCloseAccess={updateDayCloseAccess}
           dayCloseAccessSavingUserId={dayCloseAccessSavingUserId}
-          setDayClosePinUser={setDayClosePinUser}
         />
       ) : null}
 

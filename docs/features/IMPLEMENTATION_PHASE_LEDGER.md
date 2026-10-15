@@ -28482,10 +28482,86 @@ validation passes.
 
 ### Next phase number
 
-Phase 502 is the independent POS Items category-priority UX slice. Offline-sync runtime migration
-remains outside Phase 502 and gated by the dependencies above.
+Phase 502. Runtime migration has explicit follow-on dependencies; no implementation is authorized
+by this documentation phase.
 
-## Phase 502 - POS Items category priority clarity
+## Phase 502 - Unified Global POS PIN for Cashier Protected Actions
+
+### Initiative and release
+
+Unify the tenant-local cashier PIN used by protected POS actions while keeping
+permissions, scope, attendance, shift, and manager-approval policies separate.
+
+### Objective and scope
+
+Give each tenant-local POS user one write-only global PIN. A cashier configures
+their own PIN from the selected company card in **DGFY Account → Business**;
+OPIS remains the admin surface for permissions and PIN reset. Reuse the existing `users.pos_cashier_pin_hash` field for
+operator authentication/takeover, governed discounts, item or transaction
+void/refund confirmation, cash-drawer/refund actions, and Z-reading/day-close
+confirmation. Remove the separate visible approval/day-close PIN controls from
+the settings experience. IMS is not a configuration surface for this feature.
+
+### Status
+
+`in_progress` — implementation and focused validation are complete in the
+worktree; merge, deployment, and operational UI verification remain outstanding.
+
+### Dependencies
+
+- ADR 0031 and ADR 0073 define the terminal, attendance, operator-session, and
+  protected-action boundaries.
+- Existing tenant-local PIN hash storage and the current POS authorization
+  policies are reused. No schema or migration is introduced.
+- Legacy approval/day-close hashes remain only as a compatibility fallback until
+  the global PIN is saved or reset; saving/resetting clears those hashes and
+  lockout state.
+
+### Acceptance and validation evidence
+
+- [x] DGFY Account → Business exposes one self-service Global POS PIN action
+      on each selected company card for eligible cashiers; OPIS retains the
+      admin permission and reset controls.
+- [x] Saving/resetting writes the canonical global hash, clears legacy hashes
+      and lockout state, and returns configuration flags rather than secrets.
+- [x] Protected POS policies resolve the canonical hash and preserve separate
+      permission, scope, attendance, shift, and manager-approval checks.
+- [x] Backend focused tests pass: 4 suites, 77 tests.
+- [x] Frontend focused contract/behavior tests pass: 4 files, 63 tests.
+- [x] Architecture guardrails pass: 60 modules and 739 code files checked.
+- [x] POS and OPIS production builds pass.
+- [x] `git diff --check` and changed-file syntax validation pass.
+
+### Links
+
+- Architecture: ADR 0031 and ADR 0073 amendments for Phase 502.
+- Product flow: `docs/features/POS_CASHIER_TERMINAL_FLOW.md`.
+- Implementation: `posGlobalPinPolicy`, POS authorization policies,
+  `posRepository`, `userService`, operator authority use cases, and shared POS
+  settings/action surfaces.
+
+### Completion date
+
+Not complete. Set only after the worktree is merged and the deployed OPIS/POS
+flow is operationally verified with one global PIN across the authorized action
+paths.
+
+### Post-merge verification
+
+- [ ] Configure one cashier global PIN in DGFY Account → Business and verify
+      the same PIN works only for that cashier's separately granted protected
+      POS actions; verify OPIS can still reset it as admin.
+- [ ] Verify an unauthorized action remains blocked even when the global PIN
+      is correct, and verify a different tenant/company cannot use the PIN.
+- [ ] Verify reset invalidates the previous PIN and clears any legacy
+      approval/day-close credential state.
+
+### Next phase number
+
+Phase 503 is the independent POS Items category-priority UX slice. Offline-sync runtime migration
+remains outside Phase 503 and gated by the dependencies above.
+
+## Phase 503 - POS Items category priority clarity
 
 ### Initiative and release
 
@@ -28577,9 +28653,9 @@ passes.
 
 ### Next phase number
 
-Phase 503. No explicit dependency.
+Phase 504. No explicit dependency.
 
-## Phase 503 - POS Items controls and notification popover polish
+## Phase 504 - POS Items controls and notification popover polish
 
 ### Initiative and release
 
@@ -28604,7 +28680,7 @@ verification remain outstanding.
 
 ### Dependencies
 
-- Completed Phase 502 category-priority presentation and its validated responsive list.
+- Completed Phase 503 category-priority presentation and its validated responsive list.
 - Existing tenant-scoped `reorderFolders` endpoint and saved category `sort_order` behavior.
 - No explicit dependency on the separate Phase 501 offline-sync work.
 
@@ -28662,7 +28738,7 @@ governed docs were reviewed; their `last_reviewed` metadata was checked.
 ### Rollback
 
 Revert only the reorder-mode control, conditional handles/positions, toast behavior, related
-category/tab/notification presentation changes, focused test updates, and this Phase 503 ledger
+category/tab/notification presentation changes, focused test updates, and this Phase 504 ledger
 entry. No saved category order, API, schema, or Storefront rollback is required.
 
 ### Completion date
@@ -28679,9 +28755,9 @@ passes.
 
 ### Next phase number
 
-Phase 504. No explicit dependency.
+Phase 505. No explicit dependency.
 
-## Phase 504 - Storefront category-priority ordering for multi-category products
+## Phase 505 - Storefront category-priority ordering for multi-category products
 
 ### Initiative and release
 
@@ -28706,7 +28782,7 @@ changes.
 ### Dependencies
 
 - Completed Phase 344 category-first All-list presentation and its Storefront sorting contract.
-- Phase 502-503 category-prioritization authoring UX and saved `sort_order` contract; these phases
+- Phase 503-504 category-prioritization authoring UX and saved `sort_order` contract; these phases
   must be merged with this Storefront change or before it.
 - Existing Storefront primary/secondary category projection; no new data boundary is introduced.
 
@@ -28755,7 +28831,7 @@ visually checked against that tenant. No tenant order or other business data was
 
 ### Rollback
 
-Revert only the All-list category-priority key, the focused presentation tests, and this Phase 504
+Revert only the All-list category-priority key, the focused presentation tests, and this Phase 505
 entry. No API, schema, stored category order, or tenant data rollback is required.
 
 ### Post-merge verification
@@ -28766,9 +28842,9 @@ entry. No API, schema, stored category order, or tenant data rollback is require
 
 ### Next phase number
 
-Phase 505. No explicit dependency.
+Phase 506. No explicit dependency.
 
-## Phase 505 - Storefront Contact Us Pin4MS form embed
+## Phase 506 - Storefront Contact Us Pin4MS form embed
 
 ### Initiative and release
 
@@ -28867,9 +28943,9 @@ phase entry. No API, schema, or stored submission rollback is required.
 
 ### Next phase number
 
-Phase 506. No explicit dependency.
+Phase 507. No explicit dependency.
 
-## Phase 506 - Platform Admin Contact Inquiries and Pin4MS credential setup
+## Phase 507 - Platform Admin Contact Inquiries and Pin4MS credential setup
 
 ### Initiative and release
 
@@ -28892,7 +28968,7 @@ in_progress
 
 ### Dependencies
 
-- Phase 505's public Contact Us form embed.
+- Phase 506's public Contact Us form embed.
 - Platform Admin's existing session, page-grant, API authentication, and audit-log patterns.
 - A 32-byte encryption secret provisioned for the API environment through its approved secret
   store. The secret must not be committed or returned to the browser.
@@ -28977,9 +29053,9 @@ operation before removing the encryption secret.
 
 ### Next phase number
 
-Phase 507. Blocked on the Pin4MS read-API contract and the remaining deletion-semantics decision.
+Phase 508. Blocked on the Pin4MS read-API contract and the remaining deletion-semantics decision.
 
-## Phase 507 - Pin4MS submission sync and Admin inbox
+## Phase 508 - Pin4MS submission sync and Admin inbox
 
 ### Initiative and release
 
@@ -29004,7 +29080,7 @@ timestamp, rate limits, and deletion behavior cannot be safely inferred.
 
 - Pin4MS's official read-API guide or equivalent provider confirmation: endpoint, method, auth
   header, response fields, pagination/cursor behavior, rate limits, errors, and timestamp semantics.
-- Phase 506's migration and encrypted configuration deployed, with the dedicated encryption secret
+- Phase 507's migration and encrypted configuration deployed, with the dedicated encryption secret
   provisioned in each target API environment.
 - Review of the provider contract, PII minimization, sync/retry behavior, and Admin delete semantics.
 - ADR 0096's proposed provider-configuration record updated and approved under ADR 0039 before any
@@ -29062,9 +29138,9 @@ been made for this phase.
 
 ### Next phase number
 
-Phase 508. No explicit dependency.
+Phase 509. No explicit dependency.
 
-## Phase 508 - Preserve explicit hotfix intent through Planner handoff (#2482)
+## Phase 509 - Preserve explicit hotfix intent through Planner handoff (#2482)
 
 ### Initiative and release
 
@@ -29151,7 +29227,7 @@ Testing Evidence. PR review remains outstanding.
 ### Rollback
 
 Revert the handoff route fields and compatibility rules, related Planner/Worker/Incident Responder/
-Chain/PR Reviewer/AGENTS.md guidance, and this Phase 508 entry. No runtime, workflow, data, merge
+Chain/PR Reviewer/AGENTS.md guidance, and this Phase 509 entry. No runtime, workflow, data, merge
 authority, or deployment rollback is required.
 
 ### Completion date
@@ -29165,4 +29241,4 @@ implementation validation passes.
 
 ### Next phase number
 
-Phase 509. No explicit dependency.
+Phase 510. No explicit dependency.

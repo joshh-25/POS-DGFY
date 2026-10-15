@@ -299,8 +299,7 @@ function MobileHistoryCard({
     refundWorkflowLoading,
     refundWorkflowSubmitting,
     openHistoryDetail,
-    setVoidTarget,
-    setVoidReason,
+    openVoidDialog,
     onOpenRefundWorkflow,
     onToggleExpanded
 }) {
@@ -343,10 +342,7 @@ function MobileHistoryCard({
                         <PosTableActionButton
                             icon={Ban}
                             tone="danger"
-                            onClick={() => {
-                                setVoidTarget(row);
-                                setVoidReason('');
-                            }}
+                            onClick={() => openVoidDialog(row)}
                             disabled={voidingTransactionId !== null}
                             aria-label={`Void transaction ${row.invoice_number || row.pos_transaction_id}`}
                             title="Void transaction"
@@ -538,6 +534,8 @@ export default function POSTransactionHistoryPanel({
     const filterApplyPendingRef = useRef(false);
     const [voidTarget, setVoidTarget] = useState(null);
     const [voidReason, setVoidReason] = useState('');
+    const [refundPasscode, setRefundPasscode] = useState('');
+    const [voidLineSelections, setVoidLineSelections] = useState([]);
     const [historyDetailsRow, setHistoryDetailsRow] = useState(null);
     const totalEntries = Number(historyPagination?.total || historyRows.length || 0);
     const pageSize = Number(historyPageSize || historyPagination?.limit || historyRows.length || 10);
@@ -824,14 +822,49 @@ export default function POSTransactionHistoryPanel({
         if (voidingTransactionId !== null) return;
         setVoidTarget(null);
         setVoidReason('');
+        setRefundPasscode('');
+        setVoidLineSelections([]);
     };
 
+    const openVoidDialog = (row) => {
+        setVoidTarget(row);
+        setVoidReason('');
+        setRefundPasscode('');
+        setVoidLineSelections([]);
+    };
+
+    const voidLineOptions = useMemo(() => (
+        Array.isArray(voidTarget?.lines)
+            ? voidTarget.lines.filter((line) => {
+                const quantity = Number(line?.quantity || 0);
+                const voidedQuantity = Number(line?.voided_quantity || 0);
+                return quantity > 0 && quantity - voidedQuantity > 0.000001;
+            })
+            : []
+    ), [voidTarget]);
+    const hasInvalidVoidLineSelection = voidLineSelections.some((line) => (
+        !Number.isInteger(Number(line?.line_id))
+        || Number(line?.line_id) <= 0
+        || !Number.isFinite(Number(line?.quantity))
+        || Number(line?.quantity) <= 0
+    ));
+
     const submitVoid = async () => {
-        if (!voidTarget || String(voidReason).trim().length < 3) return;
+        const normalizedRefundPasscode = String(refundPasscode).trim();
+        if (!voidTarget
+            || String(voidReason).trim().length < 3
+            || !/^\d{4,12}$/.test(normalizedRefundPasscode)) return;
         try {
-            await onVoidTransaction(voidTarget, String(voidReason).trim());
+            await onVoidTransaction(
+                voidTarget,
+                String(voidReason).trim(),
+                voidLineSelections,
+                normalizedRefundPasscode
+            );
             setVoidTarget(null);
             setVoidReason('');
+            setRefundPasscode('');
+            setVoidLineSelections([]);
         } catch {
             // The action handler reports the server error and keeps this dialog open for correction.
         }
@@ -1211,8 +1244,7 @@ export default function POSTransactionHistoryPanel({
                                         refundWorkflowLoading={refundWorkflowLoading}
                                         refundWorkflowSubmitting={refundWorkflowSubmitting}
                                         openHistoryDetail={openHistoryDetail}
-                                        setVoidTarget={setVoidTarget}
-                                        setVoidReason={setVoidReason}
+                                        openVoidDialog={openVoidDialog}
                                         onOpenRefundWorkflow={onOpenRefundWorkflow}
                                         onToggleExpanded={(transactionId) => setExpandedRowId((current) => current === transactionId ? null : transactionId)}
                                     />
@@ -1374,11 +1406,10 @@ export default function POSTransactionHistoryPanel({
                                                             <PosTableActionButton
                                                                 icon={Ban}
                                                                 tone="danger"
-                                                                onClick={(event) => {
-                                                                    event.stopPropagation();
-                                                                    setVoidTarget(row);
-                                                                    setVoidReason('');
-                                                                }}
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        openVoidDialog(row);
+                                                                    }}
                                                                 disabled={voidingTransactionId !== null}
                                                                 aria-label={`Void transaction ${row.invoice_number || row.pos_transaction_id}`}
                                                                 title="Void transaction"
@@ -1497,8 +1528,7 @@ export default function POSTransactionHistoryPanel({
                                                                             tone="danger"
                                                                             onClick={(event) => {
                                                                                 event.stopPropagation();
-                                                                                setVoidTarget(row);
-                                                                                setVoidReason('');
+                                                                                openVoidDialog(row);
                                                                             }}
                                                                             disabled={voidingTransactionId !== null}
                                                                             aria-label={`Void transaction ${row.invoice_number || row.pos_transaction_id}`}
@@ -1592,11 +1622,10 @@ export default function POSTransactionHistoryPanel({
                                 type="button"
                                 variant="outline"
                                 className="h-10 min-w-[7rem] border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                                onClick={() => {
-                                    setVoidTarget(historyDetailsRow);
-                                    setVoidReason('');
-                                    setHistoryDetailsRow(null);
-                                }}
+                                 onClick={() => {
+                                     openVoidDialog(historyDetailsRow);
+                                     setHistoryDetailsRow(null);
+                                 }}
                                 disabled={voidingTransactionId !== null}
                             >
                                 Void transaction
@@ -1623,11 +1652,65 @@ export default function POSTransactionHistoryPanel({
             <Dialog open={Boolean(voidTarget)} onOpenChange={(open) => !open && closeVoidDialog()}>
                 <DialogContent className="pos-history-void-dialog sm:max-w-md">
                     <DialogHeader className="px-6">
-                        <DialogTitle>Void Transaction</DialogTitle>
+                        <DialogTitle>{voidLineSelections.length > 0 ? 'Void Selected Item' : 'Void Transaction'}</DialogTitle>
                         <DialogDescription>
-                            Enter a reason to request manager approval. The transaction and stock remain unchanged until approval.
+                            {voidLineSelections.length > 0
+                                ? 'Select the item quantity to void. Other items stay active and the selected amount moves to the refund step.'
+                                : 'Leave all items unchecked to void the whole transaction. An authorized user&apos;s global POS PIN authorizes the action.'}
                         </DialogDescription>
                     </DialogHeader>
+                    {voidLineOptions.length > 0 && (
+                        <div className="space-y-2 px-6">
+                            <p className="text-sm font-semibold text-slate-900">Items (optional)</p>
+                            <div className="max-h-52 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                                {voidLineOptions.map((line) => {
+                                    const lineId = Number(line.line_id);
+                                    const availableQuantity = Math.max(0, Number(line.quantity || 0) - Number(line.voided_quantity || 0));
+                                    const selectedLine = voidLineSelections.find((entry) => Number(entry.line_id) === lineId);
+                                    return (
+                                        <div key={lineId} className="flex items-center gap-2 rounded-md border border-slate-100 bg-slate-50 px-2 py-2">
+                                            <input
+                                                type="checkbox"
+                                                aria-label={`Select ${line.item_name_snapshot || line.item?.name || `Item ${lineId}`} for void`}
+                                                checked={Boolean(selectedLine)}
+                                                onChange={(event) => {
+                                                    setVoidLineSelections((current) => event.target.checked
+                                                        ? [...current, { line_id: lineId, quantity: availableQuantity }]
+                                                        : current.filter((entry) => Number(entry.line_id) !== lineId));
+                                                }}
+                                                disabled={voidingTransactionId !== null}
+                                            />
+                                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
+                                                {line.item_name_snapshot || line.item?.name || `Item #${line.item_id || lineId}`}
+                                            </span>
+                                            <span className="text-xs text-slate-500">Available {money(availableQuantity)}</span>
+                                            {selectedLine ? (
+                                                <Input
+                                                    aria-label={`Quantity for ${line.item_name_snapshot || line.item?.name || `Item ${lineId}`} to void`}
+                                                    className="h-8 w-20 text-right"
+                                                    type="number"
+                                                    min="0.01"
+                                                    max={availableQuantity}
+                                                    step="0.01"
+                                                    value={selectedLine.quantity}
+                                                    onChange={(event) => {
+                                                        const nextQuantity = Number(event.target.value);
+                                                        setVoidLineSelections((current) => current.map((entry) => (
+                                                            Number(entry.line_id) === lineId
+                                                                ? { ...entry, quantity: nextQuantity }
+                                                                : entry
+                                                        )));
+                                                    }}
+                                                    disabled={voidingTransactionId !== null}
+                                                />
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-xs text-slate-500">Leave all items unchecked to void the whole transaction.</p>
+                        </div>
+                    )}
                     <div className="space-y-2 px-6">
                         <label htmlFor="pos-void-reason" className="text-sm font-semibold text-slate-900">Void reason</label>
                         <Input
@@ -1637,6 +1720,21 @@ export default function POSTransactionHistoryPanel({
                             minLength={3}
                             maxLength={255}
                             placeholder="Required reason"
+                            disabled={voidingTransactionId !== null}
+                        />
+                    </div>
+                    <div className="space-y-2 px-6">
+                        <label htmlFor="pos-refund-passcode" className="text-sm font-semibold text-slate-900">Authorized user global POS PIN</label>
+                        <Input
+                            id="pos-refund-passcode"
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={refundPasscode}
+                            onChange={(event) => setRefundPasscode(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                            minLength={4}
+                            maxLength={12}
+                            placeholder="Enter global POS PIN"
                             disabled={voidingTransactionId !== null}
                         />
                     </div>
@@ -1655,9 +1753,14 @@ export default function POSTransactionHistoryPanel({
                             variant="destructive"
                             className="h-10 w-full min-w-0 sm:flex-1"
                             onClick={submitVoid}
-                            disabled={String(voidReason).trim().length < 3 || voidingTransactionId !== null}
+                            disabled={String(voidReason).trim().length < 3
+                                || !/^\d{4,12}$/.test(String(refundPasscode).trim())
+                                || hasInvalidVoidLineSelection
+                                || voidingTransactionId !== null}
                         >
-                            {voidingTransactionId !== null ? 'Submitting request...' : 'Request Manager Approval'}
+                            {voidingTransactionId !== null
+                                ? 'Processing refund...'
+                                : voidLineSelections.length > 0 ? 'Confirm Item Void' : 'Confirm Transaction Void'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

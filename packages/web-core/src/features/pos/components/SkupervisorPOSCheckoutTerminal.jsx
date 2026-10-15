@@ -1612,7 +1612,7 @@ export default function POSCheckoutTerminal({
 
     const handleConfirmCloseDay = async () => {
         if (!/^\d{4,12}$/.test(zReadingClosePin)) {
-            toast.error('Enter your 4 to 12 digit Day Close PIN.');
+            toast.error('Enter your 4 to 12 digit global POS PIN.');
             return;
         }
         setClosingDay(true);
@@ -2674,11 +2674,11 @@ export default function POSCheckoutTerminal({
                     <DialogHeader>
                         <DialogTitle>Close Day and generate Z-reading</DialogTitle>
                         <DialogDescription>
-                            All cashier shifts for this branch must be closed. Enter your personal Day Close PIN to record your accountability.
+                            All cashier shifts for this branch must be closed. Enter your global POS PIN to record your accountability.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-2 py-2">
-                        <label htmlFor="skupervisor-day-close-pin" className="text-sm font-semibold text-slate-800">Your Day Close PIN</label>
+                        <label htmlFor="skupervisor-day-close-pin" className="text-sm font-semibold text-slate-800">Your global POS PIN</label>
                         <Input
                             id="skupervisor-day-close-pin"
                             type="text"
