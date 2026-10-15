@@ -7,6 +7,7 @@ import {
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
   resolveTerminalLoginErrorMessage,
+  scopeDgfyCompaniesToEmailLookup,
   shouldFallbackToCurrentCompanyTokenAfterLookupError
 } from '../terminalUnlockDiagnostics.js';
 
@@ -32,6 +33,50 @@ describe('terminal unlock diagnostics', () => {
       tenants: [{ company_token: 'token-a' }, { company_token: 'token-b' }]
     })).toHaveLength(2);
     expect(normalizeLookupTenantOptions({ tenants: [{ company_token: 'ignored' }] })).toEqual([]);
+  });
+
+  it('scopes DGFY company choices to the entered email lookup when identifiers overlap', () => {
+    const availableCompanies = [
+      { tenant_id: 'masu-tenant', company_token: 'token-masu', name: 'Masu Cafe' },
+      { tenant_id: 'second-tenant', company_token: 'token-second', name: 'Second Company' }
+    ];
+
+    expect(scopeDgfyCompaniesToEmailLookup(availableCompanies, {
+      email: 'gutojoshua.hubomoto@gmail.com',
+      lookup: {
+        status: 'single',
+        email: 'GUTOJOSHUA.HUBOMOTO@GMAIL.COM',
+        companies: [{ tenant_id: 'masu-tenant', company_token: 'token-masu' }]
+      }
+    })).toEqual([availableCompanies[0]]);
+  });
+
+  it('keeps the authenticated DGFY company list when the lookup is unavailable or unrelated', () => {
+    const availableCompanies = [
+      { tenant_id: 'masu-tenant', company_token: 'token-masu' },
+      { tenant_id: 'second-tenant', company_token: 'token-second' }
+    ];
+
+    expect(scopeDgfyCompaniesToEmailLookup(availableCompanies, {
+      email: 'gutojoshua.hubomoto@gmail.com',
+      lookup: { status: 'loading', email: 'gutojoshua.hubomoto@gmail.com', companies: [] }
+    })).toBe(availableCompanies);
+    expect(scopeDgfyCompaniesToEmailLookup(availableCompanies, {
+      email: 'different@example.com',
+      lookup: {
+        status: 'single',
+        email: 'gutojoshua.hubomoto@gmail.com',
+        companies: [{ tenant_id: 'masu-tenant', company_token: 'token-masu' }]
+      }
+    })).toBe(availableCompanies);
+    expect(scopeDgfyCompaniesToEmailLookup(availableCompanies, {
+      email: 'gutojoshua.hubomoto@gmail.com',
+      lookup: {
+        status: 'single',
+        email: 'gutojoshua.hubomoto@gmail.com',
+        companies: [{ tenant_id: 'unknown-tenant', company_token: 'token-unknown' }]
+      }
+    })).toBe(availableCompanies);
   });
 
   it('only falls back to the current company token after transient lookup failures', () => {

@@ -26,6 +26,8 @@ import { hasEffectivePermission, resolveEffectivePermissions } from '../utils/us
 
 const hasPermission = hasEffectivePermission;
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
 const parseWorkflowModeSetting = (setting) => {
@@ -189,6 +191,141 @@ const mirrorInvitationToDgfyAccount = async ({
   }
 };
 
+const findLinkedDgfyAccountForTenantUser = async (userId) => {
+  const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+  if (!tenantId || tenantId === 'default') return null;
+
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+  return dgfyAccountRepository.findByAcceptedTenantUserMembership({
+    tenantId,
+    tenantUserId: userId
+  });
+};
+
+const assertDgfyEmailAvailable = async (email, accountId) => {
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+  const existingAccount = await dgfyAccountRepository.findByEmail(email);
+  if (existingAccount && String(existingAccount.id) !== String(accountId)) {
+    throw createError('Email already in use by another DGFY account', 409);
+  }
+};
+
+const syncLinkedDgfyEmail = async (account, email) => {
+  if (!account || normalizeEmail(account.email) === email) {
+    return { changed: false, previous: null };
+  }
+
+  await assertDgfyEmailAvailable(email, account.id);
+  const previous = {
+    email: account.email,
+    email_verified_at: account.email_verified_at || null
+  };
+  await account.update({
+    email,
+    // The POS email-change flow has already verified this address with OTP.
+    email_verified_at: account.email_verified_at || new Date()
+  });
+  return { changed: true, previous };
+};
+
+const restoreLinkedDgfyEmail = async (account, previous) => {
+  if (!account || !previous) return;
+  try {
+    await account.update(previous);
+  } catch (rollbackError) {
+    logger.error('[UserService] Failed to roll back DGFY email synchronization', {
+      dgfyAccountId: account.id,
+      error: rollbackError.message
+    });
+  }
+};
+
+const restoreLinkedDgfyPassword = async (account, previous) => {
+  if (!account || !previous) return;
+  try {
+    await account.update(previous);
+  } catch (rollbackError) {
+    logger.error('[UserService] Failed to roll back DGFY password synchronization', {
+      dgfyAccountId: account.id,
+      error: rollbackError.message
+    });
+  }
+};
+
+const transferTenantIdentityToDgfyAccount = async ({
+  tenantId,
+  tenantUserId,
+  user,
+  linkedDgfyAccount,
+  targetDgfyAccount,
+  oldEmail,
+  newEmail
+}) => {
+  if (!targetDgfyAccount || user?.is_master_admin !== true) return null;
+
+  if (!targetDgfyAccount.is_active || targetDgfyAccount.deleted_at) {
+    throw createError('The new email must belong to an active DGFY account before the company can be transferred.', 409);
+  }
+
+  const tenant = await landlordService.findTenantById(tenantId);
+  if (!tenant || tenant.status !== 'active') {
+    throw createError('The company is unavailable for account transfer.', 409);
+  }
+
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+  if (typeof dgfyAccountRepository.forceAssignTenantOwnership !== 'function') {
+    throw createError('DGFY company ownership transfer is unavailable.', 503);
+  }
+
+  const applyTransfer = async (transaction) => {
+    const options = transaction ? { transaction } : {};
+
+    await dgfyAccountRepository.forceAssignTenantOwnership({
+      tenant,
+      toAccountId: targetDgfyAccount.id,
+      tenantUserId,
+      role: user.role || 'admin',
+      actorAccountId: linkedDgfyAccount?.id || null
+    }, options);
+
+    if (
+      linkedDgfyAccount
+      && String(linkedDgfyAccount.id) !== String(targetDgfyAccount.id)
+      && typeof dgfyAccountRepository.removeMembershipForAccount === 'function'
+    ) {
+      await dgfyAccountRepository.removeMembershipForAccount({
+        dgfyAccountId: linkedDgfyAccount.id,
+        tenantId
+      }, options);
+    }
+
+    // Keep the password that was already verified in the tenant profile. Hashes
+    // are copied; plaintext passwords never cross the account boundary.
+    if (
+      user.password_hash
+      && targetDgfyAccount.password_hash !== user.password_hash
+      && typeof targetDgfyAccount.update === 'function'
+    ) {
+      await targetDgfyAccount.update({
+        password_hash: user.password_hash,
+        temporary_password_active: false
+      }, options);
+    }
+
+    if (oldEmail && newEmail && typeof landlordService.updateEmailTenantMapping === 'function') {
+      await landlordService.updateEmailTenantMapping(oldEmail, newEmail, tenantId, options);
+    }
+  };
+
+  if (typeof dgfyAccountRepository.transaction === 'function') {
+    await dgfyAccountRepository.transaction(applyTransfer);
+  } else {
+    await applyTransfer(null);
+  }
+
+  return targetDgfyAccount;
+};
+
 /**
  * Get current user profile by user ID
  * @param {number} userId - User ID from authenticated request
@@ -332,12 +469,21 @@ export const updateUserProfile = async (userId, updateData) => {
     }
   }
 
-  // Capture old email before update for mapping update
+  // Capture old email before update for mapping and DGFY identity synchronization.
   const oldEmail = user.email;
   const sanitizedUpdateData = { ...updateData };
   delete sanitizedUpdateData.email_otp_code;
 
-  if (sanitizedUpdateData.email && sanitizedUpdateData.email !== oldEmail) {
+  if (Object.prototype.hasOwnProperty.call(sanitizedUpdateData, 'email')) {
+    sanitizedUpdateData.email = normalizeEmail(sanitizedUpdateData.email);
+  }
+
+  const tenantEmailChanged = Boolean(
+    sanitizedUpdateData.email
+    && normalizeEmail(sanitizedUpdateData.email) !== normalizeEmail(oldEmail)
+  );
+
+  if (tenantEmailChanged) {
     const store = dbStore.getStore();
     await verifyEmailOtp({
       purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
@@ -347,11 +493,70 @@ export const updateUserProfile = async (userId, updateData) => {
     });
   }
 
-  // Update user
-  await user.update(sanitizedUpdateData);
+  const resultingEmail = normalizeEmail(sanitizedUpdateData.email || user.email);
+  // Resolve the DGFY identity by accepted membership, never by the mutable email.
+  // This also repairs accounts that were changed before DGFY synchronization existed.
+  const linkedDgfyAccount = await findLinkedDgfyAccountForTenantUser(userId);
+  const targetDgfyAccount = tenantEmailChanged
+    ? await (await import('../modules/dgfy/index.js')).dgfyAccountRepository.findByEmail(resultingEmail)
+    : null;
+  const shouldTransferTenantIdentity = Boolean(
+    tenantEmailChanged
+    && targetDgfyAccount
+    && user.is_master_admin === true
+    && String(targetDgfyAccount.id) !== String(linkedDgfyAccount?.id || '')
+  );
+  if (tenantEmailChanged && user.is_master_admin === true && linkedDgfyAccount && !targetDgfyAccount) {
+    throw createError('Create and verify the new DGFY account before changing the company owner email.', 409);
+  }
+  let dgfyEmailSync = { changed: false, previous: null };
+  const previousTenantUserData = Object.keys(sanitizedUpdateData).reduce((previous, key) => ({
+    ...previous,
+    [key]: user[key]
+  }), {});
+  let tenantUserUpdated = false;
+
+  try {
+    if (linkedDgfyAccount && resultingEmail && !shouldTransferTenantIdentity) {
+      dgfyEmailSync = await syncLinkedDgfyEmail(linkedDgfyAccount, resultingEmail);
+    }
+
+    // Update user only after the linked DGFY identity has passed uniqueness checks.
+    await user.update(sanitizedUpdateData);
+    tenantUserUpdated = true;
+
+    if (
+      shouldTransferTenantIdentity
+    ) {
+      await transferTenantIdentityToDgfyAccount({
+        tenantId: dbStore.getStore()?.tenantId,
+        tenantUserId: userId,
+        user,
+        linkedDgfyAccount,
+        targetDgfyAccount,
+        oldEmail,
+        newEmail: resultingEmail
+      });
+    }
+  } catch (error) {
+    if (tenantUserUpdated) {
+      try {
+        await user.update(previousTenantUserData);
+      } catch (rollbackError) {
+        logger.error('[UserService] Failed to roll back tenant profile after DGFY transfer failure', {
+          userId,
+          error: rollbackError.message
+        });
+      }
+    }
+    if (dgfyEmailSync.changed) {
+      await restoreLinkedDgfyEmail(linkedDgfyAccount, dgfyEmailSync.previous);
+    }
+    throw error;
+  }
 
   // If email changed, update the email-tenant mapping
-  if (sanitizedUpdateData.email && sanitizedUpdateData.email !== oldEmail) {
+  if (tenantEmailChanged && !shouldTransferTenantIdentity) {
     const store = dbStore.getStore();
     const tenantId = store?.tenantId;
     if (tenantId) {
@@ -403,9 +608,43 @@ export const changePassword = async (userId, currentPassword, newPassword) => {
     throw error;
   }
 
-  // Hash and save new password
+  const linkedDgfyAccount = await findLinkedDgfyAccountForTenantUser(userId);
+  const previousTenantPasswordHash = user.password_hash;
   const password_hash = await hashPassword(newPassword);
-  await user.update({ password_hash });
+  const previousDgfyPassword = linkedDgfyAccount
+    ? {
+      password_hash: linkedDgfyAccount.password_hash,
+      temporary_password_active: Boolean(linkedDgfyAccount.temporary_password_active)
+    }
+    : null;
+  let tenantPasswordUpdated = false;
+
+  // Keep the tenant POS password and the linked DGFY password synchronized.
+  // Password hashes are copied, never plaintext credentials.
+  try {
+    await user.update({ password_hash });
+    tenantPasswordUpdated = true;
+
+    if (linkedDgfyAccount) {
+      await linkedDgfyAccount.update({
+        password_hash,
+        temporary_password_active: false
+      });
+    }
+  } catch (error) {
+    if (tenantPasswordUpdated) {
+      try {
+        await user.update({ password_hash: previousTenantPasswordHash });
+      } catch (rollbackError) {
+        logger.error('[UserService] Failed to roll back tenant password synchronization', {
+          userId,
+          error: rollbackError.message
+        });
+      }
+    }
+    await restoreLinkedDgfyPassword(linkedDgfyAccount, previousDgfyPassword);
+    throw error;
+  }
 };
 
 export const resetLocalCashierPassword = async (adminUserId, targetUserId, newPassword, options = {}) => {

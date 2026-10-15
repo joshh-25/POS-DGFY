@@ -379,7 +379,10 @@ export default function TerminalPageLayout({
     handleDayCloseLogin = null,
     handleIdentityChange = null,
     handleUseDifferentAccount = null,
-    handleLegacyLogin = null
+    handleLegacyLogin = null,
+    legacyCompanySelectionOpen = false,
+    handleLegacyCompanySelectionOpenChange = null,
+    handleLegacyCompanySelection = null
 }) {
   const [operatorGuard, setOperatorGuard] = useState({ scopeKey: '', required: false, valid: true });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -1567,6 +1570,9 @@ export default function TerminalPageLayout({
           onIdentityChange={handleIdentityChange}
           onUseDifferentAccount={handleUseDifferentAccount}
           onLegacySubmit={handleLegacyLogin}
+          legacyCompanySelectionOpen={legacyCompanySelectionOpen}
+          onLegacyCompanySelectionOpenChange={handleLegacyCompanySelectionOpenChange}
+          onLegacyCompanySelectionSubmit={handleLegacyCompanySelection}
           terminalUser={terminalUser}
           posTextSize={posTextSize}
           onPosTextSizeChange={onPosTextSizeChange}

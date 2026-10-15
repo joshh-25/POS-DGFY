@@ -89,6 +89,7 @@ import {
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
   resolveTerminalLoginErrorMessage,
+  scopeDgfyCompaniesToEmailLookup,
   shouldFallbackToCurrentCompanyTokenAfterLookupError
 } from '../utils/terminalUnlockDiagnostics.js';
 import {
@@ -717,6 +718,7 @@ export default function TerminalPage() {
     password: '',
     rememberDevice: false,
     dgfyTenantId: '',
+    legacyCompanyToken: '',
     terminalId: readInitialTerminalId()
   });
   const [emailCompanyLookup, setEmailCompanyLookup] = useState({
@@ -725,6 +727,7 @@ export default function TerminalPage() {
     companies: [],
     message: ''
   });
+  const [legacyCompanySelectionOpen, setLegacyCompanySelectionOpen] = useState(false);
   const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
   const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
   // Failure details are retained for the Open Shift dialogs. Direct terminal
@@ -781,6 +784,9 @@ export default function TerminalPage() {
     companies: [],
     loadingCompanies: false
   });
+  const dgfyAccessibleCompaniesRef = useRef([]);
+  const emailCompanyLookupRef = useRef(emailCompanyLookup);
+  emailCompanyLookupRef.current = emailCompanyLookup;
   const [companySwitching, setCompanySwitching] = useState(false);
   const [adminShiftPromptSkipped, setAdminShiftPromptSkipped] = useState(false);
   const [cashierUnlockSession, setCashierUnlockSession] = useState(null);
@@ -1348,10 +1354,15 @@ export default function TerminalPage() {
         if (cancelled) return;
         const { normalizeAccessibleCompanies } = await import('../utils/posTerminalCompanyAccess.js');
         if (cancelled) return;
+        const accessibleCompanies = normalizeAccessibleCompanies(payload);
+        dgfyAccessibleCompaniesRef.current = accessibleCompanies;
         setDgfyPosState((previous) => ({
           ...previous,
           authenticated: true,
-          companies: normalizeAccessibleCompanies(payload),
+          companies: scopeDgfyCompaniesToEmailLookup(accessibleCompanies, {
+            email: emailCompanyLookupRef.current?.email || '',
+            lookup: emailCompanyLookupRef.current
+          }),
           loadingCompanies: false
         }));
       })
@@ -3792,6 +3803,20 @@ export default function TerminalPage() {
   }, [formData.email]);
 
   useEffect(() => {
+    const accessibleCompanies = dgfyAccessibleCompaniesRef.current;
+    if (accessibleCompanies.length === 0) return;
+
+    const emailScopedCompanies = scopeDgfyCompaniesToEmailLookup(accessibleCompanies, {
+      email: formData.email,
+      lookup: emailCompanyLookup
+    });
+    setDgfyPosState((previous) => ({
+      ...previous,
+      companies: emailScopedCompanies
+    }));
+  }, [emailCompanyLookup, formData.email]);
+
+  useEffect(() => {
     if (!registryEnforced) return;
     const preferredTerminalId = resolvePreferredTerminalId(
       activeTerminalRegistry,
@@ -4142,9 +4167,17 @@ export default function TerminalPage() {
     );
   };
 
-  const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
-    const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
-    if (activeTerminalRegistry.length === 0) {
+  const validateSelectedTerminalForUnlock = (
+    selectedTerminalId,
+    { registryEntries: registryEntriesOverride } = {}
+  ) => {
+    const registryEntries = Array.isArray(registryEntriesOverride)
+      ? registryEntriesOverride.filter((entry) => entry?.is_active !== false)
+      : activeTerminalRegistry;
+    const registryEntry = registryEntries.find(
+      (entry) => String(entry?.terminal_id || '') === String(selectedTerminalId || '')
+    );
+    if (registryEntries.length === 0) {
       toast.error('No active terminals configured. Add one in POS Setup > Registers & terminal policy.');
       return false;
     }
@@ -4402,6 +4435,20 @@ export default function TerminalPage() {
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
     const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
+    const normalizedEmail = email.toLowerCase();
+    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
+    const legacyCompanyChoiceRequired = (
+      entryIntent === 'shift'
+      && !continuingAfterCompanyPicker
+      && emailCompanyLookup?.status === 'multiple'
+      && normalizedEmail === lookupEmail
+      && !String(formData.legacyCompanyToken || '').trim()
+    );
+
+    if (legacyCompanyChoiceRequired) {
+      setLegacyCompanySelectionOpen(true);
+      return;
+    }
 
     setSubmitting(true);
     setUnlockFailure(null);
@@ -4436,8 +4483,13 @@ export default function TerminalPage() {
         ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
         ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
       ].filter((company) => company?.can_switch);
+      dgfyAccessibleCompaniesRef.current = acceptedCompanies;
+      const emailScopedCompanies = scopeDgfyCompaniesToEmailLookup(acceptedCompanies, {
+        email,
+        lookup: emailCompanyLookup
+      });
       const selectedTenantId = String(formData.dgfyTenantId || '').trim()
-        || (acceptedCompanies.length === 1 ? String(acceptedCompanies[0]?.tenant_id || '') : '');
+        || (emailScopedCompanies.length === 1 ? String(emailScopedCompanies[0]?.tenant_id || '') : '');
       if (selectedTenantId) {
         setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
       }
@@ -4445,11 +4497,11 @@ export default function TerminalPage() {
         ...prev,
         authenticated: true,
         account: resolvedAccount || prev.account || null,
-        companies: acceptedCompanies,
+        companies: emailScopedCompanies,
         loadingCompanies: false
       }));
       if (!selectedTenantId) {
-        if (acceptedCompanies.length === 0) {
+        if (emailScopedCompanies.length === 0) {
           toast.message('No registered business was found for this account. Opening your DGFY customer dashboard.');
           if (typeof window !== 'undefined') {
             window.location.href = resolveStorefrontAccountUrl();
@@ -4758,11 +4810,20 @@ export default function TerminalPage() {
       companies: [],
       loadingCompanies: false
     });
+    dgfyAccessibleCompaniesRef.current = [];
+    setLegacyCompanySelectionOpen(false);
+    setEmailCompanyLookup({
+      status: 'idle',
+      email: String(nextEmail || '').trim().toLowerCase(),
+      companies: [],
+      message: ''
+    });
     setFormData((previous) => ({
       ...previous,
       email: nextEmail,
       password: '',
-      dgfyTenantId: ''
+      dgfyTenantId: '',
+      legacyCompanyToken: ''
     }));
     setCashierUnlockSession(null);
     setDgfyAdminBypassActive(false);
@@ -4775,7 +4836,14 @@ export default function TerminalPage() {
       resetDgfyPosIdentity({ nextEmail, revokeServerSession: true });
       return;
     }
-    setFormData((previous) => ({ ...previous, email: nextEmail }));
+    setLegacyCompanySelectionOpen(false);
+    setFormData((previous) => ({
+      ...previous,
+      email: nextEmail,
+      legacyCompanyToken: String(nextEmail || '').trim().toLowerCase() === normalizedCurrent
+        ? previous.legacyCompanyToken
+        : ''
+    }));
   }, [dgfyPosState.authenticated, formData.email, resetDgfyPosIdentity]);
 
   const handleUseDifferentDgfyAccount = useCallback(() => {
@@ -4794,6 +4862,25 @@ export default function TerminalPage() {
       && lookupCompanies.some((company) => String(company?.company_token || '').trim() === normalizedPreferred)
     ) {
       return normalizedPreferred;
+    }
+    if (lookupCompanies.length === 1) {
+      return String(lookupCompanies[0]?.company_token || '').trim();
+    }
+    return '';
+  }, [emailCompanyLookup]);
+
+  const resolveLegacyCompanyTokenFromLookupState = useCallback((identifier, selectedCompanyToken = '') => {
+    const normalizedIdentifier = String(identifier || '').trim().toLowerCase();
+    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
+    if (!normalizedIdentifier || normalizedIdentifier !== lookupEmail) return '';
+
+    const lookupCompanies = Array.isArray(emailCompanyLookup?.companies) ? emailCompanyLookup.companies : [];
+    const normalizedSelected = String(selectedCompanyToken || '').trim();
+    if (
+      normalizedSelected
+      && lookupCompanies.some((company) => String(company?.company_token || '').trim() === normalizedSelected)
+    ) {
+      return normalizedSelected;
     }
     if (lookupCompanies.length === 1) {
       return String(lookupCompanies[0]?.company_token || '').trim();
@@ -5239,15 +5326,20 @@ export default function TerminalPage() {
       ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
       ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
     ].filter((company) => company?.can_switch);
+    dgfyAccessibleCompaniesRef.current = acceptedCompanies;
+    const emailScopedCompanies = scopeDgfyCompaniesToEmailLookup(acceptedCompanies, {
+      email: formData.email,
+      lookup: emailCompanyLookup
+    });
 
-    const matchedCompany = acceptedCompanies.find((company) => String(company?.company_token || '').trim() === currentCompanyToken)
-      || (acceptedCompanies.length === 1 ? acceptedCompanies[0] : null);
+    const matchedCompany = emailScopedCompanies.find((company) => String(company?.company_token || '').trim() === currentCompanyToken)
+      || (emailScopedCompanies.length === 1 ? emailScopedCompanies[0] : null);
     const recoveredTenantId = String(matchedCompany?.tenant_id || '').trim();
 
     setDgfyPosState((prev) => ({
       ...prev,
       authenticated: true,
-      companies: acceptedCompanies,
+      companies: emailScopedCompanies,
       loadingCompanies: false
     }));
 
@@ -5256,7 +5348,7 @@ export default function TerminalPage() {
     }
 
     return recoveredTenantId;
-  }, [formData.dgfyTenantId]);
+  }, [emailCompanyLookup, formData.dgfyTenantId, formData.email]);
 
   const handleTerminalUnlockSubmit = async (event) => {
     event.preventDefault();
@@ -5480,16 +5572,18 @@ export default function TerminalPage() {
     }
   };
 
-  const performLegacyTerminalUnlock = async ({ email, password, selectedTerminalId }) => {
+  const performLegacyTerminalUnlock = async ({ email, password, selectedTerminalId, companyToken = '' }) => {
     const currentCompanyToken = String(getCompanyToken() || '').trim();
-    let resolvedCompanyToken = '';
-    try {
-      resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(email, currentCompanyToken);
-    } catch (lookupError) {
-      if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
-        throw lookupError;
+    let resolvedCompanyToken = String(companyToken || '').trim();
+    if (!resolvedCompanyToken) {
+      try {
+        resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(email, currentCompanyToken);
+      } catch (lookupError) {
+        if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
+          throw lookupError;
+        }
+        resolvedCompanyToken = currentCompanyToken;
       }
-      resolvedCompanyToken = currentCompanyToken;
     }
     if (!resolvedCompanyToken) {
       throw createTerminalLoginError(
@@ -5497,6 +5591,22 @@ export default function TerminalPage() {
         POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
       );
     }
+    const completeLegacyTerminalUnlock = async () => {
+      const terminalBootstrap = await hydrateTerminalMeta({ suppressGlobalErrors: true });
+      const hydratedRegistry = normalizeTerminalRegistry(terminalBootstrap?.registry || [])
+        .filter((entry) => entry?.is_active !== false);
+      const resolvedTerminalId = resolvePreferredTerminalId(
+        hydratedRegistry,
+        selectedTerminalId,
+        { registryMode: 'enforce' }
+      );
+      if (!validateSelectedTerminalForUnlock(resolvedTerminalId, { registryEntries: hydratedRegistry })) return false;
+      const registryEntry = hydratedRegistry.find((entry) => String(entry?.terminal_id || '') === resolvedTerminalId);
+      return completeTerminalUnlock(resolvedTerminalId, {
+        operatingLocationIdOverride: Number(registryEntry?.location_id || 0)
+      });
+    };
+
     try {
       await loginWithCredentials(
         { email, password, companyToken: resolvedCompanyToken },
@@ -5515,12 +5625,52 @@ export default function TerminalPage() {
           { email, password, companyToken: resolvedCompanyToken },
           SUPPRESS_GLOBAL_ERROR_TOAST
         );
-        return completeTerminalUnlock(selectedTerminalId);
+        return completeLegacyTerminalUnlock();
       }
       throw error;
     }
 
-    return completeTerminalUnlock(selectedTerminalId);
+    return completeLegacyTerminalUnlock();
+  };
+
+  const submitLegacyLogin = async ({ email, password, selectedTerminalId, companyToken }) => {
+    setSubmitting(true);
+    try {
+      await performLegacyTerminalUnlock({
+        email,
+        password,
+        selectedTerminalId,
+        companyToken
+      });
+    } catch (error) {
+      toast.error(resolveTerminalLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLegacyCompanySelection = async (companyToken) => {
+    const email = String(formData.email || '').trim();
+    const password = String(formData.password || '');
+    const selectedTerminalId = resolveSelectedLoginTerminalId();
+    const selectedCompanyToken = resolveLegacyCompanyTokenFromLookupState(email, companyToken);
+
+    if (!selectedCompanyToken) {
+      toast.error('Select a company for legacy access before signing in.');
+      return;
+    }
+
+    setFormData((previous) => ({
+      ...previous,
+      legacyCompanyToken: selectedCompanyToken
+    }));
+    setLegacyCompanySelectionOpen(false);
+    await submitLegacyLogin({
+      email,
+      password,
+      selectedTerminalId,
+      companyToken: selectedCompanyToken
+    });
   };
 
   const handleLogin = async (event) => {
@@ -5533,16 +5683,24 @@ export default function TerminalPage() {
       toast.error('Email and password are required.');
       return;
     }
-    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
-
-    setSubmitting(true);
-    try {
-      await performLegacyTerminalUnlock({ email, password, selectedTerminalId });
-    } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
-    } finally {
-      setSubmitting(false);
+    const normalizedEmail = email.toLowerCase();
+    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
+    const selectedCompanyToken = resolveLegacyCompanyTokenFromLookupState(email, formData.legacyCompanyToken);
+    if (
+      emailCompanyLookup?.status === 'multiple'
+      && normalizedEmail === lookupEmail
+      && !selectedCompanyToken
+    ) {
+      setLegacyCompanySelectionOpen(true);
+      return;
     }
+
+    await submitLegacyLogin({
+      email,
+      password,
+      selectedTerminalId,
+      companyToken: selectedCompanyToken
+    });
   };
 
   const clearCurrentSaleForSessionEnd = useCallback(async () => {
@@ -5630,6 +5788,7 @@ export default function TerminalPage() {
         password: '',
         rememberDevice: false,
         dgfyTenantId: '',
+        legacyCompanyToken: '',
         terminalId: selectedTerminalId
       });
       setLocked(true);
@@ -5739,6 +5898,7 @@ export default function TerminalPage() {
       password: '',
       rememberDevice: false,
       dgfyTenantId: '',
+      legacyCompanyToken: '',
       terminalId: selectedTerminalId
     });
     setLoadingUser(false);
@@ -8032,6 +8192,9 @@ function PosRestorationLoadingScreen() {
           handleIdentityChange={handleDgfyPosIdentityChange}
           handleUseDifferentAccount={handleUseDifferentDgfyAccount}
           handleLegacyLogin={handleLogin}
+          legacyCompanySelectionOpen={legacyCompanySelectionOpen}
+          handleLegacyCompanySelectionOpenChange={setLegacyCompanySelectionOpen}
+          handleLegacyCompanySelection={handleLegacyCompanySelection}
         />
         <ConfirmActionDialog
           open={Boolean(pendingStorefrontContentViewMode)}

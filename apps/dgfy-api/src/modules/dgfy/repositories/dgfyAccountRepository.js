@@ -1189,6 +1189,27 @@ export const dgfyAccountRepository = {
         return tenant.reload();
     },
 
+    async removeMembershipForAccount({ dgfyAccountId, tenantId }, options = {}) {
+        const membership = await DgfyAccountTenantMembership.findOne({
+            where: {
+                dgfy_account_id: dgfyAccountId,
+                tenant_id: tenantId,
+                status: 'accepted'
+            },
+            ...options
+        });
+        if (!membership) return null;
+
+        await membership.update({ status: 'removed' }, options);
+        return membership.reload({
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+            }],
+            ...options
+        });
+    },
+
     async forceAssignTenantOwnership({ tenant, toAccountId, tenantUserId = null, role = 'admin', actorAccountId = null }, options = {}) {
         await tenant.update({
             owner_dgfy_account_id: toAccountId,

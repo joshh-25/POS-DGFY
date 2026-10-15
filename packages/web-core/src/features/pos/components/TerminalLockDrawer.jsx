@@ -18,6 +18,9 @@ export default function TerminalLockDrawer({
   onIdentityChange,
   onUseDifferentAccount,
   onLegacySubmit,
+  legacyCompanySelectionOpen = false,
+  onLegacyCompanySelectionOpenChange,
+  onLegacyCompanySelectionSubmit,
   terminalUser = null,
   posTextSize,
   onPosTextSizeChange
@@ -27,25 +30,42 @@ export default function TerminalLockDrawer({
   const dgfyAuthenticated = Boolean(dgfyPosState?.authenticated);
   const cashierCompanySelection = Boolean(dgfyPosState?.cashierCompanySelection);
   const companySelectionActive = dgfyAuthenticated || cashierCompanySelection;
+  const legacyCompanySelectionActive = legacyCompanySelectionOpen && !companySelectionActive;
+  const companyPickerActive = companySelectionActive || legacyCompanySelectionActive;
   const hasCompanyOptions = dgfyCompanies.length > 0;
   const companySelected = Boolean(String(formData.dgfyTenantId || '').trim());
-  const lookupStatus = String(emailCompanyLookup?.status || 'idle').trim();
   const lookupCompanies = Array.isArray(emailCompanyLookup?.companies) ? emailCompanyLookup.companies : [];
-  const lookupMessage = String(emailCompanyLookup?.message || '').trim();
+  const legacyCompanyOptions = lookupCompanies
+    .map((company) => ({
+      value: String(company?.company_token || '').trim(),
+      label: company?.company_name || company?.name || 'Unknown company'
+    }))
+    .filter((company) => company.value);
+  const selectedLegacyCompanyToken = String(formData.legacyCompanyToken || '').trim();
   const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
   const companyDropdownRef = useRef(null);
-  const companyOptions = [
-    {
-      value: '',
-      label: dgfyPosState?.loadingCompanies ? 'Loading companies...' : 'Select accessible company'
-    },
-    ...dgfyCompanies.map((company) => ({
-      value: String(cashierCompanySelection ? company.company_token : company.tenant_id),
-      label: company.company_name || company.name
-    }))
-  ];
-  const selectedCompanyValue = String(formData.dgfyTenantId || '');
+  const companyOptions = legacyCompanySelectionActive
+    ? [
+        { value: '', label: 'Select accessible company' },
+        ...legacyCompanyOptions
+      ]
+    : [
+        {
+          value: '',
+          label: dgfyPosState?.loadingCompanies ? 'Loading companies...' : 'Select accessible company'
+        },
+        ...dgfyCompanies.map((company) => ({
+          value: String(cashierCompanySelection ? company.company_token : company.tenant_id),
+          label: company.company_name || company.name
+        }))
+      ];
+  const selectedCompanyValue = legacyCompanySelectionActive
+    ? selectedLegacyCompanyToken
+    : String(formData.dgfyTenantId || '');
   const selectedCompanyOption = companyOptions.find((option) => option.value === selectedCompanyValue) || companyOptions[0];
+  const companySelectionRequired = legacyCompanySelectionActive
+    ? legacyCompanyOptions.length === 0 || !selectedLegacyCompanyToken
+    : companySelectionActive && hasCompanyOptions && !companySelected;
 
   useEffect(() => {
     if (!companyDropdownOpen) return undefined;
@@ -69,7 +89,9 @@ export default function TerminalLockDrawer({
   }, [companyDropdownOpen]);
 
   const handleCompanySelection = (value) => {
-    setFormData((prev) => ({ ...prev, dgfyTenantId: String(value) }));
+    setFormData((prev) => (legacyCompanySelectionActive
+      ? { ...prev, legacyCompanyToken: String(value) }
+      : { ...prev, dgfyTenantId: String(value) }));
     setCompanyDropdownOpen(false);
     companyDropdownRef.current?.querySelector('button')?.focus();
   };
@@ -92,6 +114,15 @@ export default function TerminalLockDrawer({
     const direction = event.key === 'ArrowDown' ? 1 : -1;
     const nextIndex = (startIndex + direction + companyOptions.length) % companyOptions.length;
     handleCompanySelection(companyOptions[nextIndex].value);
+  };
+
+  const handleFormSubmit = (event) => {
+    if (legacyCompanySelectionActive) {
+      event.preventDefault();
+      onLegacyCompanySelectionSubmit?.(selectedLegacyCompanyToken);
+      return;
+    }
+    onSubmit(event);
   };
 
   return (
@@ -128,7 +159,7 @@ export default function TerminalLockDrawer({
           </div>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4 p-6">
+        <form onSubmit={handleFormSubmit} className="space-y-4 p-6">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="dgfy-pos-email" className="text-[13px] font-bold text-[#0F172A]">DGFY or Cashier Email</Label>
@@ -156,31 +187,8 @@ export default function TerminalLockDrawer({
               autoComplete="username"
               className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
             />
-            {lookupStatus !== 'idle' ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-[#475569]">
-                {lookupStatus === 'loading' ? (
-                  <p>Looking up company access for this email...</p>
-                ) : null}
-                {lookupStatus === 'single' ? (
-                  <p>
-                    Company: <span className="font-extrabold text-[#0F172A]">{lookupCompanies[0]?.company_name || lookupCompanies[0]?.name || 'Unknown company'}</span>
-                  </p>
-                ) : null}
-                {lookupStatus === 'multiple' ? (
-                  <p>
-                    This email is linked to: <span className="font-extrabold text-[#0F172A]">{lookupCompanies.map((company) => company?.company_name || company?.name).filter(Boolean).join(', ')}</span>
-                  </p>
-                ) : null}
-                {lookupStatus === 'none' ? (
-                  <p>No company was found for this email yet.</p>
-                ) : null}
-                {lookupStatus === 'error' ? (
-                  <p>{lookupMessage || 'Company lookup is temporarily unavailable.'}</p>
-                ) : null}
-              </div>
-            ) : null}
           </div>
-          {!companySelectionActive ? (
+          {!companyPickerActive ? (
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="dgfy-pos-password" className="text-[13px] font-bold text-[#0F172A]">Password</Label>
@@ -227,7 +235,7 @@ export default function TerminalLockDrawer({
               </label>
             </div>
           ) : null}
-          {companySelectionActive ? (
+          {companyPickerActive ? (
             <div className="space-y-1.5">
               <Label htmlFor="dgfy-pos-company" className="text-[13px] font-bold text-[#0F172A]">Company</Label>
               <div ref={companyDropdownRef} className="relative">
@@ -281,27 +289,45 @@ export default function TerminalLockDrawer({
                 )}
               </div>
               <p className="text-[11px] leading-5 text-[#64748B]">
-                {cashierCompanySelection
-                  ? 'Choose the company where this cashier will open a shift.'
-                  : 'Choose the company to continue. POS will open onboarding first when setup is incomplete.'}
+                {legacyCompanySelectionActive
+                  ? 'Choose the company to continue with this account.'
+                  : (cashierCompanySelection
+                      ? 'Choose the company where this cashier will open a shift.'
+                      : 'Choose the company to continue. POS will open onboarding first when setup is incomplete.')}
               </p>
             </div>
           ) : null}
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] leading-5 text-[#64748B]">
-            {companySelectionActive
-              ? (cashierCompanySelection
-                  ? 'POS will load this company’s registered terminals and cashier shift.'
-                  : 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.')
-              : 'Owners can sign in with a DGFY account. Assigned cashiers continue directly to their registered terminal and shift.'}
+            {legacyCompanySelectionActive
+              ? 'Continue to POS with the selected company.'
+              : (companySelectionActive
+                  ? (cashierCompanySelection
+                      ? 'POS will load this company’s registered terminals and cashier shift.'
+                      : 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.')
+                  : 'Owners can sign in with a DGFY account. Assigned cashiers continue directly to their registered terminal and shift.')}
           </div>
+          {legacyCompanySelectionActive && onLegacyCompanySelectionOpenChange ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 w-full rounded-2xl border-slate-300 text-sm font-extrabold text-[#1A4E8D] shadow-none hover:bg-blue-50"
+              onClick={() => {
+                setFormData((prev) => ({ ...prev, legacyCompanyToken: '' }));
+                onLegacyCompanySelectionOpenChange(false);
+              }}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+          ) : null}
           <Button
             type="submit"
             className="h-12 w-full rounded-2xl !bg-[#1A4E8D] text-sm font-extrabold text-white shadow-none hover:!bg-[#143F73] focus-visible:!ring-[#93C5FD]"
-            disabled={submitting || (companySelectionActive && hasCompanyOptions && !companySelected)}
+            disabled={submitting || companySelectionRequired}
           >
             {submitting
               ? 'Continuing...'
-              : (companySelectionActive ? 'Continue to POS' : 'Sign in')}
+              : (companyPickerActive ? 'Continue to POS' : 'Sign in')}
           </Button>
           {companySelectionActive && onDayCloseSubmit ? (
             <Button
@@ -331,7 +357,7 @@ export default function TerminalLockDrawer({
               <form onSubmit={onLegacySubmit} className="mt-3 space-y-3">
                 <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2 text-[11px] leading-5 text-amber-900">
                   <Building2 className="h-4 w-4 shrink-0" />
-                  Legacy login uses the email, password, and terminal selected above.
+                  Legacy login uses the selected company, email, password, and an active terminal configured for that company.
                 </div>
                 <Button
                   type="submit"
@@ -346,6 +372,7 @@ export default function TerminalLockDrawer({
           </div>
         )}
       </div>
+
     </div>
   );
 }
