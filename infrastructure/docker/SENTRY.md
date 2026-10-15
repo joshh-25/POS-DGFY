@@ -39,6 +39,7 @@ Behavior:
 - `SENTRY_ENABLED=false` hard-disables backend Sentry, even if a DSN is present.
 - `SENTRY_ENABLED=true` plus a DSN enables server-side error capture.
 - If `SENTRY_ENABLED=true` but the DSN is missing, the service logs a warning and continues without Sentry.
+- Production validation now warns during deploy preflight and API boot if a backend DSN is configured while Sentry is disabled, or if enabled Sentry has no `SENTRY_ENVIRONMENT`.
 
 **`SENTRY_ENVIRONMENT` fallback — set it explicitly, do not rely on the default.** The
 backend Docker image hard-sets `NODE_ENV=production` on every environment (dev,
