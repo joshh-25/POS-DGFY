@@ -1,6 +1,6 @@
 {
   "name": "dgfy-opis",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "DGFY Back Office (OPIS) standalone frontend at opis.dgfy.ph, split from apps/dgfy-pos Back Office (issue #2052, epic #1354).",
   "author": "DGFY",
   "type": "module",
