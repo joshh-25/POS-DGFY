@@ -23,8 +23,20 @@ import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSA
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
 import { buildLegacyDgfyLinkStatus } from './dgfyLegacyAccessPolicy.js';
 import { hasEffectivePermission, resolveEffectivePermissions } from '../utils/userPermissions.js';
+import {
+  hasConfiguredPosGlobalPin,
+  hasConfiguredPosPinForAction
+} from '../modules/pos/domain/posGlobalPinPolicy.js';
 
 const hasPermission = hasEffectivePermission;
+const isEnabledFlag = (value) => (
+  value === true
+  || value === 1
+  || value === '1'
+  || (typeof value === 'string' && value.trim().toLowerCase() === 'true')
+);
+
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
@@ -189,6 +201,141 @@ const mirrorInvitationToDgfyAccount = async ({
   }
 };
 
+const findLinkedDgfyAccountForTenantUser = async (userId) => {
+  const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+  if (!tenantId || tenantId === 'default') return null;
+
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+  return dgfyAccountRepository.findByAcceptedTenantUserMembership({
+    tenantId,
+    tenantUserId: userId
+  });
+};
+
+const assertDgfyEmailAvailable = async (email, accountId) => {
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+  const existingAccount = await dgfyAccountRepository.findByEmail(email);
+  if (existingAccount && String(existingAccount.id) !== String(accountId)) {
+    throw createError('Email already in use by another DGFY account', 409);
+  }
+};
+
+const syncLinkedDgfyEmail = async (account, email) => {
+  if (!account || normalizeEmail(account.email) === email) {
+    return { changed: false, previous: null };
+  }
+
+  await assertDgfyEmailAvailable(email, account.id);
+  const previous = {
+    email: account.email,
+    email_verified_at: account.email_verified_at || null
+  };
+  await account.update({
+    email,
+    // The POS email-change flow has already verified this address with OTP.
+    email_verified_at: account.email_verified_at || new Date()
+  });
+  return { changed: true, previous };
+};
+
+const restoreLinkedDgfyEmail = async (account, previous) => {
+  if (!account || !previous) return;
+  try {
+    await account.update(previous);
+  } catch (rollbackError) {
+    logger.error('[UserService] Failed to roll back DGFY email synchronization', {
+      dgfyAccountId: account.id,
+      error: rollbackError.message
+    });
+  }
+};
+
+const restoreLinkedDgfyPassword = async (account, previous) => {
+  if (!account || !previous) return;
+  try {
+    await account.update(previous);
+  } catch (rollbackError) {
+    logger.error('[UserService] Failed to roll back DGFY password synchronization', {
+      dgfyAccountId: account.id,
+      error: rollbackError.message
+    });
+  }
+};
+
+const transferTenantIdentityToDgfyAccount = async ({
+  tenantId,
+  tenantUserId,
+  user,
+  linkedDgfyAccount,
+  targetDgfyAccount,
+  oldEmail,
+  newEmail
+}) => {
+  if (!targetDgfyAccount || user?.is_master_admin !== true) return null;
+
+  if (!targetDgfyAccount.is_active || targetDgfyAccount.deleted_at) {
+    throw createError('The new email must belong to an active DGFY account before the company can be transferred.', 409);
+  }
+
+  const tenant = await landlordService.findTenantById(tenantId);
+  if (!tenant || tenant.status !== 'active') {
+    throw createError('The company is unavailable for account transfer.', 409);
+  }
+
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
+  if (typeof dgfyAccountRepository.forceAssignTenantOwnership !== 'function') {
+    throw createError('DGFY company ownership transfer is unavailable.', 503);
+  }
+
+  const applyTransfer = async (transaction) => {
+    const options = transaction ? { transaction } : {};
+
+    await dgfyAccountRepository.forceAssignTenantOwnership({
+      tenant,
+      toAccountId: targetDgfyAccount.id,
+      tenantUserId,
+      role: user.role || 'admin',
+      actorAccountId: linkedDgfyAccount?.id || null
+    }, options);
+
+    if (
+      linkedDgfyAccount
+      && String(linkedDgfyAccount.id) !== String(targetDgfyAccount.id)
+      && typeof dgfyAccountRepository.removeMembershipForAccount === 'function'
+    ) {
+      await dgfyAccountRepository.removeMembershipForAccount({
+        dgfyAccountId: linkedDgfyAccount.id,
+        tenantId
+      }, options);
+    }
+
+    // Keep the password that was already verified in the tenant profile. Hashes
+    // are copied; plaintext passwords never cross the account boundary.
+    if (
+      user.password_hash
+      && targetDgfyAccount.password_hash !== user.password_hash
+      && typeof targetDgfyAccount.update === 'function'
+    ) {
+      await targetDgfyAccount.update({
+        password_hash: user.password_hash,
+        temporary_password_active: false
+      }, options);
+    }
+
+    if (oldEmail && newEmail && typeof landlordService.updateEmailTenantMapping === 'function') {
+      await landlordService.updateEmailTenantMapping(oldEmail, newEmail, tenantId, options);
+    }
+  };
+
+  if (typeof dgfyAccountRepository.transaction === 'function') {
+    await dgfyAccountRepository.transaction(applyTransfer);
+  } else {
+    await applyTransfer(null);
+  }
+
+  return targetDgfyAccount;
+};
+
 /**
  * Get current user profile by user ID
  * @param {number} userId - User ID from authenticated request
@@ -332,12 +479,21 @@ export const updateUserProfile = async (userId, updateData) => {
     }
   }
 
-  // Capture old email before update for mapping update
+  // Capture old email before update for mapping and DGFY identity synchronization.
   const oldEmail = user.email;
   const sanitizedUpdateData = { ...updateData };
   delete sanitizedUpdateData.email_otp_code;
 
-  if (sanitizedUpdateData.email && sanitizedUpdateData.email !== oldEmail) {
+  if (Object.prototype.hasOwnProperty.call(sanitizedUpdateData, 'email')) {
+    sanitizedUpdateData.email = normalizeEmail(sanitizedUpdateData.email);
+  }
+
+  const tenantEmailChanged = Boolean(
+    sanitizedUpdateData.email
+    && normalizeEmail(sanitizedUpdateData.email) !== normalizeEmail(oldEmail)
+  );
+
+  if (tenantEmailChanged) {
     const store = dbStore.getStore();
     await verifyEmailOtp({
       purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
@@ -347,11 +503,70 @@ export const updateUserProfile = async (userId, updateData) => {
     });
   }
 
-  // Update user
-  await user.update(sanitizedUpdateData);
+  const resultingEmail = normalizeEmail(sanitizedUpdateData.email || user.email);
+  // Resolve the DGFY identity by accepted membership, never by the mutable email.
+  // This also repairs accounts that were changed before DGFY synchronization existed.
+  const linkedDgfyAccount = await findLinkedDgfyAccountForTenantUser(userId);
+  const targetDgfyAccount = tenantEmailChanged
+    ? await (await import('../modules/dgfy/index.js')).dgfyAccountRepository.findByEmail(resultingEmail)
+    : null;
+  const shouldTransferTenantIdentity = Boolean(
+    tenantEmailChanged
+    && targetDgfyAccount
+    && user.is_master_admin === true
+    && String(targetDgfyAccount.id) !== String(linkedDgfyAccount?.id || '')
+  );
+  if (tenantEmailChanged && user.is_master_admin === true && linkedDgfyAccount && !targetDgfyAccount) {
+    throw createError('Create and verify the new DGFY account before changing the company owner email.', 409);
+  }
+  let dgfyEmailSync = { changed: false, previous: null };
+  const previousTenantUserData = Object.keys(sanitizedUpdateData).reduce((previous, key) => ({
+    ...previous,
+    [key]: user[key]
+  }), {});
+  let tenantUserUpdated = false;
+
+  try {
+    if (linkedDgfyAccount && resultingEmail && !shouldTransferTenantIdentity) {
+      dgfyEmailSync = await syncLinkedDgfyEmail(linkedDgfyAccount, resultingEmail);
+    }
+
+    // Update user only after the linked DGFY identity has passed uniqueness checks.
+    await user.update(sanitizedUpdateData);
+    tenantUserUpdated = true;
+
+    if (
+      shouldTransferTenantIdentity
+    ) {
+      await transferTenantIdentityToDgfyAccount({
+        tenantId: dbStore.getStore()?.tenantId,
+        tenantUserId: userId,
+        user,
+        linkedDgfyAccount,
+        targetDgfyAccount,
+        oldEmail,
+        newEmail: resultingEmail
+      });
+    }
+  } catch (error) {
+    if (tenantUserUpdated) {
+      try {
+        await user.update(previousTenantUserData);
+      } catch (rollbackError) {
+        logger.error('[UserService] Failed to roll back tenant profile after DGFY transfer failure', {
+          userId,
+          error: rollbackError.message
+        });
+      }
+    }
+    if (dgfyEmailSync.changed) {
+      await restoreLinkedDgfyEmail(linkedDgfyAccount, dgfyEmailSync.previous);
+    }
+    throw error;
+  }
 
   // If email changed, update the email-tenant mapping
-  if (sanitizedUpdateData.email && sanitizedUpdateData.email !== oldEmail) {
+  if (tenantEmailChanged && !shouldTransferTenantIdentity) {
     const store = dbStore.getStore();
     const tenantId = store?.tenantId;
     if (tenantId) {
@@ -403,9 +618,43 @@ export const changePassword = async (userId, currentPassword, newPassword) => {
     throw error;
   }
 
-  // Hash and save new password
+  const linkedDgfyAccount = await findLinkedDgfyAccountForTenantUser(userId);
+  const previousTenantPasswordHash = user.password_hash;
   const password_hash = await hashPassword(newPassword);
-  await user.update({ password_hash });
+  const previousDgfyPassword = linkedDgfyAccount
+    ? {
+      password_hash: linkedDgfyAccount.password_hash,
+      temporary_password_active: Boolean(linkedDgfyAccount.temporary_password_active)
+    }
+    : null;
+  let tenantPasswordUpdated = false;
+
+  // Keep the tenant POS password and the linked DGFY password synchronized.
+  // Password hashes are copied, never plaintext credentials.
+  try {
+    await user.update({ password_hash });
+    tenantPasswordUpdated = true;
+
+    if (linkedDgfyAccount) {
+      await linkedDgfyAccount.update({
+        password_hash,
+        temporary_password_active: false
+      });
+    }
+  } catch (error) {
+    if (tenantPasswordUpdated) {
+      try {
+        await user.update({ password_hash: previousTenantPasswordHash });
+      } catch (rollbackError) {
+        logger.error('[UserService] Failed to roll back tenant password synchronization', {
+          userId,
+          error: rollbackError.message
+        });
+      }
+    }
+    await restoreLinkedDgfyPassword(linkedDgfyAccount, previousDgfyPassword);
+    throw error;
+  }
 };
 
 export const resetLocalCashierPassword = async (adminUserId, targetUserId, newPassword, options = {}) => {
@@ -508,6 +757,7 @@ export const getAllUsers = async (options = {}) => {
       'is_master_admin',
       'pos_approval_pin_hash',
       'pos_day_close_pin_hash',
+      'pos_cashier_pin_hash',
       'invitation_status',
       'invitation_expires_at',
       'invitation_delivery_status',
@@ -534,8 +784,10 @@ export const getAllUsers = async (options = {}) => {
       created_at: user.created_at,
       permissions: resolveEffectivePermissions(user),
       is_master_admin: user.is_master_admin,
-      pos_approval_pin_configured: Boolean(String(user.pos_approval_pin_hash || '').trim()),
-      pos_day_close_pin_configured: Boolean(String(user.pos_day_close_pin_hash || '').trim()),
+      pos_global_pin_configured: hasConfiguredPosGlobalPin(user),
+      pos_approval_pin_configured: hasConfiguredPosPinForAction(user, ['pos_approval_pin_hash']),
+      pos_day_close_pin_configured: hasConfiguredPosPinForAction(user, ['pos_day_close_pin_hash']),
+      pos_cashier_pin_configured: hasConfiguredPosGlobalPin(user),
       invitation_status: user.invitation_status || null,
       invitation_expires_at: user.invitation_expires_at || null,
       invitation_delivery_status: user.invitation_delivery_status || null,
@@ -851,7 +1103,7 @@ export const updateUserPermissions = async (adminUserId, targetUserId, permissio
 
   return {
     user_id: targetUser.user_id,
-    permissions: targetUser.permissions,
+    permissions: resolveEffectivePermissions(targetUser),
     is_master_admin: targetUser.is_master_admin
   };
 };
@@ -881,14 +1133,26 @@ export const updatePosApprovalPin = async (adminUserId, targetUserId, { pin = ''
 
   const normalizedPin = String(pin || '').trim();
   if (clear !== true && !/^[0-9]{4,12}$/.test(normalizedPin)) {
-    throw createError('POS approval PIN must contain 4 to 12 digits', 422);
+    throw createError('Global POS PIN must contain 4 to 12 digits', 422);
   }
-  const posApprovalPinHash = clear === true ? null : await hashPassword(normalizedPin);
-  await targetUser.update({ pos_approval_pin_hash: posApprovalPinHash });
+  const posGlobalPinHash = clear === true ? null : await hashPassword(normalizedPin);
+  await User.sequelize.transaction(async (transaction) => {
+    await targetUser.update({
+      pos_cashier_pin_hash: posGlobalPinHash,
+      pos_approval_pin_hash: null,
+      pos_day_close_pin_hash: null,
+      pos_cashier_pin_failed_attempts: 0,
+      pos_cashier_pin_locked_until: null,
+      pos_cashier_pin_changed_at: clear === true ? null : new Date()
+    }, { transaction });
+  });
   return {
     user_id: targetUser.user_id,
     username: targetUser.username,
-    pos_approval_pin_configured: Boolean(posApprovalPinHash)
+    pos_global_pin_configured: Boolean(posGlobalPinHash),
+    pos_approval_pin_configured: Boolean(posGlobalPinHash),
+    pos_day_close_pin_configured: Boolean(posGlobalPinHash),
+    pos_cashier_pin_configured: Boolean(posGlobalPinHash)
   };
 };
 
@@ -914,7 +1178,14 @@ export const updatePosDayClosePin = async (adminUserId, targetUserId, { clear = 
   }
 
   await User.sequelize.transaction(async (transaction) => {
-    await targetUser.update({ pos_day_close_pin_hash: null }, { transaction });
+    await targetUser.update({
+      pos_cashier_pin_hash: null,
+      pos_approval_pin_hash: null,
+      pos_day_close_pin_hash: null,
+      pos_cashier_pin_failed_attempts: 0,
+      pos_cashier_pin_locked_until: null,
+      pos_cashier_pin_changed_at: null
+    }, { transaction });
     if (!AuditLog) throw new Error('AuditLog model is unavailable');
     await AuditLog.create({
       user_id: adminUser.user_id,
@@ -927,7 +1198,10 @@ export const updatePosDayClosePin = async (adminUserId, targetUserId, { clear = 
   return {
     user_id: targetUser.user_id,
     username: targetUser.username,
-    pos_day_close_pin_configured: false
+    pos_global_pin_configured: false,
+    pos_approval_pin_configured: false,
+    pos_day_close_pin_configured: false,
+    pos_cashier_pin_configured: false
   };
 };
 
@@ -939,12 +1213,19 @@ const persistOwnPosDayClosePin = async (user, pin, {
   const AuditLog = dbStore.get('AuditLog');
   const normalizedPin = String(pin || '').trim();
   if (!/^[0-9]{4,12}$/.test(normalizedPin)) {
-    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
+    throw createError('Global POS PIN must contain 4 to 12 digits', 422);
   }
 
-  const posDayClosePinHash = await hashPassword(normalizedPin);
+  const posGlobalPinHash = await hashPassword(normalizedPin);
   await User.sequelize.transaction(async (transaction) => {
-    await user.update({ pos_day_close_pin_hash: posDayClosePinHash }, { transaction });
+    await user.update({
+      pos_cashier_pin_hash: posGlobalPinHash,
+      pos_approval_pin_hash: null,
+      pos_day_close_pin_hash: null,
+      pos_cashier_pin_failed_attempts: 0,
+      pos_cashier_pin_locked_until: null,
+      pos_cashier_pin_changed_at: new Date()
+    }, { transaction });
     if (!AuditLog) throw new Error('AuditLog model is unavailable');
     await AuditLog.create({
       user_id: user.user_id,
@@ -954,6 +1235,7 @@ const persistOwnPosDayClosePin = async (user, pin, {
       changes: {
         operation: 'self_service_configure',
         pin_configured: true,
+        pin_scope: 'global_pos_pin',
         credential_authority: credentialAuthority,
         ...(dgfyAccountId ? { dgfy_account_id: dgfyAccountId } : {})
       }
@@ -964,27 +1246,32 @@ const persistOwnPosDayClosePin = async (user, pin, {
     user_id: user.user_id,
     username: user.username,
     email: user.email,
-    pos_day_close_pin_configured: true
+    pos_global_pin_configured: true,
+    pos_approval_pin_configured: true,
+    pos_day_close_pin_configured: true,
+    pos_cashier_pin_configured: true
   };
 };
 
-const findEligibleOwnDayClosePinUser = async (userId) => {
+const findEligibleOwnPosGlobalPinUser = async (userId) => {
   const User = dbStore.get('User');
   const user = await findVisibleUserById(User, userId);
   if (!user) throw notFoundError('User not found');
-  if (!user.is_active || !resolveEffectivePermissions(user).includes('pos:close_day')) {
-    throw createError('You need close-day permission to configure a POS Day Close PIN', 403);
+  const canUsePos = isEnabledFlag(user.is_master_admin)
+    || resolveEffectivePermissions(user).includes('pos:transact');
+  if (!user.is_active || !canUsePos) {
+    throw createError('You need POS transaction permission to configure a global POS PIN', 403);
   }
   return user;
 };
 
 export const updateOwnPosDayClosePin = async (userId, { currentPassword = '', pin = '' } = {}) => {
-  const user = await findEligibleOwnDayClosePinUser(userId);
+  const user = await findEligibleOwnPosGlobalPinUser(userId);
 
   const normalizedPassword = String(currentPassword || '');
   const normalizedPin = String(pin || '').trim();
   if (!/^[0-9]{4,12}$/.test(normalizedPin)) {
-    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
+    throw createError('Global POS PIN must contain 4 to 12 digits', 422);
   }
   if (!await comparePassword(normalizedPassword, user.password_hash)) {
     throw createError('Current account password is incorrect', 401);
@@ -1001,7 +1288,7 @@ export const updateOwnPosDayClosePinForVerifiedDgfyAccount = async (
   if (!normalizedDgfyAccountId) {
     throw createError('Verified DGFY account context is required', 401);
   }
-  const user = await findEligibleOwnDayClosePinUser(userId);
+  const user = await findEligibleOwnPosGlobalPinUser(userId);
   return persistOwnPosDayClosePin(user, pin, {
     credentialAuthority: 'dgfy_account',
     dgfyAccountId: normalizedDgfyAccountId
@@ -1535,6 +1822,9 @@ export const listLocalCashiers = async (adminUserId) => {
       'is_active',
       'permissions',
       'is_master_admin',
+      'pos_approval_pin_hash',
+      'pos_day_close_pin_hash',
+      'pos_cashier_pin_hash',
       'created_at'
     ],
     where: buildVisibleWhere({ role: 'cashier', is_active: true }),
@@ -1560,6 +1850,8 @@ export const listLocalCashiers = async (adminUserId) => {
     is_active: cashier.is_active,
     permissions: resolveEffectivePermissions(cashier),
     is_master_admin: cashier.is_master_admin,
+    pos_global_pin_configured: hasConfiguredPosGlobalPin(cashier),
+    pos_cashier_pin_configured: hasConfiguredPosGlobalPin(cashier),
     location_ids: locationsByUserId.get(Number(cashier.user_id)) || []
   }));
 };

@@ -531,6 +531,19 @@ export const dgfyAccountRepository = {
             const tenant = mapping.tenant;
             if (!tenant || tenant.status !== 'active') continue;
 
+            // Explicit membership rows are authoritative. The legacy mirror is only
+            // allowed to create a missing founder membership; it must never resurrect
+            // a membership that an account owner previously removed or declined.
+            const existingMembership = await DgfyAccountTenantMembership.findOne({
+                where: {
+                    dgfy_account_id: account.id,
+                    tenant_id: tenant.id
+                },
+                attributes: ['id', 'status', 'source'],
+                ...options
+            });
+            if (existingMembership) continue;
+
             try {
                 const sequelizeInstance = await tenantConnector.getConnection(tenant);
                 const tenantModels = getTenantModels(sequelizeInstance);
@@ -1187,6 +1200,27 @@ export const dgfyAccountRepository = {
             await targetMembership.update({ source: 'founder' });
         }
         return tenant.reload();
+    },
+
+    async removeMembershipForAccount({ dgfyAccountId, tenantId }, options = {}) {
+        const membership = await DgfyAccountTenantMembership.findOne({
+            where: {
+                dgfy_account_id: dgfyAccountId,
+                tenant_id: tenantId,
+                status: 'accepted'
+            },
+            ...options
+        });
+        if (!membership) return null;
+
+        await membership.update({ status: 'removed' }, options);
+        return membership.reload({
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+            }],
+            ...options
+        });
     },
 
     async forceAssignTenantOwnership({ tenant, toAccountId, tenantUserId = null, role = 'admin', actorAccountId = null }, options = {}) {

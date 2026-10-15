@@ -1,5 +1,6 @@
 import {
   STORE_BOOKING_SUBPAGE,
+  STORE_CATEGORIES_SUBPAGE,
   STORE_ITEM_SUBPAGE,
   STORE_ORDER_SUBPAGE,
   STORE_SERVICE_SUBPAGE,
@@ -25,7 +26,8 @@ export const buildStorefrontHistoryState = ({
   serviceItemId = '',
   itemId = '',
   reviewToken = '',
-  locationId = null
+  locationId = null,
+  qrToken = ''
 } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   const normalizedSubpage = storeSubpage ? String(storeSubpage).trim().toLowerCase() : null;
@@ -41,20 +43,23 @@ export const buildStorefrontHistoryState = ({
   if (normalizedReviewToken) state.reviewToken = normalizedReviewToken;
   const normalizedLocationId = normalizeLocationId(locationId);
   if (normalizedLocationId != null) state.locationId = normalizedLocationId;
+  const normalizedQrToken = String(qrToken || '').trim();
+  if (normalizedQrToken) state.qrToken = normalizedQrToken;
   return state;
 };
 
-export const buildServiceDetailTarget = (storeSlug, serviceItemId, { locationId = null } = {}) => {
+export const buildServiceDetailTarget = (storeSlug, serviceItemId, { locationId = null, qrToken = '' } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   const normalizedServiceItemId = String(serviceItemId || '').trim();
   if (!normalizedSlug || !normalizedServiceItemId) return '';
   const params = new URLSearchParams({ service: normalizedServiceItemId });
   const normalizedLocationId = normalizeLocationId(locationId);
   if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  if (String(qrToken || '').trim()) params.set('qr_token', String(qrToken).trim());
   return storePath(normalizedSlug, STORE_SERVICE_SUBPAGE, buildQueryString(params));
 };
 
-export const buildItemDetailTarget = (storeSlug, itemId, { reviewToken = '', locationId = null } = {}) => {
+export const buildItemDetailTarget = (storeSlug, itemId, { reviewToken = '', locationId = null, qrToken = '' } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   const normalizedItemId = String(itemId || '').trim();
   if (!normalizedSlug || !normalizedItemId) return '';
@@ -67,31 +72,51 @@ export const buildItemDetailTarget = (storeSlug, itemId, { reviewToken = '', loc
   }
   const normalizedLocationId = normalizeLocationId(locationId);
   if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  if (String(qrToken || '').trim()) params.set('qr_token', String(qrToken).trim());
   return storePath(normalizedSlug, STORE_ITEM_SUBPAGE, buildQueryString(params));
 };
 
-export const buildCatalogTarget = (storeSlug, { locationId = null } = {}) => {
+export const buildCatalogTarget = (storeSlug, { locationId = null, qrToken = '' } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   if (!normalizedSlug) return '';
   const normalizedLocationId = normalizeLocationId(locationId);
-  return storePath(normalizedSlug, null, normalizedLocationId == null ? '' : `?location_id=${normalizedLocationId}`);
+  const params = new URLSearchParams();
+  if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  if (String(qrToken || '').trim()) params.set('qr_token', String(qrToken).trim());
+  return storePath(normalizedSlug, null, params.toString() ? `?${params.toString()}` : '');
 };
 
-export const buildOrderTarget = (storeSlug, { locationId = null } = {}) => {
+export const buildCategoriesTarget = (storeSlug, { locationId = null, qrToken = '' } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   if (!normalizedSlug) return '';
   const normalizedLocationId = normalizeLocationId(locationId);
-  return storePath(normalizedSlug, STORE_ORDER_SUBPAGE, normalizedLocationId == null ? '' : `?location_id=${normalizedLocationId}`);
+  const params = new URLSearchParams();
+  if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  if (String(qrToken || '').trim()) params.set('qr_token', String(qrToken).trim());
+  return storePath(normalizedSlug, STORE_CATEGORIES_SUBPAGE, params.toString() ? `?${params.toString()}` : '');
 };
 
-export const buildBookingTarget = (storeSlug, { locationId = null } = {}) => {
+export const buildOrderTarget = (storeSlug, { locationId = null, qrToken = '' } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   if (!normalizedSlug) return '';
   const normalizedLocationId = normalizeLocationId(locationId);
-  return storePath(normalizedSlug, STORE_BOOKING_SUBPAGE, normalizedLocationId == null ? '' : `?location_id=${normalizedLocationId}`);
+  const params = new URLSearchParams();
+  if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  if (String(qrToken || '').trim()) params.set('qr_token', String(qrToken).trim());
+  return storePath(normalizedSlug, STORE_ORDER_SUBPAGE, params.toString() ? `?${params.toString()}` : '');
 };
 
-export const buildTrackTarget = (storeSlug, pin = '', { locationId = null } = {}) => {
+export const buildBookingTarget = (storeSlug, { locationId = null, qrToken = '' } = {}) => {
+  const normalizedSlug = normalizeNavigationSlug(storeSlug);
+  if (!normalizedSlug) return '';
+  const normalizedLocationId = normalizeLocationId(locationId);
+  const params = new URLSearchParams();
+  if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  if (String(qrToken || '').trim()) params.set('qr_token', String(qrToken).trim());
+  return storePath(normalizedSlug, STORE_BOOKING_SUBPAGE, params.toString() ? `?${params.toString()}` : '');
+};
+
+export const buildTrackTarget = (storeSlug, pin = '', { locationId = null, qrToken = '' } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   if (!normalizedSlug) return '';
   const normalizedPin = String(pin || '').trim().toUpperCase();
@@ -99,6 +124,7 @@ export const buildTrackTarget = (storeSlug, pin = '', { locationId = null } = {}
   if (normalizedPin) params.set('pin', normalizedPin);
   const normalizedLocationId = normalizeLocationId(locationId);
   if (normalizedLocationId != null) params.set('location_id', String(normalizedLocationId));
+  if (String(qrToken || '').trim()) params.set('qr_token', String(qrToken).trim());
   return storePath(normalizedSlug, STORE_TRACK_SUBPAGE, buildQueryString(params));
 };
 
@@ -107,20 +133,22 @@ export const buildCanonicalStorefrontTarget = ({
   routeSubpage = null,
   routeServiceItemId = '',
   routeItemId = '',
-  locationId = null
+  locationId = null,
+  qrToken = ''
 } = {}) => {
   const normalizedSlug = normalizeNavigationSlug(storeSlug);
   if (!normalizedSlug) return '';
-  if (routeSubpage === STORE_BOOKING_SUBPAGE) return buildBookingTarget(normalizedSlug, { locationId });
-  if (routeSubpage === STORE_TRACK_SUBPAGE) return buildTrackTarget(normalizedSlug, '', { locationId });
-  if (routeSubpage === STORE_ORDER_SUBPAGE) return buildOrderTarget(normalizedSlug, { locationId });
+  if (routeSubpage === STORE_BOOKING_SUBPAGE) return buildBookingTarget(normalizedSlug, { locationId, qrToken });
+  if (routeSubpage === STORE_CATEGORIES_SUBPAGE) return buildCategoriesTarget(normalizedSlug, { locationId, qrToken });
+  if (routeSubpage === STORE_TRACK_SUBPAGE) return buildTrackTarget(normalizedSlug, '', { locationId, qrToken });
+  if (routeSubpage === STORE_ORDER_SUBPAGE) return buildOrderTarget(normalizedSlug, { locationId, qrToken });
   if (routeSubpage === STORE_SERVICE_SUBPAGE && String(routeServiceItemId || '').trim()) {
-    return buildServiceDetailTarget(normalizedSlug, routeServiceItemId, { locationId });
+    return buildServiceDetailTarget(normalizedSlug, routeServiceItemId, { locationId, qrToken });
   }
   if (routeSubpage === STORE_ITEM_SUBPAGE && String(routeItemId || '').trim()) {
-    return buildItemDetailTarget(normalizedSlug, routeItemId, { locationId });
+    return buildItemDetailTarget(normalizedSlug, routeItemId, { locationId, qrToken });
   }
-  return buildCatalogTarget(normalizedSlug, { locationId });
+  return buildCatalogTarget(normalizedSlug, { locationId, qrToken });
 };
 
 export const isCurrentStorefrontTarget = (target) => {

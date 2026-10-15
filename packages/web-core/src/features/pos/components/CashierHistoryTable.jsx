@@ -224,6 +224,8 @@ export default function CashierHistoryTable({
             const status = getShiftStatus(shift.status);
             const rowCashierName = shift.cashier?.display_name
               || shift.cashier?.cashier_name
+              || shift.cashier?.username
+              || shift.cashier?.email
               || cashierName
               || 'Unknown cashier';
             const branchName = shift.location?.name || shift.location_name || 'Unknown branch';

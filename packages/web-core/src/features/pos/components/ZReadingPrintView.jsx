@@ -101,11 +101,18 @@ export default function ZReadingPrintView({
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
                     <Row name="Transactions" value={Number(summary.transaction_count || 0).toLocaleString('en-US')} />
+                    <Row name="Items sold" value={Number(summary.item_count || 0).toLocaleString('en-US')} />
                     <Row name="Subtotal" value={`${displayCurrency}${money(summary.subtotal_amount)}`} />
                     <Row name="Discounts" value={`${displayCurrency}${money(summary.discount_amount)}`} />
+                    <Row name="VATable sales" value={`${displayCurrency}${money(summary.vatable_sales)}`} />
                     <Row name="VAT" value={`${displayCurrency}${money(summary.vat_amount)}`} />
+                    <Row name="VAT-exempt sales" value={`${displayCurrency}${money(summary.vat_exempt_sales)}`} />
+                    <Row name="Zero-rated sales" value={`${displayCurrency}${money(summary.zero_rated_sales)}`} />
                     <Row name="Overall total" value={`${displayCurrency}${money(summary.total_amount)}`} strong />
-                    <Row name={`POS voids (${Number(summary.void_transaction_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.void_amount)}`} />
+                    <Row name={`POS voids (${Number(summary.void_transaction_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.transaction_void_amount ?? summary.void_amount)}`} />
+                    <Row name={`Item voids (${Number(summary.item_voided_item_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.item_void_amount)}`} />
+                    <Row name="Total voids" value={`${displayCurrency}${money(summary.void_amount)}`} />
+                    <Row name="Refunds" value={`${displayCurrency}${money(summary.refund_amount)}`} />
                 </section>
 
                 {reconciliation ? (
@@ -169,6 +176,12 @@ export default function ZReadingPrintView({
                     <p className="font-black uppercase">Fiscal counters</p>
                     <Row name="Z counter" value={Number(counters.z_counter || 0).toLocaleString('en-US')} />
                     <Row name="Reset counter" value={Number(counters.reset_counter || 0).toLocaleString('en-US')} />
+                    <Row
+                        name="Lifetime grand total"
+                        value={`${displayCurrency}${money(counters.lifetime_grand_total == null
+                            ? Number(counters.lifetime_grand_total_cents || 0) / 100
+                            : counters.lifetime_grand_total)}`}
+                    />
                 </section>
 
                 {printFailed ? (

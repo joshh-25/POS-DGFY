@@ -86,6 +86,7 @@ export default function ShiftCloseSummaryPrintView({
     const orderSources = Array.isArray(sales.order_source_breakdown) ? sales.order_source_breakdown : [];
     const deliveryProviders = parseDeliveryProviderSummary(sales.delivery_provider_breakdown);
     const adjustments = Array.isArray(sales.post_close_adjustments) ? sales.post_close_adjustments : [];
+    const isXReading = report.report_type === 'x_reading';
     const visiblePayments = payments.filter(hasBreakdownValue);
     const visibleOrderMethods = orderMethods.filter(hasBreakdownValue);
     const visibleOrderSources = orderSources.filter(hasBreakdownValue);
@@ -104,6 +105,7 @@ export default function ShiftCloseSummaryPrintView({
     ).trim();
     const resolvedPaperWidth = resolvePaperWidth(paperWidth);
     const browserPrintFallback = !hardwareLoading && (isPrinterAvailable === false || autoPrint);
+    const displayTitle = isXReading ? 'X-Reading / Current Shift' : title;
 
     return (
         <div
@@ -113,7 +115,7 @@ export default function ShiftCloseSummaryPrintView({
             <article
                 role="dialog"
                 aria-modal="true"
-                aria-label={`${title} for shift ${shift.pos_terminal_shift_id || shift.shift_id || ''}`}
+                aria-label={`${displayTitle} for shift ${shift.pos_terminal_shift_id || shift.shift_id || ''}`}
                 className="pos-shift-summary-print-dialog relative flex max-h-[92vh] w-full max-w-md flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-2xl print:max-h-none print:rounded-none print:border-0 print:p-0 print:shadow-none"
             >
                 <div className="pos-shift-summary-print-scroll min-h-0 overflow-y-auto pr-1">
@@ -126,16 +128,17 @@ export default function ShiftCloseSummaryPrintView({
                                 <img src={resolveAssetUrl(businessIcon)} alt={`${businessName} icon`} className="mx-auto mb-1 h-auto w-16 object-contain" />
                             ) : null}
                             <p className="text-xs font-black uppercase">{businessName}</p>
-                            <h2 className="mt-1 text-sm font-black uppercase">{title}</h2>
+                            <h2 className="mt-1 text-sm font-black uppercase">{displayTitle}</h2>
                             <p className="mt-2 text-[11px] text-slate-700">Business date: {shift.business_date || '\u2014'}</p>
                             <p className="text-[11px] text-slate-700">Terminal: {shift.terminal_id || '\u2014'}</p>
                             <p className="text-[11px] text-slate-700">Shift #: {shift.pos_terminal_shift_id || shift.shift_id || '\u2014'}</p>
+                            {report.generated_at ? <p className="text-[11px] text-slate-700">Generated: {formatCashierHistoryDateTime(report.generated_at)}</p> : null}
                         </header>
 
                         <SummarySection title="Sales summary" emphasis>
                             <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 print:bg-white">
                                 <div className="flex items-end justify-between gap-3">
-                                    <span className="text-[10px] font-black uppercase tracking-wide text-[#1A4E8D]">Overall sales</span>
+                                    <span className="text-[10px] font-black uppercase tracking-wide text-[#1A4E8D]">{isXReading ? 'Net sales' : 'Overall sales'}</span>
                                     <span className="shrink-0 font-mono text-lg font-black leading-none tabular-nums text-[#1A4E8D]">{formatCashierHistoryMoney(totalAmount, currency)}</span>
                                 </div>
                                 <div className="mt-2 flex items-center justify-between border-t border-blue-200 pt-2 text-[11px] print:border-slate-200">
@@ -143,6 +146,20 @@ export default function ShiftCloseSummaryPrintView({
                                     <span className="font-mono font-bold tabular-nums text-slate-950">{formatCount(transactionCount)}</span>
                                 </div>
                             </div>
+                        </SummarySection>
+
+                        <SummarySection title="Sales and tax details">
+                            <Row name="Items sold" value={formatCount(sales.item_count)} />
+                            <Row name="Subtotal" value={formatCashierHistoryMoney(sales.subtotal_amount, currency)} />
+                            <Row name="Discounts" value={formatCashierHistoryMoney(sales.discount_amount, currency)} />
+                            <Row name="VATable sales" value={formatCashierHistoryMoney(sales.vatable_sales, currency)} />
+                            <Row name="VAT" value={formatCashierHistoryMoney(sales.vat_amount, currency)} />
+                            <Row name="VAT-exempt sales" value={formatCashierHistoryMoney(sales.vat_exempt_sales, currency)} />
+                            <Row name="Zero-rated sales" value={formatCashierHistoryMoney(sales.zero_rated_sales, currency)} />
+                            <Row name={`POS voids (${formatCount(sales.void_transaction_count)})`} value={formatCashierHistoryMoney(sales.transaction_void_amount ?? sales.void_amount, currency)} />
+                            <Row name={`Item voids (${formatCount(sales.item_voided_item_count)})`} value={formatCashierHistoryMoney(sales.item_void_amount, currency)} />
+                            <Row name="Total voids" value={formatCashierHistoryMoney(sales.void_amount, currency)} />
+                            <Row name="Refunds" value={formatCashierHistoryMoney(sales.refund_amount, currency)} />
                         </SummarySection>
 
                         <SummarySection title="Payment methods">
@@ -228,7 +245,9 @@ export default function ShiftCloseSummaryPrintView({
                         ) : null}
 
                         <p className="border-t border-dashed border-slate-300 pt-2 text-center text-[10px] text-slate-500">
-                            {autoPrint
+                            {isXReading
+                                ? 'X-reading is read-only and does not close the shift or reset Z-reading counters.'
+                                : autoPrint
                                 ? 'Keep with cashier close evidence.'
                                 : shift.closed_at
                                     ? 'Read-only shift summary.'

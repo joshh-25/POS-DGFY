@@ -788,6 +788,8 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
         const shiftId = parsePositiveInt(rawShiftId);
         const copies = Math.max(1, Math.min(Number.parseInt(payload?.copies, 10) || 1, 3));
         const paperWidth = payload?.paper_width === '57mm' ? '57mm' : '80mm';
+        const readingType = payload?.reading_type === 'x_reading' ? 'x_reading' : 'shift_summary';
+        const readingLabel = readingType === 'x_reading' ? 'X-reading' : 'shift sales summary';
         const reason = String(payload?.reason || '').trim() || 'shift_close_report';
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const clientDriverId = String(payload?.client_driver_id || '').trim() || null;
@@ -814,6 +816,7 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
             shift_id: shiftId,
             copies,
             paper_width: paperWidth,
+            reading_type: readingType,
             reason,
             client_driver_id: clientDriverId
         });
@@ -835,7 +838,7 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
                     { statusCode: 404 }
                 );
             }
-            if (String(shift.status || '').trim().toLowerCase() !== 'closed') {
+            if (readingType !== 'x_reading' && String(shift.status || '').trim().toLowerCase() !== 'closed') {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Shift summary printing is available after the shift is closed',
@@ -858,6 +861,7 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
                 }
                 : await deviceDriver.printShiftSummary({
                     shift_summary: shiftSummary,
+                    reading_type: readingType,
                     copies,
                     paper_width: paperWidth
                 });
@@ -868,7 +872,8 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
                 entity_id: shiftId,
                 action: 'UPDATE',
                 changes: {
-                    operation: 'print_shift_summary',
+                    operation: readingType === 'x_reading' ? 'print_x_reading' : 'print_shift_summary',
+                    reading_type: readingType,
                     reason,
                     copies,
                     paper_width: paperWidth,
@@ -880,6 +885,7 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
 
             const responsePayload = {
                 shift_summary: shiftSummary,
+                reading_type: readingType,
                 paper_width: paperWidth,
                 bridge: bridgeResponse
             };
@@ -906,7 +912,8 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
                     entity_id: shiftId,
                     action: 'UPDATE',
                     changes: {
-                        operation: 'print_shift_summary',
+                        operation: readingType === 'x_reading' ? 'print_x_reading' : 'print_shift_summary',
+                        reading_type: readingType,
                         reason,
                         copies,
                         paper_width: paperWidth,
@@ -914,7 +921,7 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
                         bridge_result: {
                             success: false,
                             reason_code: error?.details?.reason_code || error?.code || 'SHIFT_SUMMARY_PRINT_FAILED',
-                            message: error?.message || 'Shift summary print failed'
+                            message: error?.message || `${readingLabel} print failed`
                         }
                     },
                     ...buildAuditMetadata(auditContext)
@@ -934,7 +941,7 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
                     createdBy: userId
                 });
             }
-            return fail(mapPosUseCaseError(error, 'Failed to print shift sales summary'));
+            return fail(mapPosUseCaseError(error, `Failed to print ${readingLabel}`));
         }
     };
 };
@@ -1030,7 +1037,8 @@ export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) =>
                     },
                     z_counter_value: Number.parseInt(snapshot.z_counter_value || 0, 10),
                     reset_counter_value: Number.parseInt(snapshot.reset_counter_value || 0, 10),
-                    lifetime_grand_total_cents: Number.parseInt(snapshot.lifetime_grand_total_cents || 0, 10)
+                    lifetime_grand_total_cents: Number.parseInt(snapshot.lifetime_grand_total_cents || 0, 10),
+                    lifetime_grand_total: Number(snapshot.lifetime_grand_total_cents || 0) / 100
                 }
             };
             const bridgeResponse = clientDriverId

@@ -63,4 +63,13 @@ describe('POS Back Office boundary', () => {
 
     expect(screen.getByTestId('pos-nav-approvals')).toBeDefined();
   });
+
+  it('opens transaction history only for cashiers with explicit void access', () => {
+    expect(terminalPageSource).toContain('const isCashierAllowedViewMode = (viewMode, canVoidTransactions = false)');
+    expect(terminalPageSource).toContain("const canVoidTransactions = hasPermission('pos:void')");
+    expect(terminalPageSource).toContain("(viewMode === 'history' && canVoidTransactions)");
+    expect(terminalPageSource).toContain('isCashierAllowedViewMode(mode, canVoidTransactions)');
+    expect(terminalPageSource).toContain('isCashierAllowedViewMode(normalizedView, canVoidTransactions)');
+    expect(terminalPageSource).toContain(".filter((mode) => mode !== 'approvals' || (canReviewVoidApprovals && !isCashierRole))");
+  });
 });

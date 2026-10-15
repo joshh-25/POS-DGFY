@@ -109,12 +109,11 @@ describe('POS close-report payment breakdown', () => {
         expect(shiftLines).toContainEqual(expect.stringContaining('Other (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('GCash (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Maya (1)'));
-        expect(shiftLines).not.toContainEqual(expect.stringContaining('Transactions'));
-        expect(shiftLines).not.toContainEqual(expect.stringContaining('Subtotal'));
-        expect(shiftLines).not.toContainEqual(expect.stringContaining('Discounts'));
-        expect(shiftLines).not.toContainEqual(expect.stringContaining('VAT'));
-        expect(shiftLines).not.toContainEqual(expect.stringContaining('Total sales'));
-        expect(shiftLines).not.toContainEqual(expect.stringContaining('POS voids'));
+        expect(shiftLines).toContainEqual(expect.stringContaining('Transactions'));
+        expect(shiftLines).toContainEqual(expect.stringContaining('Subtotal'));
+        expect(shiftLines).toContainEqual(expect.stringContaining('Discounts'));
+        expect(shiftLines).toContainEqual(expect.stringContaining('VAT'));
+        expect(shiftLines).toContainEqual(expect.stringContaining('POS voids'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Transactions'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Subtotal'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Discounts'));

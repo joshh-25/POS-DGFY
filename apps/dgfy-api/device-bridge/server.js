@@ -102,8 +102,8 @@ app.post('/device/print-receipt', async (request, response) => {
 
 app.post('/device/print-shift-summary', async (request, response) => {
   try {
-    const { shift_summary: shiftSummary, copies = 1 } = request.body ?? {};
-    const result = await printShiftSummaryPayload({ shiftSummary, copies });
+    const { shift_summary: shiftSummary, reading_type: readingType = 'shift_summary', copies = 1 } = request.body ?? {};
+    const result = await printShiftSummaryPayload({ shiftSummary, readingType, copies });
     response.json({
       ok: true,
       result,

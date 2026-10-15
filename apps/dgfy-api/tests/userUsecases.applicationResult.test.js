@@ -48,6 +48,25 @@ describe('user use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(409);
   });
 
+  it('updateProfile forwards the email OTP with an email change', async () => {
+    const updateUserProfile = jest.fn().mockResolvedValue({
+      user_id: 1,
+      email: 'new.josh@example.com'
+    });
+    const useCase = buildUpdateProfileUseCase({ userService: { updateUserProfile } });
+    const updateData = {
+      username: 'Josh',
+      email: 'new.josh@example.com',
+      email_otp_code: '123456',
+      phone_number: '+639171112233'
+    };
+
+    const result = await useCase({ userId: 1, updateData });
+
+    expect(result.success).toBe(true);
+    expect(updateUserProfile).toHaveBeenCalledWith(1, updateData);
+  });
+
   it('updateProfile maps missing-phone validation failures from user service', async () => {
     const validationError = new Error('Phone number is required');
     validationError.statusCode = 422;

@@ -32,6 +32,7 @@ import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveF
 // precedent (itemRepository.js itself imports getAllSettingsUseCase from
 // ../../settings/index.js).
 import { itemRepository } from '../../inventory/index.js';
+import { storefrontQrCodeRepository } from '../../storefrontQrCodes/repositories/storefrontQrCodeRepository.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -652,6 +653,10 @@ export const storeRepository = {
         return sequelize.transaction();
     },
 
+    async resolvePublicStorefrontQrCode({ token, requestedLocationId = null } = {}) {
+        return storefrontQrCodeRepository.findActiveByToken({ token, requestedLocationId });
+    },
+
     async findCustomerByEmail(email, options = {}) {
         const StoreCustomer = dbStore.get('StoreCustomer');
         const row = await StoreCustomer.findOne({
@@ -858,11 +863,12 @@ export const storeRepository = {
         }
     },
 
-    async listStoreCatalog({ search = '', limit = 60, location_id = null } = {}, options = {}) {
+    async listStoreCatalog({ search = '', limit = 60, location_id = null, folder_id = null } = {}, options = {}) {
         const Item = dbStore.get('Item');
         const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
         const normalizedLocationId = Number.parseInt(location_id, 10);
+        const normalizedFolderId = Number.parseInt(folder_id, 10);
         const normalizedLimit = Number.isFinite(Number(limit))
             ? Math.max(1, Math.min(200, Number(limit)))
             : 60;
@@ -877,6 +883,38 @@ export const storeRepository = {
                 { name: { [Op.like]: `%${normalizedSearch}%` } },
                 { sku_code: { [Op.like]: `%${normalizedSearch}%` } },
                 { description: { [Op.like]: `%${normalizedSearch}%` } }
+            ];
+        }
+
+        // A category QR must include both primary and secondary category
+        // assignments. Resolve the secondary item ids before the catalog query
+        // so the normal storefront limit does not fill up with unrelated items.
+        if (Number.isInteger(normalizedFolderId) && normalizedFolderId > 0) {
+            const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+            let secondaryItemIds = [];
+            if (ItemFolderMembership?.findAll) {
+                try {
+                    const memberships = await ItemFolderMembership.findAll({
+                        where: { folder_id: normalizedFolderId },
+                        attributes: ['item_id'],
+                        raw: true,
+                        transaction: options.transaction
+                    });
+                    secondaryItemIds = memberships
+                        .map((membership) => Number.parseInt(membership.item_id, 10))
+                        .filter((itemId) => Number.isInteger(itemId) && itemId > 0);
+                } catch (error) {
+                    logger.warn('[StoreRepository] Secondary category lookup failed for QR catalog scope; keeping primary matches', {
+                        folder_id: normalizedFolderId,
+                        reason: error?.message || String(error)
+                    });
+                }
+            }
+            const categoryConditions = [{ folder_id: normalizedFolderId }];
+            if (secondaryItemIds.length > 0) categoryConditions.push({ item_id: { [Op.in]: secondaryItemIds } });
+            where[Op.and] = [
+                ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+                { [Op.or]: categoryConditions }
             ];
         }
 

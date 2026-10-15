@@ -1,5 +1,10 @@
-import { describe, expect, it, jest } from '@jest/globals';
-import { ensureTenantUserInvitationSchema } from '../src/modules/dgfy/repositories/dgfyAccountRepository.js';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import dgfyAccountRepository, { ensureTenantUserInvitationSchema } from '../src/modules/dgfy/repositories/dgfyAccountRepository.js';
+import { DgfyAccountTenantMembership, UserTenantMapping } from '../src/models/index.js';
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 describe('DGFY account repository invitation schema guard', () => {
   it('adds missing tenant user invitation columns and widens invitation enums before membership actions', async () => {
@@ -79,5 +84,37 @@ describe('DGFY account repository invitation schema guard', () => {
 
     expect(addColumn).not.toHaveBeenCalled();
     expect(changeColumn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not resurrect an existing removed membership from a legacy mapping', async () => {
+    const account = {
+      id: 'dgfy-account-1',
+      email: 'gutojoshua.hubomoto@gmail.com',
+      email_verified_at: new Date()
+    };
+    const tenant = {
+      id: 'tenant-old-company',
+      status: 'active'
+    };
+    const findAll = jest.spyOn(UserTenantMapping, 'findAll').mockResolvedValue([{ tenant }]);
+    const findOne = jest.spyOn(DgfyAccountTenantMembership, 'findOne').mockResolvedValue({
+      id: 22,
+      status: 'removed',
+      source: 'founder'
+    });
+    const upsertFounderMembership = jest.spyOn(dgfyAccountRepository, 'upsertFounderMembership');
+
+    const mirrored = await dgfyAccountRepository.mirrorLegacyFounderMembershipsForAccount(account);
+
+    expect(mirrored).toEqual([]);
+    expect(findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { email: account.email } }));
+    expect(findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        dgfy_account_id: account.id,
+        tenant_id: tenant.id
+      },
+      attributes: ['id', 'status', 'source']
+    }));
+    expect(upsertFounderMembership).not.toHaveBeenCalled();
   });
 });

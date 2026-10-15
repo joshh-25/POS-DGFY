@@ -43,6 +43,8 @@ export function buildCustomerDashboardRouteBindings({
   handleOpenBusinessPos,
   getOwnBusinessDayCloseStatus,
   configureOwnBusinessDayClosePin,
+  getOwnBusinessGlobalPinStatus,
+  configureOwnBusinessGlobalPin,
   onGoDiscovery,
   resolveStorefrontMetaForAccountEntry,
   withAssetOrigin
@@ -95,6 +97,8 @@ export function buildCustomerDashboardRouteBindings({
       handleOpenBusinessPos,
       getOwnBusinessDayCloseStatus,
       configureOwnBusinessDayClosePin,
+      getOwnBusinessGlobalPinStatus,
+      configureOwnBusinessGlobalPin,
       onGoDiscovery
     },
     resolvers: {

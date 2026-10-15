@@ -320,3 +320,26 @@ This is a `[default]` storage-direction amendment; no `[binding]` clause changes
   tenant-schema drift repair so the session query's optional role association
   exists for every active local tenant; no existing user or business row was
   rewritten.
+
+### 2026-10-14: Unified Global POS PIN for Protected Cashier Actions (Phase 502)
+
+- A tenant-local POS user has one write-only global POS PIN, stored in the
+  existing `users.pos_cashier_pin_hash` field. The same PIN may authorize
+  operator authentication/takeover, governed discounts, item or transaction
+  void/refund confirmation, cash-drawer/refund actions, and Z-reading/day-close
+  confirmation when the user has the separate permission for that action.
+- The PIN is an authentication factor only. It does not grant permissions,
+  location or terminal scope, shift/attendance eligibility, or manager approval;
+  each protected operation continues to enforce those server-side policies.
+- OPIS remains the admin configuration surface for cashier permissions and
+  PIN reset. A cashier configures their own tenant-local global PIN from the
+  selected company card in DGFY Account → Business, after re-entering the
+  DGFY account password. Setting or resetting the global PIN clears legacy
+  approval/day-close hashes and lockout state. API responses expose
+  configuration flags only and never return the PIN or hash.
+- Existing legacy approval/day-close hashes remain a temporary compatibility
+  fallback until the global PIN is saved or reset. The fallback is tenant-local
+  and never crosses DGFY companies; drawer authorization requires the canonical
+  global hash.
+- This amendment adds no schema or migration and does not use IMS as a feature
+  configuration surface.

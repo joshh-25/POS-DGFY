@@ -16,6 +16,10 @@ export const normalizeAccessibleCompanies = (payload = {}) => {
   return candidates.filter((company) => {
     const tenantId = String(company?.tenant_id || '').trim();
     if (!tenantId || seenTenantIds.has(tenantId)) return false;
+    // The API also returns pending and historical membership rows for account
+    // management. They are not valid POS company choices and must not appear
+    // in the terminal unlock dropdown.
+    if (company?.can_switch !== true) return false;
     seenTenantIds.add(tenantId);
     return true;
   });

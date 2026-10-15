@@ -13,6 +13,7 @@ import {
   REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS,
   REQUIRED_TENANT_SCHEMA_INDEXES,
   REQUIRED_TENANT_SCHEMA_TABLES,
+  TENANT_SCHEMA_CAPABILITY_VERSION,
   buildTenantSchemaEnumRepairSql,
   backfillItemFolderSortOrder,
   repairItemFolderCategoryLifecycleSchema,
@@ -186,6 +187,20 @@ describe('tenant schema sync script contracts', () => {
       .toContain('UNIQUE INDEX `uq_business_admin_saved_report_view_name`');
     expect(indexRepairs.find((repair) => repair.index === 'uq_business_admin_notification_state_alert_user')?.sql)
       .toContain('UNIQUE INDEX `uq_business_admin_notification_state_alert_user`');
+  });
+
+  it('repairs the tenant-local storefront QR table and records the schema capability version', () => {
+    const table = REQUIRED_TENANT_SCHEMA_TABLES.storefront_qr_codes;
+
+    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-15.1');
+    expect(table.sql).toContain('CREATE TABLE `storefront_qr_codes`');
+    expect(table.sql).toContain('`public_token` VARCHAR(64) NOT NULL');
+    expect(table.sql).toContain('UNIQUE KEY `uq_storefront_qr_codes_public_token`');
+    expect(table.sql).toContain('FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`)');
+    expect(table.sql).toContain('FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`)');
+
+    expect(buildTenantSchemaTableRepairSql(['storefront_qr_codes']))
+      .toEqual([{ table: 'storefront_qr_codes', sql: table.sql }]);
   });
 
   it('normalizes known too-many-keys failures with stable fingerprint', () => {

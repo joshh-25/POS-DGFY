@@ -368,4 +368,9 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('{renderZReadingToolbar()}');
     expect(workspaceSource).toContain('renderReportToolbar()');
   });
+
+  it('prints item-level refund and void amounts in the item-sales breakdown', () => {
+    expect(workspaceSource).toContain('money(getPosReportRefundsVoidsDisplayValue(row.refunds_voids), currencySymbol),');
+    expect(workspaceSource).toContain("['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Refunds/Voids', 'Sales Share', 'Profit']");
+  });
 });

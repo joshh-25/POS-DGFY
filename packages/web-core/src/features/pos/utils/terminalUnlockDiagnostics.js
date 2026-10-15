@@ -16,6 +16,42 @@ export const normalizeLookupTenantOptions = (payload = {}) => {
   return [];
 };
 
+export const scopeDgfyCompaniesToEmailLookup = (companies, { email = '', lookup = {} } = {}) => {
+  const accessibleCompanies = Array.isArray(companies) ? companies : [];
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const lookupEmail = String(lookup?.email || '').trim().toLowerCase();
+  const lookupStatus = String(lookup?.status || '').trim();
+  const lookupCompanies = Array.isArray(lookup?.companies) ? lookup.companies : [];
+
+  if (
+    !normalizedEmail
+    || normalizedEmail !== lookupEmail
+    || !['single', 'multiple'].includes(lookupStatus)
+    || lookupCompanies.length === 0
+  ) {
+    return accessibleCompanies;
+  }
+
+  const lookupTenantIds = new Set(
+    lookupCompanies
+      .map((company) => String(company?.tenant_id || '').trim())
+      .filter(Boolean)
+  );
+  const lookupCompanyTokens = new Set(
+    lookupCompanies
+      .map((company) => String(company?.company_token || '').trim())
+      .filter(Boolean)
+  );
+  const scopedCompanies = accessibleCompanies.filter((company) => (
+    lookupTenantIds.has(String(company?.tenant_id || '').trim())
+    || lookupCompanyTokens.has(String(company?.company_token || '').trim())
+  ));
+
+  // DGFY membership remains the source of truth when the legacy POS lookup
+  // is stale or has no common identifier with the authenticated account.
+  return scopedCompanies.length > 0 ? scopedCompanies : accessibleCompanies;
+};
+
 export const createTerminalLoginError = (message, code, details = {}) => {
   const error = new Error(message);
   error.code = code;
@@ -32,6 +68,34 @@ const getResponseMessage = (error) => String(getResponseData(error)?.message || 
 const getErrorCode = (error) => {
   const data = getResponseData(error);
   return String(data?.code || data?.error_code || data?.error?.code || error?.code || '').trim();
+};
+
+export const extractTerminalShiftConflictDetails = (error) => {
+  const data = getResponseData(error);
+  const detailCandidates = [
+    data?.errors,
+    data?.details,
+    data?.error?.details,
+    data?.error?.errors,
+    error?.details
+  ];
+  const details = detailCandidates.find((candidate) => (
+    candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+  )) || {};
+  const reasonCode = String(details.reason_code || data?.error_code || '').trim();
+  if (reasonCode !== 'POS_OPERATOR_ACTIVE_ELSEWHERE') return null;
+
+  const existingShiftId = Number(details.existing_shift_id || 0) || null;
+  const existingTerminalId = String(details.existing_terminal_id || '').trim().toUpperCase() || null;
+  const existingLocationId = Number(details.existing_location_id || 0) || null;
+  if (!existingShiftId || !existingTerminalId || !existingLocationId) return null;
+
+  return {
+    existingShiftId,
+    existingTerminalId,
+    existingLocationId,
+    existingOpenedAt: details.existing_opened_at || null
+  };
 };
 
 const getRetryAfterSeconds = (error) => {

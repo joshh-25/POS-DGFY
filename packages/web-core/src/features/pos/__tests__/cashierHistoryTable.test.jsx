@@ -101,6 +101,26 @@ describe('CashierHistoryTable', () => {
         expect(within(mobileView).getByRole('button', { name: 'View summary for shift #9' })).toBeTruthy();
     });
 
+    it('displays the API cashier username in the desktop history table', () => {
+        render(
+            <CashierHistoryTable
+                records={[{
+                    shift: {
+                        pos_terminal_shift_id: 11,
+                        status: 'closed',
+                        cashier: { user_id: 42, username: 'Hernando' }
+                    },
+                    sales_summary: {},
+                    cash_summary: {}
+                }]}
+            />
+        );
+
+        const table = screen.getByRole('table', { name: 'Cashier shift history' });
+        expect(within(table).getByText('Hernando')).toBeTruthy();
+        expect(within(table).queryByText('Unknown cashier')).toBeNull();
+    });
+
     it('keeps branch and post-close accountability available in the responsive history view', () => {
         const record = {
             shift: {

@@ -215,10 +215,10 @@ export const iminNativeDriver = {
             });
         }
     },
-    async printShiftSummary({ shiftSummary, businessSettings, shiftId, terminalId, reason, idempotencyKey, paperWidth } = {}) {
+    async printShiftSummary({ shiftSummary, businessSettings, shiftId, terminalId, reason, idempotencyKey, paperWidth, readingType } = {}) {
         let outcome;
         try {
-            const result = await printShiftSummaryWithIminBridge({ shiftSummary, businessSettings, paperWidth });
+            const result = await printShiftSummaryWithIminBridge({ shiftSummary, businessSettings, paperWidth, readingType });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -240,6 +240,7 @@ export const iminNativeDriver = {
             outcome,
             reports: [{
             operation: 'print_shift_summary',
+            readingType,
             shiftId,
             terminalId,
             reason,

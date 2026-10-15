@@ -266,6 +266,19 @@ const assertOnlineProviderTransaction = ({ existing, locationId }) => {
             { reason_code: 'POS_PROVIDER_REFUND_WALK_IN_NOT_ALLOWED' }
         );
     }
+    const activeBreakdown = breakdown.filter((entry) => Number(entry?.amount) > 0);
+    const activeBreakdownTypes = activeBreakdown
+        .map((entry) => String(entry?.payment_type || '').trim().toLowerCase())
+        .filter(Boolean);
+    if (paymentType === 'cash'
+        || (!paymentType && activeBreakdownTypes.length === 1 && activeBreakdownTypes[0] === 'cash')) {
+        throw providerRefundError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Cash POS payments must use the cash-drawer refund flow',
+            422,
+            { reason_code: 'POS_PROVIDER_REFUND_CASH_TENDER_UNSUPPORTED' }
+        );
+    }
     if (paymentProvider !== PROVIDER || !PAYMENT_REFERENCE_PATTERN.test(paymentReference) || !SESSION_REFERENCE_PATTERN.test(sessionReference)) {
         throw providerRefundError(
             DomainErrorCode.VALIDATION_FAILED,

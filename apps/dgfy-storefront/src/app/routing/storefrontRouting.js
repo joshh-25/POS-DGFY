@@ -68,6 +68,7 @@ const readQueryParam = (key, fallback = null) => {
 export const TENANT_STORE_BASE_PATH = '/tenant-store';
 export const STORE_BOOKING_SUBPAGE = 'book';
 export const STORE_ORDER_SUBPAGE = 'order';
+export const STORE_CATEGORIES_SUBPAGE = 'categories';
 export const STORE_TRACK_SUBPAGE = 'track';
 export const STORE_SERVICE_SUBPAGE = 'service';
 export const STORE_ITEM_SUBPAGE = 'item';
@@ -117,7 +118,7 @@ export const readStoreSubpage = () => {
   const path = window.location.pathname || '';
   if (customStorefrontRouteContext?.slug) {
     const segment = normalizeRouteSlug(path.split('/').filter(Boolean)[0]);
-    return [STORE_BOOKING_SUBPAGE, STORE_ORDER_SUBPAGE, STORE_TRACK_SUBPAGE, STORE_SERVICE_SUBPAGE, STORE_ITEM_SUBPAGE, 'account'].includes(segment)
+    return [STORE_BOOKING_SUBPAGE, STORE_ORDER_SUBPAGE, STORE_CATEGORIES_SUBPAGE, STORE_TRACK_SUBPAGE, STORE_SERVICE_SUBPAGE, STORE_ITEM_SUBPAGE, 'account'].includes(segment)
       ? segment
       : null;
   }
@@ -140,6 +141,8 @@ export const readStoreLocationId = () => {
   const raw = Number(readQueryParam('location_id'));
   return Number.isInteger(raw) && raw > 0 ? raw : null;
 };
+
+export const readStoreQrToken = () => readQueryParam('qr_token', '');
 
 export const readStoreReviewToken = () => readQueryParam('review_token', '');
 

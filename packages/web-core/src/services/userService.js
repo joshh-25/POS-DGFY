@@ -11,8 +11,8 @@ export const getCurrentUser = async () => {
 };
 
 /**
- * Update current user's profile (username, email)
- * @param {Object} profileData - { username?, email? }
+ * Update current user's profile (username, email, phone number)
+ * @param {Object} profileData - { username?, email?, email_otp_code?, phone_number? }
  * @returns {Promise<Object>} Updated user data with new token if username/email changed
  */
 export const updateProfile = async (profileData) => {

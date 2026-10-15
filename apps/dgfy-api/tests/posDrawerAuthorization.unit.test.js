@@ -19,13 +19,13 @@ describe('POS cash drawer authorization', () => {
                 role: 'cashier',
                 is_active: true,
                 deleted_at: null,
-                pos_approval_pin_hash: pinHash
+                pos_cashier_pin_hash: pinHash
             },
             pin: '1234'
         });
 
         expect(verified).toMatchObject({ user_id: 7, authorization_mode: 'pin' });
-        expect(verified).not.toHaveProperty('pos_approval_pin_hash');
+        expect(verified).not.toHaveProperty('pos_cashier_pin_hash');
         await expect(verifyPosDrawerOperator({
             operator: {
                 user_id: 7,
@@ -33,10 +33,27 @@ describe('POS cash drawer authorization', () => {
                 role: 'cashier',
                 is_active: true,
                 deleted_at: null,
-                pos_approval_pin_hash: pinHash
+                pos_cashier_pin_hash: pinHash
             },
             pin: '9999'
         })).rejects.toMatchObject({ details: { reason_code: 'DRAWER_PIN_INVALID' } });
+    });
+
+    it('does not accept the separate discount approval PIN for drawer access', async () => {
+        const approvalPinHash = await bcrypt.hash('1234', 4);
+
+        await expect(verifyPosDrawerOperator({
+            operator: {
+                user_id: 7,
+                username: 'Cashier',
+                role: 'cashier',
+                is_active: true,
+                deleted_at: null,
+                pos_approval_pin_hash: approvalPinHash,
+                pos_cashier_pin_hash: null
+            },
+            pin: '1234'
+        })).rejects.toMatchObject({ details: { reason_code: 'DRAWER_PIN_NOT_CONFIGURED' } });
     });
 
     it('allows an admin bypass while returning an auditable mode', async () => {

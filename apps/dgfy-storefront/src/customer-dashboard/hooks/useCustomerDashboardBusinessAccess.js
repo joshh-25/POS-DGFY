@@ -108,5 +108,32 @@ export function useCustomerDashboardBusinessAccess({ handleLoadAccountPanel, req
       cache: 'no-store'
     });
   }, [dgfySessionAccount?.id, readDgfyAuthToken, requestJson]);
-  return { requestDgfyBusinessSecurityCode, handleAcceptDgfyCompanyInvitation, handleRejectDgfyCompanyInvitation, handleLeaveDgfyCompany, switchDgfyCompanyFromStorefront, handleOpenBusinessInventory, handleOpenBusinessPos, getOwnBusinessDayCloseStatus, configureOwnBusinessDayClosePin };
+  const getOwnBusinessGlobalPinStatus = useCallback(async (membership) => {
+    const tenantId = String(membership?.tenant_id || membership?.tenantId || membership?.company?.tenant_id || membership?.company?.id || membership?.tenant?.id || membership?.storefront?.tenant_id || membership?.storefront?.id || membership?.id || '').trim();
+    const token = readDgfyAuthToken();
+    if (!tenantId) throw new Error('Business session details are unavailable.');
+    if (!token && !dgfySessionAccount?.id) throw new Error('Sign in again to check PIN access.');
+    const session = await startDgfyTenantSession({ tenantId, accessScope: 'pos' }, token, { activate: false });
+    const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
+    return {
+      canConfigureGlobalPin: session?.can_configure_pos_global_pin === true
+        || session?.is_master_admin === true
+        || permissions.includes('pos:transact'),
+      pinConfigured: session?.pos_global_pin_configured === true
+        || session?.pos_cashier_pin_configured === true
+    };
+  }, [dgfySessionAccount?.id, readDgfyAuthToken, startDgfyTenantSession]);
+  const configureOwnBusinessGlobalPin = useCallback(async (membership, { currentPassword, pin } = {}) => {
+    const tenantId = String(membership?.tenant_id || membership?.tenantId || membership?.company?.tenant_id || membership?.company?.id || membership?.tenant?.id || membership?.storefront?.tenant_id || membership?.storefront?.id || membership?.id || '').trim();
+    const token = readDgfyAuthToken();
+    if (!tenantId) throw new Error('Business session details are unavailable.');
+    if (!token && !dgfySessionAccount?.id) throw new Error('Sign in again to configure your PIN.');
+    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(tenantId)}/pos-global-pin`, {
+      method: 'PUT',
+      authToken: token,
+      body: { current_password: currentPassword, pin },
+      cache: 'no-store'
+    });
+  }, [dgfySessionAccount?.id, readDgfyAuthToken, requestJson]);
+  return { requestDgfyBusinessSecurityCode, handleAcceptDgfyCompanyInvitation, handleRejectDgfyCompanyInvitation, handleLeaveDgfyCompany, switchDgfyCompanyFromStorefront, handleOpenBusinessInventory, handleOpenBusinessPos, getOwnBusinessDayCloseStatus, configureOwnBusinessDayClosePin, getOwnBusinessGlobalPinStatus, configureOwnBusinessGlobalPin };
 }

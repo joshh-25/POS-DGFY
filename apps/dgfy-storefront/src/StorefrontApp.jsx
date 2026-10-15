@@ -144,8 +144,10 @@ import { useCustomerDashboardRouteFlags } from './customer-dashboard/pages/useCu
 import { useCustomerDashboardRouteOutlet } from './customer-dashboard/pages/useCustomerDashboardRouteOutlet.jsx';
 import {
   readStoreSubpage,
+  readStoreQrToken,
   readTrackingPinFromQuery,
   STORE_BOOKING_SUBPAGE,
+  STORE_CATEGORIES_SUBPAGE,
   STORE_ITEM_SUBPAGE,
   STORE_ORDER_SUBPAGE,
   STORE_SERVICE_SUBPAGE,
@@ -545,8 +547,10 @@ export default function StorefrontApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStorePage]);
   const currentPathSubpage = readStoreSubpage();
+  const qrToken = readStoreQrToken();
   const currentPathname = typeof window === 'undefined' ? '/' : (window.location.pathname || '/');
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
+  const isCategoriesSubpage = routeSubpage === STORE_CATEGORIES_SUBPAGE;
   const isOrderSubpage = routeSubpage === STORE_ORDER_SUBPAGE;
   const isTrackSubpage = routeSubpage === STORE_TRACK_SUBPAGE;
   const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
@@ -555,6 +559,7 @@ export default function StorefrontApp() {
 
   const [editingFnbCartLine, setEditingFnbCartLine] = useState(null);
   const [isTransactionExpiredModalOpen, setIsTransactionExpiredModalOpen] = useState(false);
+  const qrCategorySelectionKeyRef = useRef('');
   const {
     isReviewModalOpen,
     setIsReviewModalOpen,
@@ -756,7 +761,8 @@ export default function StorefrontApp() {
     setSelectedStore,
     setRouteSlug,
     preferredStoreLocationSelection,
-    voucherCode: checkoutVoucherCode
+    voucherCode: checkoutVoucherCode,
+    qrToken
   });
 
   const selectedCheckoutLocation = useMemo(
@@ -888,6 +894,28 @@ export default function StorefrontApp() {
     routeSlug,
     selectedLocationId
   });
+  useEffect(() => {
+    if (!isCategoriesSubpage || !isFnbMode) {
+      qrCategorySelectionKeyRef.current = '';
+      return;
+    }
+    if (loadingCatalog) return;
+
+    const qrTarget = selectedStore?.qr_target;
+    const targetType = String(qrTarget?.target_type || '').trim().toLowerCase();
+    const folderId = Number(qrTarget?.folder_id);
+    const hasFolderTarget = targetType === 'category' && Number.isInteger(folderId) && folderId > 0;
+    const selectionKey = `${selectedStore?.slug || routeSlug}:${targetType}:${hasFolderTarget ? folderId : ''}`;
+    if (qrCategorySelectionKeyRef.current === selectionKey) return;
+
+    const targetSectionIdentity = hasFolderTarget ? `folder:${folderId}` : '';
+    const hasTargetSection = Boolean(
+      targetSectionIdentity
+      && filteredFnbViewModel?.menuSections?.some((section) => section.sectionIdentity === targetSectionIdentity)
+    );
+    qrCategorySelectionKeyRef.current = selectionKey;
+    setActiveServiceTab(hasTargetSection ? targetSectionIdentity : null);
+  }, [filteredFnbViewModel?.menuSections, isCategoriesSubpage, isFnbMode, loadingCatalog, routeSlug, selectedStore?.qr_target, selectedStore?.slug, setActiveServiceTab]);
   const {
     catalogPresentation: fnbCatalogPresentation,
     fnbCategoryDropdownRef,
@@ -1111,7 +1139,9 @@ export default function StorefrontApp() {
     handleOpenBusinessInventory,
     handleOpenBusinessPos,
     getOwnBusinessDayCloseStatus,
-    configureOwnBusinessDayClosePin
+    configureOwnBusinessDayClosePin,
+    getOwnBusinessGlobalPinStatus,
+    configureOwnBusinessGlobalPin
   } = useCustomerDashboardRuntime({
     EMPTY_ACCOUNT_PANEL,
     selectedStore,
@@ -3009,6 +3039,7 @@ export default function StorefrontApp() {
     closeServiceDetail,
     goStore,
     goStoreBookingPage,
+    goStoreCategoriesPage,
     goStoreCatalogPage,
     goDiscovery
   } = useStorefrontNavigation({
@@ -3035,7 +3066,8 @@ export default function StorefrontApp() {
     setCatalog,
     setCatalogError,
     setDiscoveryAppliedFilters,
-    setActiveDiscoveryNavItem
+    setActiveDiscoveryNavItem,
+    qrToken
   });
   const {
     goStoreOrderForDiscovery,
@@ -3060,7 +3092,8 @@ export default function StorefrontApp() {
     setSelectedTrackingPin,
     setSimpleOrderStep,
     setTrackingPinInput,
-    trackingPinInput
+    trackingPinInput,
+    qrToken
   });
   orderNavigationHandlersRef.current = {
     goStoreOrderPage: composedGoStoreOrderPage,
@@ -3092,6 +3125,7 @@ export default function StorefrontApp() {
     promoDiscountLabel: totalsForDisplay.discount_label,
     fnbOrderBrand,
     getLineTotal,
+    goStoreCategoriesPage,
     goStoreCatalogPage,
     goStoreOrderPage,
     isDesktopCheckout,
@@ -3798,6 +3832,8 @@ export default function StorefrontApp() {
     handleOpenBusinessPos,
     getOwnBusinessDayCloseStatus,
     configureOwnBusinessDayClosePin,
+    getOwnBusinessGlobalPinStatus,
+    configureOwnBusinessGlobalPin,
     resolveStorefrontMetaForAccountEntry,
     withAssetOrigin,
     savedCustomerDetails,
@@ -4058,6 +4094,7 @@ export default function StorefrontApp() {
     filteredCatalog,
     fnbPageSize,
     isSimpleMode,
+    isCategoriesSubpage,
     isFnbDetailsSubpage,
     fnbProductDetailsRouteProps,
     activeBookingService,
@@ -4078,6 +4115,7 @@ export default function StorefrontApp() {
     canUseGuestCheckoutFlow,
     guestCheckoutAllowed,
     catalog,
+    cartCount,
     catalogError,
     catalogSearch,
     checkoutError,
@@ -4099,6 +4137,7 @@ export default function StorefrontApp() {
     deliverySavedLocations,
     applySavedDeliveryLocation,
     getCartFlySourceRect,
+    goStoreOrderPage,
     goStoreCatalogPage,
     goStoreTrackPage,
     handleAddPinnedLocation,
@@ -4513,7 +4552,7 @@ export default function StorefrontApp() {
             {isServicesTrackingPage ? (
               <ServicesTrackingRouteContainer {...servicesTrackingRouteProps} />
             ) : null}
-            {!isServicesTrackingPage && !isFnbDetailsSubpage && (
+            {!isServicesTrackingPage && !isFnbDetailsSubpage && !isCategoriesSubpage && (
               <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
             )}
 

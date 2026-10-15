@@ -294,6 +294,8 @@ export const ZReadingReconciliationCard = ({
   const hasNumber = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
   const formatAmount = (value) => hasNumber(value) ? money(value, currencySymbol) : '—';
   const formatCount = (value) => hasNumber(value) ? Number(value).toLocaleString('en-US') : '—';
+  const hasSavedZReading = data.snapshot_persisted === true;
+  const paymentBreakdown = Array.isArray(data.z_payment_breakdown) ? data.z_payment_breakdown : [];
   const zVoids = hasNumber(data.z_void_transaction_count) || hasNumber(data.z_void_amount)
     ? `${formatCount(data.z_void_transaction_count)} · ${formatAmount(data.z_void_amount)}`
     : '—';
@@ -385,6 +387,29 @@ export const ZReadingReconciliationCard = ({
           description="Different metric; includes line-level discounts/refunds"
         />
       </dl>
+
+      {hasSavedZReading ? (
+        <section className="mt-4 min-w-0 border-t border-slate-200 pt-4" aria-labelledby="daily-sales-payment-breakdown-heading">
+          <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
+            <h4 id="daily-sales-payment-breakdown-heading" className="text-sm font-bold text-slate-950">Payment breakdown</h4>
+            <p className="text-xs text-slate-600">From the saved Z-reading snapshot</p>
+          </div>
+          {paymentBreakdown.length > 0 ? (
+            <dl className="mt-2 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Saved Z-reading payment breakdown">
+              {paymentBreakdown.map((entry) => (
+                <div key={entry.payment_type || entry.payment_label || 'other'} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <dt className="break-words text-xs text-slate-600">{entry.payment_label || String(entry.payment_type || 'Other payment').replace(/_/g, ' ')}</dt>
+                  <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">
+                    {formatAmount(entry.amount)} · {formatCount(entry.count)} {Number(entry.count || 0) === 1 ? 'payment' : 'payments'}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mt-2 text-sm text-slate-600">No payment entries were recorded in this saved Z-reading.</p>
+          )}
+        </section>
+      ) : null}
 
       <div className="mt-4 grid min-w-0 gap-4 border-t border-slate-200 pt-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] xl:items-end">
         <section className="min-w-0" aria-labelledby="daily-sales-additional-activity-heading">
@@ -1237,6 +1262,7 @@ function PosReportsAnalyticsWorkspace({
             row.quantity,
             row.orders,
             money(row.net_sales, currencySymbol),
+            money(getPosReportRefundsVoidsDisplayValue(row.refunds_voids), currencySymbol),
             `${Number(row.sales_share || 0).toFixed(2)}%`,
             money(row.profit, currencySymbol)
           ];
@@ -1254,7 +1280,7 @@ function PosReportsAnalyticsWorkspace({
       const headers = activeBreakdown === 'hourly'
         ? ['Hour', 'Transactions', 'Items Sold', 'Gross Sales', 'Net Sales', 'Refunds/Voids', 'Profit']
         : activeBreakdown === 'items'
-          ? ['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit']
+          ? ['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Refunds/Voids', 'Sales Share', 'Profit']
           : ['Category', 'Items', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit'];
       const printableRows = breakdownRows.map((row) => `<tr>${rowCells(row).map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('');
       const filterText = [
