@@ -260,7 +260,7 @@ describe('regular POS Setup cashier management contract', () => {
   it('keeps Settings modal fields mobile-safe and uses the DGFY primary color', () => {
     expect(terminalModalSource).toContain('text-[13px] font-extrabold text-[#0F172A] sm:text-[14px]');
     expect(closeoutModalSource).toContain('text-[16px] font-extrabold text-[#0F172A]');
-    expect(workspaceSource).toContain('id="pos-approval-pin"');
+    expect(workspaceSource).toContain('id="pos-cashier-pin"');
     expect(workspaceSource).toContain('className="mt-1 text-[16px] sm:text-[14px]"');
     expect(invitationModalSource).toContain('className="pl-9 text-[16px] sm:text-[14px]"');
     expect(invitationModalSource).toContain('className="text-[16px] sm:text-[14px]"');
@@ -528,7 +528,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(cashierTableSource).toContain('inline-flex min-w-0 items-center gap-2');
     expect(cashierTableSource).toContain('inline-grid max-w-full grid-cols-[minmax(0,max-content)_auto] items-center gap-x-2 gap-y-2');
     expect(cashierTableSource).toContain('flex flex-col items-start gap-2');
-    expect(cashierTableSource).toContain('block text-[11px] font-medium leading-4 text-slate-400">Enable access to set PIN</span>');
+    expect(cashierTableSource).toContain('block text-[11px] font-medium leading-4 text-slate-400">Enable access to use global PIN</span>');
     expect(cashierTableSource).toContain('layout="inline"');
     expect(cashierTableSource).toContain('layout="grid-cell"');
     expect(cashierTableSource).toContain('inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform');
@@ -594,10 +594,11 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalSectionSource).toContain('block text-[14px] font-extrabold leading-5 text-[#0F172A]');
   });
 
-  it('emphasizes cashier Set PIN with a solid teal action style', () => {
-    expect(cashierTableSource).toContain('variant="default"');
-    expect(cashierTableSource).toContain('border border-teal-600 bg-teal-600 px-2 text-[10px] font-extrabold text-white');
-    expect(cashierTableSource).toContain('hover:bg-teal-700 hover:text-white');
+  it('exposes one global PIN action for each cashier', () => {
+    expect(cashierTableSource).toContain('Set global PIN');
+    expect(cashierTableSource).toContain('Reset global PIN');
+    expect(cashierTableSource).toContain('data-testid={`pos-cashier-pin-${cashier.user_id}`}');
+    expect(cashierTableSource).toContain('className="mt-2 h-7 rounded-md px-2 text-[10px] font-extrabold text-blue-700"');
   });
 
   it('keeps cashier POS void authorization inside POS Settings and preserves other permissions', () => {

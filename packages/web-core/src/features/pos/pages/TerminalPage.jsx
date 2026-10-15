@@ -90,6 +90,7 @@ import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
   createTerminalLoginError,
+  extractTerminalShiftConflictDetails,
   isRetryableCompanyLookupError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
@@ -493,6 +494,20 @@ const resolveTerminalShiftLocationConflict = (error, request = {}) => {
   };
 };
 
+const formatTerminalShiftOpenedAt = (value) => {
+  if (value == null || value === '') return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  try {
+    return date.toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+  } catch {
+    return date.toISOString();
+  }
+};
+
 const SUPPRESS_GLOBAL_ERROR_TOAST = { skipGlobalErrorToast: true };
 const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
 
@@ -745,6 +760,7 @@ export default function TerminalPage() {
   // Failure details are retained for the Open Shift dialogs. Direct terminal
   // sign-in failures use the floating toast so the login drawer stays clear.
   const [unlockFailure, setUnlockFailure] = useState(null);
+  const [resumingExistingShift, setResumingExistingShift] = useState(false);
   const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
     const storedReason = readStoredTerminalLockReason();
     if (storedReason === 'admin_reunlock') return 'admin_reunlock';
@@ -4171,9 +4187,49 @@ export default function TerminalPage() {
     const { kind, status, requestPath } = classifyTerminalLoginFailure(error);
     const method = String(error?.config?.method || '').toUpperCase() || '';
     const ref = createTerminalErrorRef();
+    const existingShift = extractTerminalShiftConflictDetails(error);
     if (showToast) toast.error(message);
-    setUnlockFailure({ message, method, requestPath, status, ref });
+    setUnlockFailure({ message, method, requestPath, status, ref, existingShift });
     captureTerminalFlowFailure({ error, flow, ref, requestPath, status, kind });
+  };
+
+  const handleResumeExistingShift = async () => {
+    const existingShift = unlockFailure?.existingShift;
+    const terminalId = sanitizeTerminalId(existingShift?.existingTerminalId || '');
+    const locationId = Number(existingShift?.existingLocationId || 0);
+    if (!terminalId || !Number.isInteger(locationId) || locationId <= 0) {
+      toast.error('The existing shift details are incomplete. Refresh POS and try again.');
+      return;
+    }
+    const registryEntry = terminalRegistryLookup.get(terminalId);
+    if (!registryEntry || Number(registryEntry.location_id || 0) !== locationId) {
+      toast.error('The existing shift terminal is no longer available in this POS setup. Refresh terminal settings first.');
+      return;
+    }
+
+    setResumingExistingShift(true);
+    setUnlockFailure(null);
+    try {
+      const currentShiftResult = await fetchCurrentTerminalShift({
+        terminal_id: terminalId,
+        location_id: locationId
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      const currentShift = currentShiftResult?.shift || null;
+      const currentShiftId = Number(currentShift?.pos_terminal_shift_id || 0);
+      const expectedShiftId = Number(existingShift?.existingShiftId || 0);
+      if (!currentShift || (expectedShiftId > 0 && currentShiftId !== expectedShiftId)) {
+        throw new Error('The existing shift is no longer open. Refresh POS before opening a new shift.');
+      }
+
+      await completeTerminalUnlock(terminalId, {
+        operatingLocationIdOverride: locationId
+      });
+      toast.success('Existing shift resumed. X-reading remains available; generate Z-reading after closing the shift.');
+    } catch (error) {
+      reportTerminalFailure(error, 'shift_resume');
+    } finally {
+      setResumingExistingShift(false);
+    }
   };
 
   // Shared body for the persistent failure block in both Open Shift dialogs
@@ -4183,10 +4239,41 @@ export default function TerminalPage() {
   // impossible to read off the device.
   const renderUnlockFailurePanel = () => {
     if (!unlockFailure) return null;
+    const existingShift = unlockFailure.existingShift;
+    const existingLocationId = Number(existingShift?.existingLocationId || 0);
+    const existingLocationName = locationNameLookup.get(existingLocationId) || `Location ${existingLocationId || 'unknown'}`;
+    const openedAtLabel = formatTerminalShiftOpenedAt(existingShift?.existingOpenedAt);
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900" role="alert">
-        <p className="font-semibold text-red-950">Could not open shift</p>
-        <p className="mt-0.5">{unlockFailure.message}</p>
+        <p className="font-semibold text-red-950">
+          {existingShift ? 'Could not open a second shift' : 'Could not open shift'}
+        </p>
+        {existingShift ? (
+          <p className="mt-0.5">This cashier already has an open shift. No new shift or opening cash was created.</p>
+        ) : (
+          <p className="mt-0.5">{unlockFailure.message}</p>
+        )}
+        {existingShift ? (
+          <>
+            <div className="mt-2 rounded-md border border-red-200 bg-white/70 px-2 py-1.5 text-[11px] text-red-950">
+              <p><span className="font-semibold">Shift:</span> #{existingShift.existingShiftId || '—'}</p>
+              <p><span className="font-semibold">Terminal:</span> {existingShift.existingTerminalId || '—'}</p>
+              <p><span className="font-semibold">Location:</span> {existingLocationName}</p>
+              {openedAtLabel ? <p><span className="font-semibold">Opened:</span> {openedAtLabel}</p> : null}
+            </div>
+            <p className="mt-2 text-[11px] text-red-900">
+              X-reading is read-only and remains available for this shift. Z-reading becomes available after the shift is closed.
+            </p>
+            <button
+              type="button"
+              className="mt-2 inline-flex h-9 items-center justify-center rounded-md bg-[#1A4E8D] px-3 text-xs font-extrabold text-white shadow-sm hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={handleResumeExistingShift}
+              disabled={resumingExistingShift || submitting || shiftActionLoading.open}
+            >
+              {resumingExistingShift ? 'Resuming existing shift...' : 'Resume Existing Shift'}
+            </button>
+          </>
+        ) : null}
       </div>
     );
   };

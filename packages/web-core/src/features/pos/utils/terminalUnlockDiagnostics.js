@@ -70,6 +70,34 @@ const getErrorCode = (error) => {
   return String(data?.code || data?.error_code || data?.error?.code || error?.code || '').trim();
 };
 
+export const extractTerminalShiftConflictDetails = (error) => {
+  const data = getResponseData(error);
+  const detailCandidates = [
+    data?.errors,
+    data?.details,
+    data?.error?.details,
+    data?.error?.errors,
+    error?.details
+  ];
+  const details = detailCandidates.find((candidate) => (
+    candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+  )) || {};
+  const reasonCode = String(details.reason_code || data?.error_code || '').trim();
+  if (reasonCode !== 'POS_OPERATOR_ACTIVE_ELSEWHERE') return null;
+
+  const existingShiftId = Number(details.existing_shift_id || 0) || null;
+  const existingTerminalId = String(details.existing_terminal_id || '').trim().toUpperCase() || null;
+  const existingLocationId = Number(details.existing_location_id || 0) || null;
+  if (!existingShiftId || !existingTerminalId || !existingLocationId) return null;
+
+  return {
+    existingShiftId,
+    existingTerminalId,
+    existingLocationId,
+    existingOpenedAt: details.existing_opened_at || null
+  };
+};
+
 const getRetryAfterSeconds = (error) => {
   const data = getResponseData(error);
   const candidates = [

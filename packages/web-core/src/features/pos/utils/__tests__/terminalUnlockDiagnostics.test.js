@@ -3,6 +3,7 @@ import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
   createTerminalLoginError,
+  extractTerminalShiftConflictDetails,
   isRetryableCompanyLookupError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
@@ -196,6 +197,47 @@ describe('terminal unlock diagnostics', () => {
       url: '/pos/terminal/shifts/open',
       data: { message: 'This terminal already has an active shift.' }
     }))).toBe('This terminal already has an active shift.');
+  });
+
+  it('extracts the existing shift details from the cross-location conflict', () => {
+    expect(extractTerminalShiftConflictDetails(apiError({
+      status: 409,
+      url: '/pos/terminal/shifts/open',
+      data: {
+        message: 'This cashier is already active at another register or location.',
+        errors: {
+          reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE',
+          existing_terminal_id: 'john-01',
+          existing_location_id: 1,
+          existing_shift_id: 151,
+          existing_opened_at: '2026-10-14T08:30:00.000Z'
+        }
+      }
+    }))).toEqual({
+      existingShiftId: 151,
+      existingTerminalId: 'JOHN-01',
+      existingLocationId: 1,
+      existingOpenedAt: '2026-10-14T08:30:00.000Z'
+    });
+  });
+
+  it('does not offer resume details for unrelated conflicts', () => {
+    expect(extractTerminalShiftConflictDetails(apiError({
+      status: 409,
+      data: { errors: { reason_code: 'POS_TARGET_TERMINAL_OCCUPIED' } }
+    }))).toBeNull();
+  });
+
+  it('does not show a shift-resume action for an attendance-only conflict', () => {
+    expect(extractTerminalShiftConflictDetails(apiError({
+      status: 409,
+      data: {
+        errors: {
+          reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE',
+          existing_location_id: 9
+        }
+      }
+    }))).toBeNull();
   });
 
   it('preserves actionable local shift ownership errors', () => {
