@@ -11,8 +11,8 @@ verification_evidence: incoming-order-count Vitest tests,git diff --check,reposi
 rollback_note: Revert the incoming-order count utility, its contract tests, and this declaration; no backend route, database schema, migration, or tenant data change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-10T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-2026-10-10-POS-INCOMING-ORDER-COUNT
+preflight_run_at: 2026-10-13T03:16:12.473Z
+preflight_request_ref: PREFLIGHT-38340478717-2026-10-10-POS-INCOMING-ORDER-COUNT
 ---
 
 # POS incoming-order count utility

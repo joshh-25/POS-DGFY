@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PricelistManagementPanel from '../PricelistManagementPanel.jsx';
 
@@ -89,6 +89,21 @@ describe('PricelistManagementPanel -- edit-items modal presentation', () => {
     expect(document.querySelector('.pos-pricelist-items-modal-header')?.className).toContain('bg-[#1A4E8D]');
     expect(screen.getByTestId('pos-pricelist-items-table')).toBeTruthy();
 
+    const closeButton = screen.getByRole('button', { name: 'Close Edit Pricelist Items' });
+    expect(document.activeElement).toBe(closeButton);
+    const modalDialog = screen.getByRole('dialog', { name: 'Edit Pricelist Items' });
+    const focusable = Array.from(modalDialog.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ));
+    expect(focusable.length).toBeGreaterThan(1);
+    focusable[focusable.length - 1].focus();
+    await user.tab();
+    expect(document.activeElement).toBe(focusable[0]);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit Pricelist Items' })).toBeNull());
+    await waitFor(() => expect(document.activeElement?.getAttribute('data-testid')).toBe('pos-pricelists-new-button'));
+
+    await user.click(screen.getByRole('button', { name: /edit items/i }));
     await user.type(screen.getByRole('searchbox', { name: 'Search items in pricelist' }), 'adobe');
     expect(document.querySelector('.pos-pricelist-items-modal')?.className).toContain('sm:h-[min(52rem,calc(100dvh-6rem))]');
   });

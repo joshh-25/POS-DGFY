@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const catalogWorkspacePath = path.resolve(__dirname, '../components/PosItemsCatalogWorkspace.jsx');
+const itemsWorkspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
+const categoryWorkspacePath = path.resolve(__dirname, '../components/PosItemsCategoryManagementWorkspace.jsx');
 const terminalOperationsWorkspacePath = workspacePath;
 const itemOptionsWorkspacePath = path.resolve(__dirname, '../components/PosFnbModifiersWorkspace.jsx');
 const itemOptionsManagerPath = path.resolve(__dirname, '../components/PosFnbModifierManager.jsx');
@@ -15,7 +18,7 @@ const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
 
 describe('POS category management contract', () => {
   it('lets admins explicitly create a category while saving a new item without creating defaults', () => {
-    const source = fs.readFileSync(workspacePath, 'utf8');
+    const source = `${fs.readFileSync(workspacePath, 'utf8')}\n${fs.readFileSync(itemsWorkspacePath, 'utf8')}\n${fs.readFileSync(categoryWorkspacePath, 'utf8')}`;
 
     expect(source).toContain('Category Management');
     expect(source).toContain('Search Categories');
@@ -37,7 +40,7 @@ describe('POS category management contract', () => {
   });
 
   it('uses an editable category combobox instead of browser datalist suggestions', () => {
-    const source = fs.readFileSync(workspacePath, 'utf8');
+    const source = fs.readFileSync(itemsWorkspacePath, 'utf8');
 
     expect(source).toContain('function EditableFoodCategoryCombobox');
     expect(source).toContain('role="combobox"');
@@ -52,41 +55,39 @@ describe('POS category management contract', () => {
 
   it('keeps category lifecycle controls behind the company-local category permission', () => {
     const source = fs.readFileSync(workspacePath, 'utf8');
+    const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
+    const categorySource = fs.readFileSync(categoryWorkspacePath, 'utf8');
 
-    expect(source).toContain('canManageCategories={canManageCategories}');
-    expect(source).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
-    expect(source).toContain('Move assigned items to');
-    expect(source).toContain('replacementFolderId');
-    expect(source).toContain("Select an active replacement category before deleting this category.");
-    expect(source).toContain('replacementFolderIdNumber > 0');
+    expect(catalogSource).toContain('canManageCategories={canManageCategories}');
+    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
+    expect(source).toContain('itemsWorkspaceComponent={ItemsWorkspace}');
+    expect(categorySource).toContain('Move assigned items to');
+    expect(categorySource).toContain('replacementFolderId');
+    expect(categorySource).toContain("Select an active replacement category before deleting this category.");
+    expect(categorySource).toContain('replacementFolderIdNumber > 0');
   });
 
   it('places category management inside Items and removes it from Settings', () => {
     const source = fs.readFileSync(workspacePath, 'utf8');
-    const catalogStart = source.indexOf('function ItemsCatalogWorkspace');
-    const settingsStart = source.indexOf('function SettingsWorkspace');
-    const workspaceExport = source.indexOf('export default function TerminalOperationsWorkspace');
-    const catalogSource = source.slice(catalogStart, settingsStart);
-    const settingsSource = source.slice(settingsStart, workspaceExport);
+    const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
 
-    expect(catalogStart).toBeGreaterThan(-1);
+    expect(catalogSource).toContain('export default function ItemsCatalogWorkspace');
     expect(catalogSource).toContain('aria-label="Items workspace navigation"');
     expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(catalogSource).toContain("const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);");
     expect(catalogSource).toContain("transition: 'transform 150ms ease, opacity 150ms ease'");
     expect(catalogSource).toContain('onKeyDown={(event) => handleTabKeyDown(event, tab.id)}');
     expect(source).toContain('<ItemsCatalogWorkspace');
-    expect(settingsSource).not.toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
-    expect(settingsSource).not.toContain('<CategoryManagementWorkspace');
+    expect(source).not.toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
+    expect(source).not.toContain('<CategoryManagementWorkspace');
   });
 
   it('keeps non-item catalog tabs inside a bounded vertical scroll viewport', () => {
-    const source = fs.readFileSync(workspacePath, 'utf8');
-    const catalogStart = source.indexOf('function ItemsCatalogWorkspace');
-    const workspaceExport = source.indexOf('export default function TerminalOperationsWorkspace');
-    const catalogSource = source.slice(catalogStart, workspaceExport);
+    const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
 
     expect(catalogSource).toContain('className="pos-items-catalog-workspace flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden"');
+    expect(catalogSource).toContain('className="pos-items-mobile-tab-strip -mx-1 overflow-x-auto border-b border-slate-200"');
+    expect(catalogSource).toContain('className="pos-items-mobile-tab-list -mb-px flex min-w-max items-end gap-3 px-1');
     expect(catalogSource).toContain('dgfy-pos-scroll-region min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y');
     expect(catalogSource).toContain("visibleTab === 'categories'");
     expect(catalogSource).toContain("visibleTab === 'fnb-modifiers'");
@@ -113,10 +114,17 @@ describe('POS category management contract', () => {
     expect(managerSource).toContain('border-t border-slate-200');
   });
 
+  it('labels the F&B modifier tab clearly and uses a list-plus icon', () => {
+    const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
+
+    expect(catalogSource).toContain("import { CalendarDays, ClipboardList, ListPlus, SlidersHorizontal, Tags } from 'lucide-react';");
+    expect(catalogSource).toContain("{ id: 'fnb-modifiers', label: 'Item Options & Modifiers', icon: ListPlus }");
+  });
+
   it('uses styled listbox controls instead of browser-native select menus', () => {
     const workspaceSource = fs.readFileSync(itemOptionsWorkspacePath, 'utf8');
     const managerSource = fs.readFileSync(itemOptionsManagerPath, 'utf8');
-    const terminalOperationsSource = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
+    const terminalOperationsSource = fs.readFileSync(itemsWorkspacePath, 'utf8');
     const selectSource = fs.readFileSync(itemOptionsSelectPath, 'utf8');
 
     expect(workspaceSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
@@ -136,6 +144,7 @@ describe('POS category management contract', () => {
 
   it('preserves category-only access and keeps category mutations online-only', () => {
     const workspaceSource = fs.readFileSync(workspacePath, 'utf8');
+    const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
     const sidebarSource = fs.readFileSync(sidebarPath, 'utf8');
     const layoutSource = fs.readFileSync(layoutPath, 'utf8');
     const terminalPageSource = fs.readFileSync(terminalPagePath, 'utf8');
@@ -155,11 +164,11 @@ describe('POS category management contract', () => {
     expect(sidebarSource).toContain('const canAccessItemsWorkspace = canViewPos || canManageCategories;');
     expect(historyBlock).toContain('disabled={locked || onboardingRestricted || !canViewPos}');
     expect(itemsBlock).toContain('disabled={locked || onboardingRestricted || !canAccessItemsWorkspace}');
-    expect(workspaceSource).toContain('Category management is available online only.');
+    expect(catalogSource).toContain('Category management is available online only.');
   });
 
   it('maps the saved category ID back into the edit-item category control', () => {
-    const source = fs.readFileSync(workspacePath, 'utf8');
+    const source = fs.readFileSync(itemsWorkspacePath, 'utf8');
 
     expect(source).toContain('const savedFolderId = Number(item?.folder_id || 0);');
     expect(source).toContain('Number(option?.folder_id) === savedFolderId');
@@ -167,7 +176,7 @@ describe('POS category management contract', () => {
   });
 
   it('preserves service taxonomy when an existing service item is edited in POS', () => {
-    const source = fs.readFileSync(workspacePath, 'utf8');
+    const source = fs.readFileSync(itemsWorkspacePath, 'utf8');
 
     expect(source).toContain("String(activeEditItem?.category || '').trim().toLowerCase() === 'service'");
     expect(source).toContain("mode_item_preset: category === 'product' ? posItemPreset.key : 'service'");

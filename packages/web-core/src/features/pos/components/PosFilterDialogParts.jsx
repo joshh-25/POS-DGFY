@@ -130,6 +130,7 @@ export function PosFilterDialogFooter({
   resetIcon: ResetIcon = RotateCcw,
   applyIcon: ApplyIcon = ListFilter,
   mobile = false,
+  buttonStyle = 'filter',
   className = '',
   leftButtonClassName = '',
   applyButtonClassName = '',
@@ -139,6 +140,9 @@ export function PosFilterDialogFooter({
   const leftAction = isCancel ? onCancel : onReset;
   const leftLabel = isCancel ? cancelLabel : resetLabel;
   const LeftIcon = isCancel ? null : ResetIcon;
+  const buttonStyleClassName = buttonStyle === 'form'
+    ? 'h-10 rounded-lg'
+    : `${mobile ? 'h-9' : 'h-10'} rounded-xl`;
 
   return (
     <footer className={`flex shrink-0 flex-row justify-between gap-2 border-t border-slate-200 ${mobile ? 'px-4 py-3' : 'px-4 py-2.5'} ${className}`.trim()}>
@@ -147,7 +151,7 @@ export function PosFilterDialogFooter({
         variant={isCancel ? 'outline' : 'outline'}
         onClick={leftAction}
         data-testid={isCancel ? cancelTestId : resetTestId}
-        className={`min-w-0 flex-1 rounded-xl ${mobile ? 'h-9' : 'h-10'} ${isCancel
+        className={`min-w-0 flex-1 ${buttonStyleClassName} ${isCancel
           ? 'border-[#A9C5EA] px-3 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-[#F5F9FF]'
           : 'border-rose-300 bg-rose-50/40 px-3 text-[13px] font-extrabold text-rose-700 shadow-sm shadow-rose-100/70 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-800'} ${leftButtonClassName}`.trim()}
       >
@@ -159,7 +163,7 @@ export function PosFilterDialogFooter({
         onClick={onApply}
         data-testid={applyTestId}
         disabled={disabled}
-        className={`min-w-0 flex-1 rounded-xl bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] ${mobile ? 'h-9' : 'h-10'} ${applyButtonClassName}`.trim()}
+        className={`min-w-0 flex-1 ${buttonStyleClassName} bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] ${applyButtonClassName}`.trim()}
       >
         {ApplyIcon ? <ApplyIcon className="mr-2 h-4 w-4" aria-hidden="true" /> : null}
         {applyLabel}

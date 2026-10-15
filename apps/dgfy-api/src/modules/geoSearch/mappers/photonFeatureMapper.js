@@ -65,6 +65,7 @@ export const mapPrecision = (properties) => {
 };
 
 export const mapComponents = (properties) => ({
+    housenumber: clean(properties?.housenumber),
     street: clean(properties?.street),
     locality: clean(properties?.locality),
     district: clean(properties?.district),
@@ -143,34 +144,48 @@ export const mapReverseGeocodeResponse = (payload, { latitude, longitude }) => {
  * Forward search is the mirror image of reverse: here `name` IS the match the user typed
  * (`q=Poblacion` returns name="Poblacion", city="Pavia" with no locality/district), so
  * dropping it would discard the searched term. Reverse never does this.
+ *
+ * The street (with its house number, when Photon has one) follows the name. A `street`-type
+ * feature carries its street name in `name` and leaves `street` empty, so it is read from there.
+ * `houseNumber` overrides Photon's own value: house-number queries resolved to street level
+ * carry the number the customer typed, so it survives into the delivery address text.
  */
-const prependName = (name, addressLine) => {
-    if (!name) return addressLine;
-    const segments = addressLine.split(', ');
-    if (segments.some((segment) => segment.toLowerCase() === name.toLowerCase())) return addressLine;
-    return [name, ...segments].slice(0, MAX_LABEL_SEGMENTS).join(', ');
+export const composeForwardAddressLine = (properties, { houseNumber = null } = {}) => {
+    const isStreet = String(properties?.type || '').trim() === 'street';
+    const name = clean(properties?.name);
+    const street = isStreet ? name : clean(properties?.street);
+    const number = clean(houseNumber) || clean(properties?.housenumber);
+    const streetLine = street && number ? `${number} ${street}` : street;
+
+    const segments = dedupeSegments([isStreet ? null : name, streetLine, ...composeAddressLine(properties).split(', ')]);
+    return segments.slice(0, MAX_LABEL_SEGMENTS).join(', ');
+};
+
+export const mapForwardFeature = (feature, { houseNumber = null } = {}) => {
+    const properties = feature?.properties || {};
+    const coordinates = toCoordinates(feature);
+    if (!coordinates) return null;
+
+    const addressLine = composeForwardAddressLine(properties, { houseNumber });
+    if (!addressLine) return null;
+
+    const components = mapComponents(properties);
+    if (!components.street && String(properties.type || '').trim() === 'street') {
+        components.street = clean(properties.name);
+    }
+    if (houseNumber) components.housenumber = clean(houseNumber);
+
+    return {
+        address_line: addressLine,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        precision: mapPrecision(properties),
+        provider: QUADRUPER_PROVIDER,
+        components
+    };
 };
 
 export const mapForwardSearchResponse = (payload) => {
     const features = Array.isArray(payload?.features) ? payload.features : [];
-
-    return features
-        .map((feature) => {
-            const properties = feature?.properties || {};
-            const coordinates = toCoordinates(feature);
-            if (!coordinates) return null;
-
-            const addressLine = prependName(clean(properties.name), composeAddressLine(properties));
-            if (!addressLine) return null;
-
-            return {
-                address_line: addressLine,
-                latitude: coordinates.latitude,
-                longitude: coordinates.longitude,
-                precision: mapPrecision(properties),
-                provider: QUADRUPER_PROVIDER,
-                components: mapComponents(properties)
-            };
-        })
-        .filter(Boolean);
+    return features.map((feature) => mapForwardFeature(feature)).filter(Boolean);
 };

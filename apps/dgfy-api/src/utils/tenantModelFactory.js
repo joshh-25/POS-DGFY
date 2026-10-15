@@ -87,6 +87,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'PlatformAdminPermission',
     'PlatformAdminSession',
     'PlatformAdminAuditLog',
+    'ContactInquiryProviderConfig',
     'CompanyRegistrationApplication',
     'CompanyRegistrationAttempt',
     'CompanyRegistrationEvent',

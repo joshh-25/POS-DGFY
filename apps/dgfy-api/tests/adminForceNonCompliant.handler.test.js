@@ -31,6 +31,11 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
     listTenantAffiliateSlotsAuditLogsUseCase: noopUseCase,
     updateTenantAffiliateSlotsUseCase: noopUseCase,
     deleteTenantUseCase: noopUseCase,
+    approveCompanyRegistrationDraftUseCase: noopUseCase,
+    listAdminCompanyRegistrationDraftsUseCase: noopUseCase,
+    listCompanyRegistrationUploadsUseCase: noopUseCase,
+    downloadCompanyRegistrationUploadUseCase: noopUseCase,
+    downloadCompanyRegistrationMenuArchiveUseCase: noopUseCase,
     resubmitRegistrationUseCase: noopUseCase,
     tenantAdminRepository: {}
 }));

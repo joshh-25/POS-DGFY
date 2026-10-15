@@ -145,7 +145,13 @@ test('double failure summary names both backend outcomes', () => {
     SOURCE_COMMIT_SHA: 'commit-sha', GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '3',
     ARTIFACT_NAME: 'evidence', GITHUB_ARTIFACT_NAME: 'evidence-attempt-3', RETENTION_DAYS: '30',
     GITHUB_OUTCOME: 'failure', S3_OUTCOME: 'failure', S3_STATUS: '',
+    S3_FAILURE_REASON: 'S3 service error SignatureDoesNotMatch',
+    S3_PRESIGNED_URL: 'https://s3.invalid/?secret=presigned-token',
+    AWS_SECRET_ACCESS_KEY: 'must-not-appear',
   };
+  const annotations = [];
+  const originalConsoleLog = console.log;
+  console.log = (...args) => annotations.push(args.join(' '));
   for (const [key, value] of Object.entries(values)) {
     previous[key] = process.env[key];
     process.env[key] = value;
@@ -153,9 +159,23 @@ test('double failure summary names both backend outcomes', () => {
   try {
     assert.equal(record().storage_status, 'failed');
     const summary = fs.readFileSync(values.GITHUB_STEP_SUMMARY, 'utf8');
-    assert.match(summary, /GitHub=failure; S3=failure/);
+    assert.match(summary, /S3 fallback: failure \(SignatureDoesNotMatch\)/);
+    assert.match(summary, /GitHub=failure; S3=failure \(SignatureDoesNotMatch\)/);
     assert.match(summary, /No retrieval location is available/);
+    assert.match(annotations[0], /S3 fallback failure reason: SignatureDoesNotMatch/);
+    assert.doesNotMatch(`${summary}\n${annotations.join('\n')}`, /must-not-appear|presigned-token|https:\/\/s3\.invalid/);
+
+    fs.writeFileSync(values.GITHUB_STEP_SUMMARY, '');
+    values.S3_FAILURE_REASON = '';
+    process.env.S3_FAILURE_REASON = '';
+    annotations.length = 0;
+    record();
+    const summaryWithoutReason = fs.readFileSync(values.GITHUB_STEP_SUMMARY, 'utf8');
+    assert.match(summaryWithoutReason, /S3 fallback: failure\./);
+    assert.match(summaryWithoutReason, /GitHub=failure; S3=failure \(no verified result\)/);
+    assert.equal(annotations[0], '::error::Evidence storage failed: GitHub Artifacts and S3 fallback did not store the evidence.');
   } finally {
+    console.log = originalConsoleLog;
     for (const key of Object.keys(values)) {
       if (previous[key] === undefined) delete process.env[key];
       else process.env[key] = previous[key];

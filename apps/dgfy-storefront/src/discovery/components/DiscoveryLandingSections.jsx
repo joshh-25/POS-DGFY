@@ -1,15 +1,12 @@
 import React from 'react';
 
-import { DiscoveryBusinessOwnerCtaSection } from './DiscoveryBusinessOwnerCtaSection.jsx';
 import { DiscoveryFaqSection } from './DiscoveryFaqSection.jsx';
 import { DiscoveryFeaturedMerchantsSection } from './DiscoveryFeaturedMerchantsSection.jsx';
 import { DiscoveryFooter } from './DiscoveryFooter.jsx';
 import { DiscoveryHowItWorksSection } from './DiscoveryHowItWorksSection.jsx';
 
 export function DiscoveryLandingSections({
-  dgfyBusinessOwnerPhoto,
   dgfyHeaderLogo,
-  dgfySymbolLogo,
   discoveryPinsBySlug,
   featuredCarouselRef,
   featuredCategoryFilter,
@@ -26,7 +23,6 @@ export function DiscoveryLandingSections({
   markBrandingImageError,
   normalizeStorefrontCategories,
   normalizeStorefrontReviewSummary,
-  openBusinessRegistrationFlow,
   openDiscoveryFaqIndex,
   setOpenDiscoveryFaqIndex,
   toSlug,
@@ -55,13 +51,6 @@ export function DiscoveryLandingSections({
         onFeaturedCategoryFilter={handleFeaturedCategoryFilter}
         toSlug={toSlug}
         withAssetOrigin={withAssetOrigin}
-      />
-
-      <DiscoveryBusinessOwnerCtaSection
-        dgfyBusinessOwnerPhoto={dgfyBusinessOwnerPhoto}
-        dgfySymbolLogo={dgfySymbolLogo}
-        isMobileViewport={isMobileViewport}
-        openBusinessRegistrationFlow={openBusinessRegistrationFlow}
       />
 
       <DiscoveryFaqSection

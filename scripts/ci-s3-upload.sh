@@ -32,6 +32,13 @@ fail_aws_operation() {
   local reason
 
   reason="$(aws_failure_reason "$log_file")"
+  # Share only the allowlisted classification with later workflow steps. Preserve the original AWS
+  # failure if GitHub's output file is unavailable or cannot be written.
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    if ! write_output failure_reason "$reason"; then
+      echo "::warning::Could not write the sanitized S3 failure reason to the GitHub Actions output file." >&2
+    fi
+  fi
   # The AWS CLI's non-debug error output for a failed S3 call never includes credential material
   # -- only the request URL, HTTP status, and the service's response body -- so printing it is
   # safe and gives the real error code/message instead of just the generic classification above.
@@ -46,6 +53,77 @@ write_output() {
   local value="$2"
   [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || fail "Refusing multiline workflow output: $name"
   printf '%s=%s\n' "$name" "$value" >> "$GITHUB_OUTPUT"
+}
+
+run_s3_readback_diagnostics() {
+  local s3api_exit_code="$1"
+  local s3api_log_file="$2"
+  local cli_version
+  local s3api_failure_reason
+  local presigned_status='presign_failed'
+  local presigned_http_status='000'
+  local presigned_failure_reason=''
+  local presigned_sha256=''
+  local presigned_url=''
+  local curl_exit_code=0
+
+  s3api_failure_reason="$(aws_failure_reason "$s3api_log_file")"
+  cli_version="$("$aws_bin" --version 2>&1 | head -n1 | tr -d '\r')"
+  cli_version="${cli_version%% *}"
+  if [[ ! "$cli_version" =~ ^aws-cli/[0-9]+(\.[0-9]+)*$ ]]; then
+    cli_version='unavailable'
+  fi
+
+  if presigned_url="$("$aws_bin" s3 presign "$object_uri" --endpoint-url "$endpoint_url" --expires-in 300 2>"$tmp_dir/diagnostic-presign.log")" && [[ -n "$presigned_url" ]]; then
+    presigned_status='request_failed'
+    if presigned_http_status="$(curl --connect-timeout 15 --max-time 60 --silent --show-error \
+      --output "$tmp_dir/presigned-readback-diagnostic" --write-out '%{http_code}' \
+      "$presigned_url" 2>"$tmp_dir/presigned-curl.log")"; then
+      if [[ "$presigned_http_status" == '200' && -f "$tmp_dir/presigned-readback-diagnostic" ]]; then
+        presigned_sha256="$(sha256sum "$tmp_dir/presigned-readback-diagnostic" | cut -d ' ' -f1)"
+        if [[ "$presigned_sha256" == "$source_sha256" ]]; then
+          presigned_status='verified'
+        else
+          presigned_status='checksum_mismatch'
+        fi
+      else
+        if [[ "$presigned_http_status" == '200' ]]; then
+          presigned_status='missing_output'
+        else
+          presigned_status='http_failure'
+        fi
+      fi
+    else
+      curl_exit_code=$?
+      presigned_http_status='000'
+      presigned_failure_reason="curl request failed (exit code $curl_exit_code)"
+    fi
+  else
+    presigned_status='presign_failed'
+    presigned_failure_reason="$(aws_failure_reason "$tmp_dir/diagnostic-presign.log")"
+  fi
+
+  echo "::group::S3 readback diagnostics"
+  echo "AWS CLI version: $cli_version"
+  echo "s3api GetObject: failed ($s3api_failure_reason; exit code $s3api_exit_code)"
+  echo "Presigned GET: $presigned_status (HTTP $presigned_http_status)${presigned_failure_reason:+; $presigned_failure_reason}${presigned_sha256:+; SHA-256 $presigned_sha256}"
+  echo "::endgroup::"
+
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    local s3api_details="failed ($s3api_failure_reason; exit code $s3api_exit_code)"
+    local presigned_details="$presigned_status (HTTP $presigned_http_status)"
+    [[ -z "$presigned_failure_reason" ]] || presigned_details+="; $presigned_failure_reason"
+    [[ -z "$presigned_sha256" ]] || presigned_details+="; SHA-256 $presigned_sha256"
+    if ! {
+      printf '\n### S3 readback diagnostics\n\n'
+      printf -- '- AWS CLI version: `%s`.\n' "$cli_version"
+      printf -- '- `s3api GetObject`: %s.\n' "$s3api_details"
+      printf -- '- Presigned GET: %s.\n' "$presigned_details"
+      printf -- '- Presigned URL omitted.\n'
+    } >>"$GITHUB_STEP_SUMMARY"; then
+      echo "::warning::Could not append S3 readback diagnostics to the GitHub Actions step summary." >&2
+    fi
+  fi
 }
 
 if [[ "$#" -ne 2 ]]; then
@@ -192,21 +270,28 @@ else
   fail_aws_operation "S3 upload" "$tmp_dir/upload.log" "$rc"
 fi
 
-# Diagnostic retry (#2329): a 100MB+ multipart-completed object returned a 403 on the very next
-# HeadObject (issued internally by `aws s3 cp` before it downloads) immediately after upload --
-# https://github.com/Sieitzz/dgfy-platform/actions/runs/37754268626. Retrying with backoff isolates
-# whether this is SeaweedFS eventual consistency on multipart completion (readback succeeds after a
-# short delay) versus a real, permanent permission/config problem (every attempt 403s the same way).
+# Retry (#2329): a 100MB+ multipart-completed object previously returned a 403 on the immediate
+# HeadObject issued internally by `aws s3 cp` before download --
+# https://github.com/Sieitzz/dgfy-platform/actions/runs/37754268626. Keep bounded backoff around
+# direct GetObject to distinguish SeaweedFS multipart visibility delays from a persistent failure.
 readback_attempt=1
 readback_max_attempts=5
 while true; do
-  if "$aws_bin" s3 cp "$object_uri" "$tmp_dir/direct-readback" \
-    --endpoint-url "$endpoint_url" --only-show-errors --no-progress \
+  # Run 38567225921 showed `aws s3 cp` readback failing with SignatureDoesNotMatch while this direct
+  # GetObject API call and the presigned GET both verified the same source checksum. Use the
+  # explicit API operation for evidence verification instead of the failing transfer-manager path.
+  if "$aws_bin" s3api get-object \
+    --bucket "$ARTIFACT_S3_BUCKET" --key "$object_key" "$tmp_dir/direct-readback" \
+    --endpoint-url "$endpoint_url" --cli-connect-timeout 15 --cli-read-timeout 60 \
     >"$tmp_dir/download.log" 2>&1; then
     break
+  else
+    rc=$?
   fi
-  rc=$?
   if (( readback_attempt >= readback_max_attempts )); then
+    if [[ "${S3_DIAGNOSE_READBACK_FAILURE:-false}" == 'true' ]]; then
+      run_s3_readback_diagnostics "$rc" "$tmp_dir/download.log"
+    fi
     fail_aws_operation "S3 direct readback" "$tmp_dir/download.log" "$rc"
   fi
   echo "::warning::S3 direct readback attempt $readback_attempt/$readback_max_attempts failed ($(aws_failure_reason "$tmp_dir/download.log")); retrying after $((readback_attempt * 10))s."

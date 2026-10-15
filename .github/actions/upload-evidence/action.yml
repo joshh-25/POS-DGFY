@@ -29,6 +29,10 @@ inputs:
   s3-secret-access-key:
     description: S3 credential from a repository secret.
     required: true
+  diagnose-readback-failure:
+    description: Run safe S3 GetObject comparisons when direct readback fails.
+    required: false
+    default: 'false'
 outputs:
   storage_status:
     description: github, s3-fallback, failed, or missing.
@@ -48,6 +52,9 @@ outputs:
   upload_status:
     description: Existing S3 uploader status when fallback was attempted.
     value: ${{ steps.s3_fallback.outputs.upload_status }}
+  failure_reason:
+    description: Sanitized S3 failure classification when fallback fails.
+    value: ${{ steps.s3_fallback.outputs.failure_reason }}
   object_uri:
     description: S3 object URI when fallback was attempted.
     value: ${{ steps.s3_fallback.outputs.object_uri }}
@@ -108,6 +115,7 @@ runs:
         SOURCE_COMMIT_SHA: ${{ inputs.source-sha }}
         EVIDENCE_PATH: ${{ inputs.path }}
         S3_ARTIFACT_NAME: ${{ inputs.name }}
+        S3_DIAGNOSE_READBACK_FAILURE: ${{ inputs.diagnose-readback-failure }}
       run: bash scripts/ci-s3-upload.sh "$EVIDENCE_PATH" "$S3_ARTIFACT_NAME"
 
     - name: Record evidence storage result
@@ -130,6 +138,7 @@ runs:
         GITHUB_ARTIFACT_URL: ${{ steps.github_upload.outputs.artifact-url }}
         GITHUB_ARTIFACT_DIGEST: ${{ steps.github_upload.outputs.artifact-digest }}
         S3_OUTCOME: ${{ steps.s3_fallback.outcome }}
+        S3_FAILURE_REASON: ${{ steps.s3_fallback.outputs.failure_reason }}
         S3_STATUS: ${{ steps.s3_fallback.outputs.upload_status }}
         S3_URI: ${{ steps.s3_fallback.outputs.object_uri }}
         S3_SIZE_BYTES: ${{ steps.s3_fallback.outputs.size_bytes }}

@@ -350,7 +350,7 @@ export const removeEmailTenantMapping = async (email, tenantId) => {
  * @param {string} newEmail - New email
  * @param {string} tenantId - Tenant UUID
  */
-export const updateEmailTenantMapping = async (oldEmail, newEmail, tenantId) => {
+export const updateEmailTenantMapping = async (oldEmail, newEmail, tenantId, options = {}) => {
     const normalizedOldEmail = oldEmail.toLowerCase().trim();
     const normalizedNewEmail = newEmail.toLowerCase().trim();
 
@@ -358,7 +358,8 @@ export const updateEmailTenantMapping = async (oldEmail, newEmail, tenantId) => 
         return; // No change needed
     }
 
-    const transaction = await sequelize.transaction();
+    const ownsTransaction = !options.transaction;
+    const transaction = options.transaction || await sequelize.transaction();
     try {
         // Remove old mapping
         await UserTenantMapping.destroy({
@@ -373,10 +374,10 @@ export const updateEmailTenantMapping = async (oldEmail, newEmail, tenantId) => 
             transaction
         });
 
-        await transaction.commit();
+        if (ownsTransaction) await transaction.commit();
         logger.info(`Updated email-tenant mapping: ${normalizedOldEmail} -> ${normalizedNewEmail} for tenant ${tenantId}`);
     } catch (error) {
-        await transaction.rollback();
+        if (ownsTransaction) await transaction.rollback();
         throw error;
     }
 };

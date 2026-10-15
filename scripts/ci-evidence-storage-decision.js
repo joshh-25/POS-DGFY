@@ -74,6 +74,19 @@ function appendSummary(lines) {
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
 }
 
+function formatS3FailureReason(reason) {
+  const value = String(reason ?? '');
+  const serviceError = value.match(/^S3 service error ([A-Za-z0-9]+)$/);
+  if (serviceError) return serviceError[1];
+
+  switch (value) {
+    case 'S3 endpoint connection failed': return 'endpoint connection failed';
+    case 'S3 endpoint TLS validation failed': return 'endpoint TLS validation failed';
+    case 'unclassified S3 client error': return 'unclassified S3 client error';
+    default: return '';
+  }
+}
+
 function record(env = process.env) {
   const result = decideStorage({
     sourceStatus: env.SOURCE_STATUS,
@@ -86,6 +99,8 @@ function record(env = process.env) {
   const ref = result.backend === 'github' ? env.GITHUB_ARTIFACT_URL : result.backend === 's3' ? env.S3_URI : '';
   const size = result.backend === 's3' ? env.S3_SIZE_BYTES : env.SOURCE_SIZE_BYTES;
   const sha = result.backend === 's3' ? env.S3_SOURCE_SHA256 : env.SOURCE_SHA256;
+  const s3FailureReason = env.S3_OUTCOME === 'failure' ? formatS3FailureReason(env.S3_FAILURE_REASON) : '';
+  const s3FailureDetails = s3FailureReason ? ` (${s3FailureReason})` : '';
   const lines = [
     `### Evidence storage: ${env.ARTIFACT_NAME || 'artifact'}`,
     '',
@@ -93,7 +108,7 @@ function record(env = process.env) {
     `- Source run: ${env.GITHUB_RUN_ID || 'unknown'} attempt ${env.GITHUB_RUN_ATTEMPT || 'unknown'}; commit: ${env.SOURCE_COMMIT_SHA || 'unknown'}.`,
     `- Size: ${size || 'unknown'} bytes; source SHA-256: ${sha || 'unknown'}.`,
     `- GitHub Artifacts (${env.GITHUB_ARTIFACT_NAME || 'unnamed'}): ${env.GITHUB_OUTCOME || 'not run'}${env.GITHUB_ARTIFACT_ID ? `; ID ${env.GITHUB_ARTIFACT_ID}` : ''}${env.GITHUB_ARTIFACT_DIGEST ? `; digest ${env.GITHUB_ARTIFACT_DIGEST}` : ''}.`,
-    `- S3 fallback: ${env.S3_OUTCOME || 'not run'}${env.S3_STATUS ? ` (${env.S3_STATUS})` : ''}.`,
+    `- S3 fallback: ${env.S3_OUTCOME || 'not run'}${s3FailureDetails}${env.S3_STATUS ? ` (${env.S3_STATUS})` : ''}.`,
   ];
   if (result.backend === 'github') {
     lines.push(`- GitHub artifact URL: ${env.GITHUB_ARTIFACT_URL || 'unavailable'}.`);
@@ -105,14 +120,17 @@ function record(env = process.env) {
     lines.push(`- Retrieval: \`aws s3 cp '${env.S3_URI || '<object-uri>'}' ./evidence --endpoint-url "$ARTIFACT_S3_ENDPOINT"\`${env.S3_PRESIGNED_URL && env.S3_STATUS === 'verified' ? `; verified 48-hour bearer URL: ${env.S3_PRESIGNED_URL}` : ''}.`);
     lines.push('- S3 object lifecycle follows the configured bucket policy.');
   } else if (result.storage_status === 'failed') {
-    lines.push(`- Both storage attempts failed: GitHub=${env.GITHUB_OUTCOME || 'unknown'}; S3=${env.S3_OUTCOME || 'unknown'} (${env.S3_STATUS || 'no verified result'}).`);
+    lines.push(`- Both storage attempts failed: GitHub=${env.GITHUB_OUTCOME || 'unknown'}; S3=${env.S3_OUTCOME || 'unknown'}${s3FailureDetails} (${env.S3_STATUS || 'no verified result'}).`);
     lines.push('- No retrieval location is available.');
   } else {
     lines.push('- Evidence source is missing or unreadable; no storage attempt ran, matching the existing missing-file warning behavior.');
   }
 
   if (result.storage_status === 's3-fallback') console.log('::warning::GitHub artifact upload failed; evidence was stored using the verified S3 fallback.');
-  if (result.storage_status === 'failed') console.log('::error::Evidence storage failed: GitHub Artifacts and S3 fallback did not store the evidence.');
+  if (result.storage_status === 'failed') {
+    const reason = s3FailureReason ? ` S3 fallback failure reason: ${s3FailureReason}.` : '';
+    console.log(`::error::Evidence storage failed: GitHub Artifacts and S3 fallback did not store the evidence.${reason}`);
+  }
   if (result.storage_status === 'missing') console.log('::warning::Evidence source is missing or unreadable; no artifact storage was attempted.');
   for (const [key, value] of Object.entries({ ...result, artifact_ref: ref, size_bytes: size || '', source_sha256: sha || '' })) writeOutput(key, value);
   appendSummary(lines);

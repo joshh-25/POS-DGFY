@@ -23,7 +23,11 @@ import {
 } from '@/services/settingsService.js';
 import {
   getAllUsers,
+  changePassword,
   removeUserFromCompany,
+  requestEmailChangeOtp,
+  updatePosApprovalPin,
+  updatePosDayClosePin,
   updateProfile,
   updateUserPermissions
 } from '@/services/userService.js';
@@ -138,6 +142,8 @@ const getProfileFormSnapshot = (form = {}) => ({
   email: String(form.email || '').trim(),
   phoneNumber: String(form.phoneNumber || '').trim()
 });
+
+const normalizeProfileEmail = (email) => String(email || '').trim().toLowerCase();
 
 const normalizeStringList = (raw, maxItems = 8, maxLen = 120) => {
   const source = Array.isArray(raw) ? raw : [];
@@ -1218,15 +1224,36 @@ export default function PosSettingsWorkspace({
     return () => onStorefrontContentStateChange?.({ dirty: false, discard: null });
   }, [discardStorefrontContentChanges, onStorefrontContentStateChange, storefrontContentDirty]);
 
-  const handleProfileSave = useCallback(async () => {
+  const handleRequestProfileEmailOtp = useCallback(async (email) => {
+    try {
+      await requestEmailChangeOtp({ email });
+      toast.success('Email verification code sent.');
+      return true;
+    } catch (error) {
+      toast.error(formatFirstValidationError(error, 'Failed to send email verification code.'));
+      return false;
+    }
+  }, []);
+
+  const handleProfileSave = useCallback(async ({ emailOtpCode = '' } = {}) => {
     setSavingTab('profile');
     try {
       const savedProfileForm = getProfileFormSnapshot(profileForm);
-      await updateProfile({
+      const baselineEmail = profileFormBaseline?.email ?? terminalUser?.email ?? '';
+      const emailChanged = normalizeProfileEmail(savedProfileForm.email) !== normalizeProfileEmail(baselineEmail);
+      const profileUpdate = {
         username: savedProfileForm.username,
-        email: savedProfileForm.email,
         phone_number: savedProfileForm.phoneNumber
-      });
+      };
+
+      // The API requires an OTP only for a real email change. Omitting an unchanged
+      // email also keeps username/phone-only edits independent from email verification.
+      if (emailChanged) {
+        profileUpdate.email = savedProfileForm.email;
+        profileUpdate.email_otp_code = String(emailOtpCode || '').trim();
+      }
+
+      await updateProfile(profileUpdate);
       setProfileForm(savedProfileForm);
       setProfileFormBaseline(savedProfileForm);
       await onRefreshTerminalUser?.({ suppressGlobalErrors: true });
@@ -1238,7 +1265,21 @@ export default function PosSettingsWorkspace({
     } finally {
       setSavingTab('');
     }
-  }, [onRefreshTerminalUser, profileForm]);
+  }, [onRefreshTerminalUser, profileForm, profileFormBaseline, terminalUser?.email]);
+
+  const handlePasswordChange = useCallback(async ({ currentPassword, newPassword }) => {
+    setSavingTab('profile-password');
+    try {
+      await changePassword({ currentPassword, newPassword });
+      toast.success('Password changed successfully.');
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to change password.');
+      return false;
+    } finally {
+      setSavingTab('');
+    }
+  }, []);
 
   const handleTaxPoliciesSave = useCallback(async (nextPolicies = taxPolicies) => {
     if (!canEditSettings || locked) return false;
@@ -2143,10 +2184,13 @@ export default function PosSettingsWorkspace({
           companyInfo={companyInfo}
           profileForm={profileForm}
           setProfileForm={setProfileForm}
+          profileEmailBaseline={profileFormBaseline?.email ?? terminalUser?.email ?? ''}
           locked={locked}
           loading={loading}
           savingTab={savingTab}
           onSave={handleProfileSave}
+          onRequestEmailOtp={handleRequestProfileEmailOtp}
+          onChangePassword={handlePasswordChange}
         />
       );
     }

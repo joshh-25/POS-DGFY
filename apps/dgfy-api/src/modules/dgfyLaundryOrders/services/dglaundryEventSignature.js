@@ -178,10 +178,11 @@ export const signDgfyRequest = ({ method = 'POST', authority, path, body }) => {
  * This is deliberately separate from P-256 partner requests: the receiver
  * selects the registry by the event algorithm and key ID, not by route name.
  */
-export const signDgfyEvent = ({ method = 'POST', authority, path, body }) => {
+export const signDgfyEvent = ({ method = 'POST', authority, path, body, now = new Date() }) => {
   const rawBody = JSON.stringify(body ?? {});
   const { privateKeyPem, keyId: signingKeyId } = getDgfyEventSigningKey();
-  const created = Math.floor(Date.now() / 1000);
+  const nowMs = now instanceof Date ? now.getTime() : Number(now);
+  const created = Math.floor(nowMs / 1000);
   const expires = created + 300;
   const nonce = crypto.randomUUID();
   const digest = `sha-256=:${crypto.createHash('sha256').update(rawBody).digest('base64')}:`;

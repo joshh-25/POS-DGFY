@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const workspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
 const stylesheetPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS edit-item image save flow', () => {
@@ -16,9 +16,8 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).toContain('min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-lg');
     expect(workspace).toContain('grid min-w-0 grid-cols-2 gap-2');
     expect(workspace.match(/max-w-\[54rem\]/g)).toHaveLength(2);
-    // The shared blue modal header is used by Add/Edit Item and the item filter
-    // surface also uses the same rounded header treatment.
-    expect(workspace.match(/rounded-t-\[17px\] border-b border-\[#143F73\] bg-\[#1A4E8D\]/g)).toHaveLength(3);
+    // Add Item and Edit Item use the shared blue modal header treatment.
+    expect(workspace.match(/rounded-t-\[17px\] border-b border-\[#143F73\] bg-\[#1A4E8D\]/g)).toHaveLength(2);
   });
 
   it('keeps selection local and queues deferred images through the gallery worker flow', () => {

@@ -270,8 +270,11 @@ const validateDglaundryProviderConfig = (env, errors) => {
     errors.push('DGLaundry staging integration requires PAYMONGO_MODE=test; live PayMongo is forbidden in staging');
   }
   const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
-  if (redirect !== 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback') {
-    errors.push('DGFY_DGLAUNDRY_REDIRECT_URI must be the registered HTTPS DGLaundry callback');
+  const expectedRedirect = integrationEnvironment === 'staging'
+    ? 'https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback'
+    : 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+  if (integrationEnvironment && redirect !== expectedRedirect) {
+    errors.push(`DGFY_DGLAUNDRY_REDIRECT_URI must be ${expectedRedirect} for ${integrationEnvironment}`);
   }
   if (!hasValue(env, 'DGFY_OIDC_ISSUER')) errors.push('DGFY_OIDC_ISSUER must be explicit for each hosted environment; do not inherit the production issuer in staging');
   const expectedIssuer = integrationEnvironment === 'staging' ? 'https://api.stage.dgfy.ph/oidc' : 'https://api.dgfy.ph/oidc';
