@@ -21,7 +21,9 @@
 # `docker login` itself runs (not after), so an interrupted login attempt
 # is covered too (PR #2448 review, RF-5).
 #
-# Only docker-compose.production.yml is layered here -- NOT
+# docker-compose.production.yml is always layered; docker-compose.production.dgfy.yml
+# when DGLAUNDRY_DGFY_MODE is anything but "disabled" ("sandbox" on staging,
+# "production" on prod -- see below). NOT
 # docker-compose.surebizcorp-lean.yml. That overlay was written for
 # Surebizcorp's own closed qualification and additionally requires several
 # live DGFY integration variables that don't exist while
@@ -52,6 +54,18 @@ ENV_FILE="${2:?Usage: GITHUB_ACTOR=<actor> $0 <secrets-dir> <env-file> (token on
 : "${GITHUB_ACTOR:?GITHUB_ACTOR must be set}"
 
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.production.yml)
+
+# DGFY integration overlay (docker-compose.production.dgfy.yml) is layered ONLY
+# when this environment's env file turns DGFY mode on (any value but "disabled"). While
+# DGLAUNDRY_DGFY_MODE=disabled it stays out entirely: the overlay's required
+# `${...:?}` variables and secret files don't exist then, so layering it would
+# make `docker compose config` fail (same failure mode as the lean overlay
+# above).
+DGFY_MODE="$(grep -m1 '^DGLAUNDRY_DGFY_MODE=' "$ENV_FILE" | cut -d= -f2)"
+if [ -n "$DGFY_MODE" ] && [ "$DGFY_MODE" != "disabled" ]; then
+  [ -f docker-compose.production.dgfy.yml ] || { echo "::error::DGLAUNDRY_DGFY_MODE=$DGFY_MODE but docker-compose.production.dgfy.yml was not copied to this release" >&2; exit 1; }
+  COMPOSE+=(-f docker-compose.production.dgfy.yml)
+fi
 
 cleanup() { docker logout ghcr.io >/dev/null 2>&1 || true; }
 trap cleanup EXIT HUP INT TERM
