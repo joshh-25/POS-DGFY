@@ -23,8 +23,9 @@
 #
 # docker-compose.production.yml is always layered; docker-compose.production.dgfy.yml
 # when DGLAUNDRY_DGFY_MODE is anything but "disabled" ("sandbox" on staging,
-# "production" on prod -- see below). NOT
-# docker-compose.surebizcorp-lean.yml. That overlay was written for
+# "production" on prod -- see below); and docker-compose.surebizcorp-lean.yml ONLY
+# for sandbox (it sets DEPLOYMENT_ENV=qualification, which the app requires for
+# sandbox mode). That overlay was written for
 # Surebizcorp's own closed qualification and additionally requires several
 # live DGFY integration variables that don't exist while
 # DGLAUNDRY_DGFY_MODE=disabled; layering it in made `docker compose config`
@@ -64,6 +65,15 @@ COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.production.yml)
 DGFY_MODE="$(grep -m1 '^DGLAUNDRY_DGFY_MODE=' "$ENV_FILE" | cut -d= -f2)"
 if [ -n "$DGFY_MODE" ] && [ "$DGFY_MODE" != "disabled" ]; then
   [ -f docker-compose.production.dgfy.yml ] || { echo "::error::DGLAUNDRY_DGFY_MODE=$DGFY_MODE but docker-compose.production.dgfy.yml was not copied to this release" >&2; exit 1; }
+  # "sandbox" is only accepted by the app when DGLAUNDRY_DEPLOYMENT_ENV=qualification
+  # (the base file hardcodes "production" and the api refuses to start otherwise --
+  # UNSAFE_PRODUCTION_CONFIGURATION). The vetted way to get that is the lean
+  # qualification overlay, layered BEFORE the DGFY overlay. Prod ("production"
+  # mode) must not get it.
+  if [ "$DGFY_MODE" = "sandbox" ]; then
+    [ -f docker-compose.surebizcorp-lean.yml ] || { echo "::error::DGLAUNDRY_DGFY_MODE=sandbox needs docker-compose.surebizcorp-lean.yml (DEPLOYMENT_ENV=qualification) but it was not copied to this release" >&2; exit 1; }
+    COMPOSE+=(-f docker-compose.surebizcorp-lean.yml)
+  fi
   COMPOSE+=(-f docker-compose.production.dgfy.yml)
 fi
 
