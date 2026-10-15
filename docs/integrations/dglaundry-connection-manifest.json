@@ -26,7 +26,7 @@
       "keyIds": {
         "dglaundryMachineAssertion": "dglaundry-machine-stage-rs256",
         "dglaundryRequestSigning": "dglaundry-request-stage-p256",
-        "dglaundryEventSigning": "dglaundry-event-stage-ed25519",
+        "dglaundryEventSigning": "dglaundry-event-stage-ed25519-r2",
         "dgfyOidcSigning": "dgfy-oidc-stage-2026-10",
         "dgfyRequestSigning": "dgfy-request-stage-p256",
         "dgfyEventSigning": "dgfy-event-stage-ed25519"

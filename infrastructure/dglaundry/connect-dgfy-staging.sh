@@ -55,6 +55,11 @@ SOPS_BIN="$DGL_ROOT/bin/sops"
 AGE_KEY_FILE="$DGL_ROOT/age/keys.txt"
 NODE_BIN="${NODE_BIN:-/usr/local/bin/node}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
+# DGFY's setup tool keeps DGLaundry's EVENT key in a key-ID-keyed rotation registry and
+# refuses (DGLAUNDRY_EVENT_KEY_ID_REUSE) to attach a different public key to an existing
+# ID, so the fresh event key gets a new ID.  (Machine-assertion and request-signing keys
+# are single files with no such registry, so their IDs stay.)
+NEW_EVENT_KID="dglaundry-event-stage-ed25519-r2"
 NEW_KEYS=(DGFY_CLIENT_SECRET DGFY_PARTNER_SIGNING_PRIVATE_KEY DGFY_PARTNER_CLIENT_ASSERTION_PRIVATE_KEY DGFY_OUTBOUND_SIGNING_KEY DGFY_OUTBOUND_AUTH_TOKEN)
 
 echo "=== Preflight ==="
@@ -66,6 +71,13 @@ done
 for tool in openssl python3 "$NODE_BIN"; do
   command -v "$tool" >/dev/null 2>&1 || [[ -x "$tool" ]] || { echo "Missing tool: $tool" >&2; exit 1; }
 done
+
+CURRENT_EVENT_KID="$("$NODE_BIN" -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).environments.staging.keyIds.dglaundryEventSigning)' "$MANIFEST")"
+if [[ "$CURRENT_EVENT_KID" == "$NEW_EVENT_KID" ]]; then
+  echo "Manifest already uses event key ID $NEW_EVENT_KID; refusing (already rotated?)." >&2
+  exit 1
+fi
+echo "Event key ID will change: $CURRENT_EVENT_KID -> $NEW_EVENT_KID"
 
 export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 CACHE_KEYS="$("$SOPS_BIN" decrypt --input-type dotenv "$CACHE" | cut -d= -f1)" \
@@ -122,13 +134,14 @@ install -o root -g root -m 0644 "$WORK/request.pub.pem" "$KEYS_DIR/dglaundry-req
 install -o root -g root -m 0644 "$WORK/event.pub.pem"   "$KEYS_DIR/dglaundry-event-signing.pub.pem"
 "$NODE_BIN" -e '
 const fs = require("fs");
-const [path, m, r, e] = process.argv.slice(1);
+const [path, m, r, e, kid] = process.argv.slice(1);
 const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
 Object.assign(manifest.environments.staging.keyFingerprintsSha256, {
   dglaundryMachineAssertion: m, dglaundryRequestSigning: r, dglaundryEventSigning: e,
 });
+manifest.environments.staging.keyIds.dglaundryEventSigning = kid;
 fs.writeFileSync(path, JSON.stringify(manifest, null, 2) + "\n");
-' "$MANIFEST" "$FP_MACHINE" "$FP_REQUEST" "$FP_EVENT"
+' "$MANIFEST" "$FP_MACHINE" "$FP_REQUEST" "$FP_EVENT" "$NEW_EVENT_KID"
 chmod 0640 "$MANIFEST"; chown root:root "$MANIFEST"
 # prepare -> apply -> verify -> restart dgfy-api -> JWKS (existing, proven path)
 bash "$TOOLS_DIR/run-oidc-setup.sh" --apply
@@ -162,7 +175,7 @@ cat <<EOF
 DONE. Public fingerprints (sha256 of SPKI DER), now trusted by DGFY staging:
   dglaundry-machine-stage-rs256   $FP_MACHINE
   dglaundry-request-stage-p256    $FP_REQUEST
-  dglaundry-event-stage-ed25519   $FP_EVENT
+  $NEW_EVENT_KID   $FP_EVENT
 
 Backups: $CACHE.bak-$STAMP   and   $BACKUP_DIR
 Next:
