@@ -1,0 +1,57 @@
+# Local-only overlay for docs/ops/LOCAL_STAGING_RECOVERY_RUNBOOK.md.
+# Core service images must already be loaded from the staging snapshot.
+services:
+  mysql:
+    pull_policy: never
+  redis:
+    pull_policy: never
+  dgfy-migration-runner:
+    pull_policy: never
+  dgfy-api:
+    pull_policy: never
+  dgfy-ims:
+    pull_policy: never
+  dgfy-pos:
+    pull_policy: never
+  dgfy-storefront:
+    pull_policy: never
+  dgfy-opis:
+    pull_policy: never
+  dgfy-admin:
+    pull_policy: never
+  edge-proxy:
+    image: nginx@sha256:72aeb3308ef6cb3118242fb16389518923916dfa206e32d1a8377acc328b9870
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18080:80"
+    volumes:
+      - ./nginx-local.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - dgfy_stage
+  mailpit:
+    image: axllent/mailpit@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
+    pull_policy: never
+    restart: unless-stopped
+    command:
+      - --listen
+      - 0.0.0.0:8025
+      - --smtp
+      - 0.0.0.0:1025
+      - --database
+      - /data/mailpit.db
+      - --smtp-auth-file
+      - /run/secrets/smtp.htpasswd
+      - --smtp-auth-allow-insecure
+      - --ui-auth-file
+      - /run/secrets/mailpit-ui.htpasswd
+    volumes:
+      - mailpit_data:/data
+      - ./smtp.htpasswd:/run/secrets/smtp.htpasswd:ro
+      - ./mailpit-ui.htpasswd:/run/secrets/mailpit-ui.htpasswd:ro
+    ports:
+      - "127.0.0.1:18025:8025"
+    networks:
+      - dgfy_stage
+volumes:
+  mailpit_data:
