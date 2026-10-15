@@ -215,22 +215,31 @@ attachment, and the `DGLAUNDRY` server block in `nginx.conf.template`) already e
 repo's **generic** templates (`infrastructure/docker/{docker-compose.yml,docker-compose.proxy.yml,
 nginx/nginx.conf.template}`, PR #1316) — but the prod host's own copies of those three files are
 hand-maintained literal copies (per #401/#1236, diverged from the generic `${VAR}`-templated
-versions) and, confirmed live (infra/2477), carry **none** of it yet. Before `dglaundry.dgfy.ph`
-can actually resolve through this proxy, someone has to, directly on the prod host:
+versions) and did not carry it until it was applied by hand for #2477 (2026-10-15). Repeat this
+on any rebuild of the prod host, directly on the host:
 
 1. Add the three `DGLAUNDRY_*` env vars to the live `docker-compose.proxy.yml`'s `nginx` service
    and attach it to `dgfy-dglaundry-edge` (declared in the live `docker-compose.yml`'s top-level
-   `networks:` block, `external: true`).
-2. Copy the `DGLAUNDRY` server block into the live `nginx.conf.template`.
-3. Issue a cert for `dglaundry.dgfy.ph` via the already-built
-   `infrastructure/docker/nginx/init-letsencrypt-additional-domain.sh`.
-4. `docker compose up -d nginx` to pick up 1–2, then re-verify every *existing* production domain
-   still responds — this recreates the one nginx container serving all of them.
+   `networks:` block, `external: true`). **`DGLAUNDRY_GATEWAY_PORT` there is `8080`** — the gateway
+   container's own port, reached container-to-container over the edge network — not
+   `prod.env`'s same-named `4400`, which is only the host-loopback publish port of DGLaundry's
+   own compose project. Two same-named vars, two unrelated meanings.
+2. Copy the `DGLAUNDRY` server block into the live `nginx.conf.template`, and add
+   `${DGLAUNDRY_DOMAIN}` to its port-80 `server_name` list — HTTP-01 validation for step 3 needs
+   nginx to already serve the name on port 80.
+3. Add `dglaundry.dgfy.ph` to the shared `dgfy.ph` cert via
+   `infrastructure/docker/nginx/init-letsencrypt-additional-domain.sh`. That cert is one
+   multi-SAN lineage shared by every prod domain and `certbot --expand` *replaces* the SAN list
+   rather than adding to it, so the script reads the lineage's current SANs and re-requests them
+   all plus the new one.
+4. Recreate **only** nginx — `--no-deps --pull never`, and only with the SOPS-decrypted
+   environment loaded (see `/opt/dgfy-platform/deploy-sops.sh`). A bare
+   `docker compose up -d nginx` resolves every secret-backed variable blank and recreates
+   `mysql`/`dgfy-api` with blank credentials: that caused a ~4 minute production outage during
+   #2477. Then re-verify every *existing* production domain still responds.
 
-Each of these is its own live-production-host checkpoint (infra/2477, Part B) — not something this
-PR performs, and not something `deploy-dglaundry-prod.yml` does on your behalf. DNS for
-`dglaundry.dgfy.ph` is already live (#2386); only the host-side proxy wiring and cert are
-outstanding.
+Each of these is its own live-production-host checkpoint — not something
+`deploy-dglaundry-prod.yml` does on your behalf. DNS for `dglaundry.dgfy.ph` is live (#2386).
 
 `provision-migration-identity.sh` runs as part of that same dispatch, once `mysql` reports
 healthy and before `migrate` runs — it parses the already-decrypted `mysql_migration_url` secret
