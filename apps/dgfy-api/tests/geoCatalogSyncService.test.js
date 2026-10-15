@@ -142,7 +142,51 @@ describe('syncTenantGeoCatalog', () => {
       ]
     })).resolves.toBeUndefined();
 
-    expect(loggerWarnMock).toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock.mock.calls[0][0]).toContain('1/2');
+    expect(loggerWarnMock.mock.calls[0][0]).toContain('db down');
+    expect(loggerWarnMock.mock.calls[0][1]).toEqual(expect.objectContaining({
+      tenantId: 'tenant-1',
+      failed: 1,
+      total: 2,
+      firstItemName: 'Broken Item',
+      firstError: 'db down'
+    }));
     expect(upsertStoreItemMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('aggregates multiple failures into one warning with the first error', async () => {
+    resolveItemIdMock
+      .mockRejectedValueOnce(new Error('first failure'))
+      .mockRejectedValueOnce(new Error('second failure'))
+      .mockRejectedValueOnce(new Error('third failure'));
+
+    await expect(syncTenantGeoCatalog({
+      tenantId: 'tenant-1',
+      itemSearchSnapshot: [
+        { item_name: 'First Item' },
+        { item_name: 'Second Item' },
+        { item_name: 'Third Item' }
+      ]
+    })).resolves.toBeUndefined();
+
+    expect(loggerWarnMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock.mock.calls[0][0]).toContain('3/3');
+    expect(loggerWarnMock.mock.calls[0][0]).toContain('first failure');
+    expect(loggerWarnMock.mock.calls[0][1]).toEqual(expect.objectContaining({ failed: 3, total: 3 }));
+  });
+
+  it('does not warn when every snapshot item succeeds', async () => {
+    resolveItemIdMock.mockResolvedValue(42);
+
+    await syncTenantGeoCatalog({
+      tenantId: 'tenant-1',
+      itemSearchSnapshot: [
+        { item_name: 'First Item' },
+        { item_name: 'Second Item' }
+      ]
+    });
+
+    expect(loggerWarnMock).not.toHaveBeenCalled();
   });
 });
