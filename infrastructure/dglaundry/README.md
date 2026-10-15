@@ -241,6 +241,32 @@ on any rebuild of the prod host, directly on the host:
 Each of these is its own live-production-host checkpoint — not something
 `deploy-dglaundry-prod.yml` does on your behalf. DNS for `dglaundry.dgfy.ph` is live (#2386).
 
+### Connecting DGLaundry to DGFY (#2304) — mode, overlay, secrets
+
+Hosting DGLaundry is not the same as connecting it to DGFY. While `DGLAUNDRY_DGFY_MODE=disabled`
+(still the case on prod), DGFY login, machine tokens and signed requests do not work.
+
+- **Mode values:** `sandbox` on staging, `production` on prod (the DGLaundry installer maps the
+  manifest's `paymentMode` this way). Any value other than `disabled` makes `remote-deploy.sh`
+  layer `docker-compose.production.dgfy.yml` (vendored beside the base compose, same pinned SHA),
+  which **requires** every `DGLAUNDRY_DGFY_*` variable in `<env>.env` and five secret files:
+  `dgfy_client_secret`, `dgfy_partner_signing_private_key`,
+  `dgfy_partner_client_assertion_private_key`, `dgfy_outbound_signing_key`,
+  `dgfy_outbound_auth_token`. `deploy-sops.sh` writes them from `<env>/dglaundry/secrets.env`;
+  the three PEM keys are stored single-line with `\n` escapes and expanded back to multi-line
+  files there.
+- **URLs default to PRODUCTION DGFY** (`api.dgfy.ph`) in the base compose — `<env>.env` must set
+  the issuer, session-context, registration-intent, staff-invitation and token URLs explicitly.
+- **Staging, one time:** `sudo bash connect-dgfy-staging.sh` on `sieitz-dgfy-remote` generates
+  fresh DGLaundry keypairs, swaps DGFY's three trusted DGLaundry public keys (existing
+  `run-oidc-setup.sh --apply` path, restores on failure), and adds the five secrets to the SOPS
+  cache — copying DGFY's existing browser client secret root-to-SOPS so no one reads it
+  (ADR 0060 Decision 7). `--check` is a no-change preflight. Afterwards copy the updated
+  ciphertext back into `Sieitzz/dgfy-secrets` and dispatch the staging deploy.
+- **Prod:** not done. `scripts/dglaundry-connection-setup.mjs` deliberately refuses production
+  (`PRODUCTION_APPLY_FORBIDDEN`), `api.dgfy.ph/oidc/jwks` is not configured, and prod clients,
+  keys and mappings are unregistered. Do staging first.
+
 `provision-migration-identity.sh` runs as part of that same dispatch, once `mysql` reports
 healthy and before `migrate` runs — it parses the already-decrypted `mysql_migration_url` secret
 to derive the migration account's username/schema, and reads the MySQL root password from
