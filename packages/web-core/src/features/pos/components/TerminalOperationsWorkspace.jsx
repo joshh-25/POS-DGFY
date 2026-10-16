@@ -318,7 +318,6 @@ function ShiftControlsWorkspace({
   );
   const activeTerminalMatchesOperatingLocation = !canAdminBypassShiftPrompt || Boolean(
     activeTerminalRegistryEntry
-    && Number(activeTerminalRegistryEntry?.location_id || 0) === Number(operatingLocationId || 0)
   );
   const selectedTerminalShift = openTerminalShiftById.get(String(selectedAdminTerminalId || '').trim()) || null;
   const selectedTerminalShiftOwnedByCurrentUser = isShiftOwnedByUserId(
