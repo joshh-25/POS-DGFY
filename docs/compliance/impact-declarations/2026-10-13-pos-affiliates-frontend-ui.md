@@ -67,6 +67,9 @@ submit invitations, rates, price rules, or cashouts.
   Affiliates; unrelated callers keep their existing defaults.
 - The first shared-primitive batch is presentation-only: it adds opt-in sizing, spacing, pagination,
   filter-shell, mobile-card, and KPI layout hooks without changing service payloads or behavior.
+- The Affiliate workspace batch keeps service-backed handlers at the existing page boundary while
+  splitting list, cashout, settings, invite, filter, status, and presentation concerns into
+  frontend-only modules.
 - The reactivation service uses the existing dedicated endpoint from `origin/develop`; no fallback
   PATCH path or new API contract is introduced.
 - No backend, migration, database, or Android change is included.
