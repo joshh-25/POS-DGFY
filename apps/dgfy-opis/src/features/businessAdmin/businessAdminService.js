@@ -7,6 +7,7 @@ const get = (path, params = {}) => api.get(path, { params }).then(unwrap);
 export const businessAdminApi = {
     bootstrap: () => get('/business-admin/bootstrap'),
     company: () => get('/business-admin/company'),
+    updateCompanyName: (body) => api.patch('/business-admin/company/name', body).then(unwrap),
     overview: (params) => get('/business-admin/overview', params),
     notifications: (params) => get('/business-admin/notifications', params),
     reportDataset: (reportKey, params) => get(`/business-admin/reports/datasets/${encodeURIComponent(reportKey)}`, params),
@@ -14,6 +15,7 @@ export const businessAdminApi = {
     inventoryValuation: (params) => get('/business-admin/inventory/valuation', params),
     workforce: (params) => get('/business-admin/workforce', params),
     attendance: (params) => get('/business-admin/attendance', params),
+    endAttendanceShift: (shiftId, body) => api.post(`/business-admin/attendance/shifts/${encodeURIComponent(shiftId)}/end`, body).then(unwrap),
     fiscal: (params) => get('/business-admin/fiscal', params),
     recipes: (params) => get('/business-admin/inventory/recipes', params),
     customers: (params) => get('/business-admin/customers', params),

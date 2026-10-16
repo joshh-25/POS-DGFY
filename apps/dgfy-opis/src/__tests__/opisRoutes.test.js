@@ -9,6 +9,10 @@ import {
   getBackOfficeModuleDefinition
 } from '../features/businessAdmin/businessAdminManifest.js';
 import { parseBusinessAdminPath } from '../features/businessAdmin/businessAdminSettingsModel.js';
+import {
+  BUSINESS_ADMIN_UI_VISIBILITY,
+  isBusinessAdminNavigationVisible
+} from '../features/businessAdmin/businessAdminUiVisibility.js';
 import { createPageUrl, getPageNameFromPath } from '../utils.js';
 import { canonicalizeOpisPath } from '../opisRoutes.js';
 
@@ -42,12 +46,12 @@ describe('OPIS routes (issue #2052)', () => {
     expect(mainSource).not.toContain('path="/" element={<Navigate to="/backoffice/overview"');
   });
 
-  it('wires account actions below the POS terminal link in the Back Office sidebar', () => {
-    const posTerminalIndex = businessAdminPageSource.indexOf('aria-label="Open POS terminal"');
+  it('keeps account actions available when the POS terminal navigation link is hidden', () => {
     const accountActionsIndex = businessAdminPageSource.indexOf('<BusinessAdminAccountActions sidebarCollapsed={sidebarCollapsed} />');
 
-    expect(posTerminalIndex).toBeGreaterThanOrEqual(0);
-    expect(accountActionsIndex).toBeGreaterThan(posTerminalIndex);
+    expect(accountActionsIndex).toBeGreaterThanOrEqual(0);
+    expect(BUSINESS_ADMIN_UI_VISIBILITY.showSidebarPosTerminal).toBe(false);
+    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showSidebarPosTerminal');
   });
 
   it('resolves both dashboard and section paths at the origin root', () => {
@@ -109,6 +113,26 @@ describe('OPIS Back Office manifest', () => {
     expect(BACKOFFICE_NAV_GROUPS.flatMap((group) => group.items).length).toBe(
       Object.keys(BACKOFFICE_MANIFEST).length
     );
+  });
+});
+
+describe('OPIS shell visibility', () => {
+  it('hides only the requested navigation and header controls', () => {
+    expect(BUSINESS_ADMIN_UI_VISIBILITY.hiddenNavigationKeys).toEqual(['company', 'storefront', 'onboarding']);
+    expect(BUSINESS_ADMIN_UI_VISIBILITY.showAdminChip).toBe(false);
+    expect(BUSINESS_ADMIN_UI_VISIBILITY.showRefresh).toBe(false);
+    expect(BUSINESS_ADMIN_UI_VISIBILITY.showSwitchLocation).toBe(false);
+    expect(BUSINESS_ADMIN_UI_VISIBILITY.showPosTerminal).toBe(false);
+    expect(isBusinessAdminNavigationVisible({ key: 'company' })).toBe(false);
+    expect(isBusinessAdminNavigationVisible({ key: 'storefront' })).toBe(false);
+    expect(isBusinessAdminNavigationVisible({ key: 'onboarding' })).toBe(false);
+    expect(isBusinessAdminNavigationVisible({ key: 'qr-codes' })).toBe(true);
+    expect(isBusinessAdminNavigationVisible({ key: 'settings' })).toBe(true);
+    expect(businessAdminPageSource).toContain('isBusinessAdminNavigationVisible(item)');
+    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showAdminChip');
+    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showRefresh');
+    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showSwitchLocation');
+    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showPosTerminal');
   });
 });
 
