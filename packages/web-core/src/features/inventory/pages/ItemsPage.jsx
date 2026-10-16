@@ -222,6 +222,7 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
   const [editingProduct, setEditingProduct] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
+  const [reopenDetailsAfterEdit, setReopenDetailsAfterEdit] = useState(false);
   const [showProductWizard, setShowProductWizard] = useState(false);
   const [showPosItemCreateWorkflow, setShowPosItemCreateWorkflow] = useState(false);
   const [msmeItemPreset, setMsmeItemPreset] = useState(MSME_ITEM_PRESET.INVENTORY_ONLY);
@@ -1568,6 +1569,39 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
     }
   };
 
+  const handleEditFromDetails = async (item) => {
+    setReopenDetailsAfterEdit(true);
+    setShowDetailsModal(false);
+    await handleEdit(item);
+  };
+
+  const restoreDetailsAfterEdit = async (itemId, fallbackItem) => {
+    if (!itemId) return;
+    try {
+      const refreshed = await getInventoryItemById(itemId);
+      setSelectedItem(refreshed);
+    } catch (error) {
+      console.error('Failed to refresh item details after edit:', error);
+      if (fallbackItem) setSelectedItem(fallbackItem);
+    }
+    setShowDetailsModal(true);
+  };
+
+  const handleItemFormClose = async () => {
+    const shouldReopenDetails = reopenDetailsAfterEdit;
+    const itemId = Number(editingItem?.item_id || editingItem?.id || 0);
+    const fallbackItem = editingItem;
+
+    setShowFormModal(false);
+    setEditingItem(null);
+    setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
+    setReopenDetailsAfterEdit(false);
+
+    if (shouldReopenDetails && itemId > 0) {
+      await restoreDetailsAfterEdit(itemId, fallbackItem);
+    }
+  };
+
   const handleCreate = (presetOverride = null) => {
     if (itemEditorMode) {
       setShowPosItemCreateWorkflow(true);
@@ -1612,12 +1646,19 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
       if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
         await handleUploadStorefrontImage(savedProduct || editingProduct, storefrontImageFiles);
       }
+      const shouldReopenDetails = reopenDetailsAfterEdit;
+      const savedProductForDetails = savedProduct || editingProduct || productPayload;
+      const savedProductId = Number(savedProductForDetails?.item_id || savedProductForDetails?.id || 0);
       refetch();
       setShowProductWizard(false);
       setEditingProduct(null);
-      if (isLikelyPosSellable(savedProduct || editingProduct || productPayload)) {
-        launchPosReadinessFlow(savedProduct || editingProduct || productPayload);
+      setReopenDetailsAfterEdit(false);
+      if (isLikelyPosSellable(savedProductForDetails)) {
+        launchPosReadinessFlow(savedProductForDetails);
         toast.message('Product saved. Complete POS readiness checks before checkout.');
+      }
+      if (shouldReopenDetails && savedProductId > 0) {
+        await restoreDetailsAfterEdit(savedProductId, savedProductForDetails);
       }
     } catch (error) {
       console.error('Save product error:', error);
@@ -1652,9 +1693,16 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
       if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
         await handleUploadStorefrontImage(savedProduct || editingProduct, storefrontImageFiles);
       }
+      const shouldReopenDetails = reopenDetailsAfterEdit;
+      const savedProductForDetails = savedProduct || editingProduct || productPayload;
+      const savedProductId = Number(savedProductForDetails?.item_id || savedProductForDetails?.id || 0);
       refetch();
       setShowProductWizard(false);
       setEditingProduct(null);
+      setReopenDetailsAfterEdit(false);
+      if (shouldReopenDetails && savedProductId > 0) {
+        await restoreDetailsAfterEdit(savedProductId, savedProductForDetails);
+      }
     } catch (error) {
       const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ')
         || error.message
@@ -1703,10 +1751,17 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
         && !storefrontVisibilityChanged
         && !supplierLinksDirty
       ) {
+        const shouldReopenDetails = reopenDetailsAfterEdit;
+        const itemId = Number(editingItem?.item_id || editingItem?.id || 0);
+        const fallbackItem = editingItem;
         toast.message('No item changes detected.');
         setShowFormModal(false);
         setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
         setEditingItem(null);
+        setReopenDetailsAfterEdit(false);
+        if (shouldReopenDetails && itemId > 0) {
+          await restoreDetailsAfterEdit(itemId, fallbackItem);
+        }
         return;
       }
 
@@ -1800,15 +1855,21 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
         }
       }
 
+      const shouldReopenDetails = reopenDetailsAfterEdit;
+      const candidate = savedItem || editingItem || itemData;
+
       refetch();
       setShowFormModal(false);
-      const candidate = savedItem || editingItem || itemData;
       if (isLikelyPosSellable(candidate) || createdViaMsmeSellablePreset) {
         launchPosReadinessFlow(candidate);
         toast.message('Review POS readiness before selling this item in terminal.');
       }
       setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
       setEditingItem(null);
+      setReopenDetailsAfterEdit(false);
+      if (shouldReopenDetails && targetItemId > 0) {
+        await restoreDetailsAfterEdit(targetItemId, candidate);
+      }
     } catch (error) {
       const errorMessage = error.response?.data?.errors?.map(e => `${e.field}: ${e.message}`).join(', ') || error.message || 'Failed to save item';
       if (!normalizeApiError(error).isGlobalCandidate) {
@@ -2992,6 +3053,7 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
           open={showDetailsModal}
           workflowMode={workflowMode}
           itemEditorMode={itemEditorMode}
+          onEdit={itemEditorMode ? handleEditFromDetails : undefined}
           onClose={() => setShowDetailsModal(false)}
           onRefresh={async () => {
             if (!selectedItem) return;
@@ -3012,11 +3074,7 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
         <ItemFormModal
           item={editingItem}
           open={showFormModal}
-          onClose={() => {
-            setShowFormModal(false);
-            setEditingItem(null);
-            setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
-          }}
+          onClose={handleItemFormClose}
           onSave={handleSave}
           onSaveDraft={handleSaveDraft}
           folders={folders}
@@ -3026,8 +3084,8 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
           workflowMode={workflowMode}
           msmeMode={isMsmeMode}
           createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
-          hideUnitOfMeasure={itemEditorMode}
-          hideStockControls={itemEditorMode}
+          hideUnitOfMeasure={itemEditorMode && !editingItem}
+          hideStockControls={itemEditorMode && !editingItem}
           posConfig={editingItem ? resolvePosConfig(editingItem) : null}
           onTogglePosLocationAvailability={handleTogglePosLocationAvailability}
           onResetPosLocationAvailability={handleResetPosLocationAvailability}
@@ -3086,9 +3144,16 @@ export default function Items({ embedded = false, editorLabel = 'Inventory Items
         {showProductWizard && (
           <ProductCreateWizard
             open={showProductWizard}
-            onClose={() => {
+            onClose={async () => {
+              const shouldReopenDetails = reopenDetailsAfterEdit;
+              const itemId = Number(editingProduct?.item_id || editingProduct?.id || 0);
+              const fallbackItem = editingProduct;
               setShowProductWizard(false);
               setEditingProduct(null);
+              setReopenDetailsAfterEdit(false);
+              if (shouldReopenDetails && itemId > 0) {
+                await restoreDetailsAfterEdit(itemId, fallbackItem);
+              }
             }}
             onSubmit={handleProductSubmit}
             onSaveDraft={handleProductSaveDraft}

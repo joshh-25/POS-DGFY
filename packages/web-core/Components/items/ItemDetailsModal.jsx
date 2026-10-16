@@ -26,7 +26,8 @@ import {
   ClipboardCheck,
   Shield,
   RotateCcw,
-  X
+  X,
+  Pencil
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
@@ -78,15 +79,29 @@ const statusConfig = {
   surplus: { label: "Surplus", color: "bg-blue-100 text-blue-700" }
 };
 
-export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRestore, restoring = false, itemEditorMode = false, workflowMode }) {
+export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRestore, onEdit, restoring = false, itemEditorMode = false, workflowMode }) {
   const [defaultOpenSections] = useState(['basic-info', 'stock-inventory', 'recipe']);
-  const { canDelete } = usePermission();
+  const { canEdit, canDelete } = usePermission();
 
   if (!item) return null;
 
   const isInactive = item.status === 'inactive';
+  const canEditItem = canEdit('items') && typeof onEdit === 'function';
   const canRestore = canDelete('items') && typeof onRestore === 'function';
   const stockMovementItemId = item.item_id || item.id;
+
+  const editAction = canEditItem ? (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="gap-2"
+      onClick={() => onEdit(item)}
+    >
+      <Pencil className="h-4 w-4" />
+      Edit Item
+    </Button>
+  ) : null;
 
   // #1495 Part A: a plain, undismissable-until-acted-on banner rather than folding into the
   // existing badge row -- restoring is the one action on this modal that changes what every other
@@ -155,17 +170,20 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
                   <p className="text-sm font-normal text-slate-500">{item.sku_code}</p>
                 </div>
               </DialogTitle>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                onClick={onClose}
-                aria-label="Close item details"
-                title="Close"
-              >
-                <X className="h-5 w-5" />
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                {editAction}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                  onClick={onClose}
+                  aria-label="Close item details"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </DialogHeader>
 
@@ -380,17 +398,20 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
                   </Badge>
                 )}
               </DialogTitle>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                onClick={onClose}
-                aria-label="Close item details"
-                title="Close"
-              >
-                <X className="h-5 w-5" />
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                {editAction}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                  onClick={onClose}
+                  aria-label="Close item details"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </DialogHeader>
 
