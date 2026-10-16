@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolvePosRefundWorkflow } from '../components/POSRefundWorkflowDialog.jsx';
 import POSRefundWorkflowDialog from '../components/POSRefundWorkflowDialog.jsx';
@@ -97,6 +97,69 @@ describe('POS refund workflow resolution', () => {
             workflow: 'cash',
             reason: 'Customer return'
         }));
+    });
+
+    it('reuses the original void reason instead of asking for a second refund reason', () => {
+        const onSubmit = vi.fn();
+
+        render(
+            <POSRefundWorkflowDialog
+                transaction={{ ...cashRefundTransaction, void_reason: 'Customer refund approved' }}
+                open
+                hasActiveShift
+                onSubmit={onSubmit}
+            />
+        );
+
+        const reasonInput = screen.getByDisplayValue('Customer refund approved');
+        expect(reasonInput.value).toBe('Customer refund approved');
+        expect(reasonInput.readOnly).toBe(true);
+        expect(screen.getByText('Reused from the original void reason and recorded with this refund.')).toBeTruthy();
+
+        const submit = screen.getByRole('button', { name: 'Confirm refund action' });
+        expect(submit.disabled).toBe(false);
+        fireEvent.click(submit);
+
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+            workflow: 'cash',
+            reason: 'Customer refund approved'
+        }));
+    });
+
+    it('inherits an item-void reason when the transaction detail arrives after the dialog opens', async () => {
+        const onSubmit = vi.fn();
+        const { rerender } = render(
+            <POSRefundWorkflowDialog
+                transaction={cashRefundTransaction}
+                open
+                hasActiveShift
+                onSubmit={onSubmit}
+            />
+        );
+
+        expect(screen.getByLabelText('Refund reason').value).toBe('');
+
+        rerender(
+            <POSRefundWorkflowDialog
+                transaction={{
+                    ...cashRefundTransaction,
+                    item_void_adjustment_id: 42,
+                    adjustments: [{
+                        pos_transaction_adjustment_id: 42,
+                        item_voided: true,
+                        reason: 'Damaged item'
+                    }]
+                }}
+                open
+                hasActiveShift
+                onSubmit={onSubmit}
+            />
+        );
+
+        await waitFor(() => {
+            expect(screen.getByDisplayValue('Damaged item').value).toBe('Damaged item');
+        });
+        expect(screen.getByDisplayValue('Damaged item').readOnly).toBe(true);
     });
 
     it('disables both refund submission and navigation while a refund is submitting', () => {

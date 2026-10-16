@@ -371,11 +371,18 @@ export const usePosHistoryVoidWorkflow = ({
                 }
             }
             if (!approvalPending && voidResult?.financial_outcome?.refund_required) {
+                const inheritedVoidReason = String(
+                    voidResult?.transaction?.void_reason
+                    || voidResult?.adjustment?.reason
+                    || reason
+                    || ''
+                ).trim();
                 setRefundWorkflowTransaction({
                     ...(voidResult.transaction || historyRow),
                     pos_transaction_id: posTransactionId,
                     financial_outcome: voidResult.financial_outcome,
-                    item_void_adjustment_id: voidResult.adjustment?.pos_transaction_adjustment_id || null
+                    item_void_adjustment_id: voidResult.adjustment?.pos_transaction_adjustment_id || null,
+                    ...(inheritedVoidReason ? { void_reason: inheritedVoidReason } : {})
                 });
             }
             return voidResult;

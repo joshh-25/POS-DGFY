@@ -37,6 +37,28 @@ const normalizeOperationalScopeNumber = (value) => {
   return Number.isInteger(normalized) && normalized > 0 ? normalized : 0;
 };
 
+// A stale branch selector can make a location-scoped current-shift read return
+// empty even though the authenticated user owns an open shift on the same
+// terminal at another location. The unscoped endpoint is still owner-scoped
+// on the server, so retrying it is safe; an explicitly occupied terminal must
+// remain blocked and must not trigger a cross-location adoption attempt.
+export const shouldRetryUnscopedTerminalShift = ({
+  scopedLocationId = null,
+  currentShiftResult = null
+} = {}) => (
+  normalizeOperationalScopeNumber(scopedLocationId) > 0
+  && !currentShiftResult?.shift
+  && currentShiftResult?.terminal_occupancy?.status !== 'occupied_by_other'
+);
+
+export const preferOwnedCurrentTerminalShift = ({
+  scopedResult = null,
+  unscopedResult = null
+} = {}) => {
+  if (scopedResult?.terminal_occupancy?.status === 'occupied_by_other') return scopedResult;
+  return unscopedResult?.shift ? unscopedResult : scopedResult;
+};
+
 export const buildPosOperationalScopeKey = ({ terminalId = '', shiftId = 0, locationId = 0 } = {}) => [
   String(terminalId || '').trim(),
   normalizeOperationalScopeNumber(shiftId),

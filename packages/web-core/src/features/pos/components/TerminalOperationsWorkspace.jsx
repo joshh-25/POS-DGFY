@@ -277,12 +277,27 @@ function ShiftControlsWorkspace({
     ),
     [activeTerminals, switchTargetLocationId]
   );
+  const terminalMonitorLocationId = Number(viewingLocationId || operatingLocationId || 0) || null;
+  const terminalMonitorStateMatchesLocation = terminalMonitorLocationId > 0
+    && Number(adminLocationMonitorState?.locationId || 0) === terminalMonitorLocationId;
+  const terminalAvailabilityErrorMessage = terminalMonitorStateMatchesLocation
+    ? String(adminLocationMonitorState?.errorMessage || '')
+    : '';
+  const terminalAvailabilityReady = terminalMonitorStateMatchesLocation
+    && !adminLocationMonitorState?.loading
+    && !terminalAvailabilityErrorMessage;
+  const terminalAvailabilityLabel = terminalAvailabilityReady
+    ? 'Available'
+    : terminalAvailabilityErrorMessage
+      ? 'Availability unavailable'
+      : 'Checking availability…';
   const openTerminalShiftById = useMemo(() => {
+    if (!terminalAvailabilityReady) return new Map();
     const shifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
       ? adminLocationMonitorState.terminalShifts
       : [];
     return new Map(shifts.map((shift) => [String(shift?.terminal_id || '').trim(), shift]));
-  }, [adminLocationMonitorState]);
+  }, [adminLocationMonitorState, terminalAvailabilityReady]);
   const currentTerminalId = String(activeTerminalId || '').trim();
   const currentTerminalMatches = locationTerminals.some(
     (entry) => String(entry?.terminal_id || '').trim() === currentTerminalId
@@ -305,7 +320,7 @@ function ShiftControlsWorkspace({
     selectedTerminalShift,
     operatorUserId
   );
-  const branchMonitorLocationId = Number(viewingLocationId || operatingLocationId || 0) || null;
+  const branchMonitorLocationId = terminalMonitorLocationId;
   const branchMonitorLocationName = locations.find(
     (location) => Number(location?.location_id || 0) === branchMonitorLocationId
   )?.name || (branchMonitorLocationId ? `Branch #${branchMonitorLocationId}` : 'Selected branch');
@@ -313,8 +328,7 @@ function ShiftControlsWorkspace({
     && Number(adminLocationMonitorState?.locationId || 0) === branchMonitorLocationId
     ? adminLocationMonitorState.orders
     : [];
-  const branchMonitorStateMatchesLocation = branchMonitorLocationId > 0
-    && Number(adminLocationMonitorState?.locationId || 0) === branchMonitorLocationId;
+  const branchMonitorStateMatchesLocation = terminalMonitorStateMatchesLocation;
   const branchMonitorLoading = !branchMonitorStateMatchesLocation || Boolean(adminLocationMonitorState?.loading);
   const branchMonitorErrorMessage = branchMonitorStateMatchesLocation
     ? String(adminLocationMonitorState?.errorMessage || '')
@@ -638,7 +652,7 @@ function ShiftControlsWorkspace({
                 ariaLabel="Branch Terminal"
                 value={selectedAdminTerminalId}
                 onChange={setRequestedAdminTerminalId}
-                disabled={adminTerminalSwitching || !isOnline || locationTerminals.length === 0}
+                disabled={adminTerminalSwitching || !isOnline || locationTerminals.length === 0 || !terminalAvailabilityReady}
                 placeholder="Select an available terminal"
                 listboxLabel="Branch Terminal options"
                 options={locationTerminals.map((entry) => {
@@ -654,11 +668,11 @@ function ShiftControlsWorkspace({
                         ? `Your active shift since ${parseIsoDateTime(occupiedShift.opened_at)}`
                         : `In use by ${cashier} since ${parseIsoDateTime(occupiedShift.opened_at)}`
                     )
-                    : 'Available';
+                    : terminalAvailabilityLabel;
                   return {
                     value: terminalId,
                     label: `${entry?.label ? `${entry.label} (${terminalId})` : terminalId} - ${occupancyLabel}`,
-                    disabled: Boolean(occupiedShift) && !ownedByCurrentUser
+                    disabled: !terminalAvailabilityReady || (Boolean(occupiedShift) && !ownedByCurrentUser)
                   };
                 })}
               />
@@ -670,6 +684,7 @@ function ShiftControlsWorkspace({
                   adminTerminalSwitching
                   || !isOnline
                   || !selectedAdminTerminalId
+                  || !terminalAvailabilityReady
                   || (Boolean(selectedTerminalShift) && !selectedTerminalShiftOwnedByCurrentUser)
                   || (
                     activeTerminalMatchesOperatingLocation
@@ -699,6 +714,18 @@ function ShiftControlsWorkspace({
               Current terminal: {String(activeTerminalId || '').trim() || 'Not selected'}
             </p>
           )}
+          {canAdminBypassShiftPrompt && !terminalAvailabilityReady ? (
+            <p
+              className={`rounded-md border px-2.5 py-2 text-[11px] leading-4 ${terminalAvailabilityErrorMessage
+                ? 'border-red-200 bg-red-50 text-red-800'
+                : 'border-amber-200 bg-amber-50 text-amber-800'}`}
+              role={terminalAvailabilityErrorMessage ? 'alert' : 'status'}
+            >
+              {terminalAvailabilityErrorMessage
+                ? 'Terminal availability could not be verified. Refresh branch terminal data before opening a shift.'
+                : 'Checking terminal availability. Opening a shift will be enabled after the branch monitor confirms the terminal state.'}
+            </p>
+          ) : null}
         </section>
           </>
         ) : null}
@@ -1020,7 +1047,15 @@ function ShiftControlsWorkspace({
         type="button"
         className={`h-11 w-full rounded-lg px-5 text-[13px] font-extrabold sm:w-auto ${POS_SHIFT_PRIMARY_BUTTON_CLASS}`}
         onClick={handleOpenShift}
-        disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
+        disabled={
+          shiftActionLoading.open
+          || locked
+          || !canRenderAdminShiftOpen
+          || !isOnline
+          || !activeTerminalMatchesOperatingLocation
+          || (canAdminBypassShiftPrompt && !terminalAvailabilityReady)
+          || (Boolean(selectedTerminalShift) && !selectedTerminalShiftOwnedByCurrentUser)
+        }
         aria-busy={shiftActionLoading.open || undefined}
       >
         <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />

@@ -156,7 +156,9 @@ import {
   hasUsableIncomingOrderShift,
   isIncomingOrderShiftUnavailableError,
   isPosOnlineOrderQueueEnabled,
-  isCurrentPosOperationalRequest
+  isCurrentPosOperationalRequest,
+  preferOwnedCurrentTerminalShift,
+  shouldRetryUnscopedTerminalShift
 } from '../utils/posOperationalVisibility.js';
 import {
   DEFAULT_POS_TEXT_SIZE,
@@ -201,6 +203,9 @@ import {
   POS_VOID_APPROVAL_REVIEW_PERMISSIONS
 } from '../utils/posVoidApprovalFeature.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+// Keep the live F&B route and capability checks intact, but hide the workspace from the
+// primary POS navigation until the terminal rollout is intentionally re-enabled.
+const SHOW_FNB_SERVICE_IN_POS_NAVIGATION = false;
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
 const loadTerminalOperationQueueStore = () => import('../services/terminalOperationQueueStore.js');
@@ -1853,11 +1858,25 @@ export default function TerminalPage() {
       const currentShiftParams = scopedOperatingLocationId
         ? { terminal_id: terminalId, location_id: scopedOperatingLocationId }
         : { terminal_id: terminalId };
-      const currentShiftResult = await fetchCurrentTerminalShift(
+      let currentShiftResult = await fetchCurrentTerminalShift(
         currentShiftParams,
         suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
       );
       if (!isCurrentRequest()) return null;
+      if (shouldRetryUnscopedTerminalShift({
+        scopedLocationId: scopedOperatingLocationId,
+        currentShiftResult
+      })) {
+        const unscopedCurrentShiftResult = await fetchCurrentTerminalShift(
+          { terminal_id: terminalId },
+          suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+        );
+        if (!isCurrentRequest()) return null;
+        currentShiftResult = preferOwnedCurrentTerminalShift({
+          scopedResult: currentShiftResult,
+          unscopedResult: unscopedCurrentShiftResult
+        });
+      }
       const shiftPayload = currentShiftResult?.shift || null;
       const cashSummary = currentShiftResult?.cash_summary || null;
       const shiftSalesSummary = currentShiftResult?.sales_summary || null;
@@ -6117,6 +6136,20 @@ export default function TerminalPage() {
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
     setUnlockFailure(null);
     try {
+      const selectedTerminalState = await fetchCurrentTerminalShift({
+        terminal_id: terminalId,
+        location_id: scopedOperatingLocationId
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      const selectedTerminalDecision = resolveTerminalShiftEntryDecision({
+        selectedTerminalId: terminalId,
+        selectedLocationId: scopedOperatingLocationId,
+        terminalOccupancy: selectedTerminalState?.terminal_occupancy
+      });
+      if (selectedTerminalDecision.mode === 'blocked') {
+        void refreshAdminLocationMonitor({ silent: true });
+        throw new Error(selectedTerminalDecision.message);
+      }
+
       await openTerminalShift(payload, SUPPRESS_GLOBAL_ERROR_TOAST);
       toast.success('Shift opened successfully.');
       setAdminShiftPromptSkipped(false);
@@ -6129,6 +6162,12 @@ export default function TerminalPage() {
       setPosViewMode('checkout');
       setMobileNavOpen(false);
     } catch (error) {
+      if (resolveTerminalShiftLocationConflict(error, {
+        targetLocationId: scopedOperatingLocationId,
+        terminalId
+      })) {
+        void refreshAdminLocationMonitor({ silent: true });
+      }
       reportTerminalFailure(error, 'shift_open');
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
@@ -8161,7 +8200,7 @@ function PosRestorationLoadingScreen() {
           canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
           canAccessPosOnlySetup={canAccessPosOnlySetup}
-          showFnbService={canAccessFnbService}
+          showFnbService={SHOW_FNB_SERVICE_IN_POS_NAVIGATION && canAccessFnbService}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}

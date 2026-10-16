@@ -7,30 +7,32 @@ classification: major
 surfaces: pos,terminal,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.14
-verification_evidence: focused POS Vitest/Jest regression suites, POS/IMS/Storefront production builds, targeted POS lint, architecture checks, repository compliance gate, git diff --check, read-only staging verification
-rollback_note: Revert the automatic cash-refund void path, pending cash-refund recovery UI, transaction-detail financial follow-up section, focused regression tests, and this declaration together; the existing administrator no-shift void exception, cash-drawer ownership rule, database schema, and persisted transaction records remain authoritative.
+verification_evidence: focused POS Vitest regression suites, POS production build, local POS UI verification, repository compliance gate, git diff --check, read-only staging verification
+rollback_note: Revert the automatic cash-refund void path, pending cash-refund recovery UI, active-shift recognition and terminal-availability guards, F&B navigation visibility change, focused regression tests, and this declaration together; the existing administrator no-shift void exception, cash-drawer ownership rule, database schema, and persisted transaction records remain authoritative.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-10-16T12:11:42+08:00
 preflight_request_ref: NOT-EXECUTED-2519-PENDING-CASH-REFUND
 ---
 
-# POS pending cash-refund recovery
+# POS void, cash-refund, and shift recovery
 
 ## Compliance Impact Classification
 
 Major because the changed shared POS paths are subject to the repository's major classification
 floor for the `pos` and `terminal` surfaces, and the user-facing flow describes a payment-related
 cash-refund follow-up. This change adds a server-authorized automatic cash-refund path for eligible
-paid cash voids while preserving recovery after an administrator records a valid no-shift void. It
-does not move financial authority into the client or weaken the existing server-side cash-drawer
-ownership checks.
+paid cash voids, preserves recovery after an administrator records a valid no-shift void, restores
+an authenticated owner's active shift when a stale branch filter hides it, and fails closed while
+terminal availability is unverified. It does not move financial authority into the client or
+weaken the existing server-side cash-drawer and shift-ownership checks.
 
 ## Affected Surfaces
 
 - `pos` — History void-and-refund action, pending refund workflow, Shift Controls recovery
   navigation, and transaction details.
-- `terminal` — active-terminal navigation between History and Shift Controls.
+- `terminal` — active-terminal navigation between History and Shift Controls, active-shift
+  recognition, terminal availability, and primary navigation visibility.
 - `payments` — presentation of the server-provided cash-refund requirement and amount; actual
   cash-refund and cash-drawer mutations remain server-authorized.
 
@@ -46,6 +48,13 @@ ownership checks.
   cash-refund state; no cash movement is attempted without an eligible shift.
 - The existing manual cash-refund endpoint remains available for recovery and keeps its own
   idempotency and authorization rules.
+- An authenticated user's own open shift may be recovered through a terminal-only lookup when a
+  stale location filter returns no shift; the server's owner scope remains authoritative, and an
+  `occupied_by_other` terminal is never adopted.
+- Shift opening stays disabled while branch terminal availability is loading or unavailable, and
+  confirmed occupancy by another cashier remains blocked.
+- F&B service is hidden only from the primary POS navigation; its existing route, capability
+  checks, and backend remain unchanged.
 - No database field or migration is changed; the API accepts an additive `auto_refund` request
   intent and the server remains the authority for payment and cash-drawer mutations.
 - A live compliance preflight was not run in this local PR workspace; the `NOT-EXECUTED-*`
@@ -55,12 +64,13 @@ ownership checks.
 ## Verification Evidence
 
 - Focused POS frontend tests passed for automatic-refund success, no-shift pending recovery,
-  active-shift retry, duplicate-submit prevention, and transaction-detail financial follow-up
-  evidence.
+  active-shift retry, duplicate-submit prevention, transaction-detail financial follow-up,
+  active-shift visibility, operational refresh sequencing, and F&B navigation visibility.
 - Focused POS API tests passed for atomic void-and-refund execution, caller-owned transaction
   boundaries, global PIN policy, refund authorization, cash-refund idempotency/shift ownership,
   and void financial-outcome classification.
-- POS, IMS, and Storefront production builds passed.
-- Targeted POS lint passed with no errors; only existing warnings remain.
+- POS production build passed; only existing Vite chunk-placement warnings were emitted.
+- Local POS UI verification confirmed the F&B navigation entry is absent, the direct F&B route
+  remains reachable, and no browser console errors were emitted.
 - Read-only staging verification confirmed the current deployment remains on POS v1.40.0 and does
   not yet contain the new recovery action or financial follow-up section.
