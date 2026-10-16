@@ -16,6 +16,9 @@ import {
     formatPosVoidTimestamp,
     isVoidedPosTransaction,
     resolvePosVoidActorLabel,
+    resolvePosVoidFinancialOutcome,
+    resolvePosVoidFinancialOutcomeAmount,
+    resolvePosVoidFinancialOutcomeLabel,
     resolvePosVoidReason
 } from '../utils/posVoidAudit.js';
 import { isPosTabletPortraitViewport, isPosTabletViewport } from '../utils/posTabletViewport.js';
@@ -225,6 +228,13 @@ const buildHistoryDetailsSections = (row) => {
         || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code
         || null;
     const cashier = row?.cashier?.username || row?.acceptedByUser?.username || '-';
+    const financialOutcome = resolvePosVoidFinancialOutcome(row);
+    const financialOutcomeLabel = financialOutcome
+        ? resolvePosVoidFinancialOutcomeLabel(row)
+        : null;
+    const financialOutcomeAmount = financialOutcome
+        ? resolvePosVoidFinancialOutcomeAmount(row)
+        : null;
 
     return [
         {
@@ -267,6 +277,16 @@ const buildHistoryDetailsSections = (row) => {
                 { key: 'void-actor', label: 'Voided By', value: resolvePosVoidActorLabel(row) },
                 { key: 'voided-at', label: 'Voided At', value: formatPosVoidTimestamp(row?.voided_at) }
             ]
+        } : null,
+        isVoided && financialOutcome ? {
+            key: 'financial-follow-up',
+            title: 'Financial Follow-up',
+            fields: [
+                { key: 'financial-follow-up-status', label: 'Status', value: financialOutcomeLabel || 'Review required' },
+                financialOutcomeAmount
+                    ? { key: 'financial-follow-up-amount', label: 'Required Amount', value: financialOutcomeAmount }
+                    : null
+            ].filter(Boolean)
         } : null
     ].filter(Boolean);
 };
@@ -463,6 +483,7 @@ export default function POSTransactionHistoryPanel({
     refundWorkflowSubmitting = false,
     hasActiveShift = false,
     onOpenRefundWorkflow = async () => {},
+    onOpenShiftControls = () => {},
     onCloseRefundWorkflow = () => {},
     onSubmitRefundWorkflow = async () => {},
     loadHistory,
@@ -1774,6 +1795,7 @@ export default function POSTransactionHistoryPanel({
                     submitting={refundWorkflowSubmitting}
                     hasActiveShift={hasActiveShift}
                     onOpenChange={(open) => !open && onCloseRefundWorkflow()}
+                    onOpenShiftControls={onOpenShiftControls}
                     onSubmit={onSubmitRefundWorkflow}
                 />
             ) : null}

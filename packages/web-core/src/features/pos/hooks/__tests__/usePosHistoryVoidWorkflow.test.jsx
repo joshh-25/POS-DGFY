@@ -365,6 +365,53 @@ describe('usePosHistoryVoidWorkflow', () => {
         expect(result.current.refundWorkflowTransaction).toBe(null);
     });
 
+    it('keeps a no-shift cash refund pending so it can be retried after shift recovery', async () => {
+        fetchPosTransactionById.mockResolvedValue({
+            ...completedRow,
+            status: 'voided',
+            financial_outcome: { next_action: 'record_cash_refund_with_cash_drawer_event' }
+        });
+        const options = {
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: null
+        };
+        const { result, rerender } = renderHook(() => usePosHistoryVoidWorkflow({
+            ...options,
+            selectedLocationId: 3,
+            normalizedTerminalId: 'COUNTER-01'
+        }));
+
+        await act(async () => {
+            await result.current.openHistoryRefundWorkflow(completedRow);
+        });
+        await act(async () => {
+            await expect(result.current.submitHistoryRefundWorkflow({
+                workflow: 'cash',
+                reason: 'Customer return'
+            })).rejects.toThrow('Open a cashier shift before returning cash.');
+        });
+
+        expect(refundCashPosTransaction).not.toHaveBeenCalled();
+        expect(result.current.refundWorkflowTransaction).not.toBe(null);
+
+        options.activeShiftId = 42;
+        rerender();
+        await act(async () => {
+            await result.current.submitHistoryRefundWorkflow({
+                workflow: 'cash',
+                reason: 'Customer return'
+            });
+        });
+
+        expect(refundCashPosTransaction).toHaveBeenCalledWith(7, expect.objectContaining({
+            reason: 'Customer return',
+            shift_id: 42,
+            terminal_id: 'COUNTER-01'
+        }));
+        expect(result.current.refundWorkflowTransaction).toBe(null);
+    });
+
     it('records external reversal evidence without inventing an admin shift', async () => {
         fetchPosTransactionById.mockResolvedValue({
             ...completedRow,

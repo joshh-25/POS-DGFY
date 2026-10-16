@@ -75,6 +75,7 @@ export default function POSRefundWorkflowDialog({
     submitting = false,
     hasActiveShift = false,
     onOpenChange = () => {},
+    onOpenShiftControls = () => {},
     onSubmit = async () => {}
 }) {
     const workflow = resolvePosRefundWorkflow(transaction);
@@ -106,6 +107,12 @@ export default function POSRefundWorkflowDialog({
         && (workflow !== 'cash' || hasActiveShift)
         && (workflow !== 'split' || Boolean(selectedAllocation));
 
+    const openShiftControls = () => {
+        if (submitting) return;
+        onOpenChange(false);
+        onOpenShiftControls();
+    };
+
     const submit = async () => {
         if (!canSubmit) return;
         await onSubmit({
@@ -135,9 +142,21 @@ export default function POSRefundWorkflowDialog({
                         </div>
 
                         {workflow === 'cash' && !hasActiveShift ? (
-                            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800" role="alert">
-                                Open a cashier shift before returning cash. Admin no-shift bypass applies to the void only, never to drawer money.
-                            </p>
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert" data-testid="pos-refund-shift-required">
+                                <p className="font-extrabold">Cash refund pending: no acting cashier shift is active.</p>
+                                <p className="mt-1 font-semibold text-amber-800">
+                                    The void is recorded, but cash can only be returned from an open shift with drawer permission. Resume the owning cashier shift or open the approved refunding shift, then resolve this transaction from History.
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="mt-3 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                                    onClick={openShiftControls}
+                                    disabled={submitting}
+                                >
+                                    Go to Shift Controls
+                                </Button>
+                            </div>
                         ) : null}
 
                         {workflow === 'split' ? (
