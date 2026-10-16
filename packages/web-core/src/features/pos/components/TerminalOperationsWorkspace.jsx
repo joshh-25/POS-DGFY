@@ -187,6 +187,7 @@ const SETTINGS_VIEW_MODES = new Set([
   'settings_profile',
   'settings_pos',
   'settings_storefront',
+  'settings_affiliates',
   'terminal_setup'
 ]);
 
@@ -6903,9 +6904,15 @@ export default function TerminalOperationsWorkspace({
   const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
   const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
   const isPricelistManagementView = effectiveViewMode === 'settings_pricelists';
-  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView || isPricelistManagementView;
+  const isAffiliateManagementView = effectiveViewMode === 'settings_affiliates';
+  const isFullBleedCatalogView = effectiveViewMode === 'items'
+    || isAffiliateManagementView
+    || isVoucherManagementView
+    || isPricelistManagementView;
   const workspaceShellClassName = usesOwnPageFrame
-    ? 'p-0'
+    ? isAffiliateManagementView
+      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-affiliates-workspace-shell'
+      : 'p-0'
     : isFullBleedCatalogView
       ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-catalog-workspace-shell'}`
       : 'p-5';

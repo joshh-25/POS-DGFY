@@ -70,6 +70,8 @@ submit invitations, rates, price rules, or cashouts.
 - The Affiliate workspace batch keeps service-backed handlers at the existing page boundary while
   splitting list, cashout, settings, invite, filter, status, and presentation concerns into
   frontend-only modules.
+- The route-registration batch wires the existing Affiliate workspace into the terminal shell while
+  preserving the shared layout defaults and all non-Affiliate workspace routes.
 - The reactivation service uses the existing dedicated endpoint from `origin/develop`; no fallback
   PATCH path or new API contract is introduced.
 - No backend, migration, database, or Android change is included.
