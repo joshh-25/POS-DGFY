@@ -165,6 +165,59 @@ describe('POS branch directory and read-only branch view', () => {
         expect(terminal.current_operator).toEqual({ user_id: 12, display_name: 'main-operator' });
     });
 
+    it('does not borrow a moved terminal shift from another branch', async () => {
+        const fixture = buildFixture({
+            grants: [{ location_id: 1 }, { location_id: 2 }],
+            registry: [
+                { terminal_id: 'COUNTER-01', label: 'Masu Register', location_id: 1, device_enforcement: 'off' },
+                { terminal_id: 'EAST-01', label: 'Spacebar Register', location_id: 2, device_enforcement: 'off' }
+            ],
+            shifts: [{
+                pos_terminal_shift_id: 71,
+                terminal_id: 'COUNTER-01',
+                location_id: 2,
+                status: 'open',
+                cashier_id: 99,
+                opened_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+                cashier: { user_id: 99, username: 'spacebar-cashier' }
+            }],
+            operators: [{
+                pos_terminal_operator_session_id: 72,
+                terminal_id: 'COUNTER-01',
+                location_id: 2,
+                user_id: 101,
+                operator: { user_id: 101, username: 'spacebar-operator' }
+            }]
+        });
+
+        const result = await fixture.getDirectory({
+            user: {
+                user_id: 7,
+                role: 'admin',
+                permissions: ['pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
+            }
+        });
+
+        expect(result.success).toBe(true);
+        const masuTerminal = result.data.locations[0].terminals[0];
+        const spacebarTerminal = result.data.locations[1].terminals[0];
+
+        expect(masuTerminal).toEqual(expect.objectContaining({
+            terminal_id: 'COUNTER-01',
+            status: 'available',
+            can_open: true,
+            shift: null,
+            current_operator: null
+        }));
+        expect(spacebarTerminal).toEqual(expect.objectContaining({
+            terminal_id: 'EAST-01',
+            status: 'available',
+            can_open: true,
+            shift: null,
+            current_operator: null
+        }));
+    });
+
     it('blocks opening a free terminal when the viewer already operates elsewhere', async () => {
         const fixture = buildFixture({
             userShift: {
