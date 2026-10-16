@@ -21,7 +21,7 @@ const handlerNames = [
     'markNotificationRead', 'dismissNotification', 'acknowledgeNotification', 'getReports',
     'getPosActivityAnalytics', 'listReportDefinitions', 'listEvidenceCatalog', 'getEJournalEvidence',
     'getReportDataset', 'exportReportDataset', 'getInventoryValuation', 'listInventoryStock',
-    'getWorkforce', 'getAttendance', 'getFiscal', 'listRecipes', 'listCustomers', 'createCustomer',
+    'getWorkforce', 'getAttendance', 'endAttendanceShift', 'getFiscal', 'listRecipes', 'listCustomers', 'createCustomer',
     'getCustomerDetail', 'listShifts', 'listOrders', 'getOrderDetail', 'listExpenses', 'createExpense',
     'voidExpense', 'getCommerceMonitoring', 'listSavedReportViews', 'createSavedReportView',
     'deleteSavedReportView', 'listAudit', 'listApprovals', 'decideApproval', 'cancelApproval'
