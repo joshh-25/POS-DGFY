@@ -7,8 +7,8 @@ classification: major
 surfaces: pos,terminal,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.14
-verification_evidence: focused POS Vitest regression suites, POS production build, local POS UI verification, repository compliance gate, git diff --check, read-only staging verification
-rollback_note: Revert the automatic cash-refund void path, pending cash-refund recovery UI, active-shift recognition and terminal-availability guards, F&B navigation visibility change, focused regression tests, and this declaration together; the existing administrator no-shift void exception, cash-drawer ownership rule, database schema, and persisted transaction records remain authoritative.
+verification_evidence: focused POS Vitest regression suites, POS API handler and use-case regression suites, automatic-refund telemetry regression coverage, POS production build, local POS UI verification, repository compliance gate, git diff --check, read-only staging verification
+rollback_note: Revert the automatic cash-refund void path and its product-usage telemetry, pending cash-refund recovery UI, active-shift recognition and terminal-availability guards, F&B navigation visibility change, focused regression tests, and this declaration together; the existing administrator no-shift void exception, cash-drawer ownership rule, database schema, and persisted transaction records remain authoritative.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-10-16T12:11:42+08:00
@@ -57,6 +57,10 @@ weaken the existing server-side cash-drawer and shift-ownership checks.
   checks, and backend remain unchanged.
 - No database field or migration is changed; the API accepts an additive `auto_refund` request
   intent and the server remains the authority for payment and cash-drawer mutations.
+- A completed automatic cash refund emits the existing `pos_cash_refund_completed` product-usage
+  event with transaction, shift, and drawer-event identifiers plus `automatic: true`; idempotent
+  replays do not emit a duplicate event. This changes observability only and does not change
+  financial authority or the event schema.
 - A live compliance preflight was not run in this local PR workspace; the `NOT-EXECUTED-*`
   reference is the repository's accepted PR-open state and is expected to be reconciled by the
   compliance sweep after the declaration reaches `develop`.
@@ -68,7 +72,9 @@ weaken the existing server-side cash-drawer and shift-ownership checks.
   active-shift visibility, operational refresh sequencing, and F&B navigation visibility.
 - Focused POS API tests passed for atomic void-and-refund execution, caller-owned transaction
   boundaries, global PIN policy, refund authorization, cash-refund idempotency/shift ownership,
-  and void financial-outcome classification.
+  void financial-outcome classification, and automatic-refund handler telemetry.
+- The related API handler, cash-refund use-case, and F&B contract suites passed 111/111 tests;
+  the handler telemetry suite passed 38/38 tests with explicit idempotent-replay coverage.
 - POS production build passed; only existing Vite chunk-placement warnings were emitted.
 - Local POS UI verification confirmed the F&B navigation entry is absent, the direct F&B route
   remains reachable, and no browser console errors were emitted.
