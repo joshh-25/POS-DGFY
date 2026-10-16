@@ -316,4 +316,46 @@ describe('platform partner OIDC provider', () => {
     await provider.oidcIntrospect(browser('synthetic-browser', 'browser-secret', { token: 'unknown-token' }), introspectionFailure, (error) => { introspectionError = error; });
     expect(introspectionError.statusCode).toBe(503);
   });
+  describe('RFC 6749 form-urlencoded Basic client credentials', () => {
+    const encodedBrowser = (clientId, secret, body) => ({
+      headers: { authorization: `Basic ${Buffer.from(`${encodeURIComponent(clientId).replace(/-/g, '%2D')}:${encodeURIComponent(secret).replace(/-/g, '%2D')}`).toString('base64')}` }, body, query: {}
+    });
+    const parBody = (clientId) => ({
+      client_id: clientId, response_type: 'code', redirect_uri: 'https://synthetic.example.test/callback',
+      code_challenge: crypto.createHash('sha256').update('a-synthetic-browser-code-verifier-with-entropy').digest('base64url'),
+      code_challenge_method: 'S256', scope: 'openid', nonce: 'n-enc'
+    });
+    const runPar = async (req) => {
+      const res = response();
+      let failure;
+      await provider.oidcPar(req, res, (error) => { failure = error; });
+      return { res, failure };
+    };
+
+    test('accepts the encoded client id that openid-client sends (dglaundry%2Dweb style)', async () => {
+      const { res, failure } = await runPar(encodedBrowser('synthetic-browser', 'browser-secret', parBody('synthetic-browser')));
+      expect(failure).toBeUndefined();
+      expect(res.statusCode).toBe(201);
+    });
+
+    test('accepts an encoded secret containing reserved characters, and the same secret sent raw', async () => {
+      const rows = await registry.listActiveClients();
+      const special = 'p+ss%word:with space';
+      rows.find((row) => row.client_id === 'synthetic-browser').secret_hash = hashClientSecret(special);
+      const encoded = await runPar(encodedBrowser('synthetic-browser', special, parBody('synthetic-browser')));
+      expect(encoded.failure).toBeUndefined();
+      expect(encoded.res.statusCode).toBe(201);
+      const raw = await runPar(browser('synthetic-browser', special, parBody('synthetic-browser')));
+      expect(raw.failure).toBeUndefined();
+      expect(raw.res.statusCode).toBe(201);
+    });
+
+    test('still rejects a wrong secret and a mismatched body client_id', async () => {
+      const wrongSecret = await runPar(encodedBrowser('synthetic-browser', 'not-the-secret', parBody('synthetic-browser')));
+      expect(wrongSecret.failure).toBeDefined();
+      const mismatch = await runPar(encodedBrowser('synthetic-browser', 'browser-secret', parBody('synthetic-browser-b')));
+      expect(mismatch.failure).toBeDefined();
+      expect(mismatch.failure.statusCode).toBe(401);
+    });
+  });
 });

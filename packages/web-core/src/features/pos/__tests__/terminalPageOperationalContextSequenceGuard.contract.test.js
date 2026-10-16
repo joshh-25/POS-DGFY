@@ -53,6 +53,13 @@ describe('TerminalPage operational-context refresh sequence contract', () => {
     expect(disqualifiedGuardSource).not.toContain('setTodayDashboard');
   });
 
+  it('rechecks the owner-scoped terminal shift when a stale branch filter hides it', () => {
+    expect(refreshOperationalContextSource).toContain('shouldRetryUnscopedTerminalShift({');
+    expect(refreshOperationalContextSource).toContain('const unscopedCurrentShiftResult = await fetchCurrentTerminalShift(');
+    expect(refreshOperationalContextSource).toContain('preferOwnedCurrentTerminalShift({');
+    expect(refreshOperationalContextSource).toContain("{ terminal_id: terminalId }");
+  });
+
   it('reports a resume only after a confirmed shift and keeps failed confirmation in resume mode', () => {
     expect(terminalUnlockHandlerStart).toBeGreaterThan(-1);
     expect(terminalUnlockHandlerSource.match(/await completeConfirmedShiftResume\(/g)).toHaveLength(2);

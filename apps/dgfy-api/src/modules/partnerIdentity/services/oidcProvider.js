@@ -225,21 +225,32 @@ const requireMachineClient = async (input, client) => {
     return client;
 };
 
+// RFC 6749 section 2.3.1: the client id and secret are form-urlencoded BEFORE being
+// base64'd into the Basic header (openid-client sends "dglaundry%2Dweb"). Decode them,
+// and keep the raw secret too so a non-compliant client that sent a literal '%' or '+'
+// still authenticates.
+const formDecode = (value) => {
+    try { return decodeURIComponent(value.replace(/\+/g, ' ')); } catch { return value; }
+};
+
 const parseBasic = (req) => {
+    const empty = { clientId: '', clientSecret: '', rawClientSecret: '' };
     const header = String(req.headers.authorization || '');
-    if (!header.startsWith('Basic ')) return { clientId: '', clientSecret: '' };
+    if (!header.startsWith('Basic ')) return empty;
     try {
         const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
         const separator = decoded.indexOf(':');
-        return separator < 0 ? { clientId: '', clientSecret: '' } : { clientId: decoded.slice(0, separator), clientSecret: decoded.slice(separator + 1) };
-    } catch { return { clientId: '', clientSecret: '' }; }
+        if (separator < 0) return empty;
+        const rawSecret = decoded.slice(separator + 1);
+        return { clientId: formDecode(decoded.slice(0, separator)), clientSecret: formDecode(rawSecret), rawClientSecret: rawSecret };
+    } catch { return empty; }
 };
 
 const formOrJson = (req) => ({ ...(req.body || {}), ...req.query });
 const postBody = (req) => req.body && typeof req.body === 'object' ? req.body : {};
 
 const authenticateOidcClient = async (req, input) => {
-    const { clientId: basicClientId, clientSecret } = parseBasic(req);
+    const { clientId: basicClientId, clientSecret, rawClientSecret } = parseBasic(req);
     const clientId = String(input.client_id || basicClientId || '').trim();
     const client = await resolveClient(clientId);
     if (!client) throw clientUnavailable();
@@ -250,11 +261,12 @@ const authenticateOidcClient = async (req, input) => {
             throw error;
         }
         let matchedCredential = null;
-        const valid = client.legacy
-            ? safeEqual(clientSecret, client.legacy_secret)
+        const secretMatches = (candidate) => client.legacy
+            ? safeEqual(candidate, client.legacy_secret)
             : client.has_credential_versions
-                ? (matchedCredential = (client.credentials || []).filter((item) => item.kind === 'secret_hash').find((item) => verifyClientSecret(clientSecret, item.secret_hash)), Boolean(matchedCredential))
-                : verifyClientSecret(clientSecret, client.secret_hash);
+                ? (matchedCredential = (client.credentials || []).filter((item) => item.kind === 'secret_hash').find((item) => verifyClientSecret(candidate, item.secret_hash)), Boolean(matchedCredential))
+                : verifyClientSecret(candidate, client.secret_hash);
+        const valid = secretMatches(clientSecret) || (rawClientSecret !== clientSecret && secretMatches(rawClientSecret));
         if (!valid) throw clientUnavailable();
         if (matchedCredential) client.authenticated_credential_id = matchedCredential.id;
         return client;

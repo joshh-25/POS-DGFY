@@ -48,11 +48,17 @@ zero precedent here. Use `mcp__claude_ai_Sentry__*` unless there's a specific re
   returned 10 aggregate rows with that issue absent; the unfiltered query above returned 12 with it
   present. Do not reintroduce an `event.type:error` filter on the standing sweep query without
   re-checking this.
-- **`SENTRY_ENVIRONMENT` was unset on prod as of 2026-08-08** — events may still be filing under the
-  literal environment `"unknown"`. If an environment-scoped query returns nothing, check for
-  `"unknown"` before concluding there's no signal. As of 2026-08-27, backend `environment` resolves
-  correctly (DEV/STAGING distinguishable) — this caveat may be stale for backend specifically, but is
-  left here rather than removed since it hasn't been re-checked for every project.
+- **PROD backend Sentry was disabled after the ~2026-08-28 SOPS cutover.** The cutover carried
+  `SENTRY_BACKEND_DSN` into the API's SOPS file but dropped the previous non-secret values
+  `SENTRY_ENABLED=true` and `SENTRY_ENVIRONMENT=PROD`. With those values absent, the compose defaults
+  left backend reporting off for about seven weeks. The host was corrected on 2026-10-15 by adding
+  both values to `secrets/dgfy-api.env`; the DSN maps to `dgfy-backend`. Arrival of a new PROD backend
+  event has not yet been verified, so check for one after the next backend error before treating the
+  reporting path as restored. See #2502.
+- **Sentry release and image revision can differ** (#633). At the 2026-10-15 incident check,
+  `SENTRY_RELEASE=ee18e2e13` while the running image's `org.opencontainers.image.revision` label was
+  `5521a8548`. They were different identifiers for the same deployment; check both when correlating
+  events to a deployed image.
 - **Deployment coverage has drifted before.** `VITE_SENTRY_*`/`SENTRY_AUTH_TOKEN` were configured on
   STAGING only as of 2026-07-28, and `deploy-backend.yml` had zero `SENTRY_*` references at one
   point. Don't assume every environment is actually reporting — a quiet environment might be a real

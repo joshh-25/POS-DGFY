@@ -1357,6 +1357,7 @@ const fiscalPrintEventSchema = Joi.object({
 
 const voidPosTransactionSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required(),
+    auto_refund: Joi.boolean().default(false),
     refund_passcode: Joi.string().trim().pattern(/^\d{4,12}$/).optional().messages({
         'string.pattern.base': 'refund_passcode must contain 4 to 12 digits'
     }),

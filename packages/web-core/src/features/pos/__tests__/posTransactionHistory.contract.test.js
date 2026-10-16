@@ -184,7 +184,9 @@ describe('POS transaction history search and filter contract', () => {
         expect(appStyles).toContain('padding-bottom: 0.75rem !important;');
         expect(panelContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col gap-0');
         expect(panelContent).toContain('<PosFilterDialogShell');
-        expect(historyDialogShellContent).toContain("const overlayClassName = isMobileDialog || tabletPortrait");
+        expect(historyDialogShellContent).toContain("const defaultOverlayClassName = isMobileDialog || tabletPortrait");
+        expect(historyDialogShellContent).toContain("'bg-slate-950/60 backdrop-blur-sm'");
+        expect(historyDialogShellContent).toContain("'bg-transparent backdrop-blur-none'");
         expect(historyDialogShellContent).toContain('border border-slate-300');
         expect(historyDialogShellContent).toContain('shadow-[0_12px_30px_rgba(15,23,42,0.2)]');
         expect(panelContent).toContain('aria-label={pendingSyncLabel}');

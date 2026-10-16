@@ -129,6 +129,7 @@ describe('usePosHistoryVoidWorkflow', () => {
 
         expect(voidPosTransaction).toHaveBeenCalledWith(7, {
             reason: 'Administrator correction',
+            auto_refund: true,
             terminal_id: 'COUNTER-01'
         });
         expect(voidPosTransaction.mock.calls[0][1]).not.toHaveProperty('shift_id');
@@ -179,6 +180,66 @@ describe('usePosHistoryVoidWorkflow', () => {
         expect(onFinancialMutationCompleted).toHaveBeenCalledWith(expect.objectContaining({
             pos_transaction_id: 7,
             status: 'voided'
+        }));
+    });
+
+    it('does not open a second refund workflow after the server records the automatic cash refund', async () => {
+        voidPosTransaction.mockResolvedValue({
+            transaction: { ...completedRow, status: 'voided', payment_status: 'refunded' },
+            cash_refund: { completed: true },
+            financial_outcome: {
+                refund_required: false,
+                refund_state: 'completed',
+                next_action: 'none'
+            }
+        });
+        const { result } = renderHistory({
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: 42
+        });
+
+        await act(async () => {
+            await result.current.handleVoidHistoryTransaction(
+                completedRow,
+                'Customer requested cash reversal'
+            );
+        });
+
+        expect(voidPosTransaction).toHaveBeenCalledWith(7, expect.objectContaining({ auto_refund: true }));
+        expect(result.current.refundWorkflowTransaction).toBe(null);
+    });
+
+    it('opens the recovery workflow when the server voids first and leaves cash refund pending', async () => {
+        voidPosTransaction.mockResolvedValue({
+            transaction: { ...completedRow, status: 'voided' },
+            refund_pending: true,
+            financial_outcome: {
+                refund_required: true,
+                refund_state: 'manual_review_required',
+                refund_method: 'cash',
+                next_action: 'record_cash_refund_with_cash_drawer_event'
+            }
+        });
+        const { result } = renderHistory({
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: null
+        });
+
+        await act(async () => {
+            await result.current.handleVoidHistoryTransaction(
+                completedRow,
+                'Administrator correction after close'
+            );
+        });
+
+        expect(result.current.refundWorkflowTransaction).toEqual(expect.objectContaining({
+            pos_transaction_id: 7,
+            item_void_adjustment_id: null,
+            financial_outcome: expect.objectContaining({
+                next_action: 'record_cash_refund_with_cash_drawer_event'
+            })
         }));
     });
 
@@ -332,6 +393,7 @@ describe('usePosHistoryVoidWorkflow', () => {
 
         expect(voidPosTransaction).toHaveBeenCalledWith(7, {
             reason: 'Cashier correction',
+            auto_refund: true,
             terminal_id: 'COUNTER-01',
             shift_id: 42
         });
@@ -361,6 +423,53 @@ describe('usePosHistoryVoidWorkflow', () => {
             shift_id: 42,
             terminal_id: 'COUNTER-01',
             idempotency_key: expect.stringMatching(/^pos-refund-7-/)
+        }));
+        expect(result.current.refundWorkflowTransaction).toBe(null);
+    });
+
+    it('keeps a no-shift cash refund pending so it can be retried after shift recovery', async () => {
+        fetchPosTransactionById.mockResolvedValue({
+            ...completedRow,
+            status: 'voided',
+            financial_outcome: { next_action: 'record_cash_refund_with_cash_drawer_event' }
+        });
+        const options = {
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: null
+        };
+        const { result, rerender } = renderHook(() => usePosHistoryVoidWorkflow({
+            ...options,
+            selectedLocationId: 3,
+            normalizedTerminalId: 'COUNTER-01'
+        }));
+
+        await act(async () => {
+            await result.current.openHistoryRefundWorkflow(completedRow);
+        });
+        await act(async () => {
+            await expect(result.current.submitHistoryRefundWorkflow({
+                workflow: 'cash',
+                reason: 'Customer return'
+            })).rejects.toThrow('Open a cashier shift before returning cash.');
+        });
+
+        expect(refundCashPosTransaction).not.toHaveBeenCalled();
+        expect(result.current.refundWorkflowTransaction).not.toBe(null);
+
+        options.activeShiftId = 42;
+        rerender();
+        await act(async () => {
+            await result.current.submitHistoryRefundWorkflow({
+                workflow: 'cash',
+                reason: 'Customer return'
+            });
+        });
+
+        expect(refundCashPosTransaction).toHaveBeenCalledWith(7, expect.objectContaining({
+            reason: 'Customer return',
+            shift_id: 42,
+            terminal_id: 'COUNTER-01'
         }));
         expect(result.current.refundWorkflowTransaction).toBe(null);
     });

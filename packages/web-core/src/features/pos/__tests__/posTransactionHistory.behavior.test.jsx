@@ -19,6 +19,19 @@ const historyRow = {
     cashier: { username: 'Jane Doe' }
 };
 
+const voidedCashRefundPendingRow = {
+    ...historyRow,
+    status: 'voided',
+    payment_type: 'cash',
+    total_amount: 0,
+    financial_outcome: {
+        refund_required: true,
+        refund_amount: 75,
+        next_action: 'record_cash_refund_with_cash_drawer_event',
+        reason_code: 'CASH_REFUND_REQUIRED'
+    }
+};
+
 const buildPanelProps = (overrides = {}) => ({
     historySearch: '',
     setHistorySearch: vi.fn(),
@@ -721,6 +734,21 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         const actionButtons = within(actionCell).getAllByRole('button');
         expect(actionButtons).toHaveLength(3);
         expect(actionButtons.every((button) => button.className.includes('h-9 w-9'))).toBe(true);
+    });
+
+    it('shows pending financial follow-up in voided transaction details', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            historyRows: [voidedCashRefundPendingRow]
+        })} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'View details for INV-001' }));
+
+        const details = screen.getByTestId('pos-history-details-dialog');
+        expect(within(details).getByText('Financial Follow-up')).toBeTruthy();
+        expect(within(details).getByText('Cash refund and a linked cash-drawer event are still required.')).toBeTruthy();
+        expect(within(details).getByText('Required Amount')).toBeTruthy();
+        expect(within(details).getByText('₱75.00')).toBeTruthy();
     });
 
     it('uses a four-data-column portrait tablet table and retains its action column', () => {

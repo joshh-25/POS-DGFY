@@ -1,6 +1,6 @@
 {
   "name": "dgfy-admin",
-  "version": "1.8.0",
+  "version": "1.10.0",
   "description": "DGFY Platform Admin standalone frontend (issue #350).",
   "author": "DGFY",
   "type": "module",

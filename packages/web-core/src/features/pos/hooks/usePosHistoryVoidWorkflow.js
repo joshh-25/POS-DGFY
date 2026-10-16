@@ -335,6 +335,7 @@ export const usePosHistoryVoidWorkflow = ({
                 .filter((line) => Number.isInteger(line.line_id) && line.line_id > 0 && Number.isFinite(line.quantity) && line.quantity > 0);
             const voidPayload = {
                 reason,
+                auto_refund: true,
                 terminal_id: normalizedTerminalId || undefined,
                 ...(String(refundPasscode || '').trim() ? {
                     refund_passcode: String(refundPasscode).trim()
@@ -347,9 +348,15 @@ export const usePosHistoryVoidWorkflow = ({
             if (activeShiftId) voidPayload.shift_id = activeShiftId;
             const voidResult = await voidPosTransaction(posTransactionId, voidPayload);
             const approvalPending = voidResult?.pending === true;
+            const automaticCashRefundCompleted = voidResult?.cash_refund?.completed === true;
+            const cashRefundPending = voidResult?.refund_pending === true;
             toast.success(approvalPending
                 ? 'Void request submitted. The sale and stock stay unchanged until manager approval.'
-                : normalizedVoidedLines.length > 0 ? 'Selected POS item voided.' : 'POS transaction voided.');
+                : automaticCashRefundCompleted
+                    ? 'POS transaction voided and cash refund recorded.'
+                    : cashRefundPending
+                        ? 'POS transaction voided; cash refund is pending.'
+                        : normalizedVoidedLines.length > 0 ? 'Selected POS item voided.' : 'POS transaction voided.');
             await loadHistory(historyPage);
             if (approvalPending && inlineVoidApprovalEnabled) {
                 setVoidApprovalSelectedRequest(voidResult?.approval_request || null);
@@ -363,12 +370,19 @@ export const usePosHistoryVoidWorkflow = ({
                     toast.warning('The transaction was voided, but shift totals could not refresh automatically.');
                 }
             }
-            if (!approvalPending && voidResult?.item_voided && voidResult?.financial_outcome?.refund_required) {
+            if (!approvalPending && voidResult?.financial_outcome?.refund_required) {
+                const inheritedVoidReason = String(
+                    voidResult?.transaction?.void_reason
+                    || voidResult?.adjustment?.reason
+                    || reason
+                    || ''
+                ).trim();
                 setRefundWorkflowTransaction({
                     ...(voidResult.transaction || historyRow),
                     pos_transaction_id: posTransactionId,
                     financial_outcome: voidResult.financial_outcome,
-                    item_void_adjustment_id: voidResult.adjustment?.pos_transaction_adjustment_id || null
+                    item_void_adjustment_id: voidResult.adjustment?.pos_transaction_adjustment_id || null,
+                    ...(inheritedVoidReason ? { void_reason: inheritedVoidReason } : {})
                 });
             }
             return voidResult;

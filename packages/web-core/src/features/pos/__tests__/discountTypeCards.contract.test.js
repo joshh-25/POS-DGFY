@@ -71,7 +71,9 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('Discount Rate');
     expect(discountModalContent).toContain('employeeDiscountRateOptions.map');
     expect(discountModalContent).toContain('placeholder="Enter discount reason (optional)"');
-    expect(discountModalContent).toContain('Employee PIN');
+    expect(discountModalContent).toContain('Employee global POS PIN');
+    expect(discountModalContent).toContain('placeholder="Enter employee PIN"');
+    expect(discountModalContent).toContain('name="pos_discount_approval_pin"');
     expect(discountModalContent).toContain('discountDraft.approver_user_id');
     expect(discountModalContent).toContain('Authorizing employee');
     expect(checkoutRenderContent).not.toContain('signedInUserIsAdminLike');

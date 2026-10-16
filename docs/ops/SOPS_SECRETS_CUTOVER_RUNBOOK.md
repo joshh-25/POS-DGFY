@@ -255,6 +255,24 @@ carries the resolved diff plus the bucket-A/B/C rewrite:
   resolved, not open. What remains open: the `3306:3306` MySQL port
   publication (#402, out of scope for this cutover).
 
+### 2026-10-15 follow-up — preserve non-secret runtime flags
+
+The ~2026-08-28 SOPS cutover carried the backend DSN but omitted the old `.env`
+values `SENTRY_ENABLED=true` and `SENTRY_ENVIRONMENT=PROD`. Because the API
+compose defaults are `false` and empty, PROD backend reporting stayed disabled
+for about seven weeks even though the DSN was present. The host was corrected
+on 2026-10-15 by adding both flags to `secrets/dgfy-api.env`; new event arrival
+is still pending verification.
+
+During a cutover, give every required non-secret runtime flag an explicit,
+reviewed source. Under ADR 0060's current three-bucket model, static values
+normally live as literals in the committed Compose `environment:` block; where
+the deployed compose still sources them from a service SOPS file, carry them
+there as well. Do not assume a feature flag moves with its associated secret.
+The production env validator now warns when a backend DSN is set but Sentry is
+disabled, or when enabled Sentry has no environment; the warning appears in
+the `deploy-sops.sh` preflight and API boot logs. See #2502.
+
 **Call out the MySQL port removal separately in its own PR/commit** — it is
 the one change in this area that alters network reachability rather than
 just secret handling, and is individually revertable (#402).

@@ -43,9 +43,14 @@ services:
       CERT_DOMAIN_PROD: ${CERT_DOMAIN_PROD}
       # DGLaundry staff operations are reached through the shared edge only;
       # the gateway is never attached to dgfy_internal or the DGFY database.
-      DGLAUNDRY_DOMAIN: ${DGLAUNDRY_DOMAIN:-laundry.dgfy.ph}
+      # PORT IS 8080: this nginx reaches the gateway container-to-container over
+      # dgfy-dglaundry-edge, where it only ever listens on 8080. It is NOT
+      # infrastructure/dglaundry/prod.env's same-named DGLAUNDRY_GATEWAY_PORT
+      # (4400) -- that one is DGLaundry's own compose project's host-loopback
+      # publish port and plays no part in this path (#2477).
+      DGLAUNDRY_DOMAIN: ${DGLAUNDRY_DOMAIN:-dglaundry.dgfy.ph}
       DGLAUNDRY_GATEWAY_HOST: ${DGLAUNDRY_GATEWAY_HOST:-dglaundry-gateway}
-      DGLAUNDRY_GATEWAY_PORT: ${DGLAUNDRY_GATEWAY_PORT:-4400}
+      DGLAUNDRY_GATEWAY_PORT: ${DGLAUNDRY_GATEWAY_PORT:-8080}
     ports:
       - "80:80"
       - "443:443"

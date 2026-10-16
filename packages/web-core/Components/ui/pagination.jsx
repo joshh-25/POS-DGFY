@@ -5,6 +5,7 @@ import { Button } from './button.jsx';
 
 export const DEFAULT_PAGE_SIZE_OPTIONS = [20, 40, 60];
 export const POS_PAGINATION_FOOTER_CLASS = 'dgfy-pos-pagination-footer shrink-0 rounded-none border-0 border-t border-slate-200 px-6 py-2.5 shadow-none';
+export const POS_PAGINATION_FOOTER_NO_DIVIDER_CLASS = 'dgfy-pos-pagination-footer shrink-0 rounded-none border-0 px-6 py-2.5 shadow-none';
 
 const toPositiveInteger = (value, fallback = 1) => {
   const parsed = Number(value);

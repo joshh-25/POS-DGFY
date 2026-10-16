@@ -371,6 +371,83 @@ describe('posHandlers transport contracts', () => {
         });
     });
 
+    it('voidTransaction emits automatic cash-refund telemetry for a completed refund', async () => {
+        const result = {
+            success: true,
+            data: {
+                transaction: { pos_transaction_id: 180 },
+                cash_refund: {
+                    completed: true,
+                    idempotent_replay: false,
+                    cash_drawer_event: {
+                        pos_terminal_shift_id: 108,
+                        pos_cash_drawer_event_id: 208
+                    }
+                }
+            }
+        };
+        mockVoidPosTransactionUseCase.mockResolvedValue(result);
+
+        const req = {
+            validatedData: { reason: 'Automatic cash refund telemetry' },
+            body: {},
+            params: { id: '180' },
+            validatedParams: { id: 180 },
+            posTerminalRegistration: { terminal_id: 'POS-02', location_id: 9 },
+            user: { user_id: 99, tenant_id: 'tenant-1', role: 'admin' },
+            requestId: 'req-pos-void-auto-refund'
+        };
+        const res = createRes();
+
+        await voidTransaction(req, res, jest.fn());
+
+        expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+            req,
+            user: req.user,
+            eventType: 'pos_cash_refund_completed',
+            surface: 'pos_terminal',
+            action: 'cash_refund',
+            result
+        }));
+        const telemetryArgs = mockTrackProductUsageFromResult.mock.calls[0][0];
+        expect(telemetryArgs.successMetadataResolver(result.data)).toEqual({
+            pos_transaction_id: 180,
+            shift_id: 108,
+            cash_drawer_event_id: 208,
+            automatic: true
+        });
+    });
+
+    it('voidTransaction does not emit duplicate cash-refund telemetry for an idempotent replay', async () => {
+        mockVoidPosTransactionUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                transaction: { pos_transaction_id: 181 },
+                cash_refund: {
+                    completed: true,
+                    idempotent_replay: true,
+                    cash_drawer_event: {
+                        pos_terminal_shift_id: 109,
+                        pos_cash_drawer_event_id: 209
+                    }
+                }
+            }
+        });
+
+        const req = {
+            validatedData: { reason: 'Replay automatic cash refund' },
+            body: {},
+            params: { id: '181' },
+            validatedParams: { id: 181 },
+            posTerminalRegistration: { terminal_id: 'POS-02', location_id: 9 },
+            user: { user_id: 99, tenant_id: 'tenant-1', role: 'admin' }
+        };
+
+        await voidTransaction(req, createRes(), jest.fn());
+
+        expect(mockTrackProductUsageFromResult).not.toHaveBeenCalled();
+    });
+
     it('checkout returns 201 response with normalized payload', async () => {
         mockCheckoutPosUseCase.mockResolvedValue({
             success: true,

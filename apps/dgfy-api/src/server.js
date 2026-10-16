@@ -218,6 +218,10 @@ if (isProduction) {
     process.exit(1);
   }
 
+  for (const warning of validation.warnings) {
+    logger.warn(warning);
+  }
+
   const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'];
   const missing = requiredEnv.filter(env => !process.env[env]);
   if (missing.length > 0) {
