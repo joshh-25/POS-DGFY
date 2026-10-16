@@ -11,8 +11,8 @@ verification_evidence: npm run test:frontend:contracts (128 files, 776 tests), s
 rollback_note: Revert the POS contract assertion updates and this declaration together; these test-only POS changes have no production behavior or persisted-data rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-15T12:55:00Z
-preflight_request_ref: NOT-EXECUTED-2506-POS-CONTRACT-REPAIRS
+preflight_run_at: 2026-10-15T15:30:16.888Z
+preflight_request_ref: PREFLIGHT-38760204749-2026-10-15-POS-PROMOTION-CONTRACT-REPAIRS
 ---
 
 # POS promotion-gate contract repairs
