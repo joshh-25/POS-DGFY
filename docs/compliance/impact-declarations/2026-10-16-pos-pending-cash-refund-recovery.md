@@ -59,8 +59,9 @@ weaken the existing server-side cash-drawer and shift-ownership checks.
   intent and the server remains the authority for payment and cash-drawer mutations.
 - A completed automatic cash refund emits the existing `pos_cash_refund_completed` product-usage
   event with transaction, shift, and drawer-event identifiers plus `automatic: true`; idempotent
-  replays do not emit a duplicate event. This changes observability only and does not change
-  financial authority or the event schema.
+  replays do not emit a duplicate event. Both full-void and item-void replay responses explicitly
+  carry `idempotent_replay: true` so the handler can preserve that no-duplicate-event decision.
+  This changes observability only and does not change financial authority or the event schema.
 - A live compliance preflight was not run in this local PR workspace; the `NOT-EXECUTED-*`
   reference is the repository's accepted PR-open state and is expected to be reconciled by the
   compliance sweep after the declaration reaches `develop`.
@@ -73,7 +74,7 @@ weaken the existing server-side cash-drawer and shift-ownership checks.
 - Focused POS API tests passed for atomic void-and-refund execution, caller-owned transaction
   boundaries, global PIN policy, refund authorization, cash-refund idempotency/shift ownership,
   void financial-outcome classification, and automatic-refund handler telemetry.
-- The related API handler, cash-refund use-case, and F&B contract suites passed 111/111 tests;
+- The related API handler, cash-refund use-case, and F&B contract suites passed 112/112 tests;
   the handler telemetry suite passed 38/38 tests with explicit idempotent-replay coverage.
 - POS production build passed; only existing Vite chunk-placement warnings were emitted.
 - Local POS UI verification confirmed the F&B navigation entry is absent, the direct F&B route

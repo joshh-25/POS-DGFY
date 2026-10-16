@@ -6783,6 +6783,7 @@ export const buildVoidPosTransactionUseCase = ({
                             automaticCashRefund = {
                                 status: 'completed',
                                 data: {
+                                    idempotent_replay: true,
                                     transaction: replayedTransaction,
                                     adjustment: completedCashRefund,
                                     cash_drawer_event: cashDrawerEvent,
@@ -6907,6 +6908,7 @@ export const buildVoidPosTransactionUseCase = ({
                             automaticCashRefund = {
                                 status: 'completed',
                                 data: {
+                                    idempotent_replay: true,
                                     transaction: replayedTransaction,
                                     adjustment: completedCashRefund,
                                     cash_drawer_event: cashDrawerEvent,
