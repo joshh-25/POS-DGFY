@@ -49,6 +49,7 @@ jest.unstable_mockModule('../src/validators/posValidator.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/validators/businessAdminValidator.js', () => ({
+    validateBusinessAdminEndAttendanceShift: passThrough,
     validateUpdateBusinessAdminCompanyName: passThrough
 }));
 
