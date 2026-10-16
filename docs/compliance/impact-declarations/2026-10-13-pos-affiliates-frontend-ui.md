@@ -65,6 +65,8 @@ submit invitations, rates, price rules, or cashouts.
   isolated under the affiliate-only feature folder.
 - Shared POS primitives are modified only through backward-compatible opt-in props/classes used by
   Affiliates; unrelated callers keep their existing defaults.
+- The first shared-primitive batch is presentation-only: it adds opt-in sizing, spacing, pagination,
+  filter-shell, mobile-card, and KPI layout hooks without changing service payloads or behavior.
 - The reactivation service uses the existing dedicated endpoint from `origin/develop`; no fallback
   PATCH path or new API contract is introduced.
 - No backend, migration, database, or Android change is included.
