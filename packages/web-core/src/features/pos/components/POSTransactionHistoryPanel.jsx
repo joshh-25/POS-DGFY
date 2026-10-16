@@ -16,6 +16,9 @@ import {
     formatPosVoidTimestamp,
     isVoidedPosTransaction,
     resolvePosVoidActorLabel,
+    resolvePosVoidFinancialOutcome,
+    resolvePosVoidFinancialOutcomeAmount,
+    resolvePosVoidFinancialOutcomeLabel,
     resolvePosVoidReason
 } from '../utils/posVoidAudit.js';
 import { isPosTabletPortraitViewport, isPosTabletViewport } from '../utils/posTabletViewport.js';
@@ -51,6 +54,26 @@ const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFra
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
     online_store: 'Online Store'
+};
+
+const isPaidSingleTenderCash = (transaction) => {
+    if (String(transaction?.payment_status || '').trim().toLowerCase() !== 'paid') return false;
+    let breakdown = transaction?.payment_breakdown;
+    if (typeof breakdown === 'string') {
+        try {
+            breakdown = JSON.parse(breakdown);
+        } catch {
+            breakdown = [];
+        }
+    }
+    const activeBreakdown = Array.isArray(breakdown)
+        ? breakdown.filter((entry) => Number(entry?.amount || 0) > 0)
+        : [];
+    if (activeBreakdown.length > 0) {
+        return activeBreakdown.length === 1
+            && String(activeBreakdown[0]?.payment_type || '').trim().toLowerCase() === 'cash';
+    }
+    return String(transaction?.payment_type || '').trim().toLowerCase() === 'cash';
 };
 
 const formatDateTime = (value) => {
@@ -225,6 +248,13 @@ const buildHistoryDetailsSections = (row) => {
         || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code
         || null;
     const cashier = row?.cashier?.username || row?.acceptedByUser?.username || '-';
+    const financialOutcome = resolvePosVoidFinancialOutcome(row);
+    const financialOutcomeLabel = financialOutcome
+        ? resolvePosVoidFinancialOutcomeLabel(row)
+        : null;
+    const financialOutcomeAmount = financialOutcome
+        ? resolvePosVoidFinancialOutcomeAmount(row)
+        : null;
 
     return [
         {
@@ -267,6 +297,16 @@ const buildHistoryDetailsSections = (row) => {
                 { key: 'void-actor', label: 'Voided By', value: resolvePosVoidActorLabel(row) },
                 { key: 'voided-at', label: 'Voided At', value: formatPosVoidTimestamp(row?.voided_at) }
             ]
+        } : null,
+        isVoided && financialOutcome ? {
+            key: 'financial-follow-up',
+            title: 'Financial Follow-up',
+            fields: [
+                { key: 'financial-follow-up-status', label: 'Status', value: financialOutcomeLabel || 'Review required' },
+                financialOutcomeAmount
+                    ? { key: 'financial-follow-up-amount', label: 'Required Amount', value: financialOutcomeAmount }
+                    : null
+            ].filter(Boolean)
         } : null
     ].filter(Boolean);
 };
@@ -463,6 +503,7 @@ export default function POSTransactionHistoryPanel({
     refundWorkflowSubmitting = false,
     hasActiveShift = false,
     onOpenRefundWorkflow = async () => {},
+    onOpenShiftControls = () => {},
     onCloseRefundWorkflow = () => {},
     onSubmitRefundWorkflow = async () => {},
     loadHistory,
@@ -848,6 +889,12 @@ export default function POSTransactionHistoryPanel({
         || !Number.isFinite(Number(line?.quantity))
         || Number(line?.quantity) <= 0
     ));
+    const voidFinancialOutcome = voidTarget ? resolvePosVoidFinancialOutcome(voidTarget) : null;
+    const voidActionAutomaticallyRefundsCash = Boolean(
+        (voidFinancialOutcome?.refund_required === true
+            && voidFinancialOutcome?.next_action === 'record_cash_refund_with_cash_drawer_event')
+        || (!voidFinancialOutcome && isPaidSingleTenderCash(voidTarget))
+    );
 
     const submitVoid = async () => {
         const normalizedRefundPasscode = String(refundPasscode).trim();
@@ -1655,8 +1702,12 @@ export default function POSTransactionHistoryPanel({
                         <DialogTitle>{voidLineSelections.length > 0 ? 'Void Selected Item' : 'Void Transaction'}</DialogTitle>
                         <DialogDescription>
                             {voidLineSelections.length > 0
-                                ? 'Select the item quantity to void. Other items stay active and the selected amount moves to the refund step.'
-                                : 'Leave all items unchecked to void the whole transaction. An authorized user&apos;s global POS PIN authorizes the action.'}
+                                ? voidActionAutomaticallyRefundsCash
+                                    ? 'Select the item quantity to void. The same reason is used to record the cash refund when an authorized open shift can accept it.'
+                                    : 'Select the item quantity to void. Other items stay active and the selected amount moves to the refund step.'
+                                : voidActionAutomaticallyRefundsCash
+                                    ? 'This action voids the whole transaction and automatically records the cash refund when an authorized open shift can accept it. Enter the reason once.'
+                                    : 'Leave all items unchecked to void the whole transaction. An authorized user&apos;s global POS PIN authorizes the action.'}
                         </DialogDescription>
                     </DialogHeader>
                     {voidLineOptions.length > 0 && (
@@ -1759,8 +1810,10 @@ export default function POSTransactionHistoryPanel({
                                 || voidingTransactionId !== null}
                         >
                             {voidingTransactionId !== null
-                                ? 'Processing refund...'
-                                : voidLineSelections.length > 0 ? 'Confirm Item Void' : 'Confirm Transaction Void'}
+                                ? 'Processing...'
+                                : voidLineSelections.length > 0
+                                    ? (voidActionAutomaticallyRefundsCash ? 'Void item and refund' : 'Confirm Item Void')
+                                    : (voidActionAutomaticallyRefundsCash ? 'Void and refund' : 'Confirm Transaction Void')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1774,6 +1827,7 @@ export default function POSTransactionHistoryPanel({
                     submitting={refundWorkflowSubmitting}
                     hasActiveShift={hasActiveShift}
                     onOpenChange={(open) => !open && onCloseRefundWorkflow()}
+                    onOpenShiftControls={onOpenShiftControls}
                     onSubmit={onSubmitRefundWorkflow}
                 />
             ) : null}

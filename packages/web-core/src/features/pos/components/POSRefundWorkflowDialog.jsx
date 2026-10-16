@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -9,6 +9,7 @@ import {
     DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { resolvePosRefundReason } from '../utils/posVoidAudit.js';
 
 const money = (value, currency = '₱') => `${String(currency).toUpperCase() === 'PHP' ? '₱' : currency}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const normalize = (value) => String(value || '').trim().toLowerCase();
@@ -75,6 +76,7 @@ export default function POSRefundWorkflowDialog({
     submitting = false,
     hasActiveShift = false,
     onOpenChange = () => {},
+    onOpenShiftControls = () => {},
     onSubmit = async () => {}
 }) {
     const workflow = resolvePosRefundWorkflow(transaction);
@@ -84,7 +86,9 @@ export default function POSRefundWorkflowDialog({
         (Array.isArray(transaction?.payment_allocations) ? transaction.payment_allocations : [])
             .filter((allocation) => normalize(allocation?.status) === 'successful' && normalize(allocation?.reversal_status) !== 'completed')
     ), [transaction]);
-    const [reason, setReason] = useState('');
+    const inheritedReason = resolvePosRefundReason(transaction);
+    const reasonInherited = Boolean(inheritedReason);
+    const [reason, setReason] = useState(inheritedReason);
     const [externalReference, setExternalReference] = useState('');
     const [completionConfirmed, setCompletionConfirmed] = useState(false);
     const [allocationId, setAllocationId] = useState(() => (
@@ -92,6 +96,9 @@ export default function POSRefundWorkflowDialog({
             ? String(allocations[0].pos_payment_allocation_id)
             : ''
     ));
+    useEffect(() => {
+        setReason(inheritedReason);
+    }, [inheritedReason]);
     const selectedAllocation = allocations.find((allocation) => String(allocation.pos_payment_allocation_id) === String(allocationId)) || null;
     const selectedAllocationNeedsReference = workflow === 'split'
         && selectedAllocation
@@ -105,6 +112,12 @@ export default function POSRefundWorkflowDialog({
         && (!referenceRequired || externalReference.trim().length >= 3)
         && (workflow !== 'cash' || hasActiveShift)
         && (workflow !== 'split' || Boolean(selectedAllocation));
+
+    const openShiftControls = () => {
+        if (submitting) return;
+        onOpenChange(false);
+        onOpenShiftControls();
+    };
 
     const submit = async () => {
         if (!canSubmit) return;
@@ -135,9 +148,21 @@ export default function POSRefundWorkflowDialog({
                         </div>
 
                         {workflow === 'cash' && !hasActiveShift ? (
-                            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800" role="alert">
-                                Open a cashier shift before returning cash. Admin no-shift bypass applies to the void only, never to drawer money.
-                            </p>
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert" data-testid="pos-refund-shift-required">
+                                <p className="font-extrabold">Cash refund pending: no acting cashier shift is active.</p>
+                                <p className="mt-1 font-semibold text-amber-800">
+                                    The void is recorded, but cash can only be returned from an open shift with drawer permission. Resume the owning cashier shift or open the approved refunding shift, then resolve this transaction from History.
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="mt-3 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                                    onClick={openShiftControls}
+                                    disabled={submitting}
+                                >
+                                    Go to Shift Controls
+                                </Button>
+                            </div>
                         ) : null}
 
                         {workflow === 'split' ? (
@@ -175,16 +200,23 @@ export default function POSRefundWorkflowDialog({
                         ) : null}
 
                         <label className="block text-sm font-semibold text-slate-900">
-                            Refund reason
+                            {reasonInherited ? 'Void/refund reason' : 'Refund reason'}
                             <Input
-                                className="mt-2"
+                                className={`mt-2 ${reasonInherited ? 'bg-slate-50' : ''}`}
                                 value={reason}
                                 onChange={(event) => setReason(event.target.value)}
                                 minLength={3}
                                 maxLength={255}
-                                placeholder="Required accountability reason"
+                                placeholder={reasonInherited ? undefined : 'Required accountability reason'}
+                                readOnly={reasonInherited}
+                                aria-readonly={reasonInherited}
                                 disabled={submitting || workflow === 'review'}
                             />
+                            {reasonInherited ? (
+                                <p className="mt-1 text-xs font-medium text-slate-500">
+                                    Reused from the original void reason and recorded with this refund.
+                                </p>
+                            ) : null}
                         </label>
 
                         {(workflow === 'external' || selectedAllocationNeedsReference) ? (

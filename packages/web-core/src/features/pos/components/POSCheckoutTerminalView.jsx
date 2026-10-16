@@ -468,6 +468,10 @@ return (
                         refundWorkflowSubmitting={refundWorkflowSubmitting}
                         hasActiveShift={Boolean(activeShiftId)}
                         onOpenRefundWorkflow={openHistoryRefundWorkflow}
+                        onOpenShiftControls={() => {
+                            closeHistoryRefundWorkflow();
+                            setCurrentViewMode('shift_controls');
+                        }}
                         onCloseRefundWorkflow={closeHistoryRefundWorkflow}
                         onSubmitRefundWorkflow={submitHistoryRefundWorkflow}
                         loadHistory={loadHistory}

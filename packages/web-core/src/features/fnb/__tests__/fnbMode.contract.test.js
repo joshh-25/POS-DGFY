@@ -48,7 +48,8 @@ describe('Food & Beverage frontend contract', () => {
     expect(posPageShell).toContain('canTransact={canTransactPos}');
     expect(terminalPage).toContain("'fnb_service'");
     expect(terminalPage).toContain('canAccessFnbService');
-    expect(terminalPage).toContain('showFnbService={canAccessFnbService}');
+    expect(terminalPage).toContain('const SHOW_FNB_SERVICE_IN_POS_NAVIGATION = false;');
+    expect(terminalPage).toContain('showFnbService={SHOW_FNB_SERVICE_IN_POS_NAVIGATION && canAccessFnbService}');
     expect(terminalLayout).toContain('FnbDiningPanel');
     expect(terminalLayout).toContain('data-testid="pos-fnb-service-workspace"');
     expect(terminalLayout).toContain('fnbContext={fnbCheckoutContext}');

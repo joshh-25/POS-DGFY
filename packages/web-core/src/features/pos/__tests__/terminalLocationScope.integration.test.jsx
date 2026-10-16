@@ -296,6 +296,73 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByRole('table', { name: 'Terminals at Main Branch' })).toBeTruthy();
   });
 
+  it('does not advertise a terminal as available while branch occupancy is still loading', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      adminLocationMonitorState: {
+        loading: true,
+        locationId: 1,
+        orders: [],
+        terminalShifts: []
+      }
+    })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('Checking availability…');
+    expect(terminalSelector.textContent).not.toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(true);
+    expect(screen.getByText(/Checking terminal availability/)).toBeTruthy();
+  });
+
+  it('fails closed when branch occupancy cannot be verified', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      adminLocationMonitorState: {
+        loading: false,
+        locationId: 1,
+        orders: [],
+        terminalShifts: [],
+        errorMessage: 'Branch monitor is unavailable.'
+      }
+    })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('Availability unavailable');
+    expect(terminalSelector.textContent).not.toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(true);
+    expect(screen.getByRole('alert').textContent).toContain('availability could not be verified');
+  });
+
+  it('shows Available only after the branch monitor confirms the terminal is free', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      adminLocationMonitorState: {
+        loading: false,
+        locationId: 1,
+        orders: [],
+        terminalShifts: []
+      }
+    })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(false);
+  });
+
+  it('blocks opening a terminal that the confirmed branch monitor reports as occupied', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps()} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('In use by Cashier One');
+    expect(terminalSelector.textContent).not.toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(true);
+  });
+
   it('keeps Admin Shift Location subtabs available while an admin shift is open', () => {
     render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
       shiftState: {

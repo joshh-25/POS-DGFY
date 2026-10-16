@@ -122,7 +122,7 @@ const assertOwnedOpenShift = ({ shift, actorUserId, shiftOwnerUserId = actorUser
 export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
     if (!posRepository) throw new Error('posRepository is required');
 
-    return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
+    return async ({ posTransactionId, payload = {}, user = {}, transaction: providedTransaction = null } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
         const operatorSessionId = parsePositiveInt(user?.operator_session_id);
@@ -142,7 +142,8 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
         }
 
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-        const transaction = await sequelize.transaction();
+        const ownsTransaction = providedTransaction == null;
+        const transaction = providedTransaction || await sequelize.transaction();
         try {
             const existing = await posRepository.getTransactionById(normalizedTransactionId, {
                 transaction,
@@ -215,7 +216,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                     && typeof posRepository.getCashDrawerEventById === 'function'
                     ? await posRepository.getCashDrawerEventById(existingAdjustment.cash_drawer_event_id, { transaction })
                     : null;
-                await transaction.commit();
+                if (ownsTransaction) await transaction.commit();
                 return ok({
                     transaction: toSerializable(replayedTransaction),
                     adjustment: existingAdjustment,
@@ -399,7 +400,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 }
             }, { transaction });
 
-            await transaction.commit();
+            if (ownsTransaction) await transaction.commit();
             return ok({
                 transaction: updated,
                 adjustment,
@@ -409,7 +410,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 financial_outcome: completedOutcome
             });
         } catch (error) {
-            if (!transaction.finished) await transaction.rollback();
+            if (ownsTransaction && !transaction.finished) await transaction.rollback();
             return fail(mapPosUseCaseError(error, 'Failed to record POS cash refund'));
         }
     };

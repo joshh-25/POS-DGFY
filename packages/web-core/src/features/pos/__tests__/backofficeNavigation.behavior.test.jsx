@@ -72,4 +72,23 @@ describe('POS Back Office boundary', () => {
     expect(terminalPageSource).toContain('isCashierAllowedViewMode(normalizedView, canVoidTransactions)');
     expect(terminalPageSource).toContain(".filter((mode) => mode !== 'approvals' || (canReviewVoidApprovals && !isCashierRole))");
   });
+
+  it('hides F&B service from the primary POS navigation without removing the route capability', () => {
+    render(
+      <TerminalWorkspaceSidebar
+        locked={false}
+        isOnline
+        terminalUser={{ role: 'admin' }}
+        currentViewMode="checkout"
+        canViewPos
+        showFnbService={false}
+        shiftState={{ shift: { pos_terminal_shift_id: 12, location_id: 3 } }}
+      />
+    );
+
+    expect(screen.queryByTestId('pos-nav-fnb-service')).toBeNull();
+    expect(terminalPageSource).toContain("'fnb_service'");
+    expect(terminalPageSource).toContain('canAccessFnbService');
+    expect(terminalPageSource).toContain('showFnbService={SHOW_FNB_SERVICE_IN_POS_NAVIGATION && canAccessFnbService}');
+  });
 });
