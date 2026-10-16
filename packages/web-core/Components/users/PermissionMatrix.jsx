@@ -180,7 +180,9 @@ export default function PermissionMatrix({
 
                                     {/* Accordion Content */}
                                     <div
-                                        className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'max-h-96' : 'max-h-0'
+                                        className={`transition-all duration-200 ease-in-out ${isOpen
+                                            ? 'max-h-96 overflow-y-auto'
+                                            : 'max-h-0 overflow-hidden'
                                             }`}
                                     >
                                         <div className="p-4 pt-0 space-y-2 border-t border-slate-100">

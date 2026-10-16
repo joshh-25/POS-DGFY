@@ -31,6 +31,7 @@ import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { AlertCircle, AlertTriangle, Banknote, BarChart3, CalendarDays, CircleDollarSign, ClipboardList, Eye, History, LogIn, Monitor, MapPinned, Percent, Receipt, RefreshCcw, Settings2, ShieldCheck, Store, UserRound, Tags, Ticket, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
+import { sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -297,24 +298,26 @@ function ShiftControlsWorkspace({
     const shifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
       ? adminLocationMonitorState.terminalShifts
       : [];
-    return new Map(shifts.map((shift) => [String(shift?.terminal_id || '').trim(), shift]));
+    return new Map(shifts.map((shift) => [sanitizeTerminalId(shift?.terminal_id), shift]));
   }, [adminLocationMonitorState, terminalAvailabilityReady]);
-  const currentTerminalId = String(activeTerminalId || '').trim();
+  const currentTerminalId = sanitizeTerminalId(activeTerminalId);
   const currentTerminalMatches = locationTerminals.some(
-    (entry) => String(entry?.terminal_id || '').trim() === currentTerminalId
+    (entry) => sanitizeTerminalId(entry?.terminal_id) === currentTerminalId
   );
   const requestedTerminalMatches = locationTerminals.some(
-    (entry) => String(entry?.terminal_id || '').trim() === requestedAdminTerminalId
+    (entry) => sanitizeTerminalId(entry?.terminal_id) === sanitizeTerminalId(requestedAdminTerminalId)
   );
   const selectedAdminTerminalId = requestedTerminalMatches
     ? requestedAdminTerminalId
     : (currentTerminalMatches ? currentTerminalId : '');
   const activeTerminalRegistryEntry = activeTerminals.find(
-    (entry) => String(entry?.terminal_id || '').trim() === String(activeTerminalId || '').trim()
+    (entry) => (
+      sanitizeTerminalId(entry?.terminal_id) === currentTerminalId
+      && Number(entry?.location_id || 0) === Number(operatingLocationId || 0)
+    )
   );
   const activeTerminalMatchesOperatingLocation = !canAdminBypassShiftPrompt || Boolean(
     activeTerminalRegistryEntry
-    && Number(activeTerminalRegistryEntry?.location_id || 0) === Number(operatingLocationId || 0)
   );
   const selectedTerminalShift = openTerminalShiftById.get(String(selectedAdminTerminalId || '').trim()) || null;
   const selectedTerminalShiftOwnedByCurrentUser = isShiftOwnedByUserId(
@@ -657,7 +660,7 @@ function ShiftControlsWorkspace({
                 placeholder="Select an available terminal"
                 listboxLabel="Branch Terminal options"
                 options={locationTerminals.map((entry) => {
-                  const terminalId = String(entry?.terminal_id || '').trim();
+                  const terminalId = sanitizeTerminalId(entry?.terminal_id);
                   const occupiedShift = openTerminalShiftById.get(terminalId);
                   const ownedByCurrentUser = isShiftOwnedByUserId(occupiedShift, operatorUserId);
                   const cashier = occupiedShift?.cashier?.username
@@ -817,10 +820,13 @@ function ShiftControlsWorkspace({
               const locationId = Number(location?.location_id || 0);
               const terminals = Array.isArray(location?.terminals) ? location.terminals : [];
               const firstAvailableTerminal = terminals.find((terminal) => terminal?.can_open === true);
-              const activeTerminalKey = String(activeTerminalId || '').trim().toUpperCase();
-              const firstAvailableTerminalKey = String(firstAvailableTerminal?.terminal_id || '').trim().toUpperCase();
+              const activeTerminalKey = sanitizeTerminalId(activeTerminalId);
+              const firstAvailableTerminalKey = sanitizeTerminalId(firstAvailableTerminal?.terminal_id);
               const canUseCurrentTerminal = Boolean(
-                firstAvailableTerminalKey && activeTerminalKey && firstAvailableTerminalKey === activeTerminalKey
+                firstAvailableTerminalKey
+                && activeTerminalKey
+                && firstAvailableTerminalKey === activeTerminalKey
+                && Number(activeTerminalRegistryEntry?.location_id || 0) === locationId
               );
               const isViewing = Number(branchViewLocationId || 0) === locationId;
               return (
