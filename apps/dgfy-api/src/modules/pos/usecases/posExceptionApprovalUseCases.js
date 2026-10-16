@@ -240,6 +240,7 @@ export const buildDecidePosExceptionApprovalUseCase = ({
                         : `pos-void-approval:${normalizedId}`,
                     terminal_id: payload.terminal_id || undefined,
                     terminal_location_id: payload.location_id || undefined,
+                    auto_refund: payload.auto_refund === true,
                     expected_status: payload.expected_status || undefined,
                     expected_server_version: payload.expected_server_version || undefined,
                     voided_lines: Array.isArray(payload.voided_lines) ? payload.voided_lines : undefined

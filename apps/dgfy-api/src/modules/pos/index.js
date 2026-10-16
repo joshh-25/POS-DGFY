@@ -387,11 +387,13 @@ export const exportPosReportsUseCase = buildExportPosReportsUseCase({
 export const exportProcurementCsvUseCase = buildExportProcurementCsvUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
+export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService,
-    publishCatalogChange
+    publishCatalogChange,
+    cashRefundPosTransactionUseCase
 });
 export const returnPosTransactionUseCase = buildReturnPosTransactionUseCase({ posRepository });
 export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApprovalUseCase({
@@ -401,7 +403,6 @@ export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApproval
     publishCatalogChange
 });
 export const listPosExceptionApprovalsUseCase = buildListPosExceptionApprovalsUseCase({ posRepository });
-export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
 export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
 export const providerRefundPosTransactionUseCase = buildProviderRefundPosTransactionUseCase({

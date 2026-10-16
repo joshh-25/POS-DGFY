@@ -1382,6 +1382,10 @@ export const voidTransaction = async (req, res, next) => {
                 data: result.data,
                 message: result.data?.pending
                     ? 'POS void request submitted for manager approval'
+                    : result.data?.cash_refund?.completed
+                        ? 'POS transaction voided and cash refund recorded'
+                        : result.data?.refund_pending
+                            ? 'POS transaction voided; cash refund remains pending'
                     : 'POS transaction voided',
                 timestamp: timestamp()
             }),
