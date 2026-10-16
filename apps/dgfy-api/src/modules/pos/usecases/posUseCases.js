@@ -6298,7 +6298,13 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, employeeCreditService, publishCatalogChange = null }) => {
+export const buildVoidPosTransactionUseCase = ({
+    posRepository,
+    inventoryCommandService,
+    employeeCreditService,
+    publishCatalogChange = null,
+    cashRefundPosTransactionUseCase = null
+}) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
@@ -6321,6 +6327,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const activeTerminalId = sanitizeTerminalId(payload.terminal_id) || null;
         const terminalLocationId = parsePositiveInt(payload.terminal_location_id);
         const requestedVoidIdempotencyKey = String(payload.idempotency_key || '').trim();
+        const autoRefundRequested = payload.auto_refund === true;
         const refundPasscode = String(payload.refund_passcode || '').trim();
         const requestedVoidedLines = Array.isArray(payload.voided_lines) ? payload.voided_lines : [];
         const isItemVoidRequest = requestedVoidedLines.length > 0;
@@ -6391,6 +6398,113 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     { statusCode: 404 }
                 );
             }
+
+            const maybeRecordAutomaticCashRefund = async ({
+                financialOutcome,
+                itemVoidAdjustmentId = null,
+                requestHash = ''
+            } = {}) => {
+                const isAutomaticCashRefundEligible = autoRefundRequested
+                    && financialOutcome?.refund_required === true
+                    && financialOutcome?.next_action === 'record_cash_refund_with_cash_drawer_event';
+                if (!isAutomaticCashRefundEligible) return null;
+
+                if (!activeShiftId) {
+                    return {
+                        status: 'pending',
+                        reason_code: 'POS_REFUND_SHIFT_REQUIRED'
+                    };
+                }
+                if (!hasEffectivePermission(user, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER)) {
+                    return {
+                        status: 'pending',
+                        reason_code: 'POS_REFUND_CASH_DRAWER_PERMISSION_REQUIRED'
+                    };
+                }
+                if (typeof cashRefundPosTransactionUseCase !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Automatic cash refund is unavailable',
+                        { statusCode: 503, details: { reason_code: 'POS_AUTO_CASH_REFUND_UNAVAILABLE' } }
+                    );
+                }
+
+                const refundResult = await cashRefundPosTransactionUseCase({
+                    posTransactionId: normalizedTransactionId,
+                    payload: {
+                        shift_id: activeShiftId,
+                        terminal_id: activeTerminalId || existing.terminal_id || undefined,
+                        terminal_location_id: terminalLocationId || transactionLocationId || undefined,
+                        reason,
+                        idempotency_key: `pos-auto-cash-refund:${normalizedTransactionId}:${String(requestHash).slice(0, 32)}`,
+                        ...(itemVoidAdjustmentId ? { item_void_adjustment_id: itemVoidAdjustmentId } : {})
+                    },
+                    user,
+                    transaction
+                });
+                if (!refundResult?.success) {
+                    throw refundResult?.error || new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Automatic cash refund could not be recorded',
+                        { statusCode: 409, details: { reason_code: 'POS_AUTO_CASH_REFUND_FAILED' } }
+                    );
+                }
+                return {
+                    status: 'completed',
+                    data: refundResult.data
+                };
+            };
+
+            const buildAutomaticCashRefundResponse = (automaticCashRefund, fallbackOutcome) => {
+                if (automaticCashRefund?.status === 'completed') {
+                    return {
+                        cash_refund: {
+                            completed: true,
+                            idempotent_replay: automaticCashRefund.data?.idempotent_replay === true,
+                            adjustment: toSerializable(automaticCashRefund.data?.adjustment),
+                            cash_drawer_event: toSerializable(automaticCashRefund.data?.cash_drawer_event)
+                        },
+                        financial_outcome: automaticCashRefund.data?.financial_outcome || fallbackOutcome
+                    };
+                }
+                if (automaticCashRefund?.status === 'pending') {
+                    return {
+                        refund_pending: true,
+                        refund_pending_reason: automaticCashRefund.reason_code,
+                        financial_outcome: fallbackOutcome
+                    };
+                }
+                return { financial_outcome: fallbackOutcome };
+            };
+
+            const buildCompletedCashRefundOutcome = (amount) => ({
+                internal_void: 'succeeded',
+                refund_required: false,
+                refund_state: 'completed',
+                refund_method: 'cash',
+                tender_ownership: 'merchant_owned',
+                next_action: 'none',
+                reason_code: 'CASH_REFUND_COMPLETED',
+                refund_amount: round4(amount),
+                currency: 'PHP'
+            });
+
+            const findCompletedCashRefund = async (itemVoidAdjustmentId = null) => {
+                if (typeof posRepository.listPosTransactionAdjustmentsForTransaction !== 'function') return null;
+                const adjustments = await posRepository.listPosTransactionAdjustmentsForTransaction(
+                    normalizedTransactionId,
+                    { transaction, lock: true }
+                );
+                return (Array.isArray(adjustments) ? adjustments : []).find((adjustment) => {
+                    if (adjustment?.adjustment_type !== 'cash_refund' || adjustment?.status !== 'succeeded') return false;
+                    const metadata = adjustment?.metadata && typeof adjustment.metadata === 'object'
+                        ? adjustment.metadata
+                        : {};
+                    return itemVoidAdjustmentId
+                        ? String(metadata.item_void_adjustment_id || '') === String(itemVoidAdjustmentId)
+                        : !metadata.item_void_adjustment_id;
+                }) || null;
+            };
 
             let normalizedItemVoidLines = null;
             let itemVoidAmount = null;
@@ -6557,6 +6671,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     expected_status: expectedStatus || String(existing.status || '').trim().toLowerCase() || null,
                     expected_server_version: expectedServerVersion || currentServerVersion,
                     reason,
+                    auto_refund: autoRefundRequested,
                     requested_by: actorUserId
                 };
                 const approvalPayloadHash = hashPayload(approvalPayload);
@@ -6656,13 +6771,40 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                             { statusCode: 409 }
                         );
                     }
+                    let automaticCashRefund = null;
+                    if (autoRefundRequested && financialOutcome?.next_action === 'record_cash_refund_with_cash_drawer_event') {
+                        const completedCashRefund = await findCompletedCashRefund();
+                        if (completedCashRefund) {
+                            const replayedTransaction = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                            const cashDrawerEvent = completedCashRefund.cash_drawer_event_id
+                                && typeof posRepository.getCashDrawerEventById === 'function'
+                                ? await posRepository.getCashDrawerEventById(completedCashRefund.cash_drawer_event_id, { transaction })
+                                : null;
+                            automaticCashRefund = {
+                                status: 'completed',
+                                data: {
+                                    idempotent_replay: true,
+                                    transaction: replayedTransaction,
+                                    adjustment: completedCashRefund,
+                                    cash_drawer_event: cashDrawerEvent,
+                                    financial_outcome: completedCashRefund?.metadata?.financial_outcome
+                                        || buildCompletedCashRefundOutcome(completedCashRefund.amount)
+                                }
+                            };
+                        } else {
+                            automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                                financialOutcome,
+                                requestHash: voidAdjustmentRequestHash
+                            });
+                        }
+                    }
                     if (ownsTransaction) await transaction.commit();
                     return ok({
-                        transaction: toSerializable(existing),
+                        transaction: toSerializable(automaticCashRefund?.data?.transaction || existing),
                         stock_reversals: [],
                         authorization_mode: authorizationMode,
                         transaction_shift_id: transactionShiftId,
-                        financial_outcome: financialOutcome,
+                        ...buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome),
                         idempotent_replay: true,
                         replay_outcome: 'idempotent_replay'
                     });
@@ -6754,7 +6896,36 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                             { statusCode: 409 }
                         );
                     }
-                    const replayedTransaction = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                    let automaticCashRefund = null;
+                    if (autoRefundRequested && financialOutcome?.next_action === 'record_cash_refund_with_cash_drawer_event') {
+                        const completedCashRefund = await findCompletedCashRefund(existingItemVoidAdjustment.pos_transaction_adjustment_id);
+                        if (completedCashRefund) {
+                            const replayedTransaction = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                            const cashDrawerEvent = completedCashRefund.cash_drawer_event_id
+                                && typeof posRepository.getCashDrawerEventById === 'function'
+                                ? await posRepository.getCashDrawerEventById(completedCashRefund.cash_drawer_event_id, { transaction })
+                                : null;
+                            automaticCashRefund = {
+                                status: 'completed',
+                                data: {
+                                    idempotent_replay: true,
+                                    transaction: replayedTransaction,
+                                    adjustment: completedCashRefund,
+                                    cash_drawer_event: cashDrawerEvent,
+                                    financial_outcome: completedCashRefund?.metadata?.financial_outcome
+                                        || buildCompletedCashRefundOutcome(completedCashRefund.amount)
+                                }
+                            };
+                        } else {
+                            automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                                financialOutcome,
+                                itemVoidAdjustmentId: existingItemVoidAdjustment.pos_transaction_adjustment_id,
+                                requestHash: itemVoidAdjustmentRequestHash
+                            });
+                        }
+                    }
+                    const replayedTransaction = automaticCashRefund?.data?.transaction
+                        || await posRepository.getTransactionById(normalizedTransactionId, { transaction });
                     if (ownsTransaction) await transaction.commit();
                     return ok({
                         transaction: toSerializable(replayedTransaction),
@@ -6763,7 +6934,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                         stock_reversals: [],
                         authorization_mode: authorizationMode,
                         transaction_shift_id: transactionShiftId,
-                        financial_outcome: financialOutcome,
+                        ...buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome),
                         item_voided: true,
                         idempotent_replay: true,
                         replay_outcome: 'idempotent_replay'
@@ -7046,7 +7217,14 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     }
                 }, { transaction });
 
-                const updated = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                const automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                    financialOutcome,
+                    itemVoidAdjustmentId: voidAdjustment.pos_transaction_adjustment_id,
+                    requestHash: itemVoidAdjustmentRequestHash
+                });
+                const updated = automaticCashRefund?.data?.transaction
+                    || await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                const automaticCashRefundResponse = buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome);
                 const afterItemVoidCommit = async () => {
                     await publishPosStockChange({
                         publishCatalogChange,
@@ -7069,7 +7247,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     stock_reversals: stockReversals,
                     authorization_mode: authorizationMode,
                     transaction_shift_id: transactionShiftId,
-                    financial_outcome: financialOutcome,
+                    ...automaticCashRefundResponse,
                     item_voided: true,
                     idempotent_replay: false
                 });
@@ -7331,6 +7509,13 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 }
             }, { transaction });
 
+            const automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                financialOutcome,
+                requestHash: voidAdjustmentRequestHash
+            });
+            const responseTransaction = automaticCashRefund?.data?.transaction || updated;
+            const automaticCashRefundResponse = buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome);
+
             const afterVoidCommit = async () => {
                 await publishPosStockChange({
                     publishCatalogChange,
@@ -7359,11 +7544,11 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             }
 
             return ok({
-                transaction: toSerializable(updated),
+                transaction: toSerializable(responseTransaction),
                 stock_reversals: stockReversals,
                 authorization_mode: authorizationMode,
                 transaction_shift_id: transactionShiftId,
-                financial_outcome: financialOutcome
+                ...automaticCashRefundResponse
             });
         } catch (error) {
             if (ownsTransaction && !transaction.finished) {
