@@ -5118,6 +5118,18 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 /* This selector intentionally outranks the text-size table-button rule so
    the square contract remains true at every POS text-size setting. */
 
+/* The Items secondary navigation may scroll horizontally on narrow screens,
+   but it should never expose a vertical scrollbar inside the tab row. */
+.pos-items-mobile-tab-strip {
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pos-items-mobile-tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
 @media (max-width: 767.98px) {
 
 
