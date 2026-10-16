@@ -54,7 +54,7 @@ import {
     buildLineStockPolicySubject
 } from '../../shared/utils/onlineInventoryEffects.js';
 import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
-import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
+import { dispatchDgfyOrderSmsAlert, getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
@@ -75,7 +75,16 @@ import {
 import { calculatePosItemDiscounts } from '../domain/posItemDiscountCalculator.js';
 import { resolvePosItemDiscount } from '../domain/posItemDiscountPolicy.js';
 import { resolvePosVoidFinancialOutcome } from '../domain/posVoidFinancialOutcome.js';
+import {
+    buildPosItemVoidFinancialOutcome,
+    buildPosItemVoidTransactionUpdate,
+    isPosItemVoidAdjustment,
+    normalizePosItemVoidLines,
+    roundPosItemVoidAmount
+} from '../domain/posItemVoid.js';
+import { buildAdjustmentEvidenceDocument, buildFiscalReceiptEvidence, buildReadingEvidencePayload, validateFiscalDocumentSnapshot } from '../domain/fiscalEvidenceContract.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
+import { verifyPosRefundPasscode } from '../domain/posRefundPasscodePolicy.js';
 import { verifyPosDayCloseOperator } from '../domain/posDayClosePinPolicy.js';
 import { authorizePosShiftMutation } from '../domain/posShiftAuthorizationPolicy.js';
 import {
@@ -738,6 +747,10 @@ const toPublicPosTransactionAdjustment = (value) => {
         cancelled_at: serialized.cancelled_at || null,
         created_at: serialized.created_at || null,
         updated_at: serialized.updated_at || null,
+         evidence_scope: metadata.evidence_scope || null,
+         item_voided: metadata.item_voided === true,
+         item_void_adjustment_id: metadata.item_void_adjustment_id || null,
+         voided_lines: Array.isArray(metadata.voided_lines) ? metadata.voided_lines : [],
         financial_outcome: metadata.financial_outcome || null
     };
 };
@@ -1132,7 +1145,9 @@ export const buildExportPosReportsUseCase = ({
             ['VAT Sales', summary.vatable_sales || 0],
             ['VAT', summary.vat || 0],
             ['Net Sales', summary.net_sales || 0],
-            ['Transactions', summary.total_transactions || 0],
+            ['Recorded Transactions', summary.total_transactions || 0],
+            ['Completed Sales', summary.completed_transactions ?? summary.total_transactions ?? 0],
+            ['Voided/Refunded', summary.voided_refunded_transactions || 0],
             [],
             ['Discount', 'Type', 'Transactions', 'Discount Total', 'VAT Removed'],
             ...discountRows.map((row) => [row.discount_label, row.discount_type, row.transaction_count, row.discount_amount, row.vat_removed]),
@@ -1261,8 +1276,11 @@ const normalizeZReadingSummary = (summary = {}) => ({
     discount_item_count: round4(summary?.discount_item_count),
     total_cost: round4(summary?.total_cost),
     void_transaction_count: Number.parseInt(summary?.void_transaction_count || 0, 10),
+    transaction_void_amount: round4(summary?.transaction_void_amount),
+    item_void_amount: round4(summary?.item_void_amount),
     void_amount: round4(summary?.void_amount),
     voided_item_count: round4(summary?.voided_item_count),
+    item_voided_item_count: round4(summary?.item_voided_item_count),
     post_close_void_transaction_count: Number.parseInt(summary?.post_close_void_transaction_count || 0, 10),
     post_close_void_amount: round4(summary?.post_close_void_amount),
     post_close_voided_item_count: round4(summary?.post_close_voided_item_count),
@@ -1280,8 +1298,11 @@ const normalizeZReadingSummary = (summary = {}) => ({
             discount_item_count: round4(entry?.discount_item_count),
             total_cost: round4(entry?.total_cost),
             void_transaction_count: Number.parseInt(entry?.void_transaction_count || 0, 10),
+            transaction_void_amount: round4(entry?.transaction_void_amount),
+            item_void_amount: round4(entry?.item_void_amount),
             void_amount: round4(entry?.void_amount),
             voided_item_count: round4(entry?.voided_item_count),
+            item_voided_item_count: round4(entry?.item_voided_item_count),
             refund_amount: round4(entry?.refund_amount),
             refunded_item_count: round4(entry?.refunded_item_count),
             provider_refunds_included: entry?.provider_refunds_included === true,
@@ -1306,6 +1327,17 @@ const normalizeZReadingSummary = (summary = {}) => ({
             order_method: entry?.order_method || null,
             count: Number.parseInt(entry?.count || 0, 10),
             amount: round4(entry?.amount)
+        }))
+        : [],
+    order_source_breakdown: Array.isArray(summary?.order_source_breakdown)
+        ? summary.order_source_breakdown.map((entry) => ({
+            order_source: String(entry?.order_source || '').trim().toLowerCase() === 'online_store'
+                ? 'online_store'
+                : 'in_store',
+            source_label: String(entry?.source_label || '').trim()
+                || (String(entry?.order_source || '').trim().toLowerCase() === 'online_store' ? 'Online Sales' : 'Walk-in Sales'),
+            count: Number.parseInt(entry?.count || entry?.total_transactions || 0, 10),
+            amount: round4(entry?.amount ?? entry?.net_sales)
         }))
         : []
 });
@@ -1346,6 +1378,23 @@ const buildPersistedZReadingData = ({
     const zCounterValue = Number.parseInt(snapshot?.z_counter_value || 0, 10);
     const resetCounterValue = Number.parseInt(snapshot?.reset_counter_value || 0, 10);
     const lifetimeGrandTotalCents = Number.parseInt(snapshot?.lifetime_grand_total_cents || 0, 10);
+    const readingEvidence = buildReadingEvidencePayload({
+        readingType: 'Z',
+        businessDate,
+        locationId: parsePositiveInt(snapshot?.location_id) || parsePositiveInt(locationId) || null,
+        terminalId: String(snapshot?.closed_from_terminal_id || '').trim() || null,
+        readingIdentifier: snapshot?.reading_identifier || null,
+        generatedAt: snapshot?.generated_at || snapshot?.created_at || null,
+        summary: normalizedSummary,
+        counters: {
+            z_counter: zCounterValue,
+            reset_counter: resetCounterValue,
+            lifetime_grand_total_cents: lifetimeGrandTotalCents
+        },
+        reconciliation: null,
+        snapshotPersisted: true
+    });
+    readingEvidence.reconciliation = reconciliation || null;
 
     return {
         business_date: businessDate,
@@ -1361,6 +1410,8 @@ const buildPersistedZReadingData = ({
         closed_by_user_id: parsePositiveInt(snapshot?.closed_by_user_id),
         closed_from_terminal_id: String(snapshot?.closed_from_terminal_id || '').trim() || null,
         day_close_pin_confirmed_at: snapshot?.day_close_pin_confirmed_at || null,
+        reading_payload_hash: snapshot?.reading_payload_hash || readingEvidence.payload_hash,
+        reading_evidence: readingEvidence,
         counters: {
             z_counter: zCounterValue,
             reset_counter: resetCounterValue,
@@ -3591,9 +3642,15 @@ const buildFiscalDocumentSnapshot = ({
     buyer,
     lines,
     totals,
-    paymentType
+    paymentType,
+    paymentBreakdown = [],
+    discount = {},
+    charges = {},
+    issuedAt = new Date()
 }) => ({
     template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION,
+    source_timezone: 'Asia/Manila',
+    issued_at: issuedAt instanceof Date ? issuedAt.toISOString() : String(issuedAt || ''),
     document: {
         invoice_number: invoiceNumber,
         document_type: receiptContract.document_type,
@@ -3638,6 +3695,23 @@ const buildFiscalDocumentSnapshot = ({
         restaurant_service_charge_amount: totals.restaurantServiceChargeAmount,
         total_amount: totals.totalAmount,
         payment_type: paymentType
+    },
+    payment_breakdown: Array.isArray(paymentBreakdown) ? paymentBreakdown : [],
+    discount: {
+        amount: discount.amount ?? totals.discountAmount ?? 0,
+        label: discount.label || null,
+        rate: discount.rate ?? null,
+        beneficiaries: Array.isArray(discount.beneficiaries) ? discount.beneficiaries : []
+    },
+    charges: {
+        service_fee_amount: charges.service_fee_amount ?? totals.serviceFeeAmount ?? 0,
+        service_fee_label: charges.service_fee_label || null,
+        restaurant_service_charge_amount: charges.restaurant_service_charge_amount
+            ?? totals.restaurantServiceChargeAmount
+            ?? 0,
+        restaurant_service_charge_label: charges.restaurant_service_charge_label || null,
+        restaurant_service_charge_rate: charges.restaurant_service_charge_rate ?? null,
+        restaurant_service_charge_taxable: charges.restaurant_service_charge_taxable === true
     },
     lines: lines.map((line, index) => ({
         sequence: index + 1,
@@ -5526,6 +5600,7 @@ export const buildCheckoutPosUseCase = ({
             const resolvedFnbTableLabel = fnbTableSnapshot
                 ? String(fnbTableSnapshot.label || fnbTableSnapshot.table_number || '').trim().slice(0, 120) || fnbTableLabelSnapshot
                 : fnbTableLabelSnapshot;
+            const fiscalDocumentIssuedAt = new Date();
             const fiscalDocumentSnapshot = isFiscalReceipt
                 ? buildFiscalDocumentSnapshot({
                     invoiceNumber,
@@ -5545,9 +5620,44 @@ export const buildCheckoutPosUseCase = ({
                         restaurantServiceChargeAmount,
                         totalAmount
                     },
-                    paymentType: payload.payment_type || 'cash'
+                    paymentType: payload.payment_type || 'cash',
+                    paymentBreakdown,
+                    discount: {
+                        amount: discountAmount,
+                        label: [
+                            itemDiscountAmount > 0 ? 'Item Discount' : null,
+                            globalDiscountAmount > 0 ? globalDiscountResolution.discountLabelSnapshot : null
+                        ].filter(Boolean).join(' + ') || null,
+                        rate: globalDiscountResolution.discountRateSnapshot,
+                        beneficiaries: discountBeneficiaries
+                    },
+                    charges: {
+                        service_fee_amount: serviceFeeAmount,
+                        service_fee_label: serviceFeeResolution.serviceFeeLabelSnapshot,
+                        restaurant_service_charge_amount: restaurantServiceChargeAmount,
+                        restaurant_service_charge_label: restaurantServiceChargeResolution.restaurantServiceChargeLabelSnapshot,
+                        restaurant_service_charge_rate: restaurantServiceChargeResolution.restaurantServiceChargeRateSnapshot,
+                        restaurant_service_charge_taxable: restaurantServiceChargeResolution.restaurantServiceChargeTaxable
+                    },
+                    issuedAt: fiscalDocumentIssuedAt
                 })
                 : null;
+            if (fiscalDocumentSnapshot) {
+                const snapshotValidation = validateFiscalDocumentSnapshot(fiscalDocumentSnapshot);
+                if (!snapshotValidation.valid) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Fiscal document snapshot is incomplete',
+                        {
+                            statusCode: 422,
+                            details: {
+                                reason_code: 'FISCAL_DOCUMENT_SNAPSHOT_INCOMPLETE',
+                                missing_fields: snapshotValidation.missing_fields
+                            }
+                        }
+                    );
+                }
+            }
             const fiscalDocumentHash = fiscalDocumentSnapshot ? hashPayload(fiscalDocumentSnapshot) : null;
 
             const posTransactionId = await posRepository.createTransactionWithLines({
@@ -5829,7 +5939,19 @@ export const buildCheckoutPosUseCase = ({
                     payload: {
                         receipt_contract: resolvedReceiptContract,
                         fiscal_document_hash: fiscalDocumentHash,
-                        fiscal_document_template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION
+                        fiscal_document_template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION,
+                        evidence_contract_version: buildFiscalReceiptEvidence({
+                            transaction: {
+                                pos_transaction_id: posTransactionId,
+                                invoice_number: invoiceNumber,
+                                document_type: resolvedReceiptContract.document_type,
+                                document_context: resolvedReceiptContract.document_context,
+                                fiscal_document_hash: fiscalDocumentHash,
+                                fiscal_document_snapshot: fiscalDocumentSnapshot,
+                                terminal_id: normalizedTerminalId || fiscalTerminalRegistration?.terminal_id || null,
+                                location_id: enforcedCheckoutLocationId
+                            }
+                        }).contract_version
                     },
                     actor_user_id: normalizedUserId
                 }, { transaction });
@@ -6061,6 +6183,7 @@ export const buildCheckoutPosUseCase = ({
                 compliance_decision: complianceDecision,
                 terminal_identity_policy: terminalPolicyContext,
                 receipt_contract: resolvedReceiptContract,
+                fiscal_evidence: buildFiscalReceiptEvidence({ transaction: created }),
                 transaction: toSerializable(created)
             });
         } catch (error) {
@@ -6093,6 +6216,21 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
                     DomainErrorCode.VALIDATION_FAILED,
                     'Fiscal print evidence can only be recorded for fiscal invoices',
                     { statusCode: 422 }
+                );
+            }
+            const fiscalEvidence = buildFiscalReceiptEvidence({ transaction: existing });
+            if (fiscalEvidence.snapshot_integrity !== 'verified') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Fiscal print evidence requires an intact server-owned document snapshot',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'FISCAL_DOCUMENT_SNAPSHOT_UNVERIFIED',
+                            snapshot_integrity: fiscalEvidence.snapshot_integrity,
+                            snapshot_validation: fiscalEvidence.snapshot_validation
+                        }
+                    }
                 );
             }
 
@@ -6130,7 +6268,10 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
                         print_type: printType,
                         print_sequence: printSequence,
                         reason,
-                        fiscal_document_hash: existing.fiscal_document_hash || null
+                        fiscal_document_hash: existing.fiscal_document_hash || null,
+                        source_snapshot_hash: fiscalEvidence.snapshot_hash,
+                        snapshot_integrity: fiscalEvidence.snapshot_integrity,
+                        evidence_contract_version: fiscalEvidence.contract_version
                     },
                     actor_user_id: actorUserId
                 }, { transaction })
@@ -6145,7 +6286,8 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
             return ok({
                 ...toSerializable(printEvent),
                 print_type: printType,
-                fiscal_event_hash: fiscalEvent?.event_hash || null
+                fiscal_event_hash: fiscalEvent?.event_hash || null,
+                fiscal_evidence: fiscalEvidence
             });
         } catch (error) {
             if (!transaction.finished) {
@@ -6156,7 +6298,13 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, employeeCreditService, publishCatalogChange = null }) => {
+export const buildVoidPosTransactionUseCase = ({
+    posRepository,
+    inventoryCommandService,
+    employeeCreditService,
+    publishCatalogChange = null,
+    cashRefundPosTransactionUseCase = null
+}) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
@@ -6179,6 +6327,10 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const activeTerminalId = sanitizeTerminalId(payload.terminal_id) || null;
         const terminalLocationId = parsePositiveInt(payload.terminal_location_id);
         const requestedVoidIdempotencyKey = String(payload.idempotency_key || '').trim();
+        const autoRefundRequested = payload.auto_refund === true;
+        const refundPasscode = String(payload.refund_passcode || '').trim();
+        const requestedVoidedLines = Array.isArray(payload.voided_lines) ? payload.voided_lines : [];
+        const isItemVoidRequest = requestedVoidedLines.length > 0;
         const expectedStatus = String(payload.expected_status || '').trim().toLowerCase() || null;
         const expectedServerVersion = String(payload.expected_server_version || '').trim() || null;
         const adminApprovalBypass = isPosAdminOperator(user);
@@ -6247,6 +6399,165 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 );
             }
 
+            const maybeRecordAutomaticCashRefund = async ({
+                financialOutcome,
+                itemVoidAdjustmentId = null,
+                requestHash = ''
+            } = {}) => {
+                const isAutomaticCashRefundEligible = autoRefundRequested
+                    && financialOutcome?.refund_required === true
+                    && financialOutcome?.next_action === 'record_cash_refund_with_cash_drawer_event';
+                if (!isAutomaticCashRefundEligible) return null;
+
+                if (!activeShiftId) {
+                    return {
+                        status: 'pending',
+                        reason_code: 'POS_REFUND_SHIFT_REQUIRED'
+                    };
+                }
+                if (!hasEffectivePermission(user, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER)) {
+                    return {
+                        status: 'pending',
+                        reason_code: 'POS_REFUND_CASH_DRAWER_PERMISSION_REQUIRED'
+                    };
+                }
+                if (typeof cashRefundPosTransactionUseCase !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Automatic cash refund is unavailable',
+                        { statusCode: 503, details: { reason_code: 'POS_AUTO_CASH_REFUND_UNAVAILABLE' } }
+                    );
+                }
+
+                const refundResult = await cashRefundPosTransactionUseCase({
+                    posTransactionId: normalizedTransactionId,
+                    payload: {
+                        shift_id: activeShiftId,
+                        terminal_id: activeTerminalId || existing.terminal_id || undefined,
+                        terminal_location_id: terminalLocationId || transactionLocationId || undefined,
+                        reason,
+                        idempotency_key: `pos-auto-cash-refund:${normalizedTransactionId}:${String(requestHash).slice(0, 32)}`,
+                        ...(itemVoidAdjustmentId ? { item_void_adjustment_id: itemVoidAdjustmentId } : {})
+                    },
+                    user,
+                    transaction
+                });
+                if (!refundResult?.success) {
+                    throw refundResult?.error || new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Automatic cash refund could not be recorded',
+                        { statusCode: 409, details: { reason_code: 'POS_AUTO_CASH_REFUND_FAILED' } }
+                    );
+                }
+                return {
+                    status: 'completed',
+                    data: refundResult.data
+                };
+            };
+
+            const buildAutomaticCashRefundResponse = (automaticCashRefund, fallbackOutcome) => {
+                if (automaticCashRefund?.status === 'completed') {
+                    return {
+                        cash_refund: {
+                            completed: true,
+                            idempotent_replay: automaticCashRefund.data?.idempotent_replay === true,
+                            adjustment: toSerializable(automaticCashRefund.data?.adjustment),
+                            cash_drawer_event: toSerializable(automaticCashRefund.data?.cash_drawer_event)
+                        },
+                        financial_outcome: automaticCashRefund.data?.financial_outcome || fallbackOutcome
+                    };
+                }
+                if (automaticCashRefund?.status === 'pending') {
+                    return {
+                        refund_pending: true,
+                        refund_pending_reason: automaticCashRefund.reason_code,
+                        financial_outcome: fallbackOutcome
+                    };
+                }
+                return { financial_outcome: fallbackOutcome };
+            };
+
+            const buildCompletedCashRefundOutcome = (amount) => ({
+                internal_void: 'succeeded',
+                refund_required: false,
+                refund_state: 'completed',
+                refund_method: 'cash',
+                tender_ownership: 'merchant_owned',
+                next_action: 'none',
+                reason_code: 'CASH_REFUND_COMPLETED',
+                refund_amount: round4(amount),
+                currency: 'PHP'
+            });
+
+            const findCompletedCashRefund = async (itemVoidAdjustmentId = null) => {
+                if (typeof posRepository.listPosTransactionAdjustmentsForTransaction !== 'function') return null;
+                const adjustments = await posRepository.listPosTransactionAdjustmentsForTransaction(
+                    normalizedTransactionId,
+                    { transaction, lock: true }
+                );
+                return (Array.isArray(adjustments) ? adjustments : []).find((adjustment) => {
+                    if (adjustment?.adjustment_type !== 'cash_refund' || adjustment?.status !== 'succeeded') return false;
+                    const metadata = adjustment?.metadata && typeof adjustment.metadata === 'object'
+                        ? adjustment.metadata
+                        : {};
+                    return itemVoidAdjustmentId
+                        ? String(metadata.item_void_adjustment_id || '') === String(itemVoidAdjustmentId)
+                        : !metadata.item_void_adjustment_id;
+                }) || null;
+            };
+
+            let normalizedItemVoidLines = null;
+            let itemVoidAmount = null;
+            if (isItemVoidRequest) {
+                if (String(existing.status || '').trim().toLowerCase() === 'voided') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'A voided POS transaction cannot receive an item-level void',
+                        { statusCode: 409, details: { reason_code: 'POS_ITEM_VOID_TRANSACTION_ALREADY_VOIDED' } }
+                    );
+                }
+                const existingPaymentStatus = String(existing.payment_status || '').trim().toLowerCase();
+                if (['refunded', 'refund_pending'].includes(existingPaymentStatus)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Resolve the existing refund before voiding another transaction item',
+                        { statusCode: 409, details: { reason_code: 'POS_ITEM_VOID_REFUND_IN_PROGRESS', payment_status: existingPaymentStatus } }
+                    );
+                }
+                normalizedItemVoidLines = normalizePosItemVoidLines({
+                    requestedLines: requestedVoidedLines,
+                    transactionLines: existing.lines
+                });
+                itemVoidAmount = roundPosItemVoidAmount(
+                    normalizedItemVoidLines.reduce((total, line) => total + Number(line.line_subtotal || 0), 0)
+                );
+                if (itemVoidAmount <= 0) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Selected item void amount must be greater than zero',
+                        { statusCode: 422, details: { reason_code: 'POS_ITEM_VOID_AMOUNT_ZERO' } }
+                    );
+                }
+            }
+
+            let refundPasscodeAuthorization = null;
+            if (refundPasscode) {
+                if (typeof posRepository.listActivePosRefundPasscodeApprovers !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'POS refund passcode authorization is unavailable.',
+                        { statusCode: 503, details: { reason_code: 'POS_REFUND_PASSCODE_AUTHORIZATION_UNAVAILABLE' } }
+                    );
+                }
+                const approvers = await posRepository.listActivePosRefundPasscodeApprovers({ transaction });
+                refundPasscodeAuthorization = await verifyPosRefundPasscode({
+                    approvers,
+                    passcode: refundPasscode
+                });
+            }
+            const refundPasscodeAuthorized = Boolean(refundPasscodeAuthorization?.user_id);
+            const refundPasscodeApproverId = parsePositiveInt(refundPasscodeAuthorization?.user_id);
+
             if (activeShiftId && !trustedMobileReplay && !approvalAuthorized) {
                 await assertOpenShiftForPosMutation({
                     posRepository,
@@ -6276,7 +6587,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 });
             }
             const supersededApprovalRequest = !approvalAuthorized
-                && adminApprovalBypass
+                && (adminApprovalBypass || refundPasscodeAuthorized)
                 && typeof posRepository.findPendingBusinessAdminApprovalRequest === 'function'
                 ? await posRepository.findPendingBusinessAdminApprovalRequest({
                     actionType: 'pos_void',
@@ -6297,7 +6608,9 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     supersededApprovalRequestId,
                     {
                         status: 'cancelled',
-                        approval_note: 'Cancelled because an administrator executed the POS void directly.'
+                        approval_note: refundPasscodeAuthorized && !adminApprovalBypass
+                            ? 'Cancelled because a refund passcode authorized the POS void directly.'
+                            : 'Cancelled because an administrator executed the POS void directly.'
                     },
                     { transaction, lock: true }
                 );
@@ -6312,13 +6625,15 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             const auditShiftId = transactionShiftId || activeShiftId || null;
             const authorizationMode = approvalAuthorized
                 ? 'back_office_approval'
-                : (trustedMobileReplay
-                    ? 'mobile_offline_replay'
-                    : (adminApprovalBypass
-                        ? (adminShiftBypass ? 'admin_shift_bypass' : 'admin_bypass')
-                        : 'cashier_shift'));
+                : (refundPasscodeAuthorized
+                    ? 'refund_passcode'
+                    : (trustedMobileReplay
+                        ? 'mobile_offline_replay'
+                        : (adminApprovalBypass
+                            ? (adminShiftBypass ? 'admin_shift_bypass' : 'admin_bypass')
+                            : 'cashier_shift')));
 
-            if (!approvalAuthorized && !adminApprovalBypass) {
+            if (!approvalAuthorized && !adminApprovalBypass && !refundPasscodeAuthorized) {
                 if (String(existing.status || '').trim().toLowerCase() === 'voided') {
                     throw new DomainError(
                         DomainErrorCode.CONFLICT,
@@ -6337,13 +6652,26 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 const approvalPayload = {
                     transaction_id: normalizedTransactionId,
                     invoice_number: existing.invoice_number || null,
-                    amount: round4(Number(existing.total_amount || 0)),
+                    amount: isItemVoidRequest
+                        ? itemVoidAmount
+                        : round4(Number(existing.total_amount || 0)),
+                    item_void: isItemVoidRequest,
+                    ...(isItemVoidRequest
+                        ? {
+                            voided_lines: normalizedItemVoidLines.map((line) => ({
+                                line_id: line.line_id,
+                                quantity: line.quantity,
+                                line_subtotal: line.line_subtotal
+                            }))
+                        }
+                        : {}),
                     location_id: transactionLocationId,
                     terminal_id: activeTerminalId || existing.terminal_id || null,
                     shift_id: activeShiftId || transactionShiftId || null,
                     expected_status: expectedStatus || String(existing.status || '').trim().toLowerCase() || null,
                     expected_server_version: expectedServerVersion || currentServerVersion,
                     reason,
+                    auto_refund: autoRefundRequested,
                     requested_by: actorUserId
                 };
                 const approvalPayloadHash = hashPayload(approvalPayload);
@@ -6385,10 +6713,14 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     location_id: transactionLocationId,
                     reason,
                     changes: {
-                        event: 'pos_transaction_void_requested',
+                        event: isItemVoidRequest
+                            ? 'pos_transaction_item_void_requested'
+                            : 'pos_transaction_void_requested',
                         approval_request_id: approvalRequest.business_admin_approval_request_id,
                         invoice_number: existing.invoice_number || null,
-                        amount: round4(Number(existing.total_amount || 0)),
+                        amount: approvalPayload.amount,
+                        item_void: isItemVoidRequest,
+                        voided_lines: isItemVoidRequest ? normalizedItemVoidLines : undefined,
                         requested_by: actorUserId,
                         reason,
                         authorization_mode: trustedMobileReplay ? 'mobile_offline_replay' : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift')
@@ -6421,32 +6753,62 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 payment_status: paymentStatusBeforeVoid,
                 amount: round4(Number(existing.total_amount || 0)),
                 authorization_mode: authorizationMode,
+                refund_passcode_approver_id: refundPasscodeApproverId,
                 financial_outcome: financialOutcome
             };
             const voidAdjustmentRequestHash = hashPayload(voidAdjustmentPayload);
-            const existingVoidAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
-                normalizedTransactionId,
-                voidAdjustmentIdempotencyKey,
-                { transaction, lock: true }
-            );
-            if (existingVoidAdjustment) {
-                if (String(existingVoidAdjustment.request_hash || '') !== voidAdjustmentRequestHash) {
-                    throw new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        'POS void evidence already exists for a different request',
-                        { statusCode: 409 }
-                    );
+            if (!isItemVoidRequest) {
+                const existingVoidAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
+                    normalizedTransactionId,
+                    voidAdjustmentIdempotencyKey,
+                    { transaction, lock: true }
+                );
+                if (existingVoidAdjustment) {
+                    if (String(existingVoidAdjustment.request_hash || '') !== voidAdjustmentRequestHash) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'POS void evidence already exists for a different request',
+                            { statusCode: 409 }
+                        );
+                    }
+                    let automaticCashRefund = null;
+                    if (autoRefundRequested && financialOutcome?.next_action === 'record_cash_refund_with_cash_drawer_event') {
+                        const completedCashRefund = await findCompletedCashRefund();
+                        if (completedCashRefund) {
+                            const replayedTransaction = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                            const cashDrawerEvent = completedCashRefund.cash_drawer_event_id
+                                && typeof posRepository.getCashDrawerEventById === 'function'
+                                ? await posRepository.getCashDrawerEventById(completedCashRefund.cash_drawer_event_id, { transaction })
+                                : null;
+                            automaticCashRefund = {
+                                status: 'completed',
+                                data: {
+                                    idempotent_replay: true,
+                                    transaction: replayedTransaction,
+                                    adjustment: completedCashRefund,
+                                    cash_drawer_event: cashDrawerEvent,
+                                    financial_outcome: completedCashRefund?.metadata?.financial_outcome
+                                        || buildCompletedCashRefundOutcome(completedCashRefund.amount)
+                                }
+                            };
+                        } else {
+                            automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                                financialOutcome,
+                                requestHash: voidAdjustmentRequestHash
+                            });
+                        }
+                    }
+                    if (ownsTransaction) await transaction.commit();
+                    return ok({
+                        transaction: toSerializable(automaticCashRefund?.data?.transaction || existing),
+                        stock_reversals: [],
+                        authorization_mode: authorizationMode,
+                        transaction_shift_id: transactionShiftId,
+                        ...buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome),
+                        idempotent_replay: true,
+                        replay_outcome: 'idempotent_replay'
+                    });
                 }
-                if (ownsTransaction) await transaction.commit();
-                return ok({
-                    transaction: toSerializable(existing),
-                    stock_reversals: [],
-                    authorization_mode: authorizationMode,
-                    transaction_shift_id: transactionShiftId,
-                    financial_outcome: financialOutcome,
-                    idempotent_replay: true,
-                    replay_outcome: 'idempotent_replay'
-                });
             }
             if (existing.status === 'voided') {
                 throw new DomainError(
@@ -6471,6 +6833,424 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     'POS transaction changed before the offline void was applied',
                     { statusCode: 409, details: { reason_code: 'MOBILE_VOID_VERSION_CONFLICT', expected_server_version: expectedServerVersion, actual_server_version: actualServerVersion } }
                 );
+            }
+
+            if (isItemVoidRequest) {
+                const originalCashierId = parsePositiveInt(existing.cashier_id);
+                const tenderType = String(existing.payment_type || 'unknown').trim().toLowerCase() || 'unknown';
+                const paymentStatusBeforeVoid = String(existing.payment_status || 'unknown').trim().toLowerCase() || 'unknown';
+                if (tenderType === 'employee_credit' || paymentStatusBeforeVoid === 'employee_credit') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Employee Credit item voids require a dedicated credit reversal workflow',
+                        { statusCode: 409, details: { reason_code: 'POS_ITEM_VOID_EMPLOYEE_CREDIT_UNSUPPORTED' } }
+                    );
+                }
+
+                const financialOutcome = buildPosItemVoidFinancialOutcome(existing, itemVoidAmount);
+                const normalizedLineEvidence = normalizedItemVoidLines.map((line) => ({
+                    line_id: line.line_id,
+                    item_id: line.item_id,
+                    item_name: line.item_name,
+                    original_quantity: line.original_quantity,
+                    previous_voided_quantity: line.previous_voided_quantity,
+                    quantity: line.quantity,
+                    voided_quantity: line.voided_quantity,
+                    remaining_quantity: line.remaining_quantity,
+                    sale_price: line.sale_price,
+                    line_subtotal: line.line_subtotal
+                }));
+                const lineSelectionHash = hashPayload(normalizedLineEvidence);
+                const itemVoidIdempotencyKey = requestedVoidIdempotencyKey
+                    || `pos-item-void:${normalizedTransactionId}:${lineSelectionHash.slice(0, 32)}`;
+                const itemVoidAdjustmentPayload = {
+                    pos_transaction_id: normalizedTransactionId,
+                    reason,
+                    actor_user_id: actorUserId,
+                    actor_shift_id: activeShiftId || null,
+                    actor_terminal_id: activeTerminalId || null,
+                    actor_location_id: terminalLocationId || null,
+                    original_cashier_id: originalCashierId,
+                    original_shift_id: transactionShiftId,
+                    original_terminal_id: existing.terminal_id || null,
+                    original_location_id: transactionLocationId,
+                    tender_type: tenderType,
+                    payment_status: paymentStatusBeforeVoid,
+                    amount: itemVoidAmount,
+                    authorization_mode: authorizationMode,
+                    refund_passcode_approver_id: refundPasscodeApproverId,
+                    voided_lines: normalizedLineEvidence,
+                    financial_outcome: financialOutcome
+                };
+                const itemVoidAdjustmentRequestHash = hashPayload(itemVoidAdjustmentPayload);
+                const existingItemVoidAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
+                    normalizedTransactionId,
+                    itemVoidIdempotencyKey,
+                    { transaction, lock: true }
+                );
+                if (existingItemVoidAdjustment) {
+                    if (String(existingItemVoidAdjustment.request_hash || '') !== itemVoidAdjustmentRequestHash) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'POS item void evidence already exists for a different request',
+                            { statusCode: 409 }
+                        );
+                    }
+                    let automaticCashRefund = null;
+                    if (autoRefundRequested && financialOutcome?.next_action === 'record_cash_refund_with_cash_drawer_event') {
+                        const completedCashRefund = await findCompletedCashRefund(existingItemVoidAdjustment.pos_transaction_adjustment_id);
+                        if (completedCashRefund) {
+                            const replayedTransaction = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                            const cashDrawerEvent = completedCashRefund.cash_drawer_event_id
+                                && typeof posRepository.getCashDrawerEventById === 'function'
+                                ? await posRepository.getCashDrawerEventById(completedCashRefund.cash_drawer_event_id, { transaction })
+                                : null;
+                            automaticCashRefund = {
+                                status: 'completed',
+                                data: {
+                                    idempotent_replay: true,
+                                    transaction: replayedTransaction,
+                                    adjustment: completedCashRefund,
+                                    cash_drawer_event: cashDrawerEvent,
+                                    financial_outcome: completedCashRefund?.metadata?.financial_outcome
+                                        || buildCompletedCashRefundOutcome(completedCashRefund.amount)
+                                }
+                            };
+                        } else {
+                            automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                                financialOutcome,
+                                itemVoidAdjustmentId: existingItemVoidAdjustment.pos_transaction_adjustment_id,
+                                requestHash: itemVoidAdjustmentRequestHash
+                            });
+                        }
+                    }
+                    const replayedTransaction = automaticCashRefund?.data?.transaction
+                        || await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                    if (ownsTransaction) await transaction.commit();
+                    return ok({
+                        transaction: toSerializable(replayedTransaction),
+                        adjustment: existingItemVoidAdjustment,
+                        voided_lines: normalizedLineEvidence,
+                        stock_reversals: [],
+                        authorization_mode: authorizationMode,
+                        transaction_shift_id: transactionShiftId,
+                        ...buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome),
+                        item_voided: true,
+                        idempotent_replay: true,
+                        replay_outcome: 'idempotent_replay'
+                    });
+                }
+
+                const sourceLinesById = new Map((Array.isArray(existing.lines) ? existing.lines : []).map((line) => [
+                    parsePositiveInt(line?.line_id),
+                    toSerializable(line) || line
+                ]));
+                const selectedLines = normalizedItemVoidLines.map((line) => ({
+                    ...(sourceLinesById.get(line.line_id) || {}),
+                    line_id: line.line_id,
+                    quantity: line.quantity,
+                    item_id: line.item_id,
+                    item_name_snapshot: line.item_name,
+                    fnb_modifiers_snapshot: line.fnb_modifiers_snapshot
+                }));
+                const itemMap = new Map(selectedLines.map((line) => [
+                    parsePositiveInt(line.item_id),
+                    line
+                ]).filter(([itemId]) => itemId));
+                const productCompositions = itemMap.size > 0
+                    && typeof posRepository.listProductCompositionsForItems === 'function'
+                    ? await posRepository.listProductCompositionsForItems([...itemMap.keys()], {
+                        transaction,
+                        lock: true,
+                        locationId: transactionLocationId
+                    })
+                    : [];
+                const recipePlan = buildFnbRecipeConsumptionPlan({
+                    lines: selectedLines,
+                    itemMap,
+                    compositions: productCompositions,
+                    locationId: transactionLocationId,
+                    validateAvailability: false
+                });
+                const stockIssuePlan = buildPosInventoryIssuePlan({
+                    preparedLines: selectedLines,
+                    recipeMovementPlanByPreparedLine: recipePlan.movementsByLineIndex,
+                    locationId: transactionLocationId,
+                    referenceType: 'POS',
+                    referenceId: String(normalizedTransactionId),
+                    sourceLabel: `POS item void ${existing.invoice_number || normalizedTransactionId}`
+                });
+                const stockReversals = [];
+                const voidStockChangedItemIds = new Set();
+                if (stockIssuePlan.length > 0) {
+                    if (typeof posRepository.listStockMovementsForPosTransaction !== 'function') {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Stock movement lookup is unavailable for this POS item void',
+                            { statusCode: 503, details: { reason_code: 'POS_ITEM_VOID_STOCK_MOVEMENT_LOOKUP_UNAVAILABLE' } }
+                        );
+                    }
+                    const originalStockMovements = await posRepository.listStockMovementsForPosTransaction(
+                        normalizedTransactionId,
+                        { transaction }
+                    );
+                    const priorItemVoidAdjustments = typeof posRepository.listPosTransactionAdjustmentsForTransaction === 'function'
+                        ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedTransactionId, { transaction, lock: true })
+                        : [];
+                    const previouslyReversedByItem = new Map();
+                    (Array.isArray(priorItemVoidAdjustments) ? priorItemVoidAdjustments : [])
+                        .filter((adjustment) => adjustment?.adjustment_type === 'void')
+                        .forEach((adjustment) => {
+                            const metadata = adjustment?.metadata && typeof adjustment.metadata === 'object'
+                                ? adjustment.metadata
+                                : {};
+                            (Array.isArray(metadata.stock_reversals) ? metadata.stock_reversals : []).forEach((reversal) => {
+                                const key = `${parsePositiveInt(reversal?.item_id) || 0}:${parsePositiveInt(reversal?.location_id) || transactionLocationId || 0}`;
+                                previouslyReversedByItem.set(
+                                    key,
+                                    round4((previouslyReversedByItem.get(key) || 0) + Number(reversal?.quantity || 0))
+                                );
+                            });
+                        });
+                    const availableOriginalByItem = new Map();
+                    (Array.isArray(originalStockMovements) ? originalStockMovements : []).forEach((movement) => {
+                        const itemId = parsePositiveInt(movement?.item_id);
+                        const locationId = parsePositiveInt(movement?.location_id) || transactionLocationId || 0;
+                        const issuedQuantity = Math.abs(Number(movement?.quantity || 0));
+                        if (!itemId || !Number.isFinite(issuedQuantity) || issuedQuantity <= 0) return;
+                        const key = `${itemId}:${locationId}`;
+                        availableOriginalByItem.set(key, round4((availableOriginalByItem.get(key) || 0) + issuedQuantity));
+                    });
+                    const requestedByItem = new Map();
+                    stockIssuePlan.forEach((movement) => {
+                        const key = `${parsePositiveInt(movement.item_id) || 0}:${parsePositiveInt(movement.location_id) || transactionLocationId || 0}`;
+                        requestedByItem.set(key, round4((requestedByItem.get(key) || 0) + Number(movement.quantity || 0)));
+                    });
+                    for (const [key, requestedQuantity] of requestedByItem.entries()) {
+                        const availableQuantity = round4(
+                            (availableOriginalByItem.get(key) || 0) - (previouslyReversedByItem.get(key) || 0)
+                        );
+                        if (requestedQuantity > availableQuantity + 0.000001) {
+                            throw new DomainError(
+                                DomainErrorCode.CONFLICT,
+                                'Selected item void does not match the transaction inventory evidence',
+                                {
+                                    statusCode: 409,
+                                    details: {
+                                        reason_code: 'POS_ITEM_VOID_STOCK_EVIDENCE_MISMATCH',
+                                        item_id: Number(key.split(':')[0]) || null,
+                                        requested_quantity: requestedQuantity,
+                                        available_quantity: availableQuantity
+                                    }
+                                }
+                            );
+                        }
+                    }
+                    const returnStockForVoidedSale = stockCommands?.returnStockForVoidedSale;
+                    if (typeof returnStockForVoidedSale !== 'function') {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Inventory return command is unavailable for this POS item void',
+                            { statusCode: 503, details: { reason_code: 'POS_ITEM_VOID_STOCK_REVERSAL_UNAVAILABLE' } }
+                        );
+                    }
+                    for (const movement of stockIssuePlan) {
+                        const itemId = parsePositiveInt(movement.item_id);
+                        const quantity = round4(movement.quantity);
+                        const locationId = parsePositiveInt(movement.location_id) || transactionLocationId || null;
+                        const reversal = await returnStockForVoidedSale({
+                            item_id: itemId,
+                            quantity,
+                            movement_type: 'return',
+                            location_id: locationId,
+                            reference_type: 'POS',
+                            reference_id: String(normalizedTransactionId),
+                            notes: `POS item void reversal for ${existing.invoice_number || normalizedTransactionId}`
+                        }, actorUserId, transaction);
+                        const reversalMovementId = parsePositiveInt(reversal?.movement_id);
+                        if (!reversalMovementId) {
+                            throw new DomainError(
+                                DomainErrorCode.CONFLICT,
+                                'Inventory did not confirm the POS item void reversal',
+                                { statusCode: 503, details: { reason_code: 'POS_ITEM_VOID_STOCK_REVERSAL_NOT_PERSISTED', item_id: itemId } }
+                            );
+                        }
+                        if (itemId) voidStockChangedItemIds.add(itemId);
+                        stockReversals.push({
+                            item_id: itemId,
+                            quantity,
+                            location_id: locationId,
+                            reversal_movement_id: reversalMovementId
+                        });
+                    }
+                }
+
+                const voidedAt = new Date();
+                const fiscalEvent = existing.document_type === 'fiscal_invoice' && typeof posRepository.createFiscalEvent === 'function'
+                    ? await posRepository.createFiscalEvent({
+                        pos_transaction_id: normalizedTransactionId,
+                        event_type: 'reversal',
+                        document_type: existing.document_type,
+                        invoice_number: existing.invoice_number,
+                        terminal_id: existing.terminal_id || null,
+                        fiscal_document_hash: existing.fiscal_document_hash || null,
+                        payload: {
+                            adjustment_type: 'item_void',
+                            reason,
+                            amount: itemVoidAmount,
+                            voided_lines: normalizedLineEvidence
+                        },
+                        actor_user_id: actorUserId,
+                        occurred_at: voidedAt
+                    }, { transaction })
+                    : null;
+
+                for (const line of normalizedItemVoidLines) {
+                    const updatedLine = await posRepository.updatePosTransactionLine(line.line_id, {
+                        voided_quantity: line.voided_quantity,
+                        voided_at: voidedAt,
+                        voided_by: actorUserId,
+                        void_reason: reason
+                    }, { transaction, lock: true });
+                    if (!updatedLine) {
+                        throw new DomainError(
+                            DomainErrorCode.RESOURCE_NOT_FOUND,
+                            'The POS transaction line was not found while applying the item void',
+                            { statusCode: 404, details: { reason_code: 'POS_ITEM_VOID_LINE_UPDATE_NOT_FOUND', line_id: line.line_id } }
+                        );
+                    }
+                }
+
+                const transactionLineSnapshots = (Array.isArray(existing.lines) ? existing.lines : [])
+                    .map((line) => toSerializable(line) || line);
+                const transactionTotalsUpdate = buildPosItemVoidTransactionUpdate({
+                    transaction: existing,
+                    lines: transactionLineSnapshots.map((line) => {
+                        const selectedLine = normalizedItemVoidLines.find((entry) => entry.line_id === parsePositiveInt(line?.line_id));
+                        return selectedLine
+                            ? { ...line, voided_quantity: selectedLine.voided_quantity }
+                            : line;
+                    }),
+                    voidedAmount: itemVoidAmount
+                });
+                const totalsUpdatedTransaction = await posRepository.updateTransactionLifecycle(
+                    normalizedTransactionId,
+                    transactionTotalsUpdate,
+                    { transaction, lock: true }
+                );
+                if (!totalsUpdatedTransaction) {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'POS transaction totals could not be recalculated after the item void',
+                        { statusCode: 500, details: { reason_code: 'POS_ITEM_VOID_TOTALS_UPDATE_FAILED' } }
+                    );
+                }
+
+                const voidAdjustment = await posRepository.createPosTransactionAdjustment({
+                    adjustment_reference: `POS-ITEM-VOID-${normalizedTransactionId}-${itemVoidAdjustmentRequestHash.slice(0, 8)}`.slice(0, 40),
+                    pos_transaction_id: normalizedTransactionId,
+                    original_cashier_id: originalCashierId,
+                    original_shift_id: transactionShiftId,
+                    original_terminal_id: existing.terminal_id || null,
+                    original_location_id: transactionLocationId,
+                    actor_user_id: actorUserId,
+                    actor_shift_id: activeShiftId || null,
+                    actor_terminal_id: activeTerminalId || null,
+                    actor_location_id: terminalLocationId || null,
+                    adjustment_type: 'void',
+                    tender_type: tenderType,
+                    amount: itemVoidAmount,
+                    currency: 'PHP',
+                    status: 'succeeded',
+                    reason,
+                    idempotency_key: itemVoidIdempotencyKey,
+                    request_hash: itemVoidAdjustmentRequestHash,
+                    completed_at: voidedAt,
+                    metadata: {
+                        evidence_scope: 'pos_item_void',
+                        item_voided: true,
+                        operator_session_id: operatorSessionId,
+                        authorization_mode: authorizationMode,
+                        refund_passcode_approver_id: refundPasscodeApproverId,
+                        approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
+                        approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
+                        approved_by: approvalAuthorized ? actorUserId : null,
+                        payment_status_before_void: paymentStatusBeforeVoid,
+                        transaction_shift_id: transactionShiftId,
+                        actor_shift_id: activeShiftId || null,
+                        voided_lines: normalizedLineEvidence,
+                        stock_reversals: stockReversals,
+                        fiscal_event_hash: fiscalEvent?.event_hash || null,
+                        financial_outcome: financialOutcome
+                    }
+                }, { transaction });
+                if (!voidAdjustment || String(voidAdjustment.request_hash || '') !== itemVoidAdjustmentRequestHash) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'POS item void evidence could not be recorded consistently',
+                        { statusCode: 409 }
+                    );
+                }
+
+                await posRepository.createAuditLog({
+                    user_id: actorUserId,
+                    entity_type: 'pos_transaction',
+                    entity_id: normalizedTransactionId,
+                    action: 'UPDATE',
+                    event_type: 'pos_transaction_item_voided',
+                    terminal_id: activeTerminalId || existing.terminal_id || null,
+                    shift_id: auditShiftId,
+                    location_id: existing.location_id || null,
+                    reason,
+                    changes: {
+                        event: 'pos_transaction_item_voided',
+                        operator_session_id: operatorSessionId,
+                        invoice_number: existing.invoice_number || null,
+                        amount: itemVoidAmount,
+                        voided_lines: normalizedLineEvidence,
+                        stock_reversals: stockReversals,
+                        fiscal_event_hash: fiscalEvent?.event_hash || null,
+                        adjustment_reference: voidAdjustment.adjustment_reference,
+                        authorization_mode: authorizationMode,
+                        refund_passcode_approver_id: refundPasscodeApproverId,
+                        financial_outcome: financialOutcome
+                    }
+                }, { transaction });
+
+                const automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                    financialOutcome,
+                    itemVoidAdjustmentId: voidAdjustment.pos_transaction_adjustment_id,
+                    requestHash: itemVoidAdjustmentRequestHash
+                });
+                const updated = automaticCashRefund?.data?.transaction
+                    || await posRepository.getTransactionById(normalizedTransactionId, { transaction });
+                const automaticCashRefundResponse = buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome);
+                const afterItemVoidCommit = async () => {
+                    await publishPosStockChange({
+                        publishCatalogChange,
+                        tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
+                        reason: 'pos_item_void_stock_changed',
+                        itemIds: [...voidStockChangedItemIds]
+                    });
+                };
+                if (ownsTransaction) {
+                    await transaction.commit();
+                    await afterItemVoidCommit();
+                } else if (typeof transaction.afterCommit === 'function') {
+                    transaction.afterCommit(afterItemVoidCommit);
+                }
+
+                return ok({
+                    transaction: toSerializable(updated),
+                    adjustment: toSerializable(voidAdjustment),
+                    voided_lines: normalizedLineEvidence,
+                    stock_reversals: stockReversals,
+                    authorization_mode: authorizationMode,
+                    transaction_shift_id: transactionShiftId,
+                    ...automaticCashRefundResponse,
+                    item_voided: true,
+                    idempotent_replay: false
+                });
             }
 
             if (typeof posRepository.listStockMovementsForPosTransaction !== 'function') {
@@ -6673,6 +7453,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     evidence_scope: 'internal_void_only',
                     operator_session_id: operatorSessionId,
                     authorization_mode: authorizationMode,
+                    refund_passcode_approver_id: refundPasscodeApproverId,
                     approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
                     superseded_approval_request_id: supersededApprovalRequestId,
                     approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
@@ -6714,6 +7495,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     original_cashier_id: originalCashierId,
                     voided_by: actorUserId,
                     authorization_mode: authorizationMode,
+                    refund_passcode_approver_id: refundPasscodeApproverId,
                     approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
                     superseded_approval_request_id: supersededApprovalRequestId,
                     approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
@@ -6726,6 +7508,13 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                         financial_outcome: financialOutcome
                 }
             }, { transaction });
+
+            const automaticCashRefund = await maybeRecordAutomaticCashRefund({
+                financialOutcome,
+                requestHash: voidAdjustmentRequestHash
+            });
+            const responseTransaction = automaticCashRefund?.data?.transaction || updated;
+            const automaticCashRefundResponse = buildAutomaticCashRefundResponse(automaticCashRefund, financialOutcome);
 
             const afterVoidCommit = async () => {
                 await publishPosStockChange({
@@ -6755,11 +7544,11 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             }
 
             return ok({
-                transaction: toSerializable(updated),
+                transaction: toSerializable(responseTransaction),
                 stock_reversals: stockReversals,
                 authorization_mode: authorizationMode,
                 transaction_shift_id: transactionShiftId,
-                financial_outcome: financialOutcome
+                ...automaticCashRefundResponse
             });
         } catch (error) {
             if (ownsTransaction && !transaction.finished) {
@@ -7539,7 +8328,19 @@ export const buildGetPosTransactionByIdUseCase = ({
                 ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedId)
                 : [];
             const adjustmentEvidence = (Array.isArray(adjustments) ? adjustments : [])
-                .map(toPublicPosTransactionAdjustment);
+                .map((adjustment) => {
+                    const publicAdjustment = {
+                        ...toPublicPosTransactionAdjustment(adjustment),
+                        adjustment_document: buildAdjustmentEvidenceDocument({
+                            adjustment,
+                            transaction: data
+                        })
+                    };
+                    if (isPosItemVoidAdjustment(adjustment)) {
+                        publicAdjustment.financial_outcome = buildPosItemVoidFinancialOutcome(data, adjustment.amount);
+                    }
+                    return publicAdjustment;
+                });
             const latestFinancialOutcome = [...adjustmentEvidence]
                 .reverse()
                 .find((adjustment) => adjustment.financial_outcome)?.financial_outcome || null;
@@ -7554,6 +8355,7 @@ export const buildGetPosTransactionByIdUseCase = ({
                 : {};
             return ok({
                 ...serialized,
+                fiscal_evidence: buildFiscalReceiptEvidence({ transaction: data }),
                 adjustments: adjustmentEvidence,
                 payment_session: paymentSession ? {
                     pos_payment_session_id: paymentSession.pos_payment_session_id,
@@ -7813,6 +8615,23 @@ export const buildCloseDayZReadingUseCase = ({
                 businessDate,
                 zCounterValue
             });
+            const snapshotGeneratedAt = new Date();
+            const readingEvidence = buildReadingEvidencePayload({
+                readingType: 'Z',
+                businessDate,
+                locationId: resolvedLocationId,
+                terminalId: String(terminalId || '').trim().toUpperCase() || null,
+                readingIdentifier,
+                generatedAt: snapshotGeneratedAt,
+                summary,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents
+                },
+                reconciliation: null,
+                snapshotPersisted: true
+            });
             const snapshot = await posRepository.createZReadingSnapshot({
                 business_date: businessDate,
                 location_id: resolvedLocationId,
@@ -7826,8 +8645,28 @@ export const buildCloseDayZReadingUseCase = ({
                 },
                 closed_by_user_id: userId,
                 closed_from_terminal_id: String(terminalId || '').trim().toUpperCase() || null,
-                day_close_pin_confirmed_at: new Date()
+                day_close_pin_confirmed_at: snapshotGeneratedAt,
+                generated_at: snapshotGeneratedAt,
+                reading_payload_hash: readingEvidence.payload_hash
             }, { transaction });
+
+            if (typeof posRepository.createFiscalEvent === 'function') {
+                await posRepository.createFiscalEvent({
+                    pos_transaction_id: null,
+                    event_type: 'z_reading',
+                    document_type: 'z_reading',
+                    invoice_number: null,
+                    terminal_id: String(terminalId || '').trim().toUpperCase() || null,
+                    payload: {
+                        reading_identifier: readingIdentifier,
+                        business_date: businessDate,
+                        location_id: resolvedLocationId,
+                        reading_payload_hash: readingEvidence.payload_hash,
+                        evidence_contract_version: readingEvidence.contract_version
+                    },
+                    actor_user_id: userId
+                }, { transaction });
+            }
 
             await posRepository.createAuditLog({
                 user_id: userId,
@@ -7990,8 +8829,13 @@ export const buildListPosZReadingsUseCase = ({
                         vat_exempt_sales: amountValue('vat_exempt_sales'),
                         zero_rated_sales: amountValue('zero_rated_sales'),
                         void_transaction_count: countValue('void_transaction_count'),
+                        transaction_void_amount: amountValue('transaction_void_amount'),
+                        item_void_amount: amountValue('item_void_amount'),
                         void_amount: amountValue('void_amount'),
+                        voided_item_count: amountValue('voided_item_count'),
+                        item_voided_item_count: amountValue('item_voided_item_count'),
                         refund_amount: amountValue('refund_amount'),
+                        refunded_item_count: amountValue('refunded_item_count'),
                         item_count: amountValue('item_count')
                     }
                 };
@@ -8078,11 +8922,27 @@ export const buildGetDailyZReadingUseCase = ({
                 businessDate,
                 locationId: resolvedLocationId
             });
+            const generatedAt = new Date();
+            const readingEvidence = buildReadingEvidencePayload({
+                readingType: 'Z',
+                businessDate,
+                locationId: resolvedLocationId,
+                generatedAt,
+                summary,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents
+                },
+                reconciliation: null,
+                snapshotPersisted: false
+            });
+            readingEvidence.reconciliation = reconciliation || null;
 
             return ok({
                 business_date: businessDate,
                 location_id: resolvedLocationId,
-                generated_at: new Date().toISOString(),
+                generated_at: generatedAt.toISOString(),
                 summary,
                 z_reading_reconciliation: reconciliation,
                 snapshot_persisted: false,
@@ -8090,6 +8950,8 @@ export const buildGetDailyZReadingUseCase = ({
                 snapshot_reused: false,
                 idempotent_replay: false,
                 replay_outcome: 'computed_on_demand',
+                reading_payload_hash: readingEvidence.payload_hash,
+                reading_evidence: readingEvidence,
                 counters: {
                     z_counter: zCounterValue,
                     reset_counter: resetCounterValue,
@@ -8185,6 +9047,24 @@ export const buildGetCurrentXReadingUseCase = ({ posRepository }) => {
                 posRepository.getPersistentCounterValue(FISCAL_LIFETIME_COUNTER_KEY)
             ]);
             const generatedAt = new Date();
+            const readingIdentifier = buildXReadingIdentifier({
+                businessDate,
+                generatedAt
+            });
+            const readingEvidence = buildReadingEvidencePayload({
+                readingType: 'X',
+                businessDate,
+                terminalId,
+                readingIdentifier,
+                generatedAt,
+                summary,
+                counters: {
+                    z_counter: zCounterValue,
+                    reset_counter: resetCounterValue,
+                    lifetime_grand_total_cents: lifetimeGrandTotalCents
+                },
+                snapshotPersisted: false
+            });
 
             return ok({
                 business_date: businessDate,
@@ -8192,10 +9072,9 @@ export const buildGetCurrentXReadingUseCase = ({ posRepository }) => {
                 generated_at: generatedAt.toISOString(),
                 summary,
                 snapshot_persisted: false,
-                reading_identifier: buildXReadingIdentifier({
-                    businessDate,
-                    generatedAt
-                }),
+                reading_identifier: readingIdentifier,
+                reading_payload_hash: readingEvidence.payload_hash,
+                reading_evidence: readingEvidence,
                 counters: {
                     z_counter: zCounterValue,
                     reset_counter: resetCounterValue,
@@ -10298,6 +11177,7 @@ export const buildGetCashierShiftHistoryUseCase = ({
         }
 
         try {
+            const search = String(query?.search || '').trim().slice(0, 120);
             const historyScope = await resolveCashierHistoryScope({
                 user,
                 userId: normalizedUserId,
@@ -10308,6 +11188,7 @@ export const buildGetCashierShiftHistoryUseCase = ({
             const historyQuery = {
                 dateFrom: query?.date_from,
                 dateTo: query?.date_to,
+                search,
                 status: query?.status || 'all',
                 page: query?.page || 1,
                 limit: query?.limit || 20
@@ -10366,7 +11247,8 @@ export const buildGetCashierShiftHistoryUseCase = ({
                     location_id: historyScope.locationId,
                     date_from: normalizeBusinessDateInput(query?.date_from) || null,
                     date_to: normalizeBusinessDateInput(query?.date_to) || null,
-                    status: query?.status || 'all'
+                    status: query?.status || 'all',
+                    search: search || null
                 }
             });
         } catch (error) {
@@ -10648,13 +11530,16 @@ const buildShiftCloseCashData = async ({
     shift,
     transaction,
     closingCashAmount,
-    cancelledBy = null
+    cancelledBy = null,
+    blockParkedSales = true
 }) => {
-    await assertNoUnresolvedParkedSalesForShift({
-        posRepository,
-        shiftId,
-        transaction
-    });
+    if (blockParkedSales) {
+        await assertNoUnresolvedParkedSalesForShift({
+            posRepository,
+            shiftId,
+            transaction
+        });
+    }
     await assertNoInFlightOperatorMutationForShift({
         posRepository,
         shiftId,
@@ -10782,7 +11667,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 shift,
                 transaction,
                 closingCashAmount,
-                cancelledBy: normalizedUserId
+                cancelledBy: normalizedUserId,
+                blockParkedSales: false
             });
             const {
                 shiftPayload,
@@ -13470,7 +14356,10 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
+export const buildUpdateDeliveryJobStatusUseCase = ({
+    posRepository,
+    dispatchOrderSmsAlert = dispatchDgfyOrderSmsAlert
+}) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
         const cashierId = parsePositiveInt(user?.user_id);
@@ -13761,6 +14650,14 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 transaction
             });
             await transaction.commit();
+            if (currentStatus !== requestedStatus && requestedStatus === 'delivered') {
+                await Promise.resolve().then(() => dispatchOrderSmsAlert({
+                    tenantId: dbStore.getStore()?.tenantId,
+                    order: updatedOrder,
+                    storeCustomer: order.storeCustomer || order.store_customer || null,
+                    event: 'delivered'
+                })).catch(() => null);
+            }
             return ok({
                 ...responsePayload,
                 idempotent_replay: false,

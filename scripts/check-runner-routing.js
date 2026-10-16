@@ -73,9 +73,10 @@ const TARGET_FILES = ['deploy-main.yml', 'promotion-quality-gate.yml'];
 
 // Phase 234 (#1365) Wave 1, Assertion 7 (AC-1 regression guard): ordinary develop/staging-facing
 // workflow files that must never carry a hosted runner literal at any runs-on:/runner_labels_json:
-// site -- deploy.yml/deployment-orchestrator.yml have no LAN path from a hosted VM to the DEV/
-// STAGING boxes (CI_RUNNER_POLICY.md, "VPN"), and the three pr-*-build-checks.yml files listed here
-// are ordinary PR-triggered checks that stay self-hosted by policy. Deliberately excludes
+// site. deploy.yml may select a hosted runner only through its dispatch input (validated separately
+// with the VPN derivation), while deployment-orchestrator.yml has no direct DEV/STAGING LAN path;
+// the three pr-*-build-checks.yml files listed here are ordinary PR-triggered checks that stay
+// self-hosted by policy. Deliberately excludes
 // pr-android-build-checks.yml and build-android-manual.yml -- documented exception, neither box
 // carries an Android SDK either way, so those two are free to run hosted.
 //
@@ -451,7 +452,26 @@ function checkNoHostedLiteral(file, text) {
   return problems;
 }
 
-function checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText }) {
+/**
+ * The DEV/STAGING deploy workflow may select a hosted build/publish runner only through its
+ * dispatch input, with VPN derived from that same selection. Its default remains self-hosted.
+ */
+function checkStagingDispatchRouting(text) {
+  const problems = [];
+  const site = extractInputDefaultSite(text);
+  if (!site || !/default:\s*'\["sieitz-runner"\]'/.test(site.activeLine)) {
+    problems.push('deploy.yml: runner_labels_json must default to ["sieitz-runner"].');
+  }
+  if (!/runner_labels_json:\s*\$\{\{\s*inputs\.runner_labels_json\s*\}\}/.test(text)) {
+    problems.push('deploy.yml: deployment-orchestrator must receive inputs.runner_labels_json.');
+  }
+  if (!/vpn_required:\s*\$\{\{\s*contains\(fromJSON\(inputs\.runner_labels_json\),\s*'ubuntu-latest'\)\s*\}\}/.test(text)) {
+    problems.push('deploy.yml: vpn_required must be derived from the ubuntu-latest runner selection.');
+  }
+  return problems;
+}
+
+function checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText, deployWorkflowText }) {
   const filesText = {
     'deploy-main.yml': deployMainText,
     'promotion-quality-gate.yml': qualityGateText
@@ -490,6 +510,10 @@ function checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesTex
     problems.push(...checkNoHostedLiteral(VERIFY_DEPLOYMENT_FILE, verifyDeploymentText));
   }
 
+  if (deployWorkflowText !== undefined) {
+    problems.push(...checkStagingDispatchRouting(deployWorkflowText));
+  }
+
   return problems;
 }
 
@@ -501,8 +525,9 @@ function main() {
     nonHostedFilesText[file] = read(`.github/workflows/${file}`);
   }
   const verifyDeploymentText = read(`.github/workflows/${VERIFY_DEPLOYMENT_FILE}`);
+  const deployWorkflowText = read('.github/workflows/deploy.yml');
 
-  const problems = checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText });
+  const problems = checkRunnerRouting({ deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText, deployWorkflowText });
 
   if (problems.length > 0) {
     console.error('[runner-routing] FAILED');
@@ -536,6 +561,7 @@ module.exports = {
   checkNoDevStagingTarget,
   checkActiveClassMatchesExpected,
   checkNoHostedLiteral,
+  checkStagingDispatchRouting,
   extractJobBlocks,
   findActiveSites,
   isHosted,

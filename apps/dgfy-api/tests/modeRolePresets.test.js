@@ -101,6 +101,20 @@ describe('mode-aware role preset catalog', () => {
     ]));
   });
 
+  it('gives the F&B cashier the standard cashier permissions plus F&B capabilities', () => {
+    const permissions = new Set(getModeRolePreset('fnb_cashier', 'fnb').permissions);
+
+    for (const permission of DEFAULT_ROLE_PERMISSIONS.cashier) {
+      expect(permissions.has(permission)).toBe(true);
+    }
+    expect(permissions).toContain('fnb:dashboard:view');
+    expect(permissions).toContain('fnb:menu:view');
+    expect(permissions).toContain('fnb:dining:view');
+    expect(permissions).toContain('fnb:checks:manage');
+    expect(permissions).toContain('pos:void');
+    expect(permissions).not.toContain('pos:close_day');
+  });
+
   it('rejects presets that belong to a different active mode unless any-mode lookup is explicit', () => {
     expect(getModeRolePreset('fnb_server', 'services')).toBeNull();
     expect(getModeRolePreset('fnb_server', 'services', { allowAnyMode: true })).toMatchObject({
@@ -215,7 +229,7 @@ describe('mode-aware role preset catalog', () => {
     });
 
     it('bumps ROLE_CATALOG_VERSION so cached clients refetch the new catalog', () => {
-      expect(ROLE_CATALOG_VERSION).toBe('2026-09-03.mode-aware-rbac-v4');
+      expect(ROLE_CATALOG_VERSION).toBe('2026-10-13.mode-aware-rbac-v6');
     });
   });
 });

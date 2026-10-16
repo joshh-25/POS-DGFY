@@ -20,11 +20,13 @@ import {
   Hourglass,
   Truck,
   PieChart,
-  WalletCards
+  WalletCards,
+  ShieldCheck,
 } from 'lucide-react';
 import CostAnalysisWidget from '@/components/reports/CostAnalysisWidget';
 import TenantRevenueReadOnlyPanel from '@/src/features/reports/TenantRevenueReadOnlyPanel.jsx';
 import SalesStockReportPanel from '../components/SalesStockReportPanel.jsx';
+import EvidencePanel from '../components/EvidencePanel.jsx';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +35,7 @@ import { cn } from '@/lib/utils.js';
 import { useReports } from '@/hooks/useReports.js';
 import { useLocations } from '@/hooks/useLocations.js';
 import { formatNumber, formatPeso } from '@/lib/numberUtils.js';
+// Dropdown menu components.
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -77,7 +80,8 @@ const REPORT_TAB_LABELS = Object.freeze({
   summary: 'Overview',
   'sales-stock': 'Sales & stock',
   cost: 'Cost analysis',
-  'tenant-revenue': 'Revenue & transfers'
+  'tenant-revenue': 'Revenue & transfers',
+  evidence: 'Compliance evidence'
 });
 
 const TENANT_WIDE_REPORT_TABS = new Set(['cost', 'tenant-revenue']);
@@ -140,6 +144,10 @@ function ReportPanelStatus({ label, loading, error, hasData }) {
 
   return <div className="business-admin-report-panel-refresh" aria-hidden="true" />;
 }
+
+// Date/error helpers live with the evidence panel.
+
+// Error formatting is handled by the evidence panel.
 
 export default function ReportsPage() {
   const location = useLocation();
@@ -478,7 +486,11 @@ export default function ReportsPage() {
             <WalletCards className="w-4 h-4" />
             Revenue &amp; transfers
           </TabsTrigger>
-          </TabsList>
+           <TabsTrigger value="evidence" className="business-admin-reports-tab flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2">
+             <ShieldCheck className="w-4 h-4" />
+             Compliance evidence
+           </TabsTrigger>
+           </TabsList>
           </div>
         </div>
 
@@ -488,6 +500,9 @@ export default function ReportsPage() {
 
         <TabsContent value="sales-stock">
           <SalesStockReportPanel dateFilters={dateFilters} />
+        </TabsContent>
+        <TabsContent value="evidence">
+          <EvidencePanel activeLocations={activeLocations} />
         </TabsContent>
 
         {/* EXPIRY REPORT TAB */}

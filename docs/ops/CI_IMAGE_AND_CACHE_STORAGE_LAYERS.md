@@ -55,6 +55,12 @@ gh api -X DELETE /repos/<owner>/<repo>/actions/artifacts/<artifact_id>
 
 If a required artifact is missing or returns 404, identify and rerun the job that produces it instead of deleting other storage.
 
+The active evidence uploads in `security-scan.yml`, `compliance-preflight-sweep.yml`,
+`build-android-manual.yml`, and `promotion-quality-gate.yml` use the S3-compatible storage described
+in [CI artifact S3 storage](CI_ARTIFACT_S3_STORAGE.md). After those migrations land,
+`gh api .../actions/artifacts` no longer shows evidence produced by those workflow steps; use the
+run summary's S3 object URI and the retrieval procedure in that document.
+
 ## GHCR packages
 
 Every image build publishes to GHCR regardless of which cache backend BuildKit uses. Before any cleanup, confirm the target digest is not referenced by any candidate manifest's `release_revision.apps["<app>"].digest` and is not the currently deployed alias. ADR 0081's immutable-tag contract applies; cross-check with `scripts/check-tag-immutability.js` and candidate/release evidence before deletion.

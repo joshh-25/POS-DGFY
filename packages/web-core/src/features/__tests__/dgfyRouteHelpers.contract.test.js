@@ -93,6 +93,11 @@ describe('DGFY route helper contracts', () => {
     it('falls back (not to the storefront) when return_to is an open-redirect attempt', () => {
       expect(resolveDgfyPostAuthTarget({ returnTo: '//evil.test', fallbackTarget: '/dgfy/companies' })).toBe('/dgfy/companies');
     });
+
+    it('does not treat a partner-style origin as an approved DGFY account origin', () => {
+      expect(resolveDgfyPostAuthTarget({ returnTo: 'https://partner.example.test/dgfy/companies', fallbackTarget: '/dgfy/companies' }))
+        .toBe('/dgfy/companies');
+    });
   });
 
   describe('sanitizeInternalReturnPath', () => {

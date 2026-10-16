@@ -116,6 +116,7 @@ import {
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
+import { buildReturnPosTransactionUseCase } from './usecases/returnUseCases.js';
 import { posBranchDirectoryRepository } from './repositories/posBranchDirectoryRepository.js';
 import {
     buildGetPosBranchDirectoryUseCase,
@@ -386,12 +387,15 @@ export const exportPosReportsUseCase = buildExportPosReportsUseCase({
 export const exportProcurementCsvUseCase = buildExportProcurementCsvUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
+export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService,
-    publishCatalogChange
+    publishCatalogChange,
+    cashRefundPosTransactionUseCase
 });
+export const returnPosTransactionUseCase = buildReturnPosTransactionUseCase({ posRepository });
 export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApprovalUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
@@ -399,7 +403,6 @@ export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApproval
     publishCatalogChange
 });
 export const listPosExceptionApprovalsUseCase = buildListPosExceptionApprovalsUseCase({ posRepository });
-export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
 export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
 export const providerRefundPosTransactionUseCase = buildProviderRefundPosTransactionUseCase({

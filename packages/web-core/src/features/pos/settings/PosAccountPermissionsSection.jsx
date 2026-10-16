@@ -14,9 +14,9 @@ export default function PosAccountPermissionsSection({
   saveAccessPin,
   resetAccessPinDraft,
   discountApprovers, discountApproversLoading, loadDiscountApprovers,
-  updateDiscountAuthorization, discountAuthorizationSavingUserId, setApprovalPinUser, setApprovalPin,
+  updateDiscountAuthorization, discountAuthorizationSavingUserId, onOpenGlobalPin = async () => {}, globalPinSavingUserId = null,
   dayCloseOperators, dayCloseOperatorsLoading, loadDayCloseOperators, updateDayCloseAccess,
-  dayCloseAccessSavingUserId, setDayClosePinUser
+  dayCloseAccessSavingUserId
 }) {
   const [settingsPinDialogOpen, setSettingsPinDialogOpen] = useState(false);
   const [settingsPinInitialEnabled, setSettingsPinInitialEnabled] = useState(false);
@@ -99,20 +99,22 @@ export default function PosAccountPermissionsSection({
                 />
                 {builtInDiscountApprovers.map((user) => {
                   const isSavingAuthorization = Number(discountAuthorizationSavingUserId) === Number(user?.user_id);
+                  const isGlobalPinConfigured = user?.pos_global_pin_configured === true
+                    || user?.pos_cashier_pin_configured === true
+                    || user?.pos_approval_pin_configured === true
+                    || user?.pos_day_close_pin_configured === true;
+                  const isSavingGlobalPin = Number(globalPinSavingUserId) === Number(user?.user_id);
                   return (
                     <PosPinSetupRow
                       key={`discount-approver-${user.user_id}`}
-                      title="POS Discount Authorization PIN"
-                      description={`${user.username || user.email} · ${user.role || 'Admin'} · POS discounts.`}
-                      status={user.pos_approval_pin_configured ? 'Set' : 'PIN Not Set'}
-                      statusClassName={user.pos_approval_pin_configured ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-100 text-rose-700'}
+                      title="Global POS PIN"
+                      description={`${user.username || user.email} · ${user.role || 'Admin'} · discounts, voids, drawer, and Z-reading.`}
+                      status={isGlobalPinConfigured ? 'Set' : 'PIN Not Set'}
+                      statusClassName={isGlobalPinConfigured ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-100 text-rose-700'}
                       rowClassName="border-emerald-200 bg-emerald-50/60"
-                      actionLabel={user.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}
-                      onAction={() => {
-                        setApprovalPinUser(user);
-                        setApprovalPin('');
-                      }}
-                      disabled={locked || loading || isSavingAuthorization}
+                      actionLabel={isGlobalPinConfigured ? 'Reset global PIN' : 'Set global PIN'}
+                      onAction={() => onOpenGlobalPin(user)}
+                      disabled={locked || loading || isSavingAuthorization || isSavingGlobalPin || discountApproversLoading}
                     />
                   );
                 })}
@@ -121,12 +123,17 @@ export default function PosAccountPermissionsSection({
                   .map((user) => {
                     const hasDiscountAuthorization = resolveUserPermissionList(user).includes('pos:discount_authorize');
                     const isSavingAuthorization = Number(discountAuthorizationSavingUserId) === Number(user?.user_id);
+                    const isGlobalPinConfigured = user?.pos_global_pin_configured === true
+                      || user?.pos_cashier_pin_configured === true
+                      || user?.pos_approval_pin_configured === true
+                      || user?.pos_day_close_pin_configured === true;
+                    const isSavingGlobalPin = Number(globalPinSavingUserId) === Number(user?.user_id);
                     const canConfigurePin = hasDiscountAuthorization && user?.is_active !== false;
                     return (
                       <div key={`discount-approver-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                         <div className="min-w-0">
                           <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
-                          <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {hasDiscountAuthorization ? (user.pos_approval_pin_configured ? 'PIN configured' : 'PIN not set') : 'Authorization off'}</p>
+                          <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {hasDiscountAuthorization ? (isGlobalPinConfigured ? 'Global PIN configured' : 'Global PIN not set') : 'Authorization off'}</p>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-3">
                           <div className="flex items-center gap-2 text-[11px] font-extrabold text-[#334155]">
@@ -137,7 +144,7 @@ export default function PosAccountPermissionsSection({
                               aria-label={`Can authorize discounts for ${user.username || user.email || `user ${user.user_id}`}`}
                               aria-checked={hasDiscountAuthorization}
                               onClick={() => updateDiscountAuthorization(user, !hasDiscountAuthorization)}
-                              disabled={locked || loading || isSavingAuthorization}
+                              disabled={locked || loading || isSavingAuthorization || discountApproversLoading}
                               className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/20 ${hasDiscountAuthorization ? 'border-[#2563EB] bg-[#2563EB]' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
                             >
                               <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDiscountAuthorization ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -148,14 +155,11 @@ export default function PosAccountPermissionsSection({
                               type="button"
                               variant="outline"
                               className="h-9 rounded-lg px-3 text-[13px] font-extrabold text-[#1A4E8D] sm:text-[14px]"
-                              onClick={() => {
-                                setApprovalPinUser(user);
-                                setApprovalPin('');
-                              }}
-                              disabled={locked || loading || isSavingAuthorization}
+                              onClick={() => onOpenGlobalPin(user)}
+                              disabled={locked || loading || isSavingAuthorization || isSavingGlobalPin || discountApproversLoading}
                             >
                               <KeyRound className="mr-1.5 h-4 w-4" />
-                              {user.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}
+                              {isGlobalPinConfigured ? 'Reset global PIN' : 'Set global PIN'}
                             </Button>
                           ) : (
                             <span className="text-[11px] font-bold text-amber-700">Enable access first</span>
@@ -191,9 +195,7 @@ export default function PosAccountPermissionsSection({
                             <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
                             <p className="truncate text-[10px] font-medium text-[#94A3B8]">{user.email || 'No account email'}</p>
                             <p className="text-[11px] capitalize text-[#64748B]">
-                              {user.role} · {hasDayCloseAccess
-                                ? (user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN setup pending')
-                                : 'Z-reading access off'}
+                              {user.role} · {hasDayCloseAccess ? 'Uses the global POS PIN' : 'Z-reading access off'}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center justify-end gap-3">
@@ -215,21 +217,8 @@ export default function PosAccountPermissionsSection({
                                 </button>
                               </div>
                             )}
-                            {hasDayCloseAccess && user.pos_day_close_pin_configured ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="h-9 rounded-lg px-3 text-[13px] font-extrabold text-blue-700 sm:text-[14px]"
-                                onClick={() => {
-                                  setDayClosePinUser(user);
-                                }}
-                                disabled={locked || loading || isSavingAccess}
-                              >
-                                <KeyRound className="mr-1.5 h-4 w-4" />
-                                Reset PIN
-                              </Button>
-                            ) : hasDayCloseAccess ? (
-                              <span className="text-[11px] font-bold text-amber-700">Cashier setup pending</span>
+                            {hasDayCloseAccess ? (
+                              <span className="text-[11px] font-bold text-slate-500">One global PIN is used</span>
                             ) : null}
                           </div>
                         </div>

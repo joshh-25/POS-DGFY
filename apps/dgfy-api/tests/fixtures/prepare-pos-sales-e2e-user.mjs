@@ -65,12 +65,15 @@ try {
     'items:edit',
     'pos:view',
     'pos:transact',
+    'pos:shift_close',
     'reports:view',
-    'settings:view',
   ]);
+  // The sales journey verifies the Reports workspace, which is hidden for the
+  // cashier role. Keep this ordinary admin user scoped to the exact capabilities
+  // exercised here and omit settings:view so POS still requires a real shift.
   await database.execute(
     'UPDATE users SET role = ?, permissions = ?, is_master_admin = 0, is_active = 1, updated_at = NOW() WHERE user_id = ?',
-    ['manager', testPermissions, user.user_id],
+    ['admin', testPermissions, user.user_id],
   );
 
   const [[tenant]] = await database.execute(
@@ -78,6 +81,10 @@ try {
     [companyToken],
   );
   if (!tenant) throw new Error(`Active POS sales E2E tenant was not found for token ${companyToken}.`);
+  await database.execute(
+    "UPDATE tenants SET plan = 'premium', subscription_status = 'active' WHERE id = ?",
+    [tenant.id],
+  );
   const accountId = randomUUID();
   const passwordHash = await bcrypt.hash(password, 10);
   await database.execute(
@@ -92,7 +99,7 @@ try {
   await database.execute(
     `INSERT INTO dgfy_account_tenant_memberships (
        dgfy_account_id, tenant_id, tenant_user_id, role, status, source, accepted_at, created_at, updated_at
-     ) VALUES (?, ?, ?, 'admin', 'accepted', 'founder', NOW(), NOW(), NOW())`,
+     ) VALUES (?, ?, ?, 'cashier', 'accepted', 'invite', NOW(), NOW(), NOW())`,
     [accountId, tenant.id, user.user_id],
   );
 
@@ -114,6 +121,11 @@ try {
     locationId = Number(locationResult.insertId);
   }
   if (!locationId) throw new Error('POS sales E2E location could not be created.');
+
+  await database.execute(
+    'INSERT INTO user_location_grants (user_id, location_id, created_by) VALUES (?, ?, NULL)',
+    [user.user_id, locationId],
+  );
 
   const terminalRegistry = JSON.stringify([
     { terminal_id: terminalId, label: 'POS Sales E2E Counter', location_id: locationId, is_active: true, is_default: true },

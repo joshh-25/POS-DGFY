@@ -1,11 +1,11 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-26
+last_reviewed: 2026-10-10
 related_adr: 0043-standalone-native-hardware-pos-runtime.md
 declaration_id: 2026-08-26-imin-pos-performance-profile
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.26
 verification_evidence: focused iMin performance-profile tests,POS catalog workflow hook test,standalone POS production build,architecture guardrails
@@ -62,3 +62,9 @@ while preserving the immediate controlled input value.
 Not executed on this local `develop`-derived implementation branch. The `NOT-EXECUTED-*`
 reference is expected until the normal promotion batch performs the live preflight; no live
 compliance result is claimed by this declaration.
+
+## Amendment — 2026-10-10 — Expected printer-service diagnostic suppression
+
+- Change: The iMin runtime feedback helper suppresses only the known unavailable built-in printer
+  service diagnostic while preserving real printer and drawer failure feedback.
+- Validation: Focused iMin runtime-feedback tests and `git diff --check`.

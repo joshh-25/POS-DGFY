@@ -82,11 +82,12 @@ export const lanBridgeDriver = {
             });
         }
     },
-    async printShiftSummary({ shiftId, terminalId, reason, idempotencyKey, copies, paperWidth } = {}) {
+    async printShiftSummary({ shiftId, terminalId, reason, idempotencyKey, copies, paperWidth, readingType } = {}) {
         try {
             const result = await printPosShiftSummary(shiftId, {
                 idempotency_key: idempotencyKey,
                 terminal_id: terminalId || undefined,
+                reading_type: readingType || undefined,
                 reason,
                 copies,
                 paper_width: paperWidth

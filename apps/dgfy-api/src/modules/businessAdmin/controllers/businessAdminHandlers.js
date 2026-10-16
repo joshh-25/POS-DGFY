@@ -1,4 +1,4 @@
-import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminCustomerUseCase, createBusinessAdminExpenseUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, exportBusinessAdminReportUseCase, getBusinessAdminAttendanceUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCompanyUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminPosActivityAnalyticsUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminExpensesUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase, voidBusinessAdminExpenseUseCase } from '../index.js';
+import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminCustomerUseCase, createBusinessAdminExpenseUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, exportBusinessAdminReportUseCase, getBusinessAdminAttendanceUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCompanyUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminEJournalEvidenceUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminPosActivityAnalyticsUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminEvidenceCatalogUseCase, listBusinessAdminExpensesUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase, voidBusinessAdminExpenseUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
 const timestamp = () => new Date().toISOString();
@@ -120,6 +120,43 @@ export const exportReportDataset = async (req, res, next) => {
     try {
         const result = await exportBusinessAdminReportUseCase({ query: req.query, user: req.user, reportKey: req.params.reportKey });
         if (!result.success) return sendUseCaseResult(res, result, { errorPayloadResolver: (failure) => errorPayload(req, res, failure) });
+        res.setHeader('Content-Type', result.data.contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${result.data.filename}"`);
+        return res.status(200).send(result.data.content);
+    } catch (error) { next(error); }
+};
+
+export const listEvidenceCatalog = async (req, res, next) => {
+    try {
+        const result = await listBusinessAdminEvidenceCatalogUseCase({
+            user: req.user,
+            auditContext: auditContext(req, res)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
+export const getEJournalEvidence = async (req, res, next) => {
+    try {
+        const format = String(req.query?.format || 'summary').trim().toLowerCase();
+        const result = await getBusinessAdminEJournalEvidenceUseCase({
+            query: req.query,
+            user: req.user,
+            format,
+            auditContext: auditContext(req, res)
+        });
+        if (!result.success) return sendUseCaseResult(res, result, { errorPayloadResolver: (failure) => errorPayload(req, res, failure) });
+        if (format === 'summary') {
+            return sendUseCaseResult(res, result, {
+                successStatusCodeResolver: () => 200,
+                successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+                errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+            });
+        }
         res.setHeader('Content-Type', result.data.contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${result.data.filename}"`);
         return res.status(200).send(result.data.content);
@@ -443,6 +480,8 @@ export default {
     listReportDefinitions,
     getReportDataset,
     exportReportDataset,
+    listEvidenceCatalog,
+    getEJournalEvidence,
     getInventoryValuation,
     listInventoryStock,
     getWorkforce,

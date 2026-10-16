@@ -838,6 +838,71 @@ describe('dgfyAuthUseCases', () => {
         expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-company-2');
     });
 
+    it('does not expose removed or declined membership rows in the company list', async () => {
+        const account = createAccount({ id: 'dgfy-isolated-account' });
+        const membershipRows = [{
+            id: 30,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-masu-cafe',
+            tenant_user_id: 30,
+            role: 'admin',
+            status: 'accepted',
+            source: 'founder',
+            tenant: {
+                id: 'tenant-masu-cafe',
+                name: 'Masu Cafe',
+                company_token: 'secret-masu-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        }, {
+            id: 31,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-old-company',
+            tenant_user_id: 31,
+            role: 'admin',
+            status: 'removed',
+            source: 'founder',
+            tenant: {
+                id: 'tenant-old-company',
+                name: 'Old Company',
+                company_token: 'secret-old-token',
+                status: 'active',
+                plan: 'standard'
+            }
+        }, {
+            id: 32,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-declined-company',
+            tenant_user_id: 32,
+            role: 'admin',
+            status: 'declined',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-declined-company',
+                name: 'Declined Company',
+                company_token: 'secret-declined-token',
+                status: 'active',
+                plan: 'standard'
+            }
+        }];
+        const repository = {
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
+            listMemberships: jest.fn().mockResolvedValue(membershipRows),
+            listRegistrationApplications: jest.fn().mockResolvedValue([])
+        };
+        const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
+
+        const result = await useCase({ account });
+        const companies = result.data.payload.data.companies;
+
+        expect(companies.map((company) => company.company_name)).toEqual(['Masu Cafe']);
+        expect(result.data.payload.data.accepted_count).toBe(1);
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('Old Company');
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('Declined Company');
+    });
+
     it('backfills an idempotent rejection notification for historical rejected registrations', async () => {
         const account = createAccount({ id: 'dgfy-rejected-owner' });
         const ensureRejectedCompanyRegistrationNotifications = jest.fn().mockResolvedValue([]);

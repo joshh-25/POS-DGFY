@@ -132,8 +132,8 @@ const PAYMENT_OPTIONS = [
 
 const SOURCE_OPTIONS = [
   { value: '', label: 'All sources' },
-  { value: 'in_store', label: 'In-Store' },
-  { value: 'online_store', label: 'Online Store' },
+  { value: 'in_store', label: 'Walk-in Sales' },
+  { value: 'online_store', label: 'Online Sales' },
   { value: 'delivery', label: 'Delivery' },
   { value: 'pickup', label: 'Pickup' }
 ];
@@ -147,6 +147,39 @@ const CHART_COLORS = ['#2563EB', '#14B8A6', '#F97316', '#0EA5E9', '#8B5CF6'];
 const REPORT_TAB_TRANSITION_MS = 150;
 const REPORT_TAB_SLIDE_OFFSET = 28;
 const money = (value, currencySymbol = '₱') => `${String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const ORDER_METHOD_LABELS = Object.freeze({
+  dine_in: 'Dine In',
+  takeout: 'Takeout',
+  pickup: 'Pickup',
+  delivery: 'Delivery',
+  online: 'Online'
+});
+const formatSalesSource = (value) => String(value || '').trim().toLowerCase() === 'online_store' ? 'Online Sales' : 'Walk-in Sales';
+const formatOrderMethod = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ORDER_METHOD_LABELS[normalized]
+    || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+    || '—';
+};
+const aggregatePaymentBreakdown = (rows = []) => {
+  const groups = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((entry) => {
+    const label = String(entry?.payment_method || '').trim() || 'Online';
+    const key = label.toLowerCase();
+    const current = groups.get(key) || {
+      payment_method: label,
+      total_transactions: 0,
+      net_sales: 0
+    };
+    current.total_transactions += Number(entry?.total_transactions || 0);
+    current.net_sales += Number(entry?.net_sales || 0);
+    groups.set(key, current);
+  });
+  return Array.from(groups.values()).map((entry) => ({
+    ...entry,
+    net_sales: Number(entry.net_sales || 0)
+  }));
+};
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -261,6 +294,8 @@ export const ZReadingReconciliationCard = ({
   const hasNumber = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
   const formatAmount = (value) => hasNumber(value) ? money(value, currencySymbol) : '—';
   const formatCount = (value) => hasNumber(value) ? Number(value).toLocaleString('en-US') : '—';
+  const hasSavedZReading = data.snapshot_persisted === true;
+  const paymentBreakdown = Array.isArray(data.z_payment_breakdown) ? data.z_payment_breakdown : [];
   const zVoids = hasNumber(data.z_void_transaction_count) || hasNumber(data.z_void_amount)
     ? `${formatCount(data.z_void_transaction_count)} · ${formatAmount(data.z_void_amount)}`
     : '—';
@@ -352,6 +387,29 @@ export const ZReadingReconciliationCard = ({
           description="Different metric; includes line-level discounts/refunds"
         />
       </dl>
+
+      {hasSavedZReading ? (
+        <section className="mt-4 min-w-0 border-t border-slate-200 pt-4" aria-labelledby="daily-sales-payment-breakdown-heading">
+          <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
+            <h4 id="daily-sales-payment-breakdown-heading" className="text-sm font-bold text-slate-950">Payment breakdown</h4>
+            <p className="text-xs text-slate-600">From the saved Z-reading snapshot</p>
+          </div>
+          {paymentBreakdown.length > 0 ? (
+            <dl className="mt-2 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Saved Z-reading payment breakdown">
+              {paymentBreakdown.map((entry) => (
+                <div key={entry.payment_type || entry.payment_label || 'other'} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <dt className="break-words text-xs text-slate-600">{entry.payment_label || String(entry.payment_type || 'Other payment').replace(/_/g, ' ')}</dt>
+                  <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">
+                    {formatAmount(entry.amount)} · {formatCount(entry.count)} {Number(entry.count || 0) === 1 ? 'payment' : 'payments'}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mt-2 text-sm text-slate-600">No payment entries were recorded in this saved Z-reading.</p>
+          )}
+        </section>
+      ) : null}
 
       <div className="mt-4 grid min-w-0 gap-4 border-t border-slate-200 pt-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] xl:items-end">
         <section className="min-w-0" aria-labelledby="daily-sales-additional-activity-heading">
@@ -953,11 +1011,13 @@ function PosReportsAnalyticsWorkspace({
     return dailyReport.trend || [];
   }, [activeTab, comparisonReport.flexible_trend, dailyReport.trend, displayGranularity, monthlyReport.sales_trend, yearlyReport.monthly_breakdown]);
 
-  const paymentChartRows = (dailyReport.payment_breakdown || []).map((entry, index) => ({
+  const paymentChartRows = aggregatePaymentBreakdown(dailyReport.payment_breakdown).map((entry, index) => ({
     ...entry,
     fill: CHART_COLORS[index % CHART_COLORS.length]
   }));
   const deliveryProviderRows = parseDeliveryProviderSummary(dailyReport.delivery_provider_breakdown);
+  const orderSourceRows = Array.isArray(dailyReport.order_source_breakdown) ? dailyReport.order_source_breakdown : [];
+  const orderMethodRows = Array.isArray(dailyReport.order_method_breakdown) ? dailyReport.order_method_breakdown : [];
   const activeReportData = isBreakdownTab ? breakdownData : reportData;
   const activeLoading = isBreakdownTab ? breakdownLoading : loading;
   const activeError = isBreakdownTab ? breakdownError : error;
@@ -1202,6 +1262,7 @@ function PosReportsAnalyticsWorkspace({
             row.quantity,
             row.orders,
             money(row.net_sales, currencySymbol),
+            money(getPosReportRefundsVoidsDisplayValue(row.refunds_voids), currencySymbol),
             `${Number(row.sales_share || 0).toFixed(2)}%`,
             money(row.profit, currencySymbol)
           ];
@@ -1219,7 +1280,7 @@ function PosReportsAnalyticsWorkspace({
       const headers = activeBreakdown === 'hourly'
         ? ['Hour', 'Transactions', 'Items Sold', 'Gross Sales', 'Net Sales', 'Refunds/Voids', 'Profit']
         : activeBreakdown === 'items'
-          ? ['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit']
+          ? ['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Refunds/Voids', 'Sales Share', 'Profit']
           : ['Category', 'Items', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit'];
       const printableRows = breakdownRows.map((row) => `<tr>${rowCells(row).map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('');
       const filterText = [
@@ -1253,7 +1314,9 @@ function PosReportsAnalyticsWorkspace({
             <div class="grid">
               <div class="card"><div class="label">Net Sales</div><div class="value">${escapeHtml(money(breakdownSummary.net_sales, currencySymbol))}</div></div>
               <div class="card"><div class="label">Gross Sales</div><div class="value">${escapeHtml(money(breakdownSummary.gross_sales, currencySymbol))}</div></div>
-              <div class="card"><div class="label">Transactions</div><div class="value">${Number(breakdownSummary.total_transactions || 0)}</div></div>
+              <div class="card"><div class="label">Recorded Transactions</div><div class="value">${Number(breakdownSummary.total_transactions || 0)}</div></div>
+              <div class="card"><div class="label">Completed Sales</div><div class="value">${Number(breakdownSummary.completed_transactions ?? breakdownSummary.total_transactions ?? 0)}</div></div>
+              <div class="card"><div class="label">Voided/Refunded</div><div class="value">${Number(breakdownSummary.voided_refunded_transactions || 0)}</div></div>
               <div class="card"><div class="label">Items Sold</div><div class="value">${Number(breakdownSummary.total_items_sold || 0)}</div></div>
               <div class="card"><div class="label">Profit</div><div class="value">${escapeHtml(money(breakdownSummary.profit ?? breakdownSummary.pos_profit_loss, currencySymbol))}</div></div>
             </div>
@@ -1362,6 +1425,7 @@ function PosReportsAnalyticsWorkspace({
         <td>${escapeHtml(printDateTime(entry.created_at))}</td>
         <td>${escapeHtml(entry.cashier_name || '-')}</td>
         <td>${escapeHtml(formatPosTransactionPaymentMethods(entry))}</td>
+        <td>${escapeHtml(formatSalesSource(entry.order_source))}</td>
         <td>${escapeHtml(Array.isArray(entry.delivery_provider_breakdown) ? entry.delivery_provider_breakdown.map((provider) => `${provider.display_label || provider.provider_name || provider.provider_type}: ${money(provider.amount, currencySymbol)}`).join(' + ') : '-')}</td>
         <td>${escapeHtml(entry.status || '-')}</td>
         <td style="text-align:right">${escapeHtml(money(entry.total_amount, currencySymbol))}</td>
@@ -1413,7 +1477,9 @@ function PosReportsAnalyticsWorkspace({
           <p>Range: ${escapeHtml(normalizedDateRange.dateFrom)} to ${escapeHtml(normalizedDateRange.dateTo)}</p>
           <div class="grid">
             <div class="card"><div class="label">Total Sales</div><div class="value">${escapeHtml(money(summaryCards.total_sales, currencySymbol))}</div></div>
-            <div class="card"><div class="label">Transactions</div><div class="value">${Number(summaryCards.total_transactions || 0)}</div></div>
+            <div class="card"><div class="label">Recorded Transactions</div><div class="value">${Number(dailyReport.summary?.total_transactions ?? summaryCards.total_transactions ?? 0)}</div></div>
+            <div class="card"><div class="label">Completed Sales</div><div class="value">${Number(dailyReport.summary?.completed_transactions ?? dailyReport.summary?.total_transactions ?? summaryCards.total_transactions ?? 0)}</div></div>
+            <div class="card"><div class="label">Voided/Refunded</div><div class="value">${Number(dailyReport.summary?.voided_refunded_transactions || 0)}</div></div>
             <div class="card"><div class="label">Gross Sales</div><div class="value">${escapeHtml(money(summaryCards.gross_sales, currencySymbol))}</div></div>
             <div class="card"><div class="label">All Discounts</div><div class="value">${escapeHtml(money(dailyReport.summary?.discounts, currencySymbol))}</div></div>
             <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${escapeHtml(money(summaryCards.pos_profit_loss, currencySymbol))}</div></div>
@@ -1430,8 +1496,8 @@ function PosReportsAnalyticsWorkspace({
           <div class="section">
             <h2>Filtered Transactions</h2>
             <table>
-              <thead><tr><th>Invoice</th><th>Datetime</th><th>Cashier</th><th>Payment</th><th>Delivery Provider</th><th>Status</th><th>Total</th><th>Reported Net Sales</th></tr></thead>
-              <tbody>${filteredTransactions || '<tr><td colspan="8">No transactions found.</td></tr>'}</tbody>
+              <thead><tr><th>Invoice</th><th>Datetime</th><th>Cashier</th><th>Payment</th><th>Sales Source</th><th>Delivery Provider</th><th>Status</th><th>Total</th><th>Reported Net Sales</th></tr></thead>
+              <tbody>${filteredTransactions || '<tr><td colspan="9">No transactions found.</td></tr>'}</tbody>
             </table>
           </div>
           <div class="section">
@@ -1612,6 +1678,69 @@ function PosReportsAnalyticsWorkspace({
     </SectionCard>
   );
 
+  const renderOrderSourceBreakdown = () => (
+    <SectionCard title="Sales Source Breakdown">
+      {orderSourceRows.length === 0 ? (
+        <p className="text-sm font-semibold text-slate-500">No Walk-in Sales or Online Sales were recorded for the selected filters.</p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {orderSourceRows.map((entry) => {
+            const transactionCount = Number(entry?.total_transactions ?? entry?.count ?? 0);
+            const sourceLabel = formatSalesSource(entry?.order_source);
+            return (
+              <div key={entry?.order_source || sourceLabel} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-black text-slate-900">{sourceLabel}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{transactionCount.toLocaleString('en-US')} transaction{transactionCount === 1 ? '' : 's'}</p>
+                </div>
+                <p className="text-sm font-black tabular-nums text-[#1A4E8D]">{money(entry?.net_sales ?? entry?.amount, currencySymbol)}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </SectionCard>
+  );
+
+  const renderOrderMethodBreakdown = () => (
+    <SectionCard title="Order Method Breakdown">
+      {orderMethodRows.length === 0 ? (
+        <p className="text-sm font-semibold text-slate-500">No order methods were recorded for the selected filters.</p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {orderMethodRows.map((entry) => {
+            const transactionCount = Number(entry?.total_transactions ?? entry?.count ?? 0);
+            return (
+              <div key={entry?.order_method || formatOrderMethod(entry?.order_method)} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-black text-slate-900">{formatOrderMethod(entry?.order_method)}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{transactionCount.toLocaleString('en-US')} transaction{transactionCount === 1 ? '' : 's'}</p>
+                </div>
+                <p className="text-sm font-black tabular-nums text-[#1A4E8D]">{money(entry?.net_sales ?? entry?.amount, currencySymbol)}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </SectionCard>
+  );
+
+  const renderOverallTotal = () => (
+    <SectionCard title="Overall Total">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-slate-900">Walk-in Sales + Online Sales</p>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-slate-500">
+            <span>{Number(dailyReport.summary?.total_transactions ?? summaryCards.total_transactions ?? 0).toLocaleString('en-US')} recorded</span>
+            <span>{Number(dailyReport.summary?.completed_transactions ?? dailyReport.summary?.total_transactions ?? summaryCards.total_transactions ?? 0).toLocaleString('en-US')} completed</span>
+            <span>{Number(dailyReport.summary?.voided_refunded_transactions ?? 0).toLocaleString('en-US')} voided/refunded</span>
+          </div>
+        </div>
+        <p className="text-xl font-black tabular-nums text-[#1A4E8D]">{money(summaryCards.total_sales, currencySymbol)}</p>
+      </div>
+    </SectionCard>
+  );
+
   const renderTrendAndPaymentBreakdown = () => (
     <>
       <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
@@ -1635,23 +1764,41 @@ function PosReportsAnalyticsWorkspace({
           </div>
         </SectionCard>
 
-        <SectionCard title="Payment Breakdown">
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={paymentChartRows}>
-                <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-                <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
-                <YAxis stroke="#64748B" fontSize={11} />
-                <Tooltip formatter={(value) => money(value, currencySymbol)} />
-                <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
-                  {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <SectionCard title="Payment Method Breakdown">
+          {paymentChartRows.length === 0 ? <p className="text-sm font-semibold text-slate-500">No payment methods were recorded for the selected filters.</p> : (
+            <>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={paymentChartRows}>
+                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                    <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
+                    <YAxis stroke="#64748B" fontSize={11} />
+                    <Tooltip formatter={(value) => money(value, currencySymbol)} />
+                    <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
+                      {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-4 divide-y divide-slate-100 border-t border-slate-100">
+                {paymentChartRows.map((entry) => (
+                  <div key={`payment-row-${entry.payment_method}`} className="flex items-center justify-between gap-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">{entry.payment_method}</p>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-500">{Number(entry.total_transactions || 0).toLocaleString('en-US')} transaction{Number(entry.total_transactions || 0) === 1 ? '' : 's'}</p>
+                    </div>
+                    <p className="text-sm font-black tabular-nums text-[#1A4E8D]">{money(entry.net_sales, currencySymbol)}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </SectionCard>
       </div>
       {renderDeliveryProviderBreakdown()}
+      {renderOrderSourceBreakdown()}
+      {renderOrderMethodBreakdown()}
+      {renderOverallTotal()}
     </>
   );
 
@@ -1685,6 +1832,7 @@ function PosReportsAnalyticsWorkspace({
             comparison={comparisonReport.flexible_range}
             currencySymbol={currencySymbol}
             selectedTender={selectedTender}
+            transactionRows={transactionRows}
           />
         </div>
       ) : null}

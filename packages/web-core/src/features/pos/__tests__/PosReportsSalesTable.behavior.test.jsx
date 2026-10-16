@@ -11,6 +11,7 @@ const rows = [
     created_at: '2026-08-28T06:45:00.000Z',
     cashier_name: 'John D.',
     payment_methods: ['cash'],
+    order_source: 'in_store',
     order_method: 'dine_in',
     discount_amount: 0,
     gross_sales: 36,
@@ -23,11 +24,25 @@ const rows = [
     created_at: '2026-08-27T06:45:00.000Z',
     cashier_name: 'Mary A.',
     payment_methods: ['gcash', 'cash'],
+    order_source: 'in_store',
     order_method: 'pickup',
     discount_amount: 4,
     gross_sales: 40,
     net_sales: 36,
     pos_profit_loss: -2
+  },
+  {
+    pos_transaction_id: 3,
+    invoice_number: 'NFS-000127',
+    created_at: '2026-08-26T06:45:00.000Z',
+    cashier_name: 'Online Cashier',
+    payment_methods: ['cash'],
+    order_source: 'online_store',
+    order_method: 'dine_in',
+    discount_amount: 0,
+    gross_sales: 92.7,
+    net_sales: 92.7,
+    pos_profit_loss: 70
   }
 ];
 
@@ -42,7 +57,7 @@ describe('POS reports sales table', () => {
     expect(tableRegion.querySelector('table')?.className).toContain('w-max min-w-full');
     expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
 
-    ['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Order Method', 'Net Sales (₱)', 'POS Profit/Loss (₱)'].forEach((label) => {
+    ['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Sales Source', 'Net Sales (₱)', 'POS Profit/Loss (₱)'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: new RegExp(label.replace(/[()₱/]/g, '\\$&')) })).toBeTruthy();
     });
     expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
@@ -52,10 +67,25 @@ describe('POS reports sales table', () => {
     expect(screen.getAllByText('Cash').some((element) => element.className.includes('text-[#475569]'))).toBe(true);
     expect(screen.getAllByText('GCash').some((element) => element.className.includes('text-[#475569]'))).toBe(true);
     expect(screen.getAllByText('Pickup').some((element) => element.className.includes('text-[#475569]'))).toBe(true);
+    expect(screen.getAllByText('Walk-in Sales').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Online Sales').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱36.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱30.00').length).toBeGreaterThan(0);
-    expect(screen.getByText('Showing 1–2 of 2 sales transactions')).toBeTruthy();
+    expect(screen.getByText('Showing 1–3 of 3 sales transactions')).toBeTruthy();
 
+  });
+
+  it('keeps online dine-in orders separate from walk-in sales', () => {
+    render(<PosReportsSalesTable rows={rows} />);
+
+    const onlineRow = screen.getAllByRole('row').find((row) => row.textContent.includes('NFS-000127'));
+    const walkInRow = screen.getAllByRole('row').find((row) => row.textContent.includes('NFS-000125'));
+
+    expect(onlineRow).toBeTruthy();
+    expect(onlineRow.textContent).toContain('Online Sales');
+    expect(onlineRow.textContent).not.toContain('Walk-in Sales');
+    expect(walkInRow).toBeTruthy();
+    expect(walkInRow.textContent).toContain('Walk-in Sales');
   });
 
   it('supports search-compatible filtering and sortable numeric columns', () => {
@@ -65,7 +95,7 @@ describe('POS reports sales table', () => {
     fireEvent.click(profitLossSort);
     fireEvent.click(profitLossSort);
     const bodyRows = screen.getAllByRole('row').slice(1);
-    expect(bodyRows[0].textContent).toContain('₱30.00');
+    expect(bodyRows[0].textContent).toContain('₱70.00');
 
     rerender(<PosReportsSalesTable rows={rows} searchQuery="NFS-000126" />);
     expect(screen.getAllByText('NFS-000126').length).toBeGreaterThan(0);

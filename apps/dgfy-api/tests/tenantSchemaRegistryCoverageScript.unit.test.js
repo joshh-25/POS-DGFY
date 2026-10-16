@@ -91,6 +91,32 @@ describe('tenant schema registry coverage script contracts', () => {
             expect(result.nonLiteralCalls[0].fn).toBe('addColumn');
             expect(result.nonLiteralCalls[0].arg).toBe('table');
         });
+
+        // #2335: a literal queryInterface.changeColumn(...) -- e.g. widening an ENUM --
+        // was previously invisible to this parser entirely. PR #2322's migration used exactly
+        // this call (changeColumn('stock_movements', 'reference_type', ...)) and shipped with
+        // no registry entry and no CI failure, because changedColumns didn't exist yet.
+        it('extracts a literal changeColumn call', () => {
+            const source = `await queryInterface.changeColumn('stock_movements', 'reference_type', { type: Sequelize.ENUM('PO', 'POS_PARKED_SALE') });`;
+            const result = extractMigrationSchemaOperations(source);
+            expect(result.changedColumns).toEqual([{ table: 'stock_movements', column: 'reference_type' }]);
+            expect(result.createdTables).toEqual([]);
+            expect(result.addedColumns).toEqual([]);
+            expect(result.nonLiteralCalls).toEqual([]);
+        });
+
+        it('captures a variable-driven changeColumn call as a warning, not a violation candidate', () => {
+            const source = `
+                for (const { table, column } of ENUM_COLUMNS) {
+                    await queryInterface.changeColumn(table, column, { type: Sequelize.STRING });
+                }
+            `;
+            const result = extractMigrationSchemaOperations(source);
+            expect(result.changedColumns).toEqual([]);
+            expect(result.nonLiteralCalls).toHaveLength(1);
+            expect(result.nonLiteralCalls[0].fn).toBe('changeColumn');
+            expect(result.nonLiteralCalls[0].arg).toBe('table');
+        });
     });
 
     describe('classifyTable', () => {
@@ -221,6 +247,86 @@ describe('tenant schema registry coverage script contracts', () => {
             });
             expect(violations).toHaveLength(1);
             expect(violations[0].classification).toBe('unmapped');
+        });
+
+        // #2335 regression guard: this is the exact bug class PR #2322 shipped -- a changeColumn
+        // ENUM-widening migration with no registry entry anywhere. Must fail without the
+        // changeColumn detection added for #2335 and pass with it.
+        it('flags a tenant-scoped changeColumn with no matching registry entry in either registry', () => {
+            const { violations } = checkRegistryCoverage({
+                migrations: [{
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
+                    createdTables: [],
+                    addedColumns: [],
+                    changedColumns: [{ table: 'items', column: 'unregistered_enum_column' }],
+                    nonLiteralCalls: []
+                }],
+                tableToModel,
+                nonTenantModelExports,
+                requiredColumns: {},
+                requiredTables: {},
+                requiredEnumContracts: {}
+            });
+            expect(violations).toHaveLength(1);
+            expect(violations[0].table).toBe('items');
+            expect(violations[0].column).toBe('unregistered_enum_column');
+            expect(violations[0].message).toContain('changeColumn');
+        });
+
+        it('passes a tenant-scoped changeColumn covered by REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS', () => {
+            const { violations } = checkRegistryCoverage({
+                migrations: [{
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
+                    createdTables: [],
+                    addedColumns: [],
+                    changedColumns: [{ table: 'stock_movements', column: 'reference_type' }],
+                    nonLiteralCalls: []
+                }],
+                tableToModel: new Map([...tableToModel, ['stock_movements', 'StockMovement']]),
+                nonTenantModelExports,
+                requiredColumns: {},
+                requiredTables: {},
+                requiredEnumContracts: {
+                    stock_movements: { reference_type: { enumValues: ['PO', 'POS_PARKED_SALE'], sql: '...' } }
+                }
+            });
+            expect(violations).toEqual([]);
+        });
+
+        it('passes a tenant-scoped changeColumn covered by REQUIRED_TENANT_SCHEMA_COLUMNS', () => {
+            const { violations } = checkRegistryCoverage({
+                migrations: [{
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
+                    createdTables: [],
+                    addedColumns: [],
+                    changedColumns: [{ table: 'items', column: 'category' }],
+                    nonLiteralCalls: []
+                }],
+                tableToModel,
+                nonTenantModelExports,
+                requiredColumns: { items: { category: { sql: '...' } } },
+                requiredTables: {},
+                requiredEnumContracts: {}
+            });
+            expect(violations).toEqual([]);
+        });
+
+        it('does not flag a changeColumn on a landlord-only table', () => {
+            const { violations } = checkRegistryCoverage({
+                migrations: [{
+                    file: 'apps/dgfy-migration-runner/migrations/x.cjs',
+                    createdTables: [],
+                    addedColumns: [],
+                    changedColumns: [{ table: 'tenants', column: 'some_existing_column' }],
+                    nonLiteralCalls: []
+                }],
+                tableToModel,
+                nonTenantModelExports,
+                requiredColumns: {},
+                requiredTables: {},
+                requiredEnumContracts: {}
+            });
+            expect(violations).toEqual([]);
         });
 
         it('surfaces non-literal calls as warnings, not violations', () => {

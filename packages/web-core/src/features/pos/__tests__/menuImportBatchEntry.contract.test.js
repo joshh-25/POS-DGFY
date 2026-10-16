@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { readSourceForContract } from './readSourceForContract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const workspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
 const workspace = readSourceForContract(workspacePath);
 
 describe('POS batch menu import entry point', () => {

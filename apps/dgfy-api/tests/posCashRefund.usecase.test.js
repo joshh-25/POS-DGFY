@@ -163,6 +163,30 @@ describe('POS walk-in cash refund use case', () => {
         expect(mockAssertComplianceOperationAllowed).toHaveBeenCalledTimes(1);
     });
 
+    it('records into a caller-owned transaction without committing it', async () => {
+        const fixture = buildFixture();
+        const useCase = buildCashRefundPosTransactionUseCase({ posRepository: fixture.posRepository });
+        const callerTransaction = createTransaction();
+
+        const result = await runInTenantContext(fixture.sequelize, () => useCase({
+            posTransactionId: 168,
+            payload: {
+                shift_id: 107,
+                terminal_id: 'COUNTER-01',
+                terminal_location_id: 7,
+                reason: 'Customer returned paid item',
+                idempotency_key: 'cash-refund-owned-tx'
+            },
+            user: { user_id: 99 },
+            transaction: callerTransaction
+        }));
+
+        expect(result.success).toBe(true);
+        expect(callerTransaction.commit).not.toHaveBeenCalled();
+        expect(callerTransaction.rollback).not.toHaveBeenCalled();
+        expect(fixture.state.transaction.payment_status).toBe('refunded');
+    });
+
     it('replays the same idempotency key without creating a second cash_out event', async () => {
         const fixture = buildFixture();
         const useCase = buildCashRefundPosTransactionUseCase({ posRepository: fixture.posRepository });
@@ -224,6 +248,7 @@ describe('POS walk-in cash refund use case', () => {
     it('ignores zero-value checkout payment template rows for a single-tender cash refund', async () => {
         const fixture = buildFixture({
             transactionOverrides: {
+                payment_type: null,
                 payment_breakdown: [
                     { payment_type: 'cash', count: 1, amount: 150 },
                     { payment_type: 'gcash', count: 0, amount: 0 },

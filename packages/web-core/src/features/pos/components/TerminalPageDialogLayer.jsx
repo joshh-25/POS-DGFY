@@ -390,7 +390,7 @@ export default function TerminalPageDialogLayer({ model }) {
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-takeover-pin" className="text-xs font-extrabold text-[#0F172A]">
-                        POS Cashier PIN <span className="font-semibold text-slate-500">(different cashier only)</span>
+                        Global POS PIN <span className="font-semibold text-slate-500">(different cashier only)</span>
                       </Label>
                       <Input
                         id="cashier-takeover-pin"
@@ -940,45 +940,31 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogHeader>
             {closeShiftBlocker ? (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-900" role="alert" data-testid="pos-close-shift-blocker">
-                {closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_IN_FLIGHT' || closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED' ? (
-                  <>
-                    <p>{closeShiftBlocker.message || 'An unresolved payment is still open for this shift.'}</p>
-                    <p className="mt-1 font-medium">
-                      Return to Checkout, then open <strong>Split Payment</strong> to finish it or cancel it. Shift close will remain blocked until the payment is resolved.
-                    </p>
-                    {Array.isArray(closeShiftBlocker.sessions) && closeShiftBlocker.sessions.length > 0 && (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
-                        {closeShiftBlocker.sessions.map((session) => (
-                          <li key={session.pos_payment_session_id || session.session_reference}>
-                            {session.session_reference || `Payment session #${session.pos_payment_session_id || 'unknown'}`}
-                            {session.status ? ` · ${String(session.status).replace(/_/g, ' ')}` : ''}
-                            {Number(session.paid_amount || 0) > 0 ? ` · ₱${Number(session.paid_amount).toFixed(2)} already recorded` : ''}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <Button
-                      type="button"
-                      onClick={handleResolveCloseShiftPaymentBlocker}
-                      className="mt-3 h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
-                      data-testid="pos-close-shift-resolve-payment"
-                    >
-                      Return to Checkout
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <p>Resolve the following before closing this shift:</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-5">
-                      {Number(closeShiftBlocker.claimedParkedSaleCount || 0) > 0 && (
-                        <li>{Number(closeShiftBlocker.claimedParkedSaleCount)} claimed parked sale{Number(closeShiftBlocker.claimedParkedSaleCount) === 1 ? '' : 's'} are still in progress on the server. Finish or release each one before closing.</li>
-                      )}
-                      {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
-                        <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
-                      )}
+                <>
+                  <p>{closeShiftBlocker.message || 'An unresolved payment is still open for this shift.'}</p>
+                  <p className="mt-1 font-medium">
+                    Return to Checkout, then open <strong>Split Payment</strong> to finish it or cancel it. Shift close will remain blocked until the payment is resolved.
+                  </p>
+                  {Array.isArray(closeShiftBlocker.sessions) && closeShiftBlocker.sessions.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                      {closeShiftBlocker.sessions.map((session) => (
+                        <li key={session.pos_payment_session_id || session.session_reference}>
+                          {session.session_reference || `Payment session #${session.pos_payment_session_id || 'unknown'}`}
+                          {session.status ? ` · ${String(session.status).replace(/_/g, ' ')}` : ''}
+                          {Number(session.paid_amount || 0) > 0 ? ` · ₱${Number(session.paid_amount).toFixed(2)} already recorded` : ''}
+                        </li>
+                      ))}
                     </ul>
-                  </>
-                )}
+                  )}
+                  <Button
+                    type="button"
+                    onClick={handleResolveCloseShiftPaymentBlocker}
+                    className="mt-3 h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
+                    data-testid="pos-close-shift-resolve-payment"
+                  >
+                    Return to Checkout
+                  </Button>
+                </>
               </div>
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-950">
@@ -1095,13 +1081,20 @@ export default function TerminalPageDialogLayer({ model }) {
             currency={terminalMeta.pettyCashSymbol || DEFAULT_CURRENCY}
             businessSettings={terminalMeta.businessSettings}
             autoPrint={closedShiftReportAutoPrint}
-            title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}
+            title={closedShiftReport?.report_type === 'x_reading'
+              ? 'X-Reading / Current Shift'
+              : closedShiftReportAutoPrint || closedShiftReport?.shift?.closed_at
+              ? 'Cashier Shift Sales Summary'
+              : 'Current Shift Sales Summary'}
             paperWidth={zReadingPaperWidth}
             onPaperWidthChange={setZReadingPaperWidth}
             hardwareLoading={hardwareLoading}
             isPrinterAvailable={isPrinterAvailable}
-            onPrint={() => printClosedShiftSummary(closedShiftReport, {
-              reason: closedShiftReportAutoPrint ? 'shift_summary_reprint' : 'shift_summary_manual_print'
+            onPrint={(nextPaperWidth) => printClosedShiftSummary(closedShiftReport, {
+              reason: closedShiftReport?.report_type === 'x_reading'
+                ? 'x_reading_manual_print'
+                : closedShiftReportAutoPrint ? 'shift_summary_reprint' : 'shift_summary_manual_print',
+              paperWidth: nextPaperWidth
             })}
             onClose={() => {
               setClosedShiftReportOpen(false);
@@ -1242,7 +1235,7 @@ export default function TerminalPageDialogLayer({ model }) {
             <DialogHeader>
               <DialogTitle>Confirm Day Close</DialogTitle>
               <DialogDescription>
-                This will generate the branch Z-reading after every cashier shift is closed. Enter your own Day Close PIN to record accountability.
+                This will generate the branch Z-reading after every cashier shift is closed. Enter your global POS PIN to record accountability.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
@@ -1265,7 +1258,7 @@ export default function TerminalPageDialogLayer({ model }) {
                 </div>
               ) : null}
               <div>
-                <Label htmlFor="z-reading-day-close-pin">Your POS Day Close PIN</Label>
+                <Label htmlFor="z-reading-day-close-pin">Your global POS PIN</Label>
                 <Input
                   id="z-reading-day-close-pin"
                   value={zReadingClosePin}
@@ -1310,9 +1303,9 @@ export default function TerminalPageDialogLayer({ model }) {
         }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>My POS Day Close PIN</DialogTitle>
+              <DialogTitle>My global POS PIN</DialogTitle>
               <DialogDescription>
-                This personal PIN is used only to confirm a Z-reading for the current company. Your Master Admin can see its status but cannot view the PIN.
+                This personal PIN is used for protected POS actions in the current company, including checkout handoff, discounts, voids, drawer access, refunds, and Z-reading. Your Master Admin can see its status but cannot view the PIN.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
@@ -1321,11 +1314,11 @@ export default function TerminalPageDialogLayer({ model }) {
                 <Input id="my-day-close-current-password" value={myDayClosePinForm.currentPassword} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, currentPassword: event.target.value }))} type="password" autoComplete="current-password" className="mt-1" disabled={myDayClosePinSaving} />
               </div>
               <div>
-                <Label htmlFor="my-day-close-pin">New Day Close PIN</Label>
+                <Label htmlFor="my-day-close-pin">New global POS PIN</Label>
                 <Input id="my-day-close-pin" value={myDayClosePinForm.pin} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="text" inputMode="numeric" autoComplete="one-time-code" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" style={{ WebkitTextSecurity: 'disc' }} placeholder="4 to 12 digits" className="mt-1" disabled={myDayClosePinSaving} />
               </div>
               <div>
-                <Label htmlFor="my-day-close-pin-confirmation">Confirm new Day Close PIN</Label>
+                <Label htmlFor="my-day-close-pin-confirmation">Confirm new global POS PIN</Label>
                 <Input id="my-day-close-pin-confirmation" value={myDayClosePinForm.confirmation} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, confirmation: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="text" inputMode="numeric" autoComplete="one-time-code" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" style={{ WebkitTextSecurity: 'disc' }} placeholder="Re-enter PIN" className="mt-1" disabled={myDayClosePinSaving} />
               </div>
             </div>

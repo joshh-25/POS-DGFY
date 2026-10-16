@@ -1,34 +1,41 @@
-import { Check, ChevronDown } from 'lucide-react';
-import { createPortal } from 'react-dom';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CHECKOUT_FONT_FAMILY } from './checkoutUiTokens.js';
 
-const MENU_ROW_HEIGHT = 34;
-const MENU_MAX_HEIGHT = 220;
+const TIME_WHEEL_ITEM_HEIGHT = 42;
+const TIME_WHEEL_VISIBLE_ITEMS = 3;
 
-function getMenuPosition(trigger, optionCount) {
-  if (!trigger || typeof window === 'undefined') return null;
-  const rect = trigger.getBoundingClientRect();
-  const width = Math.min(Math.max(rect.width, 112), window.innerWidth - 16);
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-  const desiredHeight = Math.min(optionCount * MENU_ROW_HEIGHT + 12, MENU_MAX_HEIGHT);
-  const availableBelow = Math.max(0, window.innerHeight - rect.bottom - 12);
-  const availableAbove = Math.max(0, rect.top - 12);
-  const placeBelow = availableBelow >= Math.min(desiredHeight, 120) || availableBelow >= availableAbove;
-  const maxHeight = Math.max(72, Math.min(desiredHeight, placeBelow ? availableBelow : availableAbove));
+const normalizeTypedValue = (label, rawValue) => {
+  const value = String(rawValue ?? '').trim().toUpperCase();
+  if (label === 'AM/PM') return value === 'AM' || value === 'PM' ? value : null;
+  if (!/^\d{1,2}$/.test(value)) return null;
+  const numericValue = Number(value);
+  if (label === 'Hour') return numericValue >= 1 && numericValue <= 12 ? String(numericValue) : null;
+  if (label === 'Minute') return numericValue >= 0 && numericValue <= 59 ? String(numericValue).padStart(2, '0') : null;
+  return null;
+};
 
-  return {
-    left,
-    top: placeBelow ? rect.bottom + 6 : Math.max(8, rect.top - maxHeight - 6),
-    width,
-    maxHeight
-  };
-}
+const isAllowedInputDraft = (label, rawValue) => {
+  const value = String(rawValue ?? '').trim().toUpperCase();
+  if (label === 'AM/PM') return value === '' || value === 'A' || value === 'P' || value === 'AM' || value === 'PM';
+  if (label === 'Hour') return value === '' || /^[1-9]$/.test(value) || /^(1[0-2])$/.test(value);
+  if (label === 'Minute') return value === '' || /^\d$/.test(value) || /^(?:[0-5]\d)$/.test(value);
+  return true;
+};
 
-/** Compact, keyboard-operable listbox used by the scheduled-order time fields. */
+const normalizeOptions = (options) => (Array.isArray(options) ? options : []).map((option) => {
+  if (option && typeof option === 'object') {
+    return {
+      disabled: Boolean(option.disabled),
+      label: String(option.label ?? option.value ?? ''),
+      value: String(option.value ?? '')
+    };
+  }
+  return { disabled: false, label: String(option), value: String(option) };
+});
+
+/** iPhone-style scroll wheel used by the shared scheduled-order time fields. */
 export function StorefrontTimePickerSelect({
-  allowCustomInput = false,
-  brandColor,
+  brandColor = '#1A4E8D',
   disabled = false,
   isResponsive = false,
   label,
@@ -37,247 +44,309 @@ export function StorefrontTimePickerSelect({
   placeholder,
   value = ''
 }) {
-  const id = useId();
-  const triggerRef = useRef(null);
+  const wheelRef = useRef(null);
   const inputRef = useRef(null);
-  const menuRef = useRef(null);
-  const optionRefs = useRef([]);
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [position, setPosition] = useState(null);
-  const [inputDraft, setInputDraft] = useState(null);
-  const [inputError, setInputError] = useState(false);
-  const selectedIndex = Math.max(0, options.indexOf(value));
-  const inputValue = inputDraft ?? value;
-  const errorId = id + '-error';
-  const errorMessage = label === 'Minute'
-    ? 'Enter 00–60.'
-    : label === 'Hour' ? 'Enter an available hour.' : 'Choose AM or PM.';
-
-  const commitInput = () => {
-    const trimmed = inputValue.trim().toUpperCase();
-    const normalized = label === 'Hour' && /^\d{1,2}$/.test(trimmed)
-      ? String(Number(trimmed))
-      : label === 'Minute' && /^\d{1,2}$/.test(trimmed)
-        ? trimmed.padStart(2, '0')
-        : trimmed;
-    const customInputAllowed = allowCustomInput
-      && label === 'Minute'
-      && /^\d{1,2}$/.test(trimmed)
-      && Number(trimmed) <= 60;
-    if (normalized && (options.includes(normalized) || customInputAllowed)) {
-      setInputDraft(null);
-      setInputError(false);
-      if (normalized !== value) onChange(normalized);
-    } else {
-      setInputError(Boolean(trimmed));
-      setInputDraft(null);
-    }
-  };
+  const inputPointerRef = useRef(null);
+  const settleTimerRef = useRef(null);
+  const suppressScrollRef = useRef(false);
+  const suppressScrollTimerRef = useRef(null);
+  const normalizedOptions = normalizeOptions(options);
+  const itemHeight = isResponsive ? 44 : TIME_WHEEL_ITEM_HEIGHT;
+  const selectedValue = String(value ?? '');
+  const selectedIndex = normalizedOptions.findIndex((option) => option.value === selectedValue);
+  const enabledOptions = normalizedOptions.filter((option) => !option.disabled);
+  const isAmPm = label === 'AM/PM';
+  const [inputState, setInputState] = useState(() => ({
+    draft: selectedValue,
+    error: false,
+    value: selectedValue
+  }));
+  const inputDraft = inputState.value === selectedValue ? inputState.draft : selectedValue;
+  const inputError = inputState.value === selectedValue ? inputState.error : false;
 
   useEffect(() => {
-    if (!open) return undefined;
-    const focusTimer = window.setTimeout(() => optionRefs.current[activeIndex]?.focus(), 0);
-    const updatePosition = () => {
-      const nextPosition = getMenuPosition(triggerRef.current, options.length);
-      setPosition((current) => (
-        current && nextPosition
-          && current.left === nextPosition.left
-          && current.top === nextPosition.top
-          && current.width === nextPosition.width
-          && current.maxHeight === nextPosition.maxHeight
-          ? current
-          : nextPosition
-      ));
-    };
-    const handlePointerDown = (event) => {
-      if (triggerRef.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
-      setOpen(false);
-      setPosition(null);
-    };
-    const handleKeyDown = (event) => {
-      if (event.key !== 'Escape') return;
-      setOpen(false);
-      setPosition(null);
-      triggerRef.current?.focus();
-    };
+    const wheel = wheelRef.current;
+    if (!wheel || selectedIndex < 0) return undefined;
+    suppressScrollRef.current = true;
+    wheel.scrollTop = selectedIndex * itemHeight;
+    const releaseTimer = window.setTimeout(() => {
+      suppressScrollRef.current = false;
+    }, 0);
+    return () => window.clearTimeout(releaseTimer);
+  }, [itemHeight, selectedIndex]);
 
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [activeIndex, open, options.length]);
+  useEffect(() => () => {
+    if (settleTimerRef.current) window.clearTimeout(settleTimerRef.current);
+    if (suppressScrollTimerRef.current) window.clearTimeout(suppressScrollTimerRef.current);
+  }, []);
 
-  const handleTriggerClick = () => {
-    if (options.length === 0) return;
-    if (open) {
-      setOpen(false);
-      setPosition(null);
+  const selectClosestOption = () => {
+    const wheel = wheelRef.current;
+    if (!wheel || enabledOptions.length === 0) return;
+    const nearestIndex = Math.max(0, Math.min(
+      normalizedOptions.length - 1,
+      Math.round(wheel.scrollTop / itemHeight)
+    ));
+    const nextEntry = normalizedOptions[nearestIndex]?.disabled
+      ? normalizedOptions
+        .map((option, index) => ({ index, option }))
+        .filter(({ option }) => !option.disabled)
+        .sort((left, right) => Math.abs(left.index - nearestIndex) - Math.abs(right.index - nearestIndex))[0]
+      : { index: nearestIndex, option: normalizedOptions[nearestIndex] };
+    const nextOption = nextEntry?.option;
+    if (!nextOption || nextOption.disabled) return;
+    const nextScrollTop = nextEntry.index * itemHeight;
+    if (wheel.scrollTop !== nextScrollTop) {
+      suppressScrollRef.current = true;
+      wheel.scrollTop = nextScrollTop;
+      if (suppressScrollTimerRef.current) window.clearTimeout(suppressScrollTimerRef.current);
+      suppressScrollTimerRef.current = window.setTimeout(() => {
+        suppressScrollRef.current = false;
+        suppressScrollTimerRef.current = null;
+      }, 0);
+    }
+    if (nextOption.value !== selectedValue) {
+      setInputState({ draft: nextOption.value, error: false, value: selectedValue });
+      onChange(nextOption.value);
+    }
+  };
+
+  const handleScroll = () => {
+    if (disabled || suppressScrollRef.current) return;
+    if (settleTimerRef.current) window.clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = window.setTimeout(selectClosestOption, 90);
+  };
+
+  const handleOptionClick = (option, index) => {
+    if (disabled || option.disabled) return;
+    if (settleTimerRef.current) window.clearTimeout(settleTimerRef.current);
+    suppressScrollRef.current = true;
+    if (suppressScrollTimerRef.current) window.clearTimeout(suppressScrollTimerRef.current);
+    suppressScrollTimerRef.current = window.setTimeout(() => {
+      suppressScrollRef.current = false;
+      suppressScrollTimerRef.current = null;
+    }, 250);
+    if (wheelRef.current) wheelRef.current.scrollTop = index * itemHeight;
+    if (option.value === selectedValue) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
       return;
     }
-    setActiveIndex(selectedIndex);
-    setPosition(getMenuPosition(triggerRef.current, options.length));
-    setOpen(true);
+    setInputState({ draft: option.value, error: false, value: selectedValue });
+    onChange(option.value);
   };
 
-  const handleMenuKeyDown = (event) => {
-    let nextIndex = activeIndex;
-    if (event.key === 'ArrowDown') nextIndex = Math.min(options.length - 1, activeIndex + 1);
-    else if (event.key === 'ArrowUp') nextIndex = Math.max(0, activeIndex - 1);
-    else if (event.key === 'Home') nextIndex = 0;
-    else if (event.key === 'End') nextIndex = options.length - 1;
-    else return;
+  const commitInput = () => {
+    const normalized = normalizeTypedValue(label, inputDraft);
+    const matchingOption = normalizedOptions.find((option) => option.value === normalized);
+    if (!normalized || !matchingOption || matchingOption.disabled) {
+      setInputState({ draft: inputDraft, error: true, value: selectedValue });
+      return false;
+    }
+    setInputState({ draft: normalized, error: false, value: selectedValue });
+    if (normalized !== selectedValue) onChange(normalized);
+    return true;
+  };
 
+  const handleInputChange = (event) => {
+    const draft = event.target.value;
+    if (!isAllowedInputDraft(label, draft)) return;
+    setInputState({ draft, error: false, value: selectedValue });
+  };
+
+  const handleInputWheel = (event) => {
+    const wheel = wheelRef.current;
+    if (disabled || !wheel || event.deltaY === 0) return;
+    const delta = event.deltaMode === 1
+      ? event.deltaY * itemHeight
+      : event.deltaMode === 2
+        ? event.deltaY * wheel.clientHeight
+        : event.deltaY;
     event.preventDefault();
-    setActiveIndex(nextIndex);
-    optionRefs.current[nextIndex]?.focus();
+    wheel.scrollTop += delta;
   };
 
-  const selectedLabel = value || placeholder;
-  const menu = open && typeof document !== 'undefined' ? createPortal(
-    <div
-      ref={menuRef}
-      id={id + '-options'}
-      role="listbox"
-      aria-label={label + ' options'}
-      data-storefront-picker-overlay="true"
-      onKeyDown={handleMenuKeyDown}
-      style={{
-        background: '#fff',
-        border: '1px solid #e2e8f0',
-        borderRadius: 12,
-        boxShadow: '0 18px 34px rgba(15, 23, 42, 0.14), 0 1px 4px rgba(15, 23, 42, 0.05)',
-        boxSizing: 'border-box',
-        maxHeight: position?.maxHeight ?? MENU_MAX_HEIGHT,
-        overflowY: 'auto',
-        overscrollBehavior: 'contain',
-        padding: 6,
-        position: 'fixed',
-        left: position?.left ?? 8,
-        top: position?.top ?? 8,
-        visibility: position ? 'visible' : 'hidden',
-        width: position?.width ?? 112,
-        zIndex: 3100,
-        fontFamily: CHECKOUT_FONT_FAMILY
-      }}
-    >
-      {options.map((option, index) => {
-        const selected = option === value;
-        return (
+  const handleInputPointerDown = (event) => {
+    const wheel = wheelRef.current;
+    if (disabled || !wheel || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    inputPointerRef.current = {
+      moved: false,
+      pointerId: event.pointerId,
+      startScrollTop: wheel.scrollTop,
+      startY: event.clientY
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleInputPointerMove = (event) => {
+    const drag = inputPointerRef.current;
+    const wheel = wheelRef.current;
+    if (!drag || !wheel || drag.pointerId !== event.pointerId) return;
+    const delta = drag.startY - event.clientY;
+    if (Math.abs(delta) < 2 && !drag.moved) return;
+    drag.moved = true;
+    event.preventDefault();
+    wheel.scrollTop = drag.startScrollTop + delta;
+  };
+
+  const handleInputPointerEnd = (event) => {
+    const drag = inputPointerRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    inputPointerRef.current = null;
+  };
+
+  return (
+    <div style={{ minWidth: 0, opacity: disabled ? 0.65 : 1, position: 'relative', width: '100%' }}>
+      <div
+        ref={wheelRef}
+        role="listbox"
+        aria-label={label}
+        aria-disabled={disabled || undefined}
+        aria-orientation="vertical"
+        onScroll={handleScroll}
+        style={{
+          height: itemHeight * TIME_WHEEL_VISIBLE_ITEMS,
+          overflowY: 'auto',
+          overscrollBehaviorY: 'contain',
+          scrollSnapType: 'y mandatory',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch'
+        }}
+      >
+        <div aria-hidden="true" style={{ height: itemHeight }} />
+        {normalizedOptions.length > 0 ? normalizedOptions.map((option, index) => {
+          const active = option.value === String(value);
+          const hideActiveAmPmLabel = label === 'AM/PM' && active;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={active}
+              disabled={disabled || option.disabled}
+              onClick={() => handleOptionClick(option, index)}
+              style={{
+                alignItems: 'center',
+                background: 'transparent',
+                border: 0,
+                color: hideActiveAmPmLabel
+                  ? 'transparent'
+                  : option.disabled ? '#b7c0d0' : active ? '#17213c' : '#66748f',
+                cursor: disabled || option.disabled ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                fontFamily: CHECKOUT_FONT_FAMILY,
+                fontSize: 12,
+                fontWeight: active ? 600 : 500,
+                justifyContent: 'center',
+                minHeight: itemHeight,
+                opacity: option.disabled ? 0.65 : 1,
+                padding: '0 6px',
+                scrollSnapAlign: 'center',
+                transition: 'color 160ms ease, font-size 160ms ease',
+                width: '100%'
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        }) : (
           <button
-            key={option}
-            ref={(element) => { optionRefs.current[index] = element; }}
             type="button"
             role="option"
-            aria-selected={selected}
-            tabIndex={index === activeIndex ? 0 : -1}
-            onFocus={() => setActiveIndex(index)}
-            onClick={() => {
-              onChange(option);
-              setInputDraft(null);
-              setInputError(false);
-              setOpen(false);
-              setPosition(null);
-              triggerRef.current?.focus();
-            }}
-            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            aria-selected="false"
+            disabled
             style={{
               alignItems: 'center',
-              background: selected ? '#eff6ff' : '#fff',
+              background: 'transparent',
               border: 0,
-              borderRadius: 8,
-              boxSizing: 'border-box',
-              color: selected ? brandColor : '#0f172a',
-              cursor: 'pointer',
-              display: 'flex',
+              color: '#b7c0d0',
+              display: 'inline-flex',
               fontFamily: CHECKOUT_FONT_FAMILY,
-              fontSize: 12,
-              fontWeight: 700,
-              justifyContent: 'space-between',
-              minHeight: MENU_ROW_HEIGHT,
-              padding: '0 10px',
-              textAlign: 'left',
+              fontSize: 14,
+              fontWeight: 600,
+              justifyContent: 'center',
+              minHeight: itemHeight,
+              padding: '0 6px',
               width: '100%'
             }}
           >
-            <span>{option}</span>
-            {selected ? <Check aria-hidden="true" size={14} /> : null}
+            {placeholder || '—'}
           </button>
-        );
-      })}
-    </div>,
-    document.body
-  ) : null;
-
-  return (
-    <div style={{ minWidth: 0, position: 'relative', width: '100%' }}>
-      <div
+        )}
+        <div aria-hidden="true" style={{ height: itemHeight }} />
+      </div>
+      <input
+        className="storefront-time-picker-input"
+        ref={inputRef}
+        aria-label={label}
+        aria-invalid={inputError ? 'true' : undefined}
+        disabled={disabled || normalizedOptions.length === 0}
+        inputMode={label === 'AM/PM' ? 'text' : 'numeric'}
+        maxLength={2}
+        onBlur={() => {
+          commitInput();
+        }}
+        onChange={handleInputChange}
+        onFocus={(event) => {
+          event.currentTarget.select();
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          commitInput();
+          inputRef.current?.blur();
+        }}
+        onPointerCancel={handleInputPointerEnd}
+        onPointerDown={handleInputPointerDown}
+        onPointerMove={handleInputPointerMove}
+        onPointerUp={handleInputPointerEnd}
+        onWheel={handleInputWheel}
+        type="text"
+        value={inputDraft}
         style={{
-          alignItems: 'center',
           background: '#fff',
-          border: '1px solid ' + (inputError ? '#dc2626' : '#cbd5e1'),
-          borderRadius: 8,
-          boxSizing: 'border-box',
-          color: disabled ? '#94a3b8' : '#0f172a',
-          display: 'flex',
+          border: 0,
+          color: inputError ? '#b91c1c' : '#17213c',
           fontFamily: CHECKOUT_FONT_FAMILY,
           fontSize: 12,
-          fontWeight: 700,
-          gap: 4,
-          justifyContent: 'space-between',
-          minHeight: isResponsive ? 42 : 38,
-          minWidth: 0,
-          opacity: disabled ? 0.65 : 1,
-          padding: '0 4px 0 7px',
-          textAlign: 'left',
-          width: '100%'
+          fontWeight: 600,
+          height: itemHeight,
+          inset: `${itemHeight}px 0 auto`,
+          outline: 0,
+          padding: '0 6px',
+          position: 'absolute',
+          textAlign: 'center',
+          touchAction: 'none',
+          width: '100%',
+          zIndex: 2
         }}
-      >
-        <input
-          ref={inputRef}
-          aria-label={label}
-          aria-invalid={inputError || undefined}
-          aria-describedby={inputError ? errorId : undefined}
-          disabled={disabled}
-          inputMode={label === 'AM/PM' ? 'text' : 'numeric'}
-          maxLength={2}
-          onBlur={commitInput}
-          onChange={(event) => { setInputDraft(event.target.value); setInputError(false); }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') { commitInput(); inputRef.current?.blur(); }
-            if (event.key === 'ArrowDown' && !open) { event.preventDefault(); handleTriggerClick(); }
-          }}
-          placeholder={placeholder}
-          type="text"
-          value={inputValue}
-          style={{ background: 'transparent', border: 0, color: 'inherit', flex: 1, font: 'inherit', minWidth: 0, outline: 0, padding: 0, width: '100%' }}
-          className="focus-visible:ring-2 focus-visible:ring-blue-500"
-        />
-        <button
-          ref={triggerRef}
-          type="button"
-          aria-label={label + ': ' + selectedLabel}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={id + '-options'}
-          disabled={disabled || options.length === 0}
-          onClick={handleTriggerClick}
-          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-          style={{ alignItems: 'center', background: 'transparent', border: 0, color: 'inherit', cursor: disabled ? 'not-allowed' : 'pointer', display: 'inline-flex', flexShrink: 0, height: 32, justifyContent: 'center', padding: '0 2px' }}
-        >
-          <ChevronDown aria-hidden="true" size={13} style={{ transform: open ? 'rotate(180deg)' : undefined }} />
-        </button>
-      </div>
-      {inputError ? <span id={errorId} role="alert" style={{ color: '#b91c1c', display: 'block', fontSize: 11, lineHeight: 1.25, marginTop: 4 }}>{errorMessage}</span> : null}
-      {menu}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          borderBottom: `1px solid ${brandColor}`,
+          borderTop: `1px solid ${brandColor}`,
+          borderRadius: 10,
+          inset: `${itemHeight}px 0 auto`,
+          height: itemHeight,
+          opacity: 0.35,
+          pointerEvents: 'none',
+          position: 'absolute',
+          zIndex: 3
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          background: isAmPm
+            ? 'transparent'
+            : 'linear-gradient(to bottom, rgba(255,255,255,0.96), rgba(255,255,255,0) 38%, rgba(255,255,255,0) 62%, rgba(255,255,255,0.96))',
+          inset: 0,
+          pointerEvents: 'none',
+          position: 'absolute'
+        }}
+      />
     </div>
   );
 }

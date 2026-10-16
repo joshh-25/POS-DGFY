@@ -654,6 +654,52 @@ test('runParityCheck (v4): staging_refresh artifacts require and pass ordinary S
   assert.ok(inspected.some((ref) => ref.endsWith('-staging')), 'staging_refresh must use the ordinary STAGING predecessor');
 });
 
+test('runParityCheck (v4): a release selection uses per-app revision tags instead of legacy floor tags', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const app = 'dgfy-pos';
+  const floor = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, `../apps/${app}/package.json`), 'utf8')).version;
+  const stagingDigest = `sha256:${'a'.repeat(64)}`;
+  const productionDigest = `sha256:${'b'.repeat(64)}`;
+  const revision = 4;
+  const manifest = {
+    schema: 'sku-release-candidate/v4', candidate_id: '2026-10-09-01', status: 'qualified',
+    source_develop_sha: headSha, promotion_base_sha: SHA('c'), current_staging_sha: headSha, staging_head_sha: headSha,
+    revisions: [{ kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-10-09-01', pr: 2400, apps_touched: [app] }],
+    release_revision: {
+      source_staging_sha: headSha, branch: 'release/2026-10-09-01', pr: 2401,
+      apps: { [app]: { revision, source_sha: headSha, digest: stagingDigest, origin: 'promotion' } },
+    },
+  };
+  const inspected = [];
+  const inspectFn = (ref) => {
+    inspected.push(ref);
+    const tag = ref.slice(ref.lastIndexOf(':') + 1);
+    if (![`${floor}-r${revision}-staging`, `${floor}-r${revision}`, floor].includes(tag)) {
+      return { status: 1, stdout: '', stderr: `${ref}: not found` };
+    }
+    const isStaging = tag === `${floor}-r${revision}-staging`;
+    const digest = isStaging ? stagingDigest : productionDigest;
+    return {
+      status: 0,
+      stderr: '',
+      stdout: JSON.stringify({ digest, Image: { Config: { Labels: {
+        [CANDIDATE_SOURCE_LABEL]: headSha,
+        [RELEASE_REVISION_LABEL]: `r${revision}`,
+        'org.dgfy-platform.release-floor': floor,
+      } } } }),
+    };
+  };
+
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: [app], inspectFn });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.release_revision[app].revision, revision);
+  assert.equal(result.results[0].verdict, 'pass');
+  assert.ok(inspected.includes(`ghcr.io/sieitzz/${app}:${floor}-r${revision}-staging`));
+  assert.ok(!inspected.includes(`ghcr.io/sieitzz/${app}:${floor}-staging`), 'must not fall back to the legacy floor-only STAGING tag');
+});
+
 test('runParityCheck rejects a candidate while refresh is incomplete', () => {
   const manifest = {
     schema: 'sku-release-candidate/v4', candidate_id: '2026-10-01-04', status: 'refresh_in_progress',

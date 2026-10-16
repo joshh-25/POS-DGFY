@@ -13,6 +13,18 @@ const toBusinessDateBoundary = (date, includeNextDay = false) => {
     return boundary.toISOString().slice(0, 19).replace('T', ' ');
 };
 
+const transactionCustomerAddress = `COALESCE(
+    (
+        SELECT NULLIF(TRIM(ca.address_line), '')
+        FROM customer_addresses ca
+        WHERE ca.customer_id = t.store_customer_id
+        ORDER BY ca.is_default DESC, ca.updated_at DESC, ca.address_id DESC
+        LIMIT 1
+    ),
+    NULLIF(TRIM(t.delivery_address), ''),
+    NULLIF(TRIM(t.buyer_address), '')
+)`;
+
 const scopedTransactions = ({ dateFrom, dateTo, branchId = null, allowedLocationIds = null, search = '' }) => {
     const replacements = {
         startAt: toBusinessDateBoundary(dateFrom),
@@ -71,6 +83,7 @@ const buildCustomerQuery = ({ dateFrom, dateTo, branchId, allowedLocationIds, se
                 COALESCE(NULLIF(sc.name, ''), NULLIF(t.customer_name, ''), 'Unnamed customer') AS customer_name,
                 COALESCE(NULLIF(sc.email, ''), NULLIF(t.customer_email, '')) AS customer_email,
                 COALESCE(NULLIF(sc.phone, ''), NULLIF(t.customer_phone, '')) AS customer_phone,
+                ${transactionCustomerAddress} AS customer_address,
                 t.created_at,
                 t.total_amount
             FROM pos_transactions t
@@ -83,6 +96,23 @@ const buildCustomerQuery = ({ dateFrom, dateTo, branchId, allowedLocationIds, se
                 sc.name AS customer_name,
                 sc.email AS customer_email,
                 sc.phone AS customer_phone,
+                COALESCE(
+                    (
+                        SELECT NULLIF(TRIM(ca.address_line), '')
+                        FROM customer_addresses ca
+                        WHERE ca.customer_id = sc.customer_id
+                        ORDER BY ca.is_default DESC, ca.updated_at DESC, ca.address_id DESC
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT ct_address.customer_address
+                        FROM customer_transactions ct_address
+                        WHERE ct_address.store_customer_id = sc.customer_id
+                          AND ct_address.customer_address IS NOT NULL
+                        ORDER BY ct_address.created_at DESC, ct_address.transaction_id DESC
+                        LIMIT 1
+                    )
+                ) AS customer_address,
                 COUNT(ct.transaction_id) AS visit_count,
                 COALESCE(SUM(ct.total_amount), 0) AS total_spend,
                 COALESCE(AVG(ct.total_amount), 0) AS average_order,
@@ -100,15 +130,24 @@ const buildCustomerQuery = ({ dateFrom, dateTo, branchId, allowedLocationIds, se
                 MAX(customer_name) AS customer_name,
                 MAX(customer_email) AS customer_email,
                 MAX(customer_phone) AS customer_phone,
+                (
+                    SELECT snapshot_address.customer_address
+                    FROM customer_transactions snapshot_address
+                    WHERE snapshot_address.customer_key = snapshot_profile.customer_key
+                      AND snapshot_address.store_customer_id IS NULL
+                      AND snapshot_address.customer_address IS NOT NULL
+                    ORDER BY snapshot_address.created_at DESC, snapshot_address.transaction_id DESC
+                    LIMIT 1
+                ) AS customer_address,
                 COUNT(*) AS visit_count,
                 COALESCE(SUM(total_amount), 0) AS total_spend,
                 COALESCE(AVG(total_amount), 0) AS average_order,
                 MIN(created_at) AS first_purchase_at,
                 MAX(created_at) AS last_purchase_at,
                 CASE WHEN COUNT(*) > 1 THEN DATEDIFF(MAX(created_at), MIN(created_at)) / (COUNT(*) - 1) ELSE NULL END AS purchase_frequency_days
-            FROM customer_transactions
-            WHERE store_customer_id IS NULL
-            GROUP BY customer_key
+            FROM customer_transactions snapshot_profile
+            WHERE snapshot_profile.store_customer_id IS NULL
+            GROUP BY snapshot_profile.customer_key
         ), customer_profiles AS (
             SELECT * FROM canonical_profiles
             UNION ALL
@@ -120,6 +159,7 @@ const buildCustomerQuery = ({ dateFrom, dateTo, branchId, allowedLocationIds, se
             customer_name,
             customer_email,
             customer_phone,
+            customer_address,
             visit_count,
             total_spend,
             average_order,
@@ -152,6 +192,7 @@ export const businessAdminCustomerRepository = {
                 name: row.customer_name || 'Unnamed customer',
                 email: row.customer_email || null,
                 phone: row.customer_phone || null,
+                address_line: row.customer_address || null,
                 visit_count: Number.parseInt(row.visit_count, 10) || 0,
                 total_spend: number(row.total_spend),
                 average_order: number(row.average_order),
@@ -188,19 +229,38 @@ export const businessAdminCustomerRepository = {
         return row?.toJSON ? row.toJSON() : row || null;
     },
 
-    async createCustomer({ name, email, phone }) {
+    async createCustomer({ name, email, phone, addressLine = null }) {
         const StoreCustomer = dbStore.get('StoreCustomer');
-        const row = await StoreCustomer.create({
-            name,
-            email,
-            phone: phone || null,
-            // Back Office creates a profile, not a storefront credential. This
-            // placeholder is intentionally not a bcrypt hash and therefore
-            // cannot be used as a password by the existing login flow.
-            password_hash: 'PENDING_INVITATION',
-            is_active: true
-        });
-        return row?.toJSON ? row.toJSON() : row;
+        const StoreCustomerAddress = dbStore.get('StoreCustomerAddress');
+        const sequelize = StoreCustomer.sequelize || dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const createProfile = async (transaction) => {
+            const options = transaction ? { transaction } : {};
+            const row = await StoreCustomer.create({
+                name,
+                email,
+                phone: phone || null,
+                // Back Office creates a profile, not a storefront credential. This
+                // placeholder is intentionally not a bcrypt hash and therefore
+                // cannot be used as a password by the existing login flow.
+                password_hash: 'PENDING_INVITATION',
+                is_active: true
+            }, options);
+            if (addressLine) {
+                await StoreCustomerAddress.create({
+                    customer_id: row.customer_id,
+                    label: 'Address',
+                    address_line: addressLine,
+                    is_default: true
+                }, options);
+            }
+            const created = row?.toJSON ? row.toJSON() : row;
+            return { ...created, address_line: addressLine || null };
+        };
+
+        if (addressLine && typeof sequelize?.transaction === 'function') {
+            return sequelize.transaction(createProfile);
+        }
+        return createProfile();
     },
 
     async getCustomerDetail({ profileRef, dateFrom, dateTo, branchId = null, allowedLocationIds = null } = {}) {
@@ -232,6 +292,7 @@ export const businessAdminCustomerRepository = {
                     COALESCE(NULLIF(sc.name, ''), NULLIF(t.customer_name, ''), 'Unnamed customer') AS customer_name,
                     COALESCE(NULLIF(sc.email, ''), NULLIF(t.customer_email, '')) AS customer_email,
                     COALESCE(NULLIF(sc.phone, ''), NULLIF(t.customer_phone, '')) AS customer_phone,
+                    ${transactionCustomerAddress} AS customer_address,
                     ${customerKey} AS customer_key
                 FROM pos_transactions t
                 LEFT JOIN store_customers sc ON sc.customer_id = t.store_customer_id
@@ -241,7 +302,8 @@ export const businessAdminCustomerRepository = {
             sequelize.query(`${transactionsCte}
                 SELECT customer_key, MAX(store_customer_id) AS customer_id,
                     MAX(customer_name) AS customer_name, MAX(customer_email) AS customer_email,
-                    MAX(customer_phone) AS customer_phone, COUNT(*) AS visit_count,
+                    MAX(customer_phone) AS customer_phone, MAX(customer_address) AS customer_address,
+                    COUNT(*) AS visit_count,
                     COALESCE(SUM(total_amount), 0) AS total_spend,
                     COALESCE(AVG(total_amount), 0) AS average_order,
                     MIN(created_at) AS first_purchase_at, MAX(created_at) AS last_purchase_at
@@ -251,7 +313,15 @@ export const businessAdminCustomerRepository = {
                 UNION ALL
                 SELECT CONCAT('linked:', sc.customer_id) AS customer_key,
                     sc.customer_id, sc.name AS customer_name, sc.email AS customer_email,
-                    sc.phone AS customer_phone, 0 AS visit_count,
+                    sc.phone AS customer_phone,
+                    (
+                        SELECT NULLIF(TRIM(ca.address_line), '')
+                        FROM customer_addresses ca
+                        WHERE ca.customer_id = sc.customer_id
+                        ORDER BY ca.is_default DESC, ca.updated_at DESC, ca.address_id DESC
+                        LIMIT 1
+                    ) AS customer_address,
+                    0 AS visit_count,
                     0 AS total_spend, 0 AS average_order,
                     NULL AS first_purchase_at, NULL AS last_purchase_at
                 FROM store_customers sc
@@ -287,11 +357,12 @@ export const businessAdminCustomerRepository = {
         const customer = customerRows[0];
         if (!customer) return null;
         return {
-            profile_ref: customer.profile_key || profileRef,
+            profile_ref: customer.customer_key || profileRef,
             customer_id: customer.customer_id == null ? null : Number(customer.customer_id),
             name: customer.customer_name || 'Unnamed customer',
             email: customer.customer_email || null,
             phone: customer.customer_phone || null,
+            address_line: customer.customer_address || null,
             visit_count: Number.parseInt(customer.visit_count, 10) || 0,
             total_spend: number(customer.total_spend),
             average_order: number(customer.average_order),

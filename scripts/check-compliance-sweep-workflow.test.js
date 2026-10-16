@@ -45,9 +45,9 @@ test('the hard-fail step ("Fail the run on any bad result") is the LAST step in 
   assert.equal(names[names.length - 1], 'Fail the run on any bad result');
 });
 
-test('the hard-fail step still guards on steps.sweep.outputs.overall_fail == \'1\'', () => {
+test('the final preflight hard-fail step always evaluates its sweep result', () => {
   const block = getStepBlock(workflowText, 'Fail the run on any bad result');
-  assert.match(block, /if: steps\.sweep\.outputs\.overall_fail == '1'/);
+  assert.match(block, /if: always\(\) && steps\.sweep\.outputs\.overall_fail == '1'/);
 });
 
 // --- report step: always(), invokes the report subcommand -----------------------------------------
@@ -288,94 +288,60 @@ test('the clear step runs unconditionally (no `if:` guard) -- every code path, i
   assert.ok(!/\n\s*if:/.test(block), 'the clear step must not be conditionally skipped on any path');
 });
 
-// --- artifact-quota decoupling (#1937) ---------------------------------------------------------
-// A passing sweep followed by an upload-artifact quota failure must not skip reconciliation or
-// the supervised handoff: the uploads are supplementary evidence (continued on error + explicit
-// warning), while the control-flow steps evaluate unconditionally against the sweep result.
+// --- artifact storage fallback and terminal enforcement -----------------------------------------
 
-test('both upload steps have stable IDs and continue-on-error: true', () => {
-  const resultsBlock = getStepBlock(workflowText, 'Upload results artifact');
-  assert.match(resultsBlock, /id: upload_results/);
-  assert.match(resultsBlock, /continue-on-error: true/);
-  const handoffBlock = getStepBlock(workflowText, 'Upload handoff artifact');
-  assert.match(handoffBlock, /id: upload_handoff/);
-  assert.match(handoffBlock, /continue-on-error: true/);
+test('the hard-fail step for evidence storage runs after reconciliation and handoff and before the preflight fail step', () => {
+  const names = getStepNames(workflowText);
+  const storageIdx = names.indexOf('Fail the run on evidence storage failure');
+  const publishIdx = names.indexOf('Publish handoff issue');
+  const failIdx = names.indexOf('Fail the run on any bad result');
+  assert.ok(storageIdx > publishIdx, 'storage enforcement must wait until handoff publishing finishes');
+  assert.equal(failIdx, names.length - 1, 'preflight failure must remain the final workflow step');
+  assert.ok(storageIdx < failIdx, 'storage failure enforcement must precede preflight failure enforcement');
+  assert.match(getStepBlock(workflowText, 'Fail the run on evidence storage failure'), /if: always\(\)/);
 });
 
-test('upload steps keep their artifact names, paths, retention, and no-files behavior', () => {
+test('both evidence steps keep stable IDs and call the shared upload action with explicit retention', () => {
   const resultsBlock = getStepBlock(workflowText, 'Upload results artifact');
-  assert.match(resultsBlock, /name: compliance-preflight-sweep-results/);
+  assert.match(resultsBlock, /id: upload_results/);
+  assert.match(resultsBlock, /uses: \.\/\.github\/actions\/upload-evidence/);
   assert.match(resultsBlock, /path: \/tmp\/results\.json/);
+  assert.match(resultsBlock, /name: compliance-preflight-sweep-results/);
   assert.match(resultsBlock, /retention-days: 30/);
   const handoffBlock = getStepBlock(workflowText, 'Upload handoff artifact');
-  assert.match(handoffBlock, /name: compliance-preflight-sweep-handoff/);
+  assert.match(handoffBlock, /id: upload_handoff/);
+  assert.match(handoffBlock, /uses: \.\/\.github\/actions\/upload-evidence/);
   assert.match(handoffBlock, /path: \/tmp\/compliance-preflight-sweep-handoff\.json/);
-  assert.match(handoffBlock, /if-no-files-found: warn/);
+  assert.match(handoffBlock, /name: compliance-preflight-sweep-handoff/);
   assert.match(handoffBlock, /retention-days: 30/);
 });
 
-test('explicit warning steps are keyed to each upload step\'s outcome == \'failure\'', () => {
-  const pairs = [
-    ['Warn on results artifact upload failure', 'upload_results'],
-    ['Warn on handoff artifact upload failure', 'upload_handoff'],
-  ];
-  for (const [name, id] of pairs) {
-    const block = getStepBlock(workflowText, name);
-    const ifLineMatch = block.match(/^\s*if: (.+)$/m);
-    assert.ok(ifLineMatch, `no if: line found on "${name}"`);
-    assert.match(ifLineMatch[1], /always\(\)/);
-    assert.match(ifLineMatch[1], new RegExp(`steps\\.${id}\\.outcome == 'failure'`));
-  }
-});
-
-test('warning steps record the evidence gap without altering the preflight result', () => {
-  for (const name of ['Warn on results artifact upload failure', 'Warn on handoff artifact upload failure']) {
-    const block = getStepBlock(workflowText, name);
-    assert.match(block, /::warning::/);
-    assert.match(block, /GITHUB_STEP_SUMMARY/);
-    assert.doesNotMatch(block, /overall_fail/);
-    assert.doesNotMatch(block, /exit 1/);
-  }
-});
-
-test('reconciliation and handoff evaluate unconditionally but stay gated on a passing sweep', () => {
-  for (const name of ['Reconcile declaration front matter', 'Push reconciliation branch and open PR or hand off']) {
-    const block = getStepBlock(workflowText, name);
-    const ifLineMatch = block.match(/^\s*if: (.+)$/m);
-    assert.ok(ifLineMatch, `no if: line found on "${name}"`);
-    assert.match(ifLineMatch[1], /always\(\)/);
-    assert.match(ifLineMatch[1], /steps\.discover\.outputs\.count != '0'/);
-    assert.match(ifLineMatch[1], /steps\.sweep\.outputs\.overall_fail == '0'/);
-  }
-});
-
-test('a genuine preflight failure still skips reconciliation/handoff and fails the run last', () => {
-  // overall_fail == '1' satisfies neither control-flow guard (both require '0') ...
-  for (const name of ['Reconcile declaration front matter', 'Push reconciliation branch and open PR or hand off']) {
-    const block = getStepBlock(workflowText, name);
-    assert.doesNotMatch(block, /overall_fail == '1'/);
-  }
-  // ... while the hard-fail step stays last and fires exactly on overall_fail == '1'.
+test('storage failure is enforced only after the passing or failing sweep control paths completed', () => {
   const names = getStepNames(workflowText);
-  assert.equal(names[names.length - 1], 'Fail the run on any bad result');
+  for (const name of ['Reconcile declaration front matter', 'Push reconciliation branch and open PR or hand off', 'Publish handoff issue']) {
+    assert.ok(names.indexOf(name) < names.indexOf('Fail the run on evidence storage failure'), `${name} must run before storage failure is enforced`);
+  }
+  const block = getStepBlock(workflowText, 'Fail the run on evidence storage failure');
+  assert.match(block, /steps\.upload_results\.outputs\.storage_status == 'failed'/);
+  assert.match(block, /steps\.upload_handoff\.outputs\.storage_status == 'failed'/);
+  assert.match(block, /exit 1/);
+});
+
+test('reconciliation and handoff remain always-evaluated and positively gated on a passing sweep', () => {
+  for (const name of ['Reconcile declaration front matter', 'Push reconciliation branch and open PR or hand off']) {
+    const block = getStepBlock(workflowText, name);
+    const ifLine = block.match(/^\s*if: (.+)$/m)?.[1];
+    assert.ok(ifLine, `no if: line found on "${name}"`);
+    assert.match(ifLine, /always\(\)/);
+    assert.match(ifLine, /steps\.discover\.outputs\.count != '0'/);
+    assert.match(ifLine, /steps\.sweep\.outputs\.overall_fail == '0'/);
+  }
+});
+
+test('a real preflight failure still skips reconciliation and fails in the final step', () => {
+  for (const name of ['Reconcile declaration front matter', 'Push reconciliation branch and open PR or hand off']) {
+    assert.doesNotMatch(getStepBlock(workflowText, name), /overall_fail == '1'/);
+  }
   const failBlock = getStepBlock(workflowText, 'Fail the run on any bad result');
-  assert.match(failBlock, /if: steps\.sweep\.outputs\.overall_fail == '1'/);
-});
-
-test('"Warn on results artifact upload failure" runs between the results upload and reconciliation', () => {
-  const names = getStepNames(workflowText);
-  const uploadIdx = names.indexOf('Upload results artifact');
-  const warnIdx = names.indexOf('Warn on results artifact upload failure');
-  const reconcileIdx = names.indexOf('Reconcile declaration front matter');
-  assert.ok(uploadIdx !== -1 && warnIdx !== -1 && reconcileIdx !== -1, 'one or more steps missing');
-  assert.ok(uploadIdx < warnIdx && warnIdx < reconcileIdx, 'warning must sit between the results upload and reconciliation');
-});
-
-test('"Warn on handoff artifact upload failure" runs between the handoff upload and issue publish', () => {
-  const names = getStepNames(workflowText);
-  const uploadIdx = names.indexOf('Upload handoff artifact');
-  const warnIdx = names.indexOf('Warn on handoff artifact upload failure');
-  const publishIdx = names.indexOf('Publish handoff issue');
-  assert.ok(uploadIdx !== -1 && warnIdx !== -1 && publishIdx !== -1, 'one or more steps missing');
-  assert.ok(uploadIdx < warnIdx && warnIdx < publishIdx, 'warning must sit between the handoff upload and issue publish');
+  assert.match(failBlock, /if: always\(\) && steps\.sweep\.outputs\.overall_fail == '1'/);
 });

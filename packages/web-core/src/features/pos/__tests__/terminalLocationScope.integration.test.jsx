@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TerminalOperationsWorkspace from '../components/TerminalOperationsWorkspace.jsx';
 
 const buildLocationsState = () => ({
@@ -85,9 +85,63 @@ const buildBaseProps = (overrides = {}) => ({
   ...overrides
 });
 
+const buildAdminNoShiftProps = (overrides = {}) => buildBaseProps({
+  canAdminBypassShiftPrompt: true,
+  canOpenShift: true,
+  canViewBranchLocations: true,
+  activeTerminalId: 'MAIN-01',
+  adminLocationMonitorState: {
+    loading: false,
+    locationId: 1,
+    orders: [{
+      pos_transaction_id: 302,
+      customer_name: 'Main Branch Buyer',
+      tracking_pin: 'MAIN-302',
+      fulfillment_status: 'placed',
+      order_method: 'pickup',
+      payment_status: 'paid',
+      created_at: '2026-04-21T09:00:00.000Z'
+    }],
+    terminalShifts: [{
+      pos_terminal_shift_id: 81,
+      terminal_id: 'MAIN-01',
+      cashier_id: 5,
+      cashier: { username: 'Cashier One' },
+      opened_at: '2026-04-21T08:00:00.000Z',
+      stale_recovery: { is_stale: true, age_minutes: 135 }
+    }]
+  },
+  branchDirectoryState: {
+    loading: false,
+    errorMessage: '',
+    locations: [{
+      location_id: 1,
+      name: 'Main Branch',
+      can_view: true,
+      terminals: [{
+        terminal_id: 'MAIN-01',
+        label: 'Main Register',
+        status: 'stale',
+        current_operator: { display_name: 'Cashier One' },
+        shift: {
+          pos_terminal_shift_id: 81,
+          opened_at: '2026-04-21T08:00:00.000Z',
+          cashier: { display_name: 'Cashier One' }
+        }
+      }]
+    }]
+  },
+  ...overrides
+});
+
 afterEach(() => {
   cleanup();
 });
+
+const chooseDropdownOption = async (accessibleName, optionName) => {
+  fireEvent.click(await screen.findByRole('combobox', { name: accessibleName }));
+  fireEvent.click(await screen.findByRole('option', { name: optionName }));
+};
 
 describe('POS terminal location UX integration', () => {
   it('renders the incoming queue scope without exposing the operating-location selector', async () => {
@@ -163,6 +217,350 @@ describe('POS terminal location UX integration', () => {
     expect(screen.queryByRole('button', { name: /Accept|Reject|Process/i })).toBeNull();
   });
 
+  it('keeps Admin branch monitoring in Shift Location and opens shifts in the shared Shift Session', async () => {
+    const handleOpenShift = vi.fn();
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      canRecoverStaleShifts: true,
+      handleOpenShift
+    })} />);
+
+    expect(screen.getByRole('tab', { name: 'Branch Terminals' }).getAttribute('aria-selected')).toBe('true');
+    const shiftSections = screen.getByRole('tablist', { name: 'Shift sections' });
+    expect(shiftSections.parentElement.className).toContain('overflow-x-hidden');
+    expect(shiftSections.className).toContain('grid grid-cols-2 min-w-0 w-full');
+    expect(shiftSections.className).not.toContain('min-w-max');
+    const adminShiftSections = screen.getByRole('tablist', { name: 'Admin shift location sections' });
+    expect(adminShiftSections.className).toContain('overflow-x-auto');
+    expect(adminShiftSections.className).toContain('pt-2');
+    expect(adminShiftSections.firstElementChild.className).toContain('grid grid-cols-3 min-w-0 w-full');
+    const branchTerminalsTab = screen.getByRole('tab', { name: 'Branch Terminals' });
+    expect(branchTerminalsTab.className).toContain('w-full');
+    expect(branchTerminalsTab.className).toContain('justify-center');
+    expect(screen.getByRole('heading', { name: 'Terminals' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Current Operator' })).toBeTruthy();
+    const desktopTerminals = within(screen.getByRole('region', { name: 'Branch terminals at Main Branch' }));
+    const desktopDetailsButton = desktopTerminals.getByRole('button', { name: 'View details for Main Register' });
+    const desktopMonitorButton = desktopTerminals.getByRole('button', { name: 'Open read-only branch monitor for Main Branch from Main Register' });
+    expect(desktopDetailsButton.textContent).toBe('');
+    expect(desktopDetailsButton.querySelector('svg')).toBeTruthy();
+    expect(desktopDetailsButton.title).toBe('View details for Main Register');
+    expect(desktopMonitorButton.textContent).toBe('');
+    expect(desktopMonitorButton.querySelector('svg')).toBeTruthy();
+    expect(desktopMonitorButton.title).toBe('Monitor Main Register');
+    const mobileTerminals = screen.getByTestId('pos-admin-branch-terminals-mobile-view');
+    const mobileMonitorButton = within(mobileTerminals)
+      .getByRole('button', { name: 'Open read-only branch monitor for Main Branch from Main Register' });
+    expect(mobileMonitorButton.textContent).toBe('');
+    expect(mobileMonitorButton.className).toContain('h-11 w-11');
+    fireEvent.click(within(mobileTerminals)
+      .getByRole('button', { name: 'View details for Main Register' }));
+    const terminalDetails = within(mobileTerminals)
+      .getByRole('region', { name: 'Additional details for Main Register' });
+    expect(within(terminalDetails).getByText('Shift owner')).toBeTruthy();
+    expect(within(terminalDetails).getByText('Shift ID')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Open Shift' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Monitor' }));
+    expect(screen.getByRole('heading', { name: 'Active Shifts' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Recover Stale Shift' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Terminals' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Branch Orders (1)' }));
+    expect(screen.getByRole('heading', { name: 'Active Orders' })).toBeTruthy();
+    expect(screen.getByTestId('pos-admin-branch-order-monitor').textContent).toContain('Main Branch · View-only online orders.');
+    expect(within(screen.getByTestId('pos-admin-branch-orders-mobile-view'))
+      .getByText('Main Branch Buyer')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Active Shifts' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+    expect(await screen.findByRole('heading', { name: 'Select a terminal' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Start Shift' })).toBeTruthy();
+    expect(screen.getByLabelText('Opening Float (PHP)')).toBeTruthy();
+    const emptyShiftSession = screen.getByTestId('pos-shift-session-empty');
+    expect(emptyShiftSession.className).toContain('space-y-4');
+    expect(emptyShiftSession.className).not.toContain('rounded-2xl');
+    expect(screen.getByTestId('pos-admin-open-shift-terminal').className).not.toContain('rounded-lg');
+    expect(screen.getByTestId('pos-admin-open-shift-panel')).toBeTruthy();
+    expect(screen.getByTestId('pos-admin-open-shift-panel').className).toContain('border-t');
+    expect(screen.getByTestId('pos-admin-open-shift-panel').className).not.toContain('rounded-xl');
+    expect(screen.getByTestId('pos-branch-day-close-panel').className).toContain('border-t');
+    expect(screen.getByTestId('pos-branch-day-close-panel').className).not.toContain('rounded-xl');
+    expect(screen.getByRole('button', { name: 'Use Selected Terminal' }).disabled).toBe(true);
+    expect(screen.getByText('Current terminal: MAIN-01')).toBeTruthy();
+    expect(screen.queryByTestId('pos-admin-open-shift-disclosure')).toBeNull();
+    expect(handleOpenShift).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Location' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Branch Terminals' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('tab', { name: 'Branch Terminals' }));
+    expect(screen.getByRole('table', { name: 'Terminals at Main Branch' })).toBeTruthy();
+  });
+
+  it('does not advertise a terminal as available while branch occupancy is still loading', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      adminLocationMonitorState: {
+        loading: true,
+        locationId: 1,
+        orders: [],
+        terminalShifts: []
+      }
+    })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('Checking availability…');
+    expect(terminalSelector.textContent).not.toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(true);
+    expect(screen.getByText(/Checking terminal availability/)).toBeTruthy();
+  });
+
+  it('fails closed when branch occupancy cannot be verified', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      adminLocationMonitorState: {
+        loading: false,
+        locationId: 1,
+        orders: [],
+        terminalShifts: [],
+        errorMessage: 'Branch monitor is unavailable.'
+      }
+    })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('Availability unavailable');
+    expect(terminalSelector.textContent).not.toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(true);
+    expect(screen.getByRole('alert').textContent).toContain('availability could not be verified');
+  });
+
+  it('shows Available only after the branch monitor confirms the terminal is free', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      adminLocationMonitorState: {
+        loading: false,
+        locationId: 1,
+        orders: [],
+        terminalShifts: []
+      }
+    })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(false);
+  });
+
+  it('blocks opening a terminal that the confirmed branch monitor reports as occupied', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps()} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    const terminalSelector = await screen.findByRole('combobox', { name: 'Branch Terminal' });
+    expect(terminalSelector.textContent).toContain('In use by Cashier One');
+    expect(terminalSelector.textContent).not.toContain('Available');
+    expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(true);
+  });
+
+  it('keeps Admin Shift Location subtabs available while an admin shift is open', () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      shiftState: {
+        loading: false,
+        shift: {
+          pos_terminal_shift_id: 82,
+          business_date: '2026-04-21',
+          location_id: 1,
+          location_name: 'Main Branch',
+          opened_at: '2026-04-21T08:00:00.000Z',
+          opening_float_amount: 100,
+          cashier: { username: 'Admin One' }
+        },
+        cashSummary: { expected_cash_amount: 125, cash_sales_amount: 25 },
+        salesSummary: { transaction_count: 1, total_amount: 30 }
+      }
+    })} />);
+
+    expect(screen.getByRole('tab', { name: 'Branch Terminals' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Shift Monitor' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Branch Orders (1)' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Shift Management' })).toBeTruthy();
+    expect(screen.getByRole('table', { name: 'Terminals at Main Branch' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Monitor' }));
+    expect(screen.getByRole('heading', { name: 'Active Shifts' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Shift Management' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Branch Orders (1)' }));
+    expect(screen.getByRole('heading', { name: 'Active Orders' })).toBeTruthy();
+    expect(within(screen.getByTestId('pos-admin-branch-orders-mobile-view'))
+      .getByText('Main Branch Buyer')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Branch Terminals' }));
+    expect(screen.getByRole('heading', { name: 'Shift Management' })).toBeTruthy();
+    expect(screen.getByRole('table', { name: 'Terminals at Main Branch' })).toBeTruthy();
+  });
+
+  it('keeps one refresh action for the selected Shift Location subtab', () => {
+    const refreshBranchDirectory = vi.fn();
+    const refreshOperationalContext = vi.fn();
+    const refreshAdminLocationMonitor = vi.fn();
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      refreshBranchDirectory,
+      refreshOperationalContext,
+      refreshAdminLocationMonitor
+    })} />);
+
+    const sharedRefresh = screen.getByTestId('pos-admin-shift-location-refresh');
+    expect(screen.getAllByTestId('pos-admin-shift-location-refresh')).toHaveLength(1);
+    fireEvent.click(sharedRefresh);
+    expect(refreshBranchDirectory).toHaveBeenCalledOnce();
+    expect(refreshOperationalContext).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Monitor' }));
+    const monitorRefresh = screen.getByRole('button', { name: 'Refresh branch activity' });
+    expect(screen.getByTestId('pos-admin-branch-monitor-header').contains(monitorRefresh)).toBe(true);
+    expect(monitorRefresh.classList.contains('!bg-[#1A4E8D]')).toBe(true);
+    fireEvent.click(monitorRefresh);
+    expect(refreshAdminLocationMonitor).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Branch Orders (1)' }));
+    const ordersRefresh = screen.getByRole('button', { name: 'Refresh branch activity' });
+    expect(screen.getAllByTestId('pos-admin-shift-location-refresh')).toHaveLength(1);
+    expect(screen.getByTestId('pos-admin-branch-monitor-header').contains(ordersRefresh)).toBe(true);
+    fireEvent.click(ordersRefresh);
+    expect(refreshAdminLocationMonitor).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the Shift Location subtab rail full-width and places monitor refresh beside its header', () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps()} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Monitor' }));
+    const tablist = screen.getByRole('tablist', { name: 'Admin shift location sections' });
+    const tabWrapper = tablist.parentElement;
+    const tabRow = tabWrapper.parentElement;
+    const refresh = screen.getByTestId('pos-admin-shift-location-refresh');
+    const monitorHeader = screen.getByTestId('pos-admin-branch-monitor-header');
+
+    expect(tabRow.className).toContain('flex min-w-0 flex-col gap-2');
+    expect(monitorHeader.contains(refresh)).toBe(true);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Branch Orders (1)' }));
+    const ordersHeader = screen.getByTestId('pos-admin-branch-monitor-header');
+    expect(ordersHeader.contains(screen.getByTestId('pos-admin-shift-location-refresh'))).toBe(true);
+  });
+
+  it('labels branch orders with the viewed branch, not the operating branch', () => {
+    const props = buildAdminNoShiftProps({
+      viewingLocationId: 2,
+      adminLocationMonitorState: {
+        loading: false,
+        locationId: 2,
+        orders: [{
+          pos_transaction_id: 322,
+          customer_name: 'East Branch Buyer',
+          tracking_pin: 'EAST-322',
+          fulfillment_status: 'placed',
+          order_method: 'pickup',
+          payment_status: 'unpaid',
+          created_at: '2026-04-21T09:00:00.000Z'
+        }],
+        terminalShifts: []
+      }
+    });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Branch Orders (1)' }));
+
+    expect(screen.getByTestId('pos-admin-branch-order-monitor').textContent).toContain('East Branch · View-only online orders.');
+    expect(within(screen.getByTestId('pos-admin-branch-orders-mobile-view'))
+      .getByText('East Branch Buyer')).toBeTruthy();
+    expect(screen.queryByText('Main Branch Buyer')).toBeNull();
+  });
+
+  it('does not show an opening-float form to a read-only Admin in Shift Session', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({ canOpenShift: false })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+    expect(await screen.findByText('Admin view only. POS transact permission is required to open a shift.')).toBeTruthy();
+    expect(screen.queryByLabelText('Opening Float (PHP)')).toBeNull();
+  });
+
+  it('keeps terminal-confirmation guidance beside the selector without a duplicate blocked panel', async () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({ activeTerminalId: 'EAST-01' })} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+
+    expect(await screen.findByText('Select and confirm a terminal in this branch before opening a shift.')).toBeTruthy();
+    expect(screen.queryByTestId('pos-admin-open-shift-panel')).toBeNull();
+    expect(screen.queryByLabelText('Opening Float (PHP)')).toBeNull();
+  });
+
+  it('uses one Shift Session tab for Cashier opening and closing states', async () => {
+    const handleCloseShift = vi.fn();
+    const initialProps = buildBaseProps({ canOpenShift: true, canCloseShift: true, handleCloseShift });
+    const { rerender } = render(<TerminalOperationsWorkspace {...initialProps} />);
+
+    expect(screen.queryByLabelText('Opening Float (PHP)')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+    expect(await screen.findByLabelText('Opening Float (PHP)')).toBeTruthy();
+    expect(screen.queryByLabelText('Closing Cash (PHP)')).toBeNull();
+
+    rerender(<TerminalOperationsWorkspace {...buildBaseProps({
+      canOpenShift: true,
+      canCloseShift: true,
+      handleCloseShift,
+      shiftState: {
+        loading: false,
+        shift: {
+          pos_terminal_shift_id: 101,
+          business_date: '2026-04-21',
+          location_id: 1,
+          location_name: 'Main Branch',
+          opened_at: '2026-04-21T08:00:00.000Z',
+          opening_float_amount: 100
+        },
+        cashSummary: { expected_cash_amount: 125, cash_sales_amount: 25 },
+        salesSummary: { subtotal_amount: 40, total_amount: 40 }
+      }
+    })} />);
+
+    expect(await screen.findByTestId('pos-shift-session-summary')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Shift details' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Cash overview' })).toBeTruthy();
+    expect(screen.getByText('Total gross sales')).toBeTruthy();
+    expect(screen.getByText('PHP 40.00')).toBeTruthy();
+    expect(screen.queryByText('Before discounts and service fees')).toBeNull();
+    expect(screen.getByLabelText('Physical cash counted (PHP)')).toBeTruthy();
+    expect(screen.queryByLabelText('Opening Float (PHP)')).toBeNull();
+    const closeShiftButton = screen.getByRole('button', { name: 'Close Shift', exact: true });
+    expect(closeShiftButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
+    const refreshStatusButton = screen.getByRole('button', { name: 'Refresh day-close status' });
+    expect(refreshStatusButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
+
+    const closeShiftSection = screen.getByRole('heading', { name: 'Close Shift' }).closest('section');
+
+    expect(closeShiftSection).toBe(screen.getByTestId('pos-close-cashier-shift-panel'));
+    expect(closeShiftSection.classList.contains('rounded-xl')).toBe(true);
+    expect(screen.getByTestId('pos-branch-day-close-panel')).toBeTruthy();
+    expect(screen.getByText('Close this cashier shift before generating the branch Z-reading.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Cash Drawer' }));
+    const recordCashEventButton = await screen.findByRole('button', { name: 'Record Cash Event' });
+    expect(recordCashEventButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
+    expect(screen.getByRole('button', { name: /Cashier History/ }).classList.contains('border-[#8AA8CD]')).toBe(true);
+  });
+
+  it('keeps stale-shift recovery hidden unless the recovery capability is present', () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps()} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Monitor' }));
+
+    expect(screen.getByRole('heading', { name: 'Active Shifts' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Recover Stale Shift' })).toBeNull();
+  });
+
   it('does not render an unguarded operating-location selector while a shift is active', () => {
     const setQueueLocationScopeId = vi.fn();
     const setOperatingLocationId = vi.fn();
@@ -215,7 +613,7 @@ describe('POS terminal location UX integration', () => {
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();
   });
 
-  it('keeps register branch selection separate from admin viewing branch selection', () => {
+  it('keeps register branch selection separate from admin viewing branch selection', async () => {
     const setOperatingLocationId = vi.fn();
     const setViewingLocationId = vi.fn();
     const props = buildBaseProps({
@@ -226,21 +624,22 @@ describe('POS terminal location UX integration', () => {
     });
 
     render(<TerminalOperationsWorkspace {...props} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
 
-    fireEvent.change(screen.getByLabelText('Register Branch'), { target: { value: '2' } });
+    await chooseDropdownOption('Register Branch', 'East Branch');
 
     expect(setOperatingLocationId).toHaveBeenCalledWith(2);
-    fireEvent.change(screen.getByLabelText('Viewing Branch'), { target: { value: '2' } });
+    await chooseDropdownOption('Viewing Branch', 'East Branch');
 
     expect(setViewingLocationId).toHaveBeenCalledWith(2);
-    expect(screen.getByText(/Read-only orders and shift monitoring/i)).toBeTruthy();
+    expect(screen.getByText('View orders and shifts only; the register branch stays unchanged.')).toBeTruthy();
   });
 
   it('does not expose branch viewing to a cashier without the admin monitor permission', () => {
     render(<TerminalOperationsWorkspace {...buildBaseProps()} />);
 
     expect(screen.queryByLabelText('Viewing Branch')).toBeNull();
-    expect(screen.queryByText('Branch Order Monitor')).toBeNull();
+    expect(screen.queryByText('Active Orders')).toBeNull();
   });
 
   it('keeps a rejected shift switch actionable without taking over the destination terminal', async () => {
@@ -276,8 +675,8 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    fireEvent.change(screen.getByLabelText('New Shift Location'), { target: { value: '2' } });
-    fireEvent.change(screen.getByLabelText('Destination Terminal'), { target: { value: 'EAST-01' } });
+    await chooseDropdownOption('New Shift Location', 'East Branch');
+    await chooseDropdownOption('Destination Terminal', /EAST-01/);
     fireEvent.change(screen.getByLabelText('Counted Closing Cash'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Destination Opening Float'), { target: { value: '100' } });
     fireEvent.change(screen.getByPlaceholderText('Reason for shift location change'), { target: { value: 'Move register to East branch' } });
@@ -296,7 +695,7 @@ describe('POS terminal location UX integration', () => {
     expect(handleSwitchShiftLocation).toHaveBeenCalledTimes(1);
   });
 
-  it('shows only current-scope admin orders and never paints stale rows under the new branch', () => {
+  it('shows only current-scope admin orders and never paints stale rows under the new branch', async () => {
     const props = buildBaseProps({
       canAdminBypassShiftPrompt: true,
       canViewAdminLocationMonitor: true,
@@ -311,11 +710,12 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByLabelText('Viewing Branch')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+    expect(await screen.findByLabelText('Viewing Branch')).toBeTruthy();
     expect(screen.queryByText('Main Branch Buyer')).toBeNull();
   });
 
-  it('does not offer inactive branches in either admin selector', () => {
+  it('does not offer inactive branches in either admin selector', async () => {
     const props = buildBaseProps({
       canAdminBypassShiftPrompt: true,
       canViewAdminLocationMonitor: true,
@@ -330,8 +730,9 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByLabelText('Register Branch').textContent).not.toContain('East Branch');
-    expect(screen.getByLabelText('Viewing Branch').textContent).not.toContain('East Branch');
+    fireEvent.click(screen.getByRole('tab', { name: 'Shift Session' }));
+    expect((await screen.findByLabelText('Register Branch')).textContent).not.toContain('East Branch');
+    expect((await screen.findByLabelText('Viewing Branch')).textContent).not.toContain('East Branch');
   });
 
   it('shows denied guidance when user cannot switch shift location', () => {
@@ -358,10 +759,10 @@ describe('POS terminal location UX integration', () => {
     render(<TerminalOperationsWorkspace {...props} />);
 
     expect(screen.getByText('You do not have permission to change the active shift location.')).toBeTruthy();
-    expect(screen.queryByText('Change Shift Location')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Change Shift Location' })).toBeNull();
   });
 
-  it('allows privileged users to switch location with reason and target payload', () => {
+  it('allows privileged users to switch location with reason and target payload', async () => {
     const handleSwitchShiftLocation = vi.fn();
     const props = buildBaseProps({
       viewMode: 'shift_controls',
@@ -388,16 +789,12 @@ describe('POS terminal location UX integration', () => {
     render(<TerminalOperationsWorkspace {...props} />);
 
     expect(screen.getByRole('button', { name: 'Change Shift Location' }).disabled).toBe(true);
-    fireEvent.change(screen.getByRole('combobox', { name: 'New Shift Location' }), {
-      target: { value: '2' }
-    });
+    await chooseDropdownOption('New Shift Location', 'East Branch');
     expect(props.setOperatingLocationId).not.toHaveBeenCalled();
     expect(handleSwitchShiftLocation).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Change Shift Location' }).disabled).toBe(true);
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Destination Terminal' }), {
-      target: { value: 'EAST-01' }
-    });
+    await chooseDropdownOption('Destination Terminal', /EAST-01/);
     fireEvent.change(screen.getByRole('textbox', { name: 'Counted Closing Cash' }), {
       target: { value: '195' }
     });
@@ -546,5 +943,92 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByText('Pin coordinates')).toBeTruthy();
     expect(screen.getAllByText('Not provided')).toHaveLength(2);
     expect(screen.queryByRole('link', { name: 'Open pin in map' })).toBeNull();
+  });
+
+  it('shows one non-actionable selected-branch marker without duplicating branch-view controls', () => {
+    const props = buildAdminNoShiftProps({ branchViewLocationId: 1 });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    const selectedBranch = screen.getByTestId('pos-view-branch-1');
+    expect(selectedBranch.tagName).toBe('SPAN');
+    expect(selectedBranch.getAttribute('aria-current')).toBe('location');
+    expect(screen.queryByRole('button', { name: 'Viewing this branch' })).toBeNull();
+    expect(screen.queryByText('Read-only branch view')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Exit Branch View' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Active online orders' })).toBeTruthy();
+  });
+
+  it('keeps branch content hidden until the selected branch monitor finishes its entry load', () => {
+    const props = buildAdminNoShiftProps({
+      branchViewLocationId: 1,
+      branchViewTransitionLoading: true
+    });
+    const { rerender } = render(<TerminalOperationsWorkspace {...props} />);
+
+    expect(screen.getByTestId('pos-branch-view-loading').getAttribute('aria-busy')).toBe('true');
+    expect(screen.queryByTestId('pos-branch-directory')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Active online orders' })).toBeNull();
+
+    rerender(<TerminalOperationsWorkspace {...props} branchViewTransitionLoading={false} />);
+
+    expect(screen.queryByTestId('pos-branch-view-loading')).toBeNull();
+    expect(screen.getByTestId('pos-branch-directory')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Active online orders' })).toBeTruthy();
+  });
+
+  it('keeps the last branch terminal snapshot visible after refresh fails', () => {
+    const props = buildAdminNoShiftProps();
+    props.branchDirectoryState = {
+      ...props.branchDirectoryState,
+      errorMessage: 'Branch terminals are unavailable.'
+    };
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    expect(screen.getByRole('alert').textContent).toContain('Refresh failed — showing last results');
+    expect(screen.getByRole('region', { name: 'Branch terminals at Main Branch' })).toBeTruthy();
+    expect(screen.getByRole('table', { name: 'Terminals at Main Branch' })).toBeTruthy();
+    expect(screen.queryByText('No active terminals are registered at Main Branch.')).toBeNull();
+    expect(screen.getByText('Scroll horizontally to view all columns.')).toBeTruthy();
+  });
+
+  it('announces a branch-order refresh while retaining the last loaded orders', () => {
+    const props = buildAdminNoShiftProps({
+      branchViewLocationId: 1,
+      adminLocationMonitorState: {
+        loading: true,
+        locationId: 1,
+        orders: [{
+          pos_transaction_id: 302,
+          customer_name: 'Main Branch Buyer',
+          fulfillment_status: 'placed'
+        }],
+        terminalShifts: []
+      }
+    });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    expect(screen.getByText('Refreshing orders…')).toBeTruthy();
+    expect(screen.getByText('Main Branch Buyer')).toBeTruthy();
+  });
+
+  it('does not show an empty branch-order state when the monitor request fails', () => {
+    const props = buildAdminNoShiftProps({
+      branchViewLocationId: 1,
+      adminLocationMonitorState: {
+        loading: false,
+        locationId: 1,
+        orders: [],
+        terminalShifts: [],
+        errorMessage: 'Branch monitor is unavailable.'
+      }
+    });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    expect(screen.getByRole('alert').textContent).toContain('Branch monitor is unavailable.');
+    expect(screen.queryByText('No active online orders.')).toBeNull();
   });
 });

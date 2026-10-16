@@ -135,7 +135,9 @@ moment that doc changes). This file names *where* each rule lives; go read it th
 10. **Planner handoff, when present** — if the PR body contains `## Plan Handoff` and identifies a
     local `.tmp/plan-<issue>.md` that exists in the current worktree, read the handoff and compare
     its scope and acceptance criteria with the issue and diff. A missing ignored local artifact is
-    not a finding; the PR body, linked issue, diff, and authoritative docs remain sufficient.
+    not a finding; the PR body, linked issue, diff, and authoritative docs remain sufficient. When
+    `Route:` and `Target:` are recorded, verify the PR base matches the target; for a hotfix, apply
+    the existing `main`/`staging` compliance and release-note audits as applicable.
 
 ## Manual session handoff input
 

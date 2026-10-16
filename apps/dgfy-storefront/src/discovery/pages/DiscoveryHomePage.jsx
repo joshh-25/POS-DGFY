@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { DiscoveryHeader } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
+import { DISCOVERY_NAV_ITEMS, DiscoveryHeader } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
 import { SolutionsPage } from './SolutionsPage.jsx';
 import { DiscoveryExploreStage } from '../components/DiscoveryExploreStage.jsx';
 import { DiscoveryLandingSections } from '../components/DiscoveryLandingSections.jsx';
@@ -12,9 +12,7 @@ export function DiscoveryHomePage({
   accountIdentityRawEmail,
   activeDiscoveryNavItem,
   desktopCategoryRailRef,
-  dgfyBusinessOwnerPhoto,
   dgfyHeaderLogo,
-  dgfySymbolLogo,
   discoveryCoords,
   discoveryInteractiveAreaRef,
   discoveryLayout,
@@ -58,7 +56,6 @@ export function DiscoveryHomePage({
   mobileCategoryRailRef,
   normalizeStorefrontCategories,
   normalizeStorefrontReviewSummary,
-  openBusinessRegistrationFlow,
   openCanonicalDgfyAuth,
   openCustomerDashboard,
   openDiscoveryFaqIndex,
@@ -86,7 +83,7 @@ export function DiscoveryHomePage({
         viewportMode={discoveryViewportMode}
         logoSrc={dgfyHeaderLogo}
         onLogoClick={() => goDiscovery()}
-        navItems={['Explore', 'Solutions', 'Contact Us']}
+        navItems={DISCOVERY_NAV_ITEMS}
         activeItem={activeDiscoveryNavItem === 'Contact Us' ? 'Explore' : activeDiscoveryNavItem}
         isAuthenticated={isDgfyCustomerSignedIn}
         accountLabel="My Account"
@@ -156,9 +153,7 @@ export function DiscoveryHomePage({
           />
 
           <DiscoveryLandingSections
-            dgfyBusinessOwnerPhoto={dgfyBusinessOwnerPhoto}
             dgfyHeaderLogo={dgfyHeaderLogo}
-            dgfySymbolLogo={dgfySymbolLogo}
             discoveryPinsBySlug={discoveryPinsBySlug}
             featuredCarouselRef={featuredCarouselRef}
             featuredCategoryFilter={featuredCategoryFilter}
@@ -175,7 +170,6 @@ export function DiscoveryHomePage({
             markBrandingImageError={markBrandingImageError}
             normalizeStorefrontCategories={normalizeStorefrontCategories}
             normalizeStorefrontReviewSummary={normalizeStorefrontReviewSummary}
-            openBusinessRegistrationFlow={openBusinessRegistrationFlow}
             openDiscoveryFaqIndex={openDiscoveryFaqIndex}
             setOpenDiscoveryFaqIndex={setOpenDiscoveryFaqIndex}
             toSlug={toSlug}

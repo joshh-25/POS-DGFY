@@ -77,6 +77,7 @@ import Pricelist from './Pricelist.js';
 import PricelistItem from './PricelistItem.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
+import StorefrontQrCode from './StorefrontQrCode.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import EmployeeAttendanceSession from './EmployeeAttendanceSession.js';
@@ -157,10 +158,12 @@ import {
   HospitalityStay
 } from './HospitalityModels.js';
 import TenantFactory from './Landlord/Tenant.js';
+import TenantIntakeProposalFactory from './Landlord/TenantIntakeProposal.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
 import EmailDeliveryLogFactory from './Landlord/EmailDeliveryLog.js';
+import SmsDeliveryLogFactory from './Landlord/SmsDeliveryLog.js';
 import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
@@ -222,11 +225,14 @@ import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
 import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
 import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
 import PlatformAdminAuditLogFactory from './Landlord/PlatformAdminAuditLog.js';
+import ContactInquiryProviderConfigFactory from './Landlord/ContactInquiryProviderConfig.js';
 import CompanyRegistrationApplicationFactory from './Landlord/CompanyRegistrationApplication.js';
 import CompanyRegistrationAttemptFactory from './Landlord/CompanyRegistrationAttempt.js';
 import CompanyRegistrationEventFactory from './Landlord/CompanyRegistrationEvent.js';
 import CompanyRegistrationEmailDeliveryFactory from './Landlord/CompanyRegistrationEmailDelivery.js';
+import CompanyRegistrationDraftFactory from './Landlord/CompanyRegistrationDraft.js';
 import CompanyRegistrationUploadFactory from './Landlord/CompanyRegistrationUpload.js';
+import CompanyRegistrationDownloadAuditFactory from './Landlord/CompanyRegistrationDownloadAudit.js';
 import PlatformInvoiceFactory from './Landlord/PlatformInvoice.js';
 import PlatformInvoicePaymentFactory from './Landlord/PlatformInvoicePayment.js';
 import PlatformInvoiceSequenceFactory from './Landlord/PlatformInvoiceSequence.js';
@@ -234,11 +240,24 @@ import PlatformInvoiceArtifactFactory from './Landlord/PlatformInvoiceArtifact.j
 import PlatformInvoiceDeliveryFactory from './Landlord/PlatformInvoiceDelivery.js';
 import PlatformInvoiceAdjustmentFactory from './Landlord/PlatformInvoiceAdjustment.js';
 import PlatformInvoiceEventFactory from './Landlord/PlatformInvoiceEvent.js';
+import OidcSigningKeyFactory from './Landlord/OidcSigningKey.js';
+import PartnerAppFactory from './Landlord/PartnerApp.js';
+import OidcClientFactory from './Landlord/OidcClient.js';
+import PartnerClientCredentialFactory from './Landlord/PartnerClientCredential.js';
+import PartnerAttachmentFactory from './Landlord/PartnerAttachment.js';
+import SmsMarketingConsentFactory from './Landlord/SmsMarketingConsent.js';
+import SmsConsentEventFactory from './Landlord/SmsConsentEvent.js';
+import SmsGlobalSuppressionFactory from './Landlord/SmsGlobalSuppression.js';
 const Tenant = TenantFactory(sequelize);
+const TenantIntakeProposal = TenantIntakeProposalFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
 const EmailDeliveryLog = EmailDeliveryLogFactory(sequelize);
+const SmsDeliveryLog = SmsDeliveryLogFactory(sequelize);
+const SmsMarketingConsent = SmsMarketingConsentFactory(sequelize);
+const SmsConsentEvent = SmsConsentEventFactory(sequelize);
+const SmsGlobalSuppression = SmsGlobalSuppressionFactory(sequelize);
 const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
@@ -300,11 +319,14 @@ const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
 const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
 const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
 const PlatformAdminAuditLog = PlatformAdminAuditLogFactory(sequelize);
+const ContactInquiryProviderConfig = ContactInquiryProviderConfigFactory(sequelize);
 const CompanyRegistrationApplication = CompanyRegistrationApplicationFactory(sequelize);
 const CompanyRegistrationAttempt = CompanyRegistrationAttemptFactory(sequelize);
 const CompanyRegistrationEvent = CompanyRegistrationEventFactory(sequelize);
 const CompanyRegistrationEmailDelivery = CompanyRegistrationEmailDeliveryFactory(sequelize);
+const CompanyRegistrationDraft = CompanyRegistrationDraftFactory(sequelize);
 const CompanyRegistrationUpload = CompanyRegistrationUploadFactory(sequelize);
+const CompanyRegistrationDownloadAudit = CompanyRegistrationDownloadAuditFactory(sequelize);
 const PlatformInvoice = PlatformInvoiceFactory(sequelize);
 const PlatformInvoicePayment = PlatformInvoicePaymentFactory(sequelize);
 const PlatformInvoiceSequence = PlatformInvoiceSequenceFactory(sequelize);
@@ -312,6 +334,11 @@ const PlatformInvoiceArtifact = PlatformInvoiceArtifactFactory(sequelize);
 const PlatformInvoiceDelivery = PlatformInvoiceDeliveryFactory(sequelize);
 const PlatformInvoiceAdjustment = PlatformInvoiceAdjustmentFactory(sequelize);
 const PlatformInvoiceEvent = PlatformInvoiceEventFactory(sequelize);
+const OidcSigningKey = OidcSigningKeyFactory(sequelize);
+const PartnerApp = PartnerAppFactory(sequelize);
+const OidcClient = OidcClientFactory(sequelize);
+const PartnerClientCredential = PartnerClientCredentialFactory(sequelize);
+const PartnerAttachment = PartnerAttachmentFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -381,6 +408,12 @@ CompanyRegistrationAttempt.hasMany(CompanyRegistrationUpload, { foreignKey: 'att
 CompanyRegistrationUpload.belongsTo(CompanyRegistrationAttempt, { foreignKey: 'attempt_id', as: 'attempt' });
 CompanyRegistrationApplication.hasMany(PlatformInvoice, { foreignKey: 'registration_application_id', as: 'platformInvoices' });
 PlatformInvoice.belongsTo(CompanyRegistrationApplication, { foreignKey: 'registration_application_id', as: 'registrationApplication' });
+CompanyRegistrationDraft.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccount.hasMany(CompanyRegistrationDraft, { foreignKey: 'dgfy_account_id', as: 'companyRegistrationDrafts' });
+CompanyRegistrationDraft.hasMany(CompanyRegistrationUpload, { foreignKey: 'registration_draft_id', as: 'uploads' });
+CompanyRegistrationUpload.belongsTo(CompanyRegistrationDraft, { foreignKey: 'registration_draft_id', as: 'draft' });
+CompanyRegistrationUpload.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccount.hasMany(CompanyRegistrationUpload, { foreignKey: 'dgfy_account_id', as: 'companyRegistrationUploads' });
 PlatformInvoice.belongsTo(PlatformInvoice, { foreignKey: 'parent_invoice_id', as: 'parentInvoice' });
 PlatformInvoice.hasMany(PlatformInvoice, { foreignKey: 'parent_invoice_id', as: 'replacementInvoices' });
 PlatformInvoice.hasMany(PlatformInvoicePayment, { foreignKey: 'invoice_id', as: 'payments' });
@@ -837,6 +870,10 @@ Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontC
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
 StorefrontLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+StorefrontQrCode.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+TenantLocation.hasMany(StorefrontQrCode, { foreignKey: 'location_id', as: 'storefrontQrCodes' });
+StorefrontQrCode.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
+ItemFolder.hasMany(StorefrontQrCode, { foreignKey: 'folder_id', as: 'storefrontQrCodes' });
 // onUpdate/onDelete pinned to RESTRICT: cashier_id is the base column of the STORED generated
 // column active_operator_user_id, and MySQL forbids ON UPDATE CASCADE/SET NULL/SET DEFAULT on
 // a generated column's base column (see 20260724000001-enforce-one-open-shift-per-operator.cjs).
@@ -1282,6 +1319,7 @@ const db = {
   PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
+  StorefrontQrCode,
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -1370,6 +1408,10 @@ const db = {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  SmsDeliveryLog,
+  SmsMarketingConsent,
+  SmsConsentEvent,
+  SmsGlobalSuppression,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
@@ -1399,6 +1441,7 @@ const db = {
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
   TenantAdminAuditLog,
+  TenantIntakeProposal,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
@@ -1426,11 +1469,14 @@ const db = {
   ,PlatformAdminPermission
   ,PlatformAdminSession
   ,PlatformAdminAuditLog
+  ,ContactInquiryProviderConfig
   ,CompanyRegistrationApplication
   ,CompanyRegistrationAttempt
   ,CompanyRegistrationEvent
   ,CompanyRegistrationEmailDelivery
+  ,CompanyRegistrationDraft
   ,CompanyRegistrationUpload
+  ,CompanyRegistrationDownloadAudit
   ,PlatformInvoice
   ,PlatformInvoicePayment
   ,PlatformInvoiceSequence
@@ -1438,11 +1484,21 @@ const db = {
   ,PlatformInvoiceDelivery
   ,PlatformInvoiceAdjustment
   ,PlatformInvoiceEvent
+  ,OidcSigningKey
+  ,PartnerApp
+  ,OidcClient
+  ,PartnerClientCredential
+  ,PartnerAttachment
 };
 
 export default db;
 export {
   sequelize,
+  OidcSigningKey,
+  PartnerApp,
+  OidcClient,
+  PartnerClientCredential,
+  PartnerAttachment,
   User,
   StaffRole,
   Item,
@@ -1512,6 +1568,7 @@ export {
   PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
+  StorefrontQrCode,
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -1600,6 +1657,10 @@ export {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  SmsDeliveryLog,
+  SmsMarketingConsent,
+  SmsConsentEvent,
+  SmsGlobalSuppression,
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
@@ -1629,6 +1690,7 @@ export {
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
   TenantAdminAuditLog,
+  TenantIntakeProposal,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
@@ -1656,11 +1718,14 @@ export {
   PlatformAdminPermission,
   PlatformAdminSession,
   PlatformAdminAuditLog,
+  ContactInquiryProviderConfig,
   CompanyRegistrationApplication,
   CompanyRegistrationAttempt,
   CompanyRegistrationEvent,
   CompanyRegistrationEmailDelivery,
+  CompanyRegistrationDraft,
   CompanyRegistrationUpload,
+  CompanyRegistrationDownloadAudit,
   PlatformInvoice,
   PlatformInvoicePayment,
   PlatformInvoiceSequence,

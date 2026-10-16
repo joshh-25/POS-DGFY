@@ -13,6 +13,7 @@ import {
   REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS,
   REQUIRED_TENANT_SCHEMA_INDEXES,
   REQUIRED_TENANT_SCHEMA_TABLES,
+  TENANT_SCHEMA_CAPABILITY_VERSION,
   buildTenantSchemaEnumRepairSql,
   backfillItemFolderSortOrder,
   repairItemFolderCategoryLifecycleSchema,
@@ -102,6 +103,22 @@ describe('tenant schema sync script contracts', () => {
     expect(repairs[1].sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
   });
 
+  // #2335: PR #2322 widened stock_movements.reference_type's ENUM on the landlord DB and the
+  // Sequelize model, but never registered it here -- so no existing tenant's physical table was
+  // ever repaired (confirmed empirically: all 52 production tenants still missing
+  // 'POS_PARKED_SALE' at the time of this fix). This is the regression guard for that gap.
+  it('tracks the POS_PARKED_SALE stock-movement ENUM widening (#2321/#2322/#2335) in the tenant drift registry', () => {
+    const everyLiteralTheAppWrites = ['PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS', 'POS_PARKED_SALE'];
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.stock_movements.reference_type.enumValues)
+      .toEqual(everyLiteralTheAppWrites);
+
+    const repairs = buildTenantSchemaEnumRepairSql([
+      { table: 'stock_movements', column: 'reference_type' }
+    ]);
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0].sql).toContain("ENUM('PO','JO','MANUAL','RETURN','DO','POS','POS_PARKED_SALE')");
+  });
+
   it('repairs the tenant-local Business Admin approval table and indexes', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.business_admin_approval_requests;
     expect(table.sql).toContain('business_admin_approval_requests');
@@ -170,6 +187,20 @@ describe('tenant schema sync script contracts', () => {
       .toContain('UNIQUE INDEX `uq_business_admin_saved_report_view_name`');
     expect(indexRepairs.find((repair) => repair.index === 'uq_business_admin_notification_state_alert_user')?.sql)
       .toContain('UNIQUE INDEX `uq_business_admin_notification_state_alert_user`');
+  });
+
+  it('repairs the tenant-local storefront QR table and records the schema capability version', () => {
+    const table = REQUIRED_TENANT_SCHEMA_TABLES.storefront_qr_codes;
+
+    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-15.1');
+    expect(table.sql).toContain('CREATE TABLE `storefront_qr_codes`');
+    expect(table.sql).toContain('`public_token` VARCHAR(64) NOT NULL');
+    expect(table.sql).toContain('UNIQUE KEY `uq_storefront_qr_codes_public_token`');
+    expect(table.sql).toContain('FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`)');
+    expect(table.sql).toContain('FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`)');
+
+    expect(buildTenantSchemaTableRepairSql(['storefront_qr_codes']))
+      .toEqual([{ table: 'storefront_qr_codes', sql: table.sql }]);
   });
 
   it('normalizes known too-many-keys failures with stable fingerprint', () => {
@@ -662,14 +693,16 @@ describe('tenant schema sync script contracts', () => {
       { table: 'pos_z_reading_snapshots', column: 'location_id' },
       { table: 'pos_z_reading_snapshots', column: 'closed_by_user_id' },
       { table: 'pos_z_reading_snapshots', column: 'closed_from_terminal_id' },
-      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' }
+      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' },
+      { table: 'pos_z_reading_snapshots', column: 'reading_payload_hash' }
     ]);
 
-    expect(repairs).toHaveLength(4);
+    expect(repairs).toHaveLength(5);
     expect(repairs[0].sql).toContain('ADD COLUMN `location_id`');
     expect(repairs[1].sql).toContain('ADD COLUMN `closed_by_user_id`');
     expect(repairs[2].sql).toContain('ADD COLUMN `closed_from_terminal_id`');
     expect(repairs[3].sql).toContain('ADD COLUMN `day_close_pin_confirmed_at`');
+    expect(repairs[4].sql).toContain('ADD COLUMN `reading_payload_hash`');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
       .toHaveProperty('uq_pos_z_reading_snapshots_business_date_location');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
@@ -686,6 +719,17 @@ describe('tenant schema sync script contracts', () => {
 
     expect(repair.sql).toContain("'grab_pay'");
     expect(repair.sql).toContain("'shopeepay'");
+  });
+
+  it('registers the return adjustment enum value for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transaction_adjustments.adjustment_type;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['return']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transaction_adjustments', column: 'adjustment_type', missing_values: ['return'] }
+    ]);
+
+    expect(repair.sql).toContain("ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return')");
   });
 
   // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).

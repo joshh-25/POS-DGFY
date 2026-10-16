@@ -144,8 +144,10 @@ import { useCustomerDashboardRouteFlags } from './customer-dashboard/pages/useCu
 import { useCustomerDashboardRouteOutlet } from './customer-dashboard/pages/useCustomerDashboardRouteOutlet.jsx';
 import {
   readStoreSubpage,
+  readStoreQrToken,
   readTrackingPinFromQuery,
   STORE_BOOKING_SUBPAGE,
+  STORE_CATEGORIES_SUBPAGE,
   STORE_ITEM_SUBPAGE,
   STORE_ORDER_SUBPAGE,
   STORE_SERVICE_SUBPAGE,
@@ -184,6 +186,7 @@ import { StorefrontDropdown } from './features/shared-storefront/components/Stor
 import { useStorefrontClosedNotice } from './shared/hooks/useStorefrontClosedNotice.js';
 import { useStorefrontShareActions } from './shared/hooks/useStorefrontShareActions.js';
 import { StorefrontPaymentUnavailableModal } from './shared/components/storefront/StorefrontPaymentUnavailableModal.jsx';
+import { StorefrontTransactionExpiredModal } from './shared/components/storefront/StorefrontTransactionExpiredModal.jsx';
 import {
   formatFollowersLabel,
   getStorefrontContactIcon,
@@ -369,7 +372,6 @@ export const __storefrontTrackingTestUtils = {
 const AUTO_QUOTE_DEBOUNCE_MS = 350;
 const dgfyHeaderLogo = '/dgfy-logo.png';
 const dgfySymbolLogo = '/dgfy-symbologo.png';
-const dgfyBusinessOwnerPhoto = '/man.webp';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
@@ -545,8 +547,10 @@ export default function StorefrontApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStorePage]);
   const currentPathSubpage = readStoreSubpage();
+  const qrToken = readStoreQrToken();
   const currentPathname = typeof window === 'undefined' ? '/' : (window.location.pathname || '/');
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
+  const isCategoriesSubpage = routeSubpage === STORE_CATEGORIES_SUBPAGE;
   const isOrderSubpage = routeSubpage === STORE_ORDER_SUBPAGE;
   const isTrackSubpage = routeSubpage === STORE_TRACK_SUBPAGE;
   const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
@@ -554,6 +558,8 @@ export default function StorefrontApp() {
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
 
   const [editingFnbCartLine, setEditingFnbCartLine] = useState(null);
+  const [isTransactionExpiredModalOpen, setIsTransactionExpiredModalOpen] = useState(false);
+  const qrCategorySelectionKeyRef = useRef('');
   const {
     isReviewModalOpen,
     setIsReviewModalOpen,
@@ -755,7 +761,8 @@ export default function StorefrontApp() {
     setSelectedStore,
     setRouteSlug,
     preferredStoreLocationSelection,
-    voucherCode: checkoutVoucherCode
+    voucherCode: checkoutVoucherCode,
+    qrToken
   });
 
   const selectedCheckoutLocation = useMemo(
@@ -828,7 +835,6 @@ export default function StorefrontApp() {
     handleDiscoveryMenuToggle,
     handleDiscoveryNavItemClick
   } = useDiscoveryNavActions({
-    activeDiscoveryNavItem,
     isDiscoveryMobileViewport,
     setActiveDiscoveryNavItem,
     setIsDiscoveryNavMenuOpen
@@ -847,6 +853,7 @@ export default function StorefrontApp() {
   const {
     isFnbMode,
     isServicesMode,
+    isLaundryMode,
     isSimpleMode,
     isHospitalityMode,
     isRetailMode,
@@ -887,6 +894,28 @@ export default function StorefrontApp() {
     routeSlug,
     selectedLocationId
   });
+  useEffect(() => {
+    if (!isCategoriesSubpage || !isFnbMode) {
+      qrCategorySelectionKeyRef.current = '';
+      return;
+    }
+    if (loadingCatalog) return;
+
+    const qrTarget = selectedStore?.qr_target;
+    const targetType = String(qrTarget?.target_type || '').trim().toLowerCase();
+    const folderId = Number(qrTarget?.folder_id);
+    const hasFolderTarget = targetType === 'category' && Number.isInteger(folderId) && folderId > 0;
+    const selectionKey = `${selectedStore?.slug || routeSlug}:${targetType}:${hasFolderTarget ? folderId : ''}`;
+    if (qrCategorySelectionKeyRef.current === selectionKey) return;
+
+    const targetSectionIdentity = hasFolderTarget ? `folder:${folderId}` : '';
+    const hasTargetSection = Boolean(
+      targetSectionIdentity
+      && filteredFnbViewModel?.menuSections?.some((section) => section.sectionIdentity === targetSectionIdentity)
+    );
+    qrCategorySelectionKeyRef.current = selectionKey;
+    setActiveServiceTab(hasTargetSection ? targetSectionIdentity : null);
+  }, [filteredFnbViewModel?.menuSections, isCategoriesSubpage, isFnbMode, loadingCatalog, routeSlug, selectedStore?.qr_target, selectedStore?.slug, setActiveServiceTab]);
   const {
     catalogPresentation: fnbCatalogPresentation,
     fnbCategoryDropdownRef,
@@ -973,7 +1002,7 @@ export default function StorefrontApp() {
     // scoped to its own mode and slug. Without Simple MSME here, its shared
     // in-memory cart survived navigation into a different Simple storefront.
     enabled: isFnbMode || isServicesMode || isRetailMode || isSimpleMode,
-    mode: isFnbMode ? 'fnb' : (isServicesMode || selectedStore?.workflow_mode === 'laundry' ? 'services' : (isRetailMode ? 'retail' : (isSimpleMode ? 'simple' : ''))),
+    mode: isFnbMode ? 'fnb' : (isLaundryMode ? 'laundry' : (isServicesMode ? 'services' : (isRetailMode ? 'retail' : (isSimpleMode ? 'simple' : '')))),
     // #768: rides along in the same snapshot as the cart lines -- see that hook's own note.
     promoCode: checkoutPromoCode,
     setCart,
@@ -1110,7 +1139,9 @@ export default function StorefrontApp() {
     handleOpenBusinessInventory,
     handleOpenBusinessPos,
     getOwnBusinessDayCloseStatus,
-    configureOwnBusinessDayClosePin
+    configureOwnBusinessDayClosePin,
+    getOwnBusinessGlobalPinStatus,
+    configureOwnBusinessGlobalPin
   } = useCustomerDashboardRuntime({
     EMPTY_ACCOUNT_PANEL,
     selectedStore,
@@ -1188,6 +1219,7 @@ export default function StorefrontApp() {
   const {
     accountDisplayName,
     accountIdentityRawName,
+    accountIdentityRawUsername,
     accountIdentityRawPhone,
     accountIdentityRawEmail,
     accountIdentityName,
@@ -2215,6 +2247,14 @@ export default function StorefrontApp() {
     toast,
     writeCheckoutAuthResumeDraft
   });
+  const handleGuestCheckoutOtpExpired = useCallback(() => {
+    resetQrphPaymentSession();
+    setCheckoutError('');
+    if (isFnbMode) setFnbOrderStep(3);
+    if (isSimpleMode) setSimpleOrderStep(1);
+    setIsTransactionExpiredModalOpen(true);
+  }, [isFnbMode, isSimpleMode, resetQrphPaymentSession, setCheckoutError, setFnbOrderStep, setSimpleOrderStep]);
+
   const {
     guestCheckoutIntentId,
     guestCheckoutOtpCode,
@@ -2231,10 +2271,16 @@ export default function StorefrontApp() {
   } = useGuestCheckoutOtp({
     customerEmail,
     isDgfyCustomerSignedIn,
+    onOtpExpired: handleGuestCheckoutOtpExpired,
     requestJson,
     selectedStore,
     toast,
   });
+  const handleGuestCheckoutOtpExpiredFromCheckout = useCallback(() => {
+    resetGuestCheckoutOtp();
+    handleGuestCheckoutOtpExpired();
+  }, [handleGuestCheckoutOtpExpired, resetGuestCheckoutOtp]);
+
   const handleVerifyGuestCheckoutOtp = useCallback(async () => {
     const verified = await verifyGuestCheckoutOtp();
     if (verified && checkoutError === GUEST_CHECKOUT_VERIFICATION_REQUIRED_MESSAGE) {
@@ -2271,6 +2317,7 @@ export default function StorefrontApp() {
     checkoutVoucherCode,
     customerEmail,
     customerName,
+    customerUsername: accountIdentityRawUsername,
     customerPhone,
     customerPin,
     deliveryAddress: resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin }),
@@ -2316,6 +2363,7 @@ export default function StorefrontApp() {
     guestCheckoutIntentId,
     guestCheckoutOtpVerified,
     guestCheckoutProof,
+    onGuestCheckoutOtpExpired: handleGuestCheckoutOtpExpiredFromCheckout,
     handleLoadAccountPanel,
     isDgfyCustomerSignedIn,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
@@ -2819,6 +2867,7 @@ export default function StorefrontApp() {
     guestCheckoutIntentId,
     guestCheckoutOtpVerified,
     guestCheckoutProof,
+    onGuestCheckoutOtpExpired: handleGuestCheckoutOtpExpiredFromCheckout,
     handleFnbCheckout,
     handleLoadAccountPanel,
     hasServiceCart,
@@ -2990,6 +3039,7 @@ export default function StorefrontApp() {
     closeServiceDetail,
     goStore,
     goStoreBookingPage,
+    goStoreCategoriesPage,
     goStoreCatalogPage,
     goDiscovery
   } = useStorefrontNavigation({
@@ -3016,7 +3066,8 @@ export default function StorefrontApp() {
     setCatalog,
     setCatalogError,
     setDiscoveryAppliedFilters,
-    setActiveDiscoveryNavItem
+    setActiveDiscoveryNavItem,
+    qrToken
   });
   const {
     goStoreOrderForDiscovery,
@@ -3041,7 +3092,8 @@ export default function StorefrontApp() {
     setSelectedTrackingPin,
     setSimpleOrderStep,
     setTrackingPinInput,
-    trackingPinInput
+    trackingPinInput,
+    qrToken
   });
   orderNavigationHandlersRef.current = {
     goStoreOrderPage: composedGoStoreOrderPage,
@@ -3073,6 +3125,7 @@ export default function StorefrontApp() {
     promoDiscountLabel: totalsForDisplay.discount_label,
     fnbOrderBrand,
     getLineTotal,
+    goStoreCategoriesPage,
     goStoreCatalogPage,
     goStoreOrderPage,
     isDesktopCheckout,
@@ -3779,6 +3832,8 @@ export default function StorefrontApp() {
     handleOpenBusinessPos,
     getOwnBusinessDayCloseStatus,
     configureOwnBusinessDayClosePin,
+    getOwnBusinessGlobalPinStatus,
+    configureOwnBusinessGlobalPin,
     resolveStorefrontMetaForAccountEntry,
     withAssetOrigin,
     savedCustomerDetails,
@@ -4030,6 +4085,7 @@ export default function StorefrontApp() {
     accountStepComplete: serviceAccountStepComplete,
     fulfillmentStepComplete,
     isServicesMode,
+    isLaundryMode,
     servicesViewModel,
     activeServiceTab,
     fnbCatalogPresentation,
@@ -4038,6 +4094,7 @@ export default function StorefrontApp() {
     filteredCatalog,
     fnbPageSize,
     isSimpleMode,
+    isCategoriesSubpage,
     isFnbDetailsSubpage,
     fnbProductDetailsRouteProps,
     activeBookingService,
@@ -4058,6 +4115,7 @@ export default function StorefrontApp() {
     canUseGuestCheckoutFlow,
     guestCheckoutAllowed,
     catalog,
+    cartCount,
     catalogError,
     catalogSearch,
     checkoutError,
@@ -4079,6 +4137,7 @@ export default function StorefrontApp() {
     deliverySavedLocations,
     applySavedDeliveryLocation,
     getCartFlySourceRect,
+    goStoreOrderPage,
     goStoreCatalogPage,
     goStoreTrackPage,
     handleAddPinnedLocation,
@@ -4302,6 +4361,7 @@ export default function StorefrontApp() {
     selectedStore,
     isFnbMode,
     isServicesMode,
+    isLaundryMode,
     isMobileViewport,
     isAccountDrawerOpen,
     isServicesCartDrawerMode,
@@ -4356,9 +4416,7 @@ export default function StorefrontApp() {
     accountIdentityRawEmail,
     activeDiscoveryNavItem,
     desktopCategoryRailRef,
-    dgfyBusinessOwnerPhoto,
     dgfyHeaderLogo,
-    dgfySymbolLogo,
     discoveryCoords,
     discoveryInteractiveAreaRef,
     discoveryLayout,
@@ -4402,7 +4460,6 @@ export default function StorefrontApp() {
     mobileCategoryRailRef,
     normalizeStorefrontCategories,
     normalizeStorefrontReviewSummary,
-    openBusinessRegistrationFlow,
     openCanonicalDgfyAuth,
     openCustomerDashboard,
     openDiscoveryFaqIndex,
@@ -4457,7 +4514,7 @@ export default function StorefrontApp() {
 
   return (
     <main
-      data-storefront-mode={isServicesMode ? 'services' : undefined}
+      data-storefront-mode={isLaundryMode ? 'laundry' : (isServicesMode ? 'services' : undefined)}
       style={{
         '--services-body-font': servicesBodyFont,
         '--services-display-font': servicesDisplayFont,
@@ -4495,7 +4552,7 @@ export default function StorefrontApp() {
             {isServicesTrackingPage ? (
               <ServicesTrackingRouteContainer {...servicesTrackingRouteProps} />
             ) : null}
-            {!isServicesTrackingPage && !isFnbDetailsSubpage && (
+            {!isServicesTrackingPage && !isFnbDetailsSubpage && !isCategoriesSubpage && (
               <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
             )}
 
@@ -4516,6 +4573,10 @@ export default function StorefrontApp() {
       {customerDashboardDrawerRouteNode}
 
 
+      <StorefrontTransactionExpiredModal
+        open={isTransactionExpiredModalOpen}
+        onClose={() => setIsTransactionExpiredModalOpen(false)}
+      />
       <StorefrontPaymentUnavailableModal
         open={isOnlinePaymentModalOpen}
         onClose={uiCloseOnlinePaymentModal}

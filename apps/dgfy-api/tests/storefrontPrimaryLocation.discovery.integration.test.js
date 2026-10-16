@@ -1,12 +1,9 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { spawnSync } from 'child_process';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
 import { DataTypes, Sequelize } from 'sequelize';
+import { createMigratedTestDatabase } from './helpers/migratedTestDatabase.js';
 import dbStore from '../src/utils/dbStore.js';
 import tenantConnector from '../src/utils/TenantConnector.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
@@ -15,12 +12,6 @@ import { updateSettingsUseCase } from '../src/modules/settings/index.js';
 import { syncStorefrontDiscoveryIndexForTenant } from '../src/services/storefrontDiscoveryIndexService.js';
 import storefrontDiscoveryRouter from '../src/routes/storefrontDiscovery.js';
 import { sequelize as landlordSequelize, Tenant, StorefrontDiscoveryIndex } from '../src/models/index.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const backendRoot = path.join(__dirname, '..');
-const migrationRunnerRoot = path.join(backendRoot, '..', 'dgfy-migration-runner');
-const sequelizeCliPath = path.join(migrationRunnerRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
 
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
@@ -32,44 +23,6 @@ const dbConfig = {
 const createIsolatedDbName = () => (
     `test_storefront_primary_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`
 );
-
-const runMigrationsForDb = (dbName) => {
-    if (!fs.existsSync(sequelizeCliPath)) {
-        throw new Error(`Sequelize CLI entrypoint not found at: ${sequelizeCliPath}`);
-    }
-
-    const migrationResult = spawnSync(
-        process.execPath,
-        [
-            sequelizeCliPath,
-            'db:migrate',
-            '--env',
-            'development',
-            '--config',
-            'src/config/sequelize.config.cjs',
-            '--migrations-path',
-            'migrations'
-        ],
-        {
-            cwd: migrationRunnerRoot,
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                DB_NAME: dbName,
-                DB_HOST: dbConfig.host,
-                DB_USER: dbConfig.user,
-                DB_PASSWORD: dbConfig.password,
-                DB_PORT: String(dbConfig.port)
-            }
-        }
-    );
-
-    if (migrationResult.status !== 0) {
-        throw new Error(
-            `Migration failed for ${dbName}\n${migrationResult.stdout}\n${migrationResult.stderr}`
-        );
-    }
-};
 
 describe('storefront primary location integration', () => {
     const dbName = createIsolatedDbName();
@@ -143,7 +96,7 @@ describe('storefront primary location integration', () => {
         await ensureDiscoveryIndexColumn('item_search_snapshot', { type: DataTypes.JSON, allowNull: true });
         await ensureDiscoveryIndexColumn('search_snapshot_version', { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 1 });
         await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
-        runMigrationsForDb(dbName);
+        await createMigratedTestDatabase(dbName, landlordSequelize);
 
         tenantSequelize = new Sequelize(
             dbName,
@@ -230,8 +183,8 @@ describe('storefront primary location integration', () => {
         expect(initialProfile.status).toBe(200);
         expect(initialProfile.body.success).toBe(true);
         expect(Number(initialProfile.body.data.location_id)).toBe(Number(firstLocation.data.location_id));
-        expect(initialProfile.body.data.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
-        expect(initialProfile.body.data.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
+        expect(initialProfile.body.data.storefront_cover_image_url).toBeNull();
+        expect(initialProfile.body.data.storefront_profile_image_url).toBeNull();
 
         const promoteSecondLocation = await runInTenantContext(() => updateTenantLocationUseCase({
             locationId: secondLocation.data.location_id,
@@ -281,8 +234,8 @@ describe('storefront primary location integration', () => {
         expect(updatedProfile.body.success).toBe(true);
         expect(Number(updatedProfile.body.data.location_id)).toBe(Number(secondLocation.data.location_id));
         expect(updatedProfile.body.data.location_name).toBe('Branch 2');
-        expect(updatedProfile.body.data.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
-        expect(updatedProfile.body.data.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
+        expect(updatedProfile.body.data.storefront_cover_image_url).toBeNull();
+        expect(updatedProfile.body.data.storefront_profile_image_url).toBeNull();
 
         const discoveryList = await request(app)
             .get('/api/v1/storefront/discovery');
@@ -291,7 +244,7 @@ describe('storefront primary location integration', () => {
             ? discoveryList.body.data.stores.find((row) => String(row.slug || '') === tenantSlug)
             : null;
         expect(alphaRow).toBeTruthy();
-        expect(alphaRow.storefront_cover_image_url).toBe('/uploads/storefront-assets/test/cover.png');
-        expect(alphaRow.storefront_profile_image_url).toBe('/uploads/storefront-assets/test/profile.png');
+        expect(alphaRow.storefront_cover_image_url).toBeNull();
+        expect(alphaRow.storefront_profile_image_url).toBeNull();
     });
 });

@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-28
-last_reviewed: 2026-08-28
+last_reviewed: 2026-10-10
 review_by: 2027-02-28
 applies_to: mobile_pos,pos,orders,payments,sync
 topic: standalone_mobile_offline_order_actions
@@ -93,3 +93,15 @@ risks when another terminal changes the same server order.
   queue baseline only; it does not implement the Phase 180 offline action client.
 - Phase 180 client follow-up: no versioned dgfy-mobile PR/commit exists yet;
   platform evidence must not be presented as native-client evidence.
+
+## Amendments
+
+### 2026-10-10 — Web order-action scope proposal (#1484)
+
+- Clauses referenced: Decisions 1–5 (`binding`) and Decision 6 (`default`).
+- Change: Proposed ADR 0095 records web POS dispositions for all five binding clauses. Web order
+  actions remain online-only until a separate slice provides equivalent durable local requests and
+  conditional reconciliation. This pointer does not extend the binding clauses to web; ADR 0095
+  remains proposed pending tech-lead approval.
+- See: [ADR 0095](0095-offline-pos-sync-contract-convergence.md) and
+  [`POS_OFFLINE_SYNC_CONTRACT.md`](../../features/POS_OFFLINE_SYNC_CONTRACT.md).

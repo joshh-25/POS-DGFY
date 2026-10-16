@@ -7,6 +7,7 @@ test('POS login response exposes the required security headers', async ({ page }
   const headers = response.headers();
   expect(headers['content-security-policy']).toContain("default-src 'self'");
   expect(headers['content-security-policy']).toContain("worker-src 'self' blob:");
+  expect(headers['content-security-policy']).toContain("media-src 'self' blob:");
   expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
   expect(headers['x-content-type-options']).toBe('nosniff');
   expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');

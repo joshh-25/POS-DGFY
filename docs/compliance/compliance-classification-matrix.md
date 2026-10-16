@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-08-23
+last_reviewed: 2026-10-09
 applies_to: compliance_sensitive_change_classification
 topic: compliance_classification_matrix
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -55,6 +55,11 @@ listing `backend/**`/`frontend/**` paths from before the `apps/*` relocation (AD
 | `apps/dgfy-api/src/routes/settings.js` | `settings` | `major` |
 | `apps/dgfy-api/src/routes/compliance.js` | `compliance` | `regulatory` |
 | `apps/dgfy-api/src/routes/adminTenants.js` | `settings`, `compliance` | `regulatory` |
+| `apps/dgfy-api/src/modules/tenantIntake/**` | `settings`, `compliance` | `regulatory` |
+| `apps/dgfy-api/src/routes/adminTenantIntake.js` | `settings`, `compliance` | `regulatory` |
+| `apps/dgfy-api/src/config/demoProvisioningGuard.js` | `settings`, `compliance` | `regulatory` |
+| `apps/dgfy-api/src/modules/tenants/usecases/adminAssistedProvisioningUseCase.js` | `settings`, `compliance` | `regulatory` |
+| `apps/dgfy-api/src/modules/tenants/usecases/provisioningInputRules.js` | `settings`, `compliance` | `regulatory` |
 | `apps/dgfy-api/src/validators/complianceValidator.js` | `compliance` | `regulatory` |
 | `apps/dgfy-api/src/controllers/complianceController.js` | `compliance` | `regulatory` |
 | `apps/dgfy-api/src/controllers/adminTenantController.js` | `settings`, `compliance` | `regulatory` |

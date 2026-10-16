@@ -10,7 +10,7 @@ const read = (relativePath) => fs.readFileSync(path.resolve(webCoreRoot, relativ
 describe('POS Items button consistency contract', () => {
   it('uses one History-style control contract across all Items tabs and responsive views', () => {
     const css = read('src/index.css');
-    const workspace = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const workspace = read('src/features/pos/components/PosItemsWorkspace.jsx');
 
     expect(css).toContain('.pos-items-catalog-workspace :where(');
     expect(css).toContain('.pos-items-desktop-actions > button');

@@ -13,14 +13,14 @@ const configured = (name) => {
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 };
 
-export const signDglaundryPartnerRequest = ({ method, target, rawBody, idempotencyKey }) => {
+export const signDglaundryPartnerRequest = async ({ method, target, rawBody, idempotencyKey }) => {
   const signingKey = configured('DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY');
   const signingKeyId = configured('DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
   const appId = configured('DGFY_DGLAUNDRY_SERVICE_CLIENT_ID');
   const contractVersion = configured('DGLAUNDRY_PARTNER_CONTRACT_VERSION') || 'external-runtime-v0.1';
   if (!signingKey || !signingKeyId || !appId) throw new Error('DGLAUNDRY_PARTNER_ASYMMETRIC_CREDENTIALS_REQUIRED');
   const payload = rawBody ? JSON.parse(rawBody) : {};
-  const token = issueDglaundryPartnerAccessToken({ method, target, payload });
+  const token = await issueDglaundryPartnerAccessToken({ method, target, payload });
   const created = Math.floor(Date.now() / 1000);
   const expires = created + 300;
   const nonce = crypto.randomUUID();
@@ -54,7 +54,7 @@ export const signDglaundryPartnerRequest = ({ method, target, rawBody, idempoten
   };
 };
 
-const request = async (path, body, { method = 'POST', idempotencyKey = null, profile = 'request' } = {}) => {
+const request = async (path, body, { method = 'POST', idempotencyKey = null, profile = 'request', timeoutMs = 10000 } = {}) => {
   const target = new URL(path, baseUrl());
   const rawBody = method === 'GET' ? '' : JSON.stringify(body ?? {});
   const headers = profile === 'event'
@@ -62,29 +62,36 @@ const request = async (path, body, { method = 'POST', idempotencyKey = null, pro
     : profile === 'public'
       ? { accept: 'application/json' }
       : process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1'
-      ? signDglaundryPartnerRequest({ method, target, rawBody, idempotencyKey })
+      ? await signDglaundryPartnerRequest({ method, target, rawBody, idempotencyKey })
       : signDgfyRequest({ method, authority: target.host, path: `${target.pathname}${target.search}`, body }).headers;
   if (idempotencyKey && !headers['idempotency-key']) headers['idempotency-key'] = idempotencyKey;
   if (process.env.DGLAUNDRY_SIGNATURE_PROFILE !== 'http-message-signatures-v1' && process.env.NODE_ENV !== 'production' && process.env.DGLAUNDRY_PARTNER_TOKEN && !headers['x-dglaundry-partner-token']) {
     headers['x-dglaundry-partner-token'] = String(process.env.DGLAUNDRY_PARTNER_TOKEN);
   }
-  const response = await fetch(target, { method, headers, body: rawBody || undefined });
+  const response = await fetch(target, { method, headers, body: rawBody || undefined, signal: AbortSignal.timeout(timeoutMs) });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.success === false) {
     const error = new Error(payload.message || payload.error_code || `DGLaundry partner request failed (${response.status})`);
     error.statusCode = response.status;
     error.code = payload.error_code || null;
+    error.retryAfter = response.headers?.get?.('retry-after') || null;
+    throw error;
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Object.keys(payload).length) {
+    const error = new Error('DGLAUNDRY_RESPONSE_INVALID');
+    error.code = 'DGLAUNDRY_RESPONSE_INVALID';
+    error.statusCode = 502;
     throw error;
   }
   return payload.data ?? payload;
 };
 
 export const dglaundryPartnerClient = {
-  prepareQuote: (payload) => request('/api/v1/integrations/dgfy/quotes', payload, { idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
-  prepareBookingGroup: (payload) => request('/api/v1/integrations/dgfy/booking-groups/prepare', payload, { idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
-  submitOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
-  updateOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
-  cancelOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
-  resolveOrder: (payload) => request('/api/v1/integrations/dgfy/order-projections/resolve', payload, { method: 'POST' }),
+  prepareQuote: (payload, options = {}) => request('/api/v1/integrations/dgfy/quotes', payload, { ...options, idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
+  prepareBookingGroup: (payload, options = {}) => request('/api/v1/integrations/dgfy/booking-groups/prepare', payload, { ...options, idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
+  submitOrder: (envelope, options = {}) => request('/api/v1/integrations/dgfy/events', envelope, { ...options, idempotencyKey: envelope?.id, profile: 'event' }),
+  updateOrder: (envelope, options = {}) => request('/api/v1/integrations/dgfy/events', envelope, { ...options, idempotencyKey: envelope?.id, profile: 'event' }),
+  cancelOrder: (envelope, options = {}) => request('/api/v1/integrations/dgfy/events', envelope, { ...options, idempotencyKey: envelope?.id, profile: 'event' }),
+  resolveOrder: (payload, options = {}) => request('/api/v1/integrations/dgfy/order-projections/resolve', payload, { ...options, method: 'POST' }),
   health: () => request('/api/v1/integrations/dgfy/health', {}, { method: 'GET', profile: 'public' })
 };

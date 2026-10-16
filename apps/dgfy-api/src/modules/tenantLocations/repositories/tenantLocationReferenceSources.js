@@ -74,6 +74,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'storefrontQrCodes',
+        label: 'storefront QR codes',
+        modelName: 'StorefrontQrCode',
+        association: 'StorefrontQrCode.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'posLocationItemOverrides',
         label: 'POS branch item overrides',
         modelName: 'PosLocationItemOverride',

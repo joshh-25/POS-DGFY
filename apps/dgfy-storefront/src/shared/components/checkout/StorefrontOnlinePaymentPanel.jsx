@@ -146,11 +146,16 @@ export function StorefrontOnlinePaymentPanel({
   const awaitingDirectPaymentAuthorization = directPayment
     && paymentSession.status === 'awaiting_payment'
     && !paymentReturnPending;
-  const canChooseAnotherPaymentMethod = retryablePayment
-    || (directCard && Boolean(cardError) && !cardSubmitting && !cardAuthorizationSubmitted && !paymentReturnPending);
   const canCancelPaymentSession = paymentSession.status === 'awaiting_payment'
     && Boolean(paymentSession.provider_payment_intent_id)
     && typeof onCancelPaymentSession === 'function';
+  const canCancelPendingPayment = paymentSession.status === 'awaiting_payment'
+    && !paymentReturnPending
+    && (!directCard || (!cardSubmitting && !cardAuthorizationSubmitted));
+  const canChooseAnotherPaymentMethod = typeof onChooseAnotherPaymentMethod === 'function'
+    && (retryablePayment
+      || canCancelPendingPayment
+      || (directCard && Boolean(cardError) && !cardSubmitting && !cardAuthorizationSubmitted && !paymentReturnPending));
 
   const handleCardSubmit = async () => {
     if (cardSubmitting || cardAuthorizationSubmitted) return;
@@ -199,6 +204,11 @@ export function StorefrontOnlinePaymentPanel({
       return next;
     });
     setCardError('');
+  };
+
+  const handleChooseAnotherPaymentMethod = () => {
+    clearDirectCardSubmission(paymentSessionId);
+    onChooseAnotherPaymentMethod?.();
   };
 
   return (
@@ -461,7 +471,7 @@ export function StorefrontOnlinePaymentPanel({
         ) : canChooseAnotherPaymentMethod ? (
           <button
             type="button"
-            onClick={onChooseAnotherPaymentMethod}
+            onClick={handleChooseAnotherPaymentMethod}
             style={{
               minHeight: 38,
               borderRadius: 10,
@@ -473,7 +483,7 @@ export function StorefrontOnlinePaymentPanel({
               cursor: 'pointer'
             }}
           >
-            Choose another payment method
+            {canCancelPendingPayment ? 'Cancel payment' : 'Choose another payment method'}
           </button>
         ) : null}
       </div>

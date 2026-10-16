@@ -40,6 +40,9 @@
 # below -- see prod.env-var-classification.md's "Boot-required" section for the
 # reasoning. TENANT_SCHEMA_MUTATION_APPROVED (bucket B) is included explicitly --
 # it was in NEITHER the 2026-08-13 fragment nor the runbook's old Appendix A.
+# SMS_PHONE_HASH_SECRET is an additional production-only validator requirement
+# outside BASE_REQUIRED_KEYS; it belongs in bucket A and must be set even while
+# SMS_PROVIDER remains unconfigured.
 #
 # Live-server drift folded in here rather than left as a separate inventory
 # (unlike the 2026-08-13 version of this file):
@@ -137,6 +140,7 @@
 #       REDIS_URL: redis://redis:6379
 #       PORT: 5100
 #       DB_MAX_CONNECTIONS: 200
+#       COMPANY_REGISTRATION_PRIVATE_STORAGE_DIR: /app/private-uploads/company-registration
 #
 #       # --- bucket B: boot-required (BASE_REQUIRED_KEYS) ---
 #       # CORRECTED 2026-08-29 (real production incident during Phase 183's execution,
@@ -207,6 +211,7 @@
 #       STOREFRONT_PUBLIC_ORIGIN: <copy literal from live .env -- Phase 3>
 #       STOREFRONT_PAYMENT_RETURN_URL: <copy literal from live .env -- Phase 3>
 #       ROUTE_CALCULATOR_ENDPOINT: <copy literal from live .env -- Phase 3>
+#       SMS_PHONE_HASH_SECRET: <generate a new random secret of at least 32 characters>
 #
 #       # --- bucket B: feature flags / toggles ---
 #       BILLING_FUNNEL_AUDIT_ENABLED: <copy literal from live .env -- Phase 3>
@@ -224,6 +229,11 @@
 #       STOREFRONT_DIRECT_MAYA_ENABLED: <copy literal from live .env -- Phase 3>
 #       STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED: <copy literal from live .env -- Phase 3>
 #       ORIGINAL_LEGACY_ALLOW_TOKEN_ROTATION: <copy literal from live .env -- Phase 3>
+#       SMS_PROVIDER: unconfigured
+#       SMS_DELIVERY_LOG_ENABLED: true
+#       SMS_DELIVERY_LOG_RETENTION_ENABLED: true
+#       SMS_DELIVERY_LOG_RETENTION_DAYS: 30
+#       SMS_DEFAULT_REGION: PH
 #
 #       # --- bucket B: rate limits / auth expiry / misc tuning ---
 #       RATE_LIMIT_ALERT_THRESHOLD: <copy literal from live .env -- Phase 3>
@@ -262,6 +272,7 @@
 #       DB_PASSWORD: ${DB_PASSWORD}
 #       JWT_SECRET: ${JWT_SECRET}
 #       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+#       SMS_PHONE_HASH_SECRET: ${SMS_PHONE_HASH_SECRET}
 #       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
 #       ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON}
 #       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -276,10 +287,76 @@
 #       SMTP_USER: ${SMTP_USER}
 #       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
 #       TENANT_PAYOUT_ENCRYPTION_KEY: ${TENANT_PAYOUT_ENCRYPTION_KEY}
+#       # Compose secrets use host environment values and expose them as
+#       # files under /run/secrets/ inside dgfy-api. deploy-sops.sh decrypts
+#       # the SOPS ciphertext into its process environment without writing
+#       # plaintext key files to the host.
+#       # Compose secrets are mounted as flat files here; the entrypoint copies
+#       # only these files to the app-owned tmpfs before dropping privileges.
+#       DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR: /run/secrets
+#       DGFY_OIDC_ISSUER: https://api.dgfy.ph/oidc
+#       DGFY_OIDC_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-oidc-private.pem
+#       DGFY_OIDC_PUBLIC_KEY_FILE: /run/dgfy-secrets/dgfy-oidc-public.pem
+#       DGFY_OIDC_KEY_ID: ${DGFY_OIDC_KEY_ID}
+#       DGFY_DGLAUNDRY_CLIENT_ID: dglaundry-web
+#       DGFY_DGLAUNDRY_CLIENT_SECRET_FILE: /run/dgfy-secrets/dglaundry-oidc-client-secret
+#       DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: dglaundry-machine
+#       DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: dglaundry-service
+#       DGFY_DGLAUNDRY_REDIRECT_URI: https://laundry.surebizcorp.com/api/v1/session/dgfy/callback
+#       DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI: ${DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI:-}
+#       DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: ${DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID}
+#       DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-event-signing.pem
+#       DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: /run/dgfy-secrets/dglaundry-machine-assertion.pub.pem
+#       DGFY_DGLAUNDRY_PARTNER_APP_ID: dglaundry
+#       DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: /run/dgfy-secrets/dglaundry-request-signing.pub.pem
+#       DGLAUNDRY_PARTNER_REQUEST_KEY_ID: ${DGLAUNDRY_PARTNER_REQUEST_KEY_ID}
+#       DGLAUNDRY_INTEGRATION_KEY_ID: ${DGLAUNDRY_INTEGRATION_KEY_ID}
+#       DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON: ${DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON}
+#       DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-request-signing.pem
+#       DGLAUNDRY_PARTNER_SIGNING_KEY_ID: ${DGLAUNDRY_PARTNER_SIGNING_KEY_ID}
+#       DGLAUNDRY_INTEGRATION_ENVIRONMENT: production
+#       DGLAUNDRY_PARTNER_BASE_URL: https://laundry.surebizcorp.com
+#       DGLAUNDRY_PARTNER_AUDIENCE: https://laundry.surebizcorp.com
+#       DGLAUNDRY_SIGNATURE_PROFILE: http-message-signatures-v1
+#       DGLAUNDRY_INTEGRATION_ENABLED: ${DGLAUNDRY_INTEGRATION_ENABLED:-false}
+#     tmpfs:
+#       - /run/dgfy-secrets
+#     secrets:
+#       - source: dgfy-oidc-private-key
+#         target: dgfy-oidc-private.pem
+#       - source: dgfy-oidc-public-key
+#         target: dgfy-oidc-public.pem
+#       - source: dglaundry-oidc-client-secret
+#         target: dglaundry-oidc-client-secret
+#       - source: dgfy-event-signing-key
+#         target: dgfy-event-signing.pem
+#       - source: dgfy-request-signing-key
+#         target: dgfy-request-signing.pem
+#       - source: dglaundry-machine-assertion-public-key
+#         target: dglaundry-machine-assertion.pub.pem
+#       - source: dglaundry-request-signing-public-key
+#         target: dglaundry-request-signing.pub.pem
 #     volumes:
 #       - ./data/dgfy-api/uploads:/app/uploads
 #       - ./data/dgfy-api/storage:/app/storage
 #       - ./data/dgfy-api/logs:/app/logs
+#       - ./data/dgfy-api/private-uploads:/app/private-uploads
+#
+# secrets:
+#   dgfy-oidc-private-key:
+#     environment: DGFY_OIDC_PRIVATE_KEY
+#   dgfy-oidc-public-key:
+#     environment: DGFY_OIDC_PUBLIC_KEY
+#   dglaundry-oidc-client-secret:
+#     environment: DGFY_DGLAUNDRY_CLIENT_SECRET
+#   dgfy-event-signing-key:
+#     environment: DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY
+#   dgfy-request-signing-key:
+#     environment: DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY
+#   dglaundry-machine-assertion-public-key:
+#     environment: DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY
+#   dglaundry-request-signing-public-key:
+#     environment: DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY
 #     depends_on:
 #       mysql:
 #         condition: service_healthy

@@ -71,10 +71,11 @@ history from what the next promotion diffs against.
 
 ## Frozen candidate and repair loop
 
-The initial `develop` SHA is a release candidate, not a moving branch target. Use a candidate ID in
-`YYYY-MM-DD-NN` form and validate its manifest with `scripts/check-promotion-candidate.js`. Once
-`to-staging/<candidate_id>` is merged, freeze that candidate: do not re-promote a newer `develop`
-wholesale into `staging` while the candidate is being qualified.
+The initial `develop` SHA is pinned in the candidate manifest. Use a candidate ID in
+`YYYY-MM-DD-NN` form and validate its manifest with `scripts/check-promotion-candidate.js`. While
+the candidate is soaking and no `release/<candidate_id>` cut exists, a later pinned `develop` SHA
+may advance staging through the routine refresh procedure below. The release cut from qualified
+`origin/staging` freezes that candidate's production selection.
 
 **Pre-cut divergence check, before anything else (#1696, 2026-09-07).** Before computing the
 version-bump floor or running the compliance-preflight scan, confirm `origin/develop` actually
@@ -164,7 +165,8 @@ Staging failures are repaired against the candidate's latest staging SHA. The no
 is `fix/staging/<candidate_id>-<repair_seq>` cut from `origin/staging`, with a PR into `staging`; redeploy
 and re-observe the same candidate after each merge. An isolated developer fix may be cherry-picked
 with `git cherry-pick -x` after diff review. If it is mixed with newer work, recreate the narrow fix
-on the staging repair branch. Never merge `develop` wholesale into an active candidate.
+on the staging repair branch. Keep this repair path distinct from incoming-develop refreshes; a
+staging repair must be backported to `develop` before any later refresh can run.
 
 **Every repair also amends the candidate's release note, in the same PR (#1278, ADR 0082).** A
 repair branch carries its own commit(s), so `docs/releases/notes/<candidate_id>.md` is edited
@@ -220,31 +222,56 @@ to `develop` through an ordinary PR; do not create a separate staging backport. 
 continues to use the incident/hotfix path on `main`, then backports the resolved main commit to
 `develop` once production is stable.
 
-## Explicit refresh of a delayed staging candidate (#2266, Phase 474)
+## Routine pre-cut refresh and post-cut successor candidates (#2266, Phase 474; #2381, Phase 486)
 
-The frozen-candidate rule remains the default. Refresh only after Pat explicitly requests it,
-records the reason, and verifies the release has not merged to `main`; once merged, the candidate is
-never refreshable, even if production deploy is delayed. Preserve the candidate ID. Before branch
-work, reconcile all staging repairs and release-only repairs into `develop` through reviewed PRs or
-prove equivalent content is already present. Early release-repair backport is allowed only as this
-explicit refresh procedure; stop if any repair differs or is missing.
+Before `release/<candidate_id>` is cut, advancing staging with a later pinned `develop` SHA is a
+routine option during the soak; it does not require a special operator request. Keep the candidate
+ID, record a concise reason, and verify the release selection is still absent. The release-branch
+cut from the qualified current `origin/staging` head is the production-selection freeze point.
+After that cut, never refresh or retarget that candidate's release PR. A later develop snapshot
+starts a successor candidate with a new `YYYY-MM-DD-NN` ID and its own promotion branch, manifest,
+release note, floor checks, and immutable artifact revisions.
 
-Archive the active manifest selection and its SHA, per-app artifacts, release PR, and release-repair
-history into `release_history`; close its unmerged promotion PR and retire that release branch. Do
-not use its observation, qualification, or optional quality evidence for the refreshed candidate.
-Prepare the same release note with cumulative included scope and a history row, preserve its
-`promotion_base_sha`, reconcile compliance, then pin the exact incoming develop SHA. Run divergence
-checks and `node scripts/check-app-version-bump.js --floor --candidate-id <id> --base origin/staging
+Before a pre-cut refresh, reconcile every `fix/staging/*` repair into `develop` through a reviewed
+backport PR or prove equivalent content is already there; otherwise the incoming develop merge can
+revert the repair. Do not refresh while any staging repair is unreconciled. The divergence and
+merge-hygiene checks are stop signals, not warnings to waive. A release-only repair does not belong
+in a pre-cut refresh: after the release cut it remains bound to that release and uses the reviewed
+`fix/release/*` path. If a cut release must be withdrawn, preserve it in its own candidate manifest
+and release history, close its PR, and retire its branch; the successor uses a new ID. Do not reuse
+the withdrawn candidate ID for different production contents.
+
+For a pre-cut refresh, keep the candidate's original `promotion_base_sha` and single release note.
+Extend its cumulative included scope and candidate-history table. Pin the reconciled develop SHA
+after compliance reconciliation. Run divergence checks and
+`node scripts/check-app-version-bump.js --floor --candidate-id <id> --base origin/staging
 --head <develop-sha>`. Cut a disposable `to-staging/<id>-refresh-<seq>` from that SHA; it carries no
 authored feature, note, or floor-bump commit of its own.
 
-Set manifest status to `refresh_in_progress` and clear active release selection before merging.
-Record incoming develop SHA separately from the actual resulting staging SHA and physical staging
-base. Build affected apps with fresh immutable per-app `rN` tags; retain valid untouched artifacts
-and satisfy all carried-forward selected apps. After successful merge/build, return to
-`staging_soak`, then repeat observation and all required qualification against the actual new staging
-SHA. Only then cut a fresh `release/<id>` from the qualified staging head and freeze the new
-selection. A failed refresh remains unqualified; never silently restore an archived selection.
+Set manifest status to `refresh_in_progress` with no release selection. Record incoming develop SHA,
+resulting staging SHA, physical `base_staging_sha`, parent candidate SHA, PR, reason, and
+`apps_touched`; the initial promotion records its physical staging base too. Build changed apps with
+fresh per-app immutable `rN` tags, recording artifacts only for apps selected by the
+content-equivalence build plan; preserve untouched apps' prior artifact and per-app source-SHA
+lineage. When no app inputs changed, both refresh arrays are empty and the skipped-build-plan
+evidence is linked from `reason`. Never overwrite a published tag or reuse an archived artifact for
+different contents. Once merge and builds succeed, return to `staging_soak` and repeat observation
+and required qualification against the actual staging SHA. Earlier SHA-bound observation,
+qualification, and optional quality-suite evidence is stale. Only then cut `release/<id>` and freeze
+the selection.
+
+Before every new release cut, record a passing `staging_observation` bound to the exact staging SHA
+in the v4 manifest. The validator keeps this field optional for older in-flight manifests, but a
+new cut requires it. Required staging qualification and optional quality-suite evidence must also
+match the current staging SHA.
+
+Do not cut a successor's release branch while its predecessor release PR remains open. The
+predecessor must first merge to `main` or be explicitly withdrawn and archived. The successor's
+version-floor check uses then-current `origin/staging`, which already includes predecessor content;
+apps changed again take the next minor floor from that staging baseline. Set optional
+`predecessor_candidate_id` in the successor manifest. Its note has a new candidate ID and
+`promotion_base_sha`; `## Included` lists its own scope and identifies any predecessor scope carried
+into the successor.
 
 For legacy v1-v3 candidates, stop unless the original pre-promotion baseline can be established from
 reviewed evidence and merged into the release note via the amendment/backport procedure. Never guess
@@ -340,11 +367,11 @@ parameterized by `TARGET_REF` (RF-4, PR #1672 review) rather than hard-coded, an
 per-run checkout at a unique path, never a fixed shared one (RF-6, same review): set `TARGET_REF` to
 `origin/staging` for the default flow's `release/<candidate_id>` cut (the runbook's own
 established `origin/staging`-in-place-of-`origin/develop` substitution for this leg — `origin/staging`
-is what `release/<label>` is actually cut from here, and per the frozen-candidate rule newer
-`origin/develop` work was never folded into this candidate, so scanning `develop` instead would risk
-both false positives from unrelated later work and blindness to a staging-only repair's own
-declaration changes), or `origin/develop` for the #1007-gated exception's direct `release/<label>`
-cut. Empty output on both checks → clear, proceed to cut the branch.
+is what `release/<label>` is actually cut from here. `origin/develop` may have advanced beyond the
+pinned candidate source or a routine refresh, so scanning it instead can produce false positives
+from unrelated later work and miss a staging-only repair's declaration changes), or `origin/develop`
+for the #1007-gated exception's direct `release/<label>` cut. Empty output on both checks → clear,
+proceed to cut the branch.
 
 **Otherwise, the resolve behavior itself now splits by `$TARGET_REF` too (RF-4, PR #1672 review) —
 this is not a symmetric substitution.** When `TARGET_REF` is `origin/develop`, resolve exactly as
@@ -417,7 +444,8 @@ node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/<c
 # #1007-gated exception instead (RF-2, PR #1590 review) -- this path never cuts to-staging/<label>
 # and so never produces a candidate manifest for --manifest to point at; --source-sha compares
 # PROD's own label directly against the develop SHA release/<label> was cut from:
-node scripts/check-image-version-parity.js --source-sha <the develop SHA release/<label> was cut from>
+node scripts/check-image-version-parity.js --source-sha <the develop SHA release/<label> was cut from> --apps <touched-app>
+# For a multi-app exception, run once per app; see the promotion runbook.
 ```
 
 `PASS` covers two distinct, both-fine outcomes on either invocation: a real label match, and a

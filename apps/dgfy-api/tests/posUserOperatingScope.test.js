@@ -19,6 +19,24 @@ describe('Phase 355 tenant-user operating scope', () => {
         const { guard } = fixture({ [kind]: [{ terminal_id: 'REG-2', location_id: 7 }] });
         await expect(guard(scope)).rejects.toMatchObject({ statusCode: 409, details: { reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE' } });
     });
+    test('returns the existing shift opening time for a clear resume message', async () => {
+        const { guard } = fixture({
+            shifts: [{
+                terminal_id: 'REG-2',
+                location_id: 7,
+                pos_terminal_shift_id: 42,
+                opened_at: '2026-10-14T08:30:00.000Z'
+            }]
+        });
+        await expect(guard(scope)).rejects.toMatchObject({
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE',
+                existing_shift_id: 42,
+                existing_opened_at: '2026-10-14T08:30:00.000Z'
+            }
+        });
+    });
     test('attendance at another branch must be resolved too', async () => {
         const { guard } = fixture({ attendance: [{ location_id: 8 }] });
         await expect(guard(scope)).rejects.toMatchObject({ statusCode: 409 });

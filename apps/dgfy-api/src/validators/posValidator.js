@@ -795,6 +795,7 @@ const terminalCurrentShiftQuerySchema = Joi.object({
 const terminalShiftHistoryQuerySchema = Joi.object({
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    search: Joi.string().trim().max(120).allow('', null).optional(),
     location_id: Joi.number().integer().positive().optional(),
     status: Joi.string().valid('all', 'open', 'closed').default('all'),
     page: Joi.number().integer().min(1).max(100000).default(1),
@@ -992,6 +993,7 @@ const cashDrawerEventSchema = Joi.object({
 
 const cashRefundPosTransactionSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    item_void_adjustment_id: Joi.number().integer().positive().allow(null).optional(),
     shift_id: Joi.number().integer().positive().required(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
@@ -1001,6 +1003,7 @@ const cashRefundPosTransactionSchema = Joi.object({
 
 const externalRefundPosTransactionSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    item_void_adjustment_id: Joi.number().integer().positive().allow(null).optional(),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
@@ -1012,6 +1015,7 @@ const externalRefundPosTransactionSchema = Joi.object({
 
 const providerRefundPosTransactionSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    item_void_adjustment_id: Joi.number().integer().positive().allow(null).optional(),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
@@ -1310,6 +1314,7 @@ const devicePrintShiftSummarySchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     copies: Joi.number().integer().min(1).max(3).default(1),
     paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
+    reading_type: Joi.string().valid('shift_summary', 'x_reading').default('shift_summary'),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     client_driver_id: Joi.string().trim().max(60).optional(),
@@ -1352,8 +1357,30 @@ const fiscalPrintEventSchema = Joi.object({
 
 const voidPosTransactionSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required(),
+    auto_refund: Joi.boolean().default(false),
+    refund_passcode: Joi.string().trim().pattern(/^\d{4,12}$/).optional().messages({
+        'string.pattern.base': 'refund_passcode must contain 4 to 12 digits'
+    }),
     shift_id: Joi.number().integer().positive().allow(null).optional(),
-    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    voided_lines: Joi.array().items(Joi.object({
+        line_id: Joi.number().integer().positive().required(),
+        quantity: Joi.number().positive().precision(4).required()
+    }).unknown(false)).min(1).max(100).optional()
+});
+
+const returnPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    returned_lines: Joi.array().items(Joi.object({
+        line_id: Joi.number().integer().positive().required(),
+        quantity: Joi.number().positive().precision(4).required()
+    }).unknown(false)).min(1).max(100).required()
 });
 
 // Phase 238 (#1330): staff delivery-fee override, unsettled payment only. delivery_fee is the new
@@ -1782,6 +1809,7 @@ export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema
 export const validatePosDrawerAuthorization = validateSchema(deviceDrawerAuthorizationSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
 export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');
+export const validateReturnPosTransaction = validateSchema(returnPosTransactionSchema, 'body', 'validatedData');
 export const validateOverrideDeliveryFee = validateSchema(overrideDeliveryFeeSchema, 'body', 'validatedData');
 export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');

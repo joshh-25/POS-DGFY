@@ -93,6 +93,7 @@ const serverSortFieldsByBreakdown = {
     quantity: 'quantity',
     orders: 'orders',
     net_sales: 'net_sales',
+    refunds_voids: 'refunds_voids',
     sales_share: 'sales_share',
     average_unit_price: 'average_unit_price',
     profit: 'profit',
@@ -167,6 +168,7 @@ const buildColumns = (breakdown, currencySymbol) => {
       quantityColumn('quantity', 'Quantity', { required: true }),
       quantityColumn('orders', 'Orders', { required: true, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true } }),
       signedMoneyColumn('net_sales', 'Net Sales', symbol, currencySymbol, { required: true }),
+      signedMoneyColumn('refunds_voids', 'Refunds/Voids', symbol, currencySymbol, { required: true, formatValue: getPosReportRefundsVoidsDisplayValue }),
       { key: 'sales_share', label: 'Sales Share (%)', valueTone: 'secondary', align: 'right', numeric: true, widthClass: 'w-[150px]', defaultVisible: true, getValue: (row) => Number(row?.sales_share || 0), render: (row) => percent(row?.sales_share) },
       signedMoneyColumn('average_unit_price', 'Average Price', symbol, currencySymbol, { defaultVisible: false }),
       signedMoneyColumn('profit', 'Profit', symbol, currencySymbol, { defaultVisible: false }),
@@ -195,6 +197,8 @@ export function PosReportsBreakdownSummary({ breakdown, data, currencySymbol = '
   const Icon = definition.icon;
   const itemsSold = Number(summary.total_items_sold ?? summary.quantity ?? 0);
   const transactions = Number(summary.total_transactions ?? summary.orders ?? 0);
+  const completedTransactions = Number(summary.completed_transactions ?? transactions);
+  const voidedRefundedTransactions = Number(summary.voided_refunded_transactions ?? 0);
   const isGraphView = summaryView === 'graph';
   const isHourly = breakdown === 'hourly';
 
@@ -236,7 +240,9 @@ export function PosReportsBreakdownSummary({ breakdown, data, currencySymbol = '
         <div className="grid min-w-0 grid-cols-2 gap-2.5 xl:grid-cols-5">
           <MetricCard label="Net Sales" value={money(summary.net_sales, currencySymbol)} />
           <MetricCard label="Gross Sales" value={money(summary.gross_sales, currencySymbol)} />
-          <MetricCard label="Transactions" value={transactions.toLocaleString('en-US')} />
+          <MetricCard label="Recorded Transactions" value={transactions.toLocaleString('en-US')} />
+          <MetricCard label="Completed Sales" value={completedTransactions.toLocaleString('en-US')} />
+          <MetricCard label="Voided/Refunded" value={voidedRefundedTransactions.toLocaleString('en-US')} />
           <MetricCard label="Items Sold" value={number(itemsSold)} />
           <MetricCard label="Profit" value={money(summary.profit ?? summary.pos_profit_loss, currencySymbol)} />
         </div>

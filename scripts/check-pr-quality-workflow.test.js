@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   checkPrQualityWorkflow,
   checkOperatorDispatchShape,
+  checkSelectiveDispatchShape,
   checkAllStepsAdvisory,
   checkQualityReporterShape,
   checkQualityJobFailureWiring,
@@ -23,6 +24,22 @@ test('operator dispatch shape permits only workflow_dispatch', () => {
 test('operator dispatch shape rejects pull_request and workflow_call triggers', () => {
   assert.match(checkOperatorDispatchShape(realWorkflow.replace('  workflow_dispatch:', '  pull_request:\n    branches: [main]\n  workflow_dispatch:')).join('\n'), /automatic pull_request/);
   assert.match(checkOperatorDispatchShape(realWorkflow.replace('  workflow_dispatch:', '  workflow_call:\n  workflow_dispatch:')).join('\n'), /workflow_call/);
+});
+
+test('targeted API DB dispatch is opt-in and the default still selects the full suite', () => {
+  assert.deepEqual(checkSelectiveDispatchShape(realWorkflow), []);
+  assert.match(
+    checkSelectiveDispatchShape(realWorkflow.replace('        default: full\n      api_db_runner:', '        default: api_db_chunks\n      api_db_runner:')).join('\n'),
+    /must default to the full quality suite/
+  );
+  assert.match(
+    checkSelectiveDispatchShape(realWorkflow.replace("if: ${{ inputs.test_selection == 'full' }}", 'if: true')).join('\n'),
+    /must be limited to the full selection/
+  );
+  assert.match(
+    checkSelectiveDispatchShape(realWorkflow.replace('          - sieitz-runner\n        default: sieitz-lg', '          - ubuntu-latest\n        default: ubuntu-latest')).join('\n'),
+    /must default to and allow only self-hosted runners/
+  );
 });
 
 test('all workflow steps carry exactly one advisory continuation', () => {
@@ -99,10 +116,30 @@ test('quality job failure evidence remains wired from every step through the rep
   assert.ok(checkQualityJobFailureWiring(withoutOutcome).some((problem) => problem.includes('dgfy-api-quality does not report step run_api_lint')));
 });
 
+test('POS sales E2E writes and uploads staged JSON, HTML, and SHA-bound run evidence', () => {
+  const job = realWorkflow.split('\n  pos-sales-e2e-quality:\n')[1].split('\n  frontend-budgets-quality:\n')[0];
+  const playwrightConfig = read('apps/dgfy-pos/playwright.config.js');
+
+  assert.ok(job, 'pos-sales-e2e-quality job must exist');
+  assert.match(playwrightConfig, /\['html', \{ outputFolder: 'playwright-report', open: 'never' \}\]/);
+  assert.match(playwrightConfig, /if \(process\.env\.PLAYWRIGHT_JSON_OUTPUT_FILE\) reporters\.push\(\['json'\]\)/);
+  assert.match(job, /PLAYWRIGHT_JSON_OUTPUT_FILE: test-results\/pos-sales-results\.json/);
+  assert.match(job, /echo "exit_status=\$status" >> "\$GITHUB_OUTPUT"/);
+  assert.match(job, /stage_dir="\$RUNNER_TEMP\/pos-sales-evidence"/);
+  assert.match(job, /sha: process\.env\.POS_SALES_EVIDENCE_SHA/);
+  assert.match(job, /run_outcome: process\.env\.POS_SALES_RUN_OUTCOME/);
+  assert.match(job, /exit_status: exitStatus/);
+  assert.match(job, /test-results\/pos-sales-results\.json/);
+  assert.match(job, /run outcome=\$\{POS_SALES_RUN_OUTCOME:-unknown\}, exit status=\$\{POS_SALES_EXIT_STATUS:-unknown\}/);
+  assert.match(job, /path: \$\{\{ runner\.temp \}\}\/pos-sales-evidence/);
+  assert.doesNotMatch(job, /path: apps\/dgfy-pos\/test-results/);
+});
+
 test('repository promotion quality contract remains internally consistent', () => {
   assert.deepEqual(checkPrQualityWorkflow({
     prChecksText: read('.github/workflows/pr-checks.yml'),
     complianceScriptText: read('scripts/check-compliance-impact.js'),
     qualityWorkflowText: realWorkflow,
+    backendMatrixScriptText: read('scripts/run-backend-test-matrix.js'),
   }), []);
 });

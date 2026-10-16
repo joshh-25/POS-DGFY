@@ -1,9 +1,32 @@
-import { ArrowDownRight, ArrowUpRight, BarChart3, Receipt, ShoppingCart, Tag, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, CheckCircle2, Receipt, ShoppingCart, Tag, TrendingUp } from 'lucide-react';
 
 const money = (value, currencySymbol = '₱') => {
   const symbol = String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol;
   return `${symbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
+
+const count = (value, fallback = 0) => {
+  if (value === null || value === undefined || value === '') return fallback;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.max(0, Math.trunc(numericValue)) : fallback;
+};
+
+const distinctTransactionCount = (rows = [], predicate = () => true) => {
+  const transactionIds = new Set();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    if (!predicate(row)) return;
+    const transactionId = row?.pos_transaction_id || row?.transaction_id || row?.invoice_number;
+    if (transactionId !== null && transactionId !== undefined && transactionId !== '') {
+      transactionIds.add(String(transactionId));
+    }
+  });
+  return transactionIds.size;
+};
+
+const isVoidedOrRefunded = (row = {}) => (
+  String(row?.status || '').trim().toLowerCase() === 'voided'
+  || ['refund_pending', 'partial_refunded', 'refunded'].includes(String(row?.payment_status || '').trim().toLowerCase())
+);
 
 export const calculateKpiDelta = (current, previous) => {
   const currentValue = Number(current);
@@ -68,11 +91,31 @@ export default function PosReportsKpiCards({
   dailySummary = {},
   comparison = {},
   currencySymbol = '₱',
-  selectedTender = null
+  selectedTender = null,
+  transactionRows = []
 }) {
   const symbol = String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol;
   const previous = comparison?.previous || {};
   const monetaryLabel = (label) => `${label} (${symbol})`;
+  const hasTransactionStatusEvidence = (Array.isArray(transactionRows) ? transactionRows : [])
+    .some((row) => row?.status || row?.payment_status);
+  const recordedTransactions = count(
+    dailySummary.total_transactions,
+    count(summaryCards.total_transactions, distinctTransactionCount(transactionRows))
+  );
+  const completedTransactions = count(
+    dailySummary.completed_transactions,
+    hasTransactionStatusEvidence
+      ? distinctTransactionCount(transactionRows, (row) => !isVoidedOrRefunded(row)
+        && (!row?.status || String(row.status).trim().toLowerCase() === 'completed'))
+      : recordedTransactions
+  );
+  const voidedRefundedTransactions = count(
+    dailySummary.voided_refunded_transactions,
+    hasTransactionStatusEvidence
+      ? distinctTransactionCount(transactionRows, isVoidedOrRefunded)
+      : Math.max(0, recordedTransactions - completedTransactions)
+  );
   const cards = [
     {
       label: monetaryLabel('Total Sales'),
@@ -91,12 +134,28 @@ export default function PosReportsKpiCards({
       accent: 'blue'
     },
     {
-      label: 'Transactions',
-      value: Number(summaryCards.total_transactions || 0).toLocaleString('en-US'),
-      current: summaryCards.total_transactions,
+      label: 'Recorded Transactions',
+      value: recordedTransactions.toLocaleString('en-US'),
+      current: recordedTransactions,
       previous: previous.total_transactions,
       Icon: Receipt,
       accent: 'purple'
+    },
+    {
+      label: 'Completed Sales',
+      value: completedTransactions.toLocaleString('en-US'),
+      current: completedTransactions,
+      previous: previous.completed_transactions,
+      Icon: CheckCircle2,
+      accent: 'green'
+    },
+    {
+      label: 'Voided/Refunded',
+      value: voidedRefundedTransactions.toLocaleString('en-US'),
+      current: voidedRefundedTransactions,
+      previous: previous.voided_refunded_transactions,
+      Icon: AlertTriangle,
+      accent: 'red'
     },
     {
       label: monetaryLabel('All Discounts'),
@@ -119,7 +178,7 @@ export default function PosReportsKpiCards({
   ];
 
   return (
-    <div className={`order-1 grid grid-cols-2 gap-2.5 ${selectedTender ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
+    <div className={`order-1 grid grid-cols-2 gap-2.5 ${selectedTender ? 'xl:grid-cols-8' : 'xl:grid-cols-7'}`}>
       {cards.map((card) => (
         <PosReportsKpiCard
           key={card.label}

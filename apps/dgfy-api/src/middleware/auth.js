@@ -700,8 +700,11 @@ export const resolvePlatformAdminRoutePolicy = (req) => {
   if (/^\/api\/v1\/admin\/(me|logout|change-password)$/.test(path)) return { permissions: [] };
   if (/^\/api\/v1\/admin\/platform-admins(?:\/|$)/.test(path)) return { masterOnly: true };
   if (/^\/api\/v1\/admin\/invoices(?:\/|$)/.test(path)) return { permissions: ['admin.invoices'] };
+  if (/^\/api\/v1\/admin\/partner-integrations(?:\/|$)/.test(path)) return { permissions: ['admin.partner_integrations'] };
+  if (/^\/api\/v1\/admin\/contact-inquiries(?:\/|$)/.test(path)) return { permissions: ['admin.contact_inquiries'] };
   if (/^\/api\/v1\/admin\/feedback(?:\/|$)/.test(path)) return { permissions: ['admin.feedback'] };
   if (/^\/api\/v1\/admin\/tenants\/pricing(?:\/|$)/.test(path)) return { permissions: ['admin.pricing'] };
+  if (/^\/api\/v1\/admin\/tenant-intake(?:\/|$)/.test(path)) return { permissions: ['admin.tenants', 'admin.dgfy_accounts'] };
   if (/^\/api\/v1\/admin\/tenants\/(admin-provision-with-account|[^/]+\/owner)(?:\/|$)/.test(path)) return { permissions: ['admin.tenants', 'admin.dgfy_accounts'] };
   if (/^\/api\/v1\/admin\/tenants(?:\/|$)/.test(path)) return { permissions: ['admin.tenants'] };
   if (/^\/api\/v1\/dgfy\/admin\/accounts(?:\/|$)/.test(path)) return { permissions: ['admin.dgfy_accounts'] };
@@ -710,6 +713,7 @@ export const resolvePlatformAdminRoutePolicy = (req) => {
   // master-only, not a delegable permission: a published template shapes
   // what every future tenant provisions with, platform-wide.
   if (/^\/api\/v1\/admin\/templates(?:\/|$)/.test(path)) return { masterOnly: true };
+  if (/^\/api\/v1\/registration\/drafts\/[^/]+\/(approve|retry-materialization)$/.test(path)) return { permissions: ['admin.tenants'] };
   // Protected legacy admin endpoints without a visible page are deliberately
   // master-only until they are added to the checked-in permission matrix.
   return { masterOnly: true };

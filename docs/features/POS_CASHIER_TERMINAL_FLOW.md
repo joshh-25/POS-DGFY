@@ -1,7 +1,7 @@
 # POS Cashier Terminal Flow
 
 Status: authoritative
-Last reviewed: 2026-09-29
+Last reviewed: 2026-10-14
 
 ## Phase 354 policy and runtime status
 
@@ -30,7 +30,7 @@ login, role-default permissions, and the Phase 171 target contract for switching
 the active terminal operator. Operator eligibility is capability-based: an
 owner, administrator, manager, or invited cashier may sell when the tenant-local
 profile has `pos:transact`, `pos:attendance:operate`, allowed location scope,
-valid attendance state, and a configured personal POS PIN. Phase 171 is a
+  valid attendance state, and a configured personal global POS PIN. Phase 171 is a
 documentation contract; later phases must implement and prove the target
 switching behavior.
 
@@ -80,6 +80,24 @@ history/receipts, close their terminal shift, and reprint receipts. It does not
 grant user management, settings management, reports management, cash drawer
 adjustment, location switching, price override, voiding, fiscal terminal
 management, eSales management, or close-day/Z-reading authority.
+
+## One global PIN per cashier
+
+Each tenant-local cashier has one write-only global POS PIN. A cashier configures
+it from **DGFY Account → Business → selected company card → PIN** after
+entering the DGFY account password. OPIS remains the admin surface for
+permissions and PIN reset. The same PIN is used for operator authentication/takeover,
+governed discounts, item or transaction void/refund confirmation, cash-drawer
+or refund actions, and Z-reading/day-close confirmation when the cashier has
+the separate permission for that action.
+
+The global PIN does not grant access. The server still checks the cashier's
+permissions, tenant/location/terminal scope, attendance and shift state, and
+any required manager approval for each operation. PIN values and hashes are
+never returned to the client or shared between companies. Existing legacy
+approval/day-close PIN hashes are accepted only as a transition fallback until
+the global PIN is saved or reset; saving or resetting the global PIN clears
+those legacy hashes and lockout state.
 
 ## Normal cashier operating flow
 
@@ -158,6 +176,11 @@ is closed, the saved close summary and Z-reading remain immutable. Cashier
 History reports the later adjustment against the original cashier/shift while
 also showing the acting user/shift. Daily reports group adjustments by their
 own event timestamp and do not subtract the original void twice.
+
+Ordinary shift close is not blocked by parked-sale state. Parked rows are not
+deleted or auto-cancelled when the shift closes; they remain in the
+location-scoped shared queue, and a `cancel_pending` row remains visible until
+Back Office approves or rejects its cancellation request.
 
 ## Login behavior with multiple companies
 

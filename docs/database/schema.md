@@ -245,6 +245,29 @@ QA landlord-invoice tables:
 
 These are landlord-only tables. They must not be cloned into tenant databases or joined to tenant POS invoice/payment/inventory ledgers. Live fiscal issuance remains disabled while the seller snapshot contains TEST mode or unresolved fiscal authority placeholders.
 
+## DGLaundry Partner Delivery Addendum (2026-10-07)
+
+Landlord table added by
+`apps/dgfy-migration-runner/migrations/20261007000001-add-dglaundry-outbound-outbox.cjs`:
+
+- `dgfy_dglaundry_outbox` stores immutable outbound operation payloads and scoped identity,
+  stable event/order/group references, ordered sequence, response, attempt budget, due time,
+  lease token/expiry, operation deadline, status, bounded failure metadata, and an independently
+  leased paid-session completion record with its own bounded retry schedule. Unique
+  `(operation, idempotency_key)` prevents duplicate logical operations. Claim and scope indexes
+  support multi-instance polling and bounded operator inspection. It stores no credentials,
+  signed headers, or arbitrary target URLs.
+
+Delivery transitions are `pending -> leased -> delivered`, `retry_wait`, `blocked`, or
+`dead_letter`; expired leases may be claimed again. Mapping revocation and booking kill switches
+block delivery before network I/O. Paid-session completion retries are independent of provider
+delivery and stop in a visible failed state after eight attempts. Exhausted predecessors block later
+order mutations until operator recovery. Redrive resets only the active retry budget; the existing landlord
+`dgfy_dglaundry_audit_logs` retains actor, reason, and prior state. Rollback must first stop
+outbox draining and preserve/reconcile queued rows; dropping a populated table is not a routine
+rollback. Apply the additive landlord migration before running binaries that read or drain the
+outbox.
+
 ## DGFY Legal Acknowledgement Addendum (2026-06-08)
 
 DGFY account registration and public company registration require versioned ToS/T&C acknowledgement before the mutation proceeds.
@@ -1250,7 +1273,7 @@ CREATE TABLE stock_movements (
     from_location VARCHAR(100),
     to_location VARCHAR(100),
     reference_id VARCHAR(50),
-    reference_type ENUM('PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS') DEFAULT 'MANUAL',
+    reference_type ENUM('PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS', 'POS_PARKED_SALE') DEFAULT 'MANUAL',
     user_responsible INT,
     notes TEXT,
     loss_reason ENUM('waste', 'spoilage', 'damage', 'pilferage', NULL) NULL,
@@ -1276,9 +1299,12 @@ CREATE TABLE stock_movements (
 );
 ```
 
-**Current Implementation Note (2026-05-07):**
+**Current Implementation Note (2026-05-07, updated 2026-10-07):**
 - Runtime movement usage includes `goods_issue` for outbound sales/dispatch.
 - `reference_type` includes `POS` and `DO` in addition to legacy reference types.
+- `reference_type = 'POS_PARKED_SALE'` is used for goods-issue movements tied to a POS parked
+  sale's inventory effects (`apps/dgfy-api/src/modules/pos/usecases/parkedSaleUseCases.js`),
+  distinct from `'POS'` (used for completed POS sales).
 - Transfer movements require `source_location_id` and `destination_location_id` with different values.
 - Non-transfer movements use `location_id` for location-scoped stock and FIFO handling.
 - Pure service rows (`items.category = service` or `items.mode_item_preset = service`) are stock-exempt and must not create manual stock movement, transfer, FIFO, weighted-cost, or inventory-valuation rows. Physical service add-ons/products and supplies remain normal stock-bearing inventory rows.
@@ -1802,11 +1828,11 @@ pending, failed, cancelled, and reversed money is excluded. Migration:
 
 ### pos_transaction_adjustments
 
-Tenant-local, append-only evidence for POS void and refund lifecycle events.
+Tenant-local, append-only evidence for POS void, refund, and return lifecycle events.
 Rows retain the original transaction/cashier/shift/terminal/location and record
 the authenticated actor context independently. Adjustment types cover internal
-void, cash refund, external refund, provider refund, and Employee Credit
-reversal. Status, idempotency/request hash, provider or external references,
+void, cash refund, external refund, provider refund, Employee Credit reversal,
+and explicit return evidence. Status, idempotency/request hash, provider or external references,
 retry/failure evidence, and the optional linked cash-drawer event are stored
 without rewriting the original transaction or any saved Z-reading snapshot.
 
@@ -1814,8 +1840,10 @@ Migration `20260819000001-create-pos-transaction-adjustments.cjs` creates the
 table and its tenant-scoped indexes/foreign keys. Migration
 `20260819000002-add-pos-split-allocation-reversal-state.cjs` links adjustment
 rows to split allocations and adds server-maintained allocation
-`reversed_amount` and `reversal_status` fields. Both migrations are registered
-in runtime schema auditing and additive tenant repair.
+`reversed_amount` and `reversal_status` fields. Migration
+`20261003000001-add-annex-b-item-4-6-evidence-contract.cjs` adds the `return`
+enum value and the append-only Z-reading `reading_payload_hash`. Both migration
+surfaces are registered in runtime schema auditing and additive tenant repair.
 
 ### pos_transactions: partial-payment columns (Phase 137)
 

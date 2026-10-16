@@ -23,7 +23,9 @@ import {
 } from '@/services/settingsService.js';
 import {
   getAllUsers,
+  changePassword,
   removeUserFromCompany,
+  requestEmailChangeOtp,
   updatePosApprovalPin,
   updatePosDayClosePin,
   updateProfile,
@@ -39,7 +41,7 @@ import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillment
 import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { normalizeCoverPhotoTransform } from '@sieitzz/shared-constants/coverPhotoTransform';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
-import { fetchPosSetupCashiers } from '../services/posService.js';
+import { fetchPosSetupCashiers, updatePosCashierPin } from '../services/posService.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 const DownpaymentSettingsPanel = lazyWithChunkRetry(() => import('../components/DownpaymentSettingsPanel.jsx'));
 import PosDeliveryPricingSettingsCard from '../components/PosDeliveryPricingSettingsCard.jsx';
@@ -140,6 +142,8 @@ const getProfileFormSnapshot = (form = {}) => ({
   email: String(form.email || '').trim(),
   phoneNumber: String(form.phoneNumber || '').trim()
 });
+
+const normalizeProfileEmail = (email) => String(email || '').trim().toLowerCase();
 
 const normalizeStringList = (raw, maxItems = 8, maxLen = 120) => {
   const source = Array.isArray(raw) ? raw : [];
@@ -301,6 +305,24 @@ export default function PosSettingsWorkspace({
   incomingOrdersState,
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
+  onlineOrderSoundId = 'new_order',
+  downloadedOrderAlertSoundIds = [],
+  orderAlertSoundDownloadId = '',
+  previewingOrderAlertSoundId = '',
+  onSelectOrderAlertSound = () => {},
+  onDownloadOrderAlertSound = async () => false,
+  onImportOrderAlertSound = async () => false,
+  orderAlertSoundImporting = false,
+  onPreviewOrderAlertSound = async () => false,
+  incomingOrderPopupEnabled = true,
+  setIncomingOrderPopupEnabled = () => {},
+  customerDisplayEnabled = true,
+  customerDisplayCanOpen = false,
+  customerDisplayStatus = 'closed',
+  customerDisplayStatusLabel = 'Not connected',
+  onCustomerDisplayEnabledChange = () => {},
+  onOpenCustomerDisplay = () => null,
+  onEndCustomerDisplay = () => {},
   locked,
   sectionId,
   initialTab = 'pos_setup',
@@ -400,15 +422,14 @@ export default function PosSettingsWorkspace({
   const [cashierRemoveUser, setCashierRemoveUser] = useState(null);
   const [discountApprovers, setDiscountApprovers] = useState([]);
   const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
+  const discountApproverRequestIdRef = useRef(0);
   const [discountAuthorizationSavingUserId, setDiscountAuthorizationSavingUserId] = useState(null);
-  const [approvalPinUser, setApprovalPinUser] = useState(null);
-  const [approvalPin, setApprovalPin] = useState('');
-  const [savingApprovalPin, setSavingApprovalPin] = useState(false);
   const [dayCloseOperators, setDayCloseOperators] = useState([]);
   const [dayCloseOperatorsLoading, setDayCloseOperatorsLoading] = useState(false);
   const [dayCloseAccessSavingUserId, setDayCloseAccessSavingUserId] = useState(null);
-  const [dayClosePinUser, setDayClosePinUser] = useState(null);
-  const [savingDayClosePin, setSavingDayClosePin] = useState(false);
+  const [cashierPinUser, setCashierPinUser] = useState(null);
+  const [cashierPin, setCashierPin] = useState('');
+  const [savingCashierPin, setSavingCashierPin] = useState(false);
   const [employeeDirectoryRevision, setEmployeeDirectoryRevision] = useState(0);
   const storefrontAssetUploadOverridesRef = useRef({});
   const [profileForm, setProfileForm] = useState({
@@ -785,23 +806,37 @@ export default function PosSettingsWorkspace({
     }
   }, [cashierRemoveUser, canRemoveCashiers, onRefreshTerminalUser]);
 
+  const discountApproverContextKey = String(
+    terminalUser?.company?.id
+      || terminalUser?.tenant_id
+      || ''
+  ).trim();
+
   const loadDiscountApprovers = useCallback(async ({ silent = false } = {}) => {
     if (!canManageDiscountApprovalPins) {
       setDiscountApprovers([]);
+      setDiscountApproversLoading(false);
       return;
     }
-    if (!silent) setDiscountApproversLoading(true);
+    const requestId = discountApproverRequestIdRef.current + 1;
+    discountApproverRequestIdRef.current = requestId;
+    setDiscountApproversLoading(true);
+    setDiscountApprovers([]);
     try {
       const rows = await getAllUsers({ include_invitations: false });
-      setDiscountApprovers((Array.isArray(rows) ? rows : [])
+      const nextRows = (Array.isArray(rows) ? rows : [])
         .filter((user) => user?.is_active !== false && !user?.deleted_at)
-        .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
+        .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || '')));
+      if (requestId !== discountApproverRequestIdRef.current) return null;
+      setDiscountApprovers(nextRows);
+      return nextRows;
     } catch (error) {
-      if (!silent) {
-        toast.error(error?.response?.data?.message || 'Failed to load discount approvers.');
-      }
+      if (requestId !== discountApproverRequestIdRef.current) return null;
+      setDiscountApprovers([]);
+      if (!silent) toast.error(error?.response?.data?.message || 'Failed to load discount approvers.');
+      return null;
     } finally {
-      setDiscountApproversLoading(false);
+      if (requestId === discountApproverRequestIdRef.current) setDiscountApproversLoading(false);
     }
   }, [canManageDiscountApprovalPins]);
 
@@ -822,7 +857,7 @@ export default function PosSettingsWorkspace({
           : entry
       )));
       toast.success(enabled
-        ? 'POS discount authorization enabled. Set a PIN for this employee.'
+        ? 'POS discount authorization enabled. Configure the employee global POS PIN.'
         : 'POS discount authorization disabled for this employee.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to update POS discount authorization.');
@@ -873,7 +908,7 @@ export default function PosSettingsWorkspace({
           : entry
       )));
       toast.success(enabled
-        ? 'Z-reading access enabled. The cashier must create their personal PIN in DGFY Business.'
+        ? 'Z-reading access enabled. The cashier must configure their global POS PIN in DGFY Business.'
         : 'Z-reading access disabled for this cashier.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to update cashier Z-reading access.');
@@ -882,59 +917,59 @@ export default function PosSettingsWorkspace({
     }
   }, []);
 
-  const closeApprovalPinDialog = useCallback(() => {
-    if (savingApprovalPin) return;
-    setApprovalPinUser(null);
-    setApprovalPin('');
-  }, [savingApprovalPin]);
+  const openCashierPin = useCallback((user) => {
+    const userId = Number(user?.user_id);
+    if (!Number.isInteger(userId) || userId <= 0) return;
+    setCashierPinUser(user);
+    setCashierPin('');
+  }, []);
 
-  const saveApprovalPin = useCallback(async ({ clear = false } = {}) => {
-    if (!approvalPinUser) return;
-    if (!clear && !/^\d{4,12}$/.test(approvalPin)) {
-      toast.error('POS approval PIN must contain 4 to 12 digits.');
+  const closeCashierPinDialog = useCallback(() => {
+    if (savingCashierPin) return;
+    setCashierPinUser(null);
+    setCashierPin('');
+  }, [savingCashierPin]);
+
+  const saveCashierPin = useCallback(async () => {
+    if (!cashierPinUser) return;
+    const normalizedPin = String(cashierPin || '').trim();
+    if (!/^\d{4,12}$/.test(normalizedPin)) {
+      toast.error('Global POS PIN must contain 4 to 12 digits.');
       return;
     }
-    setSavingApprovalPin(true);
+
+    const userId = Number(cashierPinUser.user_id);
+    setSavingCashierPin(true);
     try {
-      const updated = await updatePosApprovalPin(approvalPinUser.user_id, { pin: approvalPin, clear });
+      const updated = await updatePosCashierPin(userId, { pin: normalizedPin });
+      const globalPinState = {
+        pos_global_pin_configured: updated?.pin_configured === true || updated?.pos_global_pin_configured === true,
+        pos_cashier_pin_configured: true,
+        pos_approval_pin_configured: true,
+        pos_day_close_pin_configured: true
+      };
+      setCashierUsers((current) => current.map((user) => (
+        Number(user?.user_id) === userId ? { ...user, ...globalPinState } : user
+      )));
       setDiscountApprovers((current) => current.map((user) => (
-        user.user_id === approvalPinUser.user_id
-          ? { ...user, pos_approval_pin_configured: updated.pos_approval_pin_configured === true }
-          : user
+        Number(user?.user_id) === userId ? { ...user, ...globalPinState } : user
       )));
-      toast.success(clear ? 'POS approval PIN cleared.' : 'POS approval PIN configured.');
-      setApprovalPinUser(null);
-      setApprovalPin('');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update POS approval PIN.');
-    } finally {
-      setSavingApprovalPin(false);
-    }
-  }, [approvalPin, approvalPinUser]);
-
-  const closeDayClosePinDialog = useCallback(() => {
-    if (savingDayClosePin) return;
-    setDayClosePinUser(null);
-  }, [savingDayClosePin]);
-
-  const resetDayClosePin = useCallback(async () => {
-    if (!dayClosePinUser) return;
-    setSavingDayClosePin(true);
-    try {
-      const updated = await updatePosDayClosePin(dayClosePinUser.user_id);
       setDayCloseOperators((current) => current.map((user) => (
-        user.user_id === dayClosePinUser.user_id
-          ? { ...user, pos_day_close_pin_configured: updated.pos_day_close_pin_configured === true }
-          : user
+        Number(user?.user_id) === userId ? { ...user, ...globalPinState } : user
       )));
-      toast.success('POS Day Close PIN reset. The cashier must create a new PIN from DGFY Business.');
-      setDayClosePinUser(null);
+      const wasConfigured = cashierPinUser?.pos_global_pin_configured === true
+        || cashierPinUser?.pos_cashier_pin_configured === true
+        || cashierPinUser?.pos_approval_pin_configured === true
+        || cashierPinUser?.pos_day_close_pin_configured === true;
+      toast.success(wasConfigured ? 'Global POS PIN reset.' : 'Global POS PIN configured.');
+      setCashierPinUser(null);
+      setCashierPin('');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to reset POS Day Close PIN.');
+      toast.error(error?.response?.data?.message || 'Failed to update the global POS PIN.');
     } finally {
-      setSavingDayClosePin(false);
+      setSavingCashierPin(false);
     }
-  }, [dayClosePinUser]);
+  }, [cashierPin, cashierPinUser]);
 
   const hydrateSettingsWorkspace = useCallback(async ({
     silent = false,
@@ -1087,15 +1122,15 @@ export default function PosSettingsWorkspace({
 
   useEffect(() => {
     loadCashierAccounts({ silent: true });
-  }, [loadCashierAccounts]);
+  }, [loadCashierAccounts, settingsRefreshKey]);
 
   useEffect(() => {
     loadDiscountApprovers({ silent: true });
-  }, [loadDiscountApprovers]);
+  }, [discountApproverContextKey, loadDiscountApprovers, settingsRefreshKey]);
 
   useEffect(() => {
     loadDayCloseOperators({ silent: true });
-  }, [loadDayCloseOperators]);
+  }, [loadDayCloseOperators, settingsRefreshKey]);
 
   const transitionToTab = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
@@ -1189,15 +1224,36 @@ export default function PosSettingsWorkspace({
     return () => onStorefrontContentStateChange?.({ dirty: false, discard: null });
   }, [discardStorefrontContentChanges, onStorefrontContentStateChange, storefrontContentDirty]);
 
-  const handleProfileSave = useCallback(async () => {
+  const handleRequestProfileEmailOtp = useCallback(async (email) => {
+    try {
+      await requestEmailChangeOtp({ email });
+      toast.success('Email verification code sent.');
+      return true;
+    } catch (error) {
+      toast.error(formatFirstValidationError(error, 'Failed to send email verification code.'));
+      return false;
+    }
+  }, []);
+
+  const handleProfileSave = useCallback(async ({ emailOtpCode = '' } = {}) => {
     setSavingTab('profile');
     try {
       const savedProfileForm = getProfileFormSnapshot(profileForm);
-      await updateProfile({
+      const baselineEmail = profileFormBaseline?.email ?? terminalUser?.email ?? '';
+      const emailChanged = normalizeProfileEmail(savedProfileForm.email) !== normalizeProfileEmail(baselineEmail);
+      const profileUpdate = {
         username: savedProfileForm.username,
-        email: savedProfileForm.email,
         phone_number: savedProfileForm.phoneNumber
-      });
+      };
+
+      // The API requires an OTP only for a real email change. Omitting an unchanged
+      // email also keeps username/phone-only edits independent from email verification.
+      if (emailChanged) {
+        profileUpdate.email = savedProfileForm.email;
+        profileUpdate.email_otp_code = String(emailOtpCode || '').trim();
+      }
+
+      await updateProfile(profileUpdate);
       setProfileForm(savedProfileForm);
       setProfileFormBaseline(savedProfileForm);
       await onRefreshTerminalUser?.({ suppressGlobalErrors: true });
@@ -1209,7 +1265,21 @@ export default function PosSettingsWorkspace({
     } finally {
       setSavingTab('');
     }
-  }, [onRefreshTerminalUser, profileForm]);
+  }, [onRefreshTerminalUser, profileForm, profileFormBaseline, terminalUser?.email]);
+
+  const handlePasswordChange = useCallback(async ({ currentPassword, newPassword }) => {
+    setSavingTab('profile-password');
+    try {
+      await changePassword({ currentPassword, newPassword });
+      toast.success('Password changed successfully.');
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to change password.');
+      return false;
+    } finally {
+      setSavingTab('');
+    }
+  }, []);
 
   const handleTaxPoliciesSave = useCallback(async (nextPolicies = taxPolicies) => {
     if (!canEditSettings || locked) return false;
@@ -2034,12 +2104,15 @@ export default function PosSettingsWorkspace({
     onTestPrinter,
     onSelectTerminal,
     showPosDefaultsEditor, showAttendanceEditor, showTeamAccessEditor,
-    onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, handleTerminalRegistrySave, handleTerminalAdvancedSettingsSave, canManageCashiers, cashiersLoading,
+    onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, onlineOrderSoundId, downloadedOrderAlertSoundIds, orderAlertSoundDownloadId, previewingOrderAlertSoundId, onSelectOrderAlertSound, onDownloadOrderAlertSound, onImportOrderAlertSound, orderAlertSoundImporting, onPreviewOrderAlertSound, incomingOrderPopupEnabled, setIncomingOrderPopupEnabled, customerDisplayEnabled, customerDisplayCanOpen, customerDisplayStatus, customerDisplayStatusLabel,
+    onCustomerDisplayEnabledChange, onOpenCustomerDisplay, onEndCustomerDisplay, handleTerminalRegistrySave, handleTerminalAdvancedSettingsSave, canManageCashiers, cashiersLoading,
     getCashiersForLocation, setCashierInvitationOpen, canRemoveCashiers, setCashierRemoveUser, cashiersLoaded, activeCashierUsers,
     cashierVoidAccessSavingUserId, updateCashierVoidAccess, updateCashierDrawerAccess, loadCashierAccounts,
+    cashierPinSavingUserId: savingCashierPin ? cashierPinUser?.user_id : null, onOpenCashierPin: openCashierPin,
+    globalPinSavingUserId: savingCashierPin ? cashierPinUser?.user_id : null, onOpenGlobalPin: openCashierPin,
     canManageDiscountApprovalPins, discountApprovers, discountApproversLoading, loadDiscountApprovers,
-    updateDiscountAuthorization, discountAuthorizationSavingUserId, setApprovalPinUser, setApprovalPin, canManageDayClosePins,
-    dayCloseOperators, dayCloseOperatorsLoading, loadDayCloseOperators, updateDayCloseAccess, dayCloseAccessSavingUserId, setDayClosePinUser,
+    updateDiscountAuthorization, discountAuthorizationSavingUserId, canManageDayClosePins,
+    dayCloseOperators, dayCloseOperatorsLoading, loadDayCloseOperators, updateDayCloseAccess, dayCloseAccessSavingUserId,
     handleDiscountProfileChange, addDiscountProfile, removeDiscountProfile, handleTerminalRegistryChange,
     addTerminalRegistryEntry, removeTerminalRegistryEntry, readiness, onNavigateToOrders
   };
@@ -2111,10 +2184,13 @@ export default function PosSettingsWorkspace({
           companyInfo={companyInfo}
           profileForm={profileForm}
           setProfileForm={setProfileForm}
+          profileEmailBaseline={profileFormBaseline?.email ?? terminalUser?.email ?? ''}
           locked={locked}
           loading={loading}
           savingTab={savingTab}
           onSave={handleProfileSave}
+          onRequestEmailOtp={handleRequestProfileEmailOtp}
+          onChangePassword={handlePasswordChange}
         />
       );
     }
@@ -2376,32 +2452,29 @@ export default function PosSettingsWorkspace({
         variant="destructive"
         onConfirm={handleRemoveCashier}
       />
-      <Dialog open={Boolean(approvalPinUser)} onOpenChange={(open) => !open && closeApprovalPinDialog()} overlayClassName="bg-black/30 backdrop-blur-none">
+      <Dialog open={Boolean(cashierPinUser)} onOpenChange={(open) => !open && closeCashierPinDialog()} overlayClassName="bg-black/30 backdrop-blur-none">
         <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
           <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
             <DialogTitle className="flex items-center gap-2 text-[16px] font-extrabold text-[#0F172A]">
               <KeyRound className="h-5 w-5 text-[#1A4E8D]" />
-              POS Discount Approval PIN
+              {cashierPinUser?.pos_global_pin_configured || cashierPinUser?.pos_cashier_pin_configured || cashierPinUser?.pos_approval_pin_configured || cashierPinUser?.pos_day_close_pin_configured ? 'Reset Global POS PIN' : 'Set Global POS PIN'}
             </DialogTitle>
             <DialogDescription className="mt-1 text-[12px] leading-5 text-[#64748B]">
-              This PIN is used to approve POS discounts. It cannot be viewed after saving.
+              One write-only PIN is used for this user&apos;s protected POS actions, including cashier authentication, discounts, voids, drawer access, refunds, and Z-reading. Permissions and manager approval rules still apply.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 px-5 py-5 sm:px-6">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] text-slate-700 sm:text-[14px]">
-              <p className="font-semibold">{approvalPinUser?.username || approvalPinUser?.email}</p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {approvalPinUser?.pos_approval_pin_configured
-                  ? 'A PIN is configured. Enter a new PIN to replace it.'
-                  : 'Configure a PIN this approver will enter for POS discounts.'}
-              </p>
+              <p className="font-semibold">{cashierPinUser?.username || cashierPinUser?.email}</p>
+              <p className="mt-1 text-[11px] text-slate-500">{cashierPinUser?.email || 'No account email'}</p>
             </div>
             <div>
-              <Label htmlFor="pos-approval-pin" className="text-[12px] font-semibold text-slate-800">New approval PIN</Label>
+              <Label htmlFor="pos-cashier-pin" className="text-[12px] font-semibold text-slate-800">New global POS PIN</Label>
               <Input
-                id="pos-approval-pin"
-                value={approvalPin}
-                onChange={(event) => setApprovalPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                id="pos-cashier-pin"
+                data-testid="pos-cashier-pin-input"
+                value={cashierPin}
+                onChange={(event) => setCashierPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -2411,54 +2484,15 @@ export default function PosSettingsWorkspace({
                 style={{ WebkitTextSecurity: 'disc' }}
                 placeholder="4 to 12 digits"
                 className="mt-1 text-[16px] sm:text-[14px]"
-                disabled={savingApprovalPin}
+                disabled={savingCashierPin}
               />
             </div>
           </div>
-          <DialogFooter className="mt-0 flex-row justify-between gap-2 border-t border-slate-100 px-5 py-4 sm:justify-between sm:px-6">
-            <div>
-              {approvalPinUser?.pos_approval_pin_configured ? (
-                <Button type="button" variant="outline" onClick={() => saveApprovalPin({ clear: true })} disabled={savingApprovalPin} className="text-rose-600">
-                  Clear PIN
-                </Button>
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={closeApprovalPinDialog} disabled={savingApprovalPin}>Cancel</Button>
-              <Button type="button" onClick={() => saveApprovalPin()} disabled={savingApprovalPin} className="bg-[#1A4E8D] text-white hover:bg-[#143F73]">
-                {savingApprovalPin ? 'Saving...' : 'Save PIN'}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={Boolean(dayClosePinUser)} onOpenChange={(open) => !open && closeDayClosePinDialog()} overlayClassName="bg-black/30 backdrop-blur-none">
-        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
-          <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
-            <DialogTitle className="flex items-center gap-2 text-[16px] font-extrabold text-[#0F172A]">
-              <KeyRound className="h-5 w-5 text-[#1A4E8D]" />
-              Reset POS Day Close PIN
-            </DialogTitle>
-            <DialogDescription className="mt-1 text-[12px] leading-5 text-[#64748B]">
-              Reset this cashier&apos;s PIN when they forgot it. The cashier must create a new personal PIN from DGFY Business.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 px-5 py-5 sm:px-6">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] text-slate-700 sm:text-[14px]">
-              <p className="font-semibold">{dayClosePinUser?.username || dayClosePinUser?.email}</p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {dayClosePinUser?.email || 'No account email'}
-              </p>
-            </div>
-          </div>
-          <DialogFooter className="mt-0 flex-row justify-between gap-2 border-t border-slate-100 px-5 py-4 sm:justify-between sm:px-6">
-            <div />
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={closeDayClosePinDialog} disabled={savingDayClosePin}>Cancel</Button>
-              <Button type="button" onClick={resetDayClosePin} disabled={savingDayClosePin} className="bg-[#1A4E8D] text-white hover:bg-[#143F73]">
-                {savingDayClosePin ? 'Resetting...' : 'Reset PIN'}
-              </Button>
-            </div>
+          <DialogFooter className="mt-0 flex-row justify-end gap-2 border-t border-slate-100 px-5 py-4 sm:px-6">
+            <Button type="button" variant="outline" onClick={closeCashierPinDialog} disabled={savingCashierPin}>Cancel</Button>
+            <Button type="button" onClick={saveCashierPin} disabled={savingCashierPin} className="bg-[#1A4E8D] text-white hover:bg-[#143F73]">
+              {savingCashierPin ? 'Saving...' : 'Save PIN'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

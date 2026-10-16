@@ -9,6 +9,7 @@ const workspacePath = path.resolve(__dirname, '../components/PosReportsAnalytics
 const workspaceSource = fs.readFileSync(workspacePath, 'utf8');
 const filterPanelSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsFilterPanel.jsx'), 'utf8');
 const dateFilterSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsDateFilterPanel.jsx'), 'utf8');
+const dateRangeFilterSource = fs.readFileSync(path.resolve(__dirname, '../components/PosDateRangeFilterPanel.jsx'), 'utf8');
 const kpiSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsKpiCards.jsx'), 'utf8');
 const adjustmentKpiSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsAdjustmentKpiCards.jsx'), 'utf8');
 const overviewTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsOverviewTable.jsx'), 'utf8');
@@ -109,13 +110,13 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource.indexOf('<PosReportsKpiCards')).toBeLessThan(workspaceSource.indexOf('<PosSubtabNavigation'));
     expect(workspaceSource.indexOf('<PosSubtabNavigation')).toBeLessThan(workspaceSource.indexOf('renderReportToolbar()'));
     expect(workspaceSource).toContain("const shouldShowOperationsSubtabs = activeTab === 'operations'");
-    expect(lineTabSource).toContain('role="tablist" aria-orientation="horizontal"');
+    expect(lineTabSource).toMatch(/role="tablist"\s+aria-label=\{ariaLabel\}\s+aria-orientation="horizontal"/);
   });
 
   it('hides only the Reports tab scrollbar while retaining horizontal overflow', () => {
     expect(workspaceSource).toMatch(/ariaLabel="POS reports"\s+hideScrollbar/);
     expect(lineTabSource).toContain('hideScrollbar = false');
-    expect(lineTabSource).toContain("hideScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''");
+    expect(lineTabSource).toContain("hideScrollbar || mobileGridClass ? 'dgfy-pos-scrollbar-hidden");
     expect(lineTabSource).toContain('overflow-x-auto');
   });
 
@@ -246,7 +247,8 @@ describe('POS report category filter contract', () => {
 
   it('keeps all report filters in a responsive modal with button-based choices', () => {
     expect(filterPanelSource).toContain('<PosFilterDialogShell');
-    expect(dateFilterSource).toContain('<PosFilterDialogShell');
+    expect(dateFilterSource).toContain('<PosDateRangeFilterPanel');
+    expect(dateRangeFilterSource).toContain('<PosFilterDialogShell');
     expect(dialogShellSource).toContain('<Dialog');
     expect(dialogShellSource).toContain('<DialogContent');
     expect(dialogShellSource).toContain('mobileSheet={isMobileDialog}');
@@ -258,7 +260,7 @@ describe('POS report category filter contract', () => {
     expect(filterPanelSource).toContain('mobile={isMobileDialog}');
     expect(filterPanelSource).not.toContain('scrollable');
     expect(filterPanelSource).not.toContain('showSelectedIcon');
-    expect(dateFilterSource).toContain('mobile={isMobileDialog}');
+    expect(dateRangeFilterSource).toContain('mobile={isMobileDialog}');
     expect(filterPanelSource).toContain('Payment Type');
     expect(filterPanelSource).toContain('Delivery Provider');
     expect(filterPanelSource).toContain('Sources');
@@ -365,5 +367,10 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).not.toContain('Procurement CSV');
     expect(workspaceSource).toContain('{renderZReadingToolbar()}');
     expect(workspaceSource).toContain('renderReportToolbar()');
+  });
+
+  it('prints item-level refund and void amounts in the item-sales breakdown', () => {
+    expect(workspaceSource).toContain('money(getPosReportRefundsVoidsDisplayValue(row.refunds_voids), currencySymbol),');
+    expect(workspaceSource).toContain("['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Refunds/Voids', 'Sales Share', 'Profit']");
   });
 });

@@ -152,6 +152,13 @@ export const buildDecidePosExceptionApprovalUseCase = ({
         }
         const payload = assertApprovalPayloadIntegrity(approval);
         assertApprovalTargetIntegrity(approval, payload);
+        if (payload.item_void === true && (!Array.isArray(payload.voided_lines) || payload.voided_lines.length === 0)) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                'Item-level void approval is missing its selected transaction lines.',
+                { statusCode: 409, details: { reason_code: 'POS_ITEM_VOID_APPROVAL_LINES_MISSING' } }
+            );
+        }
         const now = new Date();
         if (normalizedDecision === 'reject') {
             const rejected = await posRepository.updateBusinessAdminApprovalRequest(normalizedId, {
@@ -228,11 +235,15 @@ export const buildDecidePosExceptionApprovalUseCase = ({
                 posTransactionId: approval.entity_id,
                 payload: {
                     reason: approval.reason,
-                    idempotency_key: `pos-void-approval:${normalizedId}`,
+                    idempotency_key: payload.item_void === true
+                        ? `pos-item-void-approval:${normalizedId}`
+                        : `pos-void-approval:${normalizedId}`,
                     terminal_id: payload.terminal_id || undefined,
                     terminal_location_id: payload.location_id || undefined,
+                    auto_refund: payload.auto_refund === true,
                     expected_status: payload.expected_status || undefined,
-                    expected_server_version: payload.expected_server_version || undefined
+                    expected_server_version: payload.expected_server_version || undefined,
+                    voided_lines: Array.isArray(payload.voided_lines) ? payload.voided_lines : undefined
                 },
                 user,
                 transaction,

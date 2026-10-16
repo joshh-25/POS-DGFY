@@ -56,7 +56,7 @@ const submissionFor = (session) => {
 
 export const submitPaidDglaundryBooking = async ({ session, resource, providerEventId, commercePaymentRepository, partnerClient }) => {
   const plain = session?.get ? session.get({ plain: true }) : session;
-  if (!plain || plain.target_type !== 'dglaundry_booking') return null;
+  if (!plain) return null;
   if (plain.status === 'finalized') return plain;
   const paymentReference = paymentId(resource) || plain.provider_payment_id || plain.provider_payment_intent_id || null;
   const submission = submissionFor(plain);
@@ -69,8 +69,10 @@ export const submitPaidDglaundryBooking = async ({ session, resource, providerEv
       payment: { owner: 'dgfy', status: 'paid', amountCentavos: Number(plain.total_amount_centavos || 0), externalReference: paymentReference, provider: 'paymongo' }
     }
   });
-  const providerResponse = await partnerClient.submitOrder(envelope);
-  return commercePaymentRepository.updateSessionById(plain.session_id, {
+  const providerResponse = await partnerClient.submitOrder(envelope, {
+    completion: { type: 'paid_dglaundry_booking', reference: String(plain.session_id) }
+  });
+  const finalized = await commercePaymentRepository.updateSessionById(plain.session_id, {
     status: 'finalized',
     finalized_at: new Date(),
     provider_event_id: providerEventId || plain.provider_event_id,
@@ -79,7 +81,26 @@ export const submitPaidDglaundryBooking = async ({ session, resource, providerEv
     provider_payload: resource || plain.provider_payload || null,
     failure_code: null,
     failure_reason: null
-  }).then((updated) => ({ ...updated, dglaundry_provider_response: providerResponse }));
+  });
+  await partnerClient.completeCallerReconciliation?.(envelope.id);
+  return { ...finalized, dglaundry_provider_response: providerResponse };
+};
+
+export const reconcileDeliveredDglaundryBooking = async ({ session, commercePaymentRepository }) => {
+  const plain = session?.get ? session.get({ plain: true }) : session;
+  if (!plain || plain.target_type !== 'dglaundry_booking') return null;
+  if (plain.status === 'finalized') return plain;
+  if (!['paid', 'paid_manual_resolution_required'].includes(plain.status)) {
+    throw new Error('DGLAUNDRY_PAID_SESSION_STATE_NOT_RECOVERABLE');
+  }
+  const submission = submissionFor(plain);
+  return commercePaymentRepository.updateSessionById(plain.session_id, {
+    status: 'finalized',
+    finalized_at: plain.finalized_at || new Date(),
+    tracking_pin: submission.externalTrackingReference || plain.tracking_pin || null,
+    failure_code: null,
+    failure_reason: null
+  });
 };
 
 export const cancelDglaundryBookingReservations = async ({ session, reason, providerEventId = null, commercePaymentRepository, partnerClient }) => {
@@ -101,13 +122,37 @@ export const cancelDglaundryBookingReservations = async ({ session, reason, prov
       reason,
       occurredAt: new Date().toISOString()
     }
-  })).catch(() => null)));
+  }))));
+  if (reason === 'CUSTOMER_CANCELLED') return plain;
   return commercePaymentRepository.updateSessionById(plain.session_id, {
     status: plain.status === 'paid' ? 'paid_manual_resolution_required' : plain.status,
     provider_event_id: providerEventId || plain.provider_event_id,
     failure_code: reason === 'PAYMENT_FAILED' ? 'PAYMENT_FAILED' : 'QRPH_EXPIRED',
     failure_reason: reason
   });
+};
+
+export const expireDglaundryBookingSession = async ({ session, resource = null, providerEventId = null, commercePaymentRepository, partnerClient }) => {
+  const plain = session?.get ? session.get({ plain: true }) : session;
+  if (!plain) return null;
+  if (plain.status === 'expired') return plain;
+  const expired = await commercePaymentRepository.updateSessionById(plain.session_id, {
+    status: 'expired',
+    provider_event_id: providerEventId || plain.provider_event_id,
+    provider_payload: resource || plain.provider_payload || null,
+    failure_code: 'QRPH_EXPIRED',
+    failure_reason: 'PayMongo QR Ph code expired before payment.'
+  });
+  if (plain.target_type === 'dglaundry_booking') {
+    await cancelDglaundryBookingReservations({
+      session: expired,
+      reason: 'QRPH_EXPIRED',
+      providerEventId: `dglaundry-expired-${plain.public_reference}`,
+      commercePaymentRepository,
+      partnerClient
+    });
+  }
+  return expired;
 };
 
 export const notifyDglaundryBookingRefund = async ({ session, refund, providerEventId = null, partnerClient }) => {

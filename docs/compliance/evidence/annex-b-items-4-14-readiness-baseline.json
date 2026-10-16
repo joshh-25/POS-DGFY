@@ -1,0 +1,552 @@
+{
+  "schema_version": "annex-b-readiness-v1",
+  "plan": {
+    "name": "POS BIR Annex B Items 4 to 14 Readiness",
+    "version": "1.0",
+    "section": "01",
+    "phase": 353,
+    "source_commit": "786cd4e8329db1a65398ce6aa7eb020ffc8f3b28",
+    "captured_on": "2026-10-03",
+    "timezone": "Asia/Shanghai",
+    "execution_mode": "LOCAL_ONLY",
+    "worktree_state": "DIRTY_UNRELATED_CHANGES_PRESENT",
+    "external_approval_claim": "NOT_CLAIMED"
+  },
+  "source_register": [
+    {
+      "id": "ANNEX-B-PDF",
+      "description": "User-supplied RMO 24-2023 Annex B checklist version 2",
+      "location": "user-supplied attachment",
+      "sha256": "a8b287696ab11d754dbe4cfae61b22dbdd38ef70068ecec4ebb22075eab6f7fc"
+    },
+    {
+      "id": "PLAN-INDEX",
+      "description": "Approved master plan index",
+      "path": "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/00_POS_BIR_Annex_B_Items_4_to_14_Readiness_Index.docx",
+      "sha256": "020adb4569ff2e4cfcd35cd579352f037d5bedc3d55d2b8f5cc02744e7beb9b3"
+    },
+    {
+      "id": "PLAN-SECTION-01",
+      "description": "Approved objective and current-state section",
+      "path": "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/01_Objective_and_Current_State.docx",
+      "sha256": "77ead4a31be95fda01a93539cf609f66612cbd2d807e7c17c2140171a3c12dc9"
+    },
+    {
+      "id": "BIR-RMO-24-2023-OFFICIAL",
+      "description": "Official BIR RMO No. 24-2023 source for the e-Journal minimum contract",
+      "location": "https://bir-cdn.bir.gov.ph/local/pdf/RMO%20No.%2024-2023.pdf",
+      "authority": "official_bir_source",
+      "accessed_on": "2026-10-03"
+    },
+    {
+      "id": "EJOURNAL-READINESS-GRAMMAR-0.1",
+      "description": "Internal versioned e-Journal readiness grammar",
+      "path": "docs/compliance/evidence/annex-b-ejournal-readiness-grammar-v0.1.md",
+      "sha256": "377d52148203b038ca200a73026ce7de0738791fb10760ee446cb98b69b3f33d"
+    },
+    {
+      "id": "EJOURNAL-READINESS-FIXTURE-0.1",
+      "description": "Canonical sanitized e-Journal readiness fixture",
+      "path": "docs/compliance/evidence/annex-b-ejournal-readiness-fixture-v0.1.txt",
+      "sha256": "efe71f7d020ae25f0cfa605c98478d88e0753034e3082ab6a5639f994504a07d"
+    },
+    {
+      "id": "RETURN-READINESS-CONTRACT-0.1",
+      "description": "Internal versioned Return readiness contract",
+      "path": "docs/compliance/evidence/annex-b-return-readiness-contract-v0.1.md",
+      "sha256": "fa0dd39ce81fdb97ee7d05070e99e1c8bbe0a5cc671eb58ce73663320b9b1638"
+    }
+  ],
+  "source_lock": {
+    "state": "INTERNAL_READINESS_LOCKED",
+    "external_status": "PENDING",
+    "normative_source_id": "BIR-RMO-24-2023-OFFICIAL",
+    "ejournal_contract": {
+      "version": "EJOURNAL-READINESS-0.1",
+      "path": "docs/compliance/evidence/annex-b-ejournal-readiness-grammar-v0.1.md",
+      "fixture_path": "docs/compliance/evidence/annex-b-ejournal-readiness-fixture-v0.1.txt",
+      "status": "INTERNAL_READINESS_CONTRACT",
+      "external_review": "PENDING"
+    },
+    "return_contract": {
+      "version": "RETURN-READINESS-0.1",
+      "path": "docs/compliance/evidence/annex-b-return-readiness-contract-v0.1.md",
+      "status": "INTERNAL_READINESS_CONTRACT",
+      "external_review": "PENDING"
+    },
+    "boundary": "The internal contracts are sufficient for local readiness implementation and testing; they do not claim BIR, provider, tax-practitioner, or TWG acceptance."
+  },
+  "status_model": {
+    "internal_statuses": [
+      "INTERNAL_PASS",
+      "EXTERNAL_REVIEW_REQUIRED",
+      "BLOCKED",
+      "NOT_APPLICABLE"
+    ],
+    "external_statuses": [
+      "PENDING",
+      "EXTERNAL_REVIEW_REQUIRED",
+      "ACCEPTED",
+      "NOT_APPLICABLE"
+    ],
+    "internal_pass_rule": "A runtime control is not internally complete until the corresponding evidence artifact is generated, checksumed, and reviewed.",
+    "external_boundary": "Internal readiness does not claim BIR, TWG, tax-practitioner, provider, eAccReg, PTU, ATG, or eSales acceptance."
+  },
+  "readiness_summary": {
+    "total_items": 11,
+    "internal_pass_count": 0,
+    "internal_complete_count": 0,
+    "blocked_count": 11,
+    "external_review_required_count": 11,
+    "not_applicable_count": 0,
+    "score_percent": 0,
+    "score_basis": "GATE_COUNTS_NOT_ROUNDED",
+    "eligible_for_100_percent": false,
+    "blocking_reasons": [
+      "Evidence artifacts have not yet been generated and reviewed for Items 4 through 14.",
+      "Item 5 Return runtime behavior and linked samples are not implemented.",
+      "Item 8 e-journal runtime serialization and completeness evidence are not implemented."
+    ]
+  },
+  "items": [
+    {
+      "annex_item": 4,
+      "requirement_summary": "Receipt or sales-invoice samples for all supported regular, discounted, and charge scenarios.",
+      "confirmed_internal_support": [
+        "Explicit fiscal and non-fiscal document context",
+        "Server-owned fiscal snapshot and hash",
+        "Shared browser and native receipt renderer",
+        "Buyer, VAT, discount, and service-charge fields"
+      ],
+      "current_gap": [
+        "Scenario-complete sample pack is not generated",
+        "Legal field review is not recorded"
+      ],
+      "root_cause": "Runtime controls and documentary submission evidence have separate owners and lifecycles.",
+      "owner": {
+        "implementation": "POS Fiscal Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Tax and Compliance Owner"
+      },
+      "implementation_phase": 354,
+      "requirement_ids": ["FR-401", "BR-402", "DATA-401", "UI-401"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-412", "TEST-440", "TEST-441"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["R4-REGULAR", "R4-SENIOR", "R4-PWD", "R4-ATHLETE", "R4-SOLO", "R4-CHARGES", "R4-NONFISCAL"],
+      "source_paths": [
+        "apps/dgfy-api/src/modules/pos/usecases/posUseCases.js",
+        "apps/dgfy-api/src/models/PosTransaction.js",
+        "packages/web-core/src/features/pos/components/ReceiptPrintView.jsx"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-04/receipt-sample-pack/"],
+        "required_metadata": ["fixture_id", "source_transaction_id", "report_date", "source_commit", "generator_version", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "Samples, reconciliation, and legal review are not yet evidenced."
+    },
+    {
+      "annex_item": 5,
+      "requirement_summary": "Adjustment documents for cancel, void, return, refund, and other supported adjustment types linked to the original document number.",
+      "confirmed_internal_support": [
+        "Void and refund use cases",
+        "pos_transaction_adjustments ledger",
+        "Fiscal events and audit context"
+      ],
+      "current_gap": [
+        "The inspected runtime adjustment enum has no explicit Return type",
+        "Adjustment-document and e-journal samples are not generated"
+      ],
+      "root_cause": "Return semantics affect fiscal document, inventory, payment, and customer-entitlement behavior, so the internal contract is locked before runtime implementation.",
+      "owner": {
+        "implementation": "POS Fiscal Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Tax Practitioner and Compliance Owner"
+      },
+      "implementation_phase": 355,
+      "requirement_ids": ["FR-402", "BR-402", "DATA-402"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-412", "TEST-422", "TEST-442", "TEST-444"],
+      "acceptance_criteria": ["AC-410", "AC-411", "AC-413"],
+      "fixture_ids": ["R5-CANCEL", "R5-VOID", "R5-CASH-REFUND", "R5-EXTERNAL-REFUND", "R5-PROVIDER-REFUND", "R5-RETURN", "R5-REPRINT", "R5-REVERSAL"],
+      "source_paths": [
+        "apps/dgfy-api/src/models/PosTransactionAdjustment.js",
+        "apps/dgfy-api/src/models/PosFiscalEvent.js",
+        "apps/dgfy-api/src/routes/pos.js"
+      ],
+      "decision": {
+        "priority": "P0",
+        "state": "INTERNAL_READINESS_LOCKED",
+        "contract_version": "RETURN-READINESS-0.1",
+        "contract_path": "docs/compliance/evidence/annex-b-return-readiness-contract-v0.1.md",
+        "decision": "Return is a distinct adjustment type linked to the original document; payment refund is a separate linked adjustment.",
+        "external_review": "PENDING"
+      },
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-05/adjustment-sample-pack/"],
+        "required_metadata": ["fixture_id", "original_transaction_id", "original_document_number", "source_commit", "generator_version", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "The internal Return contract is locked for readiness work; runtime Return behavior and original-document-linked samples are not implemented."
+    },
+    {
+      "annex_item": 6,
+      "requirement_summary": "X-Reading and Z-Reading sample printouts.",
+      "confirmed_internal_support": [
+        "X-reading and Z-reading routes",
+        "Immutable Z-reading snapshots",
+        "Day-close controls and print support"
+      ],
+      "current_gap": [
+        "Controlled sample printouts are not generated",
+        "Cross-source reconciliation and evidence freshness are not proven"
+      ],
+      "root_cause": "Reading runtime and Annex B sample evidence are not yet one controlled artifact graph.",
+      "owner": {
+        "implementation": "POS Fiscal Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Tax and Compliance Owner"
+      },
+      "implementation_phase": 356,
+      "requirement_ids": ["FR-403", "REP-402", "DATA-403"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-412", "TEST-443"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["R6-X-READING", "R6-Z-READING", "R6-DAY-CLOSE"],
+      "source_paths": [
+        "apps/dgfy-api/src/models/PosZReadingSnapshot.js",
+        "apps/dgfy-api/src/routes/pos.js",
+        "apps/dgfy-api/src/modules/businessAdmin/repositories/businessAdminFiscalRepository.js"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-06/x-reading/", "local-evidence/annex-b/item-06/z-reading/"],
+        "required_metadata": ["fixture_id", "business_date", "location_id", "terminal_id", "source_counts", "source_totals", "source_commit", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "Runtime reading support exists, but reconciled and freshness-controlled samples are missing."
+    },
+    {
+      "annex_item": 7,
+      "requirement_summary": "List of other generated reports with a sample printout for each applicable report.",
+      "confirmed_internal_support": [
+        "Report registry",
+        "Terminal and Business Admin report surfaces",
+        "Discount, refund, void, and compliance datasets"
+      ],
+      "current_gap": [
+        "Complete report inventory is not frozen",
+        "Applicability decisions and sample printouts are not linked"
+      ],
+      "root_cause": "Analytics/report capability and documentary sample ownership are not represented by one catalog.",
+      "owner": {
+        "implementation": "POS Reports Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Compliance Owner"
+      },
+      "implementation_phase": 357,
+      "requirement_ids": ["FR-404", "REP-401", "DATA-404"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-450"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["R7-SALES-SUMMARY", "R7-DISCOUNTS", "R7-REFUNDS-VOIDS", "R7-PAYMENTS", "R7-REGISTERS", "R7-XZ", "R7-ESALES", "R7-AUDIT"],
+      "source_paths": [
+        "apps/dgfy-api/src/modules/reports/domain/reportRegistry.js",
+        "apps/dgfy-api/src/modules/businessAdmin/repositories/businessAdminFiscalRepository.js",
+        "apps/dgfy-api/src/routes/reports.js"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-07/report-catalog.json", "local-evidence/annex-b/item-07/report-samples/"],
+        "required_metadata": ["fixture_id", "report_key", "filter_scope", "source_revision", "generator_version", "source_commit", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "The registry exists, but the complete applicable catalog and samples are not proven."
+    },
+    {
+      "annex_item": 8,
+      "requirement_summary": "Receipt-complete soft and hard e-journal in .txt format, including applicable void, refund, and return records.",
+      "confirmed_internal_support": [
+        "Fiscal event ledger and hashes",
+        "eSales report lifecycle",
+        "Existing compliance final-review records"
+      ],
+      "current_gap": [
+        "No receipt-complete runtime-generated .txt artifact is confirmed",
+        "Hard-copy projection, completeness assertion, and manifest are not generated"
+      ],
+      "root_cause": "A books/report export is not automatically an e-journal; the internal record contract must be implemented and reconciled one-to-one with generated documents.",
+      "owner": {
+        "implementation": "Compliance and POS Reporting Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Tax and Compliance Owner"
+      },
+      "implementation_phase": 358,
+      "requirement_ids": ["FR-405", "REP-402", "DATA-404", "SEC-404"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-451", "TEST-452", "TEST-453", "TEST-455"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["R8-ISSUED-RECEIPTS", "R8-ADJUSTMENTS", "R8-PROVISIONAL-EXCLUSION", "R8-RECONCILIATION"],
+      "source_paths": [
+        "apps/dgfy-api/src/models/PosFiscalEvent.js",
+        "apps/dgfy-api/src/models/PosESalesReport.js",
+        "apps/dgfy-api/src/modules/reports/domain/reportRegistry.js"
+      ],
+      "decision": {
+        "priority": "P0",
+        "state": "INTERNAL_READINESS_LOCKED",
+        "contract_version": "EJOURNAL-READINESS-0.1",
+        "contract_path": "docs/compliance/evidence/annex-b-ejournal-readiness-grammar-v0.1.md",
+        "normative_source_id": "BIR-RMO-24-2023-OFFICIAL",
+        "external_review": "PENDING"
+      },
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-08/ejournal.txt", "local-evidence/annex-b/item-08/ejournal-print.pdf", "local-evidence/annex-b/item-08/manifest.json"],
+        "required_metadata": ["fixture_id", "grammar_version", "serializer_version", "record_count", "source_scope", "source_commit", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "The internal readiness grammar is locked; runtime serialization and completeness evidence are not implemented."
+    },
+    {
+      "annex_item": 9,
+      "requirement_summary": "Narrative system description and design or structure of the Sales Machines or Software.",
+      "confirmed_internal_support": [
+        "Existing software specification packet",
+        "Existing system flow diagram",
+        "Current modular API and POS application boundaries"
+      ],
+      "current_gap": [
+        "Narrative is not refreshed to current apps layout",
+        "Final receipt, adjustment, and e-journal contracts are not included"
+      ],
+      "root_cause": "The existing narrative predates the current repository layout and the planned Annex B evidence graph.",
+      "owner": {
+        "implementation": "Platform Architecture",
+        "evidence": "Compliance Engineering",
+        "external_review": "Compliance Owner"
+      },
+      "implementation_phase": 359,
+      "requirement_ids": ["FR-406", "OPS-401"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-460"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["E9-SYSTEM-NARRATIVE", "E9-SYSTEM-FLOW"],
+      "source_paths": [
+        "docs/compliance/submission/software-specification-dgfy.md",
+        "docs/compliance/submission/system-flow-diagram.mmd",
+        "docs/architecture/ARCHITECTURE_BOUNDARIES.md"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-09/system-description.docx", "local-evidence/annex-b/item-09/system-flow-diagram.pdf"],
+        "required_metadata": ["fixture_id", "source_commit", "document_version", "reviewer", "review_date", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "The narrative and flow evidence need a current-system refresh and review."
+    },
+    {
+      "annex_item": 10,
+      "requirement_summary": "Screenshots showing software name and version on login, home, and applicable splash surfaces.",
+      "confirmed_internal_support": [
+        "Build-stamped VersionBadge",
+        "POS software identity settings"
+      ],
+      "current_gap": [
+        "Applicable login, home, and splash screenshots are not captured",
+        "Version consistency across surfaces is not evidenced"
+      ],
+      "root_cause": "Version runtime support exists, but screenshot evidence must be captured from the exact local build.",
+      "owner": {
+        "implementation": "POS Frontend Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Compliance Owner"
+      },
+      "implementation_phase": 359,
+      "requirement_ids": ["FR-407", "UI-404", "DATA-406"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-461"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["E10-LOGIN", "E10-HOME", "E10-SPLASH-NA-REVIEW"],
+      "source_paths": [
+        "packages/web-core/src/components/common/VersionBadge.jsx",
+        "apps/dgfy-pos/src/main.jsx"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-10/screenshots/", "local-evidence/annex-b/item-10/version-register.json"],
+        "required_metadata": ["fixture_id", "source_commit", "build_version", "surface", "redaction_status", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "The version component exists, but the required surface evidence and consistency register are missing."
+    },
+    {
+      "annex_item": 11,
+      "requirement_summary": "Screenshot of the online or offline indicator, if applicable.",
+      "confirmed_internal_support": [
+        "Browser network state tracking",
+        "Backend API reachability state",
+        "Provisional offline-sale restrictions"
+      ],
+      "current_gap": [
+        "Online and offline screenshots are not captured",
+        "Indicator semantics and operator restrictions are not linked to evidence"
+      ],
+      "root_cause": "Device network state and API reachability are distinct signals and need one documented evidence contract.",
+      "owner": {
+        "implementation": "POS Frontend Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Compliance Owner"
+      },
+      "implementation_phase": 359,
+      "requirement_ids": ["FR-408", "BR-403", "UI-405"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-462"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["E11-ONLINE", "E11-OFFLINE", "E11-API-UNREACHABLE", "E11-RECONNECTED"],
+      "source_paths": [
+        "packages/web-core/src/features/pos/pages/TerminalPage.jsx",
+        "docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-11/screenshots/", "local-evidence/annex-b/item-11/connectivity-test-log.json"],
+        "required_metadata": ["fixture_id", "network_state", "api_state", "expected_restrictions", "source_commit", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "Connectivity runtime behavior exists, but truthful state evidence and restriction logs are missing."
+    },
+    {
+      "annex_item": 12,
+      "requirement_summary": "Machine brochure or operating manual, if applicable.",
+      "confirmed_internal_support": [
+        "Software specification and device-adapter documentation",
+        "POS terminal and printer integration surfaces"
+      ],
+      "current_gap": [
+        "Versioned operator manual is not packaged",
+        "Machine and peripheral applicability decision is not recorded"
+      ],
+      "root_cause": "Operational instructions and hardware applicability are not yet controlled Annex B artifacts.",
+      "owner": {
+        "implementation": "POS Operations Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Operations and Compliance Owner"
+      },
+      "implementation_phase": 360,
+      "requirement_ids": ["FR-406", "OPS-401"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-463"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["E12-OPERATOR-MANUAL", "E12-HARDWARE-APPLICABILITY"],
+      "source_paths": [
+        "docs/compliance/submission/software-specification-dgfy.md",
+        "apps/dgfy-api/src/services/posDeviceBridgeService.js"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-12/operator-manual.docx", "local-evidence/annex-b/item-12/device-applicability.json"],
+        "required_metadata": ["fixture_id", "document_version", "source_commit", "owner", "reviewer", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "The manual and applicability decision require tested local flows and operational review."
+    },
+    {
+      "annex_item": 13,
+      "requirement_summary": "Printed system audit trail or activity log with date/time, user, activity, and data values.",
+      "confirmed_internal_support": [
+        "AuditLog records actor, action, entity, context, reason, request ID, changes, and timestamp",
+        "Audit repository filters and scrubs secrets"
+      ],
+      "current_gap": [
+        "Print-ready filtered evidence export is not generated",
+        "Full activity and value-field coverage is not mapped to Annex B"
+      ],
+      "root_cause": "Audit runtime coverage exists, but the documentary projection and field-coverage proof are not controlled.",
+      "owner": {
+        "implementation": "Compliance and Audit Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Compliance Owner"
+      },
+      "implementation_phase": 360,
+      "requirement_ids": ["FR-409", "AUD-401", "SEC-401"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-471", "TEST-474"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["E13-AUDIT-SALE", "E13-AUDIT-ADJUSTMENT", "E13-AUDIT-EXPORT", "E13-AUDIT-REDACTION"],
+      "source_paths": [
+        "apps/dgfy-api/src/models/AuditLog.js",
+        "apps/dgfy-api/src/modules/audit/repositories/auditRepository.js"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-13/audit-trail-print.pdf", "local-evidence/annex-b/item-13/field-coverage.json"],
+        "required_metadata": ["fixture_id", "date_time", "actor_id", "activity", "data_values", "redaction_policy", "source_commit", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "Audit rows exist, but complete filtered print/export evidence and coverage proof are missing."
+    },
+    {
+      "annex_item": 14,
+      "requirement_summary": "Narrative backup procedure and disaster recovery plan.",
+      "confirmed_internal_support": [
+        "Existing RPO and RTO targets",
+        "Encryption and retention guidance",
+        "Restore procedure and drill evidence format"
+      ],
+      "current_gap": [
+        "Fiscal-specific restore proof and fresh drill linkage are not gated",
+        "Operational sign-off and evidence freshness are not current-state controlled"
+      ],
+      "root_cause": "The DR document exists, but fiscal-record restore validation and review metadata are not tied to the Annex B item.",
+      "owner": {
+        "implementation": "Platform and Backup Engineering",
+        "evidence": "Compliance Engineering",
+        "external_review": "Platform and Compliance Owner"
+      },
+      "implementation_phase": 360,
+      "requirement_ids": ["FR-410", "OPS-401", "DATA-407"],
+      "test_ids": ["TEST-410", "TEST-411", "TEST-464"],
+      "acceptance_criteria": ["AC-410", "AC-411"],
+      "fixture_ids": ["E14-BACKUP", "E14-RESTORE-DRILL", "E14-ENCRYPTION", "E14-FISCAL-HASH-RESTORE"],
+      "source_paths": [
+        "docs/compliance/submission/backup-disaster-recovery-plan.md",
+        "docs/compliance/evidence/drills/latest-restore-drill.json",
+        "docs/compliance/evidence/drills/latest-encryption-verification.json"
+      ],
+      "evidence": {
+        "artifact_paths": ["local-evidence/annex-b/item-14/backup-dr-plan.docx", "local-evidence/annex-b/item-14/restore-drill.json", "local-evidence/annex-b/item-14/encryption-verification.json"],
+        "required_metadata": ["fixture_id", "drill_id", "rpo_hours", "rto_hours", "restored_counts", "restored_hashes", "approver", "source_commit", "sha256"],
+        "generated": false,
+        "reviewed": false,
+        "review_state": "NOT_REVIEWED"
+      },
+      "internal_status": "BLOCKED",
+      "external_status": "EXTERNAL_REVIEW_REQUIRED",
+      "status_reason": "A fresh fiscal-record restore drill and sign-off are required before internal completion."
+    }
+  ]
+}

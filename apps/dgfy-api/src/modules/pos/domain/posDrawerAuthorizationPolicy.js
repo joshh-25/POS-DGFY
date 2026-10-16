@@ -28,7 +28,7 @@ export const verifyPosDrawerOperator = async ({ operator, pin } = {}) => {
     }
 
     const normalizedPin = String(pin || '').trim();
-    const pinHash = String(operator.pos_approval_pin_hash || '').trim();
+    const pinHash = String(operator.pos_cashier_pin_hash || '').trim();
     if (!pinHash) {
         drawerAuthorizationError('Your POS PIN is not configured. Set your personal POS PIN before opening the drawer.', 'DRAWER_PIN_NOT_CONFIGURED');
     }

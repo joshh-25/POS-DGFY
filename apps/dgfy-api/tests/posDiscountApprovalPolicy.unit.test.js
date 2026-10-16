@@ -18,10 +18,31 @@ describe('POS discount approval policy', () => {
 
     test('returns canonical identity for a valid individual approver PIN', async () => {
         await expect(verifyPosDiscountApprover({
-            approver: await buildApprover(),
+            approver: await buildApprover({
+                pos_cashier_pin_hash: await bcrypt.hash('2468', 4),
+                pos_approval_pin_hash: null
+            }),
             pin: '2468',
             employeeUserId: 7
         })).resolves.toEqual({ user_id: 9, username: 'manager-nine', role: 'manager', self_approved: false });
+    });
+
+    test('prefers the global POS PIN when a legacy approval PIN is also present', async () => {
+        await expect(verifyPosDiscountApprover({
+            approver: await buildApprover({
+                pos_cashier_pin_hash: await bcrypt.hash('1357', 4),
+                pos_approval_pin_hash: await bcrypt.hash('2468', 4)
+            }),
+            pin: '1357'
+        })).resolves.toMatchObject({ user_id: 9 });
+
+        await expect(verifyPosDiscountApprover({
+            approver: await buildApprover({
+                pos_cashier_pin_hash: await bcrypt.hash('1357', 4),
+                pos_approval_pin_hash: await bcrypt.hash('2468', 4)
+            }),
+            pin: '2468'
+        })).rejects.toMatchObject({ details: { reason_code: 'DISCOUNT_APPROVER_PIN_INVALID' } });
     });
 
     test('rejects an invalid PIN', async () => {

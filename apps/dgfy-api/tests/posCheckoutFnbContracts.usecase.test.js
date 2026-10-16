@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import dbStore from '../src/utils/dbStore.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import { hashFiscalEvidence } from '../src/modules/pos/domain/fiscalEvidenceContract.js';
 
 const mockGetAllSettingsUseCase = jest.fn(async () => ({
     success: true,
@@ -275,7 +276,7 @@ describe('POS historical parked-sale settlement', () => {
         expect(harness.repository.findSellableItemsByIds).toHaveBeenCalledWith([72], expect.any(Object));
     });
 
-    it('settles from the parked snapshot when the catalog row is physically missing', async () => {
+    it('settles from the parked snapshot when the catalog row is physically missing and the marker is omitted', async () => {
         const parkedLine = {
             line_key: 'parked-line-missing',
             item_id: 73,
@@ -289,11 +290,12 @@ describe('POS historical parked-sale settlement', () => {
         const harness = buildHistoricalRepository({
             parkedLine,
             checkoutLine: {
-                line_ref: 'parked-line-missing',
+                // Legacy/stale clients may omit the marker after resuming a
+                // parked sale. The matching snapshot line is still payable.
+                line_ref: 'rebuilt-line-ref-missing',
                 item_id: 73,
                 quantity: 1,
-                sale_price: 125,
-                parked_snapshot_line: true
+                sale_price: 125
             },
             item: null
         });
@@ -2521,6 +2523,34 @@ describe('POS checkout F&B contracts', () => {
     });
 
     it('records original and reprint fiscal print events with chained fiscal events', async () => {
+        const fiscalSnapshot = {
+            template_version: 'fiscal-receipt-v1',
+            source_timezone: 'Asia/Manila',
+            issued_at: '2026-10-03T12:00:00.000Z',
+            document: {
+                invoice_number: 'INV-000001',
+                document_type: 'fiscal_invoice',
+                document_context: 'fiscal'
+            },
+            seller: {
+                taxpayer_type: 'VAT_REGISTERED',
+                software_name: 'DGFY POS'
+            },
+            terminal: { terminal_id: 'TERM-01' },
+            buyer: { name: null },
+            totals: {
+                subtotal_amount: 100,
+                vatable_sales: 89.29,
+                vat_amount: 10.71,
+                vat_exempt_sales: 0,
+                zero_rated_sales: 0,
+                discount_amount: 0,
+                total_amount: 100,
+                payment_type: 'cash'
+            },
+            payment_breakdown: [{ payment_type: 'cash', amount: 100 }],
+            lines: [{ line_id: '1', item_id: 1, quantity: 1, line_total: 100 }]
+        };
         const fiscalTransaction = {
             pos_transaction_id: 177,
             invoice_number: 'INV-000001',
@@ -2528,7 +2558,8 @@ describe('POS checkout F&B contracts', () => {
             document_context: 'fiscal',
             status: 'completed',
             terminal_id: 'TERM-01',
-            fiscal_document_hash: 'a'.repeat(64),
+            fiscal_document_hash: hashFiscalEvidence(fiscalSnapshot),
+            fiscal_document_snapshot: fiscalSnapshot,
             fiscal_lifecycle_state: 'original',
             fiscal_reprint_count: 0
         };
@@ -2786,6 +2817,286 @@ describe('POS checkout F&B contracts', () => {
         }), expect.objectContaining({ transaction: expect.any(Object) }));
     });
 
+    it('atomically records an automatic cash refund when the void has an owned open shift', async () => {
+        const transactionRow = {
+            pos_transaction_id: 17901,
+            invoice_number: 'INV-AUTO-CASH-REFUND-001',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid',
+            payment_breakdown: [{ payment_type: 'cash', amount: 125 }]
+        };
+        const cashRefundPosTransactionUseCase = jest.fn(async ({ transaction, payload }) => ({
+            success: true,
+            data: {
+                transaction: { ...transactionRow, status: 'voided', payment_status: 'refunded' },
+                adjustment: {
+                    pos_transaction_adjustment_id: 9011,
+                    adjustment_type: 'cash_refund',
+                    status: 'succeeded',
+                    amount: 125
+                },
+                cash_drawer_event: {
+                    pos_cash_drawer_event_id: 9012,
+                    event_type: 'cash_out',
+                    amount: 125
+                },
+                financial_outcome: {
+                    internal_void: 'succeeded',
+                    refund_required: false,
+                    refund_state: 'completed',
+                    refund_method: 'cash',
+                    tender_ownership: 'merchant_owned',
+                    next_action: 'none',
+                    reason_code: 'CASH_REFUND_COMPLETED',
+                    refund_amount: 125,
+                    currency: 'PHP'
+                },
+                payload
+            }
+        }));
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901, cashierId: 12 })),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...transactionRow, ...payload })),
+            createPosTransactionAdjustment: jest.fn(async (payload) => ({
+                ...payload,
+                pos_transaction_adjustment_id: 9010
+            })),
+            createAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            cashRefundPosTransactionUseCase
+        });
+
+        const result = await runInTenantContext(({ transaction }) => useCase({
+            posTransactionId: 17901,
+            payload: {
+                reason: 'Customer requested cash reversal',
+                auto_refund: true,
+                shift_id: 901,
+                terminal_id: 'TERM-01',
+                terminal_location_id: 3,
+                idempotency_key: 'auto-cash-refund-17901'
+            },
+            user: {
+                user_id: 12,
+                role: 'cashier',
+                permissions: ['pos:cash_drawer_adjust']
+            },
+            approvalExecution: approvedVoidExecution(17901, 12)
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            cash_refund: expect.objectContaining({ completed: true }),
+            financial_outcome: expect.objectContaining({
+                refund_state: 'completed',
+                refund_required: false
+            }),
+            transaction: expect.objectContaining({ payment_status: 'refunded' })
+        }));
+        expect(cashRefundPosTransactionUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            posTransactionId: 17901,
+            payload: expect.objectContaining({
+                shift_id: 901,
+                reason: 'Customer requested cash reversal'
+            }),
+            transaction: expect.any(Object)
+        }));
+        expect(result.data.cash_refund.adjustment).toEqual(expect.objectContaining({
+            adjustment_type: 'cash_refund',
+            amount: 125
+        }));
+    });
+
+    it('voids for an administrator without a shift and marks the cash refund pending', async () => {
+        const transactionRow = {
+            pos_transaction_id: 17902,
+            invoice_number: 'INV-AUTO-CASH-REFUND-002',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const cashRefundPosTransactionUseCase = jest.fn();
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...transactionRow, ...payload })),
+            createPosTransactionAdjustment: jest.fn(async (payload) => ({ ...payload, pos_transaction_adjustment_id: 9020 })),
+            createAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            cashRefundPosTransactionUseCase
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 17902,
+            payload: {
+                reason: 'Administrator correction after close',
+                auto_refund: true,
+                terminal_id: 'TERM-01',
+                terminal_location_id: 3,
+                idempotency_key: 'auto-cash-refund-17902'
+            },
+            user: { user_id: 99, role: 'admin' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            refund_pending: true,
+            refund_pending_reason: 'POS_REFUND_SHIFT_REQUIRED',
+            financial_outcome: expect.objectContaining({
+                refund_required: true,
+                next_action: 'record_cash_refund_with_cash_drawer_event'
+            })
+        }));
+        expect(cashRefundPosTransactionUseCase).not.toHaveBeenCalled();
+    });
+
+    it('marks a completed automatic cash refund as an idempotent replay on a repeated void', async () => {
+        const transactionRow = {
+            pos_transaction_id: 17903,
+            invoice_number: 'INV-AUTO-CASH-REFUND-REPLAY',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid',
+            payment_breakdown: [{ payment_type: 'cash', amount: 125 }]
+        };
+        let persistedVoidAdjustment = null;
+        const cashRefundPosTransactionUseCase = jest.fn(async ({ payload }) => ({
+            success: true,
+            data: {
+                transaction: { ...transactionRow, status: 'voided', payment_status: 'refunded' },
+                adjustment: {
+                    pos_transaction_adjustment_id: 9031,
+                    adjustment_type: 'cash_refund',
+                    status: 'succeeded',
+                    amount: 125
+                },
+                cash_drawer_event: {
+                    pos_cash_drawer_event_id: 9032,
+                    event_type: 'cash_out',
+                    amount: 125
+                },
+                financial_outcome: {
+                    internal_void: 'succeeded',
+                    refund_required: false,
+                    refund_state: 'completed',
+                    refund_method: 'cash',
+                    tender_ownership: 'merchant_owned',
+                    next_action: 'none',
+                    reason_code: 'CASH_REFUND_COMPLETED',
+                    refund_amount: 125,
+                    currency: 'PHP'
+                },
+                payload
+            }
+        }));
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901, cashierId: 12 })),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn(async () => persistedVoidAdjustment),
+            listPosTransactionAdjustmentsForTransaction: jest.fn().mockResolvedValue([{
+                pos_transaction_adjustment_id: 9031,
+                adjustment_type: 'cash_refund',
+                status: 'succeeded',
+                amount: 125,
+                cash_drawer_event_id: 9032,
+                metadata: {
+                    financial_outcome: {
+                        internal_void: 'succeeded',
+                        refund_required: false,
+                        refund_state: 'completed',
+                        refund_method: 'cash',
+                        tender_ownership: 'merchant_owned',
+                        next_action: 'none',
+                        reason_code: 'CASH_REFUND_COMPLETED',
+                        refund_amount: 125,
+                        currency: 'PHP'
+                    }
+                }
+            }]),
+            getCashDrawerEventById: jest.fn().mockResolvedValue({
+                pos_cash_drawer_event_id: 9032,
+                event_type: 'cash_out',
+                amount: 125
+            }),
+            createPosTransactionAdjustment: jest.fn(async (payload) => {
+                persistedVoidAdjustment = {
+                    ...payload,
+                    pos_transaction_adjustment_id: 9030
+                };
+                return persistedVoidAdjustment;
+            }),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...transactionRow, ...payload })),
+            createAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            cashRefundPosTransactionUseCase
+        });
+        const voidInput = () => ({
+            posTransactionId: 17903,
+            payload: {
+                reason: 'Retry automatic cash refund',
+                auto_refund: true,
+                shift_id: 901,
+                terminal_id: 'TERM-01',
+                terminal_location_id: 3,
+                idempotency_key: 'auto-cash-refund-17903'
+            },
+            user: {
+                user_id: 12,
+                role: 'cashier',
+                permissions: ['pos:cash_drawer_adjust']
+            },
+            approvalExecution: approvedVoidExecution(17903, 12)
+        });
+
+        const first = await runInTenantContext(() => useCase(voidInput()));
+        const second = await runInTenantContext(() => useCase(voidInput()));
+
+        expect(first.success).toBe(true);
+        expect(first.data.cash_refund).toEqual(expect.objectContaining({
+            completed: true,
+            idempotent_replay: false
+        }));
+        expect(second.success).toBe(true);
+        expect(second.data.idempotent_replay).toBe(true);
+        expect(second.data.cash_refund).toEqual(expect.objectContaining({
+            completed: true,
+            idempotent_replay: true
+        }));
+        expect(cashRefundPosTransactionUseCase).toHaveBeenCalledTimes(1);
+    });
+
     it('allows an administrator to execute a void directly without creating an approval request', async () => {
         const transactionRow = {
             pos_transaction_id: 1790,
@@ -2867,6 +3178,78 @@ describe('POS checkout F&B contracts', () => {
         expect(updateBusinessAdminApprovalRequest).toHaveBeenCalledWith(7790, expect.objectContaining({
             status: 'cancelled'
         }), expect.objectContaining({ transaction: expect.any(Object), lock: true }));
+    });
+
+    it('executes a cashier void with an authorized refund passcode and records the approver', async () => {
+        const transactionRow = {
+            pos_transaction_id: 1791,
+            invoice_number: 'INV-REFUND-PASSCODE-001',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const createAuditLog = jest.fn().mockResolvedValue(null);
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901, cashierId: 12 })),
+            listActivePosRefundPasscodeApprovers: jest.fn().mockResolvedValue([{
+                user_id: 99,
+                username: 'Manager One',
+                role: 'manager',
+                is_active: true,
+                pos_approval_pin_hash: await bcrypt.hash('2468', 4)
+            }]),
+            findPendingBusinessAdminApprovalRequest: jest.fn().mockResolvedValue(null),
+            createBusinessAdminApprovalRequest: jest.fn(),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...transactionRow, ...payload })),
+            createPosTransactionAdjustment: jest.fn(async (payload) => ({
+                ...payload,
+                adjustment_reference: payload.adjustment_reference
+            })),
+            createAuditLog
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 1791,
+            payload: {
+                reason: 'Customer refund approved',
+                refund_passcode: '2468',
+                shift_id: 901,
+                terminal_id: 'TERM-01'
+            },
+            user: { user_id: 12, role: 'cashier' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.authorization_mode).toBe('refund_passcode');
+        expect(result.data.transaction).toEqual(expect.objectContaining({ status: 'voided' }));
+        expect(posRepository.createBusinessAdminApprovalRequest).not.toHaveBeenCalled();
+        expect(posRepository.createPosTransactionAdjustment).toHaveBeenCalledWith(expect.objectContaining({
+            metadata: expect.objectContaining({
+                authorization_mode: 'refund_passcode',
+                refund_passcode_approver_id: 99
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_transaction_voided',
+            changes: expect.objectContaining({
+                authorization_mode: 'refund_passcode',
+                refund_passcode_approver_id: 99
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
     });
 
     it('rejects an administrator void when the transaction is outside the registered terminal location', async () => {

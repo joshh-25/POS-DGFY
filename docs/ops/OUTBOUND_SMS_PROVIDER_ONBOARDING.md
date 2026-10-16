@@ -1,0 +1,73 @@
+---
+status: authoritative
+authority_level: authoritative
+owner: operations
+last_reviewed: 2026-10-11
+review_by: 2027-04-11
+applies_to: outbound_sms_provider_onboarding
+topic: outbound_sms_provider_onboarding
+---
+
+# Outbound SMS provider onboarding
+
+No production SMS provider is configured by this change. `SMS_PROVIDER` defaults to
+`unconfigured`; sending in that mode records an `unconfigured` result and does not claim delivery.
+The `fake` adapter is for development and tests only and is blocked when `NODE_ENV=production`.
+Transactional order-received and order-delivered alerts use this boundary after the order
+transaction commits. Dispatch is best-effort and bounded by the caller, so every real provider
+adapter must also apply its own network/request timeout; a caller timeout does not cancel an
+underlying provider request.
+
+## Required provider inputs
+
+Before choosing a driver, record and approve:
+
+- Provider contract and supported Philippine routes.
+- Sender ID or phone number, including Philippine sender-ID registration requirements.
+- API credentials and their secret-storage/rotation owner.
+- Sandbox account and permitted test destinations.
+- Whether delivery-receipt webhooks are required, their authentication, replay protection, and
+  callback ownership.
+- Rate limits, throughput caps, per-message costs, and spend alerts.
+- Required consent, suppression, and opt-out behavior for each message purpose.
+- Approved opt-out instruction wording for promotional content. The sender appends the supplied
+  instruction but does not invent copy or imply inbound STOP capture.
+- Whether the provider supports authenticated inbound STOP webhooks, including signature
+  verification, replay handling, tenant/global suppression mapping, and operational ownership.
+  Until that decision is implemented and verified, STOP is not captured automatically.
+
+## Connection and verification path
+
+1. Add a provider driver under `apps/dgfy-api/src/modules/smsDelivery/adapters/` implementing
+   `send({ id, to, purpose, content, correlation })` and mapping provider outcomes to
+   `accepted`, `rejected`, or `failed`.
+2. Register the explicit provider mode in `adapters/index.js`. Keep `unconfigured` as the default;
+   never enable the fake adapter in production.
+3. Add only required provider configuration to the API environment templates and production
+   environment validation. Store credentials in the approved secret store.
+4. Send an approved sandbox message to a controlled destination. Confirm the API result, one
+   `sms_delivery_logs` row, provider message ID (if supplied), simulation flag, and failure alert
+   behavior. Verify no message body is present in the row or alert context.
+5. Confirm sender registration, rate/cost controls, approved promotional opt-out wording, opt-out
+   handling, webhook decision, and operational ownership before enabling the provider for
+   production traffic. Promotional consent is required by the shared sender and transactional
+   traffic remains independent of marketing consent.
+
+## Deployment secret required before production API startup
+
+`SMS_PHONE_HASH_SECRET` is required whenever `NODE_ENV=production`, even when the provider stays
+`unconfigured`. Configure a persistent, environment-specific value of at least 32 characters and
+pass it to the API container before deploying this API version. For staging, store the value in
+`/opt/dgfy-stage/.env` and map it into `dgfy-api`; for PROD, add it to the SOPS-encrypted
+`secrets/dgfy-api.env`, export it through `deploy-sops.sh`, and map it in
+`infrastructure/docker/env/prod.sops-cutover-fragment.yml`'s bucket-A section. Do not reuse the
+staging value in PROD. `infrastructure/docker/env/prod.env-var-classification.md` must also keep
+this key in the boot-required secret list.
+
+The retained raw phone is redacted after `SMS_DELIVERY_LOG_RETENTION_DAYS` (default 30). The HMAC
+secret `SMS_PHONE_HASH_SECRET` is required in production. Before rotating it, re-key
+`sms_delivery_logs.recipient_phone_hash`, `sms_marketing_consents.recipient_phone_hash`,
+`sms_consent_events.recipient_phone_hash`, and `sms_global_suppressions.recipient_phone_hash` with
+the new key as one controlled operation. A rotation without this continuity step makes prior
+consents and opt-outs unmatchable and can permit a previously suppressed number to receive a
+promotional send.

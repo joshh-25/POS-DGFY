@@ -202,7 +202,7 @@ describe('service worker caching contracts', () => {
     expect(layoutSource).toContain('fixed right-3 top-3');
     expect(layoutSource).toContain('bg-white');
     expect(layoutSource).toContain('shadow-[0_8px_24px_rgba(15,23,42,0.16)]');
-    expect(layoutSource).toContain("import { Bell, Info, Menu, UserRound } from 'lucide-react';");
+    expect(layoutSource).toContain("import { Bell, Eye, Info, Menu, MonitorUp, UserRound } from 'lucide-react';");
     expect(layoutSource).toContain('POS_UPDATE_NOTICE_EVENT');
     expect(layoutSource).toContain('readPosUpdateNoticeState()');
     expect(noticeSource).toContain("export const POS_UPDATE_NOTICE_EVENT = 'dgfy-pos:update-notice';");

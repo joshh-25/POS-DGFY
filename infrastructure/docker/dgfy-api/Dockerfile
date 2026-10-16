@@ -60,7 +60,7 @@ COPY apps/dgfy-api/src ./src
 COPY apps/dgfy-api/assets ./assets
 COPY apps/dgfy-api/scripts ./scripts
 
-RUN mkdir -p uploads/temp storage/temp-ai-exports logs \
+RUN mkdir -p uploads/temp storage/temp-ai-exports logs private-uploads/company-registration \
  && chown -R app:app /app
 
 COPY infrastructure/docker/dgfy-api/entrypoint.sh /usr/local/bin/entrypoint.sh

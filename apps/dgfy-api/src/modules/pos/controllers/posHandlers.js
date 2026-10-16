@@ -20,6 +20,7 @@ import {
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
+    returnPosTransactionUseCase,
     overrideDeliveryFeeUseCase,
     cashRefundPosTransactionUseCase,
     externalRefundPosTransactionUseCase,
@@ -1374,6 +1375,22 @@ export const voidTransaction = async (req, res, next) => {
             payload: serverScopedPayload,
             user: actingUser
         });
+        if (result?.success && result.data?.cash_refund?.completed && !result.data.cash_refund.idempotent_replay) {
+            await trackProductUsageFromResult({
+                req,
+                user: actingUser,
+                eventType: 'pos_cash_refund_completed',
+                surface: 'pos_terminal',
+                action: 'cash_refund',
+                result,
+                successMetadataResolver: (data) => ({
+                    pos_transaction_id: data?.transaction?.pos_transaction_id || null,
+                    shift_id: data?.cash_refund?.cash_drawer_event?.pos_terminal_shift_id || null,
+                    cash_drawer_event_id: data?.cash_refund?.cash_drawer_event?.pos_cash_drawer_event_id || null,
+                    automatic: true
+                })
+            });
+        }
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({
@@ -1381,7 +1398,46 @@ export const voidTransaction = async (req, res, next) => {
                 data: result.data,
                 message: result.data?.pending
                     ? 'POS void request submitted for manager approval'
+                    : result.data?.cash_refund?.completed
+                        ? 'POS transaction voided and cash refund recorded'
+                        : result.data?.refund_pending
+                            ? 'POS transaction voided; cash refund remains pending'
                     : 'POS transaction voided',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const returnTransaction = async (req, res, next) => {
+    try {
+        const actingUser = posMutationUser(req);
+        const payload = req.validatedData || req.body || {};
+        const registeredTerminalId = String(req.posTerminalRegistration?.terminal_id || '').trim().toUpperCase();
+        const registeredTerminalLocationId = Number.parseInt(req.posTerminalRegistration?.location_id, 10);
+        const serverScopedPayload = {
+            ...payload,
+            ...(registeredTerminalId ? { terminal_id: registeredTerminalId } : {}),
+            ...(Number.isInteger(registeredTerminalLocationId) && registeredTerminalLocationId > 0
+                ? { terminal_location_id: registeredTerminalLocationId }
+                : {})
+        };
+        const result = await returnPosTransactionUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: serverScopedPayload,
+            user: actingUser
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.idempotent_replay
+                    ? 'POS return replayed'
+                    : 'POS return recorded',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -3327,6 +3383,7 @@ export default {
     openTerminalShift,
     switchTerminalShiftLocation,
     recordCashDrawerEvent,
+    returnTransaction,
     cashRefundTransaction,
     externalRefundTransaction,
     providerRefundTransaction,

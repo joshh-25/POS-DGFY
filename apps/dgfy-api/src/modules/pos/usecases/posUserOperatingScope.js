@@ -48,7 +48,8 @@ export const createAssertPosUserOperatingScope = ({ repository }) => async ({
                 reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE',
                 existing_terminal_id: conflicting.terminal_id || null,
                 existing_location_id: Number(conflicting.location_id),
-                existing_shift_id: conflicting.pos_terminal_shift_id || null
+                existing_shift_id: conflicting.pos_terminal_shift_id || null,
+                existing_opened_at: conflicting.opened_at || null
             }
         });
     }

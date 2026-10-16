@@ -42,16 +42,28 @@ const syncSnapshotItem = async ({ tenantId, entry }) => {
 export const syncTenantGeoCatalog = async ({ tenantId, itemSearchSnapshot = [] }) => {
     if (!tenantId || !Array.isArray(itemSearchSnapshot) || itemSearchSnapshot.length === 0) return;
 
+    const total = itemSearchSnapshot.length;
+    let failed = 0;
+    let firstItemName = null;
+    let firstError = null;
+
     for (const entry of itemSearchSnapshot) {
         try {
             await syncSnapshotItem({ tenantId, entry });
         } catch (error) {
-            logger.warn('[GeoCatalogSync] Failed to sync catalog item', {
-                tenantId,
-                itemName: entry?.item_name || null,
-                error: error?.message || 'unknown_error'
-            });
+            failed++;
+            if (failed === 1) {
+                firstItemName = entry?.item_name || null;
+                firstError = error?.message || 'unknown_error';
+            }
         }
+    }
+
+    if (failed > 0) {
+        const message = '[GeoCatalogSync] ' + failed + '/' + total
+            + ' catalog items failed to sync for tenant ' + tenantId
+            + ' (first error: ' + firstError + ')';
+        logger.warn(message, { tenantId, failed, total, firstItemName, firstError });
     }
 };
 

@@ -39,6 +39,22 @@ describe('buildFnbCatalogPresentation', () => {
     expect(result.visibleItems.map((item) => item.item_id)).toEqual(['b']);
   });
 
+  it('resolves an explicitly selected section when a QR catalog contains one section', () => {
+    const result = buildFnbCatalogPresentation({
+      activeSection: 'folder:10',
+      fnbViewModel: {
+        menuItems: fnbViewModel.menuItems.slice(0, 1),
+        menuSections: [fnbViewModel.menuSections[0]]
+      },
+      page: 1,
+      pageSize: 8,
+      sortOption: 'name_asc'
+    });
+
+    expect(result.resolvedSection).toBe('folder:10');
+    expect(result.visibleItems.map((item) => item.item_id)).toEqual(['a']);
+  });
+
   it('does not resolve a section by its sectionKey display text alone', () => {
     // The reviewer's exact concern: matching by the normalized `sectionKey` text instead of the
     // stable `sectionIdentity` would let this resolve -- it must not.
@@ -113,12 +129,16 @@ describe('buildFnbCatalogPresentation', () => {
       activeSection: '',
       fnbViewModel: {
         menuItems: [
-          { item_id: 3, name: 'Meal item', categorySortOrder: 2 },
-          { item_id: 1, name: 'Main item', categorySortOrder: 0 },
+          { item_id: 3, name: 'Meal item', folder_id: 30, categorySortOrder: 2 },
+          { item_id: 1, name: 'Main item', folder_id: 10, categorySortOrder: 0 },
           { item_id: 4, name: 'Unassigned item', categorySortOrder: null },
-          { item_id: 2, name: 'Shake item', categorySortOrder: 1 }
+          { item_id: 2, name: 'Shake item', folder_id: 20, categorySortOrder: 1 }
         ],
-        menuSections: []
+        menuSections: [
+          { sectionIdentity: 'folder:10', items: [] },
+          { sectionIdentity: 'folder:20', items: [] },
+          { sectionIdentity: 'folder:30', items: [] }
+        ]
       },
       page: 1,
       pageSize: 8,
@@ -126,6 +146,88 @@ describe('buildFnbCatalogPresentation', () => {
     });
 
     expect(result.visibleItems.map((item) => item.item_id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('orders All items by their highest-priority category membership, then alphabetically', () => {
+    const result = buildFnbCatalogPresentation({
+      activeSection: '',
+      fnbViewModel: {
+        menuItems: [
+          { item_id: 'burger', name: 'Burger', folder_id: 20, folder_sort_order: 0 },
+          { item_id: 'shrimp', name: 'Buttered Shrimp', folder_id: 30, folder_sort_order: 0 },
+          { item_id: 'adobo', name: 'Adobo', folder_id: 10, folder_sort_order: 2 },
+          {
+            item_id: 'grilled-onion',
+            name: 'Grilled Onion',
+            folder_id: 30,
+            folder_sort_order: 2,
+            secondary_categories: [{ folder_id: 10, folder_name: 'Viands', sort_order: 999 }]
+          },
+          { item_id: 'caldereta', name: 'Caldereta', folder_id: 10, folder_sort_order: 2 },
+          { item_id: 'uncategorized', name: 'Uncategorized item', folder_sort_order: null }
+        ],
+        menuSections: [
+          { sectionIdentity: 'folder:10', sortOrder: 2, items: [] },
+          { sectionIdentity: 'folder:20', sortOrder: 0, items: [] },
+          { sectionIdentity: 'folder:30', sortOrder: 0, items: [] }
+        ]
+      },
+      page: 1,
+      pageSize: 8,
+      sortOption: 'name_asc'
+    });
+
+    expect(result.visibleItems.map((item) => item.item_id)).toEqual([
+      'adobo',
+      'caldereta',
+      'grilled-onion',
+      'burger',
+      'shrimp',
+      'uncategorized'
+    ]);
+    expect(new Set(result.visibleItems.map((item) => item.item_id)).size).toBe(result.visibleItems.length);
+  });
+
+  it('keeps a selected category alphabetical even when its items have different category priorities', () => {
+    const result = buildFnbCatalogPresentation({
+      activeSection: 'folder:10',
+      fnbViewModel: {
+        menuItems: [],
+        menuSections: [
+          {
+            sectionIdentity: 'folder:10',
+            items: [
+              { item_id: 'z', name: 'Zucchini', folder_sort_order: 0 },
+              { item_id: 'a', name: 'Adobo', folder_sort_order: 3 }
+            ]
+          },
+          { sectionIdentity: 'folder:20', items: [] }
+        ]
+      },
+      page: 1,
+      pageSize: 8,
+      sortOption: 'name_asc'
+    });
+
+    expect(result.visibleItems.map((item) => item.item_id)).toEqual(['a', 'z']);
+  });
+
+  it('preserves an explicit price sort over category priority', () => {
+    const result = buildFnbCatalogPresentation({
+      activeSection: '',
+      fnbViewModel: {
+        menuItems: [
+          { item_id: 'viands', name: 'Adobo', folder_sort_order: 0, default_sale_price: 180 },
+          { item_id: 'burgers', name: 'Burger', folder_sort_order: 1, default_sale_price: 50 }
+        ],
+        menuSections: []
+      },
+      page: 1,
+      pageSize: 8,
+      sortOption: 'price_asc'
+    });
+
+    expect(result.visibleItems.map((item) => item.item_id)).toEqual(['burgers', 'viands']);
   });
 
   it('sorts and clamps the requested page before exposing visible items', () => {

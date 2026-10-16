@@ -526,19 +526,24 @@ finds something outstanding here, **stop rather than dispatching the sweep** —
 preflight — pinned target-ref scan" section's own `origin/staging` case above for why, and
 `../SKILL.md`'s "Compliance preflight sweep" section for what to do instead.
 
-## Explicit refresh after a delayed staging merge (#2266, Phase 474)
+## Routine pre-cut refresh and post-cut successor candidates (#2266, Phase 474; #2381, Phase 486)
 
-This is an operator-requested exception to #1660; it is never automatic. Verify the candidate's
-release has not merged to `main`, record the explicit request/reason, and keep the original candidate
-ID. Reconcile each staging repair and release-only repair into `develop` through reviewed PRs, or
-prove exact equivalent content is already present. Early backport of release-only repairs is
-permitted only for this refresh and must be documented; stop on unresolved differences.
+During an active staging soak, a later pinned `develop` SHA may advance `staging` through a routine
+refresh under the same candidate ID. No explicit delayed-production request is required; record a
+concise reason. This path ends at the release cut: cutting `release/<candidate_id>` from the
+qualified current `origin/staging` SHA freezes the production selection. Never refresh or retarget
+that candidate after the cut.
 
-Before cutting a refresh branch, copy the active release selection into v4 `release_history`,
-including its complete per-app map, release PR, and release-only repair lineage. Close the old
-unmerged release PR and retire its branch. Preserve the existing note and published mirror identity;
-extend cumulative included scope and candidate history, retaining `promotion_base_sha`. Pin the
-reconciled develop SHA after compliance reconciliation. Run:
+Before any refresh, reconcile every `fix/staging/*` repair into `develop` through a reviewed
+backport PR, or verify equivalent content is already present. Otherwise the refresh can revert the
+repair. A divergence or merge-hygiene signal is a hard stop until reconciled. Incoming develop work
+and staging defect repair are distinct paths: refresh branches start from pinned `develop`; repair
+branches start from current `origin/staging` and carry only the narrow repair. Release-only repairs
+stay on the frozen release branch and are not folded into a refresh.
+
+For a pre-cut refresh, preserve the original `promotion_base_sha` and one candidate note; extend its
+cumulative included scope and candidate history. Pin the reconciled develop SHA after compliance
+reconciliation. Run:
 
 ```sh
 node scripts/check-promotion-divergence.js --base origin/staging --head <pinned-develop-sha>
@@ -550,17 +555,36 @@ and checks both the original minor-floor obligation and non-regression from curr
 refresh branch suffix alone has no effect. Cut `to-staging/<candidate_id>-refresh-<seq>` from the
 pinned SHA and merge under ordinary review controls. Record its incoming develop SHA, actual staging
 result SHA, physical base SHA, parent candidate SHA, PR, reason, and `apps_touched` in the candidate
-manifest. The refresh sequence is independent of staging repair sequences and artifact `rN` values.
+manifest. Record the same initial source/result/base SHA lineage for the initial promotion, adding
+optional `base_staging_sha` to its initial revision for compatibility with existing v4 manifests.
+The refresh sequence is independent of staging repair sequences and artifact `rN` values.
 
-Set `refresh_in_progress` with no active release selection before the refresh begins. Build changed
-apps with fresh per-app immutable STAGING revisions; preserve valid untouched artifacts and include
-the complete selected/carry-forward set. The refreshed artifact origin is `staging_refresh` and
-parity requires the ordinary STAGING predecessor. Once merge and builds succeed, clear the active
-refresh marker, set status to `staging_soak`, and repeat observation and required qualification at
-the actual staging SHA. Cut a new `release/<candidate_id>` only after that qualification passes.
-Archived observation, parity, or optional quality-suite evidence cannot qualify the refreshed SHA.
-A failed refresh remains unqualified and cannot silently restore the archived selection. If the
-release already merged to `main`, reject refresh and use the post-release procedure.
+Set `refresh_in_progress` with no release selection before the refresh begins. Build changed
+apps with fresh per-app immutable STAGING revisions and record artifacts only for apps selected by
+the content-equivalence build plan; preserve untouched apps' prior artifacts and per-app source-SHA
+lineage. If no app inputs changed, record `apps_touched: []` and `artifacts: []` together, and put
+the skipped-build-plan evidence link in the manifest `reason`. The refreshed artifact origin is
+`staging_refresh` and parity requires the ordinary STAGING predecessor for any app rebuilt. Once
+merge and builds succeed, clear the active refresh marker, set status to `staging_soak`, and repeat
+observation and required qualification at the actual staging SHA even when no app was rebuilt. Store
+a passing `staging_observation` record with the exact SHA, run ID or URL, observation time, and result
+before cutting a new release. The v4 validator keeps this field optional for older in-flight
+manifests, but it must be present and match `release_revision.source_staging_sha` for every new cut.
+Archived observation, parity, or optional quality-suite evidence cannot qualify the refreshed SHA. A
+failed refresh remains unqualified and cannot silently restore the archived selection.
+
+After a release cut, staging can advance under a successor candidate with a new `YYYY-MM-DD-NN` ID,
+its own manifest and release note, and a `predecessor_candidate_id` link. Do not cut the successor's
+release branch until the predecessor release PR is merged to `main` or explicitly withdrawn and
+archived. A withdrawn release stays bound to its original candidate record; the successor gets a new
+ID. The successor's floor is checked against then-current `origin/staging`, so an app already
+bumped by predecessor content needs the next minor floor if changed again. Its note's `## Included`
+section lists its own scope and explicitly identifies any predecessor scope carried into it.
+
+Each refresh allocates fresh per-app immutable `rN` artifacts. Never overwrite published tags or
+reuse archived artifacts for different contents. Successor candidates have their own artifact
+lineage. If the release already merged to `main`, it cannot be withdrawn or refreshed; use the
+post-release procedure.
 
 Legacy v1-v3 candidates need a reviewed, evidence-backed `promotion_base_sha` note amendment and
 backport before conversion to v4. Missing evidence is a hard stop. The production tenant-schema
@@ -569,9 +593,9 @@ authorization stay mandatory.
 
 ## Candidate repair after the staging merge
 
-After the `to-staging/<candidate_id>` PR merges, treat the candidate as frozen. Do not cut a new
-promotion branch from `develop` and do not merge `develop` into `staging` to pick up a fix. For a
-code-level staging failure, create the repair branch from the current staging head:
+After the `to-staging/<candidate_id>` PR merges, the candidate may receive routine pre-cut refreshes
+from pinned `develop` while no release branch exists. Do not use that path to pick up a staging
+defect; for a code-level staging failure, create the repair branch from the current staging head:
 
 ```bash
 git fetch origin staging
@@ -850,8 +874,9 @@ CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID
 # built from the frozen develop SHA. For a staging repair, allocate only rebuilt apps:
 #   node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/<app> \
 #     --floor "$(node -p "require('./apps/<app>/package.json').version")" --revision <repair-sha>
-# (Same-source retry reuses its own N -- idempotent, not a new allocation. Docker login is
-# required to inspect GHCR revision tags.)
+# (Same-source retry reuses its own N -- idempotent, not a new allocation. Docker login is required
+# to inspect GHCR revision tags -- on an auth/403 error from `allocate-artifact-revision.js` or
+# `promote-image-alias.js`, run `gh auth refresh -h github.com -s read:packages` once, then retry.)
 REV_API=<rN-for-dgfy-api>
 REV_MIGRATION_RUNNER=<independent-rN-for-dgfy-migration-runner>
 REV_IMS=<rN-for-dgfy-ims>
@@ -966,8 +991,8 @@ gh workflow run deploy-main.yml -f deploy=true \
 On the #1007 path there is no manifest, so each app-group's revision is allocated here, at
 release-cut time — one `allocate-artifact-revision.js` call per touched app-group (a direct
 production hotfix increments the patch and uses the same paired revision/canonical tags
-without a staging predecessor — it still threads a revision here). Untouched groups stay
-empty (their builds skip, their artifacts stand):
+without a staging predecessor — it still threads a revision here). Other untouched groups stay
+empty (their builds skip, their artifacts stand); `build_api` selects both backends as shown below:
 
 ```bash
 # Per touched app (example: dgfy-pos at its bumped floor):
@@ -975,8 +1000,19 @@ REV_POS="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dg
   --floor "$(node -p "require('./apps/dgfy-pos/package.json').version")" \
   --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
 REV_POS="r$REV_POS"
-# ... repeat per touched app into REV_API / REV_MIGRATION_RUNNER / REV_IMS / REV_POS / REV_STOREFRONT / REV_OPIS,
-# leaving untouched groups empty.
+# Backend pair (dgfy-api/dgfy-migration-runner) -- build_api always rebuilds BOTH; on this
+# exception path (no staging leg) BOTH must get their own allocated revision even if only
+# one app's source actually changed -- see deploy-main.yml's release_revision_migration_runner
+# input description and incident-responder/SKILL.md's "build_api pairing consequence" note.
+REV_API="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dgfy-api \
+  --floor "$(node -p "require('./apps/dgfy-api/package.json').version")" \
+  --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
+REV_API="r$REV_API"
+REV_MIGRATION_RUNNER="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dgfy-migration-runner \
+  --floor "$(node -p "require('./apps/dgfy-migration-runner/package.json').version")" \
+  --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
+REV_MIGRATION_RUNNER="r$REV_MIGRATION_RUNNER"
+# ... allocate each other selected app-group the same way, leaving unselected groups empty.
 ```
 
 ```bash
@@ -1008,8 +1044,10 @@ node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/$C
 # the develop SHA release/<label> was cut from (the same $CANDIDATE_SOURCE_SHA captured in that
 # section), plus the paired bare alias when a revision was threaded (one --revision per
 # touched app is NOT supported here -- thread the single touched app's revision; a multi-app
-# #1007 release verifies each app in its own --source-sha run):
-node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA" --revision "$REV_POS"
+# #1007 release verifies each app in its own --source-sha run). Pass `--apps <that-app>` on each
+# run so the other six apps' expected `no-candidate-identity` state does not print as a
+# false-positive `mismatch`:
+node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA" --revision "$REV_POS" --apps dgfy-pos
 ```
 
 `PASS` includes both a real label match and a documented "no predecessor"/"no candidate identity"

@@ -7,7 +7,7 @@ const noopUseCase = jest.fn();
 jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
     getCompanyRegistrationStatusUseCase: noopUseCase,
     resubmitCompanyRegistrationUseCase: noopUseCase,
-    uploadCompanyRegistrationFileUseCase: noopUseCase,
+    uploadCompanyRegistrationApplicationFileUseCase: noopUseCase,
     listAdminCompanyRegistrationUseCase: noopUseCase,
     downloadAdminCompanyRegistrationUploadUseCase: mockDownloadAdminCompanyRegistrationUploadUseCase,
     revokeAdminCompanyRegistrationUploadUseCase: noopUseCase

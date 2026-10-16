@@ -1,10 +1,11 @@
 import { useCallback, useEffect } from 'react';
+import { appBasePath } from '../../app/runtime/storefrontRuntime.js';
 
 export function useDiscoveryNavActions({
-  activeDiscoveryNavItem,
   isDiscoveryMobileViewport,
   setActiveDiscoveryNavItem,
-  setIsDiscoveryNavMenuOpen
+  setIsDiscoveryNavMenuOpen,
+  onNavigateToDiscovery
 }) {
   useEffect(() => {
     if (!isDiscoveryMobileViewport) {
@@ -30,30 +31,39 @@ export function useDiscoveryNavActions({
     setIsDiscoveryNavMenuOpen(false);
 
     if (nextItem === 'Explore') {
+      if (typeof onNavigateToDiscovery === 'function') {
+        setActiveDiscoveryNavItem(nextItem);
+        onNavigateToDiscovery(nextItem);
+        return;
+      }
       handleDiscoveryExploreClick();
       return;
     }
 
     if (nextItem === 'Solutions' && typeof window !== 'undefined') {
       setActiveDiscoveryNavItem('Solutions');
+      if (typeof onNavigateToDiscovery === 'function') {
+        onNavigateToDiscovery(nextItem);
+        return;
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
-    if (nextItem === 'Contact Us' && typeof document !== 'undefined') {
-      const contactAnchor = document.getElementById(
-        activeDiscoveryNavItem === 'Solutions' ? 'solutions-contact-anchor' : 'discovery-contact-anchor'
-      );
-      if (contactAnchor && typeof contactAnchor.scrollIntoView === 'function') {
-        contactAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+    if (nextItem === 'Contact Us' && typeof window !== 'undefined') {
+      const basePath = appBasePath === '/' ? '' : appBasePath;
+      const contactPath = `${basePath}/contact-us`;
+      const currentPath = String(window.location.pathname || '').replace(/\/+$/, '') || '/';
+      if (currentPath === contactPath) return;
+      window.history.pushState({}, '', contactPath);
+      window.dispatchEvent(new PopStateEvent('popstate'));
       return;
     }
 
     setActiveDiscoveryNavItem(nextItem);
   }, [
-    activeDiscoveryNavItem,
     handleDiscoveryExploreClick,
+    onNavigateToDiscovery,
     setActiveDiscoveryNavItem,
     setIsDiscoveryNavMenuOpen
   ]);

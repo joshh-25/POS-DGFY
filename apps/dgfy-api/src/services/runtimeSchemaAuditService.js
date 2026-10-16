@@ -86,10 +86,15 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260914000002-create-pos-location-item-overrides.cjs',
     '20260914000003-add-job-order-location-scope.cjs',
     '20260914000004-create-pos-terminal-device-enrollment.cjs',
-    '20260921000002-add-employee-credit-split-tender.cjs'
+    '20260921000002-add-employee-credit-split-tender.cjs',
+    '20260926000001-create-company-registration-drafts-and-uploads.cjs',
+    '20261001000001-create-company-registration-uploads.cjs',
+    '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs',
+    '20261008000001-extend-company-registration-uploads-for-drafts.cjs',
+    '20261013000001-add-pos-item-void-state.cjs'
 ]);
 
-const REQUIRED_TABLE_COLUMNS = Object.freeze({
+export const REQUIRED_TABLE_COLUMNS = Object.freeze({
     tenants: [
         'id',
         'name',
@@ -106,6 +111,60 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'compliance_mode_revert_at',
         'compliance_cycle_version',
         'compliance_revert_last_cycle_version'
+    ],
+    company_registration_drafts: [
+        'id',
+        'dgfy_account_id',
+        'registration_email_snapshot',
+        'status',
+        'current_step',
+        'draft_payload',
+        'submission_snapshot',
+        'legal_terms_snapshot',
+        'optimistic_version',
+        'submitted_at',
+        'reviewed_at',
+        'materialization_status',
+        'materialization_error',
+        'materialization_snapshot',
+        'materialized_tenant_id',
+        'materialized_application_id',
+        'materialized_at',
+        'created_at',
+        'updated_at'
+    ],
+    company_registration_uploads: [
+        'id',
+        'application_id',
+        'attempt_id',
+        'asset_kind',
+        'registration_draft_id',
+        'dgfy_account_id',
+        'category',
+        'storage_key',
+        'original_filename',
+        'original_name',
+        'sanitized_name',
+        'mime_type',
+        'byte_size',
+        'file_size',
+        'sha256',
+        'extraction_status',
+        'review_status',
+        'upload_status',
+        'validation_status',
+        'error_message',
+        'position',
+        'uploaded_at',
+        'expires_at',
+        'revoked_at',
+        'revoked_by_admin_id',
+        'removed_at',
+        'removed_by_account_id',
+        'purged_at',
+        'metadata',
+        'created_at',
+        'updated_at'
     ],
     users: [
         'user_id',
@@ -287,6 +346,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'cancelled_at',
         'metadata'
     ],
+    pos_z_reading_snapshots: ['reading_payload_hash'],
     employee_credit_accounts: [
         'account_id',
         'user_id',
@@ -384,7 +444,11 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'stock_exempt_reason',
         'item_name_snapshot',
         'sku_snapshot',
-        'item_discount_snapshot'
+        'item_discount_snapshot',
+        'voided_quantity',
+        'voided_at',
+        'voided_by',
+        'void_reason'
     ],
     pos_terminal_shifts: [
         'pos_terminal_shift_id',
@@ -501,7 +565,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     ]
 });
 
-const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
+export const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
     items: {
         category: {
             enumValues: ['raw_material', 'packaging', 'product', 'supplies', 'service']
@@ -517,6 +581,11 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
     job_orders: {
         source_location_id: { allowNull: true },
         destination_location_id: { allowNull: true }
+    },
+    pos_transaction_adjustments: {
+        adjustment_type: {
+            enumValues: ['void', 'cash_refund', 'external_refund', 'provider_refund', 'employee_credit_reversal', 'return']
+        }
     },
     pos_transaction_lines: {
         stock_effect_type: { allowNull: false },
@@ -546,10 +615,13 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
         tenant_id: { allowNull: true },
         tenant_company_token: { allowNull: true },
         entity_type: { allowNull: false }
+    },
+    company_registration_uploads: {
+        extraction_status: { enumValues: ['pending', 'processed'] }
     }
 });
 
-const OPTIONAL_TABLE_COLUMNS = Object.freeze({
+export const OPTIONAL_TABLE_COLUMNS = Object.freeze({
     tenants: ['subscription_status', 'current_period_end', 'payment_method', 'rejection_reason']
 });
 

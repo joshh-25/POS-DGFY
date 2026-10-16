@@ -21,10 +21,10 @@ export default function PosFilterDialogShell({
 }) {
   const isMobileDialog = mobile && !tabletPortrait;
   const isDesktopFilterDialog = mode === 'filters' && !isMobileDialog;
-  const overlayClassName = isMobileDialog || tabletPortrait
+  const defaultOverlayClassName = isMobileDialog || tabletPortrait
     ? 'bg-slate-950/60 backdrop-blur-sm'
     : 'bg-transparent backdrop-blur-none';
-  const resolvedOverlayClassName = overlayClassNameOverride || overlayClassName;
+  const resolvedOverlayClassName = overlayClassNameOverride || defaultOverlayClassName;
   const contentClassName = [
     'flex',
     mode === 'calendar'

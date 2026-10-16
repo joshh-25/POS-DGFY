@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.12
-verification_evidence: voucher_pricelist_component_tests,pos_targeted_lint,pos_lint,pos_build,git_diff_check,compliance_check
+verification_evidence: voucher_pricelist_component_tests,pos_targeted_lint,pos_lint,pos_build,architecture_checks,git_diff_check,compliance_check
 rollback_note: Revert the scoped Voucher/Pricelist presentation, shared POS picker, and accessibility changes; no backend, database, migration, or API contract changes are included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -57,11 +57,11 @@ behavior.
 
 ## Verification Evidence
 
-The scoped Voucher/Pricelist/date-time/accessibility suite passed (10 test files, 44 tests),
-targeted ESLint passed without findings, the POS lint passed, the POS production build passed, and
-`git diff --check` passed. Backend architecture guardrails were not run because no backend files
-are included. The local browser route rendered the POS terminal login wall; authenticated
-Voucher/Pricelist visual smoke was not automated because no credentials were supplied.
+The scoped Voucher/Pricelist/date-time/accessibility suite passed (11 test files, 58 tests),
+targeted ESLint passed without findings, the POS lint passed, the POS production build passed,
+architecture guardrails passed, and `git diff --check` passed. The local browser route rendered the
+POS terminal login wall; authenticated Voucher/Pricelist visual smoke was not automated because no
+credentials were supplied.
 
 ### Atomic batch audit trail
 

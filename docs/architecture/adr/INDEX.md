@@ -51,9 +51,9 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0026 | [Browser Session Cookie Authority](0026-browser-session-cookie-authority.md) | `accepted` | browser_session_cookie_authority | 2027-01-08 | 0 |
 | 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `superseded` | paymongo_qrph_platform_split_settlement | 2026-07-30 | 0 |
 | 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-03-14 | 0 |
-| 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `amended` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 6 |
+| 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `amended` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 7 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
-| 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2027-03-15 | 0 |
+| 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2027-04-10 | 1 |
 | 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `amended` | standalone_dgfy_api_service | 2027-01-08 | 0 |
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `amended` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
 | 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `amended` | manual_delivery_job_foundation | 2027-01-10 | 0 |
@@ -65,7 +65,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0040 | [On-Hand Weighted Average Cost Valuation Across Inventory, PO, JO, Suppliers, and Reporting](0040-weighted-average-cost-valuation-and-variance-analytics.md) | `accepted` | weighted_average_cost_valuation_and_variance_analytics | 2026-10-20 | 0 |
 | 0041 | [Hospitality Mode PMS And Stay Management](0041-hospitality-mode-pms-stay-management.md) | `accepted` | hospitality_mode_pms_stay_management | 2026-11-19 | 0 |
 | 0042 | [BIR RMO 24-2023 Fiscal Document and Accreditation Closure](0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md) | `accepted` | bir_rmo_24_2023_fiscal_document_and_accreditation_closure | 2026-12-01 | 0 |
-| 0043 | [Standalone Native Hardware POS Runtime](0043-standalone-native-hardware-pos-runtime.md) | `amended` | standalone_native_hardware_pos_runtime | 2026-12-19 | 0 |
+| 0043 | [Standalone Native Hardware POS Runtime](0043-standalone-native-hardware-pos-runtime.md) | `amended` | standalone_native_hardware_pos_runtime | 2027-04-10 | 0 |
 | 0044 | [POS Terminal Device Pairing](0044-pos-terminal-device-pairing.md) | `amended` | pos_terminal_device_pairing | 2027-03-14 | 0 |
 | 0045 | [Shared POS Receipt Renderer](0045-shared-pos-receipt-renderer.md) | `accepted` | shared_pos_receipt_renderer | 2027-01-23 | 0 |
 | 0046 | [Verified Storefront Custom Domains](0046-verified-storefront-custom-domains.md) | `accepted` | verified_storefront_custom_domains | 2026-09-04 | 0 |
@@ -98,12 +98,12 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `amended` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
 | 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 17 |
 | 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `amended` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 13 |
-| 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `accepted` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
+| 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `amended` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `amended` | customer_delivery_fee_modes | 2027-03-01 | 4 |
-| 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `proposed` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
+| 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `amended` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 | 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `amended` | item_multi_category_membership | 2027-03-03 | 6 |
-| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 9 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 12 |
 | 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `amended` | production_release_record_and_release_notes | 2027-03-23 | 3 |
 | 0083 | [Courier Cash Custody and Remittance for COD Deliveries](0083-courier-cash-custody-and-remittance.md) | `accepted` | courier_cash_custody_remittance | 2027-03-13 | 9 |
 | 0084 | [POS Business Admin Operational Expense Ledger](0084-pos-business-admin-operational-expense-ledger.md) | `accepted` | pos_business_admin_operational_expense_ledger | 2027-03-17 | 5 |
@@ -112,6 +112,13 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0087 | [Dedicated DGFY Back Office as a Fourth Frontend App (`apps/dgfy-opis`)](0087-dedicated-back-office-fourth-frontend-app-opis.md) | `accepted` | opis_fourth_frontend_app | 2027-03-29 | 5 |
 | 0088 | [POS Has No Back Office Routes or OPIS Handoff](0088-pos-has-no-back-office-routes-or-opis-handoff.md) | `proposed` | opis_fourth_frontend_app | 2027-03-30 | 4 |
 | 0089 | [Platform Admin as a Fifth Frontend App (`apps/dgfy-admin`) with Cross-Host `/admin` Routing](0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md) | `accepted` | dgfy_admin_fifth_frontend_app | 2027-04-03 | 4 |
+| 0090 | [Tenant Intake Proposals and Human Confirmation](0090-tenant-intake-proposal-confirmation.md) | `accepted` | tenant_intake_proposal_confirmation | 2027-04-09 | 0 |
+| 0091 | [Tenant-Scoped Customer CRM and Partner References](0091-tenant-scoped-customer-crm.md) | `proposed` | tenant_scoped_customer_crm | 2027-04-10 | 3 |
+| 0092 | [Partner Integration Administration and Tenant Attachment](0092-partner-integration-administration-and-tenant-attachment.md) | `proposed` | partner_integration_administration_and_tenant_attachment | 2027-04-10 | 0 |
+| 0093 | [Third-Party Partner Integration, Engine Authority, and Attachments](0093-third-party-partner-integration-engine-authority-and-attachments.md) | `proposed` | third_party_partner_integration_contract | 2027-04-10 | 5 |
+| 0094 | [Outbound SMS delivery contract, log, and PII retention](0094-outbound-sms-delivery-contract-log-and-pii-retention.md) | `amended` | outbound_sms_delivery_contract_and_log | 2027-04-10 | 0 |
+| 0095 | [Offline POS Sync Contract Convergence](0095-offline-pos-sync-contract-convergence.md) | `proposed` | pos_offline_sync_contract | 2027-04-10 | 4 |
+| 0096 | [Contact Inquiry Provider Configuration](0096-contact-inquiry-provider-configuration.md) | `proposed` | contact_inquiry_provider_configuration | 2027-04-14 | 0 |
 
 ## Renumbered (collision stubs)
 

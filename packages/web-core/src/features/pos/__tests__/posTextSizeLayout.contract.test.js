@@ -10,9 +10,12 @@ const readSource = (relativePath) => fs.readFileSync(path.resolve(__dirname, rel
 
 describe('POS text-size layout hardening contracts', () => {
     let checkoutSource = '';
+    let currentSaleActionsSource = '';
     let itemsSource = '';
+    let responsiveCardSource = '';
     let layoutSource = '';
     let textSizeControlSource = '';
+    let dropdownSource = '';
     let sidebarSource = '';
     let historySource = '';
     let appStyles = '';
@@ -24,9 +27,15 @@ describe('POS text-size layout hardening contracts', () => {
             readSource('../hooks/usePosCatalogWorkflow.js'),
             readSource('../utils/posCatalogWorkflow.js'),
         ].join('\n');
-        itemsSource = readSource('../components/TerminalOperationsWorkspace.jsx');
+        currentSaleActionsSource = readSource('../components/PosCurrentSaleActions.jsx');
+        itemsSource = readSource('../components/PosItemsWorkspace.jsx');
+        responsiveCardSource = readSource('../components/PosItemResponsiveCard.jsx');
         layoutSource = readSource('../components/TerminalPageLayout.jsx');
         textSizeControlSource = readSource('../components/PosTextSizeControl.jsx');
+        dropdownSource = [
+            readSource('../components/PosDropdownSelect.jsx'),
+            readSource('../../../components/ui/DropdownSelect.jsx'),
+        ].join('\n');
         sidebarSource = readSource('../components/TerminalWorkspaceSidebar.jsx');
         historySource = readSource('../components/POSTransactionHistoryPanel.jsx');
         appStyles = readSource('../../../index.css');
@@ -46,6 +55,24 @@ describe('POS text-size layout hardening contracts', () => {
         expect(sidebarSource).toContain('break-words whitespace-normal line-clamp-2 text-[10.5px]');
         expect(checkoutSource).toContain('block max-w-full line-clamp-2 text-[13px]');
         expect(checkoutSource).toContain('break-words line-clamp-2 text-[10px]');
+    });
+
+    it('keeps Sell action labels readable at every POS text size', () => {
+        expect(currentSaleActionsSource).toContain(
+            "const actionLabelClassName = 'w-full min-w-0 break-words text-center text-[11px] font-extrabold leading-[1.15] line-clamp-2 sm:text-xs';"
+        );
+        expect(currentSaleActionsSource).toContain('flex h-auto min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
+        expect(currentSaleActionsSource).not.toContain('whitespace-nowrap text-center text-[10px]');
+        expect(appStyles).toContain('height: max(3.5rem, calc(3.5rem * var(--pos-text-size-scale, 1)));');
+        expect(appStyles).toContain('min-height: max(3.5rem, calc(3.5rem * var(--pos-text-size-scale, 1)));');
+        expect(appStyles).toContain('max-height: max(3.5rem, calc(3.5rem * var(--pos-text-size-scale, 1)));');
+        expect(appStyles).toContain('body[data-pos-text-size="normal"] .dgfy-pos-current-sale-actions > button');
+        expect(appStyles).toContain('padding: 0.25rem;');
+        expect(appStyles).toContain('line-height: 0.875rem;');
+        expect(appStyles).toContain('screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px)');
+        expect(appStyles).toContain('white-space: normal;');
+        expect(appStyles).toContain('line-height: calc(0.875rem * var(--pos-text-size-scale, 1));');
+        expect(appStyles).toContain('font-size: calc(0.6875rem * var(--pos-text-size-scale, 1));');
     });
 
     it('keeps dialogs and history actions bounded and scrollable at larger text sizes', () => {
@@ -68,7 +95,9 @@ describe('POS text-size layout hardening contracts', () => {
     it('keeps the Items catalog readable when text size grows', () => {
         expect(itemsSource).toContain('pos-items-desktop-toolbar');
         expect(itemsSource).toContain('pos-items-desktop-actions');
-        expect(itemsSource).toContain('pos-items-desktop-card-grid');
+        expect(responsiveCardSource).toContain('pos-items-responsive-card-top');
+        expect(appStyles).toContain('grid-template-columns: repeat(auto-fill, minmax(max(18rem, calc((100% - 1.5rem) / 4)), 1fr));');
+        expect(appStyles).toContain('grid-template-columns: repeat(auto-fill, minmax(max(20rem, calc((100% - 1.5rem) / 4)), 1fr));');
         expect(appStyles).toContain('body[data-pos-text-size="large"] .dgfy-pos-items-catalog-results');
         expect(appStyles).toContain('grid-auto-rows: minmax(8rem, auto);');
         expect(appStyles).toContain('body[data-pos-text-size="extra-large"] .dgfy-pos-items-catalog-results');
@@ -81,7 +110,8 @@ describe('POS text-size layout hardening contracts', () => {
         expect(appStyles).toContain('aspect-ratio: auto;');
         expect(appStyles).toContain('touch-action: pan-x;');
         expect(appStyles).toContain('width: max-content;');
-        expect(textSizeControlSource).toContain('pos-text-size-control__option flex w-full items-center justify-between');
+        expect(textSizeControlSource).toContain('optionClassName="pos-text-size-control__option"');
+        expect(dropdownSource).toContain("const DEFAULT_OPTION_CLASS_NAME = 'flex w-full items-center justify-between");
         expect(appStyles).toContain('.pos-text-size-control__option:not([aria-selected="true"]):hover');
         expect(appStyles).toContain('body[data-pos-text-size="large"] .pos-items-desktop-toolbar');
         expect(appStyles).toContain('flex-wrap: nowrap;');
@@ -104,11 +134,14 @@ describe('POS text-size layout hardening contracts', () => {
         expect(appStyles).toContain('width: 2.5rem !important;');
     });
 
-    it('keeps the original presentation for normal desktop Items', () => {
-        expect(appStyles).toContain('@media screen and (min-width: 1280px) and (hover: hover) and (pointer: fine)');
-        expect(appStyles).toContain('body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics > div > div');
-        expect(appStyles).toContain('display: block;');
-        expect(appStyles).toContain('grid-auto-rows: max-content;');
-        expect(appStyles).toContain('scrollbar-color: transparent transparent;');
+    it('uses the reference card grid at normal text size without widening one-result searches', () => {
+        const responsiveRules = appStyles.slice(appStyles.lastIndexOf('/* POS > Items tablet/desktop catalog cards.'));
+
+        expect(responsiveRules).toContain('grid-template-columns: repeat(auto-fill, minmax(max(16rem, calc((100% - 1.5rem) / 4)), 1fr));');
+        expect(responsiveRules).toContain('grid-auto-rows: max-content;');
+        expect(responsiveRules).toContain('min-height: 13rem;');
+        expect(responsiveRules).toContain('max-height: none;');
+        expect(responsiveRules).toContain('grid-template-columns: repeat(auto-fill, minmax(max(18rem, calc((100% - 1.5rem) / 4)), 1fr));');
+        expect(responsiveRules).toContain('grid-template-columns: repeat(auto-fill, minmax(max(20rem, calc((100% - 1.5rem) / 4)), 1fr));');
     });
 });

@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-09-15
-review_by: 2027-03-15
+last_reviewed: 2026-10-10
+review_by: 2027-04-10
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
 ---
@@ -145,6 +145,17 @@ profiles inside the selected tenant, not a separate credential authority.
 5. Closing the final POS shift does not change Storefront ordering availability.
 
 ## Amendments
+
+### 2026-10-10: Normalized terminal identity target (#798)
+
+Decision 4's current runtime remains backed by tenant settings until a separately planned schema
+convergence. For the normalized DGFY schema target, use the existing
+`dgfy_business_*.terminal_identities` table described in `docs/database/dgfy-foundation.md` and
+`docs/features/POS_MULTI_TERMINAL_CONSISTENCY_MODEL.md`; do not introduce a competing
+`pos_terminals` identity table. This amendment authorizes no migration, runtime switch, pairing
+secret storage, or device-enrollment change. The omitted per-terminal pairing and operational
+fields remain subject to #800's design and must be reconciled with this target before implementation.
+This is a `[default]` storage-direction amendment; no `[binding]` clause changes.
 
 ### 2026-08-08: Per-Operator Day-Close Confirmation PIN
 
@@ -309,3 +320,26 @@ profiles inside the selected tenant, not a separate credential authority.
   tenant-schema drift repair so the session query's optional role association
   exists for every active local tenant; no existing user or business row was
   rewritten.
+
+### 2026-10-14: Unified Global POS PIN for Protected Cashier Actions (Phase 502)
+
+- A tenant-local POS user has one write-only global POS PIN, stored in the
+  existing `users.pos_cashier_pin_hash` field. The same PIN may authorize
+  operator authentication/takeover, governed discounts, item or transaction
+  void/refund confirmation, cash-drawer/refund actions, and Z-reading/day-close
+  confirmation when the user has the separate permission for that action.
+- The PIN is an authentication factor only. It does not grant permissions,
+  location or terminal scope, shift/attendance eligibility, or manager approval;
+  each protected operation continues to enforce those server-side policies.
+- OPIS remains the admin configuration surface for cashier permissions and
+  PIN reset. A cashier configures their own tenant-local global PIN from the
+  selected company card in DGFY Account → Business, after re-entering the
+  DGFY account password. Setting or resetting the global PIN clears legacy
+  approval/day-close hashes and lockout state. API responses expose
+  configuration flags only and never return the PIN or hash.
+- Existing legacy approval/day-close hashes remain a temporary compatibility
+  fallback until the global PIN is saved or reset. The fallback is tenant-local
+  and never crosses DGFY companies; drawer authorization requires the canonical
+  global hash.
+- This amendment adds no schema or migration and does not use IMS as a feature
+  configuration surface.

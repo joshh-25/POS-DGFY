@@ -1,17 +1,19 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 
-const { checkoutTerminalPropsSpy, playOrderAlertWithIminBridge } = vi.hoisted(() => ({
+const { checkoutTerminalPropsSpy, playOrderAlertWithIminBridge, stopOrderAlertWithIminBridge } = vi.hoisted(() => ({
   checkoutTerminalPropsSpy: vi.fn(),
-  playOrderAlertWithIminBridge: vi.fn()
+  playOrderAlertWithIminBridge: vi.fn(),
+  stopOrderAlertWithIminBridge: vi.fn()
 }));
 
 vi.mock('../utils/iminHardwareBridge.js', () => ({
-  playOrderAlertWithIminBridge
+  playOrderAlertWithIminBridge,
+  stopOrderAlertWithIminBridge
 }));
 
 vi.mock('../components/POSCheckoutTerminal.jsx', () => ({
@@ -90,6 +92,11 @@ const renderLayoutWithProps = (overrides = {}) => render(
 );
 
 describe('TerminalPageLayout capability notice', () => {
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -243,7 +250,7 @@ describe('TerminalPageLayout capability notice', () => {
     expect(playOrderAlertWithIminBridge).toHaveBeenCalledWith('new_order');
   });
 
-  it('does not play a native order alert when the device setting is disabled', () => {
+  it('still shows the new-order modal when the device sound setting is disabled', () => {
     const initialOrders = [
       { pos_transaction_id: 201, customer_name: 'Guest A' }
     ];
@@ -276,5 +283,265 @@ describe('TerminalPageLayout capability notice', () => {
     );
 
     expect(playOrderAlertWithIminBridge).not.toHaveBeenCalled();
+    expect(screen.getByTestId('pos-incoming-order-notification-dialog')).toBeTruthy();
+  });
+
+  it('suppresses the new-order modal when popup notifications are disabled but keeps the notification badge', async () => {
+    const initialOrders = [
+      { pos_transaction_id: 251, customer_name: 'Existing order' }
+    ];
+    const { rerender } = renderLayoutWithProps({
+      queueLocationScopeId: 8,
+      incomingOrderPopupEnabled: false,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: initialOrders
+      }
+    });
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={8}
+          incomingOrderPopupEnabled={false}
+          incomingOrdersState={{
+            loading: false,
+            accessState: 'allowed',
+            orders: [
+              ...initialOrders,
+              { pos_transaction_id: 252, customer_name: 'Popup disabled' }
+            ]
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('pos-incoming-order-notification-dialog')).toBeNull();
+      expect(screen.getAllByTestId('pos-notification-badge').every((badge) => badge.textContent === '2')).toBe(true);
+    });
+    expect(playOrderAlertWithIminBridge).toHaveBeenCalledWith('new_order');
+  });
+
+  it('limits a sound-only incoming-order alert to seven seconds', async () => {
+    vi.useFakeTimers();
+    playOrderAlertWithIminBridge.mockReturnValue({
+      handled: true,
+      result: { success: true }
+    });
+
+    const initialOrders = [{ pos_transaction_id: 261, customer_name: 'Existing order' }];
+    const { rerender } = renderLayoutWithProps({
+      queueLocationScopeId: 8,
+      incomingOrderPopupEnabled: false,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: initialOrders
+      }
+    });
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={8}
+          incomingOrderPopupEnabled={false}
+          incomingOrdersState={{
+            loading: false,
+            accessState: 'allowed',
+            orders: [...initialOrders, { pos_transaction_id: 262, customer_name: 'Sound only' }]
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(playOrderAlertWithIminBridge).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(playOrderAlertWithIminBridge).toHaveBeenCalledTimes(4);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(playOrderAlertWithIminBridge).toHaveBeenCalledTimes(4);
+  });
+
+  it('opens a detail modal for each newly received order and keeps Close on the current view', async () => {
+    const initialOrders = [
+      { pos_transaction_id: 301, customer_name: 'Existing order' }
+    ];
+    const { rerender } = renderLayoutWithProps({
+      queueLocationScopeId: 9,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: initialOrders
+      }
+    });
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={9}
+          incomingOrdersState={{
+            loading: false,
+            accessState: 'allowed',
+            orders: [
+              ...initialOrders,
+              {
+                pos_transaction_id: 302,
+                customer_name: 'johss',
+                storeCustomer: { name: 'John Smith' },
+                order_method: 'pickup',
+                payment_type: 'cash',
+                fulfillment_status: 'placed',
+                total_amount: 125,
+                created_at: '2026-10-10T08:00:00.000Z',
+                lines: [{ item_id: 1, item: { name: 'Coffee' }, quantity: '2.000000000000' }]
+              }
+            ]
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    const notificationDialog = await screen.findByTestId('pos-incoming-order-notification-dialog');
+    expect(notificationDialog.textContent).toContain('John Smith');
+    expect(notificationDialog.textContent).not.toContain('johss');
+    expect(screen.getByText('Coffee')).toBeTruthy();
+    expect(notificationDialog.textContent).toContain('× 2');
+    expect(notificationDialog.textContent).not.toContain('2.000000000000');
+    expect(screen.getByText('₱125.00')).toBeTruthy();
+
+    stopOrderAlertWithIminBridge.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('pos-incoming-order-notification-dialog')).toBeNull();
+    });
+    expect(stopOrderAlertWithIminBridge).toHaveBeenCalledTimes(1);
+    expect(baseProps.handleSelectViewMode).not.toHaveBeenCalled();
+  });
+
+  it('navigates to Orders from the incoming-order modal', async () => {
+    const initialOrders = [{ pos_transaction_id: 401, customer_name: 'Existing order' }];
+    const { rerender } = renderLayoutWithProps({
+      queueLocationScopeId: 10,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: initialOrders
+      }
+    });
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={10}
+          incomingOrdersState={{
+            loading: false,
+            accessState: 'allowed',
+            orders: [...initialOrders, { pos_transaction_id: 402, customer_name: 'View me' }]
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    await screen.findByTestId('pos-incoming-order-notification-dialog');
+    stopOrderAlertWithIminBridge.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'View Order', exact: true }));
+
+    expect(baseProps.handleSelectViewMode).toHaveBeenCalledWith('incoming_queue');
+    await waitFor(() => {
+      expect(screen.queryByTestId('pos-incoming-order-notification-dialog')).toBeNull();
+    });
+    expect(stopOrderAlertWithIminBridge).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the alert when the header notification opens Orders', async () => {
+    renderLayoutWithProps({
+      queueLocationScopeId: 12,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: [{ pos_transaction_id: 403, customer_name: 'Header notification order' }]
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('pos-notification-badge').every((badge) => badge.textContent === '1')).toBe(true);
+    });
+
+    stopOrderAlertWithIminBridge.mockClear();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open notifications', exact: true })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /1 incoming order/ })[0]);
+
+    expect(stopOrderAlertWithIminBridge).toHaveBeenCalledTimes(1);
+    expect(baseProps.handleSelectViewMode).toHaveBeenCalledWith('incoming_queue');
+  });
+
+  it('stops the alert when the Orders view becomes active', () => {
+    const { rerender } = renderLayoutWithProps({
+      posViewMode: 'checkout'
+    });
+
+    stopOrderAlertWithIminBridge.mockClear();
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout {...baseProps} posViewMode="incoming_queue" />
+      </MemoryRouter>
+    );
+
+    expect(stopOrderAlertWithIminBridge).toHaveBeenCalledTimes(1);
+  });
+
+  it('queues simultaneous new orders and suppresses duplicate poll notifications', async () => {
+    const initialOrders = [{ pos_transaction_id: 501, customer_name: 'Existing order' }];
+    const { rerender } = renderLayoutWithProps({
+      queueLocationScopeId: 11,
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'allowed',
+        orders: initialOrders
+      }
+    });
+
+    const ordersWithTwoNew = [
+      ...initialOrders,
+      { pos_transaction_id: 502, customer_name: 'First new order' },
+      { pos_transaction_id: 503, customer_name: 'Second new order' }
+    ];
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={11}
+          incomingOrdersState={{ loading: false, accessState: 'allowed', orders: ordersWithTwoNew }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('First new order')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+    expect(await screen.findByText('Second new order')).toBeTruthy();
+
+    rerender(
+      <MemoryRouter>
+        <TerminalPageLayout
+          {...baseProps}
+          queueLocationScopeId={11}
+          incomingOrdersState={{ loading: false, accessState: 'allowed', orders: ordersWithTwoNew }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Second new order')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('pos-incoming-order-notification-dialog')).toBeNull();
+    });
   });
 });

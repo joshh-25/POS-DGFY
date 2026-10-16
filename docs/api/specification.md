@@ -2635,7 +2635,9 @@ secret-scrubbed cart snapshot and deducts its server-resolved inventory effects
 through the Inventory owner in the same transaction. It does not create a POS
 transaction or collect payment. All endpoints require the Premium POS gates
 above and scope the request to the authenticated cashier's open shift and
-location.
+location. The resulting `goods_issue` stock movements use
+`reference_type='POS_PARKED_SALE'`, distinct from `reference_type='POS'` used
+at checkout — see `docs/database/schema.md`'s `stock_movements` note.
 
 | Method | Endpoint | Permission | Purpose |
 |--------|----------|------------|---------|
@@ -2773,6 +2775,13 @@ start/end, transaction count, item quantity, and the same financial metrics.
 Item names and SKUs use the sale-time line snapshot; category names resolve
 from the current primary item folder, falling back to the legacy category or
 `Uncategorized`.
+
+The report-wide summary keeps `total_transactions` as the number of recorded
+transactions in the filtered scope and also exposes `completed_transactions`
+and `voided_refunded_transactions`. These counts are distinct transaction
+counts (not line counts), so exports and the POS report cards can show recorded
+activity separately from completed sales and voided/refunded activity without
+changing the monetary sales totals.
 
 #### GET /pos/reports/export
 
@@ -3177,6 +3186,28 @@ for the selected terminal in order to perform the existing authorized closeout.
 | Name | Type | Description |
 |------|------|-------------|
 | `terminal_id` | string | Terminal identifier (e.g. `COUNTER-01`) |
+
+### GET /pos/terminal/shifts/history
+List paginated shift summaries for the authenticated cashier. The server always
+scopes records to that cashier and the resolved or authorized location before
+applying search, filters, and pagination.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `date_from` | ISO date | Optional inclusive business-date lower bound. |
+| `date_to` | ISO date | Optional inclusive business-date upper bound; must be on or after `date_from`. |
+| `search` | string | Optional search by exact shift number (a leading `#` is allowed) or partial terminal ID. Maximum 120 characters. Search is applied before pagination. |
+| `status` | string | `all`, `open`, or `closed`; defaults to `all`. |
+| `location_id` | integer | Optional authorized branch. If omitted, the server resolves the user's location scope. |
+| `page` | integer | Page number; defaults to `1`. |
+| `limit` | integer | Page size from `1` to `50`; defaults to `20`. |
+
+The response includes `cashier`, paginated `records`, `pagination`, and
+`applied_filters` (including the normalized search value when present).
 
 ### POST /pos/terminal/shifts/open
 Open a terminal shift for cashier operations.
@@ -7082,8 +7113,8 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
 - The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; adjust-mode click, marker drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Settings opens locked and requires `Adjust Pin` before map interactions can change coordinates. Onboarding starts in adjust mode only after searchable storefront visibility is enabled and no valid saved pin exists. The picker opens over Iloilo City, Philippines when no saved pin exists, but that is camera state only and must not be saved as an implicit merchant pin. Missing coordinates, `0,0`, and browser geolocation results outside the Philippines are invalid for merchant-store pins. Browser geolocation uses high-accuracy mode when available and shows reported accuracy feedback, but it remains best effort and cannot guarantee device precision. Click, drag, and geolocation selections may request PH reverse-geocoded address suggestions; reverse-geocode failure must not block coordinate saving.
-- `GET /api/v1/geo/reverse-geocode` returns PH address metadata for map pin suggestions. Successful responses include `provider` (`dgfy-quadruper` when resolved by the DGFY-operated Quadruper geocoding service, `dgfy-ph-local` when served by the bundled fallback dataset), `precision` (`house`, `street`, `barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, `components` (`street`, `locality`, `district`, `city`, `state`, `postcode` — every field nullable), and `landmarks` (an always-present array, capped at five, of nearby named points of interest ordered by ascending distance, each with `name`, `category`, `osm_key`, `osm_value`, `distance_meters`, `latitude`, `longitude`; empty on the bundled-fallback path). PSGC code fields and `provenance` appear only on the bundled-fallback path, since OpenStreetMap carries no PSGC identifiers. The endpoint must not return vague `Near ...` labels; when no match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`. Reverse-geocode failure must not block saving valid coordinates.
-- `GET /api/v1/geo/address-search` accepts `query` (2-120 chars), `limit` (1-20, default 8), and optional `lat`/`lon` bias coordinates. `lat` and `lon` are all-or-nothing: supplying exactly one returns `422`. Results are hard-filtered to the Philippines bounding box.
+- `GET /api/v1/geo/reverse-geocode` returns PH address metadata for map pin suggestions. Successful responses include `provider` (`dgfy-quadruper` when resolved by the DGFY-operated Quadruper geocoding service, `dgfy-ph-local` when served by the bundled fallback dataset), `precision` (`house`, `street`, `barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, `components` (`housenumber`, `street`, `locality`, `district`, `city`, `state`, `postcode` — every field nullable), and `landmarks` (an always-present array, capped at five, of nearby named points of interest ordered by ascending distance, each with `name`, `category`, `osm_key`, `osm_value`, `distance_meters`, `latitude`, `longitude`; empty on the bundled-fallback path). PSGC code fields and `provenance` appear only on the bundled-fallback path, since OpenStreetMap carries no PSGC identifiers. The endpoint must not return vague `Near ...` labels; when no match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`. Reverse-geocode failure must not block saving valid coordinates.
+- `GET /api/v1/geo/address-search` accepts `query` (2-120 chars), `limit` (1-20, default 8), and optional `lat`/`lon` bias coordinates. `lat` and `lon` are all-or-nothing: supplying exactly one returns `422`. Results are hard-filtered to the Philippines bounding box. Each result carries `address_line`, `latitude`, `longitude`, `precision`, `provider`, and `components` (same shape as reverse-geocode). Forward labels include the street, prefixed by the house number when OpenStreetMap has one. Resolution is promised to street level, not house level: a query with a leading house number (`52 Rizal Street`, `#52-A Rizal St, Jaro`) also searches the street part alone and returns matching streets at `precision="street"` with the typed number carried in `address_line` and `components.housenumber`; an exact house on that street ranks first at `precision="house"`. When no street matches, results are those of the query as typed. Location bias stays a ranking hint; the search area is not narrowed (#2484).
 - The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, compatibility `open`/`close`, and `intervals: [{ open, close }]` in `HH:mm` format. Legacy one-window `{ enabled, open, close }` entries normalize to one interval.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 

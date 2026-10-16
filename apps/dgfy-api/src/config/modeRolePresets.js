@@ -431,7 +431,8 @@ const MODE_ROLE_PRESETS = Object.freeze({
       role: 'cashier',
       rank: 4,
       permissions: [
-        ...shared.posCashier,
+        ...DEFAULT_ROLE_PERMISSIONS.cashier,
+        PERMISSIONS.POS.actions.VOID_POS_TRANSACTION,
         fnb.VIEW_DASHBOARD,
         fnb.VIEW_MENU,
         fnb.VIEW_DINING,
@@ -685,7 +686,8 @@ const PERMISSION_GROUP_VISIBILITY = Object.freeze({
 // inherits through `managerPermissions`). A client holding the v3 catalog would offer neither the
 // new preset nor the corrected manager permission set, so it has to refetch.
 // Previously bumped for #655, when PERMISSION_GROUP_VISIBILITY gained its VOUCHERS entry.
-export const ROLE_CATALOG_VERSION = '2026-09-03.mode-aware-rbac-v4';
+// Bumped 2026-10-13 so cached Team Access clients refetch the F&B cashier void permission.
+export const ROLE_CATALOG_VERSION = '2026-10-13.mode-aware-rbac-v6';
 
 export const getRoleCatalogMode = (mode) => {
   const normalized = normalizeWorkflowMode(mode || DEFAULT_WORKFLOW_MODE);

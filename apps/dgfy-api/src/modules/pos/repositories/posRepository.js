@@ -40,6 +40,10 @@ import { buildPosTransactionHistorySearchConditions } from '../utils/posTransact
 import { resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+import {
+    hasConfiguredPosGlobalPin,
+    hasConfiguredPosPinForAction
+} from '../domain/posGlobalPinPolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -418,7 +422,9 @@ const serializeDiscountAuthorizer = (row) => {
     if (!plain) return null;
     return {
         ...plain,
-        can_authorize_discounts: isDiscountAuthorizer(plain)
+        can_authorize_discounts: isDiscountAuthorizer(plain),
+        pos_global_pin_configured: hasConfiguredPosGlobalPin(plain),
+        pos_approval_pin_configured: hasConfiguredPosPinForAction(plain, ['pos_approval_pin_hash'])
     };
 };
 
@@ -1355,19 +1361,44 @@ const REPORT_PAYMENT_GROUP_LABELS = Object.freeze({
 });
 
 const REPORT_SOURCE_LABELS = Object.freeze({
-    in_store: 'In-Store',
-    online_store: 'Online Store',
+    in_store: 'Walk-in Sales',
+    online_store: 'Online Sales',
     delivery: 'Delivery',
     pickup: 'Pickup'
 });
+
+const normalizeReportOrderSource = (value) => (
+    String(value || '').trim().toLowerCase() === 'online_store'
+        ? 'online_store'
+        : 'in_store'
+);
 
 const REFUND_PAYMENT_STATUSES = new Set(['refund_pending', 'partial_refunded', 'refunded']);
 const REPORT_ADJUSTMENT_TYPES = new Set([
     'cash_refund',
     'external_refund',
     'provider_refund',
-    'employee_credit_reversal'
+    'employee_credit_reversal',
+    'return'
 ]);
+const REPORT_ADJUSTMENT_EVENT_TYPES = new Set([...REPORT_ADJUSTMENT_TYPES, 'void']);
+
+const resolveReportAdjustmentMetadata = (adjustment = {}) => {
+    const metadata = parseJsonLoosely(adjustment?.metadata);
+    return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+        ? metadata
+        : {};
+};
+
+const isReportItemVoidAdjustment = (adjustment = {}) => (
+    String(adjustment?.adjustment_type || '').trim().toLowerCase() === 'void'
+    && resolveReportAdjustmentMetadata(adjustment).evidence_scope === 'pos_item_void'
+);
+
+const isReportAdjustmentEvent = (adjustment = {}) => {
+    const adjustmentType = String(adjustment?.adjustment_type || '').trim().toLowerCase();
+    return REPORT_ADJUSTMENT_TYPES.has(adjustmentType) || isReportItemVoidAdjustment(adjustment);
+};
 
 const sumBy = (rows = [], selector = () => 0) => round4((Array.isArray(rows) ? rows : []).reduce((sum, row) => (
     sum + Number(selector(row) || 0)
@@ -1622,12 +1653,39 @@ const toWeekKey = (value) => {
 
 const toDisplayPaymentGroup = (paymentType) => REPORT_PAYMENT_GROUP_LABELS[String(paymentType || '').trim().toLowerCase()] || 'Online';
 
+const mergePaymentBreakdownRows = (rows = []) => {
+    const groups = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((entry) => {
+        const paymentMethod = String(entry?.payment_method || '').trim() || 'Online';
+        const key = paymentMethod.toLowerCase();
+        const current = groups.get(key) || {
+            payment_method: paymentMethod,
+            total_transactions: 0,
+            gross_sales: 0,
+            net_sales: 0,
+            pos_profit_loss: 0
+        };
+        current.total_transactions += Number(entry?.total_transactions || 0);
+        current.gross_sales = round4(current.gross_sales + Number(entry?.gross_sales || 0));
+        current.net_sales = round4(current.net_sales + Number(entry?.net_sales || 0));
+        current.pos_profit_loss = round4(current.pos_profit_loss + Number(entry?.pos_profit_loss || 0));
+        groups.set(key, current);
+    });
+    return Array.from(groups.values()).map((entry) => ({
+        ...entry,
+        total_transactions: Number(entry.total_transactions || 0),
+        gross_sales: round4(entry.gross_sales),
+        net_sales: round4(entry.net_sales),
+        pos_profit_loss: round4(entry.pos_profit_loss)
+    }));
+};
+
 const resolveReportSourceLabel = (transaction = {}) => {
+    const orderSource = String(transaction?.order_source || '').trim().toLowerCase();
+    if (orderSource === 'online_store') return REPORT_SOURCE_LABELS.online_store;
     const orderMethod = String(transaction?.order_method || '').trim().toLowerCase();
     if (orderMethod === 'delivery') return REPORT_SOURCE_LABELS.delivery;
     if (orderMethod === 'pickup') return REPORT_SOURCE_LABELS.pickup;
-    const orderSource = String(transaction?.order_source || '').trim().toLowerCase();
-    if (orderSource === 'online_store') return REPORT_SOURCE_LABELS.online_store;
     return REPORT_SOURCE_LABELS.in_store;
 };
 
@@ -1780,13 +1838,32 @@ const serializeReportSummary = (lineRows = []) => {
     const netSales = sumBy(lineRows, (row) => row.net_sales);
     const cogs = sumBy(lineRows, (row) => row.cogs);
     const posProfitLoss = round4(netSales - cogs);
+    const isVoidedOrRefundedReportRow = (row = {}) => (
+        String(row?.transaction_status || '').trim().toLowerCase() === 'voided'
+        || REFUND_PAYMENT_STATUSES.has(String(row?.transaction_payment_status || '').trim().toLowerCase())
+    );
+    const recordedTransactions = uniqueCountBy(lineRows, (row) => row.transaction_id);
+    const voidedRefundedTransactions = uniqueCountBy(
+        (Array.isArray(lineRows) ? lineRows : []).filter(isVoidedOrRefundedReportRow),
+        (row) => row.transaction_id
+    );
+    const completedTransactions = uniqueCountBy(
+        (Array.isArray(lineRows) ? lineRows : []).filter((row) => {
+            if (isVoidedOrRefundedReportRow(row)) return false;
+            const status = String(row?.transaction_status || '').trim().toLowerCase();
+            return !status || status === 'completed';
+        }),
+        (row) => row.transaction_id
+    );
     return {
         gross_sales: grossSales,
         net_sales: netSales,
         cogs,
         pos_profit_loss: posProfitLoss,
         profit_margin: netSales > 0 ? round4((posProfitLoss / netSales) * 100) : 0,
-        total_transactions: uniqueCountBy(lineRows, (row) => row.transaction_id),
+        total_transactions: recordedTransactions,
+        completed_transactions: completedTransactions,
+        voided_refunded_transactions: voidedRefundedTransactions,
         total_items_sold: sumBy(lineRows, (row) => row.quantity),
         discounts: sumBy(lineRows, (row) => row.discount_amount),
         refunds_voids: sumBy(lineRows, (row) => row.refund_amount),
@@ -1833,6 +1910,22 @@ const buildReportZReadingReconciliation = ({
         report_net_sales: round4(reportSummary.net_sales),
         report_refunds_voids: round4(reportSummary.refunds_voids),
         report_adjustment_amount: round4(adjustmentSummary.succeeded_amount),
+        report_adjustment_net_sales_impact: round4(adjustmentSummary.net_sales_impact),
+        reconciliation_inputs: {
+            transactions: 'PosTransaction.completed',
+            payments: 'PosTransaction.payment_breakdown',
+            adjustments: 'PosTransactionAdjustment.succeeded_or_reviewable',
+            reading_snapshot: 'PosZReadingSnapshot.summary',
+            closed_shift_gate: 'POS close-day usecase'
+        },
+        adjustment_reconciliation: {
+            status: 'included',
+            adjustment_count: Number(adjustmentSummary.adjustment_count || 0),
+            succeeded_amount: round4(adjustmentSummary.succeeded_amount),
+            net_sales_impact: round4(adjustmentSummary.net_sales_impact),
+            mutates_prior_z_reading: adjustmentSummary.mutates_prior_z_reading === true
+        },
+        z_payment_breakdown: [],
         z_void_transaction_count: null,
         z_void_amount: null,
         message: ''
@@ -1884,10 +1977,14 @@ const buildReportZReadingReconciliation = ({
         generated_at: snapshot.generated_at || snapshot.created_at || null,
         snapshot_persisted: true
     };
+    const zPaymentBreakdown = Array.isArray(snapshotSummary.payment_breakdown)
+        ? normalizePosPaymentBreakdown(snapshotSummary.payment_breakdown)
+        : [];
     if (!hasComparableZTotal) {
         return {
             ...reportBase,
             ...snapshotIdentity,
+            z_payment_breakdown: zPaymentBreakdown,
             message: 'The Z-reading snapshot does not contain a comparable total.'
         };
     }
@@ -1900,6 +1997,7 @@ const buildReportZReadingReconciliation = ({
         ...snapshotIdentity,
         z_total_amount: zTotalAmount,
         variance,
+        z_payment_breakdown: zPaymentBreakdown,
         z_void_transaction_count: Number.isFinite(zVoidTransactionCount) ? zVoidTransactionCount : 0,
         z_void_amount: round4(snapshotSummary.void_amount),
         message: variance === 0
@@ -2054,7 +2152,7 @@ const buildPaymentBreakdown = (rows = []) => {
         const snapshotTransactionIds = new Set(rowsWithSnapshots.map((row) => String(row.transaction_id)));
         const legacyRows = rows.filter((row) => !snapshotTransactionIds.has(String(row.transaction_id)));
         const legacyBreakdown = legacyRows.length > 0 ? buildPaymentBreakdown(legacyRows) : [];
-        return [
+        return mergePaymentBreakdownRows([
             ...Array.from(groups.values()).map((entry) => ({
                 payment_method: entry.payment_method,
                 total_transactions: entry.transaction_ids.size,
@@ -2063,16 +2161,16 @@ const buildPaymentBreakdown = (rows = []) => {
                 pos_profit_loss: round4(entry.pos_profit_loss)
             })),
             ...legacyBreakdown
-        ];
+        ]);
     }
     const groups = groupRowsBy(rows, (row) => toDisplayPaymentGroup(row.payment_type));
-    return Array.from(groups.entries()).map(([label, entries]) => ({
+    return mergePaymentBreakdownRows(Array.from(groups.entries()).map(([label, entries]) => ({
         payment_method: label,
         total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
         gross_sales: sumBy(entries, (row) => row.gross_sales),
         net_sales: sumBy(entries, (row) => row.net_sales),
         pos_profit_loss: sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs)
-    }));
+    })));
 };
 
 const buildZReadingPaymentBreakdown = (rows = []) => {
@@ -2096,6 +2194,139 @@ const buildZReadingPaymentBreakdown = (rows = []) => {
         });
     });
     return normalizePosPaymentBreakdown(entries);
+};
+
+const buildZReadingAdjustmentSummary = (rows = [], {
+    startAt = null,
+    endAt = null,
+    dailyStartAt = null
+} = {}) => {
+    const rangeStart = startAt instanceof Date ? startAt.getTime() : Number.NaN;
+    const rangeEnd = endAt instanceof Date ? endAt.getTime() : Number.NaN;
+    const dailyRangeStart = dailyStartAt instanceof Date ? dailyStartAt.getTime() : rangeStart;
+    const dailyRangeEnd = rangeEnd;
+    const itemVoidRows = [];
+    const dailyItemVoidByDate = new Map();
+    const dailyItemVoidCountByDate = new Map();
+    const dailyRefundByDate = new Map();
+
+    const addDateAmount = (map, businessDate, amount) => {
+        if (!businessDate || !amount) return;
+        map.set(businessDate, round4((map.get(businessDate) || 0) + amount));
+    };
+
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const plainRow = toPlain(row) || {};
+        const status = String(plainRow.status || '').trim().toLowerCase();
+        const eventAt = plainRow.completed_at
+            || plainRow.failed_at
+            || plainRow.cancelled_at
+            || plainRow.created_at
+            || null;
+        const eventTime = eventAt ? new Date(eventAt).getTime() : Number.NaN;
+        if (!Number.isFinite(eventTime)) return;
+
+        const metadata = resolveReportAdjustmentMetadata(plainRow);
+        const businessDate = getManilaDateParts(new Date(eventTime)).date;
+        const isInReportRange = Number.isFinite(rangeStart)
+            && Number.isFinite(rangeEnd)
+            && eventTime >= rangeStart
+            && eventTime < rangeEnd;
+        const isInDailyRange = Number.isFinite(dailyRangeStart)
+            && Number.isFinite(dailyRangeEnd)
+            && eventTime >= dailyRangeStart
+            && eventTime < dailyRangeEnd;
+
+        if (isReportItemVoidAdjustment(plainRow) && status === 'succeeded') {
+            const voidedQuantity = sumBy(metadata.voided_lines, (line) => line?.quantity);
+            const itemVoid = {
+                adjustment_id: toPositiveInt(plainRow.pos_transaction_adjustment_id),
+                voided_quantity: voidedQuantity,
+                amount: round4(plainRow.amount)
+            };
+            itemVoidRows.push(itemVoid);
+
+            if (isInReportRange) {
+                itemVoidRows[itemVoidRows.length - 1].in_report_range = true;
+            }
+            if (isInDailyRange) {
+                addDateAmount(dailyItemVoidByDate, businessDate, itemVoid.amount);
+                addDateAmount(dailyItemVoidCountByDate, businessDate, itemVoid.voided_quantity);
+            }
+            return;
+        }
+
+        const adjustmentType = String(plainRow.adjustment_type || '').trim().toLowerCase();
+        if (!REPORT_ADJUSTMENT_TYPES.has(adjustmentType)
+            || adjustmentType === 'provider_refund'
+            || status !== 'succeeded') return;
+        if (isInDailyRange) {
+            addDateAmount(dailyRefundByDate, businessDate, round4(plainRow.amount));
+        }
+    });
+
+    const reportItemVoids = itemVoidRows.filter((row) => row.in_report_range === true);
+    const itemVoidById = new Map(itemVoidRows
+        .filter((row) => row.adjustment_id)
+        .map((row) => [row.adjustment_id, row]));
+    let refundAmount = 0;
+    let refundedItemCount = 0;
+
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const plainRow = toPlain(row) || {};
+        const adjustmentType = String(plainRow.adjustment_type || '').trim().toLowerCase();
+        const status = String(plainRow.status || '').trim().toLowerCase();
+        if (!REPORT_ADJUSTMENT_TYPES.has(adjustmentType)
+            || adjustmentType === 'provider_refund'
+            || status !== 'succeeded') return;
+
+        const eventAt = plainRow.completed_at
+            || plainRow.failed_at
+            || plainRow.cancelled_at
+            || plainRow.created_at
+            || null;
+        const eventTime = eventAt ? new Date(eventAt).getTime() : Number.NaN;
+        if (!Number.isFinite(eventTime)
+            || !Number.isFinite(rangeStart)
+            || !Number.isFinite(rangeEnd)
+            || eventTime < rangeStart
+            || eventTime >= rangeEnd) return;
+
+        refundAmount = round4(refundAmount + round4(plainRow.amount));
+        const metadata = resolveReportAdjustmentMetadata(plainRow);
+        const linkedItemVoidId = toPositiveInt(metadata.item_void_adjustment_id);
+        if (linkedItemVoidId) {
+            refundedItemCount = round4(refundedItemCount + (itemVoidById.get(linkedItemVoidId)?.voided_quantity || 0));
+        }
+    });
+
+    return {
+        item_void_amount: round4(reportItemVoids.reduce((sum, row) => sum + row.amount, 0)),
+        item_voided_item_count: round4(reportItemVoids.reduce((sum, row) => sum + row.voided_quantity, 0)),
+        refund_amount: refundAmount,
+        refunded_item_count: refundedItemCount,
+        daily_item_void_by_date: dailyItemVoidByDate,
+        daily_item_void_count_by_date: dailyItemVoidCountByDate,
+        daily_refund_by_date: dailyRefundByDate
+    };
+};
+
+const buildZReadingOrderSourceBreakdown = (rows = []) => {
+    const groups = new Map();
+    rows.forEach((row) => {
+        const orderSource = normalizeReportOrderSource(row?.order_source);
+        const current = groups.get(orderSource) || {
+            order_source: orderSource,
+            source_label: REPORT_SOURCE_LABELS[orderSource] || orderSource,
+            count: 0,
+            amount: 0
+        };
+        current.count += 1;
+        current.amount = round4(current.amount + Number(row?.total_amount || 0));
+        groups.set(orderSource, current);
+    });
+    return Array.from(groups.values())
+        .sort((left, right) => Number(right.amount || 0) - Number(left.amount || 0));
 };
 
 const normalizeTransactionDeliveryProviderSnapshot = (value) => {
@@ -2139,6 +2370,18 @@ const buildOrderMethodBreakdown = (rows = []) => {
     const groups = groupRowsBy(rows, (row) => String(row.order_method || 'dine_in').trim().toLowerCase() || 'dine_in');
     return Array.from(groups.entries()).map(([orderMethod, entries]) => ({
         order_method: orderMethod,
+        total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
+        gross_sales: sumBy(entries, (row) => row.gross_sales),
+        net_sales: sumBy(entries, (row) => row.net_sales),
+        pos_profit_loss: sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs)
+    })).sort((left, right) => Number(right.net_sales || 0) - Number(left.net_sales || 0));
+};
+
+const buildOrderSourceBreakdown = (rows = []) => {
+    const groups = groupRowsBy(rows, (row) => normalizeReportOrderSource(row.order_source));
+    return Array.from(groups.entries()).map(([orderSource, entries]) => ({
+        order_source: orderSource,
+        source_label: REPORT_SOURCE_LABELS[orderSource] || orderSource,
         total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
         gross_sales: sumBy(entries, (row) => row.gross_sales),
         net_sales: sumBy(entries, (row) => row.net_sales),
@@ -2306,6 +2549,7 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 delivery_provider_breakdown: normalizeTransactionDeliveryProviderSnapshot(transaction.delivery_provider_breakdown),
                 payment_status: transaction.payment_status || null,
                 order_source: transaction.order_source || null,
+                source_label: resolveReportSourceLabel(transaction),
                 order_method: transaction.order_method || null,
                 total_amount: round4(transaction.total_amount),
                 gross_sales: round4(summary.gross_sales),
@@ -2782,7 +3026,8 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
     const rows = [];
 
     (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
-        const isVoidedOrRefunded = transaction?.status === 'voided' || REFUND_PAYMENT_STATUSES.has(String(transaction?.payment_status || '').trim().toLowerCase());
+        const transactionStatus = String(transaction?.status || '').trim().toLowerCase();
+        const transactionPaymentStatus = String(transaction?.payment_status || '').trim().toLowerCase();
         const totalServiceFeeAmount = Number(transaction?.service_fee_amount || 0) + Number(transaction?.restaurant_service_charge_amount || 0);
         const vatAmount = Number(transaction?.vat_amount || 0);
         const discountAmount = resolveCanonicalTransactionDiscountAmount(transaction);
@@ -2792,6 +3037,14 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
         const discountAllocationByLineId = new Map(discountAllocations.map((allocation) => [Number(allocation.transaction_line_id), allocation]));
         const sourceLabel = resolveReportSourceLabel(transaction);
         const transactionLines = Array.isArray(transaction?.lines) ? transaction.lines : [];
+        const allLinesVoided = transactionLines.length > 0 && transactionLines.every((line) => {
+            const quantity = Math.max(0, Number(line?.quantity || 0));
+            const voidedQuantity = Math.max(0, Number(line?.voided_quantity || 0));
+            return quantity > 0 && voidedQuantity >= quantity - 0.000001;
+        });
+        const isVoidedOrRefunded = transactionStatus === 'voided'
+            || transactionPaymentStatus === 'refunded'
+            || (REFUND_PAYMENT_STATUSES.has(transactionPaymentStatus) && allLinesVoided);
         const reportLineContexts = transactionLines.map((line) => {
             // Governed discounts persist line_subtotal as the final amount paid.
             // Use the immutable sale-time price/quantity snapshot for gross sales;
@@ -2855,6 +3108,11 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
             }
 
             const quantity = Number(line?.quantity || 0);
+            const voidedQuantity = Math.min(
+                Math.max(0, Number(line?.voided_quantity || 0)),
+                Math.max(0, quantity)
+            );
+            const activeQuantity = Math.max(0, quantity - voidedQuantity);
             const share = totalLineGross > 0 ? Math.max(0, grossSales) / totalLineGross : 0;
             const taxShare = taxAllocationBase > 0
                 ? (vatableLineGross > 0
@@ -2867,19 +3125,31 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
             const recordedLineVatRemoved = persistedDiscountAllocation
                 ? round4(persistedDiscountAllocation.vat_removed)
                 : round4(Number(transaction?.discount?.vat_removed || 0) * share);
-            // Preserve the recorded discount on the transaction for audit, but do not
-            // count it as an active discount after the sale is voided or refunded.
-            const lineDiscount = isVoidedOrRefunded ? 0 : recordedLineDiscount;
-            const lineVatRemoved = isVoidedOrRefunded ? 0 : recordedLineVatRemoved;
-            const lineRefund = isVoidedOrRefunded ? grossSales : 0;
-            const lineNetSales = round4(Math.max(0, grossSales - lineDiscount - lineVatRemoved - lineRefund));
+            const activeQuantityShare = quantity > 0 ? activeQuantity / quantity : 0;
+            const activeGrossSales = round4(Math.max(0, grossSales) * activeQuantityShare);
+            // Preserve the recorded discount on the transaction for audit, but only
+            // count the surviving portion as active after an item-level void.
+            const lineDiscount = isVoidedOrRefunded
+                ? 0
+                : round4(recordedLineDiscount * activeQuantityShare);
+            const lineVatRemoved = isVoidedOrRefunded
+                ? 0
+                : round4(recordedLineVatRemoved * activeQuantityShare);
+            const lineRefund = isVoidedOrRefunded
+                ? grossSales
+                : round4(Math.max(0, grossSales - recordedLineDiscount - recordedLineVatRemoved - activeGrossSales));
+            const lineNetSales = isVoidedOrRefunded
+                ? 0
+                : round4(Math.max(0, activeGrossSales - lineDiscount - lineVatRemoved));
             const lineCostPerUnit = line?.cost_snapshot != null ? Number(line.cost_snapshot || 0) : Number(item?.cost_per_unit || 0);
-            const cogs = round4(quantity * lineCostPerUnit);
+            const cogs = round4((isVoidedOrRefunded ? quantity : activeQuantity) * lineCostPerUnit);
 
             rows.push({
                 transaction_id: transaction?.pos_transaction_id,
                 line_id: line?.line_id || null,
                 created_at: transaction?.created_at,
+                transaction_status: transactionStatus,
+                transaction_payment_status: transactionPaymentStatus,
                 cashier_id: transaction?.cashier?.user_id || transaction?.cashier_id || null,
                 cashier_name: transaction?.cashier?.username || null,
                 accepted_by: transaction?.accepted_by || null,
@@ -2905,7 +3175,9 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 category_key: categoryKey,
                 category_name: reportCategory || 'Uncategorized',
                 category: reportCategory || null,
-                quantity,
+                quantity: isVoidedOrRefunded ? quantity : activeQuantity,
+                original_quantity: quantity,
+                voided_quantity: voidedQuantity,
                 gross_sales: grossSales,
                 net_sales: lineNetSales,
                 discount_amount: lineDiscount,
@@ -2953,6 +3225,9 @@ const buildReportBreakdownMetrics = (entries = []) => {
     return {
         quantity: round4(summary.total_items_sold),
         orders: summary.total_transactions,
+        total_transactions: summary.total_transactions,
+        completed_transactions: summary.completed_transactions,
+        voided_refunded_transactions: summary.voided_refunded_transactions,
         gross_sales: summary.gross_sales,
         discounts: summary.discounts,
         net_sales: summary.net_sales,
@@ -3125,11 +3400,19 @@ const resolveAdjustmentEventAt = (adjustment = {}) => (
 
 const normalizeReportAdjustmentRows = (adjustments = []) => (
     (Array.isArray(adjustments) ? adjustments : [])
-        .filter((adjustment) => REPORT_ADJUSTMENT_TYPES.has(String(adjustment?.adjustment_type || '').trim().toLowerCase()))
+        .filter(isReportAdjustmentEvent)
         .map((adjustment) => {
-            const metadata = adjustment?.metadata && typeof adjustment.metadata === 'object'
-                ? adjustment.metadata
-                : {};
+            const metadata = resolveReportAdjustmentMetadata(adjustment);
+            const voidedLines = Array.isArray(metadata.voided_lines)
+                ? metadata.voided_lines.map((line) => ({
+                    line_id: toPositiveInt(line?.line_id),
+                    item_id: toPositiveInt(line?.item_id),
+                    item_name: String(line?.item_name || '').trim() || null,
+                    quantity: round4(line?.quantity),
+                    voided_quantity: round4(line?.voided_quantity),
+                    remaining_quantity: round4(line?.remaining_quantity)
+                })).filter((line) => line.line_id || line.item_id || line.item_name)
+                : [];
             return {
                 pos_transaction_adjustment_id: toPositiveInt(adjustment?.pos_transaction_adjustment_id),
                 adjustment_reference: adjustment?.adjustment_reference || null,
@@ -3158,7 +3441,18 @@ const normalizeReportAdjustmentRows = (adjustments = []) => (
                 cash_drawer_event_id: toPositiveInt(adjustment?.cash_drawer_event_id),
                 failure_code: adjustment?.failure_code || null,
                 failure_reason: adjustment?.failure_reason || null,
-                financial_outcome: metadata.financial_outcome || null
+                item_voided: metadata.item_voided === true,
+                voided_lines: voidedLines,
+                financial_outcome: metadata.financial_outcome || null,
+                signed_amount: Number.isFinite(Number(metadata.signed_amount))
+                    ? round4(metadata.signed_amount)
+                    : (String(adjustment?.adjustment_type || '').trim().toLowerCase() === 'return'
+                        ? round4(-Number(adjustment?.amount || 0))
+                        : 0),
+                original_document_number: metadata.original_document_number || null,
+                original_document_hash: metadata.original_document_hash || null,
+                evidence_contract_version: metadata.evidence_contract_version || null,
+                inventory_reversal: metadata.inventory_reversal || null
             };
         })
         .sort((left, right) => {
@@ -3187,6 +3481,7 @@ const summarizeReportAdjustments = (rows = []) => {
         if (status === 'succeeded') {
             summary.succeeded_count += 1;
             summary.succeeded_amount = round4(summary.succeeded_amount + amount);
+            summary.net_sales_impact = round4(summary.net_sales_impact + Number(row?.signed_amount || 0));
         } else if (status === 'pending') {
             summary.pending_count += 1;
             summary.pending_amount = round4(summary.pending_amount + amount);
@@ -3292,6 +3587,7 @@ const buildReportPayloadFromTransactions = (
             payment_breakdown: buildPaymentBreakdown(normalizedLines),
             delivery_provider_breakdown: buildDeliveryProviderBreakdown(normalizedLines),
             order_method_breakdown: buildOrderMethodBreakdown(normalizedLines),
+            order_source_breakdown: buildOrderSourceBreakdown(normalizedLines),
             cashier_summary: cashierSummary,
             cash_reconciliation: Array.from(cashierReconciliation.values()),
             shift_summary: buildShiftSummary(normalizedLines),
@@ -3354,7 +3650,9 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
         rows.push(['COGS', round4(summary.cogs || 0)]);
         rows.push(['POS Profit/Loss', round4(summary.pos_profit_loss || 0)]);
         rows.push(['Profit Margin %', round4(summary.profit_margin || 0)]);
-        rows.push(['Transactions', Number.parseInt(summary.total_transactions || 0, 10) || 0]);
+        rows.push(['Recorded Transactions', Number.parseInt(summary.total_transactions || 0, 10) || 0]);
+        rows.push(['Completed Sales', Number.parseInt(summary.completed_transactions || 0, 10) || 0]);
+        rows.push(['Voided/Refunded', Number.parseInt(summary.voided_refunded_transactions || 0, 10) || 0]);
         rows.push(['Discounts', round4(summary.discounts || 0)]);
         rows.push(['VAT Sales', round4(summary.vatable_sales || 0)]);
         rows.push(['Refunds/Voids', round4(summary.refunds_voids || 0)]);
@@ -3414,7 +3712,7 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     if (normalizedSection === 'sales') {
         rows.push(['Sales Transactions']);
         rows.push([]);
-        rows.push(['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Order Method', 'Delivery Provider(s)', 'Discount (PHP)', 'Gross Sales (PHP)', 'Net Sales (PHP)', 'POS Profit/Loss (PHP)']);
+        rows.push(['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Sales Source', 'Order Method', 'Delivery Provider(s)', 'Discount (PHP)', 'Gross Sales (PHP)', 'Net Sales (PHP)', 'POS Profit/Loss (PHP)']);
         (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
             rows.push([
                 entry.created_at || '',
@@ -3423,6 +3721,7 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
                 Array.isArray(entry.payment_methods) && entry.payment_methods.length > 0
                     ? entry.payment_methods.map(toDisplayPaymentGroup).join(' + ')
                     : (entry.payment_type || ''),
+                entry.source_label || (normalizeReportOrderSource(entry.order_source) === 'online_store' ? REPORT_SOURCE_LABELS.online_store : REPORT_SOURCE_LABELS.in_store),
                 entry.order_method || '',
                 Array.isArray(entry.delivery_provider_breakdown)
                     ? entry.delivery_provider_breakdown.map((provider) => `${provider.display_label}: ${round4(provider.amount)}`).join(' + ')
@@ -3448,6 +3747,26 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     rows.push(['Payment Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
     (payload?.daily_report?.payment_breakdown || []).forEach((entry) => {
         rows.push([entry.payment_method, entry.total_transactions, round4(entry.net_sales), round4(entry.pos_profit_loss)]);
+    });
+    rows.push([]);
+    rows.push(['Sales Source', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
+    (payload?.daily_report?.order_source_breakdown || []).forEach((entry) => {
+        rows.push([
+            entry.source_label || (normalizeReportOrderSource(entry.order_source) === 'online_store' ? REPORT_SOURCE_LABELS.online_store : REPORT_SOURCE_LABELS.in_store),
+            entry.total_transactions,
+            round4(entry.net_sales),
+            round4(entry.pos_profit_loss)
+        ]);
+    });
+    rows.push([]);
+    rows.push(['Order Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
+    (payload?.daily_report?.order_method_breakdown || []).forEach((entry) => {
+        rows.push([
+            entry.order_method || '',
+            entry.total_transactions,
+            round4(entry.net_sales),
+            round4(entry.pos_profit_loss)
+        ]);
     });
     rows.push([]);
     rows.push(['Delivery Provider', 'Transactions', 'Amount']);
@@ -3615,7 +3934,7 @@ export const posRepository = {
             where: buildVisibleWhere({
                 is_active: true
             }),
-            attributes: ['user_id', 'username', 'email', 'role', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
+            attributes: ['user_id', 'username', 'email', 'role', 'is_master_admin', 'permissions', 'pos_cashier_pin_hash', 'pos_approval_pin_hash', 'pos_day_close_pin_hash'],
             order: [['username', 'ASC']],
             transaction: options.transaction
         });
@@ -3628,15 +3947,33 @@ export const posRepository = {
                 role: row.role,
                 is_master_admin: row.is_master_admin,
                 can_authorize_discounts: true,
-                pos_approval_pin_configured: Boolean(String(row.pos_approval_pin_hash || '').trim())
+                pos_global_pin_configured: row.pos_global_pin_configured === true,
+                pos_approval_pin_configured: row.pos_approval_pin_configured === true
             }));
+    },
+
+    // Global PIN hashes are verified only inside the POS use case. This method
+    // never leaves the API boundary, so no PIN hash is exposed to the client.
+    async listActivePosRefundPasscodeApprovers(options = {}) {
+        const User = dbStore.get('User');
+        const rows = await User.findAll({
+            where: buildVisibleWhere({
+                is_active: true
+            }),
+            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'permissions', 'pos_cashier_pin_hash', 'pos_approval_pin_hash', 'pos_day_close_pin_hash'],
+            order: [['username', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows
+            .map(toPlain)
+            .filter((row) => isDiscountAuthorizer(row));
     },
 
     async findActiveDiscountApproverById(userId, options = {}) {
         const User = dbStore.get('User');
         const row = await User.findOne({
             where: buildVisibleWhere({ user_id: userId, is_active: true }),
-            attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'permissions', 'pos_approval_pin_hash'],
+            attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'permissions', 'pos_cashier_pin_hash', 'pos_approval_pin_hash', 'pos_day_close_pin_hash'],
             transaction: options.transaction
         });
         return serializeDiscountAuthorizer(row);
@@ -3646,7 +3983,7 @@ export const posRepository = {
         const User = dbStore.get('User');
         const row = await User.findOne({
             where: buildVisibleWhere({ user_id: userId, is_active: true }),
-            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'pos_approval_pin_hash'],
+            attributes: ['user_id', 'username', 'role', 'is_active', 'deleted_at', 'is_master_admin', 'pos_cashier_pin_hash'],
             transaction: options.transaction
         });
         return toPlain(row);
@@ -3656,7 +3993,7 @@ export const posRepository = {
         const User = dbStore.get('User');
         const row = await User.findOne({
             where: buildVisibleWhere({ user_id: userId, is_active: true }),
-            attributes: ['user_id', 'username', 'is_active', 'deleted_at', 'pos_day_close_pin_hash'],
+            attributes: ['user_id', 'username', 'is_active', 'deleted_at', 'pos_cashier_pin_hash', 'pos_day_close_pin_hash', 'pos_approval_pin_hash'],
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
@@ -4023,6 +4360,18 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    async updatePosTransactionLine(lineId, payload = {}, options = {}) {
+        const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const row = await PosTransactionLine.findByPk(lineId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     async listStockMovementsForPosTransaction(posTransactionId, options = {}) {
         const StockMovement = safeGetModel('StockMovement');
         if (!StockMovement) {
@@ -4154,6 +4503,136 @@ export const posRepository = {
         const rows = await PosFiscalEvent.findAll({
             order: [['event_sequence', 'ASC']],
             limit: Math.min(Number.parseInt(options.limit, 10) || 1000, 5000),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    // Item 8 e-journal exports are deliberately narrower than the general
+    // report queries: one immutable fiscal scope is selected at a time and
+    // every source read is bounded before it reaches the serializer.
+    async listEJournalTransactions({ businessDate, locationId, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosTransaction || !normalizedLocationId || !normalizedTerminalId || !dateValue) return [];
+
+        const startAt = toDateStart(dateValue);
+        const endAtExclusive = new Date(startAt.getTime() + (24 * 60 * 60 * 1000));
+        const rows = await PosTransaction.findAll({
+            where: {
+                document_type: 'fiscal_invoice',
+                document_context: 'fiscal',
+                location_id: normalizedLocationId,
+                terminal_id: normalizedTerminalId,
+                created_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive }
+            },
+            include: buildReportInclude(),
+            order: [['created_at', 'ASC'], ['pos_transaction_id', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async listEJournalAdjustments({ businessDate, locationId, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosTransactionAdjustment = safeGetModel('PosTransactionAdjustment');
+        const PosTransaction = safeGetModel('PosTransaction');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosTransactionAdjustment || !PosTransaction || !normalizedLocationId || !normalizedTerminalId || !dateValue) return [];
+
+        const startAt = toDateStart(dateValue);
+        const endAtExclusive = new Date(startAt.getTime() + (24 * 60 * 60 * 1000));
+        const eventAt = (field) => ({ [field]: { [Op.gte]: startAt, [Op.lt]: endAtExclusive } });
+        const rows = await PosTransactionAdjustment.findAll({
+            where: {
+                adjustment_type: {
+                    [Op.in]: ['void', 'cash_refund', 'external_refund', 'provider_refund', 'employee_credit_reversal', 'return']
+                },
+                [Op.or]: [
+                    eventAt('completed_at'),
+                    eventAt('failed_at'),
+                    eventAt('cancelled_at'),
+                    eventAt('created_at')
+                ],
+                [Op.and]: [
+                    {
+                        [Op.or]: [
+                            { original_location_id: normalizedLocationId },
+                            { actor_location_id: normalizedLocationId }
+                        ]
+                    },
+                    {
+                        [Op.or]: [
+                            { original_terminal_id: normalizedTerminalId },
+                            { actor_terminal_id: normalizedTerminalId }
+                        ]
+                    }
+                ]
+            },
+            include: [{
+                model: PosTransaction,
+                as: 'transaction',
+                required: true,
+                where: { document_type: 'fiscal_invoice' },
+                attributes: [
+                    'pos_transaction_id',
+                    'invoice_number',
+                    'document_type',
+                    'document_context',
+                    'terminal_id',
+                    'location_id',
+                    'shift_id',
+                    'created_at',
+                    'fiscal_document_hash',
+                    'fiscal_document_snapshot'
+                ]
+            }],
+            order: [['created_at', 'ASC'], ['pos_transaction_adjustment_id', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async listEJournalFiscalEvents({ businessDate, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosFiscalEvent = safeGetModel('PosFiscalEvent');
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosFiscalEvent || !normalizedTerminalId || !dateValue) return [];
+
+        const startAt = toDateStart(dateValue);
+        const endAtExclusive = new Date(startAt.getTime() + (24 * 60 * 60 * 1000));
+        const rows = await PosFiscalEvent.findAll({
+            where: {
+                terminal_id: normalizedTerminalId,
+                occurred_at: { [Op.gte]: startAt, [Op.lt]: endAtExclusive }
+            },
+            order: [['occurred_at', 'ASC'], ['event_sequence', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async listEJournalZReadingSnapshots({ businessDate, locationId, terminalId, limit = 5001 } = {}, options = {}) {
+        const PosZReadingSnapshot = safeGetModel('PosZReadingSnapshot');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        const dateValue = normalizeBusinessDateValue(businessDate);
+        if (!PosZReadingSnapshot || !normalizedLocationId || !normalizedTerminalId || !dateValue) return [];
+
+        const rows = await PosZReadingSnapshot.findAll({
+            where: {
+                business_date: dateValue,
+                location_id: normalizedLocationId,
+                closed_from_terminal_id: normalizedTerminalId
+            },
+            order: [['generated_at', 'ASC'], ['pos_z_reading_snapshot_id', 'ASC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 5001, 1), 5001),
             transaction: options.transaction
         });
         return rows.map(toPlain);
@@ -4700,7 +5179,29 @@ export const posRepository = {
                 {
                     model: dbStore.get('PosTransactionLine'),
                     as: 'lines',
-                    attributes: ['line_id', 'pos_transaction_id', 'quantity', 'cost_snapshot']
+                    attributes: [
+                        'line_id',
+                        'pos_transaction_id',
+                        'item_id',
+                        'item_name_snapshot',
+                        'sku_snapshot',
+                        'quantity',
+                        'voided_quantity',
+                        'voided_at',
+                        'voided_by',
+                        'void_reason',
+                        'sale_price',
+                        'line_subtotal',
+                        'cost_snapshot',
+                        'stock_effect_type',
+                        'fnb_modifiers_snapshot'
+                    ],
+                    include: [{
+                        model: dbStore.get('Item'),
+                        as: 'item',
+                        required: false,
+                        attributes: ['item_id', 'name', 'sku_code', 'category', 'unit_of_measure']
+                    }]
                 },
                 {
                     model: dbStore.get('PosTransactionDiscount'),
@@ -4806,7 +5307,7 @@ export const posRepository = {
 
         const rows = await PosTransactionAdjustment.findAll({
             where: {
-                adjustment_type: { [Op.in]: Array.from(REPORT_ADJUSTMENT_TYPES) },
+                adjustment_type: { [Op.in]: Array.from(REPORT_ADJUSTMENT_EVENT_TYPES) },
                 [Op.and]: [
                     {
                         [Op.or]: [
@@ -5060,7 +5561,9 @@ export const posRepository = {
         const PosTransactionDiscount = dbStore.get('PosTransactionDiscount');
         const PosTransactionDiscountLine = dbStore.get('PosTransactionDiscountLine');
         const Item = dbStore.get('Item');
+        const PosTransactionAdjustment = safeGetModel('PosTransactionAdjustment');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const dailyStartAt = new Date(startAt.getTime() - (10 * 24 * 60 * 60 * 1000));
 
         const where = buildTerminalScopedSalesWhere({
             startAt,
@@ -5124,9 +5627,42 @@ export const posRepository = {
 
         const paymentBreakdownRows = await PosTransaction.findAll({
             where,
-            attributes: ['pos_transaction_id', 'payment_type', 'total_amount', 'payment_breakdown', 'delivery_provider_breakdown'],
+            attributes: ['pos_transaction_id', 'payment_type', 'total_amount', 'payment_breakdown', 'delivery_provider_breakdown', 'order_source'],
             raw: true,
             transaction: options.transaction
+        });
+        const adjustmentWhere = {
+            adjustment_type: { [Op.in]: Array.from(REPORT_ADJUSTMENT_EVENT_TYPES) },
+            status: { [Op.in]: ['succeeded', 'pending', 'manual_review_required'] },
+            [Op.or]: [
+                { completed_at: { [Op.gte]: dailyStartAt, [Op.lt]: endAt } },
+                {
+                    completed_at: null,
+                    created_at: { [Op.gte]: dailyStartAt, [Op.lt]: endAt }
+                }
+            ]
+        };
+        if (locationId) adjustmentWhere.original_location_id = locationId;
+        if (!includeOnlineStoreAcrossTerminals || (!terminalId && !cashierId && !shiftId)) {
+            if (terminalId) adjustmentWhere.original_terminal_id = terminalId;
+            if (cashierId) adjustmentWhere.original_cashier_id = cashierId;
+            if (shiftId) adjustmentWhere.original_shift_id = shiftId;
+        }
+        const adjustmentRows = PosTransactionAdjustment?.findAll
+            ? await PosTransactionAdjustment.findAll({
+                where: adjustmentWhere,
+                attributes: [
+                    'pos_transaction_adjustment_id', 'pos_transaction_id', 'adjustment_type',
+                    'status', 'amount', 'metadata', 'completed_at', 'created_at'
+                ],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+        const adjustmentSummary = buildZReadingAdjustmentSummary(adjustmentRows, {
+            startAt,
+            endAt,
+            dailyStartAt
         });
         const [voidSummaryRow] = await PosTransaction.findAll({
             where: voidWhere,
@@ -5148,7 +5684,8 @@ export const posRepository = {
             raw: true,
             transaction: options.transaction
         });
-
+        const activeLineQuantitySql = 'GREATEST(`PosTransactionLine`.`quantity` - LEAST(GREATEST(COALESCE(`PosTransactionLine`.`voided_quantity`, 0), 0), `PosTransactionLine`.`quantity`), 0)';
+        const activeLineSubtotalSql = `CASE WHEN COALESCE(\`PosTransactionLine\`.\`quantity\`, 0) > 0 THEN COALESCE(\`PosTransactionLine\`.\`line_subtotal\`, 0) * (${activeLineQuantitySql}) / \`PosTransactionLine\`.\`quantity\` ELSE 0 END`;
         const lineSummaryRows = PosTransactionLine
             ? await PosTransactionLine.findAll({
                 include: [{
@@ -5159,13 +5696,13 @@ export const posRepository = {
                     where
                 }],
                 attributes: [
-                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'item_count'],
+                    [sequelize.literal(`COALESCE(SUM(${activeLineQuantitySql}), 0)`), 'item_count'],
                     [
-                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        sequelize.literal(`COALESCE(SUM(${activeLineQuantitySql} * COALESCE(\`PosTransactionLine\`.\`cost_snapshot\`, 0)), 0)`),
                         'total_cost'
                     ],
                     [
-                        sequelize.literal('COALESCE(SUM(CASE WHEN `transaction`.`discount_amount` > 0 THEN `PosTransactionLine`.`quantity` ELSE 0 END), 0)'),
+                        sequelize.literal(`COALESCE(SUM(CASE WHEN \`transaction\`.\`discount_amount\` > 0 THEN ${activeLineQuantitySql} ELSE 0 END), 0)`),
                         'discount_item_count'
                     ]
                 ],
@@ -5216,10 +5753,10 @@ export const posRepository = {
                         [sequelize.col('item.name'), 'item_name'],
                         [sequelize.col('item.sku_code'), 'sku_code']
                     ] : []),
-                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'quantity'],
-                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('line_subtotal')), 0), 'amount'],
+                    [sequelize.literal(`COALESCE(SUM(${activeLineQuantitySql}), 0)`), 'quantity'],
+                    [sequelize.literal(`COALESCE(SUM(${activeLineSubtotalSql}), 0)`), 'amount'],
                     [
-                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        sequelize.literal(`COALESCE(SUM(${activeLineQuantitySql} * COALESCE(\`PosTransactionLine\`.\`cost_snapshot\`, 0)), 0)`),
                         'cost'
                     ]
                 ],
@@ -5234,7 +5771,6 @@ export const posRepository = {
             })
             : [];
 
-        const dailyStartAt = new Date(startAt.getTime() - (10 * 24 * 60 * 60 * 1000));
         const dailyWhere = buildTerminalScopedSalesWhere({
             startAt: dailyStartAt,
             endAt,
@@ -5283,13 +5819,13 @@ export const posRepository = {
                 }],
                 attributes: [
                     [dailyLineBusinessDate, 'business_date'],
-                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'item_count'],
+                    [sequelize.literal(`COALESCE(SUM(${activeLineQuantitySql}), 0)`), 'item_count'],
                     [
-                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        sequelize.literal(`COALESCE(SUM(${activeLineQuantitySql} * COALESCE(\`PosTransactionLine\`.\`cost_snapshot\`, 0)), 0)`),
                         'total_cost'
                     ],
                     [
-                        sequelize.literal('COALESCE(SUM(CASE WHEN `transaction`.`discount_amount` > 0 THEN `PosTransactionLine`.`quantity` ELSE 0 END), 0)'),
+                        sequelize.literal(`COALESCE(SUM(CASE WHEN \`transaction\`.\`discount_amount\` > 0 THEN ${activeLineQuantitySql} ELSE 0 END), 0)`),
                         'discount_item_count'
                     ]
                 ],
@@ -5346,8 +5882,14 @@ export const posRepository = {
         const dailyBusinessDates = Array.from(new Set([
             ...dailyTotalsByDate.keys(),
             ...dailyVoidsByDate.keys(),
-            ...dailyVoidLinesByDate.keys()
+            ...dailyVoidLinesByDate.keys(),
+            ...adjustmentSummary.daily_item_void_by_date.keys(),
+            ...adjustmentSummary.daily_refund_by_date.keys()
         ])).filter(Boolean).sort();
+
+        const voidTransactionCount = Number.parseInt(voidSummaryRow?.void_transaction_count || 0, 10);
+        const voidAmount = round4(round4(voidSummaryRow?.void_amount) + adjustmentSummary.item_void_amount);
+        const voidedItemCount = round4(voidLineSummary?.voided_item_count) + adjustmentSummary.item_voided_item_count;
 
         return {
             transaction_count: Number.parseInt(summaryRow?.transaction_count || 0, 10),
@@ -5363,11 +5905,14 @@ export const posRepository = {
             item_count: round4(lineSummary?.item_count),
             discount_item_count: round4(lineSummary?.discount_item_count),
             total_cost: round4(lineSummary?.total_cost),
-            void_transaction_count: Number.parseInt(voidSummaryRow?.void_transaction_count || 0, 10),
-            void_amount: round4(voidSummaryRow?.void_amount),
-            voided_item_count: round4(voidLineSummary?.voided_item_count),
-            refund_amount: 0,
-            refunded_item_count: 0,
+            void_transaction_count: voidTransactionCount,
+            transaction_void_amount: round4(voidSummaryRow?.void_amount),
+            item_void_amount: adjustmentSummary.item_void_amount,
+            void_amount: voidAmount,
+            voided_item_count: voidedItemCount,
+            item_voided_item_count: adjustmentSummary.item_voided_item_count,
+            refund_amount: adjustmentSummary.refund_amount,
+            refunded_item_count: adjustmentSummary.refunded_item_count,
             provider_refunds_included: false,
             net_profit: round4(summaryRow?.total_amount) - round4(lineSummary?.total_cost),
             daily_totals: dailyBusinessDates.map((businessDate) => {
@@ -5381,9 +5926,18 @@ export const posRepository = {
                 discount_item_count: round4(dailyLinesByDate.get(businessDate)?.discount_item_count),
                 total_cost: round4(dailyLinesByDate.get(businessDate)?.total_cost),
                 void_transaction_count: Number.parseInt(dailyVoidsByDate.get(businessDate)?.void_transaction_count || 0, 10),
-                void_amount: round4(dailyVoidsByDate.get(businessDate)?.void_amount),
-                voided_item_count: round4(dailyVoidLinesByDate.get(businessDate)?.voided_item_count),
-                refund_amount: 0,
+                transaction_void_amount: round4(dailyVoidsByDate.get(businessDate)?.void_amount),
+                item_void_amount: round4(adjustmentSummary.daily_item_void_by_date.get(businessDate)),
+                void_amount: round4(
+                    round4(dailyVoidsByDate.get(businessDate)?.void_amount)
+                    + round4(adjustmentSummary.daily_item_void_by_date.get(businessDate))
+                ),
+                voided_item_count: round4(
+                    round4(dailyVoidLinesByDate.get(businessDate)?.voided_item_count)
+                    + round4(adjustmentSummary.daily_item_void_count_by_date.get(businessDate))
+                ),
+                item_voided_item_count: round4(adjustmentSummary.daily_item_void_count_by_date.get(businessDate)),
+                refund_amount: round4(adjustmentSummary.daily_refund_by_date.get(businessDate)),
                 refunded_item_count: 0,
                 provider_refunds_included: false,
                 net_profit: round4(row.total_amount) - round4(dailyLinesByDate.get(businessDate)?.total_cost)
@@ -5404,7 +5958,8 @@ export const posRepository = {
                 order_method: row.order_method,
                 count: Number.parseInt(row.count || 0, 10),
                 amount: round4(row.amount)
-            }))
+            })),
+            order_source_breakdown: buildZReadingOrderSourceBreakdown(paymentBreakdownRows)
         };
     },
 
@@ -5614,12 +6169,19 @@ export const posRepository = {
             ? await PosTransactionAdjustment.findAll({
                 where: {
                     original_location_id: locationId,
-                    created_at: { [Op.gte]: startAt, [Op.lt]: endAt },
-                    adjustment_type: { [Op.in]: ['cash_refund', 'external_refund', 'provider_refund'] },
+                    [Op.or]: [
+                        { completed_at: { [Op.gte]: startAt, [Op.lt]: endAt } },
+                        {
+                            completed_at: null,
+                            created_at: { [Op.gte]: startAt, [Op.lt]: endAt }
+                        }
+                    ],
+                    adjustment_type: { [Op.in]: Array.from(REPORT_ADJUSTMENT_EVENT_TYPES) },
                     status: { [Op.in]: ['succeeded', 'pending', 'manual_review_required'] }
                 },
                 attributes: [
-                    'pos_transaction_adjustment_id', 'original_shift_id', 'adjustment_type', 'status', 'amount'
+                    'pos_transaction_adjustment_id', 'original_shift_id', 'adjustment_type', 'status', 'amount',
+                    'metadata', 'completed_at', 'created_at'
                 ],
                 transaction: options.transaction
             })
@@ -5652,6 +6214,9 @@ export const posRepository = {
             void_transaction_count: 0,
             void_amount: 0,
             void_rows: [],
+            item_void_adjustment_count: 0,
+            item_void_amount: 0,
+            voided_item_count: 0,
                 refunds: { succeeded_count: 0, succeeded_amount: 0, pending_count: 0, pending_amount: 0, review_count: 0, review_amount: 0 }
         });
         const activityByShift = new Map(normalizedShifts.map((shift) => [
@@ -5705,9 +6270,25 @@ export const posRepository = {
         });
 
         const refundTotals = { succeeded_count: 0, succeeded_amount: 0, pending_count: 0, pending_amount: 0, review_count: 0, review_amount: 0 };
+        const itemVoidTotals = { adjustment_count: 0, amount: 0, item_count: 0 };
         (Array.isArray(adjustmentRows) ? adjustmentRows : []).forEach((model) => {
             const row = toPlain(model);
             const amount = round4(row.amount);
+            if (isReportItemVoidAdjustment(row)) {
+                if (String(row.status || '').trim().toLowerCase() !== 'succeeded') return;
+                const metadata = resolveReportAdjustmentMetadata(row);
+                const itemCount = sumBy(metadata.voided_lines, (line) => line?.quantity);
+                itemVoidTotals.adjustment_count += 1;
+                itemVoidTotals.amount = round4(itemVoidTotals.amount + amount);
+                itemVoidTotals.item_count = round4(itemVoidTotals.item_count + itemCount);
+                const activity = activityByShift.get(toPositiveInt(row.original_shift_id));
+                if (activity) {
+                    activity.item_void_adjustment_count += 1;
+                    activity.item_void_amount = round4(activity.item_void_amount + amount);
+                    activity.voided_item_count = round4(activity.voided_item_count + itemCount);
+                }
+                return;
+            }
             const bucket = row.status === 'succeeded'
                 ? ['succeeded_count', 'succeeded_amount']
                 : row.status === 'manual_review_required'
@@ -5749,6 +6330,9 @@ export const posRepository = {
                 adjustments: {
                     void_transaction_count: activity.void_transaction_count,
                     void_amount: round4(activity.void_amount),
+                    item_void_adjustment_count: activity.item_void_adjustment_count,
+                    item_void_amount: round4(activity.item_void_amount),
+                    voided_item_count: round4(activity.voided_item_count),
                     refunds: {
                         ...activity.refunds,
                         succeeded_amount: round4(activity.refunds.succeeded_amount),
@@ -5774,6 +6358,11 @@ export const posRepository = {
                 }
             },
             refunds: refundTotals,
+            item_voids: {
+                adjustment_count: itemVoidTotals.adjustment_count,
+                amount: round4(itemVoidTotals.amount),
+                item_count: round4(itemVoidTotals.item_count)
+            },
             delivery_provider_breakdown: buildDeliveryProviderBreakdown(saleRows),
             shifts
         };
@@ -7420,6 +8009,7 @@ export const posRepository = {
         locationIds = [],
         dateFrom = null,
         dateTo = null,
+        search = '',
         status = 'all',
         page = 1,
         limit = 20
@@ -7452,6 +8042,20 @@ export const posRepository = {
             where.business_date = {};
             if (normalizedDateFrom) where.business_date[Op.gte] = normalizedDateFrom;
             if (normalizedDateTo) where.business_date[Op.lte] = normalizedDateTo;
+        }
+
+        const normalizedSearch = String(search || '').trim().slice(0, 120);
+        if (normalizedSearch) {
+            const shiftIdSearch = normalizedSearch.replace(/^#\s*/, '');
+            const terminalSearch = normalizedSearch.replace(/[\\%_]/g, '\\$&');
+            const conditions = [{ terminal_id: { [Op.like]: `%${terminalSearch}%` } }];
+            if (/^\d+$/.test(shiftIdSearch)) {
+                const shiftId = Number(shiftIdSearch);
+                if (Number.isSafeInteger(shiftId)) {
+                    conditions.unshift({ pos_terminal_shift_id: shiftId });
+                }
+            }
+            where[Op.or] = conditions;
         }
 
         const { rows, count } = await PosTerminalShift.findAndCountAll({

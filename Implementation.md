@@ -2,7 +2,7 @@
 
 Latest proposal: [POS Settings - Taxes](#implementation---pos-settings---taxes).
 
-Previous proposal: [POS Device and Location Access, Phases 345–350](#implementation---pos-device-and-location-access-phases-345-350).
+Previous proposal: [POS Device and Location Access, Phases 345–349](#implementation---pos-device-and-location-access-phases-345-349).
 
 ## Proposed Changes
 
@@ -3727,9 +3727,9 @@ The first command is a dry run. Review its candidate, skipped, and failed counts
 
 ---
 
-# Implementation - POS Device and Location Access (Phases 345-350)
+# Implementation - POS Device and Location Access (Phases 345-349)
 
-Planning date: 2026-09-14. Status: Phases 345-346 completed; Phase 347 in progress; Phases 348-350 planned.
+Planning date: 2026-09-14. Status: Phases 345-346 completed; Phase 347 approved; Phases 348-349 planned.
 Packet: discovery-first / web-fullstack. Owners: backend, POS, Android, QA.
 Current repository phase: 344 (in progress, authenticated visual acceptance pending).
 Next runtime phase for this initiative: 347, explicitly approved in parallel with Phase 344's pending acceptance.
@@ -3834,26 +3834,9 @@ is an access policy independent of printer availability. No new allowlist is pla
   request; no secrets in logs; existing shifts/financial records preserved. Implementation
   evidence is recorded in the phase ledger.
 
-## Phase 347 - iMin device proof
+## Phase 347 - POS controls and location policy
 
-- Owner: Android; dependency: 346.
-- Files: `apps/dgfy-android-bridge/imin-wrapper/app/src/main/java/com/dgfy/iminwrapper/`
-  (`IminBridge.kt`, `WebPosActivity.kt`, `NativePosApiClient.kt`, new key service),
-  backup rules, and applicable native hardware adapter found in 345.
-- Generate a per-install signing key in Android Keystore; private key never enters
-  JavaScript, backup, or API payloads. Restrict signing to approved origins, enrollment,
-  and typed challenges/requests; do not expose an arbitrary signing oracle.
-- Keep cryptographic work off the UI thread. Reinstall/key loss requires reenrollment;
-  signed upgrades preserve enrollment. Report actual key security level; hardware
-  backing/attestation availability must be validated on the target iMin model.
-- Tests: signature interoperability, wrong origin/frame, malformed request, replay,
-  key loss, upgrade, tenant switch, and enrollment recovery on a physical device.
-- Acceptance: copied browser state cannot authenticate another device; compatible
-  printer/drawer behavior; no claim of universal hardware attestation.
-
-## Phase 348 - POS controls and location policy
-
-- Owner: POS/backend; dependency: 346-347.
+- Owner: POS/backend; dependency: 346.
 - Files: `packages/web-core/src/features/pos/pages/TerminalPage.jsx`,
   `components/TerminalOperationsWorkspace.jsx`, new focused device settings/login
   components, POS services, and `apps/dgfy-pos/tests/e2e/`.
@@ -3869,7 +3852,7 @@ is an access policy independent of printer availability. No new allowlist is pla
 - Acceptance: authorized device and cashier succeed; wrong device/area fails with
   actionable feedback; unrelated tenants and back-office access retain their policy.
 
-## Phase 349 - LAN bridge command authorization
+## Phase 348 - LAN bridge command authorization
 
 - Owner: backend/hardware; dependency: 346, runtime decision in 345.
 - Files: `apps/dgfy-api/device-bridge/{auth/bridgeAuth.js,config/runtime.js,server.js}`,
@@ -3887,14 +3870,14 @@ is an access policy independent of printer availability. No new allowlist is pla
 - Acceptance: unauthorized calls produce no hardware side effect; missing printer
   remains compatible with selling; every executed command has audit evidence.
 
-## Phase 350 - Hardening and controlled rollout
+## Phase 349 - Hardening and controlled rollout
 
-- Owner: QA/release; dependency: 346-349 acceptance.
-- Files: API integration/security suites, POS E2E, Android tests, bridge tests,
+- Owner: QA/release; dependency: 346-348 acceptance.
+- Files: API integration/security suites, POS E2E, bridge tests,
   CI workflows, rollout runbook, and phase ledger.
 - Run migration tests on disposable fresh/upgraded tenants, auth/tenant/shift/checkout/
-  payment/void/handoff/sync regressions, physical iMin and LAN hardware UAT, and
-  proof/replay/concurrency tests. Validate policy-off clients and old APK behavior.
+  payment/void/handoff/sync regressions, LAN hardware UAT, and proof/replay/concurrency
+  tests. Validate policy-off clients and existing clients.
 - Verify bounded latency/query counts and no duplicate login requests. Document any
   offline revocation window; retain rejected queued transactions for reconciliation.
   Never promise immediate revocation of disconnected devices.
@@ -3914,9 +3897,8 @@ is an access policy independent of printer availability. No new allowlist is pla
 Architecture baseline passed on 2026-09-14 (54 modules/571 files; 95 controllers).
 Phase 345 is complete as a policy/contract implementation, not runtime enforcement or a security
 certification. Phase 344 remains in progress until its authenticated visual acceptance is complete;
-Phase 346 is complete as the durable backend enforcement phase. Phase 347 is approved and in
-progress in parallel with Phase 344; it must still pass its own physical iMin acceptance before
-Phase 348 becomes eligible.
+Phase 346 is complete as the durable backend enforcement phase. Phase 347 is the approved
+POS-controls and location-policy phase, and Phase 348 becomes eligible after its acceptance.
 
 Technical references: [Android Keystore](https://developer.android.com/privacy-and-security/keystore)
 and [Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API).
@@ -4179,3 +4161,373 @@ validated by the focused checks above. It is not yet release-complete because
 fresh-tenant migration rehearsal and authenticated rendered acceptance remain
 outstanding. Phase 346 remains `in_progress` until those gates, review, merge,
 and deployed QA are complete.
+
+# Implementation — Business Registration & Storefront Setup
+
+Status: The guide's Phases 345–349 are implemented locally; the authoritative
+repository ledger records them as Phases 348–352 because repository Phases
+345–347 are assigned to other initiatives. The disposable landlord migration
+rehearsal has passed; authenticated rendered acceptance, review, and deployment
+remain pending.
+
+Source requirements: C:\Users\USER\Downloads\BUSINESS_REGISTRATION_STORE_SETUP_FLOW_GUIDE.md.
+
+## Planning Packet
+
+- Packet: Discovery-first feature rollout
+- Domain: Storefront, API, landlord storage, tenant provisioning, and admin tools
+- Current status: guide Phases 345–349 are implemented locally as repository
+  Phases 348–352; live release gates remain outstanding
+- Existing roadmap: Phase 344 is the current baseline; implementation is tracked
+  through repository Phase 352, with live release gates next
+- Confidence: High on architecture, medium on unresolved business and legal decisions
+
+## 1. Objective
+
+Build a three-step authenticated business registration and storefront setup flow:
+
+1. Business information
+2. Storefront content
+3. Location, hours, menu uploads, and legal consent
+
+The user submits the application for admin review. Data and uploads remain in
+private landlord-side storage until approval. Only after approval should the
+system provision the tenant and materialize the storefront data.
+
+## 2. End-to-end flow
+
+~~~text
+Authenticated account
+        ↓
+Registration draft
+        ↓
+Private staged uploads
+        ↓
+Final submission + legal consent
+        ↓
+Pending admin review
+        ↓
+Admin approval and tenant provisioning
+        ↓
+Idempotent storefront materialization
+        ↓
+Storefront becomes available
+~~~
+
+## 3. Work slices
+
+| Slice | Outcome | Owner role | Dependencies | Ready? |
+|---|---|---|---|---|
+| Decision gate | Confirm unresolved product, legal, storage, and admin decisions | Product, legal, platform | Guide and repository review | No |
+| Phase 345 | Registration data and staged-upload backend contract | Backend/data | Decision gate | Implemented locally as repository Phase 348; release gates pending |
+| Phase 346 | Three-step registration UI | Frontend | Phase 345 API contract | Implemented locally as repository Phase 349; release gates pending |
+| Phase 347 | Approval-time tenant materialization | Backend/platform | Provisioning workflow | Implemented locally as repository Phase 350; release gates pending |
+| Phase 348 | Admin upload review and download tools | IMS/backend | Admin route and upload records | Implemented locally as repository Phase 351; release gates pending |
+| Phase 349 | Security, accessibility, E2E, and release validation | QA/security/all | Phases 345–348 | Implemented locally as repository Phase 352; live release gates pending |
+
+## 4. Decision gate before coding
+
+The following decisions must be finalized:
+
+1. Supported menu files: recommended CSV, PDF, JPG, JPEG, and PNG; defer DOC/DOCX.
+2. Whether menu upload is optional or required.
+3. Whether extracted menu items require admin review before import.
+4. Whether Download All includes only menu files or every registration upload.
+5. Confirm whether the admin screen is the existing Tenant Manager/IMS route.
+6. Confirm the three-delivery-partner limit.
+7. Confirm whether profile, cover, and gallery images are optional.
+8. Define retention and cleanup for abandoned or rejected registrations.
+9. Decide whether administrators can delete staged uploads.
+10. Confirm official legal-term identifiers and version numbers.
+11. Define file size and upload-count limits.
+12. Confirm the existing tenant-provisioning hook used after approval.
+
+Recommended defaults are the values above from the guide: admin review before
+live menu creation, original files retained, extracted items exported
+separately, three delivery partners maximum, one primary location, and two
+separate legal consents.
+
+## 5. Phase 345 — Registration intake contract
+
+Build the backend foundation first.
+
+Implementation note: the existing legacy registration application requires a
+tenant_id and therefore creates tenant-backed state. This intake slice uses
+separate landlord-side draft and upload records so the new flow can remain
+pending review without creating a tenant; the legacy registration endpoint is
+left unchanged until the approval/materialization slice is ready.
+
+Required work:
+
+- Extend the existing registration use case and repository.
+- Support draft creation, saving, resuming, and final submission.
+- Store staged uploads in private landlord-side storage.
+- Record upload ownership, category, filename, MIME type, size, validation status,
+  and extraction status.
+- Capture both legal consents with term identifiers, versions, timestamp, and
+  authenticated account.
+- Save an immutable final submission snapshot.
+- Prevent tenant database writes or tenant activation before approval.
+- Validate all requirements server-side.
+
+Acceptance criteria:
+
+- Users cannot access another account's draft or uploads.
+- Invalid, oversized, mismatched, or unsafe files are rejected.
+- Final submission creates a pending-review application.
+- Legal consent cannot be bypassed through API calls.
+- Original uploads remain available if extraction fails.
+- Existing registration behavior is not broken.
+
+Relevant existing sources to inspect and extend:
+
+- apps/dgfy-api/src/modules/tenants/usecases/registerCompanyRequestUseCase.js
+- apps/dgfy-api/src/modules/tenants/repositories/companyRegistrationRepository.js
+- apps/dgfy-api/src/models/Landlord/CompanyRegistrationApplication.js
+- apps/dgfy-api/src/models/Landlord/CompanyRegistrationAttempt.js
+- apps/dgfy-api/src/validators/settingsValidator.js
+- packages/web-core/src/services/menuImportService.js
+
+## 6. Phase 346 — Three-step registration UI
+
+Reuse existing Storefront components and adapters instead of copying the POS
+Settings shell.
+
+Required UI:
+
+- Step 1: business type, company name, industry, and authenticated account
+  information.
+- Step 2: profile image, cover image, contact details, tagline, description,
+  social links, delivery partners, and gallery.
+- Step 3: location, business hours, menu uploads, legal consents, and final
+  submission.
+- Required [i] information icons with accessible labels.
+- Existing Storefront labels, helper text, validation, upload states, previews,
+  retry, replace, remove, and reorder behavior.
+- Legal checkboxes must be the final UI section before submission.
+- Submit button must be labeled exactly:
+  Submit Details and Create Company
+
+Acceptance criteria:
+
+- The page contains exactly three steps.
+- Submit remains disabled until required fields and both consents are valid.
+- The interface works with keyboard and screen readers.
+- The design is responsive and visually consistent with the existing Storefront
+  flow.
+- No unrelated sections such as Reviews, Store Template, or Store Categories
+  are added.
+
+Relevant existing sources:
+
+- apps/dgfy-storefront/src/business/pages/StorefrontBusinessGrowPage.jsx
+- packages/web-core/src/features/pos/settings/PosStorefrontSettingsPane.jsx
+- packages/web-core/src/features/pos/settings/StorefrontGallerySettings.jsx
+- packages/web-core/src/features/pos/settings/StorefrontDeliveryPartnersSettings.jsx
+- packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx
+- packages/web-core/src/components/maps/MapPinPicker.jsx
+- packages/web-core/src/services/tenantLocationService.js
+
+Implementation status: implemented locally as repository Phase 349. The
+Storefront route now uses `CompanyRegistrationWizard` and the authenticated
+`companyRegistrationDraftService`; it saves Steps 1 and 2 as draft updates,
+stages media/menu uploads through the private draft-upload API, and submits
+the two legal consents with their current versions. The old
+`/admin/tenants/register` call remains available for its existing consumers but
+is no longer used by this Storefront wizard.
+
+## 7. Phase 347 — Approval-time materialization
+
+When an administrator approves and provisions the tenant:
+
+- Materialize business and storefront content.
+- Apply contact details, social links, delivery partners, gallery, location, and
+  hours.
+- Set the approved location as the primary location.
+- Move or reference approved media in the correct tenant storage.
+- Keep original menu files accessible to authorized administrators.
+- Do not automatically publish extracted menu items without the approved review
+  process.
+- Make the operation idempotent so retries do not duplicate data or assets.
+- Record failures and provide an admin retry path.
+
+Acceptance criteria:
+
+- No tenant-facing storefront data is written before approval.
+- Repeating approval or retrying materialization creates no duplicates.
+- A failed extraction does not remove the original upload.
+- Materialization failures are visible and recoverable by authorized admins.
+
+Implementation status: implemented locally as repository Phase 350. Admin
+approval endpoints now claim a submitted draft, create the pending tenant and
+legacy application projection inside one landlord transaction, preserve the
+legal acknowledgement snapshot, provision the tenant, and materialize the
+approved Storefront data only after provisioning. Profile, cover, and gallery
+assets are copied through tenant-scoped Storefront asset storage while the
+private registration originals remain intact. Menu files stay private and
+ready for later admin review/import; no menu item extraction or publication is
+performed here.
+
+Materialization state is stored on the draft with an immutable-progress
+snapshot, tenant/application references, failure reason, and retry status.
+The retry endpoint reuses existing locations, settings, and materialized asset
+references so a retry does not duplicate them. New endpoints are:
+
+- `POST /api/v1/registration/drafts/:draftId/approve`
+- `POST /api/v1/registration/drafts/:draftId/retry-materialization`
+
+Focused validation covers approval, idempotent re-approval, location/settings
+materialization, migration idempotency, and the earlier draft contract suites.
+
+## 8. Phase 348 — Admin menu review and downloads
+
+Add this to the confirmed existing admin tenant-management route.
+
+Required capabilities:
+
+- View registration uploads.
+- Display upload status and metadata.
+- Download an individual file securely.
+- Download all menu originals as a ZIP.
+- Include a manifest in the ZIP.
+- Sanitize filenames and prevent path traversal or ZIP-slip attacks.
+- Exclude unauthorized, deleted, or unrelated files.
+- Optionally export extracted menu items as CSV.
+- Audit administrative downloads.
+
+Recommended API shape, subject to existing route conventions:
+
+- GET /admin/tenants/:tenantId/registration-uploads
+- GET /admin/tenants/:tenantId/registration-uploads/:uploadId/download
+- GET /admin/tenants/:tenantId/registration-uploads/download-all
+- GET /admin/tenants/:tenantId/registration-uploads/export-items
+
+Relevant existing sources:
+
+- apps/dgfy-ims/Pages/admin/TenantManager.jsx
+- packages/web-core/src/services/adminService.js
+- apps/dgfy-api/src/routes/adminTenants.js
+- apps/dgfy-api/src/modules/tenants/controllers/adminTenantHandlers.js
+
+Implementation status: implemented locally as repository Phase 351. Tenant
+Manager now lists submitted registration drafts for authorized review and opens
+a registration-review dialog with upload status, metadata, individual secure
+downloads, and a menu-original ZIP download. The dialog also uses the admin
+draft approval and materialization-retry endpoints so the new draft flow is
+reachable from the existing admin surface.
+
+The backend supports both pending-draft review and post-materialization tenant
+review:
+
+- `GET /api/v1/admin/tenants/registration-drafts`
+- `GET /api/v1/admin/tenants/registration-drafts/:draftId/uploads`
+- `GET /api/v1/admin/tenants/registration-drafts/:draftId/uploads/:uploadId/download`
+- `GET /api/v1/admin/tenants/registration-drafts/:draftId/uploads/download-all`
+- `POST /api/v1/admin/tenants/registration-drafts/:draftId/approve`
+- `POST /api/v1/admin/tenants/registration-drafts/:draftId/retry-materialization`
+- `GET /api/v1/admin/tenants/:tenantId/registration-uploads`
+- `GET /api/v1/admin/tenants/:tenantId/registration-uploads/:uploadId/download`
+- `GET /api/v1/admin/tenants/:tenantId/registration-uploads/download-all`
+
+Downloads are limited to active uploads linked to the resolved registration
+draft, validate storage containment, regular-file status, size, and SHA-256,
+sanitize archive names, include a manifest, and create landlord/admin download
+audit records. The optional extracted-items CSV remains deferred to the menu
+review/import phase.
+
+## 9. Phase 349 — Hardening and release validation
+
+Test the complete flow:
+
+- Registration draft and resume.
+- File validation and private storage.
+- Legal-consent enforcement.
+- Admin approval and tenant provisioning.
+- Materialization retry and idempotency.
+- Individual and ZIP downloads.
+- Unauthorized access attempts.
+- Mobile, tablet, and desktop layouts.
+- Keyboard and screen-reader navigation.
+- Existing registration and tenant-management regressions.
+- Full registration-to-admin E2E workflow.
+
+Required security checks:
+
+- Extension, MIME, and file-signature validation.
+- File-size and upload-count limits.
+- Private storage and authenticated downloads.
+- Tenant/application/admin authorization.
+- Path traversal and ZIP-slip prevention.
+- Download and legal-consent audit records.
+- Cleanup and retention behavior.
+
+## 10. Explicitly out of scope
+
+- Copying the POS Settings page as the registration UI.
+- Creating a tenant before approval.
+- Publishing menu items automatically during public registration.
+- Combining the two legal consents into one checkbox.
+- Exposing raw storage paths.
+- Replacing original uploads after parsing.
+- Adding unrelated POS navigation or extra registration sections.
+
+## 11. Dependencies and blockers
+
+- Approval needed: legal term IDs and versions, retention policy, upload deletion
+  policy, and menu behavior.
+- Missing data: upload limits, required fields by business type, and parser
+  constraints.
+- External dependency: private object storage and cleanup process.
+- Cross-team handoff: confirmation of the approval/provisioning hook and admin
+  route.
+
+## 12. Definition of done
+
+- Exactly three registration steps are implemented.
+- Storefront controls reuse existing labels, behavior, and adapters.
+- Both legal consents are validated on the frontend and backend.
+- No tenant database or tenant activation occurs before approval.
+- Original uploads are preserved.
+- Authorized administrators can review and download uploads safely.
+- Approval materialization is idempotent and retryable.
+- Security, accessibility, responsive, regression, and E2E tests pass.
+- The final handoff records changed files, reused components, backend tables and
+  endpoints, storage and retention behavior, legal versioning, materialization,
+  admin route, downloads, test evidence, and unresolved decisions.
+
+## 13. Current implementation status
+
+The landlord-side registration intake contract, Storefront UI, approval-time
+materialization, and admin upload review/download surface are implemented
+locally:
+
+- Authenticated draft creation, loading, updating, and optimistic versioning.
+- Private staged-upload records for profile, cover, gallery, and menu files.
+- Private storage outside the public /uploads static route.
+- MIME and file-signature validation for CSV, PDF, JPG/JPEG, and PNG.
+- Separate company-registration and marketplace legal-consent validation.
+- Immutable final submission and legal snapshots.
+- No tenant creation, tenant database write, or tenant activation in this flow.
+- Existing tenant-backed registration behavior remains unchanged.
+- The Storefront registration route is an exactly three-step responsive wizard
+  with draft autosave, reusable Storefront controls, upload retry/remove
+  states, and the final action `Submit Details and Create Company`.
+- The final button remains disabled until the required Step 3 fields and both
+  separate legal consents are valid; submission routes to the existing in-app
+  registration status page.
+
+Submitted registration review, secure downloads, ZIP manifest generation,
+download auditing, and the Phase 352 hardening pass are implemented locally.
+The hardening pass includes accessible review-dialog focus management, semantic
+upload progress indicators, strict deterministic Storefront browser checks,
+runtime/request diagnostics, and prevention of an unauthenticated public
+catalog request from triggering a session refresh. The disposable landlord
+migration rehearsal passed, including a second idempotency run and schema
+verification. Authenticated browser acceptance, review, merge, and deployed QA
+remain release gates.
+
+## 14. Recommended next move
+
+Complete the remaining guide Phase 349 release gates: fresh migration
+rehearsal, authenticated browser acceptance, full registration-to-admin E2E,
+security/accessibility verification, review, merge, and deployed QA.

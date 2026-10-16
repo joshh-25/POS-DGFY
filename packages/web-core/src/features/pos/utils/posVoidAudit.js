@@ -16,6 +16,28 @@ export const resolvePosVoidReason = (transaction) => {
     return reason || 'No reason recorded';
 };
 
+export const resolvePosRefundReason = (transaction) => {
+    const directReason = String(transaction?.void_reason || '').trim();
+    if (directReason) return directReason;
+
+    const adjustments = Array.isArray(transaction?.adjustments) ? transaction.adjustments : [];
+    const requestedAdjustmentId = Number(transaction?.item_void_adjustment_id);
+    const matchingAdjustment = Number.isInteger(requestedAdjustmentId) && requestedAdjustmentId > 0
+        ? adjustments.find((adjustment) => Number(adjustment?.pos_transaction_adjustment_id) === requestedAdjustmentId)
+        : null;
+    const itemVoidAdjustment = matchingAdjustment || [...adjustments].reverse().find((adjustment) => (
+        adjustment?.item_voided === true
+        || adjustment?.evidence_scope === 'pos_item_void'
+    ));
+    const adjustmentReason = String(itemVoidAdjustment?.reason || '').trim();
+    if (adjustmentReason) return adjustmentReason;
+
+    const lineReason = (Array.isArray(transaction?.lines) ? transaction.lines : [])
+        .map((line) => String(line?.void_reason || '').trim())
+        .find(Boolean);
+    return lineReason || '';
+};
+
 export const formatPosVoidTimestamp = (value) => {
     if (!value) return 'Unknown time';
     const date = new Date(value);

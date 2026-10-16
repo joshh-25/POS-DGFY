@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-06
-last_reviewed: 2026-09-14
+last_reviewed: 2026-10-06
 review_by: 2026-11-06
 applies_to: architecture_decision
 topic: mode_aware_rbac_and_role_presets
@@ -163,6 +163,21 @@ Branch authorization and active operator exclusivity follow the
 Administrative/catalog access remains separately permission-gated. Shared item
 identity and base price retain their tenant-wide meaning under ADR 0029; a
 branch selector does not turn those fields into branch-local data.
+
+### 2026-10-06 — F&B cashier inherits the standard cashier baseline
+
+The `fnb_cashier` preset now composes `DEFAULT_ROLE_PERMISSIONS.cashier` and adds
+its governed POS void authority plus the F&B-specific dashboard, menu, dining, and
+check capabilities. This makes the mode-native F&B role consistent with the
+standard cashier role, including `pos:shift_close`, while keeping `pos:close_day`
+and cash-drawer adjustment out of the cashier baseline. The role catalog version
+is `2026-10-13.mode-aware-rbac-v6` so cached Team Access clients refetch the
+corrected preset.
+
+This remains an additive role-preset change with no schema migration. Existing
+users whose stored explicit permissions came from the previous `fnb_cashier`
+preset are not silently rewritten; reassigning the F&B cashier preset is the
+auditable path to refresh those assignments.
 
 ## Validation
 

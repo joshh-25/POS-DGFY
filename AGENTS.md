@@ -378,7 +378,7 @@ the clause being changed (ADR 0039):
 ## Continuous Phase Numbering
 
 1. Every governed multi-phase initiative must use one continuous repository phase sequence.
-2. Before creating a plan, find the highest phase number in the authoritative phase ledger and continue from the next number.
+2. Before creating a plan, find the highest phase number in the authoritative phase ledger and continue from the next number. Earlier unfinished phases do not block a new phase unless it has an explicit dependency; numbering and lifecycle rules are defined in the ledger's "Phase Sequencing and Lifecycle Rules" section. Historical phases are never renumbered.
 3. Do not restart numbering at Phase 0 or Phase 1 for a new release, feature group, milestone, or implementation session.
 4. Releases and milestones may group phases, but they do not reset the phase sequence.
 5. Preserve historical phase numbers. Never renumber completed phases unless an explicit documentation migration is approved.
@@ -392,6 +392,7 @@ the clause being changed (ADR 0039):
    - acceptance and validation evidence;
    - completion date when applicable;
    - links to relevant contracts, ADRs, tests, and implementation files.
-8. A phase may be marked `completed` only after its acceptance gates and required validation pass.
-9. Plans and completion reports must state the current phase and next eligible phase.
-10. When documentation disagrees about numbering, stop and reconcile it against the authoritative ledger before implementation.
+   - a `### Post-merge verification` checklist for outstanding deployment, provider, or operational verification.
+8. `completed` means scoped implementation is merged and implementation validation passes. Track outstanding post-merge verification separately; this does not waive it or its governing release, deployment, provider, or production gates.
+9. Plans and completion reports must state the current phase, next phase number, and any explicit dependencies.
+10. Stop and reconcile conflicts about phase numbering against the authoritative ledger before implementation. `Next eligible phase` prose is not a prerequisite without an explicit dependency.

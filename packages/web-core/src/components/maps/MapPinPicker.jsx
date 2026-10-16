@@ -2,7 +2,7 @@ import * as maplibreModule from 'maplibre-gl';
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Crosshair, Maximize2, Search as SearchIcon, X } from 'lucide-react';
+import { Crosshair, Loader2, Maximize2, Search as SearchIcon, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -162,54 +162,92 @@ function LocationSearchControls({
   isSearchingAddress,
   selectAddress,
   clearAddressSearch,
+  locationEditorAction = null,
+  searchInputClassName = '',
   expanded = false
 }) {
+  const hasLocationEditorAction = Boolean(locationEditorAction);
+
   return (
     <div
       className="space-y-2"
-      role="search"
-      aria-label={expanded ? 'Search for a storefront location in the expanded map' : 'Search for a storefront location'}
+      role={hasLocationEditorAction ? undefined : 'search'}
+      aria-label={hasLocationEditorAction ? undefined : (expanded ? 'Search for a storefront location in the expanded map' : 'Search for a storefront location')}
     >
       <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5B739B]" aria-hidden="true" />
-          <Input
-            type="search"
-            value={addressQuery}
-            onChange={(event) => setAddressQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                searchAddress();
-              }
-            }}
-            placeholder="Search for an address"
-            aria-label="Search business address"
-            className="h-11 rounded-xl border-slate-300 pl-10 pr-11 text-[13px]"
-          />
-          {addressQuery ? (
-            <button
+        <div
+          className="flex min-w-0 flex-1 items-center gap-2"
+          role={hasLocationEditorAction ? 'search' : undefined}
+          aria-label={hasLocationEditorAction ? (expanded ? 'Search for a storefront location in the expanded map' : 'Search for a storefront location') : undefined}
+        >
+          <div className="relative min-w-0 flex-1">
+            <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5B739B]" aria-hidden="true" />
+            <Input
+              type="search"
+              value={addressQuery}
+              onChange={(event) => setAddressQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  searchAddress();
+                }
+              }}
+              placeholder={hasLocationEditorAction ? 'Search' : 'Search for an address'}
+              aria-label="Search business address"
+              className={cn(
+                'h-11 min-w-0 appearance-none rounded-xl border-slate-300 pl-10 text-[13px]',
+                hasLocationEditorAction
+                  ? (addressQuery ? 'pr-20 sm:pr-32' : 'pr-12 sm:pr-24')
+                  : 'pr-11',
+                searchInputClassName
+              )}
+            />
+            {addressQuery ? (
+              <button
+                type="button"
+                aria-label="Clear address search"
+                title="Clear address search"
+                onClick={clearAddressSearch}
+                className={cn(
+                  'absolute top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]',
+                  hasLocationEditorAction ? 'right-11 sm:right-20' : 'right-1'
+                )}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
+            {hasLocationEditorAction ? (
+              <Button
+                type="button"
+                onClick={searchAddress}
+                disabled={isSearchingAddress}
+                aria-busy={isSearchingAddress}
+                aria-label={isSearchingAddress ? 'Searching address' : 'Search address'}
+                title={isSearchingAddress ? 'Searching address' : 'Search address'}
+                className="absolute right-1 top-1/2 inline-flex h-9 min-h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg bg-[#1A4E8D] px-0 text-[12px] font-bold text-white hover:bg-[#143F73] sm:w-auto sm:px-2.5"
+              >
+                {isSearchingAddress
+                  ? <Loader2 className="h-4 w-4 animate-spin sm:mr-1.5" aria-hidden="true" />
+                  : <SearchIcon className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />}
+                <span className="hidden sm:inline">Search</span>
+              </Button>
+            ) : null}
+          </div>
+          {!hasLocationEditorAction ? (
+            <Button
               type="button"
-              aria-label="Clear address search"
-              title="Clear address search"
-              onClick={clearAddressSearch}
-              className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]"
+              onClick={searchAddress}
+              disabled={isSearchingAddress}
+              aria-label={isSearchingAddress ? 'Searching address' : 'Search address'}
+              title={isSearchingAddress ? 'Searching address' : 'Search address'}
+              className="h-11 w-11 shrink-0 rounded-xl bg-[#1A4E8D] px-0 text-[13px] font-bold text-white hover:bg-[#143F73] sm:w-auto sm:px-5"
             >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+              <SearchIcon className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
+              <span className="hidden sm:inline">{isSearchingAddress ? 'Searching...' : 'Search'}</span>
+            </Button>
           ) : null}
         </div>
-        <Button
-          type="button"
-          onClick={searchAddress}
-          disabled={isSearchingAddress}
-          aria-label={isSearchingAddress ? 'Searching address' : 'Search address'}
-          title={isSearchingAddress ? 'Searching address' : 'Search address'}
-          className="h-11 w-11 shrink-0 rounded-xl bg-[#1A4E8D] px-0 text-[13px] font-bold text-white hover:bg-[#143F73] sm:w-auto sm:px-5"
-        >
-          <SearchIcon className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
-          <span className="hidden sm:inline">{isSearchingAddress ? 'Searching...' : 'Search'}</span>
-        </Button>
+        {hasLocationEditorAction ? <div className="shrink-0">{locationEditorAction}</div> : null}
       </div>
       {addressResults.length > 0 ? (
         <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="listbox" aria-label="Address search results">
@@ -241,6 +279,9 @@ export default function MapPinPicker({
   defaultAdjustMode = false,
   readOnly = false,
   locationEditorMode = false,
+  locationEditorAction = null,
+  searchInputClassName = '',
+  mapHeightClassName = STOREFRONT_LOCATION_MAP_HEIGHT_CLASS,
   expansionBoundaryRef = null,
   expansionScrollParentRef = null,
   className
@@ -656,6 +697,8 @@ export default function MapPinPicker({
         maxZoom: MAX_ZOOM,
         trackResize: false,
         attributionControl: false,
+        doubleClickZoom: true,
+        touchZoomRotate: true,
         bearing: 0,
         pitch: 0
       });
@@ -870,6 +913,8 @@ export default function MapPinPicker({
       isSearchingAddress={isSearchingAddress}
       selectAddress={selectAddress}
       clearAddressSearch={clearAddressSearch}
+      locationEditorAction={locationEditorAction}
+      searchInputClassName={searchInputClassName}
       expanded
     />
   );
@@ -934,6 +979,8 @@ export default function MapPinPicker({
               isSearchingAddress={isSearchingAddress}
               selectAddress={selectAddress}
               clearAddressSearch={clearAddressSearch}
+              locationEditorAction={locationEditorAction}
+              searchInputClassName={searchInputClassName}
             />
           ) : null
         ) : (
@@ -1026,7 +1073,7 @@ export default function MapPinPicker({
         onScrimBoundsChange={setMapExpandScrimBounds}
         onMapResize={() => safeResizeMap(mapRef.current, containerRef.current)}
         search={locationSearchControls}
-        collapsedClassName={readOnly || isLocationEditorMode ? STOREFRONT_LOCATION_MAP_HEIGHT_CLASS : 'h-72 rounded-xl'}
+        collapsedClassName={readOnly || isLocationEditorMode ? mapHeightClassName : 'h-72 rounded-xl'}
       >
         {mapContent}
       </MapPinExpansionOverlay>

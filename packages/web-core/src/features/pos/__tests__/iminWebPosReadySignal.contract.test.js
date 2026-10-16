@@ -41,7 +41,8 @@ describe('POS iMin wrapper ready signal', () => {
     // Documents the deadlock this fix breaks: TerminalPageLayout only mounts
     // POSCheckoutTerminal (whose own effect calls notifyIminWebPosReady)
     // once the session is unlocked.
-    expect(terminalPageLayoutSource).toContain('{!locked && (');
+    expect(terminalPageLayoutSource).toContain('{!locked && shouldMountCheckoutTerminal && (');
+    expect(terminalPageLayoutSource).toContain('<POSCheckoutTerminal');
     expect(posCheckoutTerminalSource).toContain('notifyIminWebPosReady();');
   });
 });

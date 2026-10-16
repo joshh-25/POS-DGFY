@@ -19,6 +19,19 @@ const historyRow = {
     cashier: { username: 'Jane Doe' }
 };
 
+const voidedCashRefundPendingRow = {
+    ...historyRow,
+    status: 'voided',
+    payment_type: 'cash',
+    total_amount: 0,
+    financial_outcome: {
+        refund_required: true,
+        refund_amount: 75,
+        next_action: 'record_cash_refund_with_cash_drawer_event',
+        reason_code: 'CASH_REFUND_REQUIRED'
+    }
+};
+
 const buildPanelProps = (overrides = {}) => ({
     historySearch: '',
     setHistorySearch: vi.fn(),
@@ -723,6 +736,21 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(actionButtons.every((button) => button.className.includes('h-9 w-9'))).toBe(true);
     });
 
+    it('shows pending financial follow-up in voided transaction details', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            historyRows: [voidedCashRefundPendingRow]
+        })} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'View details for INV-001' }));
+
+        const details = screen.getByTestId('pos-history-details-dialog');
+        expect(within(details).getByText('Financial Follow-up')).toBeTruthy();
+        expect(within(details).getByText('Cash refund and a linked cash-drawer event are still required.')).toBeTruthy();
+        expect(within(details).getByText('Required Amount')).toBeTruthy();
+        expect(within(details).getByText('₱75.00')).toBeTruthy();
+    });
+
     it('uses a four-data-column portrait tablet table and retains its action column', () => {
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
         Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1024 });
@@ -865,6 +893,35 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(syncButton.getAttribute('aria-label')).toBe('Sync 1 pending POS record');
         expect(syncButton.getAttribute('title')).toBe('Sync 1 pending POS record');
         expect(syncButton.className).toContain('w-10');
+    });
+
+    it('requires a numeric refund passcode before confirming a transaction void', async () => {
+        const onVoidTransaction = vi.fn().mockResolvedValue(undefined);
+        render(<POSTransactionHistoryPanel {...buildPanelProps({ onVoidTransaction })} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Void transaction INV-001' }));
+
+        const confirmButton = screen.getByRole('button', { name: 'Confirm Transaction Void' });
+        expect(confirmButton.disabled).toBe(true);
+
+        fireEvent.change(screen.getByLabelText('Void reason'), {
+            target: { value: 'Customer refund approved' }
+        });
+        fireEvent.change(screen.getByLabelText('Authorized user global POS PIN'), {
+            target: { value: '2468' }
+        });
+        expect(confirmButton.disabled).toBe(false);
+
+        fireEvent.click(confirmButton);
+
+        await waitFor(() => {
+            expect(onVoidTransaction).toHaveBeenCalledWith(
+                historyRow,
+                'Customer refund approved',
+                [],
+                '2468'
+            );
+        });
     });
 
     it('shows the temporary POS void approval popup only for an authorized reviewer', async () => {

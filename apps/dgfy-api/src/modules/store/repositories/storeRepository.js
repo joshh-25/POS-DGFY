@@ -1,8 +1,13 @@
 import crypto from 'crypto';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import logger from '../../../config/logger.js';
-import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
+import {
+    deriveImageAssetVariantUrls,
+    readAvailableImageAsset
+} from '../../shared/utils/imageAssetStorage.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertStoreRepositoryContract } from '../contracts/storeRepository.contract.js';
 import { isCatalogItemVisible, resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
@@ -27,6 +32,11 @@ import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveF
 // precedent (itemRepository.js itself imports getAllSettingsUseCase from
 // ../../settings/index.js).
 import { itemRepository } from '../../inventory/index.js';
+import { storefrontQrCodeRepository } from '../../storefrontQrCodes/repositories/storefrontQrCodeRepository.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const STORE_UPLOADS_ROOT = path.resolve(__dirname, '../../../../uploads');
 
 const safeGetOptionalModel = (name) => {
     try {
@@ -514,6 +524,41 @@ const mapStorefrontCatalogImageGallery = (row = {}, options = {}) => {
         }));
 };
 
+const readAvailableStorefrontCatalogImages = async (rows = []) => Promise.all((rows || []).map(async (row) => {
+    const primary = await readAvailableImageAsset({
+        uploadsRoot: STORE_UPLOADS_ROOT,
+        storedUrl: row.image_url,
+        variants: row.image_variants
+    });
+    const gallery = (await Promise.all((row.image_gallery || []).map(async (entry) => {
+        const available = await readAvailableImageAsset({
+            uploadsRoot: STORE_UPLOADS_ROOT,
+            storedUrl: entry.url,
+            variants: entry.variants
+        });
+        if (!available.url && !available.path) return null;
+        return {
+            ...entry,
+            url: available.url,
+            variants: available.variants
+        };
+    }))).filter(Boolean);
+    const galleryPrimary = gallery.find((entry) => entry.is_primary === true) || gallery[0] || null;
+    const imageUrl = primary.url || galleryPrimary?.url || null;
+    const imageVariants = primary.url ? primary.variants : (galleryPrimary?.variants || null);
+
+    return {
+        ...row,
+        image_url: imageUrl,
+        image_variants: imageVariants,
+        image_gallery: gallery.map((entry, index) => ({
+            ...entry,
+            is_primary: index === 0,
+            sort_order: index
+        }))
+    };
+}));
+
 const warnStorefrontOverrideFallback = (error) => {
     logger.warn('[StoreRepository] Falling back to POS-derived storefront catalog visibility while storefront override table is unavailable', {
         event_type: 'storefront_catalog_override_fallback',
@@ -606,6 +651,10 @@ export const storeRepository = {
     async beginTransaction() {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         return sequelize.transaction();
+    },
+
+    async resolvePublicStorefrontQrCode({ token, requestedLocationId = null } = {}) {
+        return storefrontQrCodeRepository.findActiveByToken({ token, requestedLocationId });
     },
 
     async findCustomerByEmail(email, options = {}) {
@@ -814,11 +863,12 @@ export const storeRepository = {
         }
     },
 
-    async listStoreCatalog({ search = '', limit = 60, location_id = null } = {}, options = {}) {
+    async listStoreCatalog({ search = '', limit = 60, location_id = null, folder_id = null } = {}, options = {}) {
         const Item = dbStore.get('Item');
         const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
         const normalizedLocationId = Number.parseInt(location_id, 10);
+        const normalizedFolderId = Number.parseInt(folder_id, 10);
         const normalizedLimit = Number.isFinite(Number(limit))
             ? Math.max(1, Math.min(200, Number(limit)))
             : 60;
@@ -833,6 +883,38 @@ export const storeRepository = {
                 { name: { [Op.like]: `%${normalizedSearch}%` } },
                 { sku_code: { [Op.like]: `%${normalizedSearch}%` } },
                 { description: { [Op.like]: `%${normalizedSearch}%` } }
+            ];
+        }
+
+        // A category QR must include both primary and secondary category
+        // assignments. Resolve the secondary item ids before the catalog query
+        // so the normal storefront limit does not fill up with unrelated items.
+        if (Number.isInteger(normalizedFolderId) && normalizedFolderId > 0) {
+            const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+            let secondaryItemIds = [];
+            if (ItemFolderMembership?.findAll) {
+                try {
+                    const memberships = await ItemFolderMembership.findAll({
+                        where: { folder_id: normalizedFolderId },
+                        attributes: ['item_id'],
+                        raw: true,
+                        transaction: options.transaction
+                    });
+                    secondaryItemIds = memberships
+                        .map((membership) => Number.parseInt(membership.item_id, 10))
+                        .filter((itemId) => Number.isInteger(itemId) && itemId > 0);
+                } catch (error) {
+                    logger.warn('[StoreRepository] Secondary category lookup failed for QR catalog scope; keeping primary matches', {
+                        folder_id: normalizedFolderId,
+                        reason: error?.message || String(error)
+                    });
+                }
+            }
+            const categoryConditions = [{ folder_id: normalizedFolderId }];
+            if (secondaryItemIds.length > 0) categoryConditions.push({ item_id: { [Op.in]: secondaryItemIds } });
+            where[Op.and] = [
+                ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+                { [Op.or]: categoryConditions }
             ];
         }
 
@@ -862,7 +944,8 @@ export const storeRepository = {
         const includeOverride = buildStorefrontOverrideInclude(StorefrontCatalogOverride, PosCatalogOverride);
         const catalogDetailIncludes = buildStorefrontCatalogDetailIncludes();
 
-        const mapCatalogRows = (rows, { allowLegacyPosFallback = false } = {}) => rows
+        const mapCatalogRows = async (rows, { allowLegacyPosFallback = false } = {}) => {
+            const mappedRows = rows
             .map((row) => {
                 const plain = toPlain(row);
                 return {
@@ -917,6 +1000,8 @@ export const storeRepository = {
                 allergens: Array.isArray(row?.allergens) ? row.allergens : [],
                 fnb_modifier_groups: Array.isArray(row?.fnbModifierGroups) ? row.fnbModifierGroups : []
             }));
+            return readAvailableStorefrontCatalogImages(mappedRows);
+        };
 
         try {
             const rows = await Item.findAll({
@@ -926,7 +1011,7 @@ export const storeRepository = {
                     ...catalogDetailIncludes
                 ]
             });
-            const catalogRows = await attachSecondaryCategories(mapCatalogRows(rows), options);
+            const catalogRows = await attachSecondaryCategories(await mapCatalogRows(rows), options);
             const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
@@ -1007,7 +1092,7 @@ export const storeRepository = {
                     ]
                 });
             }
-            const catalogRows = await attachSecondaryCategories(mapCatalogRows(rows, {
+            const catalogRows = await attachSecondaryCategories(await mapCatalogRows(rows, {
                 allowLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
             }), options);
             const locationAvailability = await loadStorefrontLocationAvailabilityMap(

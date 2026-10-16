@@ -117,7 +117,7 @@ const storeTrackingPinParamSchema = Joi.object({
 });
 
 const storePaymentSessionParamSchema = Joi.object({
-    payment_session_id: Joi.string().trim().uppercase().pattern(/^CPS-[A-Z0-9]{10}$/).required()
+    payment_session_id: Joi.string().trim().uppercase().pattern(/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/).required()
 });
 
 const storeCancelOrderSchema = Joi.object({
@@ -141,6 +141,7 @@ const storeCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
     limit: Joi.number().integer().min(1).max(200).default(60),
     location_id: Joi.number().integer().positive().optional(),
+    qr_token: Joi.string().trim().max(64).pattern(/^DGFYQR_[A-Za-z0-9_-]+$/).optional(),
     voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional()
 });
 

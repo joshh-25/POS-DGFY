@@ -21,6 +21,7 @@ const validProductionEnv = {
   DB_AUTO_SYNC: 'false',
   JWT_SECRET: strongSecret('jwt'),
   REFRESH_TOKEN_SECRET: strongSecret('refresh'),
+  SMS_PHONE_HASH_SECRET: strongSecret('sms-phone-hash'),
   CORS_ORIGIN: 'https://skupervisor.dgfy.ph,https://pos.dgfy.ph',
   SESSION_COOKIE_SECURE: 'true',
   AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
@@ -102,6 +103,7 @@ describe('production startup environment guard', () => {
         DB_AUTO_SYNC: 'false',
         JWT_SECRET: validProductionEnv.JWT_SECRET,
         REFRESH_TOKEN_SECRET: validProductionEnv.REFRESH_TOKEN_SECRET,
+        SMS_PHONE_HASH_SECRET: validProductionEnv.SMS_PHONE_HASH_SECRET,
         CORS_ORIGIN: validProductionEnv.CORS_ORIGIN,
         SESSION_COOKIE_SECURE: 'true',
         AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
@@ -115,5 +117,27 @@ describe('production startup environment guard', () => {
     expect(spawned.status).toBe(1);
     expect(`${spawned.stdout}\n${spawned.stderr}`).toContain('Missing required environment value: DB_HOST');
     expect(`${spawned.stdout}\n${spawned.stderr}`).not.toContain('database-password-production-like');
+  });
+
+  it('logs production validation warnings during server startup', () => {
+    const spawned = spawnSync(process.execPath, ['src/server.js'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: 10000,
+      env: {
+        ...process.env,
+        ...validProductionEnv,
+        SKIP_SERVER_START: 'true',
+        SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123',
+        SENTRY_ENABLED: '',
+        SENTRY_ENVIRONMENT: ''
+      }
+    });
+
+    const output = `${spawned.stdout}\n${spawned.stderr}`;
+    expect(spawned.status).toBe(0);
+    expect(output).toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
   });
 });

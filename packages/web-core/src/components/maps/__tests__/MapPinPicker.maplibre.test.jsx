@@ -279,7 +279,9 @@ describe('MapPinPicker MapLibre behavior', () => {
       minZoom: 4,
       maxZoom: 18,
       trackResize: false,
-      attributionControl: false
+      attributionControl: false,
+      doubleClickZoom: true,
+      touchZoomRotate: true
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
     expect(maplibreMocks.Map.mock.calls[0][0].center).toEqual([122.5621, 10.7202]);
@@ -389,6 +391,42 @@ describe('MapPinPicker MapLibre behavior', () => {
     const searchInput = screen.getByRole('searchbox', { name: 'Search business address' });
     await userEvent.click(screen.getByRole('button', { name: 'Clear address search' }));
     expect(searchInput.value).toBe('');
+  });
+
+  it('embeds Search in the address field and keeps the optional location action beside it', async () => {
+    const user = userEvent.setup();
+    render(
+      <MapPinPicker
+        locationEditorMode
+        locationEditorAction={<button type="button">Add location</button>}
+        mapHeightClassName="h-[150px] rounded-xl sm:h-[340px] lg:h-[420px]"
+        latitude=""
+        longitude=""
+        onChange={vi.fn()}
+      />
+    );
+
+    const searchRegion = screen.getByRole('search', { name: 'Search for a storefront location' });
+    const searchInput = screen.getByRole('searchbox', { name: 'Search business address' });
+    const searchButton = screen.getByRole('button', { name: 'Search address' });
+    const addLocationButton = screen.getByRole('button', { name: 'Add location' });
+
+    expect(searchInput.parentElement?.contains(searchButton)).toBe(true);
+    expect(searchInput.placeholder).toBe('Search');
+    expect(searchInput.className).toContain('appearance-none');
+    expect(addLocationButton.parentElement?.parentElement).toBe(searchRegion.parentElement);
+    expect(searchRegion.contains(addLocationButton)).toBe(false);
+    expect(addLocationButton.parentElement?.previousElementSibling).toBe(searchRegion);
+
+    const mapSurface = screen.getByRole('application', { name: 'Map location picker' }).parentElement.parentElement.parentElement;
+    expect(mapSurface.className).toContain('h-[150px]');
+    expect(mapSurface.className).toContain('sm:h-[340px]');
+
+    await user.type(searchInput, 'Jaro');
+    expect(screen.getAllByRole('button', { name: 'Clear address search' })).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Clear address search' }));
+    expect(searchInput.value).toBe('');
+    expect(screen.queryByRole('button', { name: 'Clear address search' })).toBeNull();
   });
 
   it('expands an editor map only within the feature-owned settings boundary', async () => {

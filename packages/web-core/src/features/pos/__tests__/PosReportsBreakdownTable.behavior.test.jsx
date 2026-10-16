@@ -38,6 +38,7 @@ const itemData = {
     quantity: 5,
     orders: 3,
     net_sales: 450,
+    refunds_voids: 80,
     sales_share: 100,
     average_unit_price: 90,
     profit: 120,
@@ -83,9 +84,11 @@ describe('POS report breakdown table', () => {
     const tableRegion = screen.getByRole('region', { name: 'Item sales report table' });
     expect(within(tableRegion).getByRole('columnheader', { name: 'Item' })).toBeTruthy();
     expect(within(tableRegion).getByRole('columnheader', { name: 'Net Sales (₱)' })).toBeTruthy();
+    expect(within(tableRegion).getByRole('columnheader', { name: 'Refunds/Voids (₱)' })).toBeTruthy();
     expect(within(tableRegion).queryByRole('columnheader', { name: 'Actions' })).toBeNull();
     expect(screen.getAllByText('Coffee').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱450.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₱-80.00').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–20 of 41 items')).toBeTruthy();
   });
 

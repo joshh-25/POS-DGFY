@@ -1,0 +1,8 @@
+FILE|sequence=1|grammar_version=EJOURNAL-READINESS-0.1|business_date=2026-10-03|tenant_id=FIXTURE-TENANT|location_id=FIXTURE-LOCATION|terminal_id=FIXTURE-TERMINAL
+DOCUMENT|sequence=2|record_id=R8-DOC-0001|document_type=RECEIPT|source_transaction_id=R8-TX-0001|document_no=RS-000001|issued_at=2026-10-03T09:00:00+08:00|gross=1000.00|discount=0.00|vat=107.14|net=1000.00
+LINE|sequence=3|record_id=R8-LINE-0001|document_record_id=R8-DOC-0001|line_no=1|item_code=FIXTURE-ITEM|description=this is test|quantity=1.000|unit_price=1000.00|discount=0.00|vat=107.14|line_total=1000.00
+PAYMENT|sequence=4|record_id=R8-PAY-0001|document_record_id=R8-DOC-0001|method=CASH|amount=1000.00|reference=FIXTURE-CASH
+ADJUSTMENT|sequence=5|record_id=R8-ADJ-0001|adjustment_type=RETURN|original_transaction_id=R8-TX-0001|original_document_no=RS-000001|adjustment_document_no=RS-000002|occurred_at=2026-10-03T09:15:00+08:00|amount=1000.00|status=RECORDED|reason=fixture return
+READING|sequence=6|record_id=R8-X-0001|reading_type=X|reading_no=X-000001|business_date=2026-10-03|generated_at=2026-10-03T09:30:00+08:00|gross=1000.00|net=1000.00|transaction_count=1
+READING|sequence=7|record_id=R8-Z-0001|reading_type=Z|reading_no=Z-000001|business_date=2026-10-03|generated_at=2026-10-03T23:00:00+08:00|gross=1000.00|net=1000.00|transaction_count=1
+TRAILER|sequence=8|record_count=7|first_sequence=1|last_sequence=7|content_sha256=4c8ae10e00432f38d83ad01b5d7105c0242c7178d5410d0ae9787eb4f96f4435

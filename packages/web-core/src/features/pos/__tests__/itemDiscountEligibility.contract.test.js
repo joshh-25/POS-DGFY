@@ -8,7 +8,7 @@ const readFrontendFile = (relativePath) => fs.readFileSync(path.resolve(webCoreR
 
 describe('item Senior/PWD discount eligibility controls', () => {
   it('wires POS item create and edit controls to the persisted field', () => {
-    const workspace = readFrontendFile('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const workspace = readFrontendFile('src/features/pos/components/PosItemsWorkspace.jsx');
 
     expect(workspace).toContain('Senior/PWD Eligible');
     expect(workspace).toContain('aria-checked={createForm.senior_pwd_discount_eligible}');

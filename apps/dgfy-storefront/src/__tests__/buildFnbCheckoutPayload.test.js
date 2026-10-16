@@ -79,6 +79,38 @@ describe('buildFnbCheckoutPayload', () => {
     expect(payload.delivery_longitude).toBeNull();
   });
 
+  it('uses the signed-in account username for the POS customer label', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'space-bar-2193ed' },
+      orderMethod: 'pickup',
+      customerName: 'Admin User',
+      customerUsername: '  johss  ',
+      customerPhone: '+639171234567',
+      customerEmail: 'johss@example.com',
+      isDgfyCustomerSignedIn: true,
+      isDeliveryOrder: false,
+      cart: [{ item_id: 1, quantity: 1 }]
+    });
+
+    expect(payload.customer_name).toBe('johss');
+  });
+
+  it('keeps the entered guest name when a username is not authoritative', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'space-bar-2193ed' },
+      orderMethod: 'pickup',
+      customerName: 'Guest Buyer',
+      customerUsername: 'johss',
+      isDgfyCustomerSignedIn: false,
+      isDeliveryOrder: false,
+      cart: [{ item_id: 1, quantity: 1 }]
+    });
+
+    expect(payload.customer_name).toBe('Guest Buyer');
+  });
+
   it('includes a non-null scheduled_for when fnbScheduleMode is "schedule" and fnbScheduledFor is populated (MSME schedule-drop regression guard)', () => {
     const payload = buildFnbCheckoutPayload({
       selectedLocationId: 'branch-1',

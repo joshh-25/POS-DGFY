@@ -69,6 +69,7 @@ describe('Catalog Editor presentation contracts', () => {
     const itemsPageSource = readWebCoreFile('src/features/inventory/pages/ItemsPage.jsx');
     const itemFormSource = readWebCoreFile('Components/items/ItemFormModal.jsx');
     const posWorkspaceSource = readWebCoreFile('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const posItemsWorkspaceSource = readWebCoreFile('src/features/pos/components/PosItemsWorkspace.jsx');
 
     expect(itemsPageSource).toContain('const PosItemCreateWorkflow = lazy(() =>');
     expect(itemsPageSource).toContain('if (itemEditorMode)');
@@ -83,7 +84,7 @@ describe('Catalog Editor presentation contracts', () => {
     expect(itemFormSource).toContain('!hideStockControls && !isDraft && !isStockExemptItem');
     expect(posWorkspaceSource).toContain('export function PosItemCreateWorkflow');
     expect(posWorkspaceSource).toContain('modalOnly');
-    expect(posWorkspaceSource).toContain("unit_of_measure: category === 'product'");
+    expect(posItemsWorkspaceSource).toContain("unit_of_measure: category === 'product'");
   });
 
   it('keeps stock movement transactions in the dedicated Stock Movements workspace', () => {

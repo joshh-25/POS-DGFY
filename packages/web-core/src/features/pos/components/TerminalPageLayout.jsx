@@ -1,8 +1,11 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Info, Menu, UserRound } from 'lucide-react';
+import { Bell, Eye, Info, Menu, MonitorUp, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
-import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
+import {
+  startOrderAlertSoundLoop,
+  stopOrderAlertSoundLoop
+} from '../utils/orderAlertSounds.js';
 import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import {
@@ -13,13 +16,52 @@ import {
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
 import IminTerminalFeedback from './IminTerminalFeedback.jsx';
+import IncomingOrderNotificationDialog from './IncomingOrderNotificationDialog.jsx';
 import PosTextSizeControl from './PosTextSizeControl.jsx';
 import PosAttendancePanel from './PosAttendancePanel.jsx';
 import { loadIncomingQueueWorkspace } from './terminalWorkspaceChunks.js';
+import { resolvePosIncomingOrders } from '../utils/incomingOrderCount.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const MAX_NOTIFICATION_ITEMS = 5;
+const ONLINE_ORDER_SOUND_ONLY_DURATION_MS = 7_000;
+const POS_NOTIFICATION_POPOVER_CLASSES = {
+  pointer: 'absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#EFF6FF]',
+  panel: 'overflow-hidden rounded-[12px] border border-blue-200 bg-white shadow-xl shadow-slate-950/10',
+  header: 'border-b border-blue-100 bg-[#EFF6FF] px-5 py-4',
+  title: 'text-sm font-extrabold text-[#0F172A]',
+  subtitle: 'mt-1 text-[11px] leading-4 text-[#64748B]',
+  list: 'max-h-[22rem] overflow-y-auto bg-white',
+  item: 'flex w-full items-start gap-4 border-b border-blue-100 px-5 py-4 text-left transition hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1A4E8D]',
+  itemDot: 'mt-2 h-3.5 w-3.5 shrink-0 rounded-full bg-[#2563EB]',
+  itemTitle: 'text-xs font-extrabold text-[#0F172A]',
+  itemDescription: 'mt-1 text-[11px] leading-4 text-[#64748B]',
+  itemAction: 'mt-2 inline-flex text-[11px] font-bold uppercase tracking-wide text-[#2563EB]',
+  empty: 'bg-white px-4 py-6 text-center',
+  emptyTitle: 'text-xs font-semibold text-[#0F172A]',
+  emptyDescription: 'mt-1 text-[11px] text-[#64748B]',
+  footer: 'border-t border-blue-100 bg-white px-5 py-4',
+  footerAction: 'block w-full text-center text-xs font-bold text-[#2563EB] transition hover:text-[#1D4ED8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2'
+};
+const DEFAULT_NOTIFICATION_POPOVER_CLASSES = {
+  pointer: 'absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]',
+  panel: 'overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15',
+  header: 'bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-white',
+  title: 'text-lg font-black',
+  subtitle: 'mt-0.5 text-xs text-blue-100',
+  list: 'max-h-[22rem] overflow-y-auto bg-[#f8fbff]',
+  item: 'flex w-full items-start gap-3 border-b border-slate-200 px-4 py-4 text-left transition hover:bg-white',
+  itemDot: 'mt-2 h-3 w-3 shrink-0 rounded-full bg-[#2563EB]',
+  itemTitle: 'text-sm font-extrabold text-[#0F172A]',
+  itemDescription: 'mt-1 text-xs leading-5 text-[#64748B]',
+  itemAction: 'mt-2 inline-flex text-[11px] font-bold uppercase tracking-wide text-[#1A4E8D]',
+  empty: 'px-4 py-5 text-center',
+  emptyTitle: 'text-sm font-semibold text-[#0F172A]',
+  emptyDescription: 'mt-1 text-xs text-[#64748B]',
+  footer: '',
+  footerAction: 'block w-full bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-center text-sm font-black text-white transition hover:from-[#143F73] hover:to-[#1D4ED8]'
+};
 const loadPOSCheckoutTerminal = () => import('./POSCheckoutTerminal.jsx');
 const loadFnbDiningPanel = () => import('../../fnb/components/FnbDiningPanel.jsx');
 const loadTerminalOperationsWorkspace = () => import('./TerminalOperationsWorkspace.jsx');
@@ -35,6 +77,9 @@ const STANDARD_POS_PAGE_FRAME_MODES = new Set([
   'history',
   'location_scope',
   'reports',
+  'shift_controls',
+  'close_shift',
+  'cash_drawer',
   'settings_pos',
   'settings_profile',
   'settings_storefront',
@@ -50,6 +95,11 @@ const MSME_SETTINGS_SHIFT_FALLBACK_MODES = new Set(['location_scope', 'cash_draw
 const REPORT_WORKSPACE_MODES = new Set(['audit']);
 const QUEUE_WORKSPACE_MODES = new Set(['incoming_queue']);
 const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);
+// The settings shell can keep the Profile route active while the POS Setup tab
+// is selected. Keep the single checkout controller mounted for that route too,
+// otherwise the customer-display card has no live Open/End handlers after the
+// customer window is closed.
+const CUSTOMER_DISPLAY_SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'terminal_setup']);
 // A prefetch failure must be silent -- this isn't a real load, it's an idle
 // or hover-intent warm-up, and Suspense/lazyWithChunkRetry handle the actual
 // load+retry when the workspace is really rendered.
@@ -172,6 +222,7 @@ export default function TerminalPageLayout({
     adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
     branchDirectoryState = { loading: false, locations: [], scope: '', errorMessage: '' },
     branchViewLocationId = null,
+    branchViewTransitionLoading = false,
     canViewBranchLocations = false,
     onViewBranch = async () => false,
     onExitBranchView = async () => {},
@@ -182,6 +233,25 @@ export default function TerminalPageLayout({
     canRecoverStaleShifts = false,
     handleForceCloseStaleShift = async () => false,
     onlineOrderSoundEnabled = true,
+    onlineOrderSoundId = 'new_order',
+    downloadedOrderAlertSoundIds = [],
+    orderAlertSoundDownloadId = '',
+    previewingOrderAlertSoundId = '',
+    orderAlertSoundImporting = false,
+    incomingOrderPopupEnabled = true,
+    customerDisplayEnabled = true,
+    customerDisplayCanOpen = false,
+    customerDisplayStatus = 'closed',
+    customerDisplayStatusLabel = 'Not connected',
+    customerDisplayOpenRequest = 0,
+    customerDisplayEndRequest = 0,
+    onCustomerDisplayEnabledChange = () => {},
+    onOpenCustomerDisplay = () => null,
+    onEndCustomerDisplay = () => {},
+    onCustomerDisplayOpenRequestHandled = () => {},
+    onCustomerDisplayEndRequestHandled = () => {},
+    onCustomerDisplayControllerChange = () => {},
+    onCustomerDisplayStatusChange = () => {},
     hardwareDriverLabel = '',
     hardwareStatus = null,
     hardwareLoading = false,
@@ -268,6 +338,11 @@ export default function TerminalPageLayout({
     onStorefrontSetupSaved = async () => {},
     onStorefrontContentStateChange = () => {},
     setOnlineOrderSoundEnabled = () => {},
+    onSelectOrderAlertSound = () => {},
+    onDownloadOrderAlertSound = async () => false,
+    onImportOrderAlertSound = async () => false,
+    onPreviewOrderAlertSound = async () => false,
+    setIncomingOrderPopupEnabled = () => {},
     posTextSize = 'normal',
     onPosTextSizeChange = () => {},
     queuedTerminalOperationCount,
@@ -304,13 +379,17 @@ export default function TerminalPageLayout({
     handleDayCloseLogin = null,
     handleIdentityChange = null,
     handleUseDifferentAccount = null,
-    handleLegacyLogin = null
+    handleLegacyLogin = null,
+    legacyCompanySelectionOpen = false,
+    handleLegacyCompanySelectionOpenChange = null,
+    handleLegacyCompanySelection = null
 }) {
   const [operatorGuard, setOperatorGuard] = useState({ scopeKey: '', required: false, valid: true });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [capabilityNotice, setCapabilityNotice] = useState(null);
   const [fnbCheckoutContext, setFnbCheckoutContext] = useState(null);
+  const [incomingOrderNotificationQueue, setIncomingOrderNotificationQueue] = useState([]);
   const hasHydratedIncomingOrdersRef = useRef(false);
   const seenIncomingOrderIdsRef = useRef(new Set());
   const lastOrderAlertAtRef = useRef(0);
@@ -339,12 +418,50 @@ export default function TerminalPageLayout({
   const workspaceCheckoutBlockedReason = isBranchReadOnlyView
     ? 'Read-only branch view: selling, checkout, and cash mutations are disabled.'
     : checkoutBlockedReason;
+  const customerDisplayTenantId = String(
+    offlineSnapshotScope?.tenantId || terminalUser?.company?.id || ''
+  ).trim();
+  const customerDisplayLocationId = Number(workspaceLocationId || 0);
+  const customerDisplayReady = Boolean(
+    customerDisplayTenantId
+    && normalizedActiveTerminalId
+    && Number.isSafeInteger(customerDisplayLocationId)
+    && customerDisplayLocationId > 0
+  );
+  const openCustomerDisplay = useCallback(() => {
+    if (!customerDisplayReady || typeof window === 'undefined') return;
+
+    const params = new URLSearchParams({
+      tenant_id: customerDisplayTenantId,
+      terminal_id: normalizedActiveTerminalId,
+      location_id: String(customerDisplayLocationId)
+    });
+    const displayUrl = new URL(window.location.href);
+    displayUrl.search = '';
+    displayUrl.hash = `/customer-display?${params.toString()}`;
+    const displayWindow = window.open(displayUrl.toString(), 'dgfy-pos-customer-display');
+    displayWindow?.focus?.();
+  }, [customerDisplayLocationId, customerDisplayReady, customerDisplayTenantId, normalizedActiveTerminalId]);
   const operatorScopeKey = `${operatingLocationId || ''}:${normalizedActiveTerminalId}:${activeShiftId || ''}`;
   const incomingOrders = useMemo(() => (
-    showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
-      ? incomingOrdersState.orders
-      : []
-  ), [incomingOrdersState, showIncomingQueue]);
+    resolvePosIncomingOrders({
+      showIncomingQueue,
+      canViewPos: workspaceCanViewPos,
+      hasActiveShift: Boolean(shiftState?.shift),
+      canViewAdminLocationMonitor: canViewBranchLocations,
+      branchViewLocationId,
+      incomingOrdersState,
+      adminLocationMonitorState
+    })
+  ), [
+    adminLocationMonitorState,
+    branchViewLocationId,
+    canViewBranchLocations,
+    incomingOrdersState,
+    shiftState?.shift,
+    showIncomingQueue,
+    workspaceCanViewPos
+  ]);
   const activeHeaderTitle = useMemo(() => {
     const titles = {
       checkout: 'POS Catalog',
@@ -371,8 +488,6 @@ export default function TerminalPageLayout({
     };
     return titles[posViewMode] || 'POS Catalog';
   }, [posViewMode]);
-  const activeHeaderSubtitle = posViewMode === 'items' ? 'Catalog Description' : '';
-
   const handleFnbCheckoutContext = useCallback((context) => {
     setFnbCheckoutContext(context);
     setPosViewMode('checkout');
@@ -390,6 +505,7 @@ export default function TerminalPageLayout({
         description: 'Review and process new online orders.',
         actionLabel: 'Open Orders',
         onClick: () => {
+          stopOrderAlertSoundLoop();
           setNotificationsOpen(false);
           handleSelectViewMode('incoming_queue');
         }
@@ -405,43 +521,82 @@ export default function TerminalPageLayout({
     hasHydratedIncomingOrdersRef.current = false;
     seenIncomingOrderIdsRef.current = new Set();
     lastOrderAlertAtRef.current = 0;
+    setIncomingOrderNotificationQueue([]);
+    stopOrderAlertSoundLoop();
   }, [queueLocationScopeId]);
 
+  useEffect(() => () => {
+    stopOrderAlertSoundLoop();
+  }, [onlineOrderSoundEnabled, onlineOrderSoundId, queueLocationScopeId]);
+
   useEffect(() => {
-    if (onlineOrderSoundEnabled !== true) return;
+    if (posViewMode === 'incoming_queue') {
+      stopOrderAlertSoundLoop();
+    }
+  }, [posViewMode]);
+
+  useEffect(() => {
     if (incomingOrdersState?.loading) return;
     if (String(incomingOrdersState?.accessState || '').trim() !== 'allowed') return;
 
-    const currentOrderIds = incomingOrders
-      .map((order) => String(order?.pos_transaction_id || '').trim())
-      .filter(Boolean);
+    const currentOrders = incomingOrders.filter((order) => String(order?.pos_transaction_id || '').trim());
+    const currentOrderIds = currentOrders.map((order) => String(order.pos_transaction_id).trim());
 
     if (!hasHydratedIncomingOrdersRef.current) {
       hasHydratedIncomingOrdersRef.current = true;
       seenIncomingOrderIdsRef.current = new Set(currentOrderIds);
+      if (!incomingOrderPopupEnabled) {
+        setIncomingOrderNotificationQueue((previous) => (previous.length > 0 ? [] : previous));
+      }
       return;
     }
 
     const seenIds = seenIncomingOrderIdsRef.current;
-    const hasNewIncomingOrder = currentOrderIds.some((orderId) => !seenIds.has(orderId));
-    if (!hasNewIncomingOrder) return;
-
-    const now = Date.now();
-    if ((now - lastOrderAlertAtRef.current) >= 1000) {
-      try {
-        playOrderAlertWithIminBridge('new_order');
-      } catch {
-        // Browser and non-iMin surfaces should stay silent.
+    const newOrders = currentOrders.filter((order) => !seenIds.has(String(order.pos_transaction_id).trim()));
+    if (newOrders.length === 0) {
+      if (!incomingOrderPopupEnabled) {
+        setIncomingOrderNotificationQueue((previous) => (previous.length > 0 ? [] : previous));
       }
-      lastOrderAlertAtRef.current = now;
+      return;
     }
 
-    currentOrderIds.forEach((orderId) => {
-      seenIds.add(orderId);
+    newOrders.forEach((order) => {
+      seenIds.add(String(order.pos_transaction_id).trim());
     });
-  }, [incomingOrders, incomingOrdersState?.accessState, incomingOrdersState?.loading, onlineOrderSoundEnabled]);
-  const notificationCount = notifications.length;
+
+    if (!incomingOrderPopupEnabled) {
+      setIncomingOrderNotificationQueue((previous) => (previous.length > 0 ? [] : previous));
+    } else {
+      setIncomingOrderNotificationQueue((previous) => {
+        const queuedIds = new Set(previous.map((order) => String(order?.pos_transaction_id || '').trim()));
+        const uniqueNewOrders = newOrders.filter((order) => !queuedIds.has(String(order.pos_transaction_id).trim()));
+        return uniqueNewOrders.length > 0 ? [...previous, ...uniqueNewOrders] : previous;
+      });
+    }
+
+    const now = Date.now();
+    if (onlineOrderSoundEnabled === true && (now - lastOrderAlertAtRef.current) >= 1000) {
+      startOrderAlertSoundLoop(onlineOrderSoundId, incomingOrderPopupEnabled
+        ? undefined
+        : { durationMs: ONLINE_ORDER_SOUND_ONLY_DURATION_MS });
+      lastOrderAlertAtRef.current = now;
+    }
+  }, [incomingOrderPopupEnabled, incomingOrders, incomingOrdersState?.accessState, incomingOrdersState?.loading, onlineOrderSoundEnabled, onlineOrderSoundId]);
+  const activeIncomingOrderNotification = incomingOrderNotificationQueue[0] || null;
+  const dismissIncomingOrderNotification = useCallback(() => {
+    stopOrderAlertSoundLoop();
+    setIncomingOrderNotificationQueue((previous) => previous.slice(1));
+  }, []);
+  const viewIncomingOrder = useCallback(() => {
+    dismissIncomingOrderNotification();
+    setNotificationsOpen(false);
+    void handleSelectViewMode('incoming_queue');
+  }, [dismissIncomingOrderNotification, handleSelectViewMode]);
+  const notificationCount = incomingOrders.length;
   const primaryNotificationAction = notifications[0]?.onClick || null;
+  const notificationPopoverClasses = IS_DGFY_POS_SURFACE
+    ? POS_NOTIFICATION_POPOVER_CLASSES
+    : DEFAULT_NOTIFICATION_POPOVER_CLASSES;
   const companyRows = Array.isArray(accessibleCompanies) ? accessibleCompanies : [];
   const currentCompanyId = String(terminalUser?.company?.id || '').trim();
   const isFloatingSidebarLayout = IS_DGFY_POS_SURFACE
@@ -472,11 +627,14 @@ export default function TerminalPageLayout({
     ? 'flex min-h-[38px] min-w-0 items-center justify-between gap-2 lg:min-h-[46px] lg:gap-3'
     : 'flex min-h-[56px] min-w-0 items-center justify-between gap-2.5';
   const compactBellClassName = IS_DGFY_POS_SURFACE
-    ? 'relative grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:hidden'
+    ? 'relative grid h-10 w-10 shrink-0 place-items-center lg:hidden'
     : 'hidden';
   const desktopBellClassName = IS_DGFY_POS_SURFACE
-    ? 'relative hidden h-10 w-10 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:grid'
+    ? 'relative hidden h-10 w-10 shrink-0 place-items-center lg:grid'
     : 'relative grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100';
+  const notificationButtonClassName = IS_DGFY_POS_SURFACE
+    ? 'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#1A4E8D] transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1'
+    : 'relative flex h-full w-full items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1';
   const desktopIdentityClassName = IS_DGFY_POS_SURFACE
     ? 'hidden min-w-0 shrink-0 items-center gap-2 lg:flex'
     : 'flex min-w-0 shrink-0 items-center gap-2.5';
@@ -502,16 +660,22 @@ export default function TerminalPageLayout({
     ? 'pointer-events-none select-none opacity-80 blur-[2px]'
     : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
-  // History, Reports, and Settings own their page-level gutters through
+  // History, Reports, Settings, and Shift own their page-level gutters through
   // PosPageFrame. Keep the generic shell padding for every other workspace.
-  // MSME-restricted settings modes are remapped to Shift Controls by the
-  // operations workspace and must retain the generic shell geometry.
+  // MSME-restricted settings modes are remapped to Shift Controls and use the
+  // same page frame as the direct Shift routes.
   const usesStandardPosPageFrame = IS_DGFY_POS_SURFACE
-    && STANDARD_POS_PAGE_FRAME_MODES.has(posViewMode)
-    && !(isMsmeMode && MSME_SETTINGS_SHIFT_FALLBACK_MODES.has(posViewMode));
+    && (STANDARD_POS_PAGE_FRAME_MODES.has(posViewMode)
+      || SHIFT_WORKSPACE_MODES.has(posViewMode)
+      || (isMsmeMode && MSME_SETTINGS_SHIFT_FALLBACK_MODES.has(posViewMode)));
   const hidesWorkspaceScrollbar = usesStandardPosPageFrame
     && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
+  const isCustomerDisplaySettingsMode = CUSTOMER_DISPLAY_SETTINGS_VIEW_MODES.has(posViewMode);
+  const shouldMountCheckoutTerminal = isCheckoutWorkspaceMode
+    || receiptRequestId !== null
+    || receiptReturnViewMode !== null
+    || isCustomerDisplaySettingsMode;
   const isAffiliateWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_affiliates';
   const isVoucherManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_vouchers';
   const isPricelistManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_pricelists';
@@ -605,7 +769,7 @@ export default function TerminalPageLayout({
     <div className={className}>
       <button
         type="button"
-        className="relative flex h-full w-full items-center justify-center"
+        className={notificationButtonClassName}
         onClick={() => setNotificationsOpen((open) => !open)}
         aria-label="Open notifications"
         aria-expanded={notificationsOpen}
@@ -628,13 +792,13 @@ export default function TerminalPageLayout({
             className="absolute right-0 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] translate-x-0 text-left"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]" />
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
-              <div className="bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-white">
-                <p className="text-lg font-black">Notifications</p>
-                <p className="mt-0.5 text-xs text-blue-100">Review alerts without leaving the current screen.</p>
+            <div className={notificationPopoverClasses.pointer} />
+            <div className={notificationPopoverClasses.panel}>
+              <div className={notificationPopoverClasses.header}>
+                <p className={notificationPopoverClasses.title}>Notifications</p>
+                <p className={notificationPopoverClasses.subtitle}>Review alerts without leaving the current screen.</p>
               </div>
-              <div className="max-h-[22rem] overflow-y-auto bg-[#f8fbff]">
+              <div className={notificationPopoverClasses.list}>
                 {notifications.length > 0 ? notifications.map((item) => (
                   <button
                     key={item.id}
@@ -645,23 +809,23 @@ export default function TerminalPageLayout({
                         item.onClick();
                       }
                     }}
-                    className="flex w-full items-start gap-3 border-b border-slate-200 px-4 py-4 text-left transition hover:bg-white"
+                    className={notificationPopoverClasses.item}
                   >
-                    <span className="mt-2 h-3 w-3 shrink-0 rounded-full bg-[#2563EB]" />
+                    <span className={notificationPopoverClasses.itemDot} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-extrabold text-[#0F172A]">{item.title}</p>
-                      <p className="mt-1 text-xs leading-5 text-[#64748B]">{item.description}</p>
+                      <p className={notificationPopoverClasses.itemTitle}>{item.title}</p>
+                      <p className={notificationPopoverClasses.itemDescription}>{item.description}</p>
                       {item.actionLabel ? (
-                        <span className="mt-2 inline-flex text-[11px] font-bold uppercase tracking-wide text-[#1A4E8D]">
+                        <span className={notificationPopoverClasses.itemAction}>
                           {item.actionLabel}
                         </span>
                       ) : null}
                     </div>
                   </button>
                 )) : (
-                  <div className="px-4 py-5 text-center">
-                    <p className="text-sm font-semibold text-[#0F172A]">No notifications</p>
-                    <p className="mt-1 text-xs text-[#64748B]">New orders and terminal alerts will appear here.</p>
+                  <div className={notificationPopoverClasses.empty}>
+                    <p className={notificationPopoverClasses.emptyTitle}>No notifications</p>
+                    <p className={notificationPopoverClasses.emptyDescription}>New orders and terminal alerts will appear here.</p>
                   </div>
                 )}
               </div>
@@ -674,7 +838,7 @@ export default function TerminalPageLayout({
                       primaryNotificationAction();
                     }
                   }}
-                  className="block w-full bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-center text-sm font-black text-white transition hover:from-[#143F73] hover:to-[#1D4ED8]"
+                  className={`${notificationPopoverClasses.footer} ${notificationPopoverClasses.footerAction}`}
                 >
                   Show all notifications
                 </button>
@@ -751,7 +915,7 @@ export default function TerminalPageLayout({
                 className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition hover:bg-blue-50"
               >
                 <span>
-                  <span className="block text-sm font-bold text-[#0F172A]">My Day Close PIN</span>
+                  <span className="block text-sm font-bold text-[#0F172A]">My global POS PIN</span>
                   <span className="mt-0.5 block text-xs text-[#64748B]">Set or change the PIN for this company.</span>
                 </span>
                 <span className="text-xs font-extrabold text-[#1A4E8D]">Manage</span>
@@ -772,7 +936,7 @@ export default function TerminalPageLayout({
       {notificationPanel}
       {(!effectiveSidebarCollapsed || isTabletLayout) && (
         <div className={`${persistentSidebarClassName} ${lockedSidebarSurfaceClassName}`}>
-          <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
+          <Suspense fallback={<div className={persistentSidebarFallbackClassName} role="status" aria-live="polite" aria-busy="true">Loading POS navigation...</div>}>
             <TerminalWorkspaceSidebar
               className={persistentSidebarBodyClassName}
               isCollapsed={isTabletLayout}
@@ -856,15 +1020,10 @@ export default function TerminalPageLayout({
             </button>
             <div className="min-w-0 flex-1 dgfy-pos-header-title">
               <div className="flex min-w-0 items-center gap-2 lg:gap-3">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 dgfy-pos-header-page-title-group">
                   <h1 className="min-w-0 truncate text-[18px] font-black leading-tight tracking-tight text-[#0F172A] lg:text-[22px]">
                     {activeHeaderTitle}
                   </h1>
-                  {activeHeaderSubtitle ? (
-                    <p className="dgfy-pos-header-page-subtitle hidden truncate text-xs font-medium leading-4 text-[#64748B] sm:block">
-                      {activeHeaderSubtitle}
-                    </p>
-                  ) : null}
                   <div
                     className="dgfy-pos-header-mobile-terminal mt-0.5 flex min-w-0 items-center gap-1.5 leading-none sm:hidden"
                     data-testid="pos-mobile-terminal-indicator"
@@ -882,8 +1041,13 @@ export default function TerminalPageLayout({
                   </div>
                 </div>
                 <div className="dgfy-pos-header-terminal-row">
-                  <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex dgfy-pos-header-terminal">
-                    <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  <div
+                    className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex dgfy-pos-header-terminal"
+                    data-testid="pos-desktop-terminal-indicator"
+                    role="status"
+                    aria-label={`Terminal ${normalizedActiveTerminalId || 'COUNTER-01'} is ${isOnline ? 'online' : 'offline'}`}
+                  >
+                    <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} aria-hidden="true" />
                     <span className="text-[11px] font-extrabold text-slate-800">
                       <span className="dgfy-pos-header-terminal-prefix">Terminal: </span>
                       {normalizedActiveTerminalId || 'COUNTER-01'}
@@ -901,8 +1065,21 @@ export default function TerminalPageLayout({
               id="pos-text-size-header"
               value={posTextSize}
               onChange={onPosTextSizeChange}
-              desktopLabeled
             />
+            {!locked && posViewMode === 'checkout' ? (
+              <button
+                type="button"
+                onClick={openCustomerDisplay}
+                disabled={!customerDisplayReady}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-extrabold text-[#1A4E8D] shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45 sm:h-10 sm:px-3"
+                aria-label="Open customer display"
+                title={customerDisplayReady ? 'Open customer display' : 'A terminal location is required'}
+                data-testid="pos-open-customer-display"
+              >
+                <MonitorUp className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden lg:inline">Customer display</span>
+              </button>
+            ) : null}
             <div
               data-testid="pos-header-park-slot"
               className={posViewMode === 'checkout'
@@ -910,7 +1087,7 @@ export default function TerminalPageLayout({
                 : 'hidden'}
             />
             {renderNotificationButton(compactBellClassName, 20)}
-            {renderNotificationButton(desktopBellClassName, 24)}
+            {renderNotificationButton(desktopBellClassName, IS_DGFY_POS_SURFACE ? 20 : 24)}
             {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
           </div>
         </div>
@@ -1092,16 +1269,26 @@ export default function TerminalPageLayout({
       <div className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}>
         {isBranchReadOnlyView ? (
           <div
-            className="mx-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-950"
+            className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-[60] mx-auto flex w-auto max-w-[32rem] flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50/95 px-3 py-2.5 text-sm text-blue-950 shadow-xl shadow-slate-950/15 backdrop-blur-sm sm:inset-x-auto sm:bottom-4 sm:right-4 sm:mx-0 sm:w-[min(32rem,calc(100vw-2rem))] sm:flex-row sm:items-center sm:justify-between sm:gap-4"
             data-testid="pos-branch-view-banner"
+            role="status"
+            aria-live="polite"
           >
-            <div className="min-w-0">
-              <p className="font-extrabold">Viewing {branchViewLocationName}</p>
-              <p className="mt-0.5 text-xs font-semibold text-blue-800">Read-only POS view. Sales, checkout, cash, shift, and configuration changes are disabled.</p>
+            <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#1A4E8D] text-white" aria-hidden="true">
+                <Eye className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-extrabold">Viewing {branchViewLocationName}</p>
+                  <span className="rounded-md border border-blue-200 bg-white px-1.5 py-0.5 text-[9px] font-black tracking-wide text-[#1A4E8D]">READ-ONLY</span>
+                </div>
+                <p className="mt-0.5 text-xs font-semibold text-blue-800">Sales, checkout, cash, shifts, and settings are disabled.</p>
+              </div>
             </div>
             <button
               type="button"
-              className="shrink-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-extrabold text-blue-900 hover:bg-blue-100"
+              className="min-h-10 w-full shrink-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-extrabold text-blue-900 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2 sm:w-auto"
               onClick={() => onExitBranchView?.()}
             >
               Exit branch view
@@ -1112,9 +1299,13 @@ export default function TerminalPageLayout({
           id={TERMINAL_SECTION_IDS.checkoutWorkspace}
           className={workspaceSectionClassName}
         >
-          {!locked && (isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
-            <div key="checkout-workspace" data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
-              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
+          {!locked && shouldMountCheckoutTerminal && (
+            <div
+              key="checkout-workspace"
+              data-testid={isCheckoutWorkspaceMode ? 'pos-checkout-workspace' : 'pos-customer-display-controller-host'}
+              className={isCheckoutWorkspaceMode ? 'h-full min-h-0 overflow-hidden catalog-slide-enter' : 'hidden'}
+            >
+              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500" role="status" aria-live="polite" aria-busy="true">Loading POS terminal...</div>}>
                 <POSCheckoutTerminal
                   workflowMode={workflowMode}
                   effectiveCapabilities={effectiveCapabilities}
@@ -1130,6 +1321,13 @@ export default function TerminalPageLayout({
                   activeShiftCashierId={shiftState?.shift?.cashier_id || null}
                   terminalId={normalizedActiveTerminalId}
                   terminalMeta={terminalMeta}
+                  customerDisplayEnabled={customerDisplayEnabled}
+                  customerDisplayOpenRequest={customerDisplayOpenRequest}
+                  customerDisplayEndRequest={customerDisplayEndRequest}
+                  onCustomerDisplayOpenRequestHandled={onCustomerDisplayOpenRequestHandled}
+                  onCustomerDisplayEndRequestHandled={onCustomerDisplayEndRequestHandled}
+                  onCustomerDisplayControllerChange={onCustomerDisplayControllerChange}
+                  onCustomerDisplayStatusChange={onCustomerDisplayStatusChange}
                   fnbContext={fnbCheckoutContext}
                   checkoutBlockedReason={workspaceCheckoutBlockedReason}
                   readOnlyBranchView={isBranchReadOnlyView}
@@ -1211,7 +1409,7 @@ export default function TerminalPageLayout({
                   currentUserId={terminalUser?.user_id || terminalUser?.id || null}
                 />
               </Suspense>
-            ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
+            ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500" role="status" aria-live="polite" aria-busy="true">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
                 viewMode={posViewMode}
                 workflowMode={workflowMode}
@@ -1248,6 +1446,7 @@ export default function TerminalPageLayout({
                 canViewAdminLocationMonitor={canViewBranchLocations}
                 branchDirectoryState={branchDirectoryState}
                 branchViewLocationId={branchViewLocationId}
+                branchViewTransitionLoading={branchViewTransitionLoading}
                 canViewBranchLocations={canViewBranchLocations}
                 onViewBranch={onViewBranch}
                 onExitBranchView={onExitBranchView}
@@ -1289,6 +1488,19 @@ export default function TerminalPageLayout({
                 canRecoverStaleShifts={workspaceCanRecoverStaleShifts}
                 handleForceCloseStaleShift={handleForceCloseStaleShift}
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
+                onlineOrderSoundId={onlineOrderSoundId}
+                downloadedOrderAlertSoundIds={downloadedOrderAlertSoundIds}
+                orderAlertSoundDownloadId={orderAlertSoundDownloadId}
+                previewingOrderAlertSoundId={previewingOrderAlertSoundId}
+                orderAlertSoundImporting={orderAlertSoundImporting}
+                incomingOrderPopupEnabled={incomingOrderPopupEnabled}
+                customerDisplayEnabled={customerDisplayEnabled}
+                customerDisplayCanOpen={customerDisplayCanOpen}
+                customerDisplayStatus={customerDisplayStatus}
+                customerDisplayStatusLabel={customerDisplayStatusLabel}
+                onCustomerDisplayEnabledChange={onCustomerDisplayEnabledChange}
+                onOpenCustomerDisplay={onOpenCustomerDisplay}
+                onEndCustomerDisplay={onEndCustomerDisplay}
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
                 handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
@@ -1318,6 +1530,11 @@ export default function TerminalPageLayout({
                 onStorefrontSetupSaved={onStorefrontSetupSaved}
                 onStorefrontContentStateChange={onStorefrontContentStateChange}
                 setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+                onSelectOrderAlertSound={onSelectOrderAlertSound}
+                onDownloadOrderAlertSound={onDownloadOrderAlertSound}
+                onImportOrderAlertSound={onImportOrderAlertSound}
+                onPreviewOrderAlertSound={onPreviewOrderAlertSound}
+                setIncomingOrderPopupEnabled={setIncomingOrderPopupEnabled}
                 hardwareDriverLabel={hardwareDriverLabel}
                 hardwareStatus={hardwareStatus}
                 hardwareLoading={hardwareLoading}
@@ -1363,11 +1580,19 @@ export default function TerminalPageLayout({
           onIdentityChange={handleIdentityChange}
           onUseDifferentAccount={handleUseDifferentAccount}
           onLegacySubmit={handleLegacyLogin}
+          legacyCompanySelectionOpen={legacyCompanySelectionOpen}
+          onLegacyCompanySelectionOpenChange={handleLegacyCompanySelectionOpenChange}
+          onLegacyCompanySelectionSubmit={handleLegacyCompanySelection}
           terminalUser={terminalUser}
           posTextSize={posTextSize}
           onPosTextSizeChange={onPosTextSizeChange}
         />
       </Suspense>
+      <IncomingOrderNotificationDialog
+        order={activeIncomingOrderNotification}
+        onClose={dismissIncomingOrderNotification}
+        onViewOrder={viewIncomingOrder}
+      />
       </main>
     </div>
   );

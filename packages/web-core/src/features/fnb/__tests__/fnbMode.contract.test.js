@@ -48,7 +48,8 @@ describe('Food & Beverage frontend contract', () => {
     expect(posPageShell).toContain('canTransact={canTransactPos}');
     expect(terminalPage).toContain("'fnb_service'");
     expect(terminalPage).toContain('canAccessFnbService');
-    expect(terminalPage).toContain('showFnbService={canAccessFnbService}');
+    expect(terminalPage).toContain('const SHOW_FNB_SERVICE_IN_POS_NAVIGATION = false;');
+    expect(terminalPage).toContain('showFnbService={SHOW_FNB_SERVICE_IN_POS_NAVIGATION && canAccessFnbService}');
     expect(terminalLayout).toContain('FnbDiningPanel');
     expect(terminalLayout).toContain('data-testid="pos-fnb-service-workspace"');
     expect(terminalLayout).toContain('fnbContext={fnbCheckoutContext}');
@@ -58,15 +59,16 @@ describe('Food & Beverage frontend contract', () => {
   it('keeps modifier management in standalone POS instead of the SKUpervisor F&B page', () => {
     const fnbPage = read('packages/web-core/src/features/fnb/pages/FnbPage.jsx');
     const posWorkspace = read('packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const posCatalogWorkspace = read('packages/web-core/src/features/pos/components/PosItemsCatalogWorkspace.jsx');
+    const posItemsWorkspace = read('packages/web-core/src/features/pos/components/PosItemsWorkspace.jsx');
 
     expect(fnbPage).not.toContain('PosFnbModifierManager');
     expect(fnbPage).not.toContain('FnbModifierManager');
-    expect(posWorkspace).toContain('PosFnbModifiersWorkspace');
-    // The workspace tab was renamed from "Menu modifiers" to "Item Options"
-    // (the create-flow stage reads "Menu options"); both live in standalone
-    // POS, not the SKUpervisor F&B page.
-    expect(posWorkspace).toContain("label: 'Item Options'");
-    expect(posWorkspace).toContain("'Menu options'");
+    expect(posWorkspace).toContain("import ItemsCatalogWorkspace from './PosItemsCatalogWorkspace.jsx';");
+    expect(posCatalogWorkspace).toContain("const PosFnbModifiersWorkspace = lazyWithChunkRetry(() => import('./PosFnbModifiersWorkspace.jsx'));");
+    expect(posCatalogWorkspace).toContain("label: 'Item Options & Modifiers'");
+    expect(posCatalogWorkspace).toContain('<PosFnbModifiersWorkspace');
+    expect(posItemsWorkspace).toContain("'Menu options'");
   });
 
   it('attaches F&B check context to POS checkout and receipts', () => {

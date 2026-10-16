@@ -1,0 +1,150 @@
+name: Upload workflow evidence
+description: Store evidence in GitHub Actions Artifacts, falling back to S3 only when the primary upload fails.
+inputs:
+  path:
+    description: Evidence file or directory to upload.
+    required: true
+  name:
+    description: S3 artifact name and default GitHub artifact name.
+    required: true
+  github-name:
+    description: Optional GitHub artifact name before the run-attempt suffix.
+    required: false
+    default: ''
+  retention-days:
+    description: Explicit GitHub artifact retention in days.
+    required: true
+  source-sha:
+    description: Source commit SHA associated with the evidence.
+    required: true
+  s3-endpoint:
+    description: S3 endpoint from a repository variable.
+    required: true
+  s3-bucket:
+    description: S3 bucket from a repository variable.
+    required: true
+  s3-access-key-id:
+    description: S3 access key ID from a repository variable.
+    required: true
+  s3-secret-access-key:
+    description: S3 credential from a repository secret.
+    required: true
+  diagnose-readback-failure:
+    description: Run safe S3 GetObject comparisons when direct readback fails.
+    required: false
+    default: 'false'
+outputs:
+  storage_status:
+    description: github, s3-fallback, failed, or missing.
+    value: ${{ steps.record.outputs.storage_status }}
+  backend:
+    description: github, s3, none, or missing.
+    value: ${{ steps.record.outputs.backend }}
+  artifact_ref:
+    description: GitHub artifact URL or S3 object URI.
+    value: ${{ steps.record.outputs.artifact_ref }}
+  object_key:
+    description: S3 object key when fallback was attempted.
+    value: ${{ steps.s3_fallback.outputs.object_key }}
+  artifact_name:
+    description: S3 artifact name when fallback was attempted.
+    value: ${{ steps.s3_fallback.outputs.artifact_name }}
+  upload_status:
+    description: Existing S3 uploader status when fallback was attempted.
+    value: ${{ steps.s3_fallback.outputs.upload_status }}
+  failure_reason:
+    description: Sanitized S3 failure classification when fallback fails.
+    value: ${{ steps.s3_fallback.outputs.failure_reason }}
+  object_uri:
+    description: S3 object URI when fallback was attempted.
+    value: ${{ steps.s3_fallback.outputs.object_uri }}
+  size_bytes:
+    description: Evidence byte count.
+    value: ${{ steps.record.outputs.size_bytes }}
+  source_sha256:
+    description: Source evidence SHA-256.
+    value: ${{ steps.record.outputs.source_sha256 }}
+  direct_readback_sha256:
+    description: S3 direct readback SHA-256.
+    value: ${{ steps.s3_fallback.outputs.direct_readback_sha256 }}
+  presigned_readback_sha256:
+    description: S3 presigned readback SHA-256.
+    value: ${{ steps.s3_fallback.outputs.presigned_readback_sha256 }}
+  presigned_http_status:
+    description: S3 presigned readback HTTP status.
+    value: ${{ steps.s3_fallback.outputs.presigned_http_status }}
+  cleanup_status:
+    description: S3 cleanup outcome when configured.
+    value: ${{ steps.s3_fallback.outputs.cleanup_status }}
+  presigned_url:
+    description: Verified S3 presigned retrieval URL.
+    value: ${{ steps.s3_fallback.outputs.presigned_url }}
+runs:
+  using: composite
+  steps:
+    - name: Inspect evidence source
+      id: source
+      shell: bash
+      env:
+        EVIDENCE_PATH: ${{ inputs.path }}
+      run: node scripts/ci-evidence-storage-decision.js inspect
+
+    - name: Upload evidence to GitHub Actions Artifacts
+      id: github_upload
+      if: steps.source.outputs.source_status == 'ready'
+      continue-on-error: true
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.github-name != '' && inputs.github-name || inputs.name }}-attempt-${{ github.run_attempt }}
+        path: ${{ inputs.path }}
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}
+
+    - name: Upload evidence to S3 fallback
+      id: s3_fallback
+      if: steps.source.outputs.source_status == 'ready' && steps.github_upload.outcome == 'failure'
+      continue-on-error: true
+      shell: bash
+      env:
+        ARTIFACT_S3_ACCESS_KEY_ID: ${{ inputs.s3-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.s3-secret-access-key }}
+        AWS_EC2_METADATA_DISABLED: 'true'
+        AWS_DEFAULT_REGION: us-east-1
+        ARTIFACT_S3_BUCKET: ${{ inputs.s3-bucket }}
+        ARTIFACT_S3_ENDPOINT: ${{ inputs.s3-endpoint }}
+        SOURCE_COMMIT_SHA: ${{ inputs.source-sha }}
+        EVIDENCE_PATH: ${{ inputs.path }}
+        S3_ARTIFACT_NAME: ${{ inputs.name }}
+        S3_DIAGNOSE_READBACK_FAILURE: ${{ inputs.diagnose-readback-failure }}
+      run: bash scripts/ci-s3-upload.sh "$EVIDENCE_PATH" "$S3_ARTIFACT_NAME"
+
+    - name: Record evidence storage result
+      id: record
+      if: always()
+      shell: bash
+      env:
+        SOURCE_STATUS: ${{ steps.source.outputs.source_status }}
+        SOURCE_SIZE_BYTES: ${{ steps.source.outputs.size_bytes }}
+        SOURCE_SHA256: ${{ steps.source.outputs.source_sha256 }}
+        SOURCE_PATH: ${{ inputs.path }}
+        ARTIFACT_NAME: ${{ inputs.name }}
+        GITHUB_ARTIFACT_NAME: ${{ inputs.github-name != '' && inputs.github-name || inputs.name }}-attempt-${{ github.run_attempt }}
+        RETENTION_DAYS: ${{ inputs.retention-days }}
+        SOURCE_COMMIT_SHA: ${{ inputs.source-sha }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        GITHUB_OUTCOME: ${{ steps.github_upload.outcome }}
+        GITHUB_ARTIFACT_ID: ${{ steps.github_upload.outputs.artifact-id }}
+        GITHUB_ARTIFACT_URL: ${{ steps.github_upload.outputs.artifact-url }}
+        GITHUB_ARTIFACT_DIGEST: ${{ steps.github_upload.outputs.artifact-digest }}
+        S3_OUTCOME: ${{ steps.s3_fallback.outcome }}
+        S3_FAILURE_REASON: ${{ steps.s3_fallback.outputs.failure_reason }}
+        S3_STATUS: ${{ steps.s3_fallback.outputs.upload_status }}
+        S3_URI: ${{ steps.s3_fallback.outputs.object_uri }}
+        S3_SIZE_BYTES: ${{ steps.s3_fallback.outputs.size_bytes }}
+        S3_SOURCE_SHA256: ${{ steps.s3_fallback.outputs.source_sha256 }}
+        S3_DIRECT_SHA256: ${{ steps.s3_fallback.outputs.direct_readback_sha256 }}
+        S3_PRESIGNED_SHA256: ${{ steps.s3_fallback.outputs.presigned_readback_sha256 }}
+        S3_PRESIGNED_HTTP_STATUS: ${{ steps.s3_fallback.outputs.presigned_http_status }}
+        S3_PRESIGNED_URL: ${{ steps.s3_fallback.outputs.presigned_url }}
+      run: node scripts/ci-evidence-storage-decision.js record

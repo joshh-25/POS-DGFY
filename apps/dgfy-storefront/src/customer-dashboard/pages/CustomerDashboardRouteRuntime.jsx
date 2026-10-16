@@ -84,6 +84,8 @@ function buildRuntimeSourcesFallback({ state, actions, resolvers }) {
     handleOpenBusinessPos: actions?.onOpenBusinessPos,
     getOwnBusinessDayCloseStatus: actions?.onGetBusinessDayCloseStatus,
     configureOwnBusinessDayClosePin: actions?.onConfigureBusinessDayClosePin,
+    getOwnBusinessGlobalPinStatus: actions?.onGetBusinessGlobalPinStatus,
+    configureOwnBusinessGlobalPin: actions?.onConfigureBusinessGlobalPin,
     resolveStorefrontMetaForAccountEntry: resolvers?.resolveStorefrontMeta,
     withAssetOrigin: resolvers?.resolveBusinessAssetUrl
   };

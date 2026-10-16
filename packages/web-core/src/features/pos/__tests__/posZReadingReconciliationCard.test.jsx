@@ -47,6 +47,36 @@ describe('Daily Sales Check reconciliation layout', () => {
     expect(printHtml).not.toContain('<img src=x');
   });
 
+  it('exports the saved Z-reading payment breakdown in CSV and printable HTML', () => {
+    const data = {
+      status: 'matched',
+      snapshot_persisted: true,
+      business_date: '2026-09-29',
+      reading_identifier: 'ZR-20260929-00000001',
+      report_recognized_sales: 125.5,
+      z_total_amount: 125.5,
+      variance: 0,
+      z_payment_breakdown: [
+        { payment_type: 'cash', payment_label: 'Cash', count: 2, amount: 80 },
+        { payment_type: 'gcash', payment_label: 'GCash', count: 1, amount: 45.5 }
+      ]
+    };
+    const options = {
+      currencySymbol: '₱',
+      formatMoney: (value, symbol) => `${symbol}${Number(value).toFixed(2)}`,
+      formatDateTime: (value) => String(value)
+    };
+
+    const csv = buildDailySalesCheckCsv(data, options);
+    const printHtml = buildDailySalesCheckPrintHtml(data, options);
+
+    expect(csv).toContain('"Payment breakdown (saved Z-reading)",""');
+    expect(csv).toContain('"GCash","₱45.50 · 1 payment"');
+    expect(printHtml).toContain('Payment breakdown (saved Z-reading)');
+    expect(printHtml).toContain('GCash');
+    expect(printHtml).toContain('₱45.50 · 1 payment');
+  });
+
   it('exports all supplied saved Z-readings with cashier and terminal attribution safely', () => {
     const rows = [{
       business_date: '2026-09-29',
@@ -105,6 +135,11 @@ describe('Daily Sales Check reconciliation layout', () => {
           z_void_amount: 10,
           report_refunds_voids: 5,
           report_adjustment_amount: 0,
+          snapshot_persisted: true,
+          z_payment_breakdown: [
+            { payment_type: 'cash', payment_label: 'Cash', count: 2, amount: 80 },
+            { payment_type: 'gcash', payment_label: 'GCash', count: 1, amount: 45.5 }
+          ],
           generated_at: '2026-09-29T05:08:00.000Z',
           evaluated_at: '2026-09-29T06:54:00.000Z'
         }}
@@ -129,6 +164,11 @@ describe('Daily Sales Check reconciliation layout', () => {
     expect(markup.indexOf('Difference')).toBeLessThan(markup.indexOf('Report net sales'));
     expect(markup).toContain('Different metric; includes line-level discounts/refunds');
     expect(markup).toContain('Report refunds / voids');
+    expect(markup).toContain('Payment breakdown');
+    expect(markup).toContain('From the saved Z-reading snapshot');
+    expect(markup).toContain('Cash');
+    expect(markup).toContain('GCash');
+    expect(markup).toContain('₱45.50 · 1 payment');
     expect(markup).toContain('Additional Activity');
     expect(markup).toContain('Date &amp; time generated');
     expect(markup).toContain('Checked at');
@@ -164,6 +204,7 @@ describe('Daily Sales Check reconciliation layout', () => {
     expect(markup).toContain('No immutable snapshot yet');
     expect(markup).toContain('>—</dd>');
     expect(markup).not.toContain('₱0.00');
+    expect(markup).not.toContain('Payment breakdown');
   });
 
   it('distinguishes a real variance from a scope that cannot be compared', () => {

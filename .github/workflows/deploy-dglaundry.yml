@@ -1,0 +1,176 @@
+name: Deploy DGLaundry (Stage)
+
+# Pulls DGLaundry's three pinned, private GHCR images and brings up its own
+# Docker Compose stack on the staging host -- WITHOUT the host ever storing
+# a GHCR credential. The actual login/pull/up/logout sequence runs on the
+# host via infrastructure/dglaundry/remote-deploy.sh, with the GHCR
+# token piped in over this workflow's SSH connection and logged out via a
+# trap that fires on every exit path, success or failure -- see that
+# script's own header for why that matters.
+#
+# Deliberately treated as its own app/server, not dgfy-platform's existing
+# deploy pipeline with DGLaundry bolted on (see infrastructure/dglaundry/
+# README.md and #2387):
+#   - its own GitHub Environment (DGLAUNDRY_STAGE) and its own SSH keypair,
+#     independent of the STAGING environment dgfy-platform's own deploys use
+#     -- a leaked/compromised key here can't touch dgfy-platform's own
+#     deploy path, and vice versa
+#   - the OS user is the one exception, by Pat's own call (#2387): this host
+#     runs every app -- DGFY's own DEV/STAGING included, and prod too -- as
+#     one shared `sieitz` user with no per-app split, and `docker` group
+#     membership is root-equivalent regardless, so a dedicated DGLaundry OS
+#     user would've added setup cost without a real trust boundary to show
+#     for it. SSH_TARGET is `sieitz@10.123.32.26`, same host, same user as
+#     dgfy-platform's own STAGING deploys -- only the credential (this
+#     environment's own SSH keypair) and the GHCR grant below stay separate
+#   - its own GHCR package-level Actions-access grant: each of
+#     Sieitzz/dglaundry's three dglaundry-{api,web,worker} packages grants
+#     Sieitzz/dgfy-platform read access directly in GHCR's own package
+#     settings -- no PAT, no new stored secret, scoped to exactly those
+#     three packages
+#
+# Compose files are vendored verbatim into this repo at the exact pinned
+# release SHA (infrastructure/dglaundry/compose/<sha>/) rather than this
+# workflow checking out the private Sieitzz/dglaundry repo itself -- that's
+# the one cross-repo access this design avoids entirely, on top of the GHCR
+# grant above.
+#
+# Every step is idempotent -- safe to re-dispatch if something fails
+# partway (compose `up -d`, `CREATE USER IF NOT EXISTS`, re-running
+# deploy-sops.sh, re-pointing the `current` symlink).
+#
+# No scheduled/automatic trigger exists or should be added without
+# revisiting that decision -- DGLaundry staging hosting is new (#2387) and
+# this workflow mutates the live staging host.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm this dispatch is intentional (mutates the live staging host)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-dglaundry-stage
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ['sieitz-runner']  # compute reuse only -- not a trust boundary, see header comment
+    timeout-minutes: 15
+    environment: DGLAUNDRY_STAGE
+    steps:
+      - name: Refuse an unconfirmed dispatch
+        if: ${{ !inputs.confirm }}
+        run: |
+          echo "::error::confirm must be checked -- this dispatch mutates the live staging host." >&2
+          exit 1
+
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - uses: actions/checkout@v7
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Resolve pinned release SHA from stage.env
+        id: release
+        run: |
+          set -euo pipefail
+          SHA="$(grep -m1 '^DGLAUNDRY_RELEASE_SHA=' infrastructure/dglaundry/stage.env | cut -d= -f2)"
+          [ -n "$SHA" ] || { echo "::error::DGLAUNDRY_RELEASE_SHA not found in stage.env" >&2; exit 1; }
+          [ -d "infrastructure/dglaundry/compose/$SHA" ] || { echo "::error::infrastructure/dglaundry/compose/$SHA does not exist -- vendor the compose files for this SHA first" >&2; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/dglaundry_deploy_key
+          chmod 600 ~/.ssh/dglaundry_deploy_key
+          ssh-keyscan -H "${SSH_TARGET#*@}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copy release artifacts to the host
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          HOST_ROOT=/opt/dglaundry-stage
+          RELEASE_DIR="$HOST_ROOT/releases/$SHA"
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "mkdir -p '$RELEASE_DIR'"
+          scp -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes \
+            "infrastructure/dglaundry/compose/$SHA/docker-compose.production.yml" \
+            "infrastructure/dglaundry/compose/$SHA/docker-compose.production.dgfy.yml" \
+            "infrastructure/dglaundry/compose/$SHA/docker-compose.surebizcorp-lean.yml" \
+            infrastructure/dglaundry/stage.env \
+            infrastructure/dglaundry/deploy-sops.sh \
+            infrastructure/dglaundry/provision-migration-identity.sh \
+            infrastructure/dglaundry/remote-deploy.sh \
+            "$SSH_TARGET:$RELEASE_DIR/"
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "chmod +x '$RELEASE_DIR/deploy-sops.sh' '$RELEASE_DIR/provision-migration-identity.sh' '$RELEASE_DIR/remote-deploy.sh' && ln -sfn '$RELEASE_DIR' '$HOST_ROOT/current'"
+
+      - name: Materialize secrets (deploy-sops.sh)
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "cd /opt/dglaundry-stage/current && ./deploy-sops.sh stage"
+
+      - name: Pull images and bring up the stack
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "cd /opt/dglaundry-stage/current && GITHUB_ACTOR=$GITHUB_ACTOR bash remote-deploy.sh /opt/dglaundry-stage/secrets stage.env" \
+            <<< "$GITHUB_TOKEN"
+
+      - name: Clean up deploy credentials
+        if: always()
+        run: rm -f ~/.ssh/dglaundry_deploy_key

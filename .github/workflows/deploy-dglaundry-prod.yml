@@ -1,0 +1,221 @@
+name: Deploy DGLaundry (Prod)
+
+# Pulls DGLaundry's three pinned, private GHCR images and brings up its own
+# Docker Compose stack on the DGFY PRODUCTION host -- WITHOUT the host ever
+# storing a GHCR credential. The actual login/pull/up/logout sequence runs
+# on the host via infrastructure/dglaundry/remote-deploy.sh, with the GHCR
+# token piped in over this workflow's SSH connection and logged out via a
+# trap that fires on every exit path, success or failure -- see that
+# script's own header for why that matters.
+#
+# A SEPARATE workflow from deploy-dglaundry.yml (staging), not that one
+# parameterized by an environment input, on purpose -- mirrors this repo's
+# own deploy.yml (STAGING, unattended) vs deploy-main.yml (PROD, always a
+# human-confirmed dispatch) split, so the checkpoint boundary stays
+# structurally obvious rather than hidden behind an input value. See
+# infra/2477 and infrastructure/dglaundry/README.md.
+#
+# Deliberately treated as its own app/server, not dgfy-platform's existing
+# deploy pipeline with DGLaundry bolted on -- same reasoning as staging's
+# workflow, with one host-specific difference:
+#   - its own GitHub Environment (DGLAUNDRY_PROD) and its own SSH keypair,
+#     independent of both DGLAUNDRY_STAGE and dgfy-platform's own PROD
+#     environment -- a leaked/compromised key here can't touch either of
+#     those other deploy paths, and vice versa
+#   - the OS user is the one exception, same call as staging (#2387): this
+#     host already runs dgfy-platform's own PROD deploys as `gha` (no
+#     sudo, docker-group-only -- publish-platform.yml's PROD environment
+#     already SSHes into this exact account), and `docker` group
+#     membership is root-equivalent regardless of which user holds it, so
+#     a dedicated DGLaundry OS user wouldn't have added a real trust
+#     boundary. SSH_TARGET is `gha@172.105.122.32` -- same host, same user
+#     as dgfy-platform's own PROD deploys -- only the credential (this
+#     environment's own SSH keypair) and the GHCR grant stay separate
+#   - the GHCR package-level Actions-access grant (dglaundry-{api,web,
+#     worker} -> Sieitzz/dgfy-platform: Read) is repo-scoped, already done
+#     for staging -- this workflow living in the same repo already has it,
+#     no new grant needed
+#
+# Host paths have NO "-prod" suffix (/opt/dglaundry, not /opt/dglaundry-
+# stage) -- this host runs exactly one DGLaundry environment, matching
+# /opt/dgfy-platform having no suffix here either. See deploy-sops.sh's
+# own HOST_ROOT resolution.
+#
+# Compose files are vendored verbatim into this repo at the exact pinned
+# release SHA (infrastructure/dglaundry/compose/<sha>/) -- same file
+# staging already uses, since prod.env pins the same SHA. Never checks out
+# the private Sieitzz/dglaundry repo itself.
+#
+# Memory is a real, live binding constraint on this host (confirmed 848Mi
+# free, swap already 100% used, BEFORE this stack's own footprint --
+# epic #2387's own still-open "prod memory sizing pass" item). prod.env's
+# mem_limits are already shrunk well below staging's lean profile, but the
+# real safety net is the "Check live memory headroom" step below -- it
+# reads the host's actual free memory at dispatch time and refuses to
+# proceed if it's too tight, rather than trusting prod.env's static numbers
+# to still be accurate days or weeks later. Do not remove or loosen this
+# step to work around a failure -- resize the host instead.
+#
+# Every step past the memory check is idempotent -- safe to re-dispatch if
+# something fails partway (compose `up -d`, `CREATE USER IF NOT EXISTS`,
+# re-running deploy-sops.sh, re-pointing the `current` symlink). The memory
+# check itself is NOT something to retry past -- a failure there means stop
+# and resize, not re-dispatch into a tighter margin.
+#
+# No scheduled/automatic trigger exists or should be added without
+# revisiting that decision -- this workflow mutates the live production
+# host.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm this dispatch is intentional (mutates the live PRODUCTION host)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-dglaundry-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ['sieitz-runner']  # compute reuse only -- not a trust boundary, see header comment.
+                                 # Already proven to reach this exact PROD host: dgfy-platform's
+                                 # own publish-platform.yml dispatches from the same runner today.
+    timeout-minutes: 15
+    environment: DGLAUNDRY_PROD
+    steps:
+      - name: Refuse an unconfirmed dispatch
+        if: ${{ !inputs.confirm }}
+        run: |
+          echo "::error::confirm must be checked -- this dispatch mutates the live PRODUCTION host." >&2
+          exit 1
+
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - uses: actions/checkout@v7
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Resolve pinned release SHA from prod.env
+        id: release
+        run: |
+          set -euo pipefail
+          SHA="$(grep -m1 '^DGLAUNDRY_RELEASE_SHA=' infrastructure/dglaundry/prod.env | cut -d= -f2)"
+          [ -n "$SHA" ] || { echo "::error::DGLAUNDRY_RELEASE_SHA not found in prod.env" >&2; exit 1; }
+          [ -d "infrastructure/dglaundry/compose/$SHA" ] || { echo "::error::infrastructure/dglaundry/compose/$SHA does not exist -- vendor the compose files for this SHA first" >&2; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/dglaundry_deploy_key
+          chmod 600 ~/.ssh/dglaundry_deploy_key
+          ssh-keyscan -H "${SSH_TARGET#*@}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # The actual safety net for prod.env's shrunk mem_limits -- reads the host's REAL free
+      # memory at dispatch time rather than trusting static numbers written days or weeks earlier.
+      # Read-only, runs before anything below it mutates host state. A failure here means stop and
+      # resize the host -- never retry past it into a tighter margin (see header comment).
+      - name: Check live memory headroom
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          set -euo pipefail
+          MIN_AVAILABLE_MB=700
+          AVAILABLE_MB="$(ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "free -m | awk '/^Mem:/{print \$7}'")"
+          case "$AVAILABLE_MB" in
+            ''|*[!0-9]*) echo "::error::could not read a numeric 'available' memory value from $SSH_TARGET (got '$AVAILABLE_MB')" >&2; exit 1 ;;
+          esac
+          echo "Available memory on host: ${AVAILABLE_MB}MB (floor: ${MIN_AVAILABLE_MB}MB)"
+          if [ "$AVAILABLE_MB" -lt "$MIN_AVAILABLE_MB" ]; then
+            echo "::error::only ${AVAILABLE_MB}MB available, need >= ${MIN_AVAILABLE_MB}MB -- refusing to deploy DGLaundry's stack onto a host this close to its memory limit. Do not re-dispatch into a tighter margin; resize the host's RAM/swap first. See infra/2477 and epic #2387's 'prod memory sizing pass' item." >&2
+            exit 1
+          fi
+
+      - name: Copy release artifacts to the host
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          HOST_ROOT=/opt/dglaundry
+          RELEASE_DIR="$HOST_ROOT/releases/$SHA"
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "mkdir -p '$RELEASE_DIR'"
+          scp -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes \
+            "infrastructure/dglaundry/compose/$SHA/docker-compose.production.yml" \
+            "infrastructure/dglaundry/compose/$SHA/docker-compose.production.dgfy.yml" \
+            infrastructure/dglaundry/prod.env \
+            infrastructure/dglaundry/deploy-sops.sh \
+            infrastructure/dglaundry/provision-migration-identity.sh \
+            infrastructure/dglaundry/remote-deploy.sh \
+            "$SSH_TARGET:$RELEASE_DIR/"
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "chmod +x '$RELEASE_DIR/deploy-sops.sh' '$RELEASE_DIR/provision-migration-identity.sh' '$RELEASE_DIR/remote-deploy.sh' && ln -sfn '$RELEASE_DIR' '$HOST_ROOT/current'"
+
+      - name: Materialize secrets (deploy-sops.sh)
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "cd /opt/dglaundry/current && ./deploy-sops.sh prod"
+
+      - name: Pull images and bring up the stack
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+            "cd /opt/dglaundry/current && GITHUB_ACTOR=$GITHUB_ACTOR bash remote-deploy.sh /opt/dglaundry/secrets prod.env" \
+            <<< "$GITHUB_TOKEN"
+
+      - name: Clean up deploy credentials
+        if: always()
+        run: rm -f ~/.ssh/dglaundry_deploy_key

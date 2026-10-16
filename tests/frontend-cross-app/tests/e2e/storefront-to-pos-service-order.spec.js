@@ -281,10 +281,12 @@ test.describe('Storefront to POS non-delivery service order', () => {
         const loginBody = await readJson(loginResponse);
         expect(loginResponse.status(), `POS login failed: ${JSON.stringify(responseSummary(loginResponse, loginBody))}`).toBe(200);
 
-        const companySelect = posPage.getByLabel('Company');
+        const companySelect = posPage.getByRole('button', { name: 'Company', exact: true });
         await expect(companySelect).toBeVisible();
-        await companySelect.selectOption({ label: companyName });
-        await expect(companySelect).toHaveValue(/.+/);
+        await expect(companySelect).toBeEnabled();
+        await companySelect.click();
+        await posPage.getByRole('option', { name: companyName, exact: true }).click();
+        await expect(companySelect).toHaveAttribute('data-company-value', /.+/);
 
         const tenantSessionResponsePromise = posPage.waitForResponse(
           (response) => getPath(response.url()) === '/api/v1/dgfy/auth/tenant-session'
@@ -480,6 +482,20 @@ test.describe('Storefront to POS non-delivery service order', () => {
         await expect(orderCard).toBeVisible({ timeout: 20_000 });
         await expect(orderCard.getByText('Pickup', { exact: true })).toBeVisible();
         await expect(orderCard.getByRole('button', { name: 'Confirm', exact: true })).toBeVisible();
+        const notificationDialog = posPage.getByTestId('pos-incoming-order-notification-dialog');
+        await expect(notificationDialog).toBeVisible({ timeout: 20_000 });
+        const incomingCustomerDisplayName = String(
+          incomingOrder.storeCustomer?.name
+            || incomingOrder.store_customer?.name
+            || incomingOrder.customer_name
+            || 'Guest Buyer'
+        ).trim();
+        await expect(notificationDialog).toContainText(incomingCustomerDisplayName);
+        await expect(notificationDialog).toContainText('× 1');
+        await expect(notificationDialog).not.toContainText('1.000000000000');
+        await attachScreenshot(testInfo, posPage, 'pos-incoming-order-notification-modal.png');
+        await notificationDialog.getByRole('button', { name: 'Close', exact: true }).click();
+        await expect(notificationDialog).toBeHidden();
         await attachScreenshot(testInfo, posPage, 'pos-order-visible-before-acceptance.png');
         posDiagnostics.assertNoUnexpectedDiagnostics('order visible in POS queue');
       });

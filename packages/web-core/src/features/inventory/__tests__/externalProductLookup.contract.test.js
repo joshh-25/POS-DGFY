@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const modalPath = path.resolve(__dirname, '../../../../Components/items/ItemFormModal.jsx');
-const posModalPath = path.resolve(__dirname, '../../../features/pos/components/TerminalOperationsWorkspace.jsx');
+const posModalPath = path.resolve(__dirname, '../../../features/pos/components/PosItemsWorkspace.jsx');
 const servicePath = path.resolve(__dirname, '../../../services/itemService.js');
 const storefrontServicePath = path.resolve(__dirname, '../../../services/storefrontCatalogService.js');
 const barcodePolicyPath = path.resolve(__dirname, '../../../utils/barcodePolicy.js');

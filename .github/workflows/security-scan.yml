@@ -4,13 +4,19 @@ on:
   pull_request:
     branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      large_object_test_bytes:
+        description: 'Large-object test size in bytes (100,000,001 through 134,217,728) -- exercises the real multipart upload path used by production evidence'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   security-scan:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ['sieitz-runner']
     timeout-minutes: 45
     steps:
@@ -64,6 +70,7 @@ jobs:
           echo "[workspace-hygiene] tree complete."
 
       - name: Scan PR diff with gitleaks
+        if: github.event_name == 'pull_request'
         shell: bash
         continue-on-error: true
         timeout-minutes: 15
@@ -80,22 +87,82 @@ jobs:
             -v "$RUNNER_TEMP/security-scan:/reports" \
             -w /repo \
             zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            --redact=100 \
             git --config=.gitleaks.toml \
               --log-opts="$MERGE_BASE..$PR_HEAD_SHA" \
               --report-format=json \
               --report-path=/reports/gitleaks-report.json \
               /repo
 
-      - name: Upload gitleaks report
-        if: always()
-        uses: actions/upload-artifact@v7
-        timeout-minutes: 5
+      - name: Upload gitleaks report evidence
+        id: s3_upload
+        if: always() && github.event_name == 'pull_request'
+        uses: ./.github/actions/upload-evidence
         with:
-          name: gitleaks-report
           path: ${{ runner.temp }}/security-scan/gitleaks-report.json
-          if-no-files-found: warn
+          name: gitleaks-report
+          retention-days: 30
+          source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          s3-endpoint: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.ARTIFACT_S3_BUCKET }}
+          s3-access-key-id: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          diagnose-readback-failure: true
+      - name: Upload and verify a large evidence object
+        # This manual S3 multipart diagnostic does not store workflow evidence and remains S3-direct.
+        if: github.event_name == 'workflow_dispatch' && inputs.large_object_test_bytes != ''
+        id: large_s3_upload
+        shell: bash
+        timeout-minutes: 10
+        env:
+          ARTIFACT_S3_ACCESS_KEY_ID: ${{ vars.ARTIFACT_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACT_S3_ACCESS_KEY_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_DEFAULT_REGION: us-east-1
+          ARTIFACT_S3_BUCKET: ${{ vars.ARTIFACT_S3_BUCKET }}
+          ARTIFACT_S3_ENDPOINT: ${{ vars.ARTIFACT_S3_ENDPOINT }}
+          SOURCE_COMMIT_SHA: ${{ github.sha }}
+          LARGE_OBJECT_TEST_BYTES: ${{ inputs.large_object_test_bytes }}
+          S3_DELETE_AFTER_VERIFY: "true"
+        run: |
+          set -euo pipefail
+          if [[ ! "$LARGE_OBJECT_TEST_BYTES" =~ ^[1-9][0-9]{0,8}$ ]] || \
+            (( 10#$LARGE_OBJECT_TEST_BYTES <= 100000000 || 10#$LARGE_OBJECT_TEST_BYTES > 134217728 )); then
+            echo "::error::large_object_test_bytes must be between 100,000,001 and 134,217,728 bytes."
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/security-scan"
+          payload="$RUNNER_TEMP/security-scan/large-evidence-object.bin"
+          trap 'rm -f "$payload"' EXIT
+          head -c "$LARGE_OBJECT_TEST_BYTES" /dev/urandom > "$payload"
+          bash scripts/ci-s3-upload.sh "$payload" large-evidence-object
+
+      - name: Record large-object S3 diagnostic
+        if: always() && github.event_name == 'workflow_dispatch'
+        env:
+          LARGE_TEST_BYTES: ${{ inputs.large_object_test_bytes }}
+          LARGE_UPLOAD_OUTCOME: ${{ steps.large_s3_upload.outcome }}
+          LARGE_UPLOAD_STATUS: ${{ steps.large_s3_upload.outputs.upload_status }}
+          LARGE_UPLOAD_URI: ${{ steps.large_s3_upload.outputs.object_uri }}
+          LARGE_UPLOAD_SIZE: ${{ steps.large_s3_upload.outputs.size_bytes }}
+          LARGE_SOURCE_SHA256: ${{ steps.large_s3_upload.outputs.source_sha256 }}
+          LARGE_CLEANUP_STATUS: ${{ steps.large_s3_upload.outputs.cleanup_status }}
+        run: |
+          {
+            echo "### S3 multipart diagnostic"
+            if [[ -z "$LARGE_TEST_BYTES" ]]; then
+              echo "- Skipped; set large_object_test_bytes to exercise the S3 multipart transport path."
+            else
+              echo "- Outcome: ${LARGE_UPLOAD_OUTCOME:-not run} (${LARGE_UPLOAD_STATUS:-no verified result})."
+              echo "- Requested size: ${LARGE_TEST_BYTES} bytes; uploaded size: ${LARGE_UPLOAD_SIZE:-unknown} bytes."
+              echo "- Object URI: ${LARGE_UPLOAD_URI:-unavailable}; SHA-256: ${LARGE_SOURCE_SHA256:-unknown}."
+              echo "- Cleanup: ${LARGE_CLEANUP_STATUS:-not confirmed}."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Scan with Semgrep
+        if: always() && github.event_name == 'pull_request'
         shell: bash
         continue-on-error: true
         timeout-minutes: 20
@@ -115,3 +182,9 @@ jobs:
               --exclude=build \
               --exclude=coverage \
               /src
+
+      - name: Fail on evidence storage failure
+        if: always() && steps.s3_upload.outputs.storage_status == 'failed'
+        run: |
+          echo "::error::Evidence storage failed after Gitleaks and Semgrep completed. See the evidence storage summary for both backend outcomes."
+          exit 1

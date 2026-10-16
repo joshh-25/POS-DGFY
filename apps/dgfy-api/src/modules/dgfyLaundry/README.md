@@ -6,8 +6,10 @@ the API module boundary of routes/controllers -> use cases -> repositories.
 - `repositories/` persists landlord-side intent, mapping, and audit metadata.
 - `usecases/` enforces accepted membership, laundry runtime ownership, explicit
   company selection, and fixed staff launch behavior.
-- `services/` contains the OIDC provider protocol and Redis-backed short-lived
-  transaction state.
+- `services/` contains the OIDC provider protocol, Redis-backed short-lived
+  transaction state, and the signing-key registry orchestration. The registry
+  persists public key material and status in the landlord database; private key
+  bytes remain in mounted files referenced by environment-variable names.
 - `middleware/` authenticates server-to-server DGLaundry partner requests.
 
 The module stores identifiers and sanitized projections only. It never imports

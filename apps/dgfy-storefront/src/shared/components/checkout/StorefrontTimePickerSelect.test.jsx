@@ -7,70 +7,28 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
-
 describe('StorefrontTimePickerSelect', () => {
-  it('accepts typed hour and minute values while retaining dropdown selection', () => {
-    const onChange = vi.fn();
-    const { rerender } = render(
-      <StorefrontTimePickerSelect brandColor="#1A4E8D" label="Hour" onChange={onChange} options={['1', '2', '11']} placeholder="Hour" value="11" />
-    );
-    const hour = screen.getByRole('textbox', { name: 'Hour' });
-    fireEvent.change(hour, { target: { value: '02' } });
-    fireEvent.blur(hour);
-    expect(onChange).toHaveBeenCalledWith('2');
-
-    rerender(<StorefrontTimePickerSelect brandColor="#1A4E8D" label="Minute" onChange={onChange} options={['00', '30']} placeholder="Min" value="30" />);
-    const minute = screen.getByRole('textbox', { name: 'Minute' });
-    fireEvent.change(minute, { target: { value: '0' } });
-    fireEvent.blur(minute);
-    expect(onChange).toHaveBeenCalledWith('00');
-    fireEvent.click(screen.getByRole('button', { name: 'Minute: 30' }));
-    expect(screen.getByRole('listbox', { name: 'Minute options' })).toBeTruthy();
-  });
-
-  it('does not commit typed values outside the available options', () => {
-    const onChange = vi.fn();
-    render(<StorefrontTimePickerSelect brandColor="#1A4E8D" label="Minute" onChange={onChange} options={['00', '30']} placeholder="Min" value="30" />);
-    const minute = screen.getByRole('textbox', { name: 'Minute' });
-    fireEvent.change(minute, { target: { value: '45' } });
-    fireEvent.blur(minute);
-    expect(onChange).not.toHaveBeenCalled();
-    expect(minute.value).toBe('30');
-    expect(minute.getAttribute('aria-invalid')).toBe('true');
-    expect(screen.getByRole('alert').textContent).toBe('Enter 00–60.');
-    expect(minute.getAttribute('aria-describedby')).toBe(screen.getByRole('alert').id);
-  });
-
-  it('accepts manual minute values from 0 through 60 when the dropdown uses short increments', () => {
-    const onChange = vi.fn();
+  it('renders an iPhone-style roller with an editable centered value', () => {
     render(
       <StorefrontTimePickerSelect
-        allowCustomInput
         brandColor="#1A4E8D"
         label="Minute"
-        onChange={onChange}
-        options={['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55']}
+        onChange={vi.fn()}
+        options={['00', '01', '02', '59']}
         placeholder="Min"
-        value="00"
+        value="02"
       />
     );
-    const minute = screen.getByRole('textbox', { name: 'Minute' });
 
-    fireEvent.change(minute, { target: { value: '16' } });
-    fireEvent.blur(minute);
-    expect(onChange).toHaveBeenLastCalledWith('16');
-
-    fireEvent.change(minute, { target: { value: '60' } });
-    fireEvent.blur(minute);
-    expect(onChange).toHaveBeenLastCalledWith('60');
-
-    fireEvent.change(minute, { target: { value: '61' } });
-    fireEvent.blur(minute);
-    expect(onChange).toHaveBeenCalledTimes(2);
-    expect(minute.getAttribute('aria-invalid')).toBe('true');
+    const minuteInput = screen.getByRole('textbox', { name: 'Minute' });
+    expect(minuteInput).toBeTruthy();
+    expect(minuteInput.className).toContain('storefront-time-picker-input');
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByRole('listbox', { name: 'Minute' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '02' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('uses the DGFY selected-option treatment and supports keyboard selection navigation', () => {
+  it('focuses the centered item for exact typing without changing the roller layout', () => {
     const onChange = vi.fn();
     render(
       <StorefrontTimePickerSelect
@@ -83,26 +41,41 @@ describe('StorefrontTimePickerSelect', () => {
       />
     );
 
-    const trigger = screen.getByRole('button', { name: 'Hour: 2' });
-    fireEvent.click(trigger);
+    const centeredOption = screen.getByRole('option', { name: '2' });
+    const hourInput = screen.getByRole('textbox', { name: 'Hour' });
+    fireEvent.click(centeredOption);
 
-    const listbox = screen.getByRole('listbox', { name: 'Hour options' });
-    const selectedOption = screen.getByRole('option', { name: '2' });
-    expect(selectedOption.getAttribute('aria-selected')).toBe('true');
-    expect(selectedOption.style.background).toBe('rgb(239, 246, 255)');
-    expect(selectedOption.style.color).toBe('rgb(26, 78, 141)');
+    expect(document.activeElement).toBe(hourInput);
+    expect(hourInput.selectionStart).toBe(0);
+    expect(hourInput.selectionEnd).toBe(1);
 
-    fireEvent.keyDown(listbox, { key: 'ArrowDown' });
-    const nextOption = screen.getByRole('option', { name: '3' });
-    expect(document.activeElement).toBe(nextOption);
-    fireEvent.click(nextOption);
-
+    fireEvent.change(hourInput, { target: { value: '3' } });
+    fireEvent.blur(hourInput);
     expect(onChange).toHaveBeenCalledWith('3');
-    expect(screen.queryByRole('listbox')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
   });
 
-  it('closes with Escape and restores focus to its trigger', () => {
+  it('forwards center-row wheel movement to the roller while keeping the input clickable', () => {
+    render(
+      <StorefrontTimePickerSelect
+        brandColor="#1A4E8D"
+        label="Minute"
+        onChange={vi.fn()}
+        options={['00', '01', '02', '03']}
+        placeholder="Min"
+        value="01"
+      />
+    );
+
+    const wheel = screen.getByRole('listbox', { name: 'Minute' });
+    const minuteInput = screen.getByRole('textbox', { name: 'Minute' });
+    wheel.scrollTop = 42;
+    fireEvent.wheel(minuteInput, { deltaY: 42 });
+
+    expect(wheel.scrollTop).toBe(84);
+    expect(minuteInput.style.pointerEvents).not.toBe('none');
+  });
+
+  it('does not visually duplicate the centered AM/PM value', () => {
     render(
       <StorefrontTimePickerSelect
         brandColor="#1A4E8D"
@@ -114,11 +87,125 @@ describe('StorefrontTimePickerSelect', () => {
       />
     );
 
-    const trigger = screen.getByRole('button', { name: 'AM/PM: AM' });
-    fireEvent.click(trigger);
-    fireEvent.keyDown(screen.getByRole('listbox', { name: 'AM/PM options' }), { key: 'Escape' });
+    const activeOption = screen.getByRole('option', { name: 'AM' });
+    const inactiveOption = screen.getByRole('option', { name: 'PM' });
+    const amPmInput = screen.getByRole('textbox', { name: 'AM/PM' });
 
-    expect(screen.queryByRole('listbox')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    expect(activeOption.style.color).toBe('transparent');
+    expect(activeOption.style.scrollSnapAlign).toBe('center');
+    expect(inactiveOption.style.color).not.toBe('transparent');
+    expect(amPmInput.value).toBe('AM');
+  });
+
+  it('snaps back to the last enabled option when scrolling reaches a disabled trailing value', () => {
+    vi.useFakeTimers();
+    render(
+      <StorefrontTimePickerSelect
+        brandColor="#1A4E8D"
+        label="Hour"
+        onChange={vi.fn()}
+        options={[
+          { value: '11', label: '11', disabled: false },
+          { value: '12', label: '12', disabled: true }
+        ]}
+        placeholder="Hour"
+        value="11"
+      />
+    );
+
+    const wheel = screen.getByRole('listbox', { name: 'Hour' });
+    vi.advanceTimersByTime(1);
+    wheel.scrollTop = 42;
+    fireEvent.scroll(wheel);
+    vi.advanceTimersByTime(100);
+
+    expect(wheel.scrollTop).toBe(0);
+  });
+
+  it('rejects out-of-range hour drafts while accepting the 1-12 boundary', () => {
+    const onChange = vi.fn();
+    render(
+      <StorefrontTimePickerSelect
+        brandColor="#1A4E8D"
+        label="Hour"
+        onChange={onChange}
+        options={Array.from({ length: 12 }, (_, index) => String(index + 1))}
+        placeholder="Hour"
+        value="11"
+      />
+    );
+
+    const hourInput = screen.getByRole('textbox', { name: 'Hour' });
+    fireEvent.change(hourInput, { target: { value: '13' } });
+    expect(hourInput.value).toBe('11');
+    fireEvent.change(hourInput, { target: { value: '12' } });
+    fireEvent.blur(hourInput);
+
+    expect(onChange).toHaveBeenCalledWith('12');
+  });
+
+  it('rejects out-of-range minute drafts while accepting 00-59 and normalizing a single digit', () => {
+    const onChange = vi.fn();
+    render(
+      <StorefrontTimePickerSelect
+        brandColor="#1A4E8D"
+        label="Minute"
+        onChange={onChange}
+        options={Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0'))}
+        placeholder="Min"
+        value="58"
+      />
+    );
+
+    const minuteInput = screen.getByRole('textbox', { name: 'Minute' });
+    fireEvent.change(minuteInput, { target: { value: '60' } });
+    expect(minuteInput.value).toBe('58');
+    fireEvent.change(minuteInput, { target: { value: '7' } });
+    fireEvent.blur(minuteInput);
+
+    expect(onChange).toHaveBeenCalledWith('07');
+  });
+
+  it('supports every minute from 00 through 59 and emits the selected value', () => {
+    const onChange = vi.fn();
+    render(
+      <StorefrontTimePickerSelect
+        brandColor="#1A4E8D"
+        label="Minute"
+        onChange={onChange}
+        options={Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0'))}
+        placeholder="Min"
+        value="30"
+      />
+    );
+
+    expect(screen.getByRole('option', { name: '00' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '59' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('option', { name: '59' }));
+    expect(onChange).toHaveBeenCalledWith('59');
+  });
+
+  it('keeps unavailable wheel options disabled', () => {
+    const onChange = vi.fn();
+    render(
+      <StorefrontTimePickerSelect
+        brandColor="#1A4E8D"
+        label="Minute"
+        onChange={onChange}
+        options={[
+          { value: '00', label: '00', disabled: true },
+          { value: '01', label: '01', disabled: true },
+          { value: '02', label: '02', disabled: false }
+        ]}
+        placeholder="Min"
+        value="02"
+      />
+    );
+
+    expect(screen.getByRole('option', { name: '00' }).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('option', { name: '00' }));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('option', { name: '02' }));
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

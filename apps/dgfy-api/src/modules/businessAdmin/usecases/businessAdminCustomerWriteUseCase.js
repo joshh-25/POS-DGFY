@@ -15,6 +15,7 @@ const publicCustomer = (customer) => ({
     name: customer.name,
     email: customer.email,
     phone: customer.phone || null,
+    address_line: customer.address_line || null,
     is_active: customer.is_active !== false,
     created_at: customer.created_at || null,
     account_status: 'invite_required'
@@ -27,6 +28,7 @@ export const buildCreateBusinessAdminCustomerUseCase = ({ businessAdminCustomerR
     const name = normalizeText(body.name);
     const email = normalizeText(body.email).toLowerCase();
     const phone = normalizeText(body.phone) || null;
+    const addressLine = normalizeText(body.address_line) || null;
 
     if (!name || name.length > 255) {
         return fail(DomainErrorCode.VALIDATION_FAILED, 'Customer name is required and must not exceed 255 characters.', 422, { reason_code: 'BUSINESS_ADMIN_CUSTOMER_NAME_INVALID' });
@@ -37,6 +39,9 @@ export const buildCreateBusinessAdminCustomerUseCase = ({ businessAdminCustomerR
     if (phone && phone.length > 50) {
         return fail(DomainErrorCode.VALIDATION_FAILED, 'Customer phone must not exceed 50 characters.', 422, { reason_code: 'BUSINESS_ADMIN_CUSTOMER_PHONE_INVALID' });
     }
+    if (addressLine && addressLine.length > 4000) {
+        return fail(DomainErrorCode.VALIDATION_FAILED, 'Customer address must not exceed 4000 characters.', 422, { reason_code: 'BUSINESS_ADMIN_CUSTOMER_ADDRESS_INVALID' });
+    }
 
     try {
         const existing = await businessAdminCustomerRepository.findCustomerByEmail(email);
@@ -44,7 +49,7 @@ export const buildCreateBusinessAdminCustomerUseCase = ({ businessAdminCustomerR
             return fail(DomainErrorCode.CONFLICT, 'A customer with this email already exists.', 409, { reason_code: 'BUSINESS_ADMIN_CUSTOMER_EMAIL_EXISTS' });
         }
 
-        const created = await businessAdminCustomerRepository.createCustomer({ name, email, phone });
+        const created = await businessAdminCustomerRepository.createCustomer({ name, email, phone, addressLine });
         return {
             success: true,
             data: {

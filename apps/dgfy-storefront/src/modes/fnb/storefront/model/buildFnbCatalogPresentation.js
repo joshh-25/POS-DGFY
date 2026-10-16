@@ -1,13 +1,24 @@
-const getCategorySortOrder = (item) => {
-  const rawSortOrder = item?.categorySortOrder ?? item?.folder_sort_order;
-  if (rawSortOrder === null || rawSortOrder === undefined || String(rawSortOrder).trim() === '') {
-    return Number.MAX_SAFE_INTEGER;
-  }
-  const sortOrder = Number(rawSortOrder);
-  return Number.isFinite(sortOrder) ? sortOrder : Number.MAX_SAFE_INTEGER;
+const getFolderIdentity = (folderId) => {
+  const numericFolderId = Number(folderId);
+  return Number.isInteger(numericFolderId) && numericFolderId > 0
+    ? `folder:${numericFolderId}`
+    : null;
 };
 
-function sortItems(items, sortOption, categoryFirst = false) {
+const getCatalogCategorySortOrder = (item, categoryOrderByIdentity) => {
+  const secondaryCategories = Array.isArray(item?.secondary_categories) ? item.secondary_categories : [];
+  const categoryIdentities = [
+    getFolderIdentity(item?.folder_id),
+    ...secondaryCategories.map((category) => getFolderIdentity(category?.folder_id))
+  ];
+
+  return categoryIdentities.reduce((earliestOrder, categoryIdentity) => {
+    if (!categoryIdentity || !categoryOrderByIdentity.has(categoryIdentity)) return earliestOrder;
+    return Math.min(earliestOrder, categoryOrderByIdentity.get(categoryIdentity));
+  }, Number.MAX_SAFE_INTEGER);
+};
+
+function sortItems(items, sortOption, categoryOrderByIdentity = null) {
   return [...items]
     .map((item, index) => ({ item, index }))
     .sort((left, right) => {
@@ -21,8 +32,11 @@ function sortItems(items, sortOption, categoryFirst = false) {
           - Number(left.item?.default_sale_price || 0)
           || left.index - right.index;
       }
-      if (categoryFirst) {
-        const categoryDifference = getCategorySortOrder(left.item) - getCategorySortOrder(right.item);
+      if (categoryOrderByIdentity) {
+        // Use the exact ordered sections rendered by the category selector as the source of truth.
+        // A product in multiple sections stays unique and sorts under its earliest section.
+        const categoryDifference = getCatalogCategorySortOrder(left.item, categoryOrderByIdentity)
+          - getCatalogCategorySortOrder(right.item, categoryOrderByIdentity);
         if (categoryDifference !== 0) return categoryDifference;
       }
       return String(left.item?.name || '').localeCompare(String(right.item?.name || ''))
@@ -41,8 +55,9 @@ function sortItems(items, sortOption, categoryFirst = false) {
  * `resolveSectionIdentity`), never the normalized `sectionKey` display text. Two distinct folders
  * whose names normalize identically produce two `menuSections` entries with the same `sectionKey`
  * but different `sectionIdentity`; resolving/matching by `sectionKey` here would make the second
- * one permanently unreachable through the toolbar. `sectionKey`/`sectionLabel` stay available on
- * `activeSectionModel` for display only.
+ * one permanently unreachable through the toolbar. An explicitly selected section also resolves
+ * when a QR-filtered catalog contains only that one section. `sectionKey`/`sectionLabel` stay
+ * available on `activeSectionModel` for display only.
  */
 export function buildFnbCatalogPresentation({
   activeSection,
@@ -54,8 +69,7 @@ export function buildFnbCatalogPresentation({
   const menuSections = Array.isArray(fnbViewModel?.menuSections)
     ? fnbViewModel.menuSections
     : [];
-  const hasMultipleSections = menuSections.length > 1;
-  const resolvedSection = hasMultipleSections && menuSections.some((section) => section.sectionIdentity === activeSection)
+  const resolvedSection = activeSection && menuSections.some((section) => section.sectionIdentity === activeSection)
     ? activeSection
     : '';
   const activeSectionModel = resolvedSection
@@ -63,7 +77,10 @@ export function buildFnbCatalogPresentation({
     : null;
   const menuItems = Array.isArray(fnbViewModel?.menuItems) ? fnbViewModel.menuItems : [];
   const selectedItems = resolvedSection ? (activeSectionModel?.items || []) : menuItems;
-  const sortedItems = sortItems(selectedItems, sortOption, !resolvedSection);
+  const categoryOrderByIdentity = new Map(
+    menuSections.map((section, index) => [section.sectionIdentity, index])
+  );
+  const sortedItems = sortItems(selectedItems, sortOption, resolvedSection ? null : categoryOrderByIdentity);
   const normalizedPageSize = Math.max(1, Number(pageSize || 8));
   const totalPages = Math.max(1, Math.ceil(sortedItems.length / normalizedPageSize));
   const resolvedPage = Math.min(Math.max(1, Number(page || 1)), totalPages);

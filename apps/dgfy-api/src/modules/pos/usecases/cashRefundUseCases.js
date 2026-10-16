@@ -9,6 +9,10 @@ import {
 import dbStore from '../../../utils/dbStore.js';
 import { resolvePosVoidFinancialOutcome } from '../domain/posVoidFinancialOutcome.js';
 import { assertMobilePosExpectedTransactionState } from '../domain/mobilePosReplayGuard.js';
+import {
+    resolvePosItemVoidRefundScope,
+    resolvePosPaymentStatusAfterRefund
+} from '../domain/posItemVoid.js';
 
 const parsePositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
@@ -118,7 +122,7 @@ const assertOwnedOpenShift = ({ shift, actorUserId, shiftOwnerUserId = actorUser
 export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
     if (!posRepository) throw new Error('posRepository is required');
 
-    return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
+    return async ({ posTransactionId, payload = {}, user = {}, transaction: providedTransaction = null } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
         const operatorSessionId = parsePositiveInt(user?.operator_session_id);
@@ -127,6 +131,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
         const locationId = parsePositiveInt(payload?.terminal_location_id);
         const reason = String(payload?.reason || '').trim();
         const idempotencyKey = String(payload?.idempotency_key || '').trim();
+        const itemVoidAdjustmentId = parsePositiveInt(payload?.item_void_adjustment_id);
 
         if (!normalizedTransactionId || !actorUserId || !shiftId || reason.length < 3 || idempotencyKey.length < 8) {
             return fail(new DomainError(
@@ -137,7 +142,8 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
         }
 
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-        const transaction = await sequelize.transaction();
+        const ownsTransaction = providedTransaction == null;
+        const transaction = providedTransaction || await sequelize.transaction();
         try {
             const existing = await posRepository.getTransactionById(normalizedTransactionId, {
                 transaction,
@@ -150,7 +156,15 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                     { statusCode: 404 }
                 );
             }
-            if (String(existing.status || '').toLowerCase() !== 'voided') {
+            const itemVoidRefundScope = itemVoidAdjustmentId
+                ? await resolvePosItemVoidRefundScope({
+                    posRepository,
+                    transactionId: normalizedTransactionId,
+                    adjustmentId: itemVoidAdjustmentId,
+                    transaction
+                })
+                : null;
+            if (!itemVoidRefundScope && String(existing.status || '').toLowerCase() !== 'voided') {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Void the POS transaction before issuing its cash refund',
@@ -158,7 +172,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 );
             }
 
-            const amount = round4(existing.total_amount);
+            const amount = round4(itemVoidRefundScope?.amount ?? existing.total_amount);
             if (amount <= 0) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
@@ -172,7 +186,8 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 terminal_id: terminalId,
                 location_id: locationId,
                 amount,
-                reason
+                reason,
+                item_void_adjustment_id: itemVoidAdjustmentId
             });
             const existingAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
                 normalizedTransactionId,
@@ -201,7 +216,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                     && typeof posRepository.getCashDrawerEventById === 'function'
                     ? await posRepository.getCashDrawerEventById(existingAdjustment.cash_drawer_event_id, { transaction })
                     : null;
-                await transaction.commit();
+                if (ownsTransaction) await transaction.commit();
                 return ok({
                     transaction: toSerializable(replayedTransaction),
                     adjustment: existingAdjustment,
@@ -218,6 +233,9 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
             const completedCashRefund = (Array.isArray(adjustments) ? adjustments : []).find((adjustment) => (
                 adjustment.adjustment_type === 'cash_refund'
                 && adjustment.status === 'succeeded'
+                && (itemVoidAdjustmentId
+                    ? String(adjustment?.metadata?.item_void_adjustment_id || '') === String(itemVoidAdjustmentId)
+                    : !adjustment?.metadata?.item_void_adjustment_id)
             ));
             if (completedCashRefund) {
                 throw new DomainError(
@@ -227,7 +245,8 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 );
             }
 
-            const financialOutcome = resolvePosVoidFinancialOutcome(existing);
+            const financialOutcome = itemVoidRefundScope?.metadata?.financial_outcome
+                || resolvePosVoidFinancialOutcome(existing);
             const paymentType = String(existing.payment_type || '').trim().toLowerCase();
             const paymentStatus = String(existing.payment_status || '').trim().toLowerCase();
             let paymentBreakdown = existing.payment_breakdown;
@@ -243,10 +262,13 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
             const paymentBreakdownTypes = activePaymentBreakdown
                 .map((entry) => String(entry?.payment_type || '').trim().toLowerCase())
                 .filter(Boolean);
+            const effectivePaymentType = paymentBreakdownTypes.length === 1
+                ? paymentBreakdownTypes[0]
+                : paymentType;
 
             if (
-                paymentType !== 'cash'
-                || paymentStatus !== 'paid'
+                effectivePaymentType !== 'cash'
+                || !(paymentStatus === 'paid' || (itemVoidAdjustmentId && paymentStatus === 'partial_refunded'))
                 || activePaymentBreakdown.length > 1
                 || paymentBreakdownTypes.some((type) => type !== 'cash')
             ) {
@@ -257,7 +279,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                         statusCode: 422,
                         details: {
                             reason_code: 'POS_CASH_REFUND_TENDER_UNSUPPORTED',
-                            payment_type: paymentType || null,
+                            payment_type: effectivePaymentType || null,
                             payment_status: paymentStatus || null,
                             next_action: financialOutcome.next_action || 'manual_review'
                         }
@@ -319,6 +341,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 completed_at: refundAt,
                 metadata: {
                     evidence_scope: 'walk_in_pos_cash_refund',
+                    item_void_adjustment_id: itemVoidAdjustmentId,
                     operator_session_id: operatorSessionId,
                     refund_state: 'completed',
                     payment_status_before_refund: paymentStatus,
@@ -336,10 +359,13 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 );
             }
 
+            const updatedPaymentStatus = itemVoidAdjustmentId
+                ? resolvePosPaymentStatusAfterRefund({ transaction: existing, adjustments, amount })
+                : 'refunded';
             const updated = await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
-                payment_status: 'refunded'
+                payment_status: updatedPaymentStatus
             }, { transaction, lock: true });
-            if (!updated || String(updated.payment_status || '').toLowerCase() !== 'refunded') {
+            if (!updated || String(updated.payment_status || '').toLowerCase() !== updatedPaymentStatus) {
                 throw new DomainError(
                     DomainErrorCode.INTERNAL_ERROR,
                     'POS transaction payment status could not be updated after cash refund',
@@ -352,17 +378,18 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 entity_type: 'pos_transaction',
                 entity_id: normalizedTransactionId,
                 action: 'UPDATE',
-                event_type: 'pos_cash_refund_completed',
+                event_type: itemVoidAdjustmentId ? 'pos_item_cash_refund_completed' : 'pos_cash_refund_completed',
                 terminal_id: terminalId || shift.terminal_id || null,
                 shift_id: shiftId,
                 location_id: existing.location_id || shift.location_id || null,
                 reason,
                 changes: {
-                    event: 'pos_cash_refund_completed',
+                    event: itemVoidAdjustmentId ? 'pos_item_cash_refund_completed' : 'pos_cash_refund_completed',
                     operator_session_id: operatorSessionId,
                     invoice_number: existing.invoice_number || null,
                     transaction_id: normalizedTransactionId,
                     amount,
+                    item_void_adjustment_id: itemVoidAdjustmentId,
                     cashier_id: actorUserId,
                     original_cashier_id: parsePositiveInt(existing.cashier_id),
                     original_shift_id: parsePositiveInt(existing.shift_id),
@@ -373,7 +400,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 }
             }, { transaction });
 
-            await transaction.commit();
+            if (ownsTransaction) await transaction.commit();
             return ok({
                 transaction: updated,
                 adjustment,
@@ -383,7 +410,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                 financial_outcome: completedOutcome
             });
         } catch (error) {
-            if (!transaction.finished) await transaction.rollback();
+            if (ownsTransaction && !transaction.finished) await transaction.rollback();
             return fail(mapPosUseCaseError(error, 'Failed to record POS cash refund'));
         }
     };

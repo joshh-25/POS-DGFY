@@ -41,7 +41,10 @@ describe('POS Back Office boundary', () => {
       />
     );
 
-    expect(screen.getByTestId('pos-nav-settings')).toBeDefined();
+    const settingsButton = screen.getByTestId('pos-nav-settings');
+    expect(settingsButton).toBeDefined();
+    expect(settingsButton.querySelector('svg')?.classList.contains('lucide-settings')).toBe(true);
+    expect(settingsButton.querySelector('svg')?.classList.contains('lucide-settings-2')).toBe(false);
     expect(screen.queryByTestId('pos-nav-backoffice')).toBeNull();
   });
 
@@ -59,5 +62,33 @@ describe('POS Back Office boundary', () => {
     );
 
     expect(screen.getByTestId('pos-nav-approvals')).toBeDefined();
+  });
+
+  it('opens transaction history only for cashiers with explicit void access', () => {
+    expect(terminalPageSource).toContain('const isCashierAllowedViewMode = (viewMode, canVoidTransactions = false)');
+    expect(terminalPageSource).toContain("const canVoidTransactions = hasPermission('pos:void')");
+    expect(terminalPageSource).toContain("(viewMode === 'history' && canVoidTransactions)");
+    expect(terminalPageSource).toContain('isCashierAllowedViewMode(mode, canVoidTransactions)');
+    expect(terminalPageSource).toContain('isCashierAllowedViewMode(normalizedView, canVoidTransactions)');
+    expect(terminalPageSource).toContain(".filter((mode) => mode !== 'approvals' || (canReviewVoidApprovals && !isCashierRole))");
+  });
+
+  it('hides F&B service from the primary POS navigation without removing the route capability', () => {
+    render(
+      <TerminalWorkspaceSidebar
+        locked={false}
+        isOnline
+        terminalUser={{ role: 'admin' }}
+        currentViewMode="checkout"
+        canViewPos
+        showFnbService={false}
+        shiftState={{ shift: { pos_terminal_shift_id: 12, location_id: 3 } }}
+      />
+    );
+
+    expect(screen.queryByTestId('pos-nav-fnb-service')).toBeNull();
+    expect(terminalPageSource).toContain("'fnb_service'");
+    expect(terminalPageSource).toContain('canAccessFnbService');
+    expect(terminalPageSource).toContain('showFnbService={SHOW_FNB_SERVICE_IN_POS_NAVIGATION && canAccessFnbService}');
   });
 });

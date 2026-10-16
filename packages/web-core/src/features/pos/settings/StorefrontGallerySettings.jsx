@@ -22,8 +22,10 @@ const normalizeGalleryImages = (value) => (Array.isArray(value)
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
       const url = String(entry.url || '').trim();
       const path = String(entry.path || '').trim();
-      if (!url && !path) return null;
+      const uploadId = String(entry.upload_id || entry.id || '').trim();
+      if (!url && !path && !uploadId) return null;
       return {
+        ...(uploadId ? { upload_id: uploadId } : {}),
         url,
         path,
         caption: String(entry.caption || '').trim().slice(0, 140),
@@ -69,8 +71,10 @@ const reindexImages = (images) => (Array.isArray(images) ? images : [])
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
     const url = String(entry.url || '').trim();
     const path = String(entry.path || '').trim();
-    if (!url && !path) return null;
+    const uploadId = String(entry.upload_id || entry.id || '').trim();
+    if (!url && !path && !uploadId) return null;
     return {
+      ...(uploadId ? { upload_id: uploadId } : {}),
       url,
       path,
       caption: String(entry.caption || '').trim().slice(0, 140),
@@ -207,7 +211,7 @@ function UploadProgressList({ uploads, onRetry }) {
 }
 
 export default function StorefrontGallerySettings({
-  images = [], onChange, onUploadImage, disabled = false, loading = false, assetUploadingType = ''
+  images = [], onChange, onUploadImage, onRemoveImage, disabled = false, loading = false, assetUploadingType = ''
 }) {
   const normalizedImages = useMemo(() => normalizeGalleryImages(images), [images]);
   const workingImagesRef = useRef(normalizedImages);
@@ -247,7 +251,9 @@ export default function StorefrontGallerySettings({
       return false;
     }
     const uploaded = result.uploaded || {};
+    const uploadedId = String(uploaded.upload_id || uploaded.id || '').trim();
     const uploadedEntry = {
+      ...(uploadedId ? { upload_id: uploadedId } : {}),
       url: String(uploaded.image_url || uploaded.url || '').trim(),
       path: String(uploaded.path || '').trim(),
       caption: '',
@@ -258,7 +264,12 @@ export default function StorefrontGallerySettings({
       emitImages([...workingImagesRef.current, uploadedEntry]);
       setAnnouncement(`${file.name || 'Image'} uploaded.`);
     } else {
-      emitImages(workingImagesRef.current.map((entry, index) => (index === replaceIndex ? { ...entry, url: uploadedEntry.url, path: uploadedEntry.path } : entry)));
+      emitImages(workingImagesRef.current.map((entry, index) => (index === replaceIndex ? {
+        ...entry,
+        ...(uploadedEntry.upload_id ? { upload_id: uploadedEntry.upload_id } : {}),
+        url: uploadedEntry.url,
+        path: uploadedEntry.path
+      } : entry)));
       setAnnouncement(`${file.name || 'Image'} replaced.`);
     }
     updateUpload(id, { status: 'success', progress: 100 });
@@ -345,6 +356,7 @@ export default function StorefrontGallerySettings({
     if (removeIndex == null) return;
     const removed = workingImagesRef.current[removeIndex];
     emitImages(workingImagesRef.current.filter((_, index) => index !== removeIndex));
+    Promise.resolve(onRemoveImage?.(removed, removeIndex)).catch(() => {});
     setAnnouncement(`${removed?.caption || removed?.alt || `Image ${removeIndex + 1}`} removed.`);
     setRemoveIndex(null);
   };

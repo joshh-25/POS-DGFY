@@ -20,10 +20,17 @@ describe('POS page shell and route ownership', () => {
     expect(skupervisorPage).not.toContain('ServicesPosQueue');
   });
 
+  it('routes the customer-display chunk through stale-build recovery', () => {
+    const main = read('apps/dgfy-pos/src/main.jsx');
+
+    expect(main).toContain("const CustomerDisplayPage = lazyWithChunkRetry(() => import('../../../packages/web-core/src/features/pos/pages/CustomerDisplayPage.jsx'));");
+  });
+
   it('keeps IMS merchant routes as compatibility handoffs while preserving internal admin routing', () => {
     const main = read('apps/dgfy-ims/src/main.jsx');
+    const adminMain = read('apps/dgfy-admin/src/main.jsx');
 
-    expect(main).toContain('path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />}');
+    expect(adminMain).toContain('path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />}');
     expect(main).toContain("import MerchantSurfaceRetired from './pages/MerchantSurfaceRetired.jsx'");
     expect(main).toContain('path="/items" element={<LegacyMerchantRoute target="/backoffice/catalog" title="Catalog workspace moved" />}');
     expect(main).not.toContain('FeedbackViewer');

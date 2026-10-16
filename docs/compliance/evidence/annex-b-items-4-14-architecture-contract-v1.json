@@ -1,0 +1,677 @@
+{
+  "schema_version": "annex-b-items-4-14-architecture-v1",
+  "plan": {
+    "section": "03",
+    "phase": 353,
+    "source_commit": "786cd4e8329db1a65398ce6aa7eb020ffc8f3b28",
+    "execution_mode": "LOCAL_ONLY",
+    "external_approval_claim": "NOT_CLAIMED",
+    "runtime_implementation_in_scope": false,
+    "external_release_in_scope": false
+  },
+  "source_register": [
+    {
+      "id": "PLAN-SECTION-03",
+      "path": "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/03_Current_and_Target_Architecture.docx",
+      "sha256": "8df6d595ce9752e2468beca8cbf98be5ed72a00e7c3d451f084f67057a458508",
+      "description": "Approved Section 03 plan document."
+    },
+    {
+      "id": "PLAN-SECTION-02",
+      "path": "output/plans/POS_BIR_Annex_B_Items_4_to_14_Readiness/02_Annex_B_Items_4_to_14_Requirements.docx",
+      "sha256": "3b85f7edce64918911d6cdadc6c5e8076cf47765e7a518bf8bf2e7433bde7dc0",
+      "description": "Upstream approved requirements section."
+    },
+    {
+      "id": "REQUIREMENTS-REGISTRY",
+      "path": "docs/compliance/evidence/annex-b-items-4-14-requirements-registry.json",
+      "sha256": "20333586891a04b7e11cd870ff27cb530c5a0bffb53b810b3b8de3074cb452e1",
+      "description": "Upstream Section 02 machine-readable control registry."
+    },
+    {
+      "id": "ARCHITECTURE-BOUNDARIES",
+      "path": "docs/architecture/ARCHITECTURE_BOUNDARIES.md",
+      "sha256": "c2638fa693941e7dae1ab324d90ec0a2f1702915159b4f02ee14c5d9acc35493",
+      "description": "Authoritative route/controller/usecase/repository/model boundary."
+    },
+    {
+      "id": "ARCHITECTURE-GOVERNANCE",
+      "path": "docs/architecture/ARCHITECTURE_GOVERNANCE.md",
+      "sha256": "9377c9a56136a6efdb8f007f4aee78b236ab2659cdfefb69a162ae69d3d82fb2",
+      "description": "Authoritative architecture review and ADR governance rules."
+    },
+    {
+      "id": "ADR-0007",
+      "path": "docs/architecture/adr/0007-dual-mode-pos-compliance-program.md",
+      "sha256": "f7ccc56da9680d0f3302fac22aa2412db9f234e03fdb80065b4c08c9a076881d",
+      "description": "Dual-mode POS compliance lifecycle."
+    },
+    {
+      "id": "ADR-0014",
+      "path": "docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md",
+      "sha256": "3d475dd17c6d88a2391fe477a424964c8b50d9f4a0f506e35c429dd371154184",
+      "description": "POS, offline, and sync boundary contracts."
+    },
+    {
+      "id": "ADR-0033",
+      "path": "docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md",
+      "sha256": "7d0eedde881a02d0275af2a0df74c8d2bc0839762253ee9412974082cc9d415f",
+      "description": "Commercial and statutory POS discount boundaries."
+    },
+    {
+      "id": "ADR-0042",
+      "path": "docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md",
+      "sha256": "438452da78c532596839a86e470abb4f2c1f659cf301a9658dfd7d509a1faae3",
+      "description": "Server-owned fiscal snapshots, fiscal event ledger, and RMO closure gate."
+    },
+    {
+      "id": "ADR-0045",
+      "path": "docs/architecture/adr/0045-shared-pos-receipt-renderer.md",
+      "sha256": "f497ff699056c108e423f390650cb865008d127eefff915037a76fda013e6b7c",
+      "description": "Frontend/mobile shared receipt renderer boundary."
+    },
+    {
+      "id": "ADR-0081",
+      "path": "docs/architecture/adr/0081-per-app-container-semantic-versioning.md",
+      "sha256": "2f59e2410d8d80f3ed06e163caec120f25b0291d70a00ec36b7ac4cdd36e6d47",
+      "description": "Per-app version and build identity contract."
+    },
+    {
+      "id": "POS-ROUTES",
+      "path": "apps/dgfy-api/src/routes/pos.js",
+      "sha256": "150b06626c010348545d0b43ba40de0d0b86ae77a256e18b3a7e23344eb405c6",
+      "description": "POS transport route surface."
+    },
+    {
+      "id": "COMPLIANCE-ROUTES",
+      "path": "apps/dgfy-api/src/routes/compliance.js",
+      "sha256": "eeff1b1a9b89e8a6f4bc5c462e4e38d2a1022b250909be365cdb81603833c3ad",
+      "description": "Compliance transport routes and permission middleware."
+    },
+    {
+      "id": "POS-USECASES",
+      "path": "apps/dgfy-api/src/modules/pos/usecases/posUseCases.js",
+      "sha256": "7266cccdadd81fda4a886ed1c49ed0e79696786fab4c6f611a10964660ff8d14",
+      "description": "POS policy and application use-case surface."
+    },
+    {
+      "id": "POS-REPOSITORY",
+      "path": "apps/dgfy-api/src/modules/pos/repositories/posRepository.js",
+      "sha256": "17e4c8687836b3e3bf5e8d80c68d1419850d556b571d966ae1f809464320d780",
+      "description": "POS persistence boundary, transaction snapshots, adjustments, fiscal events, and readings."
+    },
+    {
+      "id": "COMPLIANCE-USECASES",
+      "path": "apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js",
+      "sha256": "99a9e18490bc186f183f544dbc6f10a1c852ab9eb3dd1a77818c925e631557ae",
+      "description": "Compliance policy and final-review use-case surface."
+    },
+    {
+      "id": "COMPLIANCE-REPOSITORY",
+      "path": "apps/dgfy-api/src/modules/compliance/repositories/complianceRepository.js",
+      "sha256": "a310e0501eb791471af65f21af5d1918cf5cbeae29152e0b305f8f32dfa0d2ed",
+      "description": "Tenant-scoped compliance evidence and final-review persistence boundary."
+    },
+    {
+      "id": "REPORT-REGISTRY",
+      "path": "apps/dgfy-api/src/modules/reports/domain/reportRegistry.js",
+      "sha256": "3b60e74fd98b9a8b864e79968339d4b3980e862165908d09db609b01daedd099",
+      "description": "Canonical report metadata and ownership registry."
+    },
+    {
+      "id": "BUSINESS-ADMIN-FISCAL-REPOSITORY",
+      "path": "apps/dgfy-api/src/modules/businessAdmin/repositories/businessAdminFiscalRepository.js",
+      "sha256": "2fb0ec6ad6d75dc0d7cb6c4d7ae1d5a326fc9051f1c8da824920035359d6049a",
+      "description": "Business-admin fiscal read-model repository using POS-owned snapshots."
+    },
+    {
+      "id": "FINAL-REVIEW-DOCUMENT-MODEL",
+      "path": "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewDocument.js",
+      "sha256": "fc7cdfdd28e0a8603b894b702040b369bfeb9cfb936e8a5a4a73b6dac7225e30",
+      "description": "Existing tenant-scoped final-review document model."
+    },
+    {
+      "id": "FINAL-REVIEW-SIGNOFF-MODEL",
+      "path": "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewSignoff.js",
+      "sha256": "8c37e6997ee290c8fb38035c36a6da98af0c56b78ecddc3e88c42f480c2b0ed8",
+      "description": "Existing tenant-scoped final-review signoff model."
+    },
+    {
+      "id": "Z-READING-SNAPSHOT-MODEL",
+      "path": "apps/dgfy-api/src/models/PosZReadingSnapshot.js",
+      "sha256": "f1a5f4a5aa1d13a2f3ea688f30dfb94794a85a9991a9accd46696b6bf230f736",
+      "description": "Existing immutable-style Z-reading snapshot model."
+    },
+    {
+      "id": "RECEIPT-RENDERER",
+      "path": "packages/web-core/src/features/pos/components/ReceiptPrintView.jsx",
+      "sha256": "3cf44dbffda503d88d42f51064600dad3ece79849074cdfb556b7facc915aad9",
+      "description": "Frontend receipt projection using the shared renderer."
+    },
+    {
+      "id": "POS-SHELL",
+      "path": "apps/dgfy-pos/src/main.jsx",
+      "sha256": "61be5d1dea5e62315796e0e92ea0eab0c06dffc004ce06843819dbd9c6665c8e",
+      "description": "POS application shell."
+    },
+    {
+      "id": "FINAL-REVIEW-MIGRATION",
+      "path": "apps/dgfy-migration-runner/migrations/20260413000006-add-tenant-compliance-final-review-docs.cjs",
+      "sha256": "9ded9c339eb7c9c6d496906a14edeb12356d518d8d9d68c4e4a8c936b261c454",
+      "description": "Existing final-review schema migration."
+    }
+  ],
+  "architecture_boundaries": {
+    "layer_order": [
+      "routes",
+      "controllers",
+      "usecases",
+      "repositories",
+      "models"
+    ],
+    "current_flow": [
+      "POS UI in packages/web-core and apps/dgfy-pos calls API clients.",
+      "API routes in apps/dgfy-api/src/routes apply authentication and permission middleware.",
+      "Controllers validate transport input and delegate without direct model access.",
+      "Use cases apply business policy and transaction orchestration.",
+      "Repositories perform tenant-scoped persistence and read-model access.",
+      "Models define the tenant or landlord persistence schema."
+    ],
+    "target_flow": [
+      {
+        "step": 1,
+        "action": "Operator or reviewer requests readiness, sample, report, journal, audit, screenshot, or disaster-recovery evidence.",
+        "owner": "POS or compliance UI",
+        "source_of_truth": "Existing POS fiscal sources and tenant-scoped compliance records",
+        "evidence_output": "Request context only"
+      },
+      {
+        "step": 2,
+        "action": "Controller validates tenant, branch, terminal, date range, artifact type, and policy-version inputs.",
+        "owner": "API controllers and validators",
+        "source_of_truth": "Authenticated request context plus server-owned policy",
+        "evidence_output": "Validated use-case command"
+      },
+      {
+        "step": 3,
+        "action": "Use case checks permission, compliance mode, location access, freshness, and final or provisional source state.",
+        "owner": "Compliance or POS use case",
+        "source_of_truth": "Server policy and immutable source-state metadata",
+        "evidence_output": "Authorized read plan"
+      },
+      {
+        "step": 4,
+        "action": "Repositories read immutable fiscal snapshots, adjustments, fiscal events, X/Z snapshots, reports, audit records, and approved settings or version metadata.",
+        "owner": "POS, reports, business-admin, and compliance repositories",
+        "source_of_truth": "Existing authoritative records listed in source_of_truth_contract",
+        "evidence_output": "Ordered source snapshot"
+      },
+      {
+        "step": 5,
+        "action": "A deterministic serializer validates completeness, computes SHA-256, and emits a manifest.",
+        "owner": "Later evidence-generation implementation phase",
+        "source_of_truth": "Read-only source snapshot plus policy and serializer versions",
+        "evidence_output": "Artifact bytes and checksum manifest"
+      },
+      {
+        "step": 6,
+        "action": "Final-review evidence stores artifact metadata, source revision, generator version, checksum, review state, and external-review status.",
+        "owner": "Compliance final-review persistence",
+        "source_of_truth": "TenantComplianceFinalReviewDocument and Signoff, extended only by a later approved schema phase",
+        "evidence_output": "Tenant-scoped evidence metadata"
+      },
+      {
+        "step": 7,
+        "action": "The response returns only an authorized artifact or manifest usable for local capture or hard-copy projection.",
+        "owner": "API transport and POS UI",
+        "source_of_truth": "Authorized source snapshot and reviewed evidence metadata",
+        "evidence_output": "Scoped artifact response"
+      }
+    ]
+  },
+  "module_placement": [
+    {
+      "surface": "pos_fiscal_runtime",
+      "owner": "POS",
+      "source_of_truth": [
+        "apps/dgfy-api/src/modules/pos/repositories/posRepository.js",
+        "apps/dgfy-api/src/models/PosTransaction.js",
+        "apps/dgfy-api/src/models/PosTransactionAdjustment.js",
+        "apps/dgfy-api/src/models/PosFiscalEvent.js"
+      ],
+      "evidence_outputs": ["receipt", "adjustment", "reading", "return", "eJournal source snapshot"],
+      "permission_contract": "Existing POS route middleware and POS action permissions; fiscal policy remains server-owned.",
+      "rollback": "Revert the later runtime slice while preserving transaction snapshots, adjustment records, fiscal events, and audit evidence.",
+      "paths": [
+        "apps/dgfy-api/src/routes/pos.js",
+        "apps/dgfy-api/src/modules/pos/usecases/posUseCases.js",
+        "apps/dgfy-api/src/modules/pos/repositories/posRepository.js"
+      ]
+    },
+    {
+      "surface": "compliance_readiness",
+      "owner": "Compliance",
+      "source_of_truth": [
+        "apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js",
+        "apps/dgfy-api/src/modules/compliance/repositories/complianceRepository.js",
+        "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewDocument.js",
+        "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewSignoff.js"
+      ],
+      "evidence_outputs": ["readiness registry links", "artifact metadata", "final-review state", "signoff metadata"],
+      "permission_contract": "Compliance routes require VIEW_SETTINGS for reads, EDIT_SETTINGS for changes, and VIEW_AUDIT for audit reads.",
+      "rollback": "Revert only later additive evidence metadata changes; preserve existing final-review rows and signoffs.",
+      "paths": [
+        "apps/dgfy-api/src/routes/compliance.js",
+        "apps/dgfy-api/src/modules/compliance/controllers/complianceHandlers.js",
+        "apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js",
+        "apps/dgfy-api/src/modules/compliance/repositories/complianceRepository.js"
+      ]
+    },
+    {
+      "surface": "reports",
+      "owner": "POS for terminal reports; Business Admin for back-office read models",
+      "source_of_truth": [
+        "apps/dgfy-api/src/modules/reports/domain/reportRegistry.js",
+        "apps/dgfy-api/src/modules/businessAdmin/repositories/businessAdminFiscalRepository.js",
+        "apps/dgfy-api/src/modules/pos/repositories/posRepository.js"
+      ],
+      "evidence_outputs": ["deterministic report samples", "CSV/TXT/PDF projections", "reconciliation appendix"],
+      "permission_contract": "Report definitions carry view/export permissions and repositories enforce tenant and location scope.",
+      "rollback": "Revert later report projection or export changes; never rewrite the POS fiscal source snapshot.",
+      "paths": [
+        "apps/dgfy-api/src/modules/reports",
+        "apps/dgfy-api/src/modules/businessAdmin/repositories/businessAdminFiscalRepository.js"
+      ]
+    },
+    {
+      "surface": "pos_ui",
+      "owner": "POS UI",
+      "source_of_truth": [
+        "Server response from POS and compliance APIs",
+        "packages/web-core/src/features/pos/components/ReceiptPrintView.jsx"
+      ],
+      "evidence_outputs": ["operator or reviewer action", "local screenshot", "hard-copy projection"],
+      "permission_contract": "UI exposes actions only from server-authorized capabilities; fiscal rules are not calculated in the frontend.",
+      "rollback": "Revert the later UI slice independently; no UI rollback may delete or alter fiscal records.",
+      "paths": [
+        "packages/web-core/src/features/pos",
+        "apps/dgfy-pos/src/main.jsx",
+        "packages/web-core/src/features/pos/components/ReceiptPrintView.jsx"
+      ]
+    },
+    {
+      "surface": "migrations",
+      "owner": "Migration runner",
+      "source_of_truth": ["apps/dgfy-migration-runner/migrations"],
+      "evidence_outputs": ["additive schema metadata", "indexes", "rollback procedure"],
+      "permission_contract": "Schema changes are reviewed with tenant-scope and rollback evidence before a later runtime phase.",
+      "rollback": "Every later migration must provide a tested down path or documented irreversible-data preservation plan.",
+      "paths": ["apps/dgfy-migration-runner/migrations/20260413000006-add-tenant-compliance-final-review-docs.cjs"]
+    },
+    {
+      "surface": "evidence_docs",
+      "owner": "Compliance documentation",
+      "source_of_truth": [
+        "docs/compliance/evidence/annex-b-items-4-14-requirements-registry.json",
+        "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewDocument.js",
+        "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewSignoff.js"
+      ],
+      "evidence_outputs": ["control matrix", "narrative", "screenshot register", "DRP record", "local checksum manifest"],
+      "permission_contract": "Artifacts are tenant-scoped, checksum-bound, and explicitly marked internal or externally reviewable; no external approval is inferred.",
+      "rollback": "Remove only generated local contract artifacts and revert their links; preserve source records and reviewed evidence.",
+      "paths": ["docs/compliance/evidence", "docs/compliance/submission"]
+    }
+  ],
+  "source_of_truth_contract": [
+    {
+      "entity": "issued_fiscal_document",
+      "authoritative_source_paths": ["apps/dgfy-api/src/models/PosTransaction.js", "apps/dgfy-api/src/models/PosFiscalEvent.js", "apps/dgfy-api/src/modules/pos/repositories/posRepository.js"],
+      "derived_outputs": ["receipt", "adjustment linkage", "eJournal record", "sample pack"],
+      "immutable": true,
+      "read_only_for_evidence": true,
+      "tenant_scoped": true,
+      "location_scoped": true
+    },
+    {
+      "entity": "adjustment",
+      "authoritative_source_paths": ["apps/dgfy-api/src/models/PosTransactionAdjustment.js", "apps/dgfy-api/src/modules/pos/repositories/posRepository.js"],
+      "derived_outputs": ["return or void evidence", "original-document linkage", "audit record", "eJournal record"],
+      "immutable": true,
+      "read_only_for_evidence": true,
+      "tenant_scoped": true,
+      "location_scoped": true
+    },
+    {
+      "entity": "x_z_reading",
+      "authoritative_source_paths": ["apps/dgfy-api/src/models/PosZReadingSnapshot.js", "apps/dgfy-api/src/modules/pos/repositories/posRepository.js"],
+      "derived_outputs": ["print projection", "reconciliation appendix", "eJournal appendix"],
+      "immutable": true,
+      "read_only_for_evidence": true,
+      "tenant_scoped": true,
+      "location_scoped": true
+    },
+    {
+      "entity": "report",
+      "authoritative_source_paths": ["apps/dgfy-api/src/modules/reports/domain/reportRegistry.js", "apps/dgfy-api/src/modules/pos/repositories/posRepository.js", "apps/dgfy-api/src/modules/businessAdmin/repositories/businessAdminFiscalRepository.js"],
+      "derived_outputs": ["sample report", "CSV/TXT/PDF projection", "reconciliation result"],
+      "immutable": true,
+      "read_only_for_evidence": true,
+      "tenant_scoped": true,
+      "location_scoped": true
+    },
+    {
+      "entity": "audit",
+      "authoritative_source_paths": ["apps/dgfy-api/src/models/AuditLog.js", "apps/dgfy-api/src/models/Landlord/TenantComplianceAuditLog.js", "apps/dgfy-api/src/modules/compliance/repositories/complianceRepository.js"],
+      "derived_outputs": ["filtered audit export", "manifest entry", "review evidence"],
+      "immutable": true,
+      "read_only_for_evidence": true,
+      "tenant_scoped": true,
+      "location_scoped": true
+    },
+    {
+      "entity": "version_and_connectivity",
+      "authoritative_source_paths": ["apps/dgfy-pos/src/main.jsx", "apps/dgfy-api/src/routes/pos.js"],
+      "derived_outputs": ["version screenshot", "connectivity evidence", "build manifest reference"],
+      "immutable": true,
+      "read_only_for_evidence": true,
+      "tenant_scoped": true,
+      "location_scoped": true
+    },
+    {
+      "entity": "evidence_review",
+      "authoritative_source_paths": ["apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewDocument.js", "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewSignoff.js", "apps/dgfy-api/src/modules/compliance/repositories/complianceRepository.js"],
+      "derived_outputs": ["readiness score link", "evidence packet", "review state"],
+      "immutable": false,
+      "read_only_for_evidence": false,
+      "tenant_scoped": true,
+      "location_scoped": false
+    }
+  ],
+  "guardrails": {
+    "backend_forbidden_imports": [
+      "@sieitzz/pos-receipt",
+      "packages/pos-receipt",
+      "packages/web-core"
+    ],
+    "evidence_forbidden_behaviors": [
+      "mutate fiscal source records",
+      "create a duplicate fiscal ledger or mutable fiscal transaction source",
+      "cross tenant or location boundary",
+      "infer fiscal status from an invoice-number prefix",
+      "claim external BIR, provider, or tax-practitioner approval"
+    ],
+    "new_surface_metadata": ["owner", "permission", "source_of_truth", "rollback"],
+    "route_contract": {
+      "layer_order": ["routes", "controllers", "usecases", "repositories", "models"],
+      "new_route_required_metadata": ["owner", "permission", "source_of_truth", "rollback"],
+      "current_section_adds_routes": false
+    },
+    "determinism": {
+      "inputs": ["source_snapshot", "policy_version", "serializer_version"],
+      "outputs": ["artifact_bytes", "record_order", "sha256"],
+      "same_inputs_same_outputs": true,
+      "ordering_rule": "Explicit stable record ordering is part of the serializer contract; database default order is not acceptable."
+    },
+    "no_duplicate_readiness_store": {
+      "required": true,
+      "reuse_existing_final_review_store": true,
+      "existing_paths": [
+        "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewDocument.js",
+        "apps/dgfy-api/src/models/Landlord/TenantComplianceFinalReviewSignoff.js"
+      ],
+      "new_schema_requires_review": true
+    },
+    "adr_impact": {
+      "current_decision": "NO_CHANGE_REQUIRED_FOR_SECTION_03",
+      "trigger_conditions": [
+        "fiscal lifecycle change",
+        "eJournal grammar or append-only contract change",
+        "new immutable fiscal source fields",
+        "fiscal activation-gate change",
+        "receipt renderer ownership change"
+      ],
+      "required_path": "Evaluate ADR 0039 strictness; amend or supersede ADR 0042 or the applicable ADR before implementing a triggered change."
+    }
+  },
+  "requirement_catalog": {
+    "BR-401": {
+      "description": "One authoritative source must serve fiscal transactions, adjustments, readings, reports, and audit evidence.",
+      "plan_section": "03",
+      "affected_components": ["POS fiscal runtime", "reports", "compliance evidence"],
+      "business_rules": ["Fiscal source records remain POS-owned and server-owned.", "Evidence is a read-only projection."],
+      "adrs": ["docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-430", "TEST-431"],
+      "acceptance_criteria": ["AC-430", "AC-431"],
+      "priority": "P0",
+      "status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN",
+      "evidence": ["architecture_boundaries", "source_of_truth_contract", "validator output"]
+    },
+    "BR-402": {
+      "description": "Evidence package generation must be read-only against fiscal source records.",
+      "plan_section": "03",
+      "affected_components": ["compliance evidence", "POS repositories", "final review"],
+      "business_rules": ["The evidence layer stores artifact metadata and checksums, not mutable transaction truth.", "Generated artifacts cannot rewrite source records."],
+      "adrs": ["docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-430", "TEST-431", "TEST-433"],
+      "acceptance_criteria": ["AC-431", "AC-432"],
+      "priority": "P0",
+      "status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN",
+      "evidence": ["guardrails.evidence_forbidden_behaviors", "source_of_truth_contract", "validator output"]
+    },
+    "DATA-401": {
+      "description": "Historical snapshots must preserve the exact issued document and source version.",
+      "plan_section": "03",
+      "affected_components": ["POS transaction snapshots", "fiscal events", "evidence manifest"],
+      "business_rules": ["Later catalog or settings changes cannot recalculate an issued document.", "Source revision and checksum are recorded with evidence."],
+      "adrs": ["docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-431", "TEST-433"],
+      "acceptance_criteria": ["AC-431", "AC-432"],
+      "priority": "P0",
+      "status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN",
+      "evidence": ["source_of_truth_contract.issued_fiscal_document", "guardrails.determinism", "validator output"]
+    },
+    "SEC-401": {
+      "description": "Every read and export must be tenant-scoped, location-scoped where applicable, and permission-checked.",
+      "plan_section": "03",
+      "affected_components": ["routes", "controllers", "usecases", "repositories", "reports", "compliance"],
+      "business_rules": ["Authorization is enforced at the server boundary.", "Evidence responses cannot cross tenant or location scope."],
+      "adrs": ["docs/architecture/ARCHITECTURE_BOUNDARIES.md", "docs/architecture/adr/0007-dual-mode-pos-compliance-program.md"],
+      "test_ids": ["TEST-430", "TEST-432"],
+      "acceptance_criteria": ["AC-430", "AC-432"],
+      "priority": "P0",
+      "status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN",
+      "evidence": ["module_placement permission_contract", "guardrails.route_contract", "validator output"]
+    },
+    "NFR-401": {
+      "description": "The same source snapshot, policy version, and serializer version must produce identical bytes, order, and checksum.",
+      "plan_section": "03",
+      "affected_components": ["serializer", "manifest", "report and eJournal exports"],
+      "business_rules": ["Stable ordering and versioned serialization are mandatory.", "Database incidental order is not a contract."],
+      "adrs": ["docs/architecture/ARCHITECTURE_GOVERNANCE.md"],
+      "test_ids": ["TEST-433"],
+      "acceptance_criteria": ["AC-432"],
+      "priority": "P1",
+      "status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN",
+      "evidence": ["guardrails.determinism", "test catalog", "validator output"]
+    },
+    "ADR-401": {
+      "description": "Fiscal lifecycle or grammar changes must follow the governed ADR review path before implementation.",
+      "plan_section": "03",
+      "affected_components": ["fiscal lifecycle", "eJournal grammar", "activation gate", "receipt ownership"],
+      "business_rules": ["Section 03 records impact triggers and does not silently amend fiscal contracts.", "ADR 0039 strictness determines amendment versus supersession."],
+      "adrs": ["docs/architecture/ARCHITECTURE_GOVERNANCE.md", "docs/architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md", "docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-430"],
+      "acceptance_criteria": ["AC-433"],
+      "priority": "P0",
+      "status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN",
+      "evidence": ["guardrails.adr_impact", "source_register", "validator output"]
+    }
+  },
+  "test_catalog": {
+    "TEST-430": {
+      "description": "Architecture boundary and forbidden-import checks.",
+      "command": "npm run check:architecture; npm run check:annex-b-architecture",
+      "assertions": ["routes/controllers/usecases/repositories/models order is preserved", "backend does not import the frontend receipt renderer", "no obsolete backend/frontend path is used"]
+    },
+    "TEST-431": {
+      "description": "Source-of-truth immutability contract check.",
+      "command": "npm run test:annex-b-architecture",
+      "assertions": ["issued document and adjustment sources are immutable for evidence", "catalog or settings changes are not an evidence source"]
+    },
+    "TEST-432": {
+      "description": "Tenant, location, and permission boundary contract check.",
+      "command": "npm run test:annex-b-architecture",
+      "assertions": ["every module surface declares owner, permission, source, and rollback", "compliance routes expose the existing permission contract"]
+    },
+    "TEST-433": {
+      "description": "Determinism contract check.",
+      "command": "npm run test:annex-b-architecture",
+      "assertions": ["source snapshot, policy version, and serializer version are explicit inputs", "bytes, record order, and SHA-256 are explicit outputs"]
+    }
+  },
+  "acceptance_catalog": {
+    "AC-430": {
+      "description": "Target flow preserves routes to controllers to usecases to repositories to models.",
+      "result": "PASS",
+      "evidence": ["architecture_boundaries.layer_order", "module_placement", "TEST-430"]
+    },
+    "AC-431": {
+      "description": "No evidence artifact rewrites or serves as fiscal transaction source.",
+      "result": "PASS",
+      "evidence": ["source_of_truth_contract", "guardrails.evidence_forbidden_behaviors", "TEST-431"]
+    },
+    "AC-432": {
+      "description": "Every planned new route, model, migration, or UI surface has owner, permission, source, and rollback metadata.",
+      "result": "PASS",
+      "evidence": ["module_placement", "guardrails.route_contract", "TEST-432", "TEST-433"]
+    },
+    "AC-433": {
+      "description": "ADR 0042 and ADR 0039 impact is identified before a fiscal contract change.",
+      "result": "PASS",
+      "evidence": ["guardrails.adr_impact", "requirement_catalog.ADR-401", "TEST-430"]
+    }
+  },
+  "execution_manifest": [
+    {
+      "requirement_id": "BR-401",
+      "plan_section": "03",
+      "implementation_phases": [353],
+      "affected_components": ["POS fiscal runtime", "reports", "compliance evidence"],
+      "dependencies": ["Section 02 requirements registry", "ADR 0042"],
+      "business_rules": ["One POS-owned fiscal source", "Evidence is read-only"],
+      "adrs": ["docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-430", "TEST-431"],
+      "acceptance_criteria": ["AC-430", "AC-431"],
+      "evidence": ["docs/compliance/evidence/annex-b-items-4-14-architecture-contract-v1.json", "scripts/validate-annex-b-items-4-14-architecture.cjs"],
+      "status": "IMPLEMENTED",
+      "section_03_status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN"
+    },
+    {
+      "requirement_id": "BR-402",
+      "plan_section": "03",
+      "implementation_phases": [353],
+      "affected_components": ["compliance evidence", "POS repositories", "final review"],
+      "dependencies": ["BR-401", "existing final-review records"],
+      "business_rules": ["No mutation of fiscal source", "No duplicate evidence ledger"],
+      "adrs": ["docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-430", "TEST-431", "TEST-433"],
+      "acceptance_criteria": ["AC-431", "AC-432"],
+      "evidence": ["docs/compliance/evidence/annex-b-items-4-14-architecture-contract-v1.md", "scripts/validate-annex-b-items-4-14-architecture.test.cjs"],
+      "status": "IMPLEMENTED",
+      "section_03_status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN"
+    },
+    {
+      "requirement_id": "DATA-401",
+      "plan_section": "03",
+      "implementation_phases": [353],
+      "affected_components": ["transaction snapshots", "fiscal events", "evidence manifest"],
+      "dependencies": ["server-owned fiscal snapshot contract"],
+      "business_rules": ["Issued records are not recalculated from mutable catalog state"],
+      "adrs": ["docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-431", "TEST-433"],
+      "acceptance_criteria": ["AC-431", "AC-432"],
+      "evidence": ["source_of_truth_contract.issued_fiscal_document", "guardrails.determinism"],
+      "status": "IMPLEMENTED",
+      "section_03_status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN"
+    },
+    {
+      "requirement_id": "SEC-401",
+      "plan_section": "03",
+      "implementation_phases": [353],
+      "affected_components": ["routes", "controllers", "usecases", "repositories", "reports", "compliance"],
+      "dependencies": ["architecture boundary rules", "existing permission middleware"],
+      "business_rules": ["Tenant and location scope is enforced server-side"],
+      "adrs": ["docs/architecture/ARCHITECTURE_BOUNDARIES.md", "docs/architecture/adr/0007-dual-mode-pos-compliance-program.md"],
+      "test_ids": ["TEST-430", "TEST-432"],
+      "acceptance_criteria": ["AC-430", "AC-432"],
+      "evidence": ["module_placement", "guardrails.route_contract", "apps/dgfy-api/src/routes/compliance.js"],
+      "status": "IMPLEMENTED",
+      "section_03_status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN"
+    },
+    {
+      "requirement_id": "NFR-401",
+      "plan_section": "03",
+      "implementation_phases": [353],
+      "affected_components": ["serializer", "manifest", "report and eJournal exports"],
+      "dependencies": ["source snapshot contract", "policy version", "serializer version"],
+      "business_rules": ["Stable ordering is explicit"],
+      "adrs": ["docs/architecture/ARCHITECTURE_GOVERNANCE.md"],
+      "test_ids": ["TEST-433"],
+      "acceptance_criteria": ["AC-432"],
+      "evidence": ["guardrails.determinism", "test_catalog.TEST-433"],
+      "status": "IMPLEMENTED",
+      "section_03_status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN"
+    },
+    {
+      "requirement_id": "ADR-401",
+      "plan_section": "03",
+      "implementation_phases": [353],
+      "affected_components": ["fiscal lifecycle", "eJournal grammar", "activation gate", "receipt ownership"],
+      "dependencies": ["ADR 0039", "ADR 0042", "ADR 0045"],
+      "business_rules": ["Triggered fiscal contract changes require governed ADR review"],
+      "adrs": ["docs/architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md", "docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md"],
+      "test_ids": ["TEST-430"],
+      "acceptance_criteria": ["AC-433"],
+      "evidence": ["guardrails.adr_impact", "source_register"],
+      "status": "IMPLEMENTED",
+      "section_03_status": "IMPLEMENTED",
+      "runtime_status": "DEFERRED BY PLAN"
+    }
+  ],
+  "verification_summary": {
+    "architecture_contract_status": "VERIFIED",
+    "runtime_behavior_status": "DEFERRED_BY_PLAN",
+    "section_status": "IMPLEMENTED_AND_LOCALLY_VERIFIED",
+    "db_changes": false,
+    "runtime_code_changes": false,
+    "route_changes": false,
+    "migration_changes": false,
+    "ui_changes": false,
+    "external_approval_claim": "NOT_CLAIMED",
+    "non_blocking_risks": ["R-030", "R-031", "R-032", "R-033"],
+    "next_eligible_phase": 354,
+    "verification_commands": [
+      "npm run check:annex-b-architecture",
+      "npm run test:annex-b-architecture",
+      "npm run check:architecture",
+      "npm run check:annex-b-readiness",
+      "npm run test:annex-b-readiness",
+      "npm run check:annex-b-requirements",
+      "npm run test:annex-b-requirements",
+      "npm run lint:docs",
+      "npm run check:compliance",
+      "git diff --check"
+    ]
+  }
+}

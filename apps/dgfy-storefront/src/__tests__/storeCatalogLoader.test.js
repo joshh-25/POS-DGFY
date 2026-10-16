@@ -14,4 +14,16 @@ describe('store catalog endpoint selection', () => {
       '/api/v1/store/catalog?limit=120&location_id=22'
     );
   });
+
+  it('adds the stable QR token to the general catalog URL', () => {
+    expect(buildCatalogRequestUrl({ locationId: 22, qrToken: 'DGFYQR_test-token' })).toBe(
+      '/api/v1/store/catalog?limit=200&location_id=22&qr_token=DGFYQR_test-token'
+    );
+  });
+
+  it('uses the DGLaundry projection endpoint without unrelated generic filters', () => {
+    expect(buildCatalogRequestUrl({ isLaundryMode: true, locationId: 22 })).toBe(
+      '/api/v1/store/laundry/catalog?location_id=22'
+    );
+  });
 });

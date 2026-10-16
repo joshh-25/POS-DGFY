@@ -10,6 +10,8 @@ class IminBridge(
     private val onWebPosReady: (() -> Unit)? = null,
     private val onShowMessage: ((String, String) -> Unit)? = null,
     private val onPlayOrderAlert: ((String) -> Unit)? = null,
+    private val onStopOrderAlert: (() -> Unit)? = null,
+    private val onSaveOrderAlertSound: ((String, String, String) -> String)? = null,
     private val onAsyncResult: ((String, String) -> Unit)? = null
 ) {
     private val hardwareExecutor = Executors.newSingleThreadExecutor()
@@ -59,6 +61,24 @@ class IminBridge(
             .put("success", true)
             .put("message", "Order alert played")
             .toString()
+    }
+
+    @JavascriptInterface
+    fun stopOrderAlert(): String {
+        onStopOrderAlert?.invoke()
+        return JSONObject()
+            .put("success", true)
+            .put("message", "Order alert stopped")
+            .toString()
+    }
+
+    @JavascriptInterface
+    fun saveOrderAlertSound(soundType: String, base64Data: String, mimeType: String): String {
+        return onSaveOrderAlertSound?.invoke(soundType, base64Data, mimeType)
+            ?: JSONObject()
+                .put("success", false)
+                .put("message", "Order alert sound storage is unavailable")
+                .toString()
     }
 
     @JavascriptInterface

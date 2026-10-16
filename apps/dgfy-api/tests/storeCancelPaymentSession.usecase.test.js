@@ -24,7 +24,7 @@ const BASE_SESSION = {
     pos_transaction_id: null
 };
 
-const build = ({ session = {}, providerResult = { outcome: 'cancelled' }, findSessionImpl = null } = {}) => {
+const build = ({ session = {}, providerResult = { outcome: 'cancelled' }, findSessionImpl = null, cancelDglaundryReservation = null } = {}) => {
     const row = { ...BASE_SESSION, ...session };
     const transaction = { LOCK: { UPDATE: 'UPDATE' } };
     const transactionState = { active: false };
@@ -55,8 +55,9 @@ const build = ({ session = {}, providerResult = { outcome: 'cancelled' }, findSe
         })
     };
     const useCase = buildCancelStoreCheckoutPaymentSessionUseCase({
-        commercePaymentRepository: repository,
-        paymongoService
+    commercePaymentRepository: repository,
+        paymongoService,
+        cancelDglaundryReservation
     });
     const run = (overrides = {}) => dbStore.run({ tenantId: TENANT_ID, tenantToken: 'masu-cafe' }, () => useCase({
         paymentSessionId: BASE_SESSION.public_reference,
@@ -125,6 +126,26 @@ describe('buildCancelStoreCheckoutPaymentSessionUseCase', () => {
         expect(result.data.cancellation.outcome).toBe('cancelled');
         expect(fixture.paymongoService.cancelPaymentIntent).not.toHaveBeenCalled();
         expect(fixture.repository.updateSessionById).not.toHaveBeenCalled();
+    });
+
+    it('releases DGLaundry provider reservations after cancelling a laundry payment session', async () => {
+        const releaseReservation = jest.fn(async () => ({ released: true }));
+        const reference = `DGL-${'A'.repeat(48)}`;
+        const fixture = build({
+            session: {
+                public_reference: reference,
+                target_type: 'dglaundry_booking',
+                status: 'created',
+                provider_payment_intent_id: null,
+                checkout_payload: { dglaundry_booking: true }
+            },
+            cancelDglaundryReservation: releaseReservation
+        });
+
+        const result = await fixture.run({ paymentSessionId: reference });
+
+        expect(result.data.cancellation.outcome).toBe('cancelled');
+        expect(releaseReservation).toHaveBeenCalledWith({ session: expect.objectContaining({ status: 'cancelled' }), reason: 'CUSTOMER_CANCELLED' });
     });
 
     it('keeps the session unresolved when PayMongo rejects with an ongoing-payment 400', async () => {

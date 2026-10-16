@@ -67,6 +67,11 @@ import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/se
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getOnboardingStatus } from '@/services/onboardingService.js';
+import {
+  installCrossAppSettingsRefresh,
+  shouldRefreshBusinessAdminSettingsUpdate,
+  subscribeToBusinessAdminSettingsUpdates
+} from '../utils/businessAdminSettingsSync.js';
 import api, { onApiOutcome } from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import {
@@ -85,10 +90,12 @@ import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
   createTerminalLoginError,
+  extractTerminalShiftConflictDetails,
   isRetryableCompanyLookupError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
   resolveTerminalLoginErrorMessage,
+  scopeDgfyCompaniesToEmailLookup,
   shouldFallbackToCurrentCompanyTokenAfterLookupError
 } from '../utils/terminalUnlockDiagnostics.js';
 import {
@@ -149,7 +156,9 @@ import {
   hasUsableIncomingOrderShift,
   isIncomingOrderShiftUnavailableError,
   isPosOnlineOrderQueueEnabled,
-  isCurrentPosOperationalRequest
+  isCurrentPosOperationalRequest,
+  preferOwnedCurrentTerminalShift,
+  shouldRetryUnscopedTerminalShift
 } from '../utils/posOperationalVisibility.js';
 import {
   DEFAULT_POS_TEXT_SIZE,
@@ -167,8 +176,24 @@ import {
   safeLocalStorageSet,
   writeStoredCashierResumeContext
 } from '../utils/posTerminalStorage.js';
+import {
+  readCustomerDisplayEnabled,
+  writeCustomerDisplayEnabled
+} from '../utils/customerDisplayPreference.js';
+import {
+  downloadOrderAlertSound,
+  formatOrderAlertSoundKilobytes,
+  getOrderAlertSoundById,
+  importOrderAlertSound,
+  readStoredDownloadedOrderAlertSoundIds,
+  readStoredOrderAlertSoundId,
+  startOrderAlertSoundLoop,
+  stopOrderAlertSoundLoop,
+  writeStoredOrderAlertSoundId
+} from '../utils/orderAlertSounds.js';
 import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
+import { publishPosLocationContext } from '../utils/posLocationContext.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -178,6 +203,9 @@ import {
   POS_VOID_APPROVAL_REVIEW_PERMISSIONS
 } from '../utils/posVoidApprovalFeature.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+// Keep the live F&B route and capability checks intact, but hide the workspace from the
+// primary POS navigation until the terminal rollout is intentionally re-enabled.
+const SHOW_FNB_SERVICE_IN_POS_NAVIGATION = false;
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
 const loadTerminalOperationQueueStore = () => import('../services/terminalOperationQueueStore.js');
@@ -187,6 +215,7 @@ const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 const POS_LAST_VIEW_STORAGE_PREFIX = 'pos_terminal_last_view_v1';
 const POS_VIEW_MODE_QUERY_KEY = 'view';
 const ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY = 'pos_online_order_sound_enabled_v1';
+const ONLINE_ORDER_POPUP_ENABLED_STORAGE_KEY = 'pos_online_order_popup_enabled_v1';
 const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
 const TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
 const TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY = 'pos_terminal_admin_lock_context_v1';
@@ -262,6 +291,15 @@ const OPERATIONS_VIEW_MODES = [
 ];
 const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup', 'approvals'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
+const POS_MOBILE_DOUBLE_TAP_GUARD_VIEW_MODES = new Set([
+  'items',
+  'history',
+  'reports',
+  ...SETTINGS_VIEW_MODES,
+  'shift_controls',
+  'cash_drawer',
+  'close_shift'
+]);
 const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history', 'approvals']);
 // RF-2 (PR #762 review): settings_vouchers/settings_pricelists are gated on their own
 // canViewVouchers permission check (the sidebar NavButton visibility and the
@@ -284,6 +322,13 @@ const CASHIER_ALLOWED_VIEW_MODES = new Set([
   'fnb_service',
   'terminal_setup'
 ]);
+// Transaction history stays outside the baseline cashier surface because it exposes governed
+// post-sale actions. Cashiers granted the explicit POS void permission can enter it to submit
+// an item or transaction void request; approval administration remains administrator-only.
+const isCashierAllowedViewMode = (viewMode, canVoidTransactions = false) => (
+  CASHIER_ALLOWED_VIEW_MODES.has(viewMode)
+  || (viewMode === 'history' && canVoidTransactions)
+);
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
   terminalSetup: 'pos-section-terminal-setup',
@@ -454,6 +499,20 @@ const resolveTerminalShiftLocationConflict = (error, request = {}) => {
   };
 };
 
+const formatTerminalShiftOpenedAt = (value) => {
+  if (value == null || value === '') return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  try {
+    return date.toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+  } catch {
+    return date.toISOString();
+  }
+};
+
 const SUPPRESS_GLOBAL_ERROR_TOAST = { skipGlobalErrorToast: true };
 const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
 
@@ -516,9 +575,30 @@ export default function TerminalPage() {
   });
   const [onlineOrderSoundEnabled, setOnlineOrderSoundEnabled] = useState(() => {
     const stored = String(safeLocalStorageGet(ONLINE_ORDER_SOUND_ENABLED_STORAGE_KEY) || '').trim().toLowerCase();
+    if (!stored) return false;
+    return stored !== '0' && stored !== 'false' && stored !== 'off';
+  });
+  const [onlineOrderSoundId, setOnlineOrderSoundId] = useState(() => readStoredOrderAlertSoundId());
+  const [downloadedOrderAlertSoundIds, setDownloadedOrderAlertSoundIds] = useState(() => readStoredDownloadedOrderAlertSoundIds());
+  const [orderAlertSoundDownloadId, setOrderAlertSoundDownloadId] = useState('');
+  const [orderAlertSoundImporting, setOrderAlertSoundImporting] = useState(false);
+  const [previewingOrderAlertSoundId, setPreviewingOrderAlertSoundId] = useState('');
+  const [incomingOrderPopupEnabled, setIncomingOrderPopupEnabled] = useState(() => {
+    const stored = String(safeLocalStorageGet(ONLINE_ORDER_POPUP_ENABLED_STORAGE_KEY) || '').trim().toLowerCase();
     if (!stored) return true;
     return stored !== '0' && stored !== 'false' && stored !== 'off';
   });
+  const [customerDisplayEnabled, setCustomerDisplayEnabled] = useState(() => (
+    readCustomerDisplayEnabled(readInitialTerminalId())
+  ));
+  const [customerDisplayStatus, setCustomerDisplayStatus] = useState({
+    canOpen: false,
+    label: 'Not connected',
+    status: 'closed'
+  });
+  const [customerDisplayOpenRequest, setCustomerDisplayOpenRequest] = useState(0);
+  const [customerDisplayEndRequest, setCustomerDisplayEndRequest] = useState(0);
+  const customerDisplayControllerRef = useRef(null);
   const [posTextSize, setPosTextSize] = useState(() => readPosTextSizePreference());
   const handlePosTextSizeChange = useCallback((value) => {
     setPosTextSize(writePosTextSizePreference(value));
@@ -583,6 +663,61 @@ export default function TerminalPage() {
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
+
+  useEffect(() => {
+    customerDisplayControllerRef.current?.endCustomerDisplay?.();
+    setCustomerDisplayEnabled(readCustomerDisplayEnabled(activeTerminalId));
+    setCustomerDisplayStatus({ canOpen: false, label: 'Not connected', status: 'closed' });
+  }, [activeTerminalId]);
+
+  const handleCustomerDisplayEnabledChange = useCallback((nextEnabled) => {
+    const enabled = nextEnabled === true;
+    writeCustomerDisplayEnabled(activeTerminalId, enabled);
+    setCustomerDisplayEnabled(enabled);
+    if (!enabled) {
+      customerDisplayControllerRef.current?.endCustomerDisplay?.({
+        closeWindow: true,
+        nextStatus: 'closed'
+      });
+    }
+  }, [activeTerminalId]);
+
+  const handleCustomerDisplayControllerChange = useCallback((controller) => {
+    customerDisplayControllerRef.current = controller;
+  }, []);
+
+  const handleCustomerDisplayStatusChange = useCallback((nextStatus = {}) => {
+    setCustomerDisplayStatus({
+      canOpen: nextStatus.canOpen === true,
+      label: String(nextStatus.label || 'Not connected'),
+      status: String(nextStatus.status || 'closed')
+    });
+  }, []);
+
+  const handleOpenCustomerDisplay = useCallback(() => {
+    if (customerDisplayControllerRef.current?.openCustomerDisplay) {
+      return customerDisplayControllerRef.current.openCustomerDisplay();
+    }
+    setCustomerDisplayOpenRequest((current) => current + 1);
+    return null;
+  }, []);
+
+  const handleEndCustomerDisplay = useCallback(() => {
+    if (customerDisplayControllerRef.current?.endCustomerDisplay) {
+      customerDisplayControllerRef.current.endCustomerDisplay();
+      return;
+    }
+    setCustomerDisplayEndRequest((current) => current + 1);
+  }, []);
+
+  const handleCustomerDisplayOpenRequestHandled = useCallback((requestId) => {
+    setCustomerDisplayOpenRequest((current) => (current === requestId ? 0 : current));
+  }, []);
+
+  const handleCustomerDisplayEndRequestHandled = useCallback((requestId) => {
+    setCustomerDisplayEndRequest((current) => (current === requestId ? 0 : current));
+  }, []);
+
   const [zReadingPaperWidth, setZReadingPaperWidthState] = useState(() => (
     readPosPaperWidthPreference(readInitialTerminalId())
   ));
@@ -615,6 +750,7 @@ export default function TerminalPage() {
     password: '',
     rememberDevice: false,
     dgfyTenantId: '',
+    legacyCompanyToken: '',
     terminalId: readInitialTerminalId()
   });
   const [emailCompanyLookup, setEmailCompanyLookup] = useState({
@@ -623,11 +759,13 @@ export default function TerminalPage() {
     companies: [],
     message: ''
   });
+  const [legacyCompanySelectionOpen, setLegacyCompanySelectionOpen] = useState(false);
   const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
   const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
   // Failure details are retained for the Open Shift dialogs. Direct terminal
   // sign-in failures use the floating toast so the login drawer stays clear.
   const [unlockFailure, setUnlockFailure] = useState(null);
+  const [resumingExistingShift, setResumingExistingShift] = useState(false);
   const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
     const storedReason = readStoredTerminalLockReason();
     if (storedReason === 'admin_reunlock') return 'admin_reunlock';
@@ -679,6 +817,9 @@ export default function TerminalPage() {
     companies: [],
     loadingCompanies: false
   });
+  const dgfyAccessibleCompaniesRef = useRef([]);
+  const emailCompanyLookupRef = useRef(emailCompanyLookup);
+  emailCompanyLookupRef.current = emailCompanyLookup;
   const [companySwitching, setCompanySwitching] = useState(false);
   const [adminShiftPromptSkipped, setAdminShiftPromptSkipped] = useState(false);
   const [cashierUnlockSession, setCashierUnlockSession] = useState(null);
@@ -695,7 +836,8 @@ export default function TerminalPage() {
     loading: false,
     shift: null,
     cashSummary: null,
-    salesSummary: null
+    salesSummary: null,
+    errorMessage: ''
   });
   const [operatorAuthorityState, setOperatorAuthorityState] = useState({
     scopeKey: '',
@@ -712,8 +854,11 @@ export default function TerminalPage() {
     historyScope: null,
     records: [],
     pagination: null,
-    errorMessage: ''
+    errorMessage: '',
+    requestScopeKey: null,
+    recordsScopeKey: null
   });
+  const cashierHistoryRequestRef = useRef(0);
   const [todayDashboard, setTodayDashboard] = useState({
     loading: false,
     businessDate: null,
@@ -848,6 +993,8 @@ export default function TerminalPage() {
     errorMessage: ''
   });
   const [branchViewLocationId, setBranchViewLocationId] = useState(null);
+  const [branchViewTransitionLocationId, setBranchViewTransitionLocationId] = useState(null);
+  const branchViewTransitionLocationIdRef = useRef(null);
   const branchViewReturnModeRef = useRef('shift_controls');
   const [adminTerminalSwitching, setAdminTerminalSwitching] = useState(false);
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
@@ -906,6 +1053,23 @@ export default function TerminalPage() {
   });
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
   const [posViewMode, setPosViewMode] = useState(() => readRequestedPosView(location.search) || 'checkout');
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !POS_MOBILE_DOUBLE_TAP_GUARD_VIEW_MODES.has(posViewMode)) {
+      return undefined;
+    }
+
+    const root = document.documentElement;
+    const attribute = 'data-pos-mobile-no-double-tap-zoom';
+    const previousValue = root.getAttribute(attribute);
+    root.setAttribute(attribute, 'true');
+
+    return () => {
+      if (previousValue === null) root.removeAttribute(attribute);
+      else root.setAttribute(attribute, previousValue);
+    };
+  }, [posViewMode]);
+
   const checkoutLifecycleRef = useRef(null);
   const handleCheckoutLifecycleChange = useCallback((lifecycle) => {
     checkoutLifecycleRef.current = lifecycle;
@@ -1009,6 +1173,20 @@ export default function TerminalPage() {
       || formData.dgfyTenantId
       || ''
   ).trim();
+  const locationContextVersionRef = useRef(0);
+
+  useEffect(() => {
+    if (!activeTenantId) return;
+    locationContextVersionRef.current += 1;
+    publishPosLocationContext({
+      tenantId: activeTenantId,
+      operatingLocationId: shiftState?.shift?.location_id || operatingLocationId,
+      viewingLocationId,
+      queueLocationScopeId,
+      contextVersion: locationContextVersionRef.current,
+      source: 'pos-terminal'
+    });
+  }, [activeTenantId, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, viewingLocationId]);
   const offlinePosScope = useMemo(() => ({
     tenantId: activeTenantId,
     terminalId: activeTerminalId,
@@ -1055,6 +1233,7 @@ export default function TerminalPage() {
     && !isCashierRole;
   const canViewAllCashierHistory = hasPermission('business_admin:branches:view_all');
   const canTransactPos = hasPermission('pos:transact');
+  const canVoidTransactions = hasPermission('pos:void');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAccessPosOnlySetup = canViewPos;
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
@@ -1097,10 +1276,10 @@ export default function TerminalPage() {
       .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
       .filter((mode) => mode !== 'terminal_setup' || canAccessPosOnlySetup || canAccessSettingsDirectly);
     if (normalizedRole === 'cashier') {
-      return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
+      return roleScopedModes.filter((mode) => isCashierAllowedViewMode(mode, canVoidTransactions));
     }
     return roleScopedModes;
-  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canReviewVoidApprovals, canViewAudit, canViewVouchers, isCashierRole, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canReviewVoidApprovals, canViewAudit, canViewVouchers, canVoidTransactions, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -1209,10 +1388,15 @@ export default function TerminalPage() {
         if (cancelled) return;
         const { normalizeAccessibleCompanies } = await import('../utils/posTerminalCompanyAccess.js');
         if (cancelled) return;
+        const accessibleCompanies = normalizeAccessibleCompanies(payload);
+        dgfyAccessibleCompaniesRef.current = accessibleCompanies;
         setDgfyPosState((previous) => ({
           ...previous,
           authenticated: true,
-          companies: normalizeAccessibleCompanies(payload),
+          companies: scopeDgfyCompaniesToEmailLookup(accessibleCompanies, {
+            email: emailCompanyLookupRef.current?.email || '',
+            lookup: emailCompanyLookupRef.current
+          }),
           loadingCompanies: false
         }));
       })
@@ -1324,13 +1508,13 @@ export default function TerminalPage() {
   const resolveRestorablePosView = useCallback((candidateView) => {
     const normalizedView = String(candidateView || '').trim();
     if (!normalizedView || normalizedView === 'receipt' || !activeViewModes.includes(normalizedView)) return '';
-    if (isCashierRole && !CASHIER_ALLOWED_VIEW_MODES.has(normalizedView)) return '';
+    if (isCashierRole && !isCashierAllowedViewMode(normalizedView, canVoidTransactions)) return '';
     if (normalizedView === 'incoming_queue' && !canViewPos) return '';
     if (normalizedView === 'items' && !canViewPos && !canManageCategories) return '';
     if (normalizedView === 'services' && !canAccessServiceOperations) return '';
     if (normalizedView === 'audit' && !canViewAudit) return '';
     return normalizedView;
-  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewAudit, canViewPos, isCashierRole]);
+  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewAudit, canViewPos, canVoidTransactions, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
     const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep, workflowMode);
@@ -1616,7 +1800,14 @@ export default function TerminalPage() {
       return { shift: null, cashSummary: null, salesSummary: null };
     }
     if (!terminalId) {
-      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
+      setShiftState((prev) => ({
+        ...prev,
+        loading: false,
+        shift: null,
+        cashSummary: null,
+        salesSummary: null,
+        errorMessage: ''
+      }));
       setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
       return { shift: null, cashSummary: null, salesSummary: null };
     }
@@ -1661,17 +1852,31 @@ export default function TerminalPage() {
         salesSummary: preservedShiftState.salesSummary || null
       };
     }
-    setShiftState((prev) => ({ ...prev, loading: true }));
+    setShiftState((prev) => ({ ...prev, loading: true, errorMessage: '' }));
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
       const currentShiftParams = scopedOperatingLocationId
         ? { terminal_id: terminalId, location_id: scopedOperatingLocationId }
         : { terminal_id: terminalId };
-      const currentShiftResult = await fetchCurrentTerminalShift(
+      let currentShiftResult = await fetchCurrentTerminalShift(
         currentShiftParams,
         suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
       );
       if (!isCurrentRequest()) return null;
+      if (shouldRetryUnscopedTerminalShift({
+        scopedLocationId: scopedOperatingLocationId,
+        currentShiftResult
+      })) {
+        const unscopedCurrentShiftResult = await fetchCurrentTerminalShift(
+          { terminal_id: terminalId },
+          suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+        );
+        if (!isCurrentRequest()) return null;
+        currentShiftResult = preferOwnedCurrentTerminalShift({
+          scopedResult: currentShiftResult,
+          unscopedResult: unscopedCurrentShiftResult
+        });
+      }
       const shiftPayload = currentShiftResult?.shift || null;
       const cashSummary = currentShiftResult?.cash_summary || null;
       const shiftSalesSummary = currentShiftResult?.sales_summary || null;
@@ -1694,7 +1899,8 @@ export default function TerminalPage() {
         loading: false,
         shift: activeShift,
         cashSummary: activeShiftSummary,
-        salesSummary: shiftSalesSummary
+        salesSummary: shiftSalesSummary,
+        errorMessage: ''
       });
       const activeShiftLocationId = Number(activeShift?.location_id);
       const resolvedOperationalLocationId = Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0
@@ -1719,10 +1925,11 @@ export default function TerminalPage() {
       return { shift: activeShift, cashSummary: activeShiftSummary };
     } catch (error) {
       if (!isCurrentRequest()) return null;
-      setShiftState((prev) => ({ ...prev, loading: false }));
+      const errorMessage = error?.response?.data?.message || 'Failed to load terminal operational context.';
+      setShiftState((prev) => ({ ...prev, loading: false, errorMessage }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
       if (!suppressGlobalErrors && error?.response?.status !== 403) {
-        toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
+        toast.error(errorMessage);
       }
       return null;
     }
@@ -1730,10 +1937,14 @@ export default function TerminalPage() {
 
   const refreshCashierHistory = useCallback(async (filters = {}) => {
     if (locked) return null;
+    const requestId = cashierHistoryRequestRef.current + 1;
+    cashierHistoryRequestRef.current = requestId;
+    const requestScopeKey = Object.keys(filters || {}).length ? JSON.stringify(filters) : null;
     setCashierHistoryState((previous) => ({
       ...previous,
       loading: true,
-      errorMessage: ''
+      errorMessage: '',
+      requestScopeKey
     }));
 
     try {
@@ -1745,20 +1956,25 @@ export default function TerminalPage() {
       else delete historyFilters.location_id;
 
       const payload = await fetchCashierShiftHistory(historyFilters, SUPPRESS_GLOBAL_ERROR_TOAST);
+      if (requestId !== cashierHistoryRequestRef.current) return payload;
       setCashierHistoryState({
         loading: false,
         cashier: payload?.cashier || null,
         historyScope: payload?.history_scope || null,
         records: Array.isArray(payload?.records) ? payload.records : [],
         pagination: payload?.pagination || null,
-        errorMessage: ''
+        errorMessage: '',
+        requestScopeKey,
+        recordsScopeKey: requestScopeKey
       });
       return payload;
     } catch (error) {
       const message = error?.response?.data?.message || 'Failed to load cashier shift history.';
+      if (requestId !== cashierHistoryRequestRef.current) return null;
       setCashierHistoryState((previous) => ({
         ...previous,
         loading: false,
+        requestScopeKey,
         errorMessage: message
       }));
       if (error?.response?.status !== 403) toast.error(message);
@@ -2081,6 +2297,15 @@ export default function TerminalPage() {
     if (!branchViewLocationId) {
       branchViewReturnModeRef.current = posViewMode || 'shift_controls';
     }
+    branchViewTransitionLocationIdRef.current = normalizedLocationId;
+    setBranchViewTransitionLocationId(normalizedLocationId);
+    setAdminLocationMonitorState({
+      loading: true,
+      orders: [],
+      terminalShifts: [],
+      locationId: normalizedLocationId,
+      errorMessage: ''
+    });
     setBranchViewLocationId(normalizedLocationId);
     setViewingLocationId(normalizedLocationId);
     commitViewModeSelection('shift_controls');
@@ -2112,6 +2337,8 @@ export default function TerminalPage() {
       }
     }
     setBranchViewLocationId(null);
+    branchViewTransitionLocationIdRef.current = null;
+    setBranchViewTransitionLocationId(null);
     setViewingLocationId(null);
     const nextMode = returnMode || branchViewReturnModeRef.current || 'shift_controls';
     branchViewReturnModeRef.current = 'shift_controls';
@@ -2139,13 +2366,23 @@ export default function TerminalPage() {
 
     if (locked || !canViewBranchLocations || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
       if (!isCurrentRequest()) return;
+      const scopedLocationId = Number.isInteger(locationId) && locationId > 0 ? locationId : null;
+      const unavailableMessage = !canViewBranchLocations
+        ? 'You no longer have permission to view this branch.'
+        : (locked
+          ? 'Unlock the terminal to load branch activity.'
+          : (!isOnline ? 'Reconnect to load branch activity.' : 'Select a branch to load activity.'));
       setAdminLocationMonitorState({
         loading: false,
         orders: [],
         terminalShifts: [],
-        locationId: null,
-        errorMessage: ''
+        locationId: scopedLocationId,
+        errorMessage: scopedLocationId ? unavailableMessage : ''
       });
+      if (Number(branchViewTransitionLocationIdRef.current || 0) === scopedLocationId) {
+        branchViewTransitionLocationIdRef.current = null;
+        setBranchViewTransitionLocationId(null);
+      }
       return;
     }
 
@@ -2173,6 +2410,10 @@ export default function TerminalPage() {
         locationId,
         errorMessage: ''
       });
+      if (Number(branchViewTransitionLocationIdRef.current || 0) === locationId) {
+        branchViewTransitionLocationIdRef.current = null;
+        setBranchViewTransitionLocationId(null);
+      }
     } catch (error) {
       if (!isCurrentRequest()) return;
       const message = error?.response?.data?.message || 'Failed to load the selected branch monitor.';
@@ -2183,6 +2424,10 @@ export default function TerminalPage() {
         locationId,
         errorMessage: message
       });
+      if (Number(branchViewTransitionLocationIdRef.current || 0) === locationId) {
+        branchViewTransitionLocationIdRef.current = null;
+        setBranchViewTransitionLocationId(null);
+      }
       if (!silent) toast.error(message);
     }
   }, [activeTenantId, activeTerminalId, canViewBranchLocations, isOnline, locked, operatingLocationId, shiftState?.shift?.pos_terminal_shift_id, viewingLocationId]);
@@ -2193,27 +2438,29 @@ export default function TerminalPage() {
 
   const printClosedShiftSummary = useCallback(async (closeResult, {
     reason = 'shift_close_report',
-    openBrowserFallback = true
+    openBrowserFallback = true,
+    paperWidth
   } = {}) => {
     const report = closeResult || null;
     const shiftId = Number(report?.shift?.pos_terminal_shift_id || 0);
     if (!report || !Number.isInteger(shiftId) || shiftId <= 0) return false;
-
+    const isXReading = report?.report_type === 'x_reading';
     try {
       const outcome = await posHardware.printShiftSummary({
         shiftId,
         shiftSummary: report,
+        readingType: isXReading ? 'x_reading' : 'shift_summary',
         businessSettings: terminalMeta.businessSettings,
         terminalId: sanitizeTerminalId(activeTerminalId) || report?.shift?.terminal_id || undefined,
         reason,
         idempotencyKey: createIdempotencyKey('pos-shift-summary-print'),
         copies: 1,
-        paperWidth: readPosPaperWidthPreference(
+        paperWidth: paperWidth || readPosPaperWidthPreference(
           sanitizeTerminalId(activeTerminalId) || report?.shift?.terminal_id
         )
       });
       if (outcome?.success) {
-        toast.success('Cashier shift sales summary printed.');
+        toast.success(isXReading ? 'X-reading printed.' : 'Cashier shift sales summary printed.');
         return true;
       }
       if (openBrowserFallback) {
@@ -2222,8 +2469,8 @@ export default function TerminalPage() {
         setClosedShiftReportOpen(true);
       }
       toast.message(outcome?.message || (openBrowserFallback
-        ? 'No printer is configured. The shift sales summary is opening for browser printing.'
-        : 'No printer is configured. Use Print Shift Summary from the post-shift screen.'));
+        ? `No printer is configured. The ${isXReading ? 'X-reading' : 'shift sales summary'} is opening for browser printing.`
+        : `No printer is configured. Use Print ${isXReading ? 'X-reading' : 'Shift Summary'} from the post-shift screen.`));
       return false;
     } catch (error) {
       if (openBrowserFallback) {
@@ -2232,8 +2479,8 @@ export default function TerminalPage() {
         setClosedShiftReportOpen(true);
       }
       toast.message(error?.response?.data?.message || (openBrowserFallback
-        ? 'Shift closed. The sales summary is available for browser printing.'
-        : 'Shift closed. Use Print Shift Summary from the post-shift screen.'));
+        ? `The ${isXReading ? 'X-reading' : 'shift sales summary'} is available for browser printing.`
+        : `Use Print ${isXReading ? 'X-reading' : 'Shift Summary'} from the post-shift screen.`));
       return false;
     }
   }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
@@ -2255,7 +2502,8 @@ export default function TerminalPage() {
         summary: report.summary || {},
         z_counter_value: report.counters?.z_counter || 0,
         reset_counter_value: report.counters?.reset_counter || 0,
-        lifetime_grand_total_cents: report.counters?.lifetime_grand_total_cents || 0
+        lifetime_grand_total_cents: report.counters?.lifetime_grand_total_cents || 0,
+        lifetime_grand_total: report.counters?.lifetime_grand_total ?? null
       }
     };
 
@@ -2423,7 +2671,7 @@ export default function TerminalPage() {
 
   const openMyDayClosePin = useCallback(() => {
     if (!canCloseDay) {
-      toast.error('You need close-day permission to configure a Day Close PIN.');
+      toast.error('You need close-day permission to configure a global POS PIN.');
       return;
     }
     setMyDayClosePinForm({ currentPassword: '', pin: '', confirmation: '' });
@@ -2437,11 +2685,11 @@ export default function TerminalPage() {
       return;
     }
     if (!/^\d{4,12}$/.test(pin)) {
-      toast.error('Enter a 4 to 12 digit Day Close PIN.');
+      toast.error('Enter a 4 to 12 digit global POS PIN.');
       return;
     }
     if (pin !== confirmation) {
-      toast.error('Day Close PIN confirmation does not match.');
+      toast.error('Global POS PIN confirmation does not match.');
       return;
     }
     setMyDayClosePinSaving(true);
@@ -2449,9 +2697,9 @@ export default function TerminalPage() {
       await updateOwnPosDayClosePin({ currentPassword, pin });
       setMyDayClosePinOpen(false);
       setMyDayClosePinForm({ currentPassword: '', pin: '', confirmation: '' });
-      toast.success('Your POS Day Close PIN is ready.');
+      toast.success('Your global POS PIN is ready.');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to configure your POS Day Close PIN.');
+      toast.error(error?.response?.data?.message || 'Failed to configure your global POS PIN.');
     } finally {
       setMyDayClosePinSaving(false);
     }
@@ -2459,7 +2707,7 @@ export default function TerminalPage() {
 
   const confirmCloseDay = useCallback(async () => {
     if (!/^\d{4,12}$/.test(zReadingClosePin)) {
-      toast.error('Enter your 4 to 12 digit POS Day Close PIN.');
+      toast.error('Enter your 4 to 12 digit global POS PIN.');
       return false;
     }
 
@@ -2497,7 +2745,7 @@ export default function TerminalPage() {
     }
   }, [printZReading, refreshDayCloseReadiness, zReadingClosePin]);
 
-  const handleViewShiftSummary = useCallback(async () => {
+  const handleViewShiftSummary = useCallback(async (requestedReportType = 'shift_summary') => {
     if (!shiftState?.shift) {
       toast.error('Open a shift before viewing its sales summary.');
       return;
@@ -2529,6 +2777,8 @@ export default function TerminalPage() {
       setShiftState(freshShiftState);
       setClosedShiftReportAutoPrint(false);
       setClosedShiftReport({
+        report_type: requestedReportType === 'x_reading' ? 'x_reading' : 'shift_summary',
+        ...(requestedReportType === 'x_reading' ? { generated_at: new Date().toISOString() } : {}),
         shift: freshShiftState.shift,
         cash_summary: freshShiftState.cashSummary || {},
         sales_summary: freshShiftState.salesSummary || {}
@@ -2541,6 +2791,10 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, operatingLocationId, shiftState.shift]);
 
+  const handleViewXReading = useCallback(() => {
+    void handleViewShiftSummary('x_reading');
+  }, [handleViewShiftSummary]);
+
   const handleViewCashierHistoryShift = useCallback((record) => {
     if (!record?.shift) {
       toast.error('The selected cashier shift summary is unavailable.');
@@ -2548,6 +2802,7 @@ export default function TerminalPage() {
     }
     setClosedShiftReportAutoPrint(false);
     setClosedShiftReport({
+      report_type: 'shift_summary',
       shift: record.shift,
       cash_summary: record.cash_summary || {},
       sales_summary: record.sales_summary || {}
@@ -3421,6 +3676,94 @@ export default function TerminalPage() {
   }, [onlineOrderSoundEnabled]);
 
   useEffect(() => {
+    writeStoredOrderAlertSoundId(onlineOrderSoundId);
+  }, [onlineOrderSoundId]);
+
+  useEffect(() => () => {
+    stopOrderAlertSoundLoop();
+  }, []);
+
+  const handleSelectOrderAlertSound = useCallback((soundId) => {
+    const sound = getOrderAlertSoundById(soundId);
+    if (!sound.isDefault && !sound.isImported && !downloadedOrderAlertSoundIds.includes(sound.id)) {
+      toast.error('Download this sound to the device before selecting it.');
+      return false;
+    }
+    if (previewingOrderAlertSoundId) {
+      stopOrderAlertSoundLoop();
+      setPreviewingOrderAlertSoundId('');
+    }
+    setOnlineOrderSoundId(sound.id);
+    return true;
+  }, [downloadedOrderAlertSoundIds, previewingOrderAlertSoundId]);
+
+  const handleDownloadOrderAlertSound = useCallback(async (soundId) => {
+    setOrderAlertSoundDownloadId(String(soundId || '').trim());
+    try {
+      const downloadedIds = await downloadOrderAlertSound(soundId);
+      setDownloadedOrderAlertSoundIds(downloadedIds);
+      toast.success('Sound downloaded to this device.');
+      return true;
+    } catch (error) {
+      toast.error(error?.message || 'The order alert sound could not be downloaded.');
+      return false;
+    } finally {
+      setOrderAlertSoundDownloadId('');
+    }
+  }, []);
+
+  const handleImportOrderAlertSound = useCallback(async (file) => {
+    setOrderAlertSoundImporting(true);
+    try {
+      const sound = await importOrderAlertSound(file);
+      if (previewingOrderAlertSoundId) {
+        stopOrderAlertSoundLoop();
+        setPreviewingOrderAlertSoundId('');
+      }
+      setOnlineOrderSoundId(sound.id);
+      toast.success(`Imported ${sound.label} (${formatOrderAlertSoundKilobytes(sound.compressedBytes)}).`);
+      return true;
+    } catch (error) {
+      toast.error(error?.message || 'The audio file could not be imported.');
+      return false;
+    } finally {
+      setOrderAlertSoundImporting(false);
+    }
+  }, [previewingOrderAlertSoundId]);
+
+  const handlePreviewOrderAlertSound = useCallback(async (soundId) => {
+    const normalizedSoundId = getOrderAlertSoundById(soundId).id;
+
+    if (previewingOrderAlertSoundId === normalizedSoundId) {
+      stopOrderAlertSoundLoop();
+      setPreviewingOrderAlertSoundId('');
+      return true;
+    }
+
+    try {
+      startOrderAlertSoundLoop(normalizedSoundId, {
+        onFinished: () => {
+          setPreviewingOrderAlertSoundId((current) => (
+            current === normalizedSoundId ? '' : current
+          ));
+        }
+      });
+      setPreviewingOrderAlertSoundId(normalizedSoundId);
+      return true;
+    } catch {
+      toast.error('This device could not play the selected sound.');
+      return false;
+    }
+  }, [previewingOrderAlertSoundId]);
+
+  useEffect(() => {
+    safeLocalStorageSet(
+      ONLINE_ORDER_POPUP_ENABLED_STORAGE_KEY,
+      incomingOrderPopupEnabled ? '1' : '0'
+    );
+  }, [incomingOrderPopupEnabled]);
+
+  useEffect(() => {
     if (!activeTerminalId) return;
     setFormData((prev) => (
       prev.terminalId === activeTerminalId
@@ -3517,6 +3860,20 @@ export default function TerminalPage() {
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [formData.email]);
+
+  useEffect(() => {
+    const accessibleCompanies = dgfyAccessibleCompaniesRef.current;
+    if (accessibleCompanies.length === 0) return;
+
+    const emailScopedCompanies = scopeDgfyCompaniesToEmailLookup(accessibleCompanies, {
+      email: formData.email,
+      lookup: emailCompanyLookup
+    });
+    setDgfyPosState((previous) => ({
+      ...previous,
+      companies: emailScopedCompanies
+    }));
+  }, [emailCompanyLookup, formData.email]);
 
   useEffect(() => {
     if (!registryEnforced) return;
@@ -3849,9 +4206,49 @@ export default function TerminalPage() {
     const { kind, status, requestPath } = classifyTerminalLoginFailure(error);
     const method = String(error?.config?.method || '').toUpperCase() || '';
     const ref = createTerminalErrorRef();
+    const existingShift = extractTerminalShiftConflictDetails(error);
     if (showToast) toast.error(message);
-    setUnlockFailure({ message, method, requestPath, status, ref });
+    setUnlockFailure({ message, method, requestPath, status, ref, existingShift });
     captureTerminalFlowFailure({ error, flow, ref, requestPath, status, kind });
+  };
+
+  const handleResumeExistingShift = async () => {
+    const existingShift = unlockFailure?.existingShift;
+    const terminalId = sanitizeTerminalId(existingShift?.existingTerminalId || '');
+    const locationId = Number(existingShift?.existingLocationId || 0);
+    if (!terminalId || !Number.isInteger(locationId) || locationId <= 0) {
+      toast.error('The existing shift details are incomplete. Refresh POS and try again.');
+      return;
+    }
+    const registryEntry = terminalRegistryLookup.get(terminalId);
+    if (!registryEntry || Number(registryEntry.location_id || 0) !== locationId) {
+      toast.error('The existing shift terminal is no longer available in this POS setup. Refresh terminal settings first.');
+      return;
+    }
+
+    setResumingExistingShift(true);
+    setUnlockFailure(null);
+    try {
+      const currentShiftResult = await fetchCurrentTerminalShift({
+        terminal_id: terminalId,
+        location_id: locationId
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      const currentShift = currentShiftResult?.shift || null;
+      const currentShiftId = Number(currentShift?.pos_terminal_shift_id || 0);
+      const expectedShiftId = Number(existingShift?.existingShiftId || 0);
+      if (!currentShift || (expectedShiftId > 0 && currentShiftId !== expectedShiftId)) {
+        throw new Error('The existing shift is no longer open. Refresh POS before opening a new shift.');
+      }
+
+      await completeTerminalUnlock(terminalId, {
+        operatingLocationIdOverride: locationId
+      });
+      toast.success('Existing shift resumed. X-reading remains available; generate Z-reading after closing the shift.');
+    } catch (error) {
+      reportTerminalFailure(error, 'shift_resume');
+    } finally {
+      setResumingExistingShift(false);
+    }
   };
 
   // Shared body for the persistent failure block in both Open Shift dialogs
@@ -3861,17 +4258,56 @@ export default function TerminalPage() {
   // impossible to read off the device.
   const renderUnlockFailurePanel = () => {
     if (!unlockFailure) return null;
+    const existingShift = unlockFailure.existingShift;
+    const existingLocationId = Number(existingShift?.existingLocationId || 0);
+    const existingLocationName = locationNameLookup.get(existingLocationId) || `Location ${existingLocationId || 'unknown'}`;
+    const openedAtLabel = formatTerminalShiftOpenedAt(existingShift?.existingOpenedAt);
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900" role="alert">
-        <p className="font-semibold text-red-950">Could not open shift</p>
-        <p className="mt-0.5">{unlockFailure.message}</p>
+        <p className="font-semibold text-red-950">
+          {existingShift ? 'Could not open a second shift' : 'Could not open shift'}
+        </p>
+        {existingShift ? (
+          <p className="mt-0.5">This cashier already has an open shift. No new shift or opening cash was created.</p>
+        ) : (
+          <p className="mt-0.5">{unlockFailure.message}</p>
+        )}
+        {existingShift ? (
+          <>
+            <div className="mt-2 rounded-md border border-red-200 bg-white/70 px-2 py-1.5 text-[11px] text-red-950">
+              <p><span className="font-semibold">Shift:</span> #{existingShift.existingShiftId || '—'}</p>
+              <p><span className="font-semibold">Terminal:</span> {existingShift.existingTerminalId || '—'}</p>
+              <p><span className="font-semibold">Location:</span> {existingLocationName}</p>
+              {openedAtLabel ? <p><span className="font-semibold">Opened:</span> {openedAtLabel}</p> : null}
+            </div>
+            <p className="mt-2 text-[11px] text-red-900">
+              X-reading is read-only and remains available for this shift. Z-reading becomes available after the shift is closed.
+            </p>
+            <button
+              type="button"
+              className="mt-2 inline-flex h-9 items-center justify-center rounded-md bg-[#1A4E8D] px-3 text-xs font-extrabold text-white shadow-sm hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={handleResumeExistingShift}
+              disabled={resumingExistingShift || submitting || shiftActionLoading.open}
+            >
+              {resumingExistingShift ? 'Resuming existing shift...' : 'Resume Existing Shift'}
+            </button>
+          </>
+        ) : null}
       </div>
     );
   };
 
-  const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
-    const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
-    if (activeTerminalRegistry.length === 0) {
+  const validateSelectedTerminalForUnlock = (
+    selectedTerminalId,
+    { registryEntries: registryEntriesOverride } = {}
+  ) => {
+    const registryEntries = Array.isArray(registryEntriesOverride)
+      ? registryEntriesOverride.filter((entry) => entry?.is_active !== false)
+      : activeTerminalRegistry;
+    const registryEntry = registryEntries.find(
+      (entry) => String(entry?.terminal_id || '') === String(selectedTerminalId || '')
+    );
+    if (registryEntries.length === 0) {
       toast.error('No active terminals configured. Add one in POS Setup > Registers & terminal policy.');
       return false;
     }
@@ -4129,6 +4565,20 @@ export default function TerminalPage() {
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
     const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
+    const normalizedEmail = email.toLowerCase();
+    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
+    const legacyCompanyChoiceRequired = (
+      entryIntent === 'shift'
+      && !continuingAfterCompanyPicker
+      && emailCompanyLookup?.status === 'multiple'
+      && normalizedEmail === lookupEmail
+      && !String(formData.legacyCompanyToken || '').trim()
+    );
+
+    if (legacyCompanyChoiceRequired) {
+      setLegacyCompanySelectionOpen(true);
+      return;
+    }
 
     setSubmitting(true);
     setUnlockFailure(null);
@@ -4163,8 +4613,13 @@ export default function TerminalPage() {
         ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
         ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
       ].filter((company) => company?.can_switch);
+      dgfyAccessibleCompaniesRef.current = acceptedCompanies;
+      const emailScopedCompanies = scopeDgfyCompaniesToEmailLookup(acceptedCompanies, {
+        email,
+        lookup: emailCompanyLookup
+      });
       const selectedTenantId = String(formData.dgfyTenantId || '').trim()
-        || (acceptedCompanies.length === 1 ? String(acceptedCompanies[0]?.tenant_id || '') : '');
+        || (emailScopedCompanies.length === 1 ? String(emailScopedCompanies[0]?.tenant_id || '') : '');
       if (selectedTenantId) {
         setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
       }
@@ -4172,11 +4627,11 @@ export default function TerminalPage() {
         ...prev,
         authenticated: true,
         account: resolvedAccount || prev.account || null,
-        companies: acceptedCompanies,
+        companies: emailScopedCompanies,
         loadingCompanies: false
       }));
       if (!selectedTenantId) {
-        if (acceptedCompanies.length === 0) {
+        if (emailScopedCompanies.length === 0) {
           toast.message('No registered business was found for this account. Opening your DGFY customer dashboard.');
           if (typeof window !== 'undefined') {
             window.location.href = resolveStorefrontAccountUrl();
@@ -4485,11 +4940,20 @@ export default function TerminalPage() {
       companies: [],
       loadingCompanies: false
     });
+    dgfyAccessibleCompaniesRef.current = [];
+    setLegacyCompanySelectionOpen(false);
+    setEmailCompanyLookup({
+      status: 'idle',
+      email: String(nextEmail || '').trim().toLowerCase(),
+      companies: [],
+      message: ''
+    });
     setFormData((previous) => ({
       ...previous,
       email: nextEmail,
       password: '',
-      dgfyTenantId: ''
+      dgfyTenantId: '',
+      legacyCompanyToken: ''
     }));
     setCashierUnlockSession(null);
     setDgfyAdminBypassActive(false);
@@ -4502,7 +4966,14 @@ export default function TerminalPage() {
       resetDgfyPosIdentity({ nextEmail, revokeServerSession: true });
       return;
     }
-    setFormData((previous) => ({ ...previous, email: nextEmail }));
+    setLegacyCompanySelectionOpen(false);
+    setFormData((previous) => ({
+      ...previous,
+      email: nextEmail,
+      legacyCompanyToken: String(nextEmail || '').trim().toLowerCase() === normalizedCurrent
+        ? previous.legacyCompanyToken
+        : ''
+    }));
   }, [dgfyPosState.authenticated, formData.email, resetDgfyPosIdentity]);
 
   const handleUseDifferentDgfyAccount = useCallback(() => {
@@ -4521,6 +4992,25 @@ export default function TerminalPage() {
       && lookupCompanies.some((company) => String(company?.company_token || '').trim() === normalizedPreferred)
     ) {
       return normalizedPreferred;
+    }
+    if (lookupCompanies.length === 1) {
+      return String(lookupCompanies[0]?.company_token || '').trim();
+    }
+    return '';
+  }, [emailCompanyLookup]);
+
+  const resolveLegacyCompanyTokenFromLookupState = useCallback((identifier, selectedCompanyToken = '') => {
+    const normalizedIdentifier = String(identifier || '').trim().toLowerCase();
+    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
+    if (!normalizedIdentifier || normalizedIdentifier !== lookupEmail) return '';
+
+    const lookupCompanies = Array.isArray(emailCompanyLookup?.companies) ? emailCompanyLookup.companies : [];
+    const normalizedSelected = String(selectedCompanyToken || '').trim();
+    if (
+      normalizedSelected
+      && lookupCompanies.some((company) => String(company?.company_token || '').trim() === normalizedSelected)
+    ) {
+      return normalizedSelected;
     }
     if (lookupCompanies.length === 1) {
       return String(lookupCompanies[0]?.company_token || '').trim();
@@ -4754,7 +5244,7 @@ export default function TerminalPage() {
         authenticatedCashierId: cashierUser.user_id
       });
       if (entryMode === 'takeover' && !/^[0-9]{4,12}$/.test(pin)) {
-        toast.error('A different cashier must enter their 4 to 12 digit POS cashier PIN.');
+        toast.error('A different cashier must enter their 4 to 12 digit global POS PIN.');
         return;
       }
 
@@ -4966,15 +5456,20 @@ export default function TerminalPage() {
       ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
       ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
     ].filter((company) => company?.can_switch);
+    dgfyAccessibleCompaniesRef.current = acceptedCompanies;
+    const emailScopedCompanies = scopeDgfyCompaniesToEmailLookup(acceptedCompanies, {
+      email: formData.email,
+      lookup: emailCompanyLookup
+    });
 
-    const matchedCompany = acceptedCompanies.find((company) => String(company?.company_token || '').trim() === currentCompanyToken)
-      || (acceptedCompanies.length === 1 ? acceptedCompanies[0] : null);
+    const matchedCompany = emailScopedCompanies.find((company) => String(company?.company_token || '').trim() === currentCompanyToken)
+      || (emailScopedCompanies.length === 1 ? emailScopedCompanies[0] : null);
     const recoveredTenantId = String(matchedCompany?.tenant_id || '').trim();
 
     setDgfyPosState((prev) => ({
       ...prev,
       authenticated: true,
-      companies: acceptedCompanies,
+      companies: emailScopedCompanies,
       loadingCompanies: false
     }));
 
@@ -4983,7 +5478,7 @@ export default function TerminalPage() {
     }
 
     return recoveredTenantId;
-  }, [formData.dgfyTenantId]);
+  }, [emailCompanyLookup, formData.dgfyTenantId, formData.email]);
 
   const handleTerminalUnlockSubmit = async (event) => {
     event.preventDefault();
@@ -5207,16 +5702,18 @@ export default function TerminalPage() {
     }
   };
 
-  const performLegacyTerminalUnlock = async ({ email, password, selectedTerminalId }) => {
+  const performLegacyTerminalUnlock = async ({ email, password, selectedTerminalId, companyToken = '' }) => {
     const currentCompanyToken = String(getCompanyToken() || '').trim();
-    let resolvedCompanyToken = '';
-    try {
-      resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(email, currentCompanyToken);
-    } catch (lookupError) {
-      if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
-        throw lookupError;
+    let resolvedCompanyToken = String(companyToken || '').trim();
+    if (!resolvedCompanyToken) {
+      try {
+        resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(email, currentCompanyToken);
+      } catch (lookupError) {
+        if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
+          throw lookupError;
+        }
+        resolvedCompanyToken = currentCompanyToken;
       }
-      resolvedCompanyToken = currentCompanyToken;
     }
     if (!resolvedCompanyToken) {
       throw createTerminalLoginError(
@@ -5224,6 +5721,22 @@ export default function TerminalPage() {
         POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
       );
     }
+    const completeLegacyTerminalUnlock = async () => {
+      const terminalBootstrap = await hydrateTerminalMeta({ suppressGlobalErrors: true });
+      const hydratedRegistry = normalizeTerminalRegistry(terminalBootstrap?.registry || [])
+        .filter((entry) => entry?.is_active !== false);
+      const resolvedTerminalId = resolvePreferredTerminalId(
+        hydratedRegistry,
+        selectedTerminalId,
+        { registryMode: 'enforce' }
+      );
+      if (!validateSelectedTerminalForUnlock(resolvedTerminalId, { registryEntries: hydratedRegistry })) return false;
+      const registryEntry = hydratedRegistry.find((entry) => String(entry?.terminal_id || '') === resolvedTerminalId);
+      return completeTerminalUnlock(resolvedTerminalId, {
+        operatingLocationIdOverride: Number(registryEntry?.location_id || 0)
+      });
+    };
+
     try {
       await loginWithCredentials(
         { email, password, companyToken: resolvedCompanyToken },
@@ -5242,12 +5755,52 @@ export default function TerminalPage() {
           { email, password, companyToken: resolvedCompanyToken },
           SUPPRESS_GLOBAL_ERROR_TOAST
         );
-        return completeTerminalUnlock(selectedTerminalId);
+        return completeLegacyTerminalUnlock();
       }
       throw error;
     }
 
-    return completeTerminalUnlock(selectedTerminalId);
+    return completeLegacyTerminalUnlock();
+  };
+
+  const submitLegacyLogin = async ({ email, password, selectedTerminalId, companyToken }) => {
+    setSubmitting(true);
+    try {
+      await performLegacyTerminalUnlock({
+        email,
+        password,
+        selectedTerminalId,
+        companyToken
+      });
+    } catch (error) {
+      toast.error(resolveTerminalLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLegacyCompanySelection = async (companyToken) => {
+    const email = String(formData.email || '').trim();
+    const password = String(formData.password || '');
+    const selectedTerminalId = resolveSelectedLoginTerminalId();
+    const selectedCompanyToken = resolveLegacyCompanyTokenFromLookupState(email, companyToken);
+
+    if (!selectedCompanyToken) {
+      toast.error('Select a company for legacy access before signing in.');
+      return;
+    }
+
+    setFormData((previous) => ({
+      ...previous,
+      legacyCompanyToken: selectedCompanyToken
+    }));
+    setLegacyCompanySelectionOpen(false);
+    await submitLegacyLogin({
+      email,
+      password,
+      selectedTerminalId,
+      companyToken: selectedCompanyToken
+    });
   };
 
   const handleLogin = async (event) => {
@@ -5260,16 +5813,24 @@ export default function TerminalPage() {
       toast.error('Email and password are required.');
       return;
     }
-    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
-
-    setSubmitting(true);
-    try {
-      await performLegacyTerminalUnlock({ email, password, selectedTerminalId });
-    } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
-    } finally {
-      setSubmitting(false);
+    const normalizedEmail = email.toLowerCase();
+    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
+    const selectedCompanyToken = resolveLegacyCompanyTokenFromLookupState(email, formData.legacyCompanyToken);
+    if (
+      emailCompanyLookup?.status === 'multiple'
+      && normalizedEmail === lookupEmail
+      && !selectedCompanyToken
+    ) {
+      setLegacyCompanySelectionOpen(true);
+      return;
     }
+
+    await submitLegacyLogin({
+      email,
+      password,
+      selectedTerminalId,
+      companyToken: selectedCompanyToken
+    });
   };
 
   const clearCurrentSaleForSessionEnd = useCallback(async () => {
@@ -5357,6 +5918,7 @@ export default function TerminalPage() {
         password: '',
         rememberDevice: false,
         dgfyTenantId: '',
+        legacyCompanyToken: '',
         terminalId: selectedTerminalId
       });
       setLocked(true);
@@ -5466,6 +6028,7 @@ export default function TerminalPage() {
       password: '',
       rememberDevice: false,
       dgfyTenantId: '',
+      legacyCompanyToken: '',
       terminalId: selectedTerminalId
     });
     setLoadingUser(false);
@@ -5573,6 +6136,20 @@ export default function TerminalPage() {
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
     setUnlockFailure(null);
     try {
+      const selectedTerminalState = await fetchCurrentTerminalShift({
+        terminal_id: terminalId,
+        location_id: scopedOperatingLocationId
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      const selectedTerminalDecision = resolveTerminalShiftEntryDecision({
+        selectedTerminalId: terminalId,
+        selectedLocationId: scopedOperatingLocationId,
+        terminalOccupancy: selectedTerminalState?.terminal_occupancy
+      });
+      if (selectedTerminalDecision.mode === 'blocked') {
+        void refreshAdminLocationMonitor({ silent: true });
+        throw new Error(selectedTerminalDecision.message);
+      }
+
       await openTerminalShift(payload, SUPPRESS_GLOBAL_ERROR_TOAST);
       toast.success('Shift opened successfully.');
       setAdminShiftPromptSkipped(false);
@@ -5585,6 +6162,12 @@ export default function TerminalPage() {
       setPosViewMode('checkout');
       setMobileNavOpen(false);
     } catch (error) {
+      if (resolveTerminalShiftLocationConflict(error, {
+        targetLocationId: scopedOperatingLocationId,
+        terminalId
+      })) {
+        void refreshAdminLocationMonitor({ silent: true });
+      }
       reportTerminalFailure(error, 'shift_open');
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
@@ -5866,19 +6449,6 @@ export default function TerminalPage() {
       return;
     }
 
-    let resolutionState;
-    try {
-      resolutionState = await getShiftCloseResolutionState({ shiftId: activeShiftId });
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Unable to verify parked sales. Reconnect and try again before closing the shift.');
-      return;
-    }
-    if (resolutionState.claimedParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
-      setCloseShiftBlocker(resolutionState);
-      toast.error('Resolve claimed parked sales and pending parked-sale syncs before closing this shift.');
-      return;
-    }
-
     const payload = {
       terminal_id: sanitizeTerminalId(activeTerminalId) || sanitizeTerminalId(shiftState.shift?.terminal_id) || resolveSelectedLoginTerminalId() || undefined,
       closing_cash_amount: closingCashAmount,
@@ -6002,17 +6572,6 @@ export default function TerminalPage() {
       });
     } catch (error) {
       const errorDetails = error?.response?.data?.errors || error?.response?.data?.details || {};
-      if (String(errorDetails?.reason_code || '').trim() === 'POS_PARKED_SALES_UNRESOLVED') {
-        const claimedParkedSaleCount = Number(
-          errorDetails?.claimed_parked_sale_count ?? errorDetails?.active_parked_sale_count ?? 0
-        );
-        setCloseShiftBlocker({
-          claimedParkedSaleCount,
-          pendingParkedSaleCount: 0
-        });
-        toast.error(error?.response?.data?.message || 'Resolve claimed parked sales before closing this shift.');
-        return;
-      }
       if (['POS_PAYMENT_SESSIONS_IN_FLIGHT', 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED'].includes(String(errorDetails?.reason_code || '').trim())) {
         setCloseShiftBlocker({
           reasonCode: String(errorDetails.reason_code).trim(),
@@ -6256,6 +6815,7 @@ export default function TerminalPage() {
     try {
       const response = await updateOnlineOrderStatus(normalizedId, payload);
       if (nextStatus === 'confirmed') {
+        stopOrderAlertSoundLoop();
         try {
           await printOnlineOrderReceiptById(normalizedId, {
             automatic: true,
@@ -6702,6 +7262,7 @@ export default function TerminalPage() {
     retryPrint = false,
     printOrder = false
   } = {}) => {
+    stopOrderAlertSoundLoop();
     if (!isOnline) {
       toast.error('Reconnect to the internet before opening or printing an online order.');
       return;
@@ -6747,6 +7308,7 @@ export default function TerminalPage() {
   const handleIncomingOrderModalOpenChange = useCallback((open) => {
     setIncomingOrderModalOpen(open);
     if (!open) {
+      stopOrderAlertSoundLoop();
       setIncomingOrderDetail(null);
       setIncomingOrderPrintLoading(false);
     }
@@ -7067,6 +7629,54 @@ export default function TerminalPage() {
       }));
     }
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
+
+  useEffect(() => {
+    if (!activeTenantId || typeof window === 'undefined') return undefined;
+
+    // Re-read the canonical permission and terminal snapshot when OPIS or another
+    // same-origin settings surface changes it. The refresh is scoped and must not
+    // change tenant, reset checkout, close a shift, overwrite dirty settings, or
+    // silently reprice an active sale.
+    const refreshScopedSettings = () => {
+      setSettingsRefreshKey((previous) => previous + 1);
+      const refreshTasks = [
+        hydrateUser({ suppressGlobalErrors: true }),
+        hydrateTerminalMeta({ suppressGlobalErrors: true }),
+        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
+      ];
+      if (!locked && canViewPos) {
+        refreshTasks.push(refreshOperationalContext({ suppressGlobalErrors: true }));
+      }
+      return Promise.all(refreshTasks).catch(() => {
+        // The POS remains usable on its current snapshot when a background refresh fails.
+      });
+    };
+
+    const unsubscribeSync = subscribeToBusinessAdminSettingsUpdates((payload) => {
+      if (!shouldRefreshBusinessAdminSettingsUpdate({
+        payload,
+        activeTenantId,
+        activeBranchId: Number(
+          shiftState?.shift?.location_id
+          || operatingLocationId
+          || viewingLocationId
+          || queueLocationScopeId
+          || terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id
+          || 0
+        )
+      })) return;
+      void refreshScopedSettings();
+    });
+
+    // OPIS is served from another origin, so its save cannot arrive through the
+    // same-origin channel. Revalidate when POS regains focus/visibility or reconnects.
+    const uninstallFocusRefresh = installCrossAppSettingsRefresh(() => refreshScopedSettings());
+    return () => {
+      unsubscribeSync();
+      uninstallFocusRefresh();
+    };
+  }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);
 
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;
@@ -7461,6 +8071,7 @@ function PosRestorationLoadingScreen() {
               handleTenantSetupDataChanged,
               handleTerminalUnlockSubmit,
               handleViewStockAlertItems,
+              handleViewXReading,
               hardwareMessage,
               hardwareLoading: posHardware.loading,
               incomingOrderDetail,
@@ -7589,7 +8200,7 @@ function PosRestorationLoadingScreen() {
           canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
           canAccessPosOnlySetup={canAccessPosOnlySetup}
-          showFnbService={canAccessFnbService}
+          showFnbService={SHOW_FNB_SERVICE_IN_POS_NAVIGATION && canAccessFnbService}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
@@ -7616,6 +8227,7 @@ function PosRestorationLoadingScreen() {
           adminLocationMonitorState={adminLocationMonitorState}
           branchDirectoryState={branchDirectoryState}
           branchViewLocationId={branchViewLocationId}
+          branchViewTransitionLoading={Number(branchViewTransitionLocationId || 0) === Number(branchViewLocationId || 0) && Number(branchViewTransitionLocationId || 0) > 0}
           canViewBranchLocations={canViewBranchLocations}
           onViewBranch={handleViewBranch}
           onExitBranchView={handleExitBranchView}
@@ -7626,6 +8238,25 @@ function PosRestorationLoadingScreen() {
           canRecoverStaleShifts={terminalUser?.is_master_admin === true}
           handleForceCloseStaleShift={handleForceCloseStaleShift}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
+          onlineOrderSoundId={onlineOrderSoundId}
+          downloadedOrderAlertSoundIds={downloadedOrderAlertSoundIds}
+          orderAlertSoundDownloadId={orderAlertSoundDownloadId}
+           orderAlertSoundImporting={orderAlertSoundImporting}
+          previewingOrderAlertSoundId={previewingOrderAlertSoundId}
+          incomingOrderPopupEnabled={incomingOrderPopupEnabled}
+          customerDisplayEnabled={customerDisplayEnabled}
+          customerDisplayCanOpen={customerDisplayStatus.canOpen}
+          customerDisplayStatus={customerDisplayStatus.status}
+          customerDisplayStatusLabel={customerDisplayStatus.label}
+          customerDisplayOpenRequest={customerDisplayOpenRequest}
+          customerDisplayEndRequest={customerDisplayEndRequest}
+          onCustomerDisplayEnabledChange={handleCustomerDisplayEnabledChange}
+          onOpenCustomerDisplay={handleOpenCustomerDisplay}
+          onEndCustomerDisplay={handleEndCustomerDisplay}
+          onCustomerDisplayOpenRequestHandled={handleCustomerDisplayOpenRequestHandled}
+          onCustomerDisplayEndRequestHandled={handleCustomerDisplayEndRequestHandled}
+          onCustomerDisplayControllerChange={handleCustomerDisplayControllerChange}
+          onCustomerDisplayStatusChange={handleCustomerDisplayStatusChange}
           locationsState={locationsState}
           itemsLocationScopeLoading={itemsLocationScopeLoading}
           operatingLocationId={operatingLocationId}
@@ -7678,6 +8309,7 @@ function PosRestorationLoadingScreen() {
           handleCloseShift={handleCloseShift}
           handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
+          handleViewXReading={handleViewXReading}
           cashierHistoryState={cashierHistoryState}
           refreshCashierHistory={refreshCashierHistory}
           handleViewCashierHistoryShift={handleViewCashierHistoryShift}
@@ -7728,6 +8360,11 @@ function PosRestorationLoadingScreen() {
           onStorefrontSetupSaved={handleStorefrontSetupSaved}
           onStorefrontContentStateChange={handleStorefrontContentStateChange}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+          onSelectOrderAlertSound={handleSelectOrderAlertSound}
+          onDownloadOrderAlertSound={handleDownloadOrderAlertSound}
+           onImportOrderAlertSound={handleImportOrderAlertSound}
+          onPreviewOrderAlertSound={handlePreviewOrderAlertSound}
+          setIncomingOrderPopupEnabled={setIncomingOrderPopupEnabled}
           posTextSize={posTextSize}
           onPosTextSizeChange={handlePosTextSizeChange}
           setPosViewMode={commitViewModeSelection}
@@ -7755,6 +8392,9 @@ function PosRestorationLoadingScreen() {
           handleIdentityChange={handleDgfyPosIdentityChange}
           handleUseDifferentAccount={handleUseDifferentDgfyAccount}
           handleLegacyLogin={handleLogin}
+          legacyCompanySelectionOpen={legacyCompanySelectionOpen}
+          handleLegacyCompanySelectionOpenChange={setLegacyCompanySelectionOpen}
+          handleLegacyCompanySelection={handleLegacyCompanySelection}
         />
         <ConfirmActionDialog
           open={Boolean(pendingStorefrontContentViewMode)}

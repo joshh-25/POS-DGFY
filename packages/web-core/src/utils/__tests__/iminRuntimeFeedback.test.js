@@ -17,6 +17,7 @@ vi.mock('sonner', () => ({
 import {
   emitIminPosFeedback,
   IMIN_PERFORMANCE_CLASS,
+  isExpectedIminPrinterServiceUnavailable,
   installIminPerformanceProfile,
   posToast
 } from '../iminRuntimeFeedback.js';
@@ -50,6 +51,30 @@ describe('POS runtime feedback', () => {
     expect(dispatchEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
       detail: expect.objectContaining({ duration: null })
     }));
+  });
+
+  it('suppresses only the expected unavailable iMin printer-service diagnostic', () => {
+    const dispatchEvent = vi.fn();
+    const bridgeWindow = {
+      iMinBridge: { isIminWrapper: () => true },
+      dispatchEvent
+    };
+
+    expect(isExpectedIminPrinterServiceUnavailable(
+      'POS receipt printer error',
+      'iMin printer service is not connected | bindRequested=false, serviceConnected=false, serviceResolvable=false'
+    )).toBe(true);
+
+    expect(emitIminPosFeedback({
+      message: 'POS receipt printer error',
+      description: 'iMin printer service is not connected | bindRequested=false, serviceConnected=false, serviceResolvable=false'
+    }, bridgeWindow)).toBeNull();
+    expect(dispatchEvent).not.toHaveBeenCalled();
+
+    expect(isExpectedIminPrinterServiceUnavailable(
+      'POS receipt printer error',
+      'Printer paper is unavailable.'
+    )).toBe(false);
   });
 
   it('installs the low-effects profile only for the iMin wrapper runtime', () => {

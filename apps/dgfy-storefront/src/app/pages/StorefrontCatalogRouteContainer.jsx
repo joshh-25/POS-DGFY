@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { FnbProductDetailsRoute } from '../../modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
 import { FnbCatalogRoutePage } from '../../modes/fnb/storefront/pages/FnbCatalogRoutePage.jsx';
+import { FnbCategoriesRoutePage } from '../../modes/fnb/storefront/pages/FnbCategoriesRoutePage.jsx';
 import { FnbStorefrontRoutePage } from '../../modes/fnb/storefront/pages/FnbStorefrontRoutePage.jsx';
 import { RetailStorefrontRouteContainer } from '../../modes/retail/storefront/pages/RetailStorefrontRouteContainer.jsx';
 import { SimpleStorefrontRoutePage } from '../../modes/simple/storefront/pages/SimpleStorefrontRoutePage.jsx';
@@ -12,6 +13,7 @@ import { StorefrontServicesCatalog } from '../../modes/services/storefront/compo
 import { StorefrontClassicCatalog } from '../../shared/components/storefront/StorefrontClassicCatalog.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
 import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { LaundryStorefrontCatalog } from '../../modes/laundry/storefront/LaundryStorefrontCatalog.jsx';
 
 // ZONE 4: Catalog Grid with Sidebar — cross-mode dispatcher (fnb product-details route,
 // services catalog, classic catalog). Moved verbatim out of StorefrontApp.jsx's ZONE 4 IIFE;
@@ -22,6 +24,7 @@ export function StorefrontCatalogRouteContainer(props) {
     accountStepComplete,
     fulfillmentStepComplete,
     isServicesMode,
+    isLaundryMode,
     servicesViewModel,
     activeServiceTab,
     fnbCatalogPresentation,
@@ -29,6 +32,7 @@ export function StorefrontCatalogRouteContainer(props) {
     filteredFnbViewModel,
     filteredCatalog,
     fnbPageSize,
+    isCategoriesSubpage,
     isSimpleMode,
     isFnbDetailsSubpage,
     fnbProductDetailsRouteProps,
@@ -50,6 +54,7 @@ export function StorefrontCatalogRouteContainer(props) {
     canUseGuestCheckoutFlow,
     guestCheckoutAllowed,
     catalog,
+    cartCount,
     catalogError,
     catalogSearch,
     checkoutError,
@@ -71,6 +76,7 @@ export function StorefrontCatalogRouteContainer(props) {
     deliverySavedLocations,
     applySavedDeliveryLocation,
     getCartFlySourceRect,
+    goStoreOrderPage,
     goStoreCatalogPage,
     goStoreTrackPage,
     handleAddPinnedLocation,
@@ -230,6 +236,19 @@ export function StorefrontCatalogRouteContainer(props) {
     simpleTrackingRouteProps,
     retailTrackingRouteProps
   } = props;
+
+  if (isLaundryMode) {
+    return <LaundryStorefrontCatalog
+      catalog={catalog}
+      loading={loadingCatalog}
+      error={catalogError}
+      selectedStore={selectedStore}
+      locationId={selectedLocationId}
+      customerName={customerName}
+      customerEmail={customerEmail}
+      customerPhone={customerPhone}
+    />;
+  }
 
   // --- Service Tab logic ---
   // RF-4 (PR #1583 review): `activeServiceTab`/`resolvedTab` hold `categoryIdentity` values (the
@@ -543,51 +562,63 @@ export function StorefrontCatalogRouteContainer(props) {
   }
 
   if (isFnbMode) {
+    const fnbCatalogProps = {
+      addToCart,
+      catalogError,
+      catalogItems: catalogItemsToRender,
+      catalogSearch,
+      catalogState,
+      categoryDropdownRef: fnbCategoryDropdownRef,
+      checkoutVoucherCode,
+      setCheckoutVoucherCode,
+      handleVoucherCardApply,
+      handleVoucherCardRemove,
+      filteredCatalog,
+      filteredCatalogViewModel: filteredFnbViewModel,
+      getCartFlySourceRect,
+      hasCatalogSearchQuery,
+      isCategoryDropdownOpen: isFnbCategoryDropdownOpen,
+      isCompactPaginationViewport,
+      isDesktopViewport,
+      isMobileViewport,
+      isTabletPaginationViewport,
+      modeAdapter,
+      mobileCatalogPadding: fnbMobileCatalogInlinePadding,
+      mobileContentWidth: fnbMobileMenuInnerWidth,
+      onCategoryChange: setActiveServiceTab,
+      onCategoryDropdownOpenChange: setIsFnbCategoryDropdownOpen,
+      onPageChange: setFnbPage,
+      onPageSizeChange: setFnbPageSize,
+      onSearchChange: setCatalogSearch,
+      onSortChange: setFnbSortOption,
+      onViewDetails: openFnbDetail,
+      onViewModeChange: setFnbViewMode,
+      page: resolvedFnbPage,
+      pageEnd: fnbPageEnd,
+      pageSize: fnbPageSize,
+      pageStart: fnbPageStart,
+      refreshStorePageForTenantSetup,
+      resolvedSection: resolvedFnbSection,
+      sortOption: fnbSortOption,
+      totalItems: itemsToRender.length,
+      totalPages: totalFnbPages,
+      viewMode: fnbViewMode
+    };
+
     return (
       <>
-        <FnbCatalogRoutePage
-          addToCart={addToCart}
-          catalogError={catalogError}
-          catalogItems={catalogItemsToRender}
-          catalogSearch={catalogSearch}
-          catalogState={catalogState}
-          categoryDropdownRef={fnbCategoryDropdownRef}
-          checkoutVoucherCode={checkoutVoucherCode}
-          setCheckoutVoucherCode={setCheckoutVoucherCode}
-          handleVoucherCardApply={handleVoucherCardApply}
-          handleVoucherCardRemove={handleVoucherCardRemove}
-          filteredCatalog={filteredCatalog}
-          filteredCatalogViewModel={filteredFnbViewModel}
-          getCartFlySourceRect={getCartFlySourceRect}
-          hasCatalogSearchQuery={hasCatalogSearchQuery}
-          isCategoryDropdownOpen={isFnbCategoryDropdownOpen}
-          isCompactPaginationViewport={isCompactPaginationViewport}
-          isDesktopViewport={isDesktopViewport}
-          isMobileViewport={isMobileViewport}
-          isTabletPaginationViewport={isTabletPaginationViewport}
-          modeAdapter={modeAdapter}
-          mobileCatalogPadding={fnbMobileCatalogInlinePadding}
-          mobileContentWidth={fnbMobileMenuInnerWidth}
-          onCategoryChange={setActiveServiceTab}
-          onCategoryDropdownOpenChange={setIsFnbCategoryDropdownOpen}
-          onPageChange={setFnbPage}
-          onPageSizeChange={setFnbPageSize}
-          onSearchChange={setCatalogSearch}
-          onSortChange={setFnbSortOption}
-          onViewDetails={openFnbDetail}
-          onViewModeChange={setFnbViewMode}
-          page={resolvedFnbPage}
-          pageEnd={fnbPageEnd}
-          pageSize={fnbPageSize}
-          pageStart={fnbPageStart}
-          refreshStorePageForTenantSetup={refreshStorePageForTenantSetup}
-          resolvedSection={resolvedFnbSection}
-          sortOption={fnbSortOption}
-          totalItems={itemsToRender.length}
-          totalPages={totalFnbPages}
-          viewMode={fnbViewMode}
-        />
-        <FnbStorefrontRoutePage
+        {isCategoriesSubpage ? (
+          <FnbCategoriesRoutePage
+            {...fnbCatalogProps}
+            cartCount={cartCount}
+            isMobileViewport={isMobileViewport}
+            onContinue={goStoreOrderPage}
+            selectedStore={selectedStore}
+          />
+        ) : (
+          <FnbCatalogRoutePage {...fnbCatalogProps} />
+        )}
+        {!isCategoriesSubpage && <FnbStorefrontRoutePage
           checkoutPromoCode={checkoutPromoCode}
           fnbCommunityModel={fnbCommunityModel}
           handlePromoCardApply={handlePromoCardApply}
@@ -603,7 +634,7 @@ export function StorefrontCatalogRouteContainer(props) {
           reviewSubmitLoading={reviewSubmitLoading}
           setIsReviewModalOpen={setIsReviewModalOpen}
           viewportWidth={viewportWidth}
-        />
+        />}
       </>
     );
   }

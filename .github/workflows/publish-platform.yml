@@ -169,16 +169,17 @@ jobs:
           PROD_SOPS_PATH=0
           if [ "${{ inputs.environment }}" = "PROD" ]; then PROD_SOPS_PATH=1; fi
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
-            "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
+            "trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT; \
+             docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
              cd $DOCKER_DIR && \
              if [ \"${{ inputs.environment }}\" = \"DEV\" ]; then export IMAGE_TAG=dev; fi && \
              COMPOSE_IMAGES=\$(docker compose config --images) && \
              { echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
              if [ \"$PROD_SOPS_PATH\" = 1 ]; then \
-               SENTRY_RELEASE=\"$SENTRY_RELEASE\" ./deploy-sops.sh && docker logout ghcr.io; \
+               SENTRY_RELEASE=\"$SENTRY_RELEASE\" ./deploy-sops.sh; \
              else \
                ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if ${COMPOSE_TAG_PREFIX}docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
-               { ${COMPOSE_TAG_PREFIX}SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans || { echo \"::error::docker compose up failed. Dumping runner logs:\" >&2; docker compose logs --tail=100 dgfy-migration-runner >&2; docker compose logs --tail=100 dgfy-api >&2; docker logout ghcr.io || true; exit 1; }; } && docker logout ghcr.io; \
+               { ${COMPOSE_TAG_PREFIX}SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans || { echo \"::error::docker compose up failed. Dumping runner logs:\" >&2; docker compose logs --tail=100 dgfy-migration-runner >&2; docker compose logs --tail=100 dgfy-api >&2; exit 1; }; }; \
              fi" \
             <<< "$GITHUB_TOKEN"
 

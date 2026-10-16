@@ -20,6 +20,13 @@ const formatGeneratedAt = (value) => {
 const paymentLabel = (entry) => (
     String(entry?.payment_label || entry?.payment_type || '').replace(/_/g, ' ') || '-'
 );
+const orderMethodLabel = (value) => ({
+    dine_in: 'Dine In',
+    takeout: 'Takeout',
+    pickup: 'Pickup',
+    delivery: 'Delivery',
+    online: 'Online'
+}[String(value || '').trim().toLowerCase()] || String(value || '').replace(/[_-]/g, ' ') || '-');
 const reconciliationStatusLabel = (value) => ({
     matched: 'MATCHED',
     variance: 'VARIANCE FOUND',
@@ -58,6 +65,8 @@ export default function ZReadingPrintView({
     const displayCurrency = currencyLabel(currency);
     const counters = report.counters || {};
     const payments = Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : [];
+    const orderMethods = Array.isArray(summary.order_method_breakdown) ? summary.order_method_breakdown : [];
+    const orderSources = Array.isArray(summary.order_source_breakdown) ? summary.order_source_breakdown : [];
     const deliveryProviders = parseDeliveryProviderSummary(summary.delivery_provider_breakdown);
     const printFailed = printState === 'failed';
     const reportBusiness = report.business || {};
@@ -92,11 +101,18 @@ export default function ZReadingPrintView({
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
                     <Row name="Transactions" value={Number(summary.transaction_count || 0).toLocaleString('en-US')} />
+                    <Row name="Items sold" value={Number(summary.item_count || 0).toLocaleString('en-US')} />
                     <Row name="Subtotal" value={`${displayCurrency}${money(summary.subtotal_amount)}`} />
                     <Row name="Discounts" value={`${displayCurrency}${money(summary.discount_amount)}`} />
+                    <Row name="VATable sales" value={`${displayCurrency}${money(summary.vatable_sales)}`} />
                     <Row name="VAT" value={`${displayCurrency}${money(summary.vat_amount)}`} />
-                    <Row name="Total sales" value={`${displayCurrency}${money(summary.total_amount)}`} strong />
-                    <Row name={`POS voids (${Number(summary.void_transaction_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.void_amount)}`} />
+                    <Row name="VAT-exempt sales" value={`${displayCurrency}${money(summary.vat_exempt_sales)}`} />
+                    <Row name="Zero-rated sales" value={`${displayCurrency}${money(summary.zero_rated_sales)}`} />
+                    <Row name="Overall total" value={`${displayCurrency}${money(summary.total_amount)}`} strong />
+                    <Row name={`POS voids (${Number(summary.void_transaction_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.transaction_void_amount ?? summary.void_amount)}`} />
+                    <Row name={`Item voids (${Number(summary.item_voided_item_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.item_void_amount)}`} />
+                    <Row name="Total voids" value={`${displayCurrency}${money(summary.void_amount)}`} />
+                    <Row name="Refunds" value={`${displayCurrency}${money(summary.refund_amount)}`} />
                 </section>
 
                 {reconciliation ? (
@@ -124,6 +140,28 @@ export default function ZReadingPrintView({
                 </section>
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
+                    <p className="font-black uppercase">Sales source breakdown</p>
+                    {orderSources.length === 0 ? <Row name="No source sales" value="0" /> : orderSources.map((entry) => (
+                        <Row
+                            key={`${entry.order_source}-${entry.count}`}
+                            name={`${entry.order_source === 'online_store' ? 'Online Sales' : 'Walk-in Sales'} (${Number(entry.count || entry.total_transactions || 0).toLocaleString('en-US')})`}
+                            value={`${displayCurrency}${money(entry.amount ?? entry.net_sales)}`}
+                        />
+                    ))}
+                </section>
+
+                <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
+                    <p className="font-black uppercase">Order method breakdown</p>
+                    {orderMethods.length === 0 ? <Row name="No order methods" value="0" /> : orderMethods.map((entry) => (
+                        <Row
+                            key={`${entry.order_method}-${entry.count}`}
+                            name={`${orderMethodLabel(entry.order_method)} (${Number(entry.count || entry.total_transactions || 0).toLocaleString('en-US')})`}
+                            value={`${displayCurrency}${money(entry.amount ?? entry.net_sales)}`}
+                        />
+                    ))}
+                </section>
+
+                <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
                     <p className="font-black uppercase">Delivery provider breakdown</p>
                     {deliveryProviders.length === 0 ? <Row name="No delivery provider sales" value="0" /> : deliveryProviders.map((entry) => (
                         <Row
@@ -138,6 +176,12 @@ export default function ZReadingPrintView({
                     <p className="font-black uppercase">Fiscal counters</p>
                     <Row name="Z counter" value={Number(counters.z_counter || 0).toLocaleString('en-US')} />
                     <Row name="Reset counter" value={Number(counters.reset_counter || 0).toLocaleString('en-US')} />
+                    <Row
+                        name="Lifetime grand total"
+                        value={`${displayCurrency}${money(counters.lifetime_grand_total == null
+                            ? Number(counters.lifetime_grand_total_cents || 0) / 100
+                            : counters.lifetime_grand_total)}`}
+                    />
                 </section>
 
                 {printFailed ? (

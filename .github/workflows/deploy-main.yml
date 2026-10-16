@@ -462,6 +462,10 @@ jobs:
             echo "::error::PROD dispatch must select dgfy-api and dgfy-migration-runner artifact revisions together or omit both."
             exit 1
           fi
+          if [ "${{ inputs.build_api }}" = "true" ] && [ "${API_SELECTED}" != "true" ]; then
+            echo "::error::build_api is selected for this PROD dispatch -- release_revision_api and release_revision_migration_runner are BOTH required whenever build_api is checked (promotion or hotfix), not merely symmetric with each other. Supply both before re-dispatching."
+            exit 1
+          fi
           REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.MIGRATION_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);put('dgfy-opis',process.env.OPIS_R);put('dgfy-admin',process.env.ADMIN_R);console.log(JSON.stringify(m))")"
           if [ "${REVISIONS_JSON}" != "{}" ]; then
             SKIP_ARGS+=(--release-revisions-json "${REVISIONS_JSON}")

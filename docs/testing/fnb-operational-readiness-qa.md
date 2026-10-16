@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-25
+last_reviewed: 2026-10-08
 applies_to: fnb_mode
 topic: fnb_operational_readiness_qa
 ---
@@ -71,9 +71,10 @@ The gate runs:
 The same coverage also runs in CI, automatically, on `to-staging/*`/`release/*`
 promotion PRs specifically (`promotion-quality-gate.yml`, formerly
 `pr-quality-checks.yml`, #1018) — not on every PR into `develop`. CI additionally
-runs the complete backend test matrix, open-handle diagnostics for F&B contracts,
-a fresh migration runner schema smoke test, frontend lint/F&B contract
-tests/builds, the blocking deterministic browser contract (`npm run
+runs the complete backend test matrix, which includes the five F&B Jest suites once
+in its fast tier and runs those suites with `--detectOpenHandles`, a fresh migration
+runner schema smoke test, frontend lint/F&B contract tests/builds, the blocking
+deterministic browser contract (`npm run
 test:e2e:fnb-contract`), required-index auditing, and compatibility-seam
 validation. The browser contract uses a dedicated Playwright configuration that
 starts only the Storefront Vite server;

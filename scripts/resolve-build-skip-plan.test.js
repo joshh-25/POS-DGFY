@@ -434,6 +434,7 @@ test('resolveBuildSkipPlan: PROD candidate maps API r2, migration-runner r5, OPI
 
 test('resolveBuildSkipPlan: explicit legacy shared revision still applies when app map omits the app', async () => {
   const inspectedRefs = [];
+  const apiFloor = JSON.parse(fs.readFileSync(path.join(__dirname, '../apps/dgfy-api/package.json'), 'utf8')).version;
   const plan = await resolveBuildSkipPlan({
     apps: ['dgfy-api'], currentRevision: 'HEAD', environment: 'PROD',
     revision: 'r16', revisionsByApp: { 'dgfy-ims': 'r17' },
@@ -441,7 +442,46 @@ test('resolveBuildSkipPlan: explicit legacy shared revision still applies when a
     diffFn: neverCalled('diffFn'),
   });
   assert.equal(plan['dgfy-api'].code, 'not-published');
-  assert.match(inspectedRefs.find((ref) => ref.endsWith('-r16')), /1\.36\.0-r16$/);
+  assert.match(inspectedRefs.find((ref) => ref.endsWith('-r16')), new RegExp(`${apiFloor.replace(/\./g, '\\.')}-r16$`));
+});
+
+test('resolveBuildSkipPlan: PROD floor alias with no supplied revision and unchanged inputs is reused', async () => {
+  const app = 'dgfy-migration-runner';
+  const image = 'ghcr.io/sieitzz/dgfy-migration-runner';
+  const version = JSON.parse(fs.readFileSync(path.join(__dirname, `../apps/${app}/package.json`), 'utf8')).version;
+  const inspectedRefs = [];
+  const plan = await resolveBuildSkipPlan({
+    apps: [app], currentRevision: 'HEAD', environment: 'PROD',
+    inspectFn: (ref) => {
+      inspectedRefs.push(ref);
+      return ref === `${image}:${version}` ? inspectPublishedAt(EXISTING) : inspectNotFound();
+    },
+    diffFn: () => [],
+  });
+
+  assert.equal(plan[app].code, 'floor-alias-content-equivalent');
+  assert.equal(plan[app].skip, true);
+  assert.deepEqual(inspectedRefs, [`${image}:${version}`]);
+});
+
+test('resolveBuildSkipPlan: PROD floor alias with no supplied revision and changed inputs halts', async () => {
+  const app = 'dgfy-migration-runner';
+  const image = 'ghcr.io/sieitzz/dgfy-migration-runner';
+  const version = JSON.parse(fs.readFileSync(path.join(__dirname, `../apps/${app}/package.json`), 'utf8')).version;
+  const inspectedRefs = [];
+  const plan = await resolveBuildSkipPlan({
+    apps: [app], currentRevision: 'HEAD', environment: 'PROD',
+    inspectFn: (ref) => {
+      inspectedRefs.push(ref);
+      return ref === `${image}:${version}` ? inspectPublishedAt(EXISTING) : inspectNotFound();
+    },
+    diffFn: () => [`apps/${app}/src/migrate.js`],
+  });
+
+  assert.equal(plan[app].code, 'floor-alias-collision');
+  assert.equal(plan[app].haltDispatch, true);
+  assert.equal(plan[app].skip, false);
+  assert.deepEqual(inspectedRefs, [`${image}:${version}`]);
 });
 
 test('resolveBuildSkipPlan: an app whose version cannot be read fails closed instead of throwing', async () => {

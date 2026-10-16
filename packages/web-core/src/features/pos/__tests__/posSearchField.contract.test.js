@@ -11,7 +11,10 @@ const historySource = fs.readFileSync(path.resolve(__dirname, '../components/POS
 const reportsSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsToolbar.jsx'), 'utf8');
 const checkoutSource = fs.readFileSync(path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx'), 'utf8');
 const auditSource = fs.readFileSync(path.resolve(__dirname, '../components/AuditWorkspacePanel.jsx'), 'utf8');
-const itemsSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
+const itemsSource = [
+  '../components/TerminalOperationsWorkspace.jsx',
+  '../components/PosItemsWorkspace.jsx'
+].map((sourcePath) => fs.readFileSync(path.resolve(__dirname, sourcePath), 'utf8')).join('\n');
 const voucherSource = fs.readFileSync(path.resolve(__dirname, '../components/VoucherManagementPanel.jsx'), 'utf8');
 const affiliateListSource = fs.readFileSync(path.resolve(__dirname, '../affiliates/AffiliateListView.jsx'), 'utf8');
 const affiliateCashoutSource = fs.readFileSync(path.resolve(__dirname, '../affiliates/AffiliateCashoutView.jsx'), 'utf8');

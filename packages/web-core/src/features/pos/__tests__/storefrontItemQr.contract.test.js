@@ -16,7 +16,7 @@ vi.mock('qrcode', () => ({
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceSource = fs.readFileSync(
-  path.resolve(testDirectory, '../components/TerminalOperationsWorkspace.jsx'),
+  path.resolve(testDirectory, '../components/PosItemsWorkspace.jsx'),
   'utf8'
 );
 const terminalPageSource = fs.readFileSync(

@@ -124,6 +124,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         day_close_pin_confirmed_at: Object.freeze({
             sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `day_close_pin_confirmed_at` DATETIME NULL"
+        }),
+        reading_payload_hash: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `reading_payload_hash` VARCHAR(64) NULL COMMENT 'SHA-256 of the immutable serialized X/Z reading payload'"
         })
     }),
     pos_transaction_lines: Object.freeze({
@@ -141,6 +144,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         item_discount_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `item_discount_snapshot` JSON NULL COMMENT 'Server-calculated item-specific discount snapshot; global sale discounts remain separate'"
+        }),
+        voided_quantity: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `voided_quantity` DECIMAL(24,12) NOT NULL DEFAULT 0 COMMENT 'Quantity voided from this POS transaction line'"
+        }),
+        voided_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `voided_at` DATETIME NULL COMMENT 'Timestamp of the latest line-level void'"
+        }),
+        voided_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `voided_by` INTEGER NULL COMMENT 'Actor responsible for the latest line-level void'"
+        }),
+        void_reason: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `void_reason` VARCHAR(255) NULL COMMENT 'Reason for the latest line-level void'"
         })
     }),
     items: Object.freeze({
@@ -2221,7 +2236,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `actor_shift_id` int DEFAULT NULL,\n"
             + "  `actor_terminal_id` varchar(100) DEFAULT NULL,\n"
             + "  `actor_location_id` int DEFAULT NULL,\n"
-            + "  `adjustment_type` enum('void','cash_refund','external_refund','provider_refund','employee_credit_reversal') NOT NULL,\n"
+            + "  `adjustment_type` enum('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return') NOT NULL,\n"
             + "  `tender_type` varchar(40) NOT NULL,\n"
             + "  `amount` decimal(14,4) NOT NULL,\n"
             + "  `currency` varchar(3) NOT NULL DEFAULT 'PHP',\n"
@@ -2518,6 +2533,32 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_drawer_handoff_events_fk_incoming_ack` FOREIGN KEY (`incoming_acknowledged_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_drawer_handoff_events_fk_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Created by migration 20261013000002-create-storefront-qr-codes.cjs. QR metadata is
+    // tenant-local and must be repaired for tenants restored or provisioned without the
+    // migration's fan-out table. Its foreign keys reference base tenant tables that are
+    // intentionally not part of this backfill registry.
+    storefront_qr_codes: Object.freeze({
+        sql: "CREATE TABLE `storefront_qr_codes` ("
+            + " `storefront_qr_code_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `public_token` VARCHAR(64) NOT NULL,"
+            + " `location_id` INT NOT NULL,"
+            + " `target_type` VARCHAR(20) NOT NULL DEFAULT 'catalog',"
+            + " `folder_id` INT NULL,"
+            + " `label` VARCHAR(120) NULL,"
+            + " `design` JSON NULL,"
+            + " `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `created_by` INT NULL,"
+            + " `updated_by` INT NULL,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`storefront_qr_code_id`),"
+            + " UNIQUE KEY `uq_storefront_qr_codes_public_token` (`public_token`),"
+            + " KEY `idx_storefront_qr_codes_location_active` (`location_id`,`is_active`),"
+            + " KEY `idx_storefront_qr_codes_target` (`location_id`,`target_type`,`folder_id`),"
+            + " CONSTRAINT `fk_storefront_qr_codes_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE CASCADE ON UPDATE RESTRICT,"
+            + " CONSTRAINT `fk_storefront_qr_codes_folder` FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // Phase 257 (#1318) — secondary item/category memberships. FKs reference
     // `items`/`item_folders`, both base tables never in this registry and
@@ -3134,6 +3175,12 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque','employee_credit') NOT NULL"
         })
     }),
+    pos_transaction_adjustments: Object.freeze({
+        adjustment_type: Object.freeze({
+            enumValues: Object.freeze(['void', 'cash_refund', 'external_refund', 'provider_refund', 'employee_credit_reversal', 'return']),
+            sql: "ALTER TABLE `pos_transaction_adjustments` MODIFY COLUMN `adjustment_type` ENUM('void','cash_refund','external_refund','provider_refund','employee_credit_reversal','return') NOT NULL"
+        })
+    }),
     employee_credit_ledger_entries: Object.freeze({
         entry_type: Object.freeze({
             enumValues: Object.freeze(['grant', 'debit', 'charge', 'repayment', 'reversal', 'adjustment', 'expiration']),
@@ -3166,12 +3213,25 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             enumValues: Object.freeze(['pos_refund', 'force_close_shift', 'pos_void', 'pos_parked_sale_cancel']),
             sql: "ALTER TABLE `business_admin_approval_requests` MODIFY COLUMN `action_type` ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel') NOT NULL"
         })
+    }),
+    // #2335: migration 20261007000001 (PR #2322) widened this enum on the landlord DB only --
+    // queryInterface.changeColumn() never reaches tenant databases (see
+    // apps/dgfy-migration-runner/README.md). This entry is what actually propagates the fix to
+    // every existing tenant, via entrypoint.sh's non-blocking repair-apply step on next restart --
+    // same drift-repair class as pos_transactions.payment_type's 'cheque' widening above. Verified
+    // empirically against every production tenant (52/52) before this fix: all still missing
+    // 'POS_PARKED_SALE'.
+    stock_movements: Object.freeze({
+        reference_type: Object.freeze({
+            enumValues: Object.freeze(['PO', 'JO', 'MANUAL', 'RETURN', 'DO', 'POS', 'POS_PARKED_SALE']),
+            sql: "ALTER TABLE `stock_movements` MODIFY COLUMN `reference_type` ENUM('PO','JO','MANUAL','RETURN','DO','POS','POS_PARKED_SALE') DEFAULT 'MANUAL'"
+        })
     })
 });
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-06.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-15.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

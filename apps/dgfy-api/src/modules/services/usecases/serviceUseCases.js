@@ -34,6 +34,9 @@ const SETTLEABLE_BOOKING_STATUSES = Object.freeze([
     'requested', 'confirmed', 'checked_in', 'in_service', 'completed',
     'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'
 ]);
+// Only pre-fulfillment statuses may move to another appointment slot. A no-show must first be
+// explicitly restored to confirmed through the existing status endpoint.
+const RESCHEDULABLE_BOOKING_STATUSES = Object.freeze(['requested', 'confirmed']);
 
 // Phase 88 of #482 (ADR 0064 decision 4) appended the four round-trip lifecycle values; the
 // original seven are unchanged.
@@ -1157,6 +1160,82 @@ const pendingBookingConflicts = ({
     return false;
 });
 
+const assertBookingScheduleAvailable = async ({
+    serviceRepository,
+    providerUserId,
+    resourceId,
+    locationId,
+    resource,
+    quantity,
+    bufferStartAt,
+    bufferEndAt,
+    excludeBookingId = null,
+    excludeHoldId = null,
+    pendingRequests = [],
+    transaction
+}) => {
+    const persistedConflicts = await serviceRepository.findConflictingBookings({
+        providerUserId,
+        resourceId,
+        locationId,
+        startAt: bufferStartAt,
+        endAt: bufferEndAt,
+        excludeBookingId
+    }, { transaction, lock: true });
+    const persistedHoldConflicts = typeof serviceRepository.findConflictingHolds === 'function'
+        ? await serviceRepository.findConflictingHolds({
+            providerUserId,
+            resourceId,
+            locationId,
+            startAt: bufferStartAt,
+            endAt: bufferEndAt,
+            excludeHoldId
+        }, { transaction, lock: true })
+        : [];
+    const conflicts = [
+        ...persistedConflicts,
+        ...persistedHoldConflicts,
+        ...pendingBookingConflicts({
+            providerUserId,
+            resourceId,
+            locationId,
+            startAt: bufferStartAt,
+            endAt: bufferEndAt,
+            pendingRequests
+        })
+    ];
+    const resourceCapacity = resource ? toPositiveInt(resource.capacity, 1) : 1;
+    const providerConflictCount = providerUserId
+        ? conflicts
+            .filter((booking) => Number(booking.provider_user_id) === Number(providerUserId))
+            .reduce((sum, booking) => sum + bookingQuantity(booking), 0)
+        : 0;
+    const resourceConflictCount = resourceId
+        ? conflicts
+            .filter((booking) => Number(booking.resource_id) === Number(resourceId))
+            .reduce((sum, booking) => sum + bookingQuantity(booking), 0)
+        : 0;
+    const locationConflictCount = (!providerUserId && !resourceId && locationId)
+        ? conflicts.reduce((sum, booking) => sum + bookingQuantity(booking), 0)
+        : 0;
+    const hasCapacityConflict = (providerUserId ? providerConflictCount + quantity > 1 : false)
+        || (resourceId ? resourceConflictCount + quantity > resourceCapacity : false)
+        || ((!providerUserId && !resourceId && locationId) ? locationConflictCount + quantity > 1 : false);
+    if (hasCapacityConflict) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Selected provider, resource, or location is already booked for that time',
+            {
+                statusCode: 409,
+                details: {
+                    conflict_count: conflicts.length,
+                    conflicts: conflicts.slice(0, 5).map(serializeBooking)
+                }
+            }
+        );
+    }
+};
+
 const parseAvailabilityDate = (value) => {
     const raw = String(value || '').trim();
     const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1943,65 +2022,19 @@ const createServiceBookingRecord = async ({
             }
         }
 
-        const persistedConflicts = await serviceRepository.findConflictingBookings({
+        await assertBookingScheduleAvailable({
+            serviceRepository,
             providerUserId,
             resourceId,
             locationId,
-            startAt: bufferStartAt,
-            endAt: bufferEndAt
-        }, { transaction, lock: true });
-        const persistedHoldConflicts = typeof serviceRepository.findConflictingHolds === 'function'
-            ? await serviceRepository.findConflictingHolds({
-                providerUserId,
-                resourceId,
-                locationId,
-                startAt: bufferStartAt,
-                endAt: bufferEndAt,
-                excludeHoldId: excludedHoldId
-            }, { transaction, lock: true })
-            : [];
-        const conflicts = [
-            ...persistedConflicts,
-            ...persistedHoldConflicts,
-            ...pendingBookingConflicts({
-                providerUserId,
-                resourceId,
-                locationId,
-                startAt: bufferStartAt,
-                endAt: bufferEndAt,
-                pendingRequests
-            })
-        ];
-        const resourceCapacity = resource ? toPositiveInt(resource.capacity, 1) : 1;
-        const providerConflictCount = providerUserId
-            ? conflicts
-                .filter((booking) => Number(booking.provider_user_id) === Number(providerUserId))
-                .reduce((sum, booking) => sum + bookingQuantity(booking), 0)
-            : 0;
-        const resourceConflictCount = resourceId
-            ? conflicts
-                .filter((booking) => Number(booking.resource_id) === Number(resourceId))
-                .reduce((sum, booking) => sum + bookingQuantity(booking), 0)
-            : 0;
-        const locationConflictCount = (!providerUserId && !resourceId && locationId)
-            ? conflicts.reduce((sum, booking) => sum + bookingQuantity(booking), 0)
-            : 0;
-        const hasCapacityConflict = (providerUserId ? providerConflictCount + quantity > 1 : false)
-            || (resourceId ? resourceConflictCount + quantity > resourceCapacity : false)
-            || ((!providerUserId && !resourceId && locationId) ? locationConflictCount + quantity > 1 : false);
-        if (hasCapacityConflict) {
-            throw new DomainError(
-                DomainErrorCode.CONFLICT,
-                'Selected provider, resource, or location is already booked for that time',
-                {
-                    statusCode: 409,
-                    details: {
-                        conflict_count: conflicts.length,
-                        conflicts: conflicts.slice(0, 5).map(serializeBooking)
-                    }
-                }
-            );
-        }
+            resource,
+            quantity,
+            bufferStartAt,
+            bufferEndAt,
+            excludeHoldId: excludedHoldId,
+            pendingRequests,
+            transaction
+        });
 
         if (holdOnly) {
             return {
@@ -3203,6 +3236,20 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
             status: 'completed'
         }, { transaction, lock: true });
 
+        if (typeof serviceRepository.createBookingStatusEvents === 'function') {
+            await serviceRepository.createBookingStatusEvents([{
+                booking_id: normalizedBookingId,
+                from_status: booking.status,
+                to_status: 'completed',
+                handoff_leg_id: null,
+                actor_type: 'staff',
+                actor_user_id: normalizedUserId,
+                source: 'pos',
+                reason: null,
+                occurred_at: new Date()
+            }], { transaction });
+        }
+
         const updatedBooking = await serviceRepository.getBookingById(normalizedBookingId, { transaction });
         const settlementTransaction = await serviceRepository.getPosTransactionSnapshotById(transactionId, { transaction });
         await transaction.commit();
@@ -3214,6 +3261,123 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
     } catch (error) {
         if (!transaction.finished) await transaction.rollback();
         return fail(mapError(error, 'Failed to settle service booking'));
+    }
+};
+
+export const buildRescheduleServiceBookingUseCase = ({ serviceRepository }) => async ({
+    bookingId,
+    payload = {}
+} = {}) => {
+    const normalizedBookingId = toPositiveInt(bookingId);
+    if (!normalizedBookingId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'booking_id is required', { statusCode: 422 }));
+    }
+
+    const transaction = await serviceRepository.beginTransaction();
+    try {
+        const booking = await serviceRepository.getBookingById(normalizedBookingId, { transaction, lock: true });
+        if (!booking) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Booking not found', { statusCode: 404 });
+        }
+        if (!RESCHEDULABLE_BOOKING_STATUSES.includes(String(booking.status || ''))) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                `Cannot reschedule a booking with status ${booking.status}`,
+                { statusCode: 409 }
+            );
+        }
+        if (Array.isArray(booking.handoffLegs) && booking.handoffLegs.length > 0) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                'Bookings with handoff legs cannot be rescheduled',
+                { statusCode: 409 }
+            );
+        }
+
+        const currentStartAt = new Date(booking.start_at);
+        const currentEndAt = new Date(booking.end_at);
+        const durationMs = currentEndAt.getTime() - currentStartAt.getTime();
+        if (!Number.isFinite(durationMs) || durationMs <= 0) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'Booking has an invalid schedule', { statusCode: 409 });
+        }
+        const startAt = payload.start_at === undefined ? currentStartAt : parseDate(payload.start_at, 'start_at');
+        const endAt = new Date(startAt.getTime() + durationMs);
+        const detail = booking.serviceItem?.serviceDetail || booking.serviceDetail || {};
+        const leadTimeMs = toNonNegativeInt(detail.lead_time_minutes, 0) * 60 * 1000;
+        if (leadTimeMs > 0 && startAt.getTime() < Date.now() + leadTimeMs) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                `Service requires at least ${detail.lead_time_minutes} minutes lead time`,
+                { statusCode: 409 }
+            );
+        }
+
+        const providerUserId = payload.provider_user_id === undefined
+            ? toPositiveInt(booking.provider_user_id)
+            : toPositiveInt(payload.provider_user_id);
+        const resourceId = payload.resource_id === undefined
+            ? toPositiveInt(booking.resource_id)
+            : toPositiveInt(payload.resource_id);
+        const locationId = toPositiveInt(booking.location_id);
+        const quantity = bookingQuantity(booking);
+        const bufferStartAt = new Date(startAt.getTime() - toNonNegativeInt(detail.buffer_before_minutes, 0) * 60 * 1000);
+        const bufferEndAt = new Date(endAt.getTime() + toNonNegativeInt(detail.buffer_after_minutes, 0) * 60 * 1000);
+
+        let resource = null;
+        if (resourceId) {
+            resource = await serviceRepository.findResourceById(resourceId, { transaction, lock: true });
+            if (!resource || resource.is_active === false) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Selected service resource is not active or does not exist', { statusCode: 404 });
+            }
+            if (locationId && resource.location_id && Number(resource.location_id) !== Number(locationId)) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Selected resource does not belong to the booking location', { statusCode: 409 });
+            }
+            if (isBlackedOut({ startAt, blackoutDates: resource.blackout_dates })) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Selected resource is blacked out for that date', { statusCode: 409 });
+            }
+            if (!isWithinWeeklyAvailability({ startAt, endAt, weeklyAvailability: resource.weekly_availability })) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Selected resource is outside its weekly availability', { statusCode: 409 });
+            }
+        }
+
+        const assignments = await serviceRepository.listActiveAssignmentsForService(booking.service_item_id, { transaction, lock: true });
+        if (assignments.length > 0) {
+            const hasMatchingAssignment = assignments.some((assignment) => {
+                const providerMatches = !providerUserId || !assignment.user_id || Number(assignment.user_id) === Number(providerUserId);
+                const resourceMatches = !resourceId || !assignment.resource_id || Number(assignment.resource_id) === Number(resourceId);
+                const locationMatches = !locationId || !assignment.location_id || Number(assignment.location_id) === Number(locationId);
+                return providerMatches && resourceMatches && locationMatches;
+            });
+            if (!hasMatchingAssignment) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Selected provider, resource, or location is not assigned to this service', { statusCode: 409 });
+            }
+        }
+
+        await assertBookingScheduleAvailable({
+            serviceRepository,
+            providerUserId,
+            resourceId,
+            locationId,
+            resource,
+            quantity,
+            bufferStartAt,
+            bufferEndAt,
+            excludeBookingId: normalizedBookingId,
+            transaction
+        });
+
+        await serviceRepository.updateBookingById(normalizedBookingId, {
+            provider_user_id: providerUserId,
+            resource_id: resourceId,
+            start_at: startAt,
+            end_at: endAt
+        }, { transaction, lock: true });
+        const updatedBooking = await serviceRepository.getBookingById(normalizedBookingId, { transaction });
+        await transaction.commit();
+        return ok({ booking: serializeBooking(updatedBooking) });
+    } catch (error) {
+        if (!transaction.finished) await transaction.rollback();
+        return fail(mapError(error, 'Failed to reschedule service booking'));
     }
 };
 

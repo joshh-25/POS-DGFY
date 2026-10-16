@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 let capturedCategoryDragEnd = null;
 const draggablePointerDown = vi.hoisted(() => vi.fn());
 const draggableKeyDown = vi.hoisted(() => vi.fn());
+const categoryToast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children, onDragEnd }) => {
     capturedCategoryDragEnd = onDragEnd;
@@ -21,6 +22,7 @@ vi.mock('@dnd-kit/core', () => ({
     attributes: {},
     listeners: { onPointerDown: draggablePointerDown, onKeyDown: draggableKeyDown },
     setNodeRef: () => {},
+    setActivatorNodeRef: () => {},
     transform: null,
     isDragging: false
   }),
@@ -51,6 +53,11 @@ vi.mock('@/services/itemService.js', async (importOriginal) => {
   };
 });
 
+vi.mock('@/src/utils/iminRuntimeFeedback.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, posToast: categoryToast };
+});
+
 const buildProps = (overrides = {}) => ({
   viewMode: 'items',
   workflowMode: 'fnb',
@@ -79,7 +86,7 @@ afterEach(() => {
 });
 
 describe('Items category placement', () => {
-  it('renders saved category order with whole-card drag surfaces and disables rearranging during search', async () => {
+  it('keeps reorder controls hidden until reorder mode and disables rearranging during search', async () => {
     getFolders.mockResolvedValue([
       { folder_id: 2, name: 'Drinks', sort_order: 0, is_active: true },
       { folder_id: 1, name: 'Mains', sort_order: 1, is_active: true }
@@ -90,23 +97,34 @@ describe('Items category placement', () => {
     const drinksCard = await screen.findByTestId('pos-category-card-2');
     const mainsCard = screen.getByTestId('pos-category-card-1');
     expect(drinksCard.compareDocumentPosition(mainsCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(drinksCard.getAttribute('aria-label')).toBe('Reorder Drinks');
-    expect(drinksCard.getAttribute('aria-roledescription')).toBe('sortable category');
-    expect(drinksCard.getAttribute('role')).toBe('group');
-    expect(drinksCard.tabIndex).toBe(0);
-    expect(drinksCard.classList.contains('cursor-default')).toBe(true);
-    expect(drinksCard.classList.contains('cursor-grab')).toBe(false);
+    expect(screen.getByRole('list', { name: 'Storefront category priority order' })).toBeTruthy();
+
+    expect(screen.queryByText('Storefront category order')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reorder Drinks, priority 1 of 2' })).toBeNull();
+    const hiddenInstructions = screen.getByText(/When reorder mode is active/);
+    expect(hiddenInstructions.classList.contains('sr-only')).toBe(true);
     const editButtons = screen.getAllByTitle('Edit category Drinks');
-    fireEvent.pointerDown(editButtons[0]);
-    fireEvent.keyDown(editButtons[0], { code: 'Enter' });
+    expect(editButtons[0].disabled).toBe(false);
+    const reorderButton = screen.getByRole('button', { name: 'Reorder categories' });
+    expect(reorderButton.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(reorderButton);
+
+    const drinksHandle = screen.getByRole('button', { name: 'Reorder Drinks, priority 1 of 2' });
+    expect(drinksHandle.classList.contains('enabled:cursor-grab')).toBe(true);
+    expect(drinksCard.classList.contains('cursor-grab')).toBe(false);
+    expect(screen.getByRole('button', { name: 'Done reordering categories' }).getAttribute('aria-pressed')).toBe('true');
+    expect(editButtons[0].disabled).toBe(true);
     expect(draggablePointerDown).not.toHaveBeenCalled();
     expect(draggableKeyDown).not.toHaveBeenCalled();
-    fireEvent.pointerDown(drinksCard);
+    fireEvent.pointerDown(drinksHandle);
+    fireEvent.keyDown(drinksHandle, { code: 'Space' });
     expect(draggablePointerDown).toHaveBeenCalledTimes(1);
+    expect(draggableKeyDown).toHaveBeenCalledTimes(1);
 
     fireEvent.change(screen.getByPlaceholderText('Search Categories'), { target: { value: 'Drink' } });
-    expect(screen.getByTestId('pos-category-card-2').tabIndex).toBe(-1);
-    expect(screen.getByTestId('pos-category-card-2').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.queryByRole('button', { name: 'Reorder Drinks, priority 1 of 2' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Reorder categories' }).disabled).toBe(true);
+    expect(screen.getByText('Clear the search to reorder the full category list.')).toBeTruthy();
   });
 
   it('saves the complete reordered ID list and leaves the optimistic order visible', async () => {
@@ -118,16 +136,40 @@ describe('Items category placement', () => {
     render(<TerminalOperationsWorkspace {...buildProps()} />);
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
     await screen.findByTestId('pos-category-card-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Reorder categories' }));
 
     await capturedCategoryDragEnd({ active: { id: 3 }, over: { id: 1 } });
 
     await waitFor(() => expect(reorderFolders).toHaveBeenCalledWith([3, 1, 2]));
-    const cards = screen.getAllByTestId(/^pos-category-card-/);
-    expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual([
-      'Reorder Desserts',
-      'Reorder Mains',
-      'Reorder Drinks'
+    expect(categoryToast.success).toHaveBeenCalledWith('Category order saved.');
+    const handles = screen.getAllByRole('button', { name: /^Reorder .+, priority/ });
+    expect(handles.map((handle) => handle.getAttribute('aria-label'))).toEqual([
+      'Reorder Desserts, priority 1 of 3',
+      'Reorder Mains, priority 2 of 3',
+      'Reorder Drinks, priority 3 of 3'
     ]);
+    expect(screen.queryByTestId('pos-category-reorder-status')).toBeNull();
+  });
+
+  it('restores the previous order and announces the failure when saving a reorder fails', async () => {
+    getFolders.mockResolvedValue([
+      { folder_id: 1, name: 'Mains', sort_order: 0, is_active: true },
+      { folder_id: 2, name: 'Drinks', sort_order: 1, is_active: true }
+    ]);
+    reorderFolders.mockRejectedValueOnce(new Error('Network unavailable'));
+    render(<TerminalOperationsWorkspace {...buildProps()} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
+    await screen.findByTestId('pos-category-card-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Reorder categories' }));
+
+    await capturedCategoryDragEnd({ active: { id: 2 }, over: { id: 1 } });
+
+    expect(reorderFolders).toHaveBeenCalledWith([2, 1]);
+    expect(categoryToast.success).not.toHaveBeenCalled();
+    expect(categoryToast.error).toHaveBeenCalledWith('Unable to save the category order. The previous order was restored.');
+    expect(screen.getAllByRole('button', { name: /^Reorder .+, priority/ }).map((handle) => handle.getAttribute('aria-label')))
+      .toEqual(['Reorder Mains, priority 1 of 2', 'Reorder Drinks, priority 2 of 2']);
+    expect(screen.queryByTestId('pos-category-reorder-status')).toBeNull();
   });
 
   it('refreshes the authoritative list after a stale reorder instead of keeping a rejected order', async () => {
@@ -152,14 +194,17 @@ describe('Items category placement', () => {
     render(<TerminalOperationsWorkspace {...buildProps()} />);
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
     await screen.findByTestId('pos-category-card-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Reorder categories' }));
 
     await capturedCategoryDragEnd({ active: { id: 3 }, over: { id: 1 } });
 
     await waitFor(() => expect(getFolders.mock.calls.length).toBeGreaterThan(1));
     expect(reorderFolders).toHaveBeenCalledWith([3, 1, 2]);
     expect(screen.queryByTestId('pos-category-card-1')).toBeNull();
-    expect(screen.getAllByTestId(/^pos-category-card-/).map((card) => card.getAttribute('aria-label')))
-      .toEqual(['Reorder Drinks', 'Reorder Desserts']);
+    expect(screen.getAllByRole('button', { name: /^Reorder .+, priority/ }).map((handle) => handle.getAttribute('aria-label')))
+      .toEqual(['Reorder Drinks, priority 1 of 2', 'Reorder Desserts, priority 2 of 2']);
+    expect(categoryToast.error).toHaveBeenCalledWith('Category list changed. Refresh and try again.');
+    expect(screen.queryByTestId('pos-category-reorder-status')).toBeNull();
   });
 
   it('queries the complete server catalog with search, filters, location, and page size', async () => {
@@ -359,7 +404,7 @@ describe('Items category placement', () => {
       canManageFnbModifiers: true
     })} />);
 
-    expect(screen.getByRole('tab', { name: 'Item Options' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Item Options & Modifiers' })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Service add-ons' })).toBeNull();
 
     rerender(<TerminalOperationsWorkspace {...buildProps({
@@ -368,7 +413,7 @@ describe('Items category placement', () => {
       canManageFnbModifiers: true
     })} />);
 
-    expect(screen.queryByRole('tab', { name: 'Item Options' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Item Options & Modifiers' })).toBeNull();
   });
 
   it('shows the online-only explanation without queueing an item draft', async () => {
@@ -406,7 +451,7 @@ describe('Items category placement', () => {
 
     expect((await screen.findAllByTitle('Edit Wash and Fold')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Service catalog entry').length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle('Stock Exempt').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Stock Exempt').length).toBeGreaterThan(0);
     expect(screen.queryByText('Out of Stock')).toBeNull();
     expect(screen.getAllByText('Not tracked').length).toBeGreaterThan(0);
   });

@@ -94,6 +94,7 @@ import {
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryEffects.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
+import { dispatchDgfyOrderSmsAlert } from '../../dgfy/index.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
     isDateWithinStorefrontBusinessHours,
@@ -3154,6 +3155,26 @@ export const buildListStoreCatalogUseCase = ({
                 );
             }
 
+            const qrToken = String(query.qr_token || '').trim();
+            let qrTarget = null;
+            if (qrToken) {
+                const qrResolution = await storeRepository.resolvePublicStorefrontQrCode({
+                    token: qrToken,
+                    requestedLocationId
+                });
+                if (qrResolution.status !== 'resolved') {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        qrResolution.reason_code === 'QR_CODE_BRANCH_MISMATCH'
+                            ? 'This QR code is only available for its assigned branch.'
+                            : 'This QR code is inactive or unavailable.',
+                        { statusCode: 404, details: { reason_code: qrResolution.reason_code || 'QR_CODE_NOT_FOUND' } }
+                    );
+                }
+                qrTarget = qrResolution.qr_code;
+            }
+            const effectiveLocationId = qrTarget?.location_id || requestedLocationId;
+
             const [accessPolicy, paymentCapabilities, paymentMode] = await Promise.all([
                 resolveStorefrontAccessPolicy({ storeRepository }),
                 resolveStorefrontPaymentCapabilities({
@@ -3217,7 +3238,8 @@ export const buildListStoreCatalogUseCase = ({
                 storeRepository.listStoreCatalog({
                     search: query.search,
                     limit: query.limit,
-                    location_id: requestedLocationId
+                    location_id: effectiveLocationId,
+                    folder_id: qrTarget?.target_type === 'category' ? qrTarget.folder_id : null
                 }),
                 attributionEnrollmentId
                     ? resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
@@ -3243,7 +3265,7 @@ export const buildListStoreCatalogUseCase = ({
             const serializedItems = (Array.isArray(items) ? items : [])
                 .filter((item) => hasExplicitSalePrice(item))
                 .map((item) => (
-                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, requestedLocationId, voucherDisplay)
+                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule, effectiveLocationId, voucherDisplay)
                 ));
 
             return ok({
@@ -3258,7 +3280,16 @@ export const buildListStoreCatalogUseCase = ({
                 workflow_mode: workflowMode,
                 enabled_capabilities: enabledCapabilities,
                 payment_capabilities: paymentCapabilitiesWithCash,
-                payment_mode: paymentMode
+                payment_mode: paymentMode,
+                qr_target: qrTarget
+                    ? {
+                        target_type: qrTarget.target_type,
+                        label: qrTarget.label,
+                        location_id: qrTarget.location_id,
+                        folder_id: qrTarget.folder_id,
+                        folder_name: qrTarget.folder?.name || null
+                    }
+                    : null
             });
         } catch (error) {
             if (error instanceof DomainError) {
@@ -3319,6 +3350,44 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                     barcode: null,
                     cart_allowed: false,
                     checkout_allowed: false
+                });
+            }
+
+            if (code.startsWith('DGFYQR_')) {
+                const qrResolution = await storeRepository.resolvePublicStorefrontQrCode({
+                    token: code,
+                    requestedLocationId
+                });
+                if (qrResolution.status !== 'resolved') {
+                    return ok({
+                        status: qrResolution.status,
+                        kind: 'storefront_qr',
+                        reason_code: qrResolution.reason_code || 'QR_CODE_NOT_RESOLVED',
+                        access_policy: accessPolicy,
+                        qr_target: null,
+                        item: null,
+                        barcode: { code, normalized_code: code, source: 'storefront_qr', scope: 'catalog', symbology: 'qr' },
+                        cart_allowed: false,
+                        checkout_allowed: false
+                    });
+                }
+                const qrCode = qrResolution.qr_code;
+                return ok({
+                    status: 'resolved',
+                    kind: 'storefront_qr',
+                    reason_code: null,
+                    access_policy: accessPolicy,
+                    qr_target: {
+                        target_type: qrCode.target_type,
+                        label: qrCode.label,
+                        location_id: qrCode.location_id,
+                        folder_id: qrCode.folder_id,
+                        folder_name: qrCode.folder?.name || null
+                    },
+                    item: null,
+                    barcode: { code, normalized_code: code, source: 'storefront_qr', scope: 'catalog', symbology: 'qr' },
+                    cart_allowed: accessPolicy?.access_capabilities?.cart === true,
+                    checkout_allowed: accessPolicy?.access_capabilities?.checkout === true
                 });
             }
 
@@ -4011,6 +4080,17 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
                 verification_grant_expires_in: 86400
             });
         } catch (error) {
+            if (error?.code === 'EMAIL_OTP_EXPIRED') {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Email verification code is missing or expired.',
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'GUEST_CHECKOUT_OTP_EXPIRED' },
+                        cause: error
+                    }
+                ));
+            }
             return fail(mapStoreUseCaseError(error, 'Failed to verify guest checkout code'));
         }
     };
@@ -4056,6 +4136,7 @@ export const buildExchangeStoreGuestCheckoutGrantUseCase = ({ dgfyCustomerReposi
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
     recordOrderActivity = recordDgfyOrderActivity,
+    dispatchOrderSmsAlert = dispatchDgfyOrderSmsAlert,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -4190,6 +4271,12 @@ export const buildStoreCheckoutUseCase = ({
                     error: error?.message,
                     tracking_pin: existing?.tracking_pin
                 }));
+                await Promise.resolve().then(() => dispatchOrderSmsAlert({
+                    tenantId: normalizedTenantId,
+                    order: existing,
+                    storeCustomer: normalizedStoreCustomer,
+                    event: 'placed'
+                })).catch(() => null);
                 return ok({
                     idempotent_replay: true,
                     order: serializeOrderForCustomer(existing),
@@ -4584,6 +4671,12 @@ export const buildStoreCheckoutUseCase = ({
                 error: error?.message,
                 tracking_pin: created?.tracking_pin
             }));
+            await Promise.resolve().then(() => dispatchOrderSmsAlert({
+                tenantId: normalizedTenantId,
+                order: created,
+                storeCustomer: normalizedStoreCustomer,
+                event: 'placed'
+            })).catch(() => null);
 
             // Best-effort, post-commit: was dormant until a storefront visit set the attribution
             // cookie, now live via the Phase 1 affiliate pricing rule engine (see
@@ -5481,17 +5574,22 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
 };
 
 export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository }) => {
-    return async ({ paymentSessionId }) => {
+    return async ({ paymentSessionId, storeSlug = null, storeCustomer = null }) => {
         try {
             const reference = String(paymentSessionId || '').trim().toUpperCase();
-            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+            if (!/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/.test(reference)) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
             }
             const tenantContext = dbStore.getStore() || {};
             const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
             const session = await commercePaymentRepository.findSessionByPublicReference(reference);
-            if (!session || normalizeTenantIdentifier(session.tenant_id) !== tenantId) {
+            if (!session
+                || normalizeTenantIdentifier(session.tenant_id) !== tenantId
+                || !['store_checkout', 'dglaundry_booking'].includes(session.target_type)) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+            }
+            if (session.target_type === 'dglaundry_booking') {
+                assertStoreCheckoutPaymentSessionAccess({ session, tenantId, storeSlug, storeCustomer });
             }
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
@@ -5503,14 +5601,16 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
 const normalizePaymentSessionStoreSlug = (value) => String(value || '').trim().toLowerCase();
 
 const getPaymentSessionCustomerSnapshot = (session) => (
-    parseObjectValue(session?.checkout_payload)?._verified_store_customer || null
+    parseObjectValue(session?.checkout_payload)?._verified_store_customer
+        || parseObjectValue(session?.checkout_payload)?.customer
+        || null
 );
 
 const assertStoreCheckoutPaymentSessionAccess = ({ session, tenantId, storeSlug, storeCustomer }) => {
     if (
         !session
         || normalizeTenantIdentifier(session.tenant_id) !== tenantId
-        || session.target_type !== 'store_checkout'
+        || !['store_checkout', 'dglaundry_booking'].includes(session.target_type)
         || normalizePaymentSessionStoreSlug(session.store_slug) !== normalizePaymentSessionStoreSlug(storeSlug)
     ) {
         throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
@@ -5518,7 +5618,7 @@ const assertStoreCheckoutPaymentSessionAccess = ({ session, tenantId, storeSlug,
 
     const customerSnapshot = getPaymentSessionCustomerSnapshot(session);
     const expectedCustomerId = parsePositiveInt(customerSnapshot?.customer_id);
-    const expectedDgfyAccountId = String(customerSnapshot?.dgfy_account_id || '').trim();
+    const expectedDgfyAccountId = String(customerSnapshot?.dgfy_account_id || customerSnapshot?.id || '').trim();
     if (!expectedCustomerId && !expectedDgfyAccountId) return;
 
     const actualCustomerId = parsePositiveInt(storeCustomer?.customer_id);
@@ -5556,7 +5656,7 @@ const buildCancellationResponse = (
     cancellation: { outcome, reason_code: reasonCode, reason }
 });
 
-export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository, paymongoService }) => {
+export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository, paymongoService, cancelDglaundryReservation = null }) => {
     return async ({
         paymentSessionId,
         storeSlug = null,
@@ -5567,7 +5667,7 @@ export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentR
     }) => {
         try {
             const reference = String(paymentSessionId || '').trim().toUpperCase();
-            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+            if (!/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/.test(reference)) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
             }
 
@@ -5641,6 +5741,9 @@ export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentR
             });
 
             if (firstStage.kind === 'complete') {
+                if (firstStage.outcome === 'cancelled' && firstStage.session.target_type === 'dglaundry_booking' && cancelDglaundryReservation) {
+                    await cancelDglaundryReservation({ session: firstStage.session, reason: 'CUSTOMER_CANCELLED' });
+                }
                 return buildCancellationResponse(
                     firstStage.session,
                     firstStage.outcome,
@@ -5753,6 +5856,9 @@ export const buildCancelStoreCheckoutPaymentSessionUseCase = ({ commercePaymentR
                 };
             });
 
+            if (secondStage.outcome === 'cancelled' && secondStage.session.target_type === 'dglaundry_booking' && cancelDglaundryReservation) {
+                await cancelDglaundryReservation({ session: secondStage.session, reason: 'CUSTOMER_CANCELLED' });
+            }
             return buildCancellationResponse(
                 secondStage.session,
                 secondStage.outcome,
@@ -5787,7 +5893,7 @@ export const buildReconcileStoreCheckoutPaymentSessionUseCase = ({
             }
 
             const reference = String(paymentSessionId || '').trim().toUpperCase();
-            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+            if (!/^(?:CPS-[A-Z0-9]{10}|DGL-[A-F0-9]{48})$/.test(reference)) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
             }
 

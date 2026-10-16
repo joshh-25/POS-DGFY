@@ -10,6 +10,7 @@ const spacingSource = readPosFile('components/PosPageSpacing.js');
 const pageFrameSource = readPosFile('components/PosPageFrame.jsx');
 const terminalLayoutSource = readPosFile('components/TerminalPageLayout.jsx');
 const operationsWorkspaceSource = readPosFile('components/TerminalOperationsWorkspace.jsx');
+const lineTabNavigationSource = readPosFile('components/PosLineTabNavigation.jsx');
 const historySource = readPosFile('components/POSTransactionHistoryPanel.jsx');
 const reportsSource = readPosFile('components/PosReportsAnalyticsWorkspace.jsx');
 const settingsSource = readPosFile('settings/PosSettingsWorkspace.jsx');
@@ -27,6 +28,20 @@ const affiliateWorkspaceCss = fs.readFileSync(path.resolve(__dirname, '../affili
 const pageScrollCss = fs.readFileSync(path.resolve(__dirname, '../../..', 'index.css'), 'utf8');
 
 describe('POS mobile page spacing contract', () => {
+  it('keeps Shift top spacing aligned with the shared page frame on desktop and mobile', () => {
+    const primaryShiftTabCall = operationsWorkspaceSource.match(/<PosLineTabNavigation([\s\S]*?)\/>/)?.[1] || '';
+    expect(spacingSource).toContain("export const POS_PAGE_FRAME_CLASS = 'px-4 py-4 sm:px-6 sm:py-4';");
+    expect(spacingSource).toContain("export const POS_MOBILE_STICKY_TAB_ROW_CLASS = 'max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-4 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-4';");
+    expect(operationsWorkspaceSource).toContain('page="shift"');
+    expect(operationsWorkspaceSource).toContain('data-testid="pos-shift-sticky-tabs"');
+    expect(operationsWorkspaceSource).toContain('className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}');
+    expect(operationsWorkspaceSource).toContain('className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}');
+    expect(primaryShiftTabCall).toContain('mobileGridColumns={2}');
+    expect(lineTabNavigationSource).toContain("2: 'grid-cols-2'");
+    expect(lineTabNavigationSource).toContain('const mobileGridClass = MOBILE_GRID_CLASSES[mobileGridColumns] ||');
+    expect(terminalLayoutSource).toContain('SHIFT_WORKSPACE_MODES.has(posViewMode)');
+  });
+
   it('keeps the primary page roots on one shared spacing contract', () => {
     expect(spacingSource).toContain("export const POS_PAGE_FRAME_CLASS = 'px-4 py-4 sm:px-6 sm:py-4';");
     expect(spacingSource).not.toContain('POS_PAGE_COMPACT_FRAME_CLASS');
@@ -40,9 +55,10 @@ describe('POS mobile page spacing contract', () => {
     expect(historySource).toContain('<PosPageFrame page="history"');
     expect(reportsSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">');
     expect(settingsSource).toMatch(/<PosPageFrame\s+id=\{sectionId\}\s+page="settings"/);
+    expect(operationsWorkspaceSource).toContain('<PosPageFrame\n      id={sectionId}\n      page="shift"\n      className="max-[767px]:overflow-x-clip"');
     expect(terminalLayoutSource).toContain('const STANDARD_POS_PAGE_FRAME_MODES = new Set([');
+    expect(terminalLayoutSource).toContain('SHIFT_WORKSPACE_MODES.has(posViewMode)');
     expect(terminalLayoutSource).toContain("usesStandardPosPageFrame ? 'p-0' : 'p-2'");
-    expect(operationsWorkspaceSource).toContain('const usesOwnPageFrame = isSettingsView || effectiveViewMode === \'reports\';');
     expect(operationsWorkspaceSource).toContain("const workspaceShellClassName = usesOwnPageFrame\n    ? isAffiliateManagementView\n      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-affiliates-workspace-shell'\n      : 'p-0'");
     expect(terminalLayoutSource).toContain("const isAffiliateWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_affiliates';");
     expect(terminalLayoutSource).toContain("? ' pos-affiliates-workspace-content'");
@@ -53,6 +69,7 @@ describe('POS mobile page spacing contract', () => {
     expect(affiliateSecondaryNavSource).toContain("import { SlidersHorizontal, UsersRound, WalletCards } from 'lucide-react';");
     expect(affiliateSecondaryNavSource).toContain("{ id: 'list', label: 'Affiliates List', icon: UsersRound }");
     expect(affiliateSecondaryNavSource).toContain("{ id: 'cashout', label: 'Cashout', icon: WalletCards }");
+    expect(operationsWorkspaceSource).toContain('const usesOwnPageFrame = isSettingsView\n    || effectiveViewMode === \'reports\'\n    || SHIFT_WORKSPACE_MODES.has(effectiveViewMode);');
     expect(operationsWorkspaceSource).toContain('className={workspaceShellClassName}');
   });
 

@@ -2,10 +2,10 @@
  * Shared spacing contract for the primary POS workspaces.
  *
  * Keep the page frame and major-section rhythm in one place so History,
- * Reports, and Settings do not drift as individual screens evolve. The
+ * Reports, Settings, and Shift do not drift as individual screens evolve. The
  * terminal shell opts these workspaces out of its generic padding so this is
- * the only owner of their page-level gutters. All three use the same standard
- * frame so page spacing stays consistent across responsive breakpoints.
+ * the only owner of their page-level gutters. All use the same standard frame
+ * so page spacing stays consistent across responsive breakpoints.
  */
 export const POS_PAGE_ROOT_CLASS = 'min-w-0 max-w-full overflow-x-hidden';
 export const POS_PAGE_FRAME_CLASS = 'px-4 py-4 sm:px-6 sm:py-4';

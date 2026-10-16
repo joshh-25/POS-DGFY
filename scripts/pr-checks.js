@@ -52,6 +52,7 @@ const { REASON_CODES, evaluateSelfHostedPool, evaluateGithubStatusOutage } = req
 // "Load check:app-versions gate toggle" step -- see that module's own header for why this is a
 // genuine single source of truth, not a hand-kept-in-sync pair.
 const { resolveBlocking: resolveAppVersionsCheckBlocking } = require('./lib/version-bump-gate-toggle');
+const { PATH_FILTERS, resolvePrAppCheckTriggers } = require('./resolve-pr-app-check-triggers');
 
 const repoRoot = path.resolve(__dirname, '..');
 const REPO_SLUG = 'Sieitzz/dgfy-platform';
@@ -65,16 +66,6 @@ const REPO_SLUG = 'Sieitzz/dgfy-platform';
 // Deliberately not ported here -- Android isn't one of the four checks this
 // tool reproduces, and it doesn't gate a develop/staging merge today. Not an
 // oversight (#725 RF-3).
-const PATH_FILTERS = {
-  frontend_ims: /^(apps\/dgfy-ims\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-ims\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
-  frontend_pos: /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
-  frontend_storefront: /^(apps\/dgfy-storefront\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
-  frontend_opis: /^(apps\/dgfy-opis\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-opis\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
-  frontend_admin: /^(apps\/dgfy-admin\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-admin\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
-  dgfy_api: /^(apps\/dgfy-api\/|packages\/shared-constants\/|packages\/tenant-bootstrap\/|infrastructure\/docker\/dgfy-api\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)/,
-  migration_runner: /^(apps\/dgfy-migration-runner\/|packages\/tenant-bootstrap\/|infrastructure\/docker\/dgfy-migration-runner\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)/,
-};
-
 // #1454: NOT part of PATH_FILTERS. PATH_FILTERS is the verbatim port of
 // shared-changed-paths.yml and pr-checks.test.js asserts every entry in it still
 // appears in that workflow -- this filter has no workflow counterpart (no CI job runs
@@ -175,14 +166,13 @@ function parseArgs(argv) {
 
 // --- changed-path detection -------------------------------------------------
 
-function resolveChangedFiles(base, runner = captureStdout) {
+function resolveBaseCommit(base, runner = captureStdout) {
   runner('git', ['fetch', '--no-tags', '--prune', '--depth=200', 'origin', base], { allowFail: true });
   const mergeBase = runner('git', ['merge-base', 'HEAD', `origin/${base}`], { allowFail: true });
   if (!mergeBase) {
     throw new PrChecksError('NO_MERGE_BASE', `Could not compute a merge-base against origin/${base}. Is it fetched?`);
   }
-  const diff = runner('git', ['diff', '--name-only', mergeBase, 'HEAD'], { allowFail: true });
-  return splitLines(diff);
+  return mergeBase;
 }
 
 function detectComponents(changedFiles) {
@@ -552,7 +542,7 @@ function postComment(prNumber, body, deps = {}) {
 
 // --- main -----------------------------------------------------------------
 
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2));
 
   if (!options.pr) {
@@ -569,13 +559,25 @@ function main() {
   }
   const headSha = (prJson && prJson.headRefOid) || captureStdout('git', ['rev-parse', 'HEAD']);
 
-  const changedFiles = resolveChangedFiles(options.base);
-  const components = detectComponents(changedFiles);
+  const baseGitRef = resolveBaseCommit(options.base);
+  const routing = await resolvePrAppCheckTriggers({
+    baseGitRef,
+    headGitRef: 'HEAD',
+    baseBranchName: options.base,
+    headBranchName: options.headRefName,
+    optimizeVersionOnly: true,
+  });
+  const changedFiles = routing.changedFiles;
+  const components = routing.components;
 
   console.log(`[pr-checks] tier=${options.tier} base=${options.base} head=${options.headRefName || '<unresolved>'} pr=${options.pr || '<unresolved>'} sha=${headSha}`);
   console.log(`[pr-checks] components: frontend_ims=${components.frontend_ims} frontend_pos=${components.frontend_pos} frontend_storefront=${components.frontend_storefront} dgfy_api=${components.dgfy_api} migration_runner=${components.migration_runner}`);
 
   const checks = runChecks(options, changedFiles, components);
+  if (routing.metadataApps.length > 0) {
+    const metadataResult = runCommand('node', ['scripts/assert-version-only-build-metadata.js', '--apps', routing.metadataApps.join(',')]);
+    addCheck(checks, 'version-only frontend metadata proof', `node scripts/assert-version-only-build-metadata.js --apps ${routing.metadataApps.join(',')}`, metadataResult.ok ? 'pass' : 'fail');
+  }
   const overallResult = computeOverallResult(checks);
 
   const unavailability = classifyCiUnavailability({ headSha, thresholdMinutes: options.thresholdMinutes, nowMs: Date.now() });
@@ -613,7 +615,10 @@ function main() {
 
 if (require.main === module) {
   try {
-    main();
+    main().catch((error) => {
+      console.error(`[pr-checks] ${error.code || 'FAILED'}: ${error.message}`);
+      process.exitCode = 1;
+    });
   } catch (error) {
     console.error(`[pr-checks] ${error.code || 'FAILED'}: ${error.message}`);
     process.exitCode = 1;

@@ -94,6 +94,11 @@ statement ADR 0082 Decision 6 requires for this path. `production_commit` stays 
 lifecycle Decision 8 defines for an ordinary promotion, since the real `main` merge-commit SHA does
 not exist until after this PR merges.
 
+If the pre-dispatch check below reports `floor-alias-collision` for the paired backend, bump that
+app's package floor in this hotfix and list its new version alongside the app you intentionally
+changed. If it reports `floor-alias-content-equivalent`, keep the paired app's current production
+version in the table, consistent with ADR 0082 Decision 4.
+
 A hotfix branch does not match `check:release-notes`'s `release/<candidate_id>-rN` pattern (Phase
 296), so it exits 0 ("not applicable") for this PR — this procedural step is what actually satisfies
 ADR 0082 Decision 3's binding no-record rule here today, not a script gate, until ADR 0082 Follow-up
@@ -147,10 +152,14 @@ manual path carries its own issue-backed authorization for reaching `main` direc
 grants no autonomous capability and does not relax the autonomous monitor-triggered loop, which
 remains actively-incident-only.
 
-**Trigger precision (#861 gap 1).** Two distinct paths, not one:
+**Trigger precision (#861 gap 1, extended for Planner handoffs).** Three distinct paths:
 
 - **Explicit `/hotfix` invocation** — proceed directly into the procedure below. Typing the command
   is itself the confirmation; no further check-in before branching.
+- **A `ready` Planner artifact with operator-marked `execution_route: hotfix`** — treat the
+  recorded operator instruction as the explicit invocation and proceed through the same manual
+  procedure. The Worker validates the route and live issue; do not ask the operator to repeat the
+  recorded choice.
 - **A free-text message that merely sounds hotfix-shaped** ("prepare a hotfix for X", "we need an
   emergency fix"), with no `/hotfix` actually given — **propose only.** State what invoking
   `/hotfix` would do (which base branch per the rule below, whether an incident ticket already
@@ -158,29 +167,61 @@ remains actively-incident-only.
   mirrors the description above ("never self-activates from urgency alone") and every other role in
   the roster — none auto-fires implementation from a detected phrase alone.
 
+Planner handoffs carry `execution_route`, `target_branch`, and `hotfix`; their valid pairs are
+`develop`/`develop`, `hotfix`/`main`, and `hotfix`/`staging`, as defined in
+`docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`.
+
 **Procedure once triggered:**
 
-1. **Ticket first — the manual eligibility test (#2006).** Search for an existing open issue
+1. **Ticket first — the main-hotfix eligibility test (#2006).** Search for an existing open issue
    (`gh issue list --search`, ≥2 framings — `pm`'s own search-before-filing discipline). If none
    exists, hand off to `pm` to file one now, before any branch is cut — the same "pm files an
    incident ticket" step the monitor path already does, just manually sourced instead of
-   signal-sourced. The open issue must record all four: the affected production or
-   production-relevant behavior; why waiting for the next scheduled promotion is unacceptable;
-   the expected harm or risk from delay; and timing context (when discovered or deployed, when
-   the next promotion is expected). A missing open issue, or a missing explicit `/hotfix`
-   invocation, stops this path — propose only, per the trigger precision above. **No same-day
-   discovery or same-day fix requirement applies** — a defect discovered days after deployment
-   can still qualify when this necessity test is met. #2005 is the calibration reference for
+   signal-sourced. For a `main` target, the open issue must record all four: the affected production
+   or production-relevant behavior; why waiting for the next scheduled promotion is unacceptable;
+   the expected harm or risk from delay; and timing context (when discovered or deployed, when the
+   next promotion is expected). The Planner may already have recorded those facts in the ready
+   artifact; the Worker revalidates them against the live issue rather than asking the operator to
+   repeat them. For a `staging` target, the issue and recorded target rationale must support that
+   the fix can safely ride the next promotion; the four-fact direct-main test does not apply. A
+   missing open issue, or a request with neither an explicit `/hotfix` invocation nor a qualifying
+   ready artifact, stops this path — propose only, per the trigger precision above. **No same-day
+   discovery or same-day fix requirement applies to a `main` hotfix** — a defect discovered days
+   after deployment can still qualify when its four eligibility facts establish the need. #2005 is
+   the calibration reference for
    this rule and stays on its normal `develop` flow; it is not rerouted here.
 2. **Choose the base branch — a concrete rule, not a vibe (#861 gap 3, relaxed #2006):**
    - `main` — when the open issue documents that the fix cannot reasonably wait for the next
      scheduled promotion, and the proposed fix is narrow, reviewable, and suitable for direct
-     release. Explicit `/hotfix` plus that open issue is the manual authorization; no separate
-     autonomous-incident phrase is required for this manual path.
+     release. An explicit `/hotfix` invocation plus that open issue, or a qualifying
+     operator-marked ready Planner artifact plus that open issue, is the manual authorization; no
+     separate autonomous-incident phrase is required for this manual path.
    - `staging` — the fix is real but can safely ride the next ordinary `staging → main` promotion
      instead of jumping the queue.
    - If genuinely unclear which applies, ask — this is a judgment call, not something to guess
      silently.
+
+   **`build_api` pairing consequence for a `main` hotfix with no staging leg.** `build_api` always
+   rebuilds `dgfy-api` and `dgfy-migration-runner` as one paired unit, even when this hotfix only
+   touches one of them. On the ordinary `develop → staging → main` flow this is invisible — the
+   untouched partner reuses its STAGING-built revision. A direct `main` hotfix has no STAGING leg, so
+   there is nothing to reuse: if the untouched app's tracked build inputs have drifted at all since
+   its floor alias was published, `resolve-build-plan`'s floor-alias preflight
+   (`scripts/resolve-build-skip-plan.js`) will correctly halt the dispatch, asking you to bump that
+   app's `package.json` patch version first.
+
+   **Prerequisite: GHCR read access.** The command below inspects GHCR tags directly (`docker
+   buildx imagetools inspect`), which needs an authenticated session with `read:packages` scope. On
+   an auth/403 error, run `gh auth refresh -h github.com -s read:packages` once, then retry.
+   **Run the same check locally before dispatching:**
+   ```bash
+   node scripts/resolve-build-skip-plan.js --revision <hotfix-sha> --environment PROD \
+     --apps dgfy-api,dgfy-migration-runner \
+     --release-revisions-json '{"dgfy-api":"<api-rN>","dgfy-migration-runner":"<migration-runner-rN>"}'
+   ```
+   If `dgfy-migration-runner` resolves to `floor-alias-collision`, bump its `package.json` patch
+   version in this same hotfix PR (ADR 0081 Decision 6's hotfix-is-patch-only rule) before opening it.
+
 3. **Hand off to `implement`** to branch off the chosen base (never off `develop` for a direct-main
    prod fix — `develop` doesn't reach `main` on this timeline), fix, commit, and open the PR — same
    as the monitor path. If the base is `main`, this PR also carries the release-note obligation
@@ -306,7 +347,7 @@ reason" — none of these are silently assumed away:
 | Any live-server action beyond a workflow dispatch (SSH, `docker logs`, manual restart) | **Stop.** No capability exists (gap 2 above) |
 | 2nd remediation attempt fails | **Stop.** No rollback exists (gap 3 above) — escalate to Pat, don't attempt a 3rd fix |
 | Merging the hotfix into `main` | **Stop, unless** the explicit-phrase override (above) is given in this exact moment. Restate the rule, log the override, then act — never silently |
-| Explicit `/hotfix` invocation | Unattended — proceed straight into the manual-entry procedure above |
+| Explicit `/hotfix` invocation or qualifying ready Planner artifact | Unattended — proceed straight into the manual-entry procedure above |
 | A free-text message sounds hotfix-shaped but `/hotfix` was not actually given | **Stop.** Propose invoking `/hotfix` (state the base-branch choice and ticket status) and wait for explicit confirmation — never branch or write code from detection alone |
 | Opening the back-port PR into `develop` after a `main` hotfix | Unattended — an ordinary `develop`-based PR, same tier as any `implement`/`promoter` branch-cut PR |
 | The first live run of this role | Report-only regardless of outcome, same calibration as every other role in this roster — this governs the very first invocation whether it arrives via the monitor loop or via `/hotfix`; `/hotfix` gets no separate first-use exemption |

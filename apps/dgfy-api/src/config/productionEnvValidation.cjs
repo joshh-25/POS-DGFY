@@ -1,5 +1,5 @@
 const VALID_PROFILES = new Set(['shared', 'vps']);
-const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET', 'POS_OPERATOR_AUTHORITY_SECRET'];
+const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET', 'POS_OPERATOR_AUTHORITY_SECRET', 'SMS_PHONE_HASH_SECRET'];
 const PLACEHOLDER_PATTERN = /(change[_-]?this|change[_-]?me|replace[_-]?with|placeholder|your[_-]?|example\.com|xxxx|dummy|sample)/i;
 const DEFAULT_ADMIN_USERNAME = 'skupervisor';
 const DEFAULT_ADMIN_PASSWORD_HASH = '$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK';
@@ -67,6 +67,9 @@ const validateSecrets = (env, errors, keys = SECRET_KEYS) => {
     if (PLACEHOLDER_PATTERN.test(value)) {
       errors.push(`${key} must not use a placeholder value`);
     }
+  }
+  if (String(env?.NODE_ENV || '').trim().toLowerCase() === 'production' && !hasValue(env, 'SMS_PHONE_HASH_SECRET')) {
+    addMissing(errors, 'SMS_PHONE_HASH_SECRET');
   }
 };
 
@@ -237,15 +240,24 @@ const validatePayPalConfig = (env, errors) => {
 
 const validateDglaundryProviderConfig = (env, errors) => {
   if (!isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) return;
+  if (String(env.NODE_ENV || '').trim().toLowerCase() !== 'production') {
+    errors.push('DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory');
+  }
   if (String(env.DGLAUNDRY_SIGNATURE_PROFILE || '').trim() !== 'http-message-signatures-v1') {
     errors.push('DGLAUNDRY_SIGNATURE_PROFILE must be http-message-signatures-v1 when the hosted integration is enabled');
   }
   if (!hasValue(env, 'REDIS_URL')) errors.push('DGLAUNDRY_INTEGRATION_ENABLED requires REDIS_URL for durable partner-request replay protection');
-  for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_AUDIENCE']) {
+  for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_PARTNER_APP_ID', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID', 'DGLAUNDRY_INTEGRATION_KEY_ID', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_AUDIENCE']) {
     if (!hasValue(env, key)) addMissing(errors, key);
   }
+  if (!hasValue(env, 'DGFY_OIDC_PUBLIC_KEY_FILE') && !hasValue(env, 'DGFY_OIDC_PUBLIC_KEY')) {
+    errors.push('Missing required environment value: DGFY_OIDC_PUBLIC_KEY_FILE (or DGFY_OIDC_PUBLIC_KEY)');
+  }
+  if (!hasValue(env, 'DGFY_DGLAUNDRY_CLIENT_SECRET_FILE') && !hasValue(env, 'DGFY_DGLAUNDRY_CLIENT_SECRET')) {
+    errors.push('Missing required environment value: DGFY_DGLAUNDRY_CLIENT_SECRET_FILE (or DGFY_DGLAUNDRY_CLIENT_SECRET)');
+  }
   if (!hasValue(env, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY') && !hasValue(env, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE')) addMissing(errors, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE (or DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY)');
-  if (!hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE (or DGLAUNDRY_INTEGRATION_PUBLIC_KEY)');
+  if (!hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON') && !hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON (or DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE)');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE (or DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY)');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_SIGNING_KEY_ID')) addMissing(errors, 'DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
@@ -258,8 +270,11 @@ const validateDglaundryProviderConfig = (env, errors) => {
     errors.push('DGLaundry staging integration requires PAYMONGO_MODE=test; live PayMongo is forbidden in staging');
   }
   const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
-  if (redirect !== 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback') {
-    errors.push('DGFY_DGLAUNDRY_REDIRECT_URI must be the registered HTTPS DGLaundry callback');
+  const expectedRedirect = integrationEnvironment === 'staging'
+    ? 'https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback'
+    : 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+  if (integrationEnvironment && redirect !== expectedRedirect) {
+    errors.push(`DGFY_DGLAUNDRY_REDIRECT_URI must be ${expectedRedirect} for ${integrationEnvironment}`);
   }
   if (!hasValue(env, 'DGFY_OIDC_ISSUER')) errors.push('DGFY_OIDC_ISSUER must be explicit for each hosted environment; do not inherit the production issuer in staging');
   const expectedIssuer = integrationEnvironment === 'staging' ? 'https://api.stage.dgfy.ph/oidc' : 'https://api.dgfy.ph/oidc';
@@ -423,6 +438,20 @@ const validatePaymentConfig = (env, errors, warnings) => {
   }
 };
 
+const validateSentryConfig = (env, warnings) => {
+  const hasBackendDsn = hasValue(env, 'SENTRY_BACKEND_DSN') || hasValue(env, 'SENTRY_DSN');
+  if (!hasBackendDsn) return;
+
+  if (!isTruthy(env.SENTRY_ENABLED)) {
+    warnings.push('A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry');
+    return;
+  }
+
+  if (!hasValue(env, 'SENTRY_ENVIRONMENT')) {
+    warnings.push('SENTRY_ENABLED=true but SENTRY_ENVIRONMENT is empty; events will be filed under "unknown"');
+  }
+};
+
 const validateProductionEnv = ({ env = process.env, profile = null, strictProduction = false } = {}) => {
   const errors = [];
   const warnings = [];
@@ -432,6 +461,19 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
 
   if (!isProduction && !strictProduction) {
     validateSecrets(env, warnings);
+    if (isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) {
+      errors.push('DGLAUNDRY hosted integration requires NODE_ENV=production so Redis-backed state and replay checks cannot fall back to process memory');
+    }
+    if (errors.length > 0) {
+      return {
+        ok: false,
+        shouldFail: true,
+        errors,
+        warnings,
+        profile: normalizedProfile,
+        isProduction: false
+      };
+    }
     if (BASE_REQUIRED_KEYS.some((key) => !hasValue(env, key))) {
       warnings.push('Production environment validation is warning-only outside NODE_ENV=production');
     }
@@ -455,6 +497,7 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
   validateRateLimits(env, errors);
   validateProfilePolicy({ profile: normalizedProfile, env, errors });
   validatePaymentConfig(env, errors, warnings);
+  validateSentryConfig(env, warnings);
   validateDglaundryProviderConfig(env, errors);
 
   if (normalizedNodeEnv && normalizedNodeEnv !== 'production') {

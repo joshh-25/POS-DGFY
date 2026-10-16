@@ -134,6 +134,7 @@ bun.lock
 # certbot certs -- includes dev-certs/generate.sh's self-signed output, which
 # now lands under data/certbot/conf/live/ instead of dev-certs/ itself)
 /infrastructure/docker/data/
+/infrastructure/docker/secrets/
 
 # Ignore .env files, which may contain secrets. See
 .env
@@ -148,6 +149,14 @@ bun.lock
 /android/**/.kotlin/
 /android/**/build/
 /android/**/local.properties
+
+# Legacy standalone POS Android caches and build products.
+/Standalone POS/.gradle/
+/Standalone POS/**/build/
+/Standalone POS/app/src/main/assets/index.android.bundle
+
+# Local temporary artifacts.
+/tmp/
 
 # Migration runner report output (apps/dgfy-migration-runner local invocations)
 /tmp/dgfy-migration-reports/

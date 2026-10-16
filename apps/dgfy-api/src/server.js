@@ -30,7 +30,7 @@ import requestOutcomeLogger from './middleware/requestOutcomeLogger.js';
 import { metricsMiddleware } from './middleware/metricsMiddleware.js';
 import csrfProtection from './middleware/csrfProtection.js';
 import logger from './config/logger.js';
-import { generalLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
+import { generalLimiter, oidcLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
 import { initCleanupJob } from './services/cleanupService.js';
 import { verifyConnection as verifyEmailConnection, isEmailConfigured } from './services/emailService.js';
@@ -59,6 +59,10 @@ import {
   stopBusinessAdminAlertScheduler
 } from './schedulers/businessAdminAlertScheduler.js';
 import {
+  startSmsDeliveryRetentionScheduler,
+  stopSmsDeliveryRetentionScheduler
+} from './schedulers/smsDeliveryRetentionScheduler.js';
+import {
   startGeoInventoryWorker,
   stopGeoInventoryWorker
 } from './workers/geoInventoryWorker.js';
@@ -79,6 +83,7 @@ import {
   startPosBulkImageImportWorker,
   stopPosBulkImageImportWorker
 } from './workers/posBulkImageImportWorker.js';
+import { startDglaundryOutboxWorker, stopDglaundryOutboxWorker } from './workers/dglaundryOutboxWorker.js';
 import { ITEM_IMAGE_GENERATION_ENABLED, requireItemImageGenerationConfig } from './config/itemImageFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
@@ -93,6 +98,7 @@ import {
   stopStorefrontDomainMaintenanceScheduler
 } from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
 import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
+import { resolvePartnerCorsOrigin } from './modules/partnerIdentity/services/partnerOriginResolver.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 
@@ -210,6 +216,10 @@ if (isProduction) {
   if (validation.shouldFail) {
     logger.error(formatValidationFailure(validation));
     process.exit(1);
+  }
+
+  for (const warning of validation.warnings) {
+    logger.warn(warning);
   }
 
   const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'];
@@ -343,6 +353,17 @@ const resolveCorsAllowed = async (origin, req = {}) => {
 const corsOptionsDelegate = async (req, callback) => {
   const origin = req.headers.origin || null;
   const allowed = await resolveCorsAllowed(origin, req);
+
+  if (!allowed && await resolvePartnerCorsOrigin(origin, req).catch(() => false)) {
+    callback(null, {
+      origin: true,
+      credentials: false,
+      methods: ['GET', 'HEAD', 'OPTIONS'],
+      optionsSuccessStatus: 200,
+      exposedHeaders: ['Content-Disposition', 'Content-Length', 'x-request-id', 'x-trace-id']
+    });
+    return;
+  }
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
@@ -755,14 +776,14 @@ import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
 import registrationRoutes from './routes/registration.js';
 import dgfyLaundryRoutes from './routes/dgfyLaundry.js';
-import dgfyLaundryOidcRoutes from './routes/dgfyLaundryOidc.js';
+import oidcRoutes from './routes/oidc.js';
 import dgfyLaundryOrderRoutes from './routes/dgfyLaundryOrders.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use(dgfyLaundryOrderRoutes);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/partners/dglaundry', dgfyLaundryRoutes);
-app.use('/oidc', dgfyLaundryOidcRoutes);
+app.use('/oidc', oidcLimiter, oidcRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
 app.use('/api/v1/geo', routeCalculatorRoutes);
 // Public - no tenant context needed, called before any tenant exists (all
@@ -802,14 +823,20 @@ import fnbRoutes from './routes/fnb.js';
 import hospitalityRoutes, { hospitalityStorefrontRoutes } from './routes/hospitality.js';
 import salesRoutes from './routes/sales.js';
 import tenantLocationRoutes from './routes/tenantLocations.js';
+import storefrontQrCodeRoutes from './routes/storefrontQrCodes.js';
 import storeRoutes from './routes/store.js';
 import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
+import adminTenantIntakeRoutes from './routes/adminTenantIntake.js';
 import platformAdminRoutes from './routes/platformAdmins.js';
+import partnerIntegrationRoutes from './routes/partnerIntegrations.js';
+import partnerAttachmentRoutes from './routes/partnerAttachments.js';
+import smsMarketingConsentRoutes from './routes/smsMarketingConsent.js';
 import adminInvoiceRoutes from './routes/adminInvoices.js';
 import adminTemplateRoutes from './routes/adminTemplates.js';
 import adminRegistrationIndustryRoutes from './routes/adminRegistrationIndustries.js';
+import adminContactInquiriesRoutes from './routes/adminContactInquiries.js';
 import complianceRoutes from './routes/compliance.js';
 import onboardingRoutes from './routes/onboarding.js';
 import businessAdminRoutes from './routes/businessAdmin.js';
@@ -843,6 +870,7 @@ app.use('/api/v1/fnb', fnbRoutes);
 app.use('/api/v1/hospitality', hospitalityRoutes);
 app.use('/api/v1/sales', salesRoutes);
 app.use('/api/v1/tenant-locations', tenantLocationRoutes);
+app.use('/api/v1/storefront-qr-codes', storefrontQrCodeRoutes);
 app.use('/api/v1/store/hospitality', hospitalityStorefrontRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
@@ -855,12 +883,17 @@ app.use('/api/v1/commerce-payments', commercePaymentRoutes);
 app.use('/api/v1/tenant-revenue', tenantRevenueRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
+app.use('/api/v1/admin/tenant-intake', adminTenantIntakeRoutes);
 app.use('/api/v1/admin/platform-admins', platformAdminRoutes);
+app.use('/api/v1/admin/partner-integrations', partnerIntegrationRoutes);
 app.use('/api/v1/admin/invoices', adminInvoiceRoutes);
 app.use('/api/v1/admin/templates', adminTemplateRoutes);
 app.use('/api/v1/admin/registration-industries', adminRegistrationIndustryRoutes);
+app.use('/api/v1/admin/contact-inquiries', adminContactInquiriesRoutes);
 
 app.use('/api/v1/admin', adminAuthRoutes);
+app.use('/api/v1/partner-attachments', partnerAttachmentRoutes);
+app.use('/api/v1/sms', smsMarketingConsentRoutes);
 app.use('/api/v1/compliance', complianceRoutes);
 app.use('/api/v1/onboarding', onboardingRoutes);
 app.use('/api/v1/business-admin', businessAdminRoutes);
@@ -995,10 +1028,12 @@ const startServer = async () => {
     startStorefrontDiscoveryIndexReconciliationScheduler();
     startTenantProvisioningReconciliationScheduler();
     startBusinessAdminAlertScheduler();
+    startSmsDeliveryRetentionScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
     startPosBulkImageImportWorker();
+    if (process.env.DGLAUNDRY_OUTBOX_ENABLED !== 'false') startDglaundryOutboxWorker();
 
     // Batch menu import worker — gated on its own flag (like geo inventory
     // above, its tick() no-ops whenever Redis isn't connected, so it's safe
@@ -1085,6 +1120,7 @@ const startServer = async () => {
       stopStorefrontDiscoveryIndexReconciliationScheduler();
       stopTenantProvisioningReconciliationScheduler();
       stopBusinessAdminAlertScheduler();
+      stopSmsDeliveryRetentionScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       if (MENU_IMPORT_BATCH_ENABLED) {
@@ -1095,6 +1131,7 @@ const startServer = async () => {
       }
       stopCatalogImageUploadWorker();
       stopPosBulkImageImportWorker();
+      await stopDglaundryOutboxWorker();
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection

@@ -3,7 +3,7 @@ status: amended
 authority_level: architecture
 owner: dgfy-platform
 date: 2026-08-30
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-10
 review_by: 2027-02-28
 applies_to: dgfy_dglaundry_integration
 topic: dglaundry_external_runtime_and_provider_contract
@@ -73,6 +73,40 @@ review but never proves hosted or production readiness.
 
 ## Amendments
 
+### 2026-10-08 — Runtime attestation and qualification probes (#2306)
+
+Issue [#2306](https://github.com/Sieitzz/dgfy-platform/issues/2306) adds an admin-gated signed
+runtime attestation, operator-generated signed event specimens, and staging-only payment-lifecycle
+probes for one reserved DGLaundry booking. Readiness fields are derived from current runtime
+configuration and checks; client-registration readiness fails closed while registration state
+cannot be queried. The probes require the reserved order identity, active mapped company/location,
+and test-mode PayMongo for expiry/refund. Fixture creation uses the existing booking/payment flow,
+and probe delivery reuses existing DGLaundry outbox, expiry, and refund behavior.
+
+The attestation signs canonical JSON bytes directly with the existing DGFY Ed25519 event key.
+This is a proposed document-signature envelope pending confirmation against DGLaundry's validator.
+The probe route and response contract was posted to #2306 for provider confirmation and is also
+pending. `publicAdmission` and `testAdmission` are best-effort mappings pending validator review.
+Local implementation does not establish deployed readiness or hosted validator acceptance.
+
+### 2026-10-07 — Persist DGFY-origin delivery and operator recovery
+
+Issue [#2310](https://github.com/Sieitzz/dgfy-platform/issues/2310) implements Decision 6's
+durability requirement on the DGFY side. Outbound provider operations retain an immutable,
+company/location-scoped intent before transport, reuse operation/event identity across retries,
+and use landlord MySQL leases with bounded retries. Foreground delivery and background delivery
+share the same signed transport implementation; credentials and signed headers are regenerated per
+attempt. Exhausted operations remain inspectable and require an audited owner/admin redrive.
+
+Inbound event signature nonces are claimed atomically in shared Redis only after digest, signature,
+and timestamp verification. The accepted signature lifetime is bounded to 300 seconds and claims
+remain through the final accepted second. Redis unavailability fails closed. Operator dead-letter
+inspection is scoped to the caller's accepted owner/admin membership and an active mapped
+company/location; stored payloads and guest tracking capabilities are never returned.
+
+This amendment records operational semantics under the existing, untagged Decision 6. It does not
+claim exactly-once transport: provider idempotency remains required for safe at-least-once delivery.
+
 ### 2026-10-07 — Ratify `laundry` as the #518 engine classification; widen `external`'s documented meaning; adopt the contract of record
 
 Issue [#518](https://github.com/Sieitzz/dgfy-platform/issues/518) ("Decide the sibling-app
@@ -101,3 +135,19 @@ a non-binding document.
   contract a partner developer codes against, addressing issue #519's "write the contract down"
   requirement. It restates and verifies this ADR's decisions against current source; this ADR
   remains the architectural authority, the contract document is the implementation-level detail.
+
+### 2026-10-10 — Generic partner contract and `laundry` engine shape (#803)
+
+- Clause amended: Decision 1 and the 2026-10-07 rule that every future `external` shape must be
+  named (`default`).
+- Change: the generic [Third-Party Partner Contract](../../api/THIRD_PARTY_PARTNER_CONTRACT.md)
+  defines `external` authority as a per-location attachment attribute, not a new workflow mode.
+  The existing `laundry` mode remains the DGLaundry-owned operational-engine shape: DGLaundry owns
+  its operational engine, while DGFY retains the storefront and DGFY-origin payment responsibilities
+  already stated here. The DGLaundry-specific contract remains authoritative for that integration;
+  its legacy claim, routes, and environment client triple are compatibility seams until #2311 proves
+  generic replacement and ADR 0035 removal criteria pass. The generic contract is reference while
+  proposed ADR 0093 awaits approval.
+- Reason: answer the required generic polarity without rewriting the DGLaundry-specific runtime or
+  authorizing another hard-coded workflow mode.
+- See: ADR 0035, ADR 0093, #803, and #2311.
