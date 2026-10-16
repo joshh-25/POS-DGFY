@@ -10,6 +10,27 @@ const positiveInt = (value) => {
 const plain = (value) => value?.get ? value.get({ plain: true }) : value;
 const now = () => new Date();
 const normalizeKey = (value, fallback) => String(value || fallback).trim().slice(0, 120);
+const ADMINISTRATIVE_SHIFT_CLOSE_MODES = new Set([
+    'business_admin_override',
+    'master_admin_override',
+    'master_admin_stale_recovery'
+]);
+
+const resolveShiftCloseContext = ({ authorization = {}, payload = {} } = {}) => {
+    const mode = String(authorization?.authorization_mode || authorization?.mode || '').trim();
+    const reason = String(
+        authorization?.override_reason
+        || authorization?.reason
+        || payload?.override_reason
+        || payload?.closing_note
+        || ''
+    ).trim();
+    return {
+        mode,
+        isAdministrative: ADMINISTRATIVE_SHIFT_CLOSE_MODES.has(mode),
+        reason
+    };
+};
 
 const lifecycleError = (message, statusCode = 409, details = {}) => new DomainError(
     DomainErrorCode.CONFLICT,
@@ -405,31 +426,70 @@ export const createPosCashierLifecycleUseCases = ({
         }
     };
 
-    const onShiftClosing = async ({ shift, user, requestId, transaction } = {}) => {
+    const onShiftClosing = async ({ shift, user, payload = {}, authorization = null, requestId, transaction } = {}) => {
         const locationId = positiveInt(shift?.location_id);
         const feature = await resolveFeature({ locationId });
         if (!feature?.enabled) return { feature, attendance: null };
         assertLifecyclePermission(user);
-        const userId = positiveInt(shift?.cashier_id || user?.user_id);
-        const attendance = await repository.findOpenAttendanceByUser({ userId, locationId, transaction, lock: true });
+        const cashierId = positiveInt(shift?.cashier_id || user?.user_id);
+        const actorId = positiveInt(user?.user_id);
+        const closeContext = resolveShiftCloseContext({ authorization, payload });
+        const attendance = await repository.findOpenAttendanceByUser({ userId: cashierId, locationId, transaction, lock: true });
         if (!attendance) return { feature, attendance: null };
         const activeBreak = await repository.findOpenBreak({ attendanceSessionId: attendance.employee_attendance_session_id, transaction, lock: true });
+        if (activeBreak && !closeContext.isAdministrative) {
+            throw lifecycleError('End the active break before closing the shift.', 409, {
+                reason_code: 'POS_ACTIVE_BREAK_MUST_BE_ENDED_BEFORE_SHIFT_CLOSE',
+                active_break_id: activeBreak.employee_break_segment_id
+            });
+        }
+        if (activeBreak && closeContext.reason.length < 8) {
+            throw lifecycleError('An administrator reason is required when closing a shift with an active break.', 422, {
+                reason_code: 'POS_ACTIVE_BREAK_FORCE_CLOSE_REASON_REQUIRED',
+                active_break_id: activeBreak.employee_break_segment_id
+            });
+        }
         const endedAt = now();
         if (activeBreak) {
             await repository.updateBreakSegment({
                 breakSegmentId: activeBreak.employee_break_segment_id,
-                payload: { status: 'closed', ended_at: endedAt, ended_by: userId, end_idempotency_key: normalizeKey(requestId, `close-break-${attendance.employee_attendance_session_id}`) },
+                payload: { status: 'closed', ended_at: endedAt, ended_by: actorId, end_idempotency_key: normalizeKey(requestId, `close-break-${attendance.employee_attendance_session_id}`) },
                 transaction
             });
         }
         const closed = await repository.updateAttendanceSession({
             attendanceSessionId: attendance.employee_attendance_session_id,
-            payload: { status: 'closed', ended_at: endedAt, closed_by: userId, end_idempotency_key: normalizeKey(requestId, `shift-close-${shift.pos_terminal_shift_id}`) },
+            payload: { status: 'closed', ended_at: endedAt, closed_by: actorId, end_idempotency_key: normalizeKey(requestId, `shift-close-${shift.pos_terminal_shift_id}`) },
             transaction
         });
         await repository.revokeOperatorSessionsForTerminal({ terminalId: shift.terminal_id, reason: 'register_closed', transaction, at: endedAt });
-        await audit({ repository, user, row: closed, eventType: 'pos_attendance_ended_with_shift', action: 'UPDATE', shift, requestId, changes: { automatic: true, break_closed: Boolean(activeBreak) }, transaction });
-        return { feature, attendance: closed };
+        await audit({
+            repository,
+            user,
+            row: closed,
+            eventType: 'pos_attendance_ended_with_shift',
+            action: 'UPDATE',
+            shift,
+            requestId,
+            changes: {
+                automatic: true,
+                break_closed: Boolean(activeBreak),
+                ...(activeBreak
+                    ? {
+                        break_close_mode: 'administrative_force_close',
+                        break_close_reason: closeContext.reason
+                    }
+                    : {})
+            },
+            transaction
+        });
+        return {
+            feature,
+            attendance: closed,
+            break_closed_automatically: Boolean(activeBreak),
+            break_close_mode: activeBreak ? 'administrative_force_close' : null,
+            break_close_reason: activeBreak ? closeContext.reason : null
+        };
     };
 
     return { onShiftOpened, resume, onShiftClosing, ensureAttendanceForTakeover };

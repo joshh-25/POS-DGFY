@@ -85,6 +85,20 @@ describe('POS shift authorization policy', () => {
         });
     });
 
+    it('allows a Business Admin override with a reason and no cashier PIN context', () => {
+        expect(authorizePosShiftMutation({
+            shift: openShift,
+            actorUser: { user_id: 9, business_admin_force_close: true },
+            operation: 'close_shift',
+            overrideReason: 'Admin ended the cashier duty'
+        })).toEqual({
+            authorization_mode: 'business_admin_override',
+            actor_user_id: 9,
+            shift_cashier_id: 7,
+            override_reason: 'Admin ended the cashier duty'
+        });
+    });
+
     it('rejects mutations against a closed shift', () => {
         expect(() => authorizePosShiftMutation({
             shift: { ...openShift, status: 'closed' },

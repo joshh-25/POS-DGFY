@@ -32,6 +32,7 @@ import {
 import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { getPosCashPaymentAmountFromTransaction } from '../domain/posCashReconciliation.js';
 import {
     aggregateDeliveryProviderBreakdown,
     normalizeDeliveryProviderBreakdown
@@ -8275,20 +8276,19 @@ export const posRepository = {
 
     async getShiftCashSalesTotal(shiftId, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
-        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         const where = buildFinanciallyRecognizedSalesWhere({
-            shift_id: shiftId,
-            payment_type: 'cash'
+            shift_id: shiftId
         });
-        const [row] = await PosTransaction.findAll({
+        const rows = await PosTransaction.findAll({
             where,
-            attributes: [
-                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'cash_sales_total']
-            ],
+            attributes: ['payment_type', 'total_amount', 'payment_breakdown'],
             raw: true,
             transaction: options.transaction
         });
-        return round4(row?.cash_sales_total);
+        return round4(rows.reduce(
+            (total, transaction) => total + getPosCashPaymentAmountFromTransaction(transaction),
+            0
+        ));
     },
 
     async getMerchantTenderExpectedByShift(shiftId, options = {}) {

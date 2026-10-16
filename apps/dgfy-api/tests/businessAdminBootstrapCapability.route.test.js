@@ -14,9 +14,10 @@ const bootstrapHandler = jest.fn((_req, res) => res.status(200).json({
     data: { business: { name: 'Masu Cafe' } }
 }));
 const companyHandler = jest.fn((_req, res) => res.status(200).json({ success: true }));
+const updateCompanyNameHandler = jest.fn((_req, res) => res.status(200).json({ success: true }));
 
 const handlerNames = [
-    'getBootstrap', 'getCompany', 'getOverview', 'getMultiCompanyOverview', 'listNotifications',
+    'getBootstrap', 'getCompany', 'updateCompanyName', 'getOverview', 'getMultiCompanyOverview', 'listNotifications',
     'markNotificationRead', 'dismissNotification', 'acknowledgeNotification', 'getReports',
     'getPosActivityAnalytics', 'listReportDefinitions', 'listEvidenceCatalog', 'getEJournalEvidence',
     'getReportDataset', 'exportReportDataset', 'getInventoryValuation', 'listInventoryStock',
@@ -38,12 +39,17 @@ jest.unstable_mockModule('../src/modules/businessAdmin/middleware/businessAdminR
 jest.unstable_mockModule('../src/modules/businessAdmin/controllers/businessAdminHandlers.js', () => ({
     ...Object.fromEntries(handlerNames.map((name) => [name, jest.fn((_req, res) => res.status(200).json({ success: true }))])),
     getBootstrap: bootstrapHandler,
-    getCompany: companyHandler
+    getCompany: companyHandler,
+    updateCompanyName: updateCompanyNameHandler
 }));
 
 jest.unstable_mockModule('../src/validators/posValidator.js', () => ({
     validatePosTransactionIdParam: passThrough,
     validateDecideBusinessAdminApproval: passThrough
+}));
+
+jest.unstable_mockModule('../src/validators/businessAdminValidator.js', () => ({
+    validateUpdateBusinessAdminCompanyName: passThrough
 }));
 
 const { default: businessAdminRouter } = await import('../src/routes/businessAdmin.js');
@@ -73,5 +79,14 @@ describe('Business Admin bootstrap capability boundary', () => {
             capability: 'tenant_pos_enabled'
         });
         expect(companyHandler).not.toHaveBeenCalled();
+    });
+
+    it('keeps canonical business-name updates available when POS is disabled', async () => {
+        const response = await request(buildApp())
+            .patch('/business-admin/company/name')
+            .send({ name: 'Renamed Business' });
+
+        expect(response.status).toBe(200);
+        expect(updateCompanyNameHandler).toHaveBeenCalledTimes(1);
     });
 });

@@ -1,4 +1,5 @@
 import { businessAdminOverviewRepository } from './repositories/businessAdminOverviewRepository.js';
+import { businessAdminCompanyRepository } from './repositories/businessAdminCompanyRepository.js';
 import { businessAdminMultiCompanyRepository } from './repositories/businessAdminMultiCompanyRepository.js';
 import { buildGetBusinessAdminOverviewUseCase } from './usecases/businessAdminOverviewUseCase.js';
 import { buildGetBusinessAdminMultiCompanyOverviewUseCase } from './usecases/businessAdminMultiCompanyOverviewUseCase.js';
@@ -25,6 +26,7 @@ import { businessAdminInventoryReportRepository } from './repositories/businessA
 import { businessAdminFinancialReportRepository } from './repositories/businessAdminFinancialReportRepository.js';
 import { buildGetBusinessAdminWorkforceUseCase } from './usecases/businessAdminWorkforceUseCase.js';
 import { buildGetBusinessAdminAttendanceUseCase } from './usecases/businessAdminAttendanceUseCase.js';
+import { buildBusinessAdminEndAttendanceShiftUseCase } from './usecases/businessAdminEndAttendanceShiftUseCase.js';
 import { businessAdminFiscalRepository } from './repositories/businessAdminFiscalRepository.js';
 import { buildGetBusinessAdminFiscalUseCase } from './usecases/businessAdminFiscalUseCase.js';
 import { businessAdminRecipeRepository } from './repositories/businessAdminRecipeRepository.js';
@@ -38,19 +40,29 @@ import { buildCreateBusinessAdminExpenseUseCase, buildListBusinessAdminExpensesU
 import { buildAcknowledgeBusinessAdminNotificationUseCase, buildDismissBusinessAdminNotificationUseCase, buildListBusinessAdminNotificationsUseCase, buildMarkBusinessAdminNotificationReadUseCase } from './usecases/businessAdminNotificationUseCase.js';
 import { resolveWorkflowCapabilitySettings } from '../shared/utils/workflowCapabilitySettingsCache.js';
 import { modeHasCapability } from '@sieitzz/shared-constants/workflowModes';
-import { decidePosExceptionApprovalUseCase } from '../pos/index.js';
+import { closeTerminalShiftUseCase, decidePosExceptionApprovalUseCase } from '../pos/index.js';
 
 export const reconcileBusinessAdminAlerts = () => reconcileBusinessAdminAlertSnapshots({ repository: businessAdminAlertSnapshotRepository });
 import { posRepository } from '../pos/repositories/posRepository.js';
 import { getWeightedInventoryValueByLocation } from '../inventory/services/costValuationService.js';
 import { commercePaymentRepository } from '../commercePayments/index.js';
 import { buildGetBusinessAdminCompanyUseCase } from './usecases/businessAdminCompanyUseCase.js';
+import { buildUpdateBusinessAdminCompanyNameUseCase } from './usecases/businessAdminCompanyNameUseCase.js';
+import { syncStorefrontDiscoveryWithReliability } from '../../services/storefrontDiscoverySyncReliabilityService.js';
+import { publishPosSettingsChange } from '../shared/services/catalogChangeEventBus.js';
+import logger from '../../config/logger.js';
 
 export const getBusinessAdminOverviewUseCase = buildGetBusinessAdminOverviewUseCase({
     businessAdminOverviewRepository,
     businessAdminAlertSnapshotRepository
 });
 export const getBusinessAdminCompanyUseCase = buildGetBusinessAdminCompanyUseCase({ businessAdminOverviewRepository });
+export const updateBusinessAdminCompanyNameUseCase = buildUpdateBusinessAdminCompanyNameUseCase({
+    businessAdminCompanyRepository,
+    syncStorefrontDiscoveryWithReliability,
+    publishPosSettingsChange,
+    logger
+});
 
 export const getBusinessAdminMultiCompanyOverviewUseCase = buildGetBusinessAdminMultiCompanyOverviewUseCase({
     businessAdminMultiCompanyRepository,
@@ -168,7 +180,14 @@ export const getBusinessAdminWorkforceUseCase = buildGetBusinessAdminWorkforceUs
 
 export const getBusinessAdminAttendanceUseCase = buildGetBusinessAdminAttendanceUseCase({
     businessAdminOverviewRepository,
-    posRepository
+    posRepository,
+    businessAdminShiftHistoryRepository
+});
+
+export const endBusinessAdminAttendanceShiftUseCase = buildBusinessAdminEndAttendanceShiftUseCase({
+    businessAdminOverviewRepository,
+    posRepository,
+    closeTerminalShiftUseCase
 });
 
 export const getBusinessAdminFiscalUseCase = buildGetBusinessAdminFiscalUseCase({

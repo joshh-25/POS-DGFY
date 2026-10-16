@@ -2016,6 +2016,8 @@ export const itemRepository = {
                 await saveRelatedWizardData(item.item_id, wizardData, transaction, {
                     clearManufacturingProperties
                 });
+            } else if (itemData.status === 'active' && hasOwn(itemData, 'shelf_life')) {
+                await saveRelatedWizardData(item.item_id, { shelf_life }, transaction);
             }
 
             await auditInventoryEvent({
@@ -2329,6 +2331,8 @@ export const itemRepository = {
                 await saveRelatedWizardData(itemId, wizardData, transaction, {
                     clearManufacturingProperties
                 });
+            } else if (item.status === 'active' && hasOwn(itemData, 'shelf_life')) {
+                await saveRelatedWizardData(itemId, { shelf_life }, transaction);
             }
 
             if (typeof item.reload === 'function') {

@@ -99,6 +99,11 @@ import {
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import {
+    buildExpectedPosCashAmount,
+    POS_CASH_EVENT_EFFECT,
+    summarizePosCashEvents
+} from '../domain/posCashReconciliation.js';
+import {
     assertDeliveryProviderBreakdown,
     DeliveryProviderBreakdownError,
     normalizeDeliveryProviderBreakdown,
@@ -165,12 +170,6 @@ const DELIVERY_JOB_TRANSITIONS = Object.freeze({
     delivered: [],
     failed: [],
     cancelled: []
-});
-const CASH_EVENT_EFFECT = Object.freeze({
-    cash_in: 1,
-    opening_adjustment: 1,
-    cash_out: -1,
-    closing_adjustment: -1
 });
 const POS_SHIFT_SALES_WINDOW_PRECISION_BUFFER_MS = 1000;
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
@@ -10059,35 +10058,16 @@ export const buildDeletePosCatalogImageUseCase = ({ posRepository, imageStorage 
     };
 };
 
-const summarizeCashEvents = (events = []) => {
-    const summary = {
-        cash_in_total: 0,
-        cash_out_total: 0,
-        opening_adjustment_total: 0,
-        closing_adjustment_total: 0,
-        net_events_total: 0
-    };
-
-    for (const event of events) {
-        const eventType = String(event.event_type || '').trim();
-        const amount = round4(Number(event.amount || 0));
-        if (!CASH_EVENT_EFFECT[eventType]) continue;
-        const key = `${eventType}_total`;
-        if (Object.prototype.hasOwnProperty.call(summary, key)) {
-            summary[key] = round4(summary[key] + amount);
-        }
-        summary.net_events_total = round4(summary.net_events_total + (amount * CASH_EVENT_EFFECT[eventType]));
-    }
-
-    return summary;
-};
-
 const buildShiftCashSummary = ({ shift, cashSalesAmount }) => {
     if (!shift) return null;
     const events = Array.isArray(shift.cashEvents) ? shift.cashEvents : [];
-    const eventSummary = summarizeCashEvents(events);
+    const eventSummary = summarizePosCashEvents(events);
     const openingFloat = round4(shift.opening_float_amount || 0);
-    const expectedCashAmount = round4(openingFloat + eventSummary.net_events_total + round4(cashSalesAmount || 0));
+    const expectedCashAmount = buildExpectedPosCashAmount({
+        openingFloatAmount: openingFloat,
+        cashSalesAmount,
+        cashEvents: events
+    });
     return {
         pos_terminal_shift_id: shift.pos_terminal_shift_id,
         business_date: shift.business_date,
@@ -10779,6 +10759,7 @@ export const buildSwitchTerminalShiftLocationUseCase = ({
                     shift: existingShift,
                     user,
                     payload,
+                    authorization: shiftAuthorization,
                     requestId: idempotencyKey,
                     transaction
                 })
@@ -11280,7 +11261,7 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
             reason
         });
 
-        if (!CASH_EVENT_EFFECT[eventType]) {
+        if (!POS_CASH_EVENT_EFFECT[eventType]) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'Unsupported cash drawer event type',
@@ -11586,7 +11567,7 @@ const buildShiftCloseCashData = async ({
 };
 
 export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSessionsForTerminal = null, onShiftClosing = null }) => {
-    return async ({ shiftId, payload, user }) => {
+    return async ({ shiftId, payload, user, locationScope = null, recordXReading = false }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         const normalizedShiftId = parsePositiveInt(shiftId);
         if (!normalizedUserId || !normalizedShiftId) {
@@ -11605,7 +11586,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
             shift_id: normalizedShiftId,
             closing_cash_amount: closingCashAmount,
             closing_note: closingNote,
-            override_reason: overrideReason
+            override_reason: overrideReason,
+            record_x_reading: Boolean(recordXReading)
         });
         if (!Number.isFinite(closingCashAmount) || closingCashAmount < 0) {
             return fail(new DomainError(
@@ -11645,6 +11627,23 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 transaction,
                 lock: true
             });
+            if (Array.isArray(locationScope?.allowedLocationIds)) {
+                const shiftLocationId = parsePositiveInt(shift?.location_id);
+                if (!shiftLocationId || !locationScope.allowedLocationIds.includes(shiftLocationId)) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'This shift is outside the administrator\'s assigned branch scope.',
+                        {
+                            statusCode: 403,
+                            details: {
+                                reason_code: 'POS_SHIFT_BRANCH_SCOPE_DENIED',
+                                shift_id: normalizedShiftId,
+                                location_id: shiftLocationId
+                            }
+                        }
+                    );
+                }
+            }
             const shiftAuthorization = authorizePosShiftMutation({
                 shift,
                 actorUser: user,
@@ -11678,11 +11677,36 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 variance
             } = cashCloseData;
 
+            const xReadingEvent = recordXReading && typeof posRepository.createFiscalEvent === 'function'
+                ? await posRepository.createFiscalEvent({
+                    event_type: 'x_reading',
+                    terminal_id: shiftPayload.terminal_id || null,
+                    actor_user_id: normalizedUserId,
+                    payload: {
+                        reading_type: 'x_reading',
+                        source: 'business_admin_attendance_end_shift',
+                        shift_id: normalizedShiftId,
+                        location_id: shiftPayload.location_id || null,
+                        cashier_id: shiftPayload.cashier_id || null,
+                        business_date: shiftPayload.business_date || null,
+                        generated_at: new Date().toISOString(),
+                        sales_summary: salesSummary,
+                        cash_summary: {
+                            ...summary,
+                            closing_cash_amount: closingCashAmount,
+                            expected_cash_amount: expectedCashAmount,
+                            cash_variance_amount: variance
+                        }
+                    }
+                }, { transaction })
+                : null;
+
             const cashierLifecycle = typeof onShiftClosing === 'function'
                 ? await onShiftClosing({
                     shift,
                     user,
                     payload,
+                    authorization: shiftAuthorization,
                     requestId: idempotencyKey,
                     transaction
                 })
@@ -11726,6 +11750,16 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                     cash_variance_amount: variance
                 },
                 sales_summary: salesSummary,
+                ...(recordXReading
+                    ? {
+                        x_reading: {
+                            recorded: Boolean(xReadingEvent),
+                            event_id: xReadingEvent?.pos_fiscal_event_id || null,
+                            event_hash: xReadingEvent?.event_hash || null,
+                            generated_at: xReadingEvent?.occurred_at || null
+                        }
+                    }
+                    : {}),
                 day_close_readiness: buildDayCloseReadinessData({
                     businessDate: buildBusinessDateRange(new Date()).businessDate,
                     locationId: shiftLocationId,
@@ -11738,8 +11772,10 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 shiftId: normalizedShiftId,
                 event: 'shift_closed',
                 changes: {
-                    authorization_mode: shiftAuthorization.mode,
+                    authorization_mode: shiftAuthorization.authorization_mode || shiftAuthorization.mode || null,
                     override_reason: shiftAuthorization.override_reason || null,
+                    x_reading_recorded: Boolean(xReadingEvent),
+                    x_reading_event_id: xReadingEvent?.pos_fiscal_event_id || null,
                     terminal_id: shiftPayload.terminal_id || null,
                     location_id: shiftPayload.location_id || null,
                     closing_cash_amount: closingCashAmount,
@@ -11916,6 +11952,7 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                     shift,
                     user,
                     payload,
+                    authorization: recoveryAuthorization,
                     requestId: idempotencyKey,
                     transaction
                 })

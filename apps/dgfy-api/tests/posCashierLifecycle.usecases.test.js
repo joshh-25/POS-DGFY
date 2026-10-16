@@ -403,7 +403,7 @@ describe('POS automatic cashier shift lifecycle', () => {
         expect(shiftSpy).not.toHaveBeenCalled();
     });
 
-    test('closing a shift ends an active break and attendance before register close commits', async () => {
+    test('blocks a normal shift close while the cashier has an active break', async () => {
         const fixture = buildFixture();
         fixture.setAttendance({
             employee_attendance_session_id: 12,
@@ -418,16 +418,63 @@ describe('POS automatic cashier shift lifecycle', () => {
         });
         const transaction = { finished: false };
 
-        const result = await fixture.useCases.onShiftClosing({
+        await expect(fixture.useCases.onShiftClosing({
             shift,
             user,
+            authorization: { authorization_mode: 'shift_owner' },
             requestId: 'shift-close-55',
+            transaction
+        })).rejects.toThrow('End the active break before closing the shift.');
+
+        expect(fixture.getAttendance().status).toBe('open');
+        expect(fixture.getBreak().status).toBe('open');
+        expect(fixture.audits).toHaveLength(0);
+    });
+
+    test('admin force-close ends an active break with an explicit audited reason', async () => {
+        const fixture = buildFixture();
+        fixture.setAttendance({
+            employee_attendance_session_id: 12,
+            user_id: 1,
+            location_id: 7,
+            status: 'open'
+        });
+        fixture.setBreak({
+            employee_break_segment_id: 13,
+            employee_attendance_session_id: 12,
+            status: 'open'
+        });
+        const admin = {
+            ...user,
+            user_id: 9,
+            username: 'admin-1',
+            role: 'admin',
+            business_admin_force_close: true
+        };
+        const transaction = { finished: false };
+
+        const result = await fixture.useCases.onShiftClosing({
+            shift,
+            user: admin,
+            authorization: {
+                authorization_mode: 'business_admin_override',
+                override_reason: 'Admin ended the cashier duty'
+            },
+            requestId: 'shift-close-admin-55',
             transaction
         });
 
         expect(result.attendance.status).toBe('closed');
         expect(fixture.getBreak().status).toBe('closed');
-        expect(fixture.getAttendance().closed_by).toBe(1);
+        expect(fixture.getBreak().ended_by).toBe(9);
+        expect(fixture.getAttendance().closed_by).toBe(9);
         expect(fixture.audits.at(-1).event_type).toBe('pos_attendance_ended_with_shift');
+        expect(fixture.audits.at(-1).changes).toEqual(expect.objectContaining({
+            automatic: true,
+            break_closed: true,
+            break_close_mode: 'administrative_force_close',
+            break_close_reason: 'Admin ended the cashier duty'
+        }));
+        expect(result.break_closed_automatically).toBe(true);
     });
 });
