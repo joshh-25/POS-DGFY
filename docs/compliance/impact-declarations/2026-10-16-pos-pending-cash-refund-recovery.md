@@ -11,8 +11,8 @@ verification_evidence: focused POS Vitest regression suites, POS API handler and
 rollback_note: Revert the automatic cash-refund void path and its product-usage telemetry, pending cash-refund recovery UI, active-shift recognition and terminal-availability guards, F&B navigation visibility change, focused regression tests, and this declaration together; the existing administrator no-shift void exception, cash-drawer ownership rule, database schema, and persisted transaction records remain authoritative.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-16T12:11:42+08:00
-preflight_request_ref: NOT-EXECUTED-2519-PENDING-CASH-REFUND
+preflight_run_at: 2026-10-16T07:42:57.345Z
+preflight_request_ref: PREFLIGHT-38868402477-2026-10-16-POS-PENDING-CASH-REFUND-RECOVERY
 ---
 
 # POS void, cash-refund, and shift recovery
