@@ -10,6 +10,7 @@ const spacingSource = readPosFile('components/PosPageSpacing.js');
 const pageFrameSource = readPosFile('components/PosPageFrame.jsx');
 const terminalLayoutSource = readPosFile('components/TerminalPageLayout.jsx');
 const operationsWorkspaceSource = readPosFile('components/TerminalOperationsWorkspace.jsx');
+const lineTabNavigationSource = readPosFile('components/PosLineTabNavigation.jsx');
 const historySource = readPosFile('components/POSTransactionHistoryPanel.jsx');
 const reportsSource = readPosFile('components/PosReportsAnalyticsWorkspace.jsx');
 const settingsSource = readPosFile('settings/PosSettingsWorkspace.jsx');
@@ -24,7 +25,9 @@ describe('POS mobile page spacing contract', () => {
     expect(operationsWorkspaceSource).toContain('data-testid="pos-shift-sticky-tabs"');
     expect(operationsWorkspaceSource).toContain('className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}');
     expect(operationsWorkspaceSource).toContain('className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}');
-    expect(primaryShiftTabCall).not.toContain('mobileGridColumns=');
+    expect(primaryShiftTabCall).toContain('mobileGridColumns={2}');
+    expect(lineTabNavigationSource).toContain("2: 'grid-cols-2'");
+    expect(lineTabNavigationSource).toContain('const mobileGridClass = MOBILE_GRID_CLASSES[mobileGridColumns] ||');
     expect(terminalLayoutSource).toContain('SHIFT_WORKSPACE_MODES.has(posViewMode)');
   });
 

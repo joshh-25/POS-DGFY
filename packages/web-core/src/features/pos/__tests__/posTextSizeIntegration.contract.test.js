@@ -50,7 +50,7 @@ describe('POS text-size integration contracts', () => {
         expect(lockDrawerSource).toContain("import PosTextSizeControl from './PosTextSizeControl.jsx';");
         expect(lockDrawerSource).toContain('id="pos-text-size-lock-drawer"');
         expect(lockDrawerSource.indexOf('<PosTextSizeControl')).toBeLessThan(
-            lockDrawerSource.indexOf('<form onSubmit={onSubmit}')
+            lockDrawerSource.indexOf('<form onSubmit={handleFormSubmit}')
         );
     });
 

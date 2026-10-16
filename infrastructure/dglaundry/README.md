@@ -215,22 +215,57 @@ attachment, and the `DGLAUNDRY` server block in `nginx.conf.template`) already e
 repo's **generic** templates (`infrastructure/docker/{docker-compose.yml,docker-compose.proxy.yml,
 nginx/nginx.conf.template}`, PR #1316) — but the prod host's own copies of those three files are
 hand-maintained literal copies (per #401/#1236, diverged from the generic `${VAR}`-templated
-versions) and, confirmed live (infra/2477), carry **none** of it yet. Before `dglaundry.dgfy.ph`
-can actually resolve through this proxy, someone has to, directly on the prod host:
+versions) and did not carry it until it was applied by hand for #2477 (2026-10-15). Repeat this
+on any rebuild of the prod host, directly on the host:
 
 1. Add the three `DGLAUNDRY_*` env vars to the live `docker-compose.proxy.yml`'s `nginx` service
    and attach it to `dgfy-dglaundry-edge` (declared in the live `docker-compose.yml`'s top-level
-   `networks:` block, `external: true`).
-2. Copy the `DGLAUNDRY` server block into the live `nginx.conf.template`.
-3. Issue a cert for `dglaundry.dgfy.ph` via the already-built
-   `infrastructure/docker/nginx/init-letsencrypt-additional-domain.sh`.
-4. `docker compose up -d nginx` to pick up 1–2, then re-verify every *existing* production domain
-   still responds — this recreates the one nginx container serving all of them.
+   `networks:` block, `external: true`). **`DGLAUNDRY_GATEWAY_PORT` there is `8080`** — the gateway
+   container's own port, reached container-to-container over the edge network — not
+   `prod.env`'s same-named `4400`, which is only the host-loopback publish port of DGLaundry's
+   own compose project. Two same-named vars, two unrelated meanings.
+2. Copy the `DGLAUNDRY` server block into the live `nginx.conf.template`, and add
+   `${DGLAUNDRY_DOMAIN}` to its port-80 `server_name` list — HTTP-01 validation for step 3 needs
+   nginx to already serve the name on port 80.
+3. Add `dglaundry.dgfy.ph` to the shared `dgfy.ph` cert via
+   `infrastructure/docker/nginx/init-letsencrypt-additional-domain.sh`. That cert is one
+   multi-SAN lineage shared by every prod domain and `certbot --expand` *replaces* the SAN list
+   rather than adding to it, so the script reads the lineage's current SANs and re-requests them
+   all plus the new one.
+4. Recreate **only** nginx — `--no-deps --pull never`, and only with the SOPS-decrypted
+   environment loaded (see `/opt/dgfy-platform/deploy-sops.sh`). A bare
+   `docker compose up -d nginx` resolves every secret-backed variable blank and recreates
+   `mysql`/`dgfy-api` with blank credentials: that caused a ~4 minute production outage during
+   #2477. Then re-verify every *existing* production domain still responds.
 
-Each of these is its own live-production-host checkpoint (infra/2477, Part B) — not something this
-PR performs, and not something `deploy-dglaundry-prod.yml` does on your behalf. DNS for
-`dglaundry.dgfy.ph` is already live (#2386); only the host-side proxy wiring and cert are
-outstanding.
+Each of these is its own live-production-host checkpoint — not something
+`deploy-dglaundry-prod.yml` does on your behalf. DNS for `dglaundry.dgfy.ph` is live (#2386).
+
+### Connecting DGLaundry to DGFY (#2304) — mode, overlay, secrets
+
+Hosting DGLaundry is not the same as connecting it to DGFY. While `DGLAUNDRY_DGFY_MODE=disabled`
+(still the case on prod), DGFY login, machine tokens and signed requests do not work.
+
+- **Mode values:** `sandbox` on staging, `production` on prod (the DGLaundry installer maps the
+  manifest's `paymentMode` this way). Any value other than `disabled` makes `remote-deploy.sh`
+  layer `docker-compose.production.dgfy.yml` (vendored beside the base compose, same pinned SHA),
+  which **requires** every `DGLAUNDRY_DGFY_*` variable in `<env>.env` and five secret files:
+  `dgfy_client_secret`, `dgfy_partner_signing_private_key`,
+  `dgfy_partner_client_assertion_private_key`, `dgfy_outbound_signing_key`,
+  `dgfy_outbound_auth_token`. `deploy-sops.sh` writes them from `<env>/dglaundry/secrets.env`;
+  the three PEM keys are stored single-line with `\n` escapes and expanded back to multi-line
+  files there.
+- **URLs default to PRODUCTION DGFY** (`api.dgfy.ph`) in the base compose — `<env>.env` must set
+  the issuer, session-context, registration-intent, staff-invitation and token URLs explicitly.
+- **Staging, one time:** `sudo bash connect-dgfy-staging.sh` on `sieitz-dgfy-remote` generates
+  fresh DGLaundry keypairs, swaps DGFY's three trusted DGLaundry public keys (existing
+  `run-oidc-setup.sh --apply` path, restores on failure), and adds the five secrets to the SOPS
+  cache — copying DGFY's existing browser client secret root-to-SOPS so no one reads it
+  (ADR 0060 Decision 7). `--check` is a no-change preflight. Afterwards copy the updated
+  ciphertext back into `Sieitzz/dgfy-secrets` and dispatch the staging deploy.
+- **Prod:** not done. `scripts/dglaundry-connection-setup.mjs` deliberately refuses production
+  (`PRODUCTION_APPLY_FORBIDDEN`), `api.dgfy.ph/oidc/jwks` is not configured, and prod clients,
+  keys and mappings are unregistered. Do staging first.
 
 `provision-migration-identity.sh` runs as part of that same dispatch, once `mysql` reports
 healthy and before `migrate` runs — it parses the already-decrypted `mysql_migration_url` secret

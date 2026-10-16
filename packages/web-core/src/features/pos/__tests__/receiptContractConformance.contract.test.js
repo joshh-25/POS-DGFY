@@ -334,8 +334,10 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       businessSettings: { pos_business_name: 'Compliance Test Store' }
     });
 
-    expect(statutoryText).toContain('SC/PWD/NAAC/MOV/Solo Parent ID No.: PWD-98765');
-    expect(statutoryText).toContain('Signature: __________________________');
+    const normalizedStatutoryText = statutoryText.split('\n').map((row) => row.trim()).filter(Boolean).join(' ');
+    expect(normalizedStatutoryText).toContain('SC/PWD/NAAC/MOV/Solo Parent ID No.: PWD-98765');
+    expect(normalizedStatutoryText.indexOf('Signature: __________________________'))
+      .toBeGreaterThan(normalizedStatutoryText.indexOf('PWD-98765'));
   });
 
   it('keeps regulator-summary rows and footer contract lines in fixed order', () => {

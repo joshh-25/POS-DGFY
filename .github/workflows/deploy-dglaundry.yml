@@ -144,6 +144,8 @@ jobs:
             "mkdir -p '$RELEASE_DIR'"
           scp -i ~/.ssh/dglaundry_deploy_key -o StrictHostKeyChecking=yes \
             "infrastructure/dglaundry/compose/$SHA/docker-compose.production.yml" \
+            "infrastructure/dglaundry/compose/$SHA/docker-compose.production.dgfy.yml" \
+            "infrastructure/dglaundry/compose/$SHA/docker-compose.surebizcorp-lean.yml" \
             infrastructure/dglaundry/stage.env \
             infrastructure/dglaundry/deploy-sops.sh \
             infrastructure/dglaundry/provision-migration-identity.sh \

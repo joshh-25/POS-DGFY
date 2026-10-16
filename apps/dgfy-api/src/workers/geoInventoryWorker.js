@@ -25,6 +25,7 @@ const IDLE_INTERVAL_MS = 5000;  // tick when queue was empty last round
 
 let _timer = null;
 let _running = false;
+const inFlightItemCreates = new Map();
 
 // ── Name normalisation ────────────────────────────────────────────────────────
 const normaliseName = (name) =>
@@ -57,29 +58,48 @@ export const resolveItemId = async (rawName, tenantId) => {
     if (itemRow) return itemRow.geo_item_id;
 
     // 3. Create a new canonical item + pending alias for curator review.
-    //    Use a transaction so both rows land atomically or not at all.
-    const t = await sequelize.transaction();
-    try {
-        const [{ insertId: newItemId }] = await sequelize.query(
-            'INSERT INTO geo_items (name, normalized_name, created_at, updated_at) VALUES (:name, :normalized, NOW(), NOW())',
-            { replacements: { name: rawName.trim().slice(0, 255), normalized }, transaction: t, type: QueryTypes.INSERT }
-        );
+    //    Use a transaction so both rows land atomically or not at all. Concurrent
+    //    misses in this process share the same create while it is in flight.
+    const existingCreate = inFlightItemCreates.get(normalized);
+    if (existingCreate) return existingCreate;
 
-        await sequelize.query(
-            `INSERT INTO geo_item_aliases (item_id, alias_name, tenant_id, moderation_status, created_at, updated_at)
-             VALUES (:itemId, :alias, :tenantId, 'pending', NOW(), NOW())`,
-            {
-                replacements: { itemId: newItemId, alias: normalized, tenantId: tenantId || null },
-                transaction: t,
-                type: QueryTypes.INSERT
+    const createPromise = (async () => {
+        const t = await sequelize.transaction();
+        try {
+            const [newItemId] = await sequelize.query(
+                'INSERT INTO geo_items (name, normalized_name, created_at, updated_at) VALUES (:name, :normalized, NOW(), NOW())',
+                { replacements: { name: rawName.trim().slice(0, 255), normalized }, transaction: t, type: QueryTypes.INSERT }
+            );
+
+            if (!Number.isInteger(newItemId) || newItemId <= 0) {
+                throw new Error('geo_items insert returned no id');
             }
-        );
 
-        await t.commit();
-        return newItemId;
-    } catch (err) {
-        await t.rollback();
-        throw err;
+            await sequelize.query(
+                `INSERT INTO geo_item_aliases (item_id, alias_name, tenant_id, moderation_status, created_at, updated_at)
+                 VALUES (:itemId, :alias, :tenantId, 'pending', NOW(), NOW())`,
+                {
+                    replacements: { itemId: newItemId, alias: normalized, tenantId: tenantId || null },
+                    transaction: t,
+                    type: QueryTypes.INSERT
+                }
+            );
+
+            await t.commit();
+            return newItemId;
+        } catch (err) {
+            await t.rollback();
+            throw err;
+        }
+    })();
+
+    inFlightItemCreates.set(normalized, createPromise);
+    try {
+        return await createPromise;
+    } finally {
+        if (inFlightItemCreates.get(normalized) === createPromise) {
+            inFlightItemCreates.delete(normalized);
+        }
     }
 };
 

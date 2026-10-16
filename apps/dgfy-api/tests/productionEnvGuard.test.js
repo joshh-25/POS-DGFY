@@ -118,4 +118,26 @@ describe('production startup environment guard', () => {
     expect(`${spawned.stdout}\n${spawned.stderr}`).toContain('Missing required environment value: DB_HOST');
     expect(`${spawned.stdout}\n${spawned.stderr}`).not.toContain('database-password-production-like');
   });
+
+  it('logs production validation warnings during server startup', () => {
+    const spawned = spawnSync(process.execPath, ['src/server.js'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: 10000,
+      env: {
+        ...process.env,
+        ...validProductionEnv,
+        SKIP_SERVER_START: 'true',
+        SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123',
+        SENTRY_ENABLED: '',
+        SENTRY_ENVIRONMENT: ''
+      }
+    });
+
+    const output = `${spawned.stdout}\n${spawned.stderr}`;
+    expect(spawned.status).toBe(0);
+    expect(output).toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
+  });
 });

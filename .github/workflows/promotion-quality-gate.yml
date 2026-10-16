@@ -58,6 +58,8 @@ concurrency:
 jobs:
   dgfy-api-selected-db-tests:
     if: ${{ inputs.test_selection == 'api_db_chunks' }}
+    # Hosted runner fallback for local or emergency dispatches without an API DB runner override.
+    # runs-on: ${{ inputs.api_db_runner || 'ubuntu-latest' }}
     runs-on: ${{ inputs.api_db_runner || 'sieitz-lg' }}
     timeout-minutes: 45
     steps:

@@ -70,7 +70,18 @@ while IFS='=' read -r key value; do
     value="${value%\"}"
   fi
   name="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
-  printf '%s' "$value" > "$SECRETS_DIR/$name"
+  case "$name" in
+    # PEM private keys: dotenv is line-based, so they are stored single-line
+    # with literal \n and expanded back to a real multi-line PEM file here.
+    # (%b only touches backslash escapes; PEM bodies contain none.)
+    dgfy_partner_signing_private_key|dgfy_partner_client_assertion_private_key|dgfy_outbound_signing_key|dglaundry_event_signing_key_reserved)
+      # An EMPTY value writes an empty file: the worker treats a non-empty
+      # dgfy_outbound_signing_key as "outbound configured" and then demands the
+      # outbound URL and key ID too, so it must stay empty while events are off.
+      if [ -z "$value" ]; then : > "$SECRETS_DIR/$name"; else printf '%b\n' "$value" > "$SECRETS_DIR/$name"; fi ;;
+    *)
+      printf '%s' "$value" > "$SECRETS_DIR/$name" ;;
+  esac
   # 644, not 640 -- these are consumed via Docker Compose's file-based
   # `secrets:` construct, which bind-mounts this exact host file straight
   # into the container at /run/secrets/<name> with its host permissions
