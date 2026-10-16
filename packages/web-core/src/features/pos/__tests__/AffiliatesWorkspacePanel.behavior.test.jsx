@@ -30,6 +30,7 @@ vi.mock('../services/affiliateService.js', () => ({
 }));
 
 vi.mock('@/src/utils/iminRuntimeFeedback.js', () => ({
+    isIminWrapperRuntime: vi.fn(() => false),
     posToast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() }
 }));
 
@@ -384,9 +385,9 @@ describe('AffiliatesWorkspacePanel revocation audit display (#1203 Phase 215)', 
 
         fireEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
 
-        const defaultRate = screen.getByLabelText('Default commission rate (%)');
-        const minimumCashout = screen.getByLabelText('Minimum cashout (₱)');
-        const previewBasePrice = screen.getByLabelText('Preview using Base (₱)');
+        const defaultRate = await screen.findByLabelText('Default commission rate (%)');
+        const minimumCashout = await screen.findByLabelText('Minimum cashout (₱)');
+        const previewBasePrice = await screen.findByLabelText('Preview using Base (₱)');
         fireEvent.change(defaultRate, { target: { value: '9' } });
         fireEvent.change(minimumCashout, { target: { value: '350' } });
         fireEvent.change(previewBasePrice, { target: { value: '250' } });
