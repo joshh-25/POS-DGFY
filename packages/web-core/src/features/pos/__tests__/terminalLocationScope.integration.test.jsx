@@ -352,6 +352,40 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(false);
   });
 
+  it('does not enable a branch open action when the same terminal id belongs to another branch', () => {
+    render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
+      canAdminBypassShiftPrompt: false,
+      terminalRegistry: [
+        { terminal_id: 'COUNTER-01', label: 'Masu Register', location_id: 1, is_active: true }
+      ],
+      activeTerminalId: 'COUNTER-01',
+      operatingLocationId: 1,
+      branchDirectoryState: {
+        loading: false,
+        errorMessage: '',
+        locations: [
+          {
+            location_id: 1,
+            name: 'Masu Cafe',
+            can_view: true,
+            can_open: true,
+            terminals: [{ terminal_id: 'COUNTER-01', label: 'Masu Register', can_open: true }]
+          },
+          {
+            location_id: 2,
+            name: 'Spacebar',
+            can_view: true,
+            can_open: true,
+            terminals: [{ terminal_id: 'COUNTER-01', label: 'Spacebar Register', can_open: true }]
+          }
+        ]
+      }
+    })} />);
+
+    expect(screen.queryByTestId('pos-prepare-open-shift-2')).toBeNull();
+    expect(screen.getByText(/Select terminal Spacebar Register in Terminal Setup/)).toBeTruthy();
+  });
+
   it('blocks opening a terminal that the confirmed branch monitor reports as occupied', async () => {
     render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps()} />);
 

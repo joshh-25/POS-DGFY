@@ -6107,6 +6107,16 @@ export default function TerminalPage() {
       return;
     }
     const registryLocationId = Number(registryEntry.location_id || 0);
+    const requestedLocationId = Number(operatingLocationId || 0);
+    if (
+      registryLocationId > 0
+      && requestedLocationId > 0
+      && registryLocationId !== requestedLocationId
+    ) {
+      toast.error('Select a terminal assigned to the selected branch before opening shift.');
+      setDrawerOpen(true);
+      return;
+    }
     const scopedOperatingLocationId = Number.isInteger(registryLocationId) && registryLocationId > 0
       ? registryLocationId
       : Number(operatingLocationId);

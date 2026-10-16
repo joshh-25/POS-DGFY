@@ -18,6 +18,14 @@ const parsePositiveInt = (value) => {
 
 const normalizeName = (value, fallback = '') => String(value || '').trim() || fallback;
 
+const buildTerminalScopeKey = (locationId, terminalId) => {
+    const normalizedLocationId = parsePositiveInt(locationId);
+    const normalizedTerminalId = normalizeName(terminalId).toUpperCase();
+    return normalizedLocationId && normalizedTerminalId
+        ? `${normalizedLocationId}:${normalizedTerminalId}`
+        : '';
+};
+
 const hasBranchViewPermission = (user) => hasEffectivePermission(user, BRANCH_VIEW_PERMISSION);
 
 const hasTenantWideBranchAccess = (user) => {
@@ -149,15 +157,19 @@ export const buildGetPosBranchDirectoryUseCase = ({
         const activeRegistry = Array.isArray(terminalPolicy?.active_registry)
             ? terminalPolicy.active_registry
             : [];
-        const shiftsByTerminal = new Map();
+        const shiftsByTerminalScope = new Map();
         shifts.forEach((shift) => {
-            const terminalId = normalizeName(shift?.terminal_id).toUpperCase();
-            if (terminalId && !shiftsByTerminal.has(terminalId)) shiftsByTerminal.set(terminalId, shift);
+            const terminalScopeKey = buildTerminalScopeKey(shift?.location_id, shift?.terminal_id);
+            if (terminalScopeKey && !shiftsByTerminalScope.has(terminalScopeKey)) {
+                shiftsByTerminalScope.set(terminalScopeKey, shift);
+            }
         });
-        const operatorsByTerminal = new Map();
+        const operatorsByTerminalScope = new Map();
         operators.forEach((operator) => {
-            const terminalId = normalizeName(operator?.terminal_id).toUpperCase();
-            if (terminalId && !operatorsByTerminal.has(terminalId)) operatorsByTerminal.set(terminalId, operator);
+            const terminalScopeKey = buildTerminalScopeKey(operator?.location_id, operator?.terminal_id);
+            if (terminalScopeKey && !operatorsByTerminalScope.has(terminalScopeKey)) {
+                operatorsByTerminalScope.set(terminalScopeKey, operator);
+            }
         });
 
         const canTransact = hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
@@ -184,8 +196,9 @@ export const buildGetPosBranchDirectoryUseCase = ({
                 .filter((entry) => Number(entry?.location_id) === locationId)
                 .map((entry) => {
                     const terminalId = normalizeName(entry?.terminal_id).toUpperCase();
-                    const shift = shiftsByTerminal.get(terminalId) || null;
-                    const operator = operatorsByTerminal.get(terminalId) || null;
+                    const terminalScopeKey = buildTerminalScopeKey(locationId, terminalId);
+                    const shift = shiftsByTerminalScope.get(terminalScopeKey) || null;
+                    const operator = operatorsByTerminalScope.get(terminalScopeKey) || null;
                     const occupied = Boolean(shift);
                     const staleRecovery = shift
                         ? evaluatePosShiftStaleness({ shift, now: now(), staleAfterHours })
