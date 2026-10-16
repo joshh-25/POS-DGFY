@@ -165,6 +165,18 @@ body[data-pos-customer-display="true"] [data-testid="dgfy-version-badge"] {
   vertical-align: middle;
 }
 
+/* Audit uses the same compact table scale as the Affiliates tables while
+   keeping its event-specific table class isolated from other POS surfaces. */
+.pos-audit-data-table {
+  font-size: 13px;
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  .pos-audit-data-table > thead > tr > th {
+    font-size: 0.6875rem;
+  }
+}
+
 /* Tablet report tables fit the viewport instead of inheriting desktop column
    widths. The responsive column selector reserves the final 4.5rem for Actions. */
 @media (min-width: 768px) and (max-width: 1199.98px) {
@@ -8450,6 +8462,56 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   box-sizing: border-box;
   border-color: #cbd5e1;
   box-shadow: 0 12px 30px rgb(15 23 42 / 0.2);
+}
+.pos-audit-calendar-surface {
+  /* The Audit calendar contains one compact picker. Do not inherit the
+     fixed History dialog height, which leaves a large empty block below it. */
+  height: auto !important;
+  max-height: min(90vh, 40rem) !important;
+  max-height: min(90dvh, 40rem) !important;
+  min-height: 0 !important;
+}
+.pos-audit-calendar-surface .dgfy-pos-history-dialog-body {
+  flex: 0 1 auto !important;
+}
+.audit-timestamp-value {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.audit-timestamp-time {
+  display: inline;
+}
+@media screen and (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+  .audit-timestamp-value {
+    flex-direction: column;
+    align-items: flex-start;
+    white-space: normal;
+    line-height: 1.25;
+  }
+  .audit-timestamp-divider {
+    display: none;
+  }
+  .audit-timestamp-time {
+    display: block;
+    margin-top: 0.125rem;
+  }
+}
+@media (max-width: 767.98px) {
+  /* Mobile audit records are already individual cards. Remove the desktop
+     table surface so the cards use the full available width without a second
+     border, background, or inset gutter around them. */
+  .pos-audit-results-surface {
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .pos-audit-mobile-records {
+    padding: 0 !important;
+  }
 }
 .pos-filter-surface--extended {
   border-color: #e2e8f0;
