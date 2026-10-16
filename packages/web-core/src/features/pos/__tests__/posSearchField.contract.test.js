@@ -13,6 +13,9 @@ const checkoutSource = fs.readFileSync(path.resolve(__dirname, '../components/PO
 const auditSource = fs.readFileSync(path.resolve(__dirname, '../components/AuditWorkspacePanel.jsx'), 'utf8');
 const itemsSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
 const voucherSource = fs.readFileSync(path.resolve(__dirname, '../components/VoucherManagementPanel.jsx'), 'utf8');
+const affiliateListSource = fs.readFileSync(path.resolve(__dirname, '../affiliates/AffiliateListView.jsx'), 'utf8');
+const affiliateCashoutSource = fs.readFileSync(path.resolve(__dirname, '../affiliates/AffiliateCashoutView.jsx'), 'utf8');
+const affiliateWorkspaceCss = fs.readFileSync(path.resolve(__dirname, '../affiliates/affiliateWorkspace.css'), 'utf8');
 const pricelistSource = [
   '../pricelists/PricelistListView.jsx',
   '../pricelists/PricelistItemsEditor.jsx'
@@ -74,6 +77,21 @@ describe('POS shared search field contract', () => {
     expect(pricelistSource).toContain('placeholder="Search item by Name, SKU, or Barcode"');
     expect(pricelistSource.match(/variant="catalog"/g)).toHaveLength(2);
     expect(pricelistSource.match(/inputClassName=\{POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS\}/g)).toHaveLength(2);
+  });
+
+  it('matches the Vouchers mobile search and action geometry in Affiliates', () => {
+    expect(voucherSource.match(/inputClassName=\{POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS\}/g)).toHaveLength(2);
+    expect(affiliateListSource.match(/inputClassName=\{POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS\}/g)).toHaveLength(2);
+    expect(affiliateCashoutSource.match(/inputClassName=\{POS_CATALOG_TOOLBAR_SEARCH_FIELD_INPUT_CLASS\}/g)).toHaveLength(2);
+    expect(affiliateListSource).toContain('className="affiliate-mobile-search min-w-0 flex-1"');
+    expect(affiliateCashoutSource).toContain('className="affiliate-mobile-search min-w-0 flex-1"');
+    expect(affiliateWorkspaceCss).toContain('height: 2.5rem;');
+    expect(affiliateWorkspaceCss).toContain('width: 2.5rem;');
+    expect(affiliateWorkspaceCss).toContain('left: 1rem;');
+    expect(affiliateWorkspaceCss).toContain('height: 1.25rem;');
+    expect(affiliateWorkspaceCss).toContain('width: 1.25rem;');
+    expect(affiliateWorkspaceCss).toContain('height: 1.75rem;');
+    expect(affiliateWorkspaceCss).toContain('width: 1.75rem;');
   });
 
   it('keeps Vouchers and Pricelists card actions at the shared 36px action height', () => {

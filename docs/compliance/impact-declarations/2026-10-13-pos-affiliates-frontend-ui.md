@@ -72,6 +72,8 @@ submit invitations, rates, price rules, or cashouts.
   frontend-only modules.
 - The route-registration batch wires the existing Affiliate workspace into the terminal shell while
   preserving the shared layout defaults and all non-Affiliate workspace routes.
+- The test batch adds Affiliate behavior, spacing/search contracts, and reactivation service
+  coverage only; it does not alter runtime services, API contracts, or backend test suites.
 - The reactivation service uses the existing dedicated endpoint from `origin/develop`; no fallback
   PATCH path or new API contract is introduced.
 - No backend, migration, database, or Android change is included.
