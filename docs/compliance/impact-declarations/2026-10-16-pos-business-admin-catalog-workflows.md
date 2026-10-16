@@ -54,6 +54,9 @@ identity; the client does not gain a new financial or authorization bypass.
   best-effort follow-up after the committed name update.
 - Catalog and terminal refresh events remain tenant-scoped and additive; the
   existing server authorization and route contracts remain authoritative.
+- POS catalog and settings event handling only refreshes the authenticated
+  terminal's local presentation and cache; it does not mutate inventory,
+  payment, shift, or tenant authority from the browser.
 - The migration is additive and guarded by table existence; rollback maps the
   new audit action back to the existing capability action before restoring the
   prior enum set.
@@ -68,6 +71,13 @@ identity; the client does not gain a new financial or authorization bypass.
   compliance gate, and `git diff --check` are required before push.
 - The original `updates-pos` worktree changes are preserved in
   `stash@{0}` until the transferred commits and restored batches are verified.
+
+## Amendment — POS UI catalog and settings synchronization
+
+The shared POS UI batch adds the client-side refresh and settings-invalidation
+coordination needed to consume the tenant-scoped events above, while retaining
+the existing terminal identity, branch scope, and server-authorized mutation
+boundaries.
 
 **Live request-time compliance preflight was not executed.** This declaration
 uses the documented local placeholder and must be reconciled by the governed

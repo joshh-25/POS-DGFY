@@ -194,6 +194,7 @@ import {
 import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { publishPosLocationContext } from '../utils/posLocationContext.js';
+import { subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -7669,11 +7670,21 @@ export default function TerminalPage() {
       void refreshScopedSettings();
     });
 
-    // OPIS is served from another origin, so its save cannot arrive through the
-    // same-origin channel. Revalidate when POS regains focus/visibility or reconnects.
+    // OPIS and POS run on different browser origins. The authenticated tenant
+    // SSE stream carries the settings invalidation so an open POS reflects a
+    // business-name change immediately, without waiting for focus or reload.
+    const unsubscribeRemoteSettings = subscribeToRemotePosCatalogUpdates({
+      onSettingsChanged: () => {
+        void refreshScopedSettings();
+      }
+    });
+
+    // Focus/visibility/reconnect revalidation remains the fallback if the cross-origin
+    // settings invalidation stream is unavailable.
     const uninstallFocusRefresh = installCrossAppSettingsRefresh(() => refreshScopedSettings());
     return () => {
       unsubscribeSync();
+      unsubscribeRemoteSettings();
       uninstallFocusRefresh();
     };
   }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);

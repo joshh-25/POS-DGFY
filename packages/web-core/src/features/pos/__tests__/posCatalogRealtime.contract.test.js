@@ -12,7 +12,9 @@ describe('POS catalog realtime contract', () => {
         expect(refresh).toContain('subscribeToRemotePosCatalogUpdates');
         expect(refresh).toContain("Authorization: `Bearer ${accessToken}`");
         expect(refresh).toContain("'pos.catalog.changed'");
+        expect(refresh).toContain("'pos.settings.changed'");
         expect(refresh).toContain('notifyPosCatalogUpdated();');
+        expect(refresh).toContain('notifyPosSettingsUpdated();');
     });
 
     test('keeps terminal cart state independent of catalog refresh', () => {
