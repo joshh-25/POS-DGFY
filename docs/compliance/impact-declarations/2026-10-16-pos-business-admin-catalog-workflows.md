@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal,business_admin,inventory,settings,tenant_schema
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.14
-verification_evidence: targeted API, OPIS, and shared POS contract suites, changed-source lint, POS/OPIS production builds, architecture checks, repository compliance gate, git diff --check
+verification_evidence: 16 targeted API suites with 244 passing tests, 3 OPIS files with 22 passing tests, 7 shared web-core files with 50 passing tests, changed-source lint, POS/OPIS production builds, architecture checks, repository compliance gate, git diff --check
 rollback_note: Revert the Business Admin attendance and canonical-name workflows, POS cash reconciliation and catalog/settings synchronization, OPIS presentation, inventory editor workflow, additive audit migration, focused tests, and this declaration together; retain existing tenant, shift, audit, and catalog records for governed reconciliation.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -65,10 +65,16 @@ identity; the client does not gain a new financial or authorization bypass.
 
 ## Verification Evidence
 
-- Targeted API, OPIS, shared inventory, and POS contract suites are run before
-  the branch is published.
-- Changed API source lint, production builds, architecture checks, the staged
-  compliance gate, and `git diff --check` are required before push.
+- Targeted API coverage passed: 16 suites and 244 tests, including the
+  Business Admin route/use-case contracts, cash reconciliation, POS catalog
+  events, and the existing void/refund regression suites.
+- OPIS coverage passed: 3 files and 22 tests. Shared web-core coverage passed:
+  7 files and 50 tests covering item editing, product wizard, catalog
+  presentation, and POS catalog refresh behavior.
+- POS and OPIS production builds passed. Changed API source lint reported zero
+  errors and one pre-existing `no-unused-vars` warning in
+  `posRepository.js`; architecture, staged compliance, and `git diff --check`
+  gates passed.
 - The original `updates-pos` worktree changes are preserved in
   `stash@{0}` until the transferred commits and restored batches are verified.
 
