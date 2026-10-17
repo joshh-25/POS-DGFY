@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-08-15
+last_reviewed: 2026-10-17
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -98,6 +98,7 @@ Canonical planning entry:
 - Historical SKU expansion/storefront planning snapshots are archived under `docs/archive/reference/2026-03/`.
 - Architecture and planning authority remain under `docs/architecture` and `docs/START_HERE.md`.
 - MapLibre Marker-vs-data-layer rendering guidance and the 2026-07-20 pin-clipping fix (Storefront order-tracking map converted to a GeoJSON symbol layer; checkout delivery-pin picker's canvas sizing consolidated onto shared helpers) are tracked in `docs/mapping/MARKER_TO_DATALAYER_MIGRATION.md`.
+- Storefront app-link association responses and their manual nginx deployment/rollback procedure are documented in `docs/ops/STOREFRONT_APP_LINKS.md`.
 
 ## Current Repository Notes
 - The repository root has no `backend/`, `frontend/`, or `android/` directory — they were relocated to `apps/dgfy-api`, `apps/dgfy-web`, and `apps/dgfy-android-bridge` respectively. `apps/dgfy-web` has since been split again into `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, and the shared `packages/web-core`, so `apps/dgfy-web` no longer exists either. See `docs/architecture/apps-layout-migration.md` for the full path map and before/after local-run commands, `docs/architecture/adr/0071-frontend-split-into-three-apps.md` for the split decision, and `docs/architecture/backend-absorption.md` for how upstream `develop` commits to the old paths get replayed here. If you have an in-flight branch predating either relocation, see `apps-layout-migration.md`'s "For developers with an in-flight branch" section (it has a subsection per relocation) before rebasing.

@@ -501,6 +501,19 @@ server {
     ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
 
+    # App-link association files must be served directly, without SPA fallback.
+    location = /.well-known/apple-app-site-association {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        return 200 '{"applinks":{"details":[{"appIDs":["4JDU3J7T75.com.dgfy.storefront","4JDU3J7T75.com.dgfy.storefront.staging","4JDU3J7T75.com.dgfy.storefront.dev"],"components":[{"/":"/tenant-store/*"},{"/":"/store/*"}]}]}}';
+    }
+
+    location = /.well-known/assetlinks.json {
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        return 200 '[]';
+    }
+
     location = /admin {
         set $dgfy_admin_upstream dgfy-admin:8085;
         proxy_pass http://$dgfy_admin_upstream;

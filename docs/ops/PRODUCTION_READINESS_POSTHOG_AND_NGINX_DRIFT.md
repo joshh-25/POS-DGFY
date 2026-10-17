@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-07-28
+last_reviewed: 2026-10-17
 applies_to: deploy_operations
 topic: production_readiness_posthog_and_nginx_drift
 ---
@@ -140,4 +140,5 @@ These two checks are already recorded as gates in `docs/ops/PRODUCTION_CHECKLIST
 
 - `docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md` — the original incident and its 2026-07-28 follow-up (the first `/ingest` rollout's silent no-op on stage, and how it was fixed there).
 - `docs/ops/PRODUCTION_CHECKLIST.md`
+- `docs/ops/STOREFRONT_APP_LINKS.md` — apex AASA and Digital Asset Links responses and their manual nginx deployment procedure.
 - `infrastructure/nginx-host/stage.dgfy.ph.conf` — the pattern to follow for reconciling the prod/beta template (tracked host-nginx source, `/ingest` blocks already applied and verified).
