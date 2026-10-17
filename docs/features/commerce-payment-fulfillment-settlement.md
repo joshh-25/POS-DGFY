@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: payments
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-18
 applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 ---
 
@@ -23,7 +23,8 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
    through the explicit admin retry action; it is never automatically resubmitted.
 9. The refund ledger reverses tenant payable and the proportional DGFY platform
    fee. Provider-fee treatment remains a reconciliation item until PayMongo
-   confirms whether that fee was returned.
+   confirms whether that fee was returned. See [Refunds and the provider fee](TENANT_REVENUE_SETTLEMENT.md#refunds-and-the-provider-fee)
+   for dated source evidence, the worked ledger example, and the open decision.
 
 ## Paid-session finalization recovery
 
