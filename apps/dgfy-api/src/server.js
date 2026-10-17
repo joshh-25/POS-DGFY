@@ -63,6 +63,10 @@ import {
   stopSmsDeliveryRetentionScheduler
 } from './schedulers/smsDeliveryRetentionScheduler.js';
 import {
+  startCommerceRefundReconciliationScheduler,
+  stopCommerceRefundReconciliationScheduler
+} from './schedulers/commerceRefundReconciliationScheduler.js';
+import {
   startGeoInventoryWorker,
   stopGeoInventoryWorker
 } from './workers/geoInventoryWorker.js';
@@ -1029,6 +1033,7 @@ const startServer = async () => {
     startTenantProvisioningReconciliationScheduler();
     startBusinessAdminAlertScheduler();
     startSmsDeliveryRetentionScheduler();
+    startCommerceRefundReconciliationScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
@@ -1121,6 +1126,7 @@ const startServer = async () => {
       stopTenantProvisioningReconciliationScheduler();
       stopBusinessAdminAlertScheduler();
       stopSmsDeliveryRetentionScheduler();
+      stopCommerceRefundReconciliationScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       if (MENU_IMPORT_BATCH_ENABLED) {

@@ -153,7 +153,7 @@ export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
     inventoryReservationService,
     tenantRevenueRepository
 });
-export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
+export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository, commercePaymentRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
 // Phase 144 (#824): resolved lazily, on call, rather than statically imported. There is a real
 // module cycle here -- `commercePayments/usecases/finalizePaidCommerceSession.js` statically
