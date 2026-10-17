@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: payments
-last_reviewed: 2026-08-08
+last_reviewed: 2026-10-17
 applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 ---
 
@@ -16,8 +16,12 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
    transaction to the normal settlement cycle.
 5. POS rejection requires a reason and changes fulfillment to `rejected`.
 6. For a paid PayMongo session, DGFY submits one full refund request.
-7. The signed PayMongo refund webhook is authoritative for `refunded` status.
-8. The refund ledger reverses tenant payable and the proportional DGFY platform
+7. A signed PayMongo refund webhook is the primary status signal. The scheduled
+   reconciler also reads refund resources through authenticated PayMongo API calls
+   and uses the same idempotent status applier when a webhook is delayed or missing.
+8. A definite provider rejection raises an operator alert and can be retried only
+   through the explicit admin retry action; it is never automatically resubmitted.
+9. The refund ledger reverses tenant payable and the proportional DGFY platform
    fee. Provider-fee treatment remains a reconciliation item until PayMongo
    confirms whether that fee was returned.
 
@@ -49,7 +53,16 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 
 - Duplicate rejection calls reuse an existing succeeded or pending refund.
 - A refund API failure does not undo the POS rejection.
-- Failed refunds stay excluded from settlement and require administrator review.
+- Definite refund failures stay excluded from settlement, raise an immediate
+  operator alert, and remain unchanged until an administrator explicitly retries
+  or resolves them.
+- Ambiguous submissions and orphaned pre-provider refund rows are reconciled from
+  authenticated PayMongo reads. A unique matching provider refund is linked and
+  applied through the same idempotent path as a webhook; zero or multiple matches
+  require administrator review.
+- Public tracking exposes only the latest refund's customer-safe status, reference,
+  amount, and update time. Provider IDs, failure details, and provider payloads
+  remain private.
 - Already scheduled or paid settlements are held or corrected through immutable
   carry-forward entries; posted financial records are never deleted.
 
