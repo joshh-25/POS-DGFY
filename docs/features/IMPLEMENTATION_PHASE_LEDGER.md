@@ -29263,8 +29263,8 @@ Storefront UI work is included; the UI follows as Phase 511.
 
 ### Status
 
-`in_progress` — implementation and validation are underway; PR review, merge, and the
-required provider/operational verification remain outstanding.
+`in_progress` — implementation and local validation are complete; PR review, merge, and
+the required provider/operational verification remain outstanding.
 
 ### Dependencies
 
@@ -29314,12 +29314,14 @@ Classification: `major` / `payments`; no schema change or new architecture excep
 - [x] `node --check` passes for every changed JavaScript file;
       `npm run check:compliance`, `npm run check:architecture`, `npm run lint:docs`,
       `node scripts/check-app-version-bump.js`, and the focused touched Jest suites pass.
-- [ ] The PR body uses `Refs #2549`, includes `## Plan Handoff`, and names the live
+- [x] PR [#2556](https://github.com/Sieitzz/dgfy-platform/pull/2556) uses `Refs #2549`,
+      includes `## Plan Handoff`, and names the live
       webhook-subscription confirmation as outstanding post-merge operator work.
 
 ### Evidence
 
-The focused commerce refund and Store tracking Jest suites passed 103/103 tests across
+PR [#2556](https://github.com/Sieitzz/dgfy-platform/pull/2556) is open against `develop`
+for the Phase 510 backend scope. The focused commerce refund and Store tracking Jest suites passed 103/103 tests across
 eight files. `node --check` passed for all 23 changed JavaScript files; compliance,
 architecture, docs/ADR lint, app-version-floor, and whitespace checks passed. The local
 disposable request-time preflight passed `no_breach` / `ALLOWED` under reference
