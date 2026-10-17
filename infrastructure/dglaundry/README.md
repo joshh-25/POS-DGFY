@@ -263,10 +263,32 @@ Hosting DGLaundry is not the same as connecting it to DGFY. While `DGLAUNDRY_DGF
   cache — copying DGFY's existing browser client secret root-to-SOPS so no one reads it
   (ADR 0060 Decision 7). `--check` is a no-change preflight. Afterwards copy the updated
   ciphertext back into `Sieitzz/dgfy-secrets` and dispatch the staging deploy.
-- **Prod:** not done. `scripts/dglaundry-connection-setup.mjs` deliberately refuses production
-  (`PRODUCTION_APPLY_FORBIDDEN`), `api.dgfy.ph/oidc/jwks` is not configured, and prod clients,
-  keys and mappings are unregistered. Do staging first.
-
+- **Prod, one time (#2304):** prod has no installer, no `/etc/dgfy/dglaundry` tree and no
+  `apply` (`scripts/dglaundry-connection-setup.mjs` deliberately refuses production,
+  `PRODUCTION_APPLY_FORBIDDEN`, and that guard stays). DGFY's own five key files are already SOPS
+  ciphertext in `/opt/dgfy-platform/secrets/` (#2303) and the OIDC clients are defined by
+  `docker-compose.api.yml`'s environment block, so nothing is registered in a database. What is
+  missing is DGLaundry's half, and `connect-dgfy-prod.sh` supplies it. Run on `ssh dgfy`, in this order:
+  1. `sudo bash connect-dgfy-prod.sh --check` — changes nothing; proves every DGFY secret
+     decrypts and has the right key type, DGLaundry's cache decrypts, and nothing is overwritten.
+  2. `sudo bash connect-dgfy-prod.sh` — generates DGLaundry's three prod keypairs; adds the five
+     DGFY secrets to `/opt/dglaundry/dgfy-secrets-cache/prod-dglaundry-secrets.env` (the client
+     secret goes root-to-SOPS and is never printed); encrypts DGLaundry's machine-assertion,
+     request-signing and event **public** keys into `/opt/dgfy-platform/secrets/` in the existing
+     whole-file SOPS format. Any failure restores the cache and removes the files it created.
+     It prints only public fingerprints and DGFY's two public keys for `prod.env`, and **never
+     restarts anything**.
+  3. Copy the updated ciphertext into `Sieitzz/dgfy-secrets`.
+  4. Apply `host-patches/dgfy-prod-2304.patch` to `/opt/dgfy-platform` (`patch -p1 --dry-run`
+     first, then commit it in the host's own git repo). It points DGFY at `dglaundry.dgfy.ph`,
+     consumes the three new files and makes `DGLAUNDRY_INTEGRATION_ENABLED` default to true.
+     **Do not apply it before #2513 is in prod:** DGFY's boot validator
+     (`productionEnvValidation.cjs`) still pins the production redirect URI to the old
+     `laundry.surebizcorp.com` host, so `deploy-sops.sh`'s pre-flight check would (safely, before
+     touching any container) refuse the new URL.
+  5. `./deploy-sops.sh` recreates `dgfy-api`; `https://api.dgfy.ph/oidc/jwks` must return 200.
+  6. Fill `prod.env` (DGFY's public keys, inbound client ID, DGFY URLs) and only then flip
+     `DGLAUNDRY_DGFY_MODE` to `production` — after the staging flow has passed.
 `provision-migration-identity.sh` runs as part of that same dispatch, once `mysql` reports
 healthy and before `migrate` runs — it parses the already-decrypted `mysql_migration_url` secret
 to derive the migration account's username/schema, and reads the MySQL root password from
