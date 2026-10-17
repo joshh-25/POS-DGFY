@@ -63,6 +63,10 @@ import {
   stopSmsDeliveryRetentionScheduler
 } from './schedulers/smsDeliveryRetentionScheduler.js';
 import {
+  startCommerceRefundReconciliationScheduler,
+  stopCommerceRefundReconciliationScheduler
+} from './schedulers/commerceRefundReconciliationScheduler.js';
+import {
   startPushReceiptScheduler,
   stopPushReceiptScheduler
 } from './schedulers/pushReceiptScheduler.js';
@@ -1033,6 +1037,7 @@ const startServer = async () => {
     startTenantProvisioningReconciliationScheduler();
     startBusinessAdminAlertScheduler();
     startSmsDeliveryRetentionScheduler();
+    startCommerceRefundReconciliationScheduler();
     startPushReceiptScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
@@ -1126,6 +1131,7 @@ const startServer = async () => {
       stopTenantProvisioningReconciliationScheduler();
       stopBusinessAdminAlertScheduler();
       stopSmsDeliveryRetentionScheduler();
+      stopCommerceRefundReconciliationScheduler();
       stopPushReceiptScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();

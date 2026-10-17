@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-14
+last_reviewed: 2026-10-17
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -29243,7 +29243,123 @@ implementation validation passes.
 
 Phase 510. No explicit dependency.
 
-## Phase 510 - Customer order-status push notifications (#2554)
+## Phase 510 - Commerce refund failure recovery (#2549)
+
+### Initiative and release
+
+Storefront commerce payments, current release.
+
+### Objective and scope
+
+Ensure a commerce refund does not become a dead end when PayMongo rejects a request,
+the create request has an ambiguous outcome, a local `created` row is orphaned, or a
+refund webhook is delayed or missing. This phase adds safe PayMongo refund reads, one
+idempotent webhook/reconciler status applier, failed and stale alerts, bounded scheduled
+reconciliation, an explicit authenticated admin retry endpoint, refund-status filtering,
+and a tenant-scoped customer-safe refund status in order tracking. It also amends ADR
+0052, the commerce-payment API contract, the feature flow contract, and the compliance
+impact declaration. No migration, automatic retry of definite failures, or Admin and
+Storefront UI work is included; the UI follows as Phase 512.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and
+the required provider/operational verification remain outstanding.
+
+### Dependencies
+
+Issue #2549 defines the accepted behavior and PR 1 scope. There is no explicit blocking
+dependency on another phase. The existing ADR 0052 amendment route applies because
+clause 14 is untagged and therefore `[default]` under ADR 0039.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[Commerce payment flow](commerce-payment-fulfillment-settlement.md),
+[API Specification](../api/specification.md), [Compliance preflight protocol](../compliance/request-time-preflight-protocol.md),
+[Issue taxonomy](../process/ISSUE-TAXONOMY.md), and [PR conventions](../ai/PR.md).
+Classification: `major` / `payments`; no schema change or new architecture exception.
+
+### Implementation targets
+
+`apps/dgfy-api/src/services/paymongoService.js`,
+`apps/dgfy-api/src/modules/commercePayments/`,
+`apps/dgfy-api/src/modules/store/`,
+`apps/dgfy-api/src/routes/commercePayments.js`,
+`apps/dgfy-api/src/validators/commercePaymentValidator.js`,
+`apps/dgfy-api/src/schedulers/commerceRefundReconciliationScheduler.js`,
+`apps/dgfy-api/src/server.js`, `apps/dgfy-api/.env.example`, focused tests,
+`docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`,
+`docs/features/commerce-payment-fulfillment-settlement.md`,
+`docs/api/specification.md`, and
+`docs/compliance/impact-declarations/2026-10-17-commerce-refund-failure-recovery.md`.
+
+### Acceptance and validation evidence
+
+- [x] Definite PayMongo refund rejection logs safe detail, stores `failed`, raises a
+      per-refund alert, and writes an audit event; ambiguous errors remain pending.
+- [x] Webhook and reconciler status application are idempotent for refund, tenant
+      ledger, revenue reversal, and session state.
+- [x] Reconciliation handles linked IDs, a unique amount/time candidate, no match,
+      multiple matches, orphaned `created` rows, stale pending alerts, and per-row
+      provider failures without aborting the batch.
+- [x] Admin retry is limited to eligible failed/not-found rows, blocks active refunds,
+      verifies PayMongo immediately before submission, preserves the original row, and
+      records `retry_of` in audit history.
+- [x] Public tracking returns only the latest customer-safe refund fields and performs
+      the session lookup with tenant and POS transaction scope.
+- [x] `node --check` passes for every changed JavaScript file;
+      `npm run check:compliance`, `npm run check:architecture`, `npm run lint:docs`,
+      `node scripts/check-app-version-bump.js`, and the focused touched Jest suites pass.
+- [x] PR [#2556](https://github.com/Sieitzz/dgfy-platform/pull/2556) uses `Refs #2549`,
+      includes `## Plan Handoff`, and names the live
+      webhook-subscription confirmation as outstanding post-merge operator work.
+
+### Evidence
+
+PR [#2556](https://github.com/Sieitzz/dgfy-platform/pull/2556) is open against `develop`
+for the Phase 510 backend scope. The focused commerce refund and Store tracking Jest suites passed 103/103 tests across
+eight files. `node --check` passed for all 23 changed JavaScript files; compliance,
+architecture, docs/ADR lint, app-version-floor, and whitespace checks passed. The local
+disposable request-time preflight passed `no_breach` / `ALLOWED` under reference
+`PREFLIGHT-LOCAL-1792249298628-2026-10-17-COMMERCE-REFUND-FAILURE-RECOVERY`. Jest required
+`--forceExit` after completing the tests and closing tenant connections because existing
+module timers kept the process open. The live production webhook subscription has not
+been verified in this workspace.
+
+### Rollback
+
+Revert the API/service, scheduler, retry route, tracking payload, tests, documentation,
+ADR amendment, compliance declaration, and this phase's implementation together. No
+schema rollback or data migration is required. Existing external PayMongo refunds remain
+provider-owned financial events and are never reversed by code rollback.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and its named
+implementation validation passes.
+
+### Post-merge verification
+
+- [ ] provider — issue #2549 operator confirms the production PayMongo account has the
+      required refund webhook events registered; blocks issue closure and refund-flow
+      verification.
+- [ ] operational — confirm the scheduler runs in the deployed API environment and
+      produces no persistent provider-read errors or duplicate ledger/revenue entries;
+      blocks issue closure.
+- [ ] deployment — verify the deployed tracking endpoint exposes the mapped refund
+      fields for a controlled rejected/cancelled order without exposing provider data;
+      blocks issue closure.
+
+### Next phase number
+
+Phase 512. PR 2 contains only Admin and Storefront UI. It follows this phase after merge,
+or may be stacked only when its target is updated to this branch.
+
+## Phase 511 - Customer order-status push notifications (#2554)
 
 ### Initiative and release
 
@@ -29259,8 +29375,8 @@ POS/staff push, and Storefront-customer orders without a DGFY account are out of
 
 ### Status
 
-`in_progress` — implementation and required local validation are underway; PR review, merge, and
-post-merge provider verification remain outstanding.
+`in_progress` — implementation and required local validation are complete; PR review and merge
+remain outstanding, along with post-merge provider verification.
 
 ### Dependencies
 
@@ -29340,4 +29456,4 @@ Not complete. Record only after merge and successful implementation validation.
 
 ### Next phase number
 
-Phase 511. No explicit dependency.
+Phase 512. No explicit dependency.

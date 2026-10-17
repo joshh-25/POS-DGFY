@@ -6050,7 +6050,7 @@ export const buildConfirmStoreCheckoutSandboxPaymentUseCase = ({
     };
 };
 
-export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
+export const buildTrackStoreOrderUseCase = ({ storeRepository, commercePaymentRepository = null }) => {
     return async ({ trackingPin, tenantId }) => {
         let normalizedTrackingPin = null;
         try {
@@ -6074,6 +6074,27 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
 
             const rejected = order.fulfillment_status === 'rejected';
             const cancelled = order.fulfillment_status === 'cancelled';
+            let refund = null;
+            if ((rejected || cancelled) && commercePaymentRepository && order.pos_transaction_id) {
+                const session = await commercePaymentRepository.findSessionByTenantAndPosTransaction({
+                    tenantId,
+                    posTransactionId: order.pos_transaction_id
+                });
+                if (session) {
+                    const latestRefund = (await commercePaymentRepository.listRefundsBySession(session.session_id))[0] || null;
+                    if (latestRefund) {
+                        const latestStatus = String(latestRefund.status || '').toLowerCase();
+                        refund = {
+                            status: ['succeeded', 'success', 'refunded'].includes(latestStatus)
+                                ? 'refunded'
+                                : (['failed', 'manual_review_required'].includes(latestStatus) ? 'under_review' : 'processing'),
+                            reference: latestRefund.public_reference,
+                            amount_centavos: Number(latestRefund.amount_centavos || 0),
+                            updated_at: latestRefund.updated_at || null
+                        };
+                    }
+                }
+            }
             // Phase 210 (#1179). Gated on `rejected` so a reason can never leak on a non-rejected
             // order (defensive: the column is only ever written on reject anyway).
             const rejectionReason = String(order?.rejection_reason || '').trim();
@@ -6099,6 +6120,7 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
                         ? 'This order was cancelled.'
                         : 'Tracking information loaded successfully.',
                 rejection_reason: rejected ? (rejectionReason || null) : null,
+                refund,
                 order: serializeOrderForPublicTracking(order),
                 review_invites: reviewInvites
             });

@@ -2247,6 +2247,88 @@ describe('store use-cases application result contract', () => {
         expect(result.data.order.rejection_reason).toBe('Outside our delivery route');
     });
 
+    it('returns only customer-safe latest refund fields for a rejected order using tenant scope', async () => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const findSessionByTenantAndPosTransaction = jest.fn().mockResolvedValue({ session_id: 71 });
+        const listRefundsBySession = jest.fn().mockResolvedValue([{
+            public_reference: 'CRF-ABC123DEF4',
+            status: 'failed',
+            amount_centavos: 12500,
+            updated_at: new Date('2026-10-16T09:00:00Z'),
+            provider_refund_id: 'ref_private',
+            failure_code: 'PROVIDER_REFUND_FAILED',
+            failure_reason: 'Private provider detail',
+            provider_payload: { private: true }
+        }]);
+        const useCase = buildTrackStoreOrderUseCase({
+            storeRepository: {
+                getOrderByTrackingPin: jest.fn().mockResolvedValue({
+                    pos_transaction_id: 90,
+                    tracking_pin: 'SK-A1B2',
+                    fulfillment_status: 'rejected',
+                    rejection_reason: 'Out of stock',
+                    lines: []
+                })
+            },
+            commercePaymentRepository: {
+                findSessionByTenantAndPosTransaction,
+                listRefundsBySession
+            }
+        });
+
+        const result = await useCase({ trackingPin: 'SK-A1B2', tenantId });
+
+        expect(result.success).toBe(true);
+        expect(findSessionByTenantAndPosTransaction).toHaveBeenCalledWith({ tenantId, posTransactionId: 90 });
+        expect(listRefundsBySession).toHaveBeenCalledWith(71);
+        expect(result.data.refund).toEqual({
+            status: 'under_review',
+            reference: 'CRF-ABC123DEF4',
+            amount_centavos: 12500,
+            updated_at: new Date('2026-10-16T09:00:00Z')
+        });
+        expect(JSON.stringify(result.data.refund)).not.toMatch(/provider_refund_id|failure_code|failure_reason|provider_payload/);
+    });
+
+    it('maps a succeeded refund to refunded and returns null for completed orders', async () => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const order = {
+            pos_transaction_id: 90,
+            tracking_pin: 'SK-A1B2',
+            fulfillment_status: 'rejected',
+            lines: []
+        };
+        const repository = {
+            findSessionByTenantAndPosTransaction: jest.fn().mockResolvedValue({ session_id: 71 }),
+            listRefundsBySession: jest.fn().mockResolvedValue([{
+                public_reference: 'CRF-SUCCEEDED1',
+                status: 'succeeded',
+                amount_centavos: 10000,
+                updated_at: '2026-10-16T09:00:00Z'
+            }])
+        };
+        const rejectedUseCase = buildTrackStoreOrderUseCase({
+            storeRepository: { getOrderByTrackingPin: jest.fn().mockResolvedValue(order) },
+            commercePaymentRepository: repository
+        });
+        const succeeded = await rejectedUseCase({ trackingPin: order.tracking_pin, tenantId });
+        expect(succeeded.data.refund).toEqual(expect.objectContaining({
+            status: 'refunded',
+            reference: 'CRF-SUCCEEDED1'
+        }));
+
+        const completedUseCase = buildTrackStoreOrderUseCase({
+            storeRepository: {
+                getOrderByTrackingPin: jest.fn().mockResolvedValue({ ...order, fulfillment_status: 'completed' })
+            },
+            commercePaymentRepository: repository
+        });
+        const completed = await completedUseCase({ trackingPin: order.tracking_pin, tenantId });
+        expect(completed.success).toBe(true);
+        expect(completed.data.refund).toBeNull();
+        expect(repository.findSessionByTenantAndPosTransaction).toHaveBeenCalledTimes(1);
+    });
+
     it('trackStoreOrder returns a null rejection_reason for every non-rejected status', async () => {
         const tenantId = '11111111-1111-4111-8111-111111111111';
         const useCase = buildTrackStoreOrderUseCase({
