@@ -23,20 +23,32 @@ const baseSession = {
 const buildRepository = (overrides = {}) => ({
   findSessionByPublicReference: jest.fn().mockResolvedValue(baseSession),
   findSessionBySessionId: jest.fn().mockResolvedValue(baseSession),
+  runInTransaction: jest.fn().mockImplementation((callback) => callback({ LOCK: { UPDATE: 'UPDATE' } })),
   createRefund: jest.fn().mockImplementation(async (payload) => ({
     refund_id: 20,
     ...payload
   })),
+  findRefundById: jest.fn().mockResolvedValue({
+    refund_id: 20,
+    public_reference: 'CRF-ABC123DEF4',
+    payment_session_id: baseSession.session_id,
+    provider_payment_id: baseSession.provider_payment_id,
+    amount_centavos: 5000,
+    status: 'pending'
+  }),
+  findRefundByPublicReference: jest.fn().mockResolvedValue(null),
   updateRefundById: jest.fn().mockImplementation(async (refundId, payload) => ({
     refund_id: refundId,
     public_reference: 'CRF-ABC123DEF4',
     payment_session_id: baseSession.session_id,
+    tenant_id: TENANT_ID,
+    amount_centavos: 5000,
     ...payload
   })),
   sumRefundedCentavos: jest.fn().mockResolvedValue(0),
-  sumRefundCentavosByStatuses: jest.fn()
-    .mockResolvedValueOnce(0)
-    .mockResolvedValueOnce(5000),
+  sumRefundCentavosByStatuses: jest.fn().mockImplementation(async (_sessionId, statuses) => (
+    statuses.length === 1 && statuses[0] === 'pending' ? 5000 : 0
+  )),
   updateSessionById: jest.fn().mockImplementation(async (sessionId, payload) => ({
     ...baseSession,
     session_id: sessionId,
@@ -80,19 +92,16 @@ describe('commerce payment refund use-cases', () => {
     }));
     expect(commercePaymentRepository.updateSessionById).toHaveBeenCalledWith(baseSession.session_id, {
       status: 'refund_pending'
-    });
+    }, expect.anything());
   });
 
   it('keeps an ambiguous provider failure pending for reconciliation instead of retrying blindly', async () => {
-    const commercePaymentRepository = buildRepository({
-      sumRefundCentavosByStatuses: jest.fn()
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(5000)
-    });
+    const commercePaymentRepository = buildRepository();
+    const raiseAlert = jest.fn().mockResolvedValue(null);
     const paymongoService = {
       createRefund: jest.fn().mockRejectedValue(new Error('socket timeout'))
     };
-    const useCase = buildCreateCommercePaymentRefundUseCase({ commercePaymentRepository, paymongoService });
+    const useCase = buildCreateCommercePaymentRefundUseCase({ commercePaymentRepository, paymongoService, raiseAlert });
 
     const result = await useCase({
       paymentSessionId: baseSession.public_reference,
@@ -106,16 +115,67 @@ describe('commerce payment refund use-cases', () => {
       failure_code: 'PROVIDER_REFUND_PENDING_RECONCILIATION'
     }));
     expect(result.data.provider_confirmation_required).toBe(true);
+    expect(raiseAlert).not.toHaveBeenCalled();
     expect(commercePaymentRepository.updateSessionById).toHaveBeenCalledWith(baseSession.session_id, {
       status: 'refund_pending'
+    }, expect.anything());
+  });
+
+  it('alerts and audits a definite PayMongo refund rejection with its provider detail', async () => {
+    const commercePaymentRepository = buildRepository();
+    const providerError = new Error('Request failed with status code 400');
+    providerError.response = {
+      status: 400,
+      data: { errors: [{ code: 'refund_not_allowed', detail: 'Refund amount exceeds available payout amount.' }] }
+    };
+    const raiseAlert = jest.fn().mockResolvedValue(null);
+    const useCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository,
+      paymongoService: { createRefund: jest.fn().mockRejectedValue(providerError) },
+      raiseAlert,
+      logger: { warn: jest.fn() }
     });
+
+    const result = await useCase({
+      paymentSessionId: baseSession.public_reference,
+      payload: { amount_centavos: 5000 },
+      actor: 'admin'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.refund).toEqual(expect.objectContaining({
+      status: 'failed',
+      failure_code: 'PROVIDER_REFUND_FAILED',
+      failure_reason: 'Refund amount exceeds available payout amount.'
+    }));
+    expect(raiseAlert).toHaveBeenCalledWith(expect.objectContaining({
+      key: expect.stringMatching(/^paymongo\.commerce_refund_failed\.CRF-/),
+      level: 'error',
+      context: expect.objectContaining({
+        payment_session_reference: baseSession.public_reference,
+        tenant_id: TENANT_ID,
+        amount_centavos: 5000,
+        failure_reason: 'Refund amount exceeds available payout amount.',
+        next_action: 'retry from Admin → Payment Operations'
+      })
+    }));
+    expect(commercePaymentRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      changes: expect.objectContaining({ event: 'commerce_payment_refund_failed' })
+    }));
   });
 
   it('reconciles refund webhooks by provider refund id before session metadata lookup', async () => {
     const commercePaymentRepository = buildRepository({
-      sumRefundCentavosByStatuses: jest.fn()
-        .mockResolvedValueOnce(10000)
-        .mockResolvedValueOnce(0)
+      findRefundById: jest.fn().mockResolvedValue({
+        refund_id: 20,
+        public_reference: 'CRF-ABC123DEF4',
+        payment_session_id: baseSession.session_id,
+        amount_centavos: 5000,
+        status: 'pending'
+      }),
+      sumRefundCentavosByStatuses: jest.fn().mockImplementation(async (_sessionId, statuses) => (
+        statuses.includes('succeeded') ? 10000 : 0
+      ))
     });
     const paymongoService = {
       verifyWebhookSignature: jest.fn().mockReturnValue(true)
@@ -154,7 +214,41 @@ describe('commerce payment refund use-cases', () => {
     expect(commercePaymentRepository.findRefundByProviderId).toHaveBeenCalledWith('ref_test');
     expect(commercePaymentRepository.updateSessionById).toHaveBeenCalledWith(baseSession.session_id, {
       status: 'refunded'
+    }, expect.anything());
+  });
+
+  it('alerts when the provider reports a failed refund webhook', async () => {
+    const commercePaymentRepository = buildRepository({
+      sumRefundCentavosByStatuses: jest.fn().mockResolvedValue(0)
     });
+    const raiseAlert = jest.fn().mockResolvedValue(null);
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
+      raiseOperationalAlert: raiseAlert
+    });
+
+    const result = await useCase({
+      headers: { 'paymongo-signature': 'valid' },
+      rawBody: '{}',
+      body: {
+        data: {
+          id: 'evt_refund_failed',
+          attributes: {
+            type: 'payment.refund.updated',
+            data: { id: 'ref_test', attributes: { status: 'failed', failed_message: 'Provider rejected it' } }
+          }
+        }
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(raiseAlert).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'paymongo.commerce_refund_failed.CRF-ABC123DEF4',
+      level: 'error',
+      context: expect.objectContaining({ failure_reason: 'Provider rejected it' })
+    }));
   });
 
   it('normalizes legacy custom split requests to proportional refunds in collect-and-settle mode', async () => {
@@ -182,7 +276,7 @@ describe('commerce payment refund use-cases', () => {
     expect(commercePaymentRepository.createRefund).toHaveBeenCalledWith(expect.objectContaining({
       refund_strategy: 'proportional',
       split_refund_payload: null
-    }));
+    }), expect.anything());
     expect(paymongoService.createRefund).toHaveBeenCalledWith(expect.objectContaining({
       amount: 5000,
       splitRefund: null
@@ -251,7 +345,8 @@ describe('tenant order-payment ledger mirroring (Phase 144, #824)', () => {
     const useCase = buildCreateCommercePaymentRefundUseCase({
       commercePaymentRepository: repository,
       paymongoService: { createRefund: jest.fn().mockRejectedValue(providerError) },
-      writeOrderPaymentLedgerEntry
+      writeOrderPaymentLedgerEntry,
+      raiseAlert: jest.fn().mockResolvedValue(null)
     });
 
     const result = await useCase({

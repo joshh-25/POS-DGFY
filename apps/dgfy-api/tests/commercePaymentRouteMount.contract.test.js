@@ -17,6 +17,12 @@ describe('commerce payment route mount contract', () => {
     );
   });
 
+  it('keeps refund retry admin-only and validates both public references', () => {
+    expect(routeSource).toContain(
+      "router.post('/admin/payment-sessions/:payment_session_id/refunds/:refund_id/retry', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentRefundParam, retryPaymentSessionRefund);"
+    );
+  });
+
   it('validates DGLaundry booking payment-session bodies before the controller', () => {
     expect(routeSource).toContain('validateCreateDglaundryBookingPaymentSessionBody');
     expect(routeSource).toContain(
