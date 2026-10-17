@@ -59,3 +59,6 @@ and whitespace checks passed. The disposable local request-time preflight return
 `PREFLIGHT-LOCAL-1792249298628-2026-10-17-COMMERCE-REFUND-FAILURE-RECOVERY`. Production
 PayMongo webhook subscription confirmation remains a post-merge operator verification
 under issue #2549 and is not claimed by this declaration.
+
+The implementation is committed in dependency order: shared refund reconciliation modules,
+then PayMongo/admin API wiring and customer tracking. This declaration covers both code batches.

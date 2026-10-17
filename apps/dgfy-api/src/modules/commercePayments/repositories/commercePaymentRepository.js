@@ -16,6 +16,7 @@ const applyCreatedAtWindow = (where, filters = {}) => {
 const buildSessionWhere = (filters = {}) => {
   const where = {};
   if (filters.tenantId) where.tenant_id = filters.tenantId;
+  if (Array.isArray(filters.sessionIds)) where.session_id = { [Op.in]: filters.sessionIds };
   if (filters.status) {
     where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
   }
@@ -223,6 +224,21 @@ export const commercePaymentRepository = {
     return toPlain(row);
   },
 
+  findRefundById(refundId, options = {}) {
+    return db.CommercePaymentRefund.findByPk(refundId, {
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  findRefundByPublicReference(publicReference, options = {}) {
+    return db.CommercePaymentRefund.findOne({
+      where: { public_reference: publicReference },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
   listRefundsBySession(paymentSessionId, options = {}) {
     return db.CommercePaymentRefund.findAll({
       where: { payment_session_id: paymentSessionId },
@@ -244,6 +260,35 @@ export const commercePaymentRepository = {
     return db.CommercePaymentRefund.findAll({
       where,
       order: [['created_at', 'DESC']],
+      transaction: options.transaction
+    }).then((rows) => rows.map(toPlain));
+  },
+
+  listSessionIdsByRefundStatuses(statuses = [], options = {}) {
+    if (!Array.isArray(statuses) || statuses.length === 0) return Promise.resolve([]);
+    return db.CommercePaymentRefund.findAll({
+      attributes: ['payment_session_id'],
+      where: { status: { [Op.in]: statuses } },
+      group: ['payment_session_id'],
+      raw: true,
+      transaction: options.transaction
+    }).then((rows) => rows.map((row) => row.payment_session_id));
+  },
+
+  listRefundsForReconciliation({ pendingCreatedBefore, limit = 50 } = {}, options = {}) {
+    return db.CommercePaymentRefund.findAll({
+      where: {
+        provider: 'paymongo',
+        [Op.or]: [
+          { status: 'pending' },
+          {
+            status: 'created',
+            created_at: { [Op.lte]: pendingCreatedBefore }
+          }
+        ]
+      },
+      order: [['created_at', 'ASC']],
+      limit: Math.max(1, Math.min(Number(limit) || 50, 250)),
       transaction: options.transaction
     }).then((rows) => rows.map(toPlain));
   },
