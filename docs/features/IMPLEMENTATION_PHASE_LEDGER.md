@@ -29242,3 +29242,102 @@ implementation validation passes.
 ### Next phase number
 
 Phase 510. No explicit dependency.
+
+## Phase 510 - Customer order-status push notifications (#2554)
+
+### Initiative and release
+
+Customer communications, current release.
+
+### Objective and scope
+
+Add provider-neutral, best-effort Expo push delivery for Storefront order-status transitions to
+DGFY-account devices and unlinked guest-order devices. Add authenticated account token routes,
+checkout-proof-authorized guest token routes, landlord token/log tables, receipt processing,
+retention, and the `unconfigured` default provider. The mobile consumer, web push, marketing push,
+POS/staff push, and Storefront-customer orders without a DGFY account are out of scope.
+
+### Status
+
+`in_progress` — implementation and required local validation are underway; PR review, merge, and
+post-merge provider verification remain outstanding.
+
+### Dependencies
+
+Issue #2554 defines scope. No explicit phase dependency blocks this work. Expo credentials and
+real-device provider verification are post-merge operational dependencies for enabling real delivery,
+not for merging the provider-disabled implementation.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0094](../architecture/adr/0094-outbound-sms-delivery-contract-log-and-pii-retention.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md),
+[DGFY Customer Account](DGFY_CUSTOMER_ACCOUNT.md), [Database Schema](../database/schema.md),
+and [Issue #2554](https://github.com/Sieitzz/dgfy-platform/issues/2554). Classification:
+`cross-boundary`; new outbound push behavior has no earlier ADR and is governed by ADR 0097.
+
+### Implementation targets
+
+[Push delivery module](../../apps/dgfy-api/src/modules/pushDelivery/README.md),
+[token/log migration](../../apps/dgfy-migration-runner/migrations/20261017000001-create-push-device-tokens-and-delivery-logs.cjs),
+[Storefront checkout and proof](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[activity recorder](../../apps/dgfy-api/src/modules/dgfy/utils/customerActivityRecorder.js),
+[account notification dispatcher](../../apps/dgfy-api/src/modules/dgfy/services/dgfyCustomerNotifications.js),
+[receipt scheduler](../../apps/dgfy-api/src/schedulers/pushReceiptScheduler.js),
+and [focused push tests](../../apps/dgfy-api/tests/pushTokenUseCases.unit.test.js),
+[repository tests](../../apps/dgfy-api/tests/pushDeviceTokenRepository.unit.test.js),
+[dispatcher tests](../../apps/dgfy-api/tests/dispatchOrderStatusPushUseCase.unit.test.js),
+[receipt and scheduler tests](../../apps/dgfy-api/tests/processPushReceiptsUseCase.unit.test.js),
+[migration test](../../apps/dgfy-api/tests/createPushDeviceTokensAndDeliveryLogs.migration.test.js),
+and existing [customer activity recorder tests](../../apps/dgfy-api/tests/customerActivityRecorder.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Account pushes use newly-created in-app notifications; guest pushes use changed status
+      activity and exclude Storefront-customer orders.
+- [x] Explicit status allowlist and SMS-owned `placed` behavior are documented and implemented.
+- [x] Guest proof is separate, tenant/order/PIN-bound, expires after 24 hours by default, and is
+      returned from both regular checkout response paths.
+- [x] Account/guest token registration and deletion routes, rate limits, owner exclusivity,
+      active-token reassignment, five-device guest cap, and claim/final-status cleanup are wired.
+- [x] Landlord delivery history stores keyed token hashes and provider metadata without message
+      content or raw token; Expo is disabled by default.
+- [x] Receipt and retention scheduler is wired with a distributed lock; provider receipt failures
+      do not block retention.
+- [x] Focused Jest coverage passes for migration, repository ownership/cap and reservation locks,
+      proof rejection/expiry/type/binding, dedupe, provider failures, receipts, retention, and
+      status fanout (9 suites, 29 tests).
+- [x] `node --check` on changed API files and migration; `npm run check:architecture`,
+      `npm run check:adr`, `npm run lint:docs`, `npm run check:compliance`,
+      `npm run audit:backend-tests:check`, and `node scripts/check-app-version-bump.js`.
+- [ ] PR review and merge to `develop`; implementation validation passes before status becomes
+      `completed`.
+
+### Evidence
+
+The focused API run passed 9 suites and 29 tests. API lint passed with zero errors and four
+pre-existing warnings. `node --check`, `git diff --check`, architecture, ADR, docs, compliance,
+backend test-inventory, and app-version checks passed. The Expo provider remains disabled and no
+live compliance preflight was executed.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord migration before API code is activated; verify the migration
+      and runtime health in the release evidence. This blocks enabling Expo delivery.
+- [ ] provider — provision Expo project and APNs/FCM credentials in EAS/SOPS, send a staging push
+      to designated real devices, and confirm a receipt poll. This blocks changing
+      `PUSH_PROVIDER` from `unconfigured`.
+- [ ] operational — confirm provider errors and receipt-scheduler failures do not log raw tokens or
+      customer PII, and verify the retention cycle is active. This blocks production provider
+      enablement.
+
+### Next phase number
+
+Phase 511. No explicit dependency.
