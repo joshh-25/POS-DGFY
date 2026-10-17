@@ -57,6 +57,7 @@ import {
 } from '../../deliveryPricing/index.js';
 import {
     generateStoreCancelProof,
+    generateStorePushProof,
     generateStoreClaimToken,
     generateStoreToken,
     getStoreTokenConfig,
@@ -1574,6 +1575,23 @@ const buildCancelProofForOrder = ({ order, tenantId }) => {
     } catch (error) {
         logger.error('[StoreSecurity] Failed to generate cancellation proof token', {
             error: error.message,
+            order_id: orderId
+        });
+        return null;
+    }
+};
+
+const buildPushProofForOrder = ({ order, tenantId }) => {
+    const orderId = parsePositiveInt(order?.pos_transaction_id);
+    const trackingPin = String(order?.tracking_pin || '').trim().toUpperCase();
+    const storeCustomerId = parsePositiveInt(order?.store_customer_id);
+    if (!orderId || !trackingPin || storeCustomerId || order?.dgfy_account_id || order?.storeCustomer?.dgfy_account_id) return null;
+
+    try {
+        return generateStorePushProof({ trackingPin, tenantId, orderId, storeCustomerId: null });
+    } catch (error) {
+        logger.error('[StoreSecurity] Failed to generate push proof token', {
+            error_code: String(error?.code || error?.name || 'push_proof_generation_failed').toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 80),
             order_id: orderId
         });
         return null;
@@ -4254,6 +4272,7 @@ export const buildStoreCheckoutUseCase = ({
                     order: existing,
                     tenantId: normalizedTenantId
                 });
+                const pushProof = buildPushProofForOrder({ order: existing, tenantId: normalizedTenantId });
                 const accountAction = await buildOrderAccountAction({
                     storeRepository,
                     order: existing,
@@ -4283,7 +4302,9 @@ export const buildStoreCheckoutUseCase = ({
                     tracking_pin: existing.tracking_pin,
                     account_action: accountAction,
                     cancel_proof: cancelProof,
-                    cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
+                    cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null,
+                    push_proof: pushProof,
+                    push_proof_expires_in: pushProof ? getStoreTokenConfig().pushProofExpiresIn : null
                 });
             }
 
@@ -4655,6 +4676,7 @@ export const buildStoreCheckoutUseCase = ({
                 order: created,
                 tenantId: normalizedTenantId
             });
+            const pushProof = buildPushProofForOrder({ order: created, tenantId: normalizedTenantId });
             const accountAction = await buildOrderAccountAction({
                 storeRepository,
                 order: created,
@@ -4871,7 +4893,9 @@ export const buildStoreCheckoutUseCase = ({
                     : null,
                 account_action: accountAction,
                 cancel_proof: cancelProof,
-                cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
+                cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null,
+                push_proof: pushProof,
+                push_proof_expires_in: pushProof ? getStoreTokenConfig().pushProofExpiresIn : null
             });
         } catch (error) {
             if (!transaction.finished) {

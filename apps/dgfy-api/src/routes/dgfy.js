@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter, affiliateShareResolveLimiter, dgfyAccountSearchLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, affiliateShareResolveLimiter, dgfyAccountSearchLimiter, dgfyPushTokenLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
 import { authenticate, authenticateAdmin, checkPermission } from '../middleware/auth.js';
 import { authenticateDgfyAccount, authenticateDgfyAccountOrTenantMembership } from '../middleware/dgfyAuth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -93,6 +93,8 @@ import {
 import { getCompanyRegistrationStatus, resubmitCompanyRegistration, uploadCompanyRegistrationFile } from '../modules/tenants/controllers/companyRegistrationHandlers.js';
 import { companyRegistrationUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import { validateDgfyCustomerActivityQuery } from '../validators/dgfyCustomerValidator.js';
+import { validateDgfyCustomerPushToken, validateDgfyCustomerPushTokenDelete } from '../validators/dgfyCustomerValidator.js';
+import { deleteDgfyAccountPushToken, registerDgfyAccountPushToken } from '../modules/pushDelivery/controllers/pushTokenHandlers.js';
 import { issueDgfyPosDeviceChallenge } from '../modules/pos/controllers/dgfyPosDeviceHandlers.js';
 import { validatePosTerminalDeviceChallenge } from '../validators/posValidator.js';
 
@@ -143,6 +145,8 @@ router.post('/admin/accounts/:account_id/reactivate', authenticateAdmin, reactiv
 router.delete('/admin/accounts/:account_id', authenticateAdmin, deleteAdminDgfyAccount);
 
 router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashboard);
+router.post('/customer/push-tokens', authenticateDgfyAccount, dgfyPushTokenLimiter, validateDgfyCustomerPushToken, registerDgfyAccountPushToken);
+router.delete('/customer/push-tokens', authenticateDgfyAccount, dgfyPushTokenLimiter, validateDgfyCustomerPushTokenDelete, deleteDgfyAccountPushToken);
 router.get('/customer/activities', authenticateDgfyAccount, validateDgfyCustomerActivityQuery, listDgfyCustomerActivities);
 router.get('/customer/orders', authenticateDgfyAccount, validateDgfyCustomerActivityQuery, listDgfyCustomerOrders);
 router.get('/customer/orders/:reference', authenticateDgfyAccount, getDgfyCustomerOrderDetails);

@@ -124,6 +124,18 @@ const storeCancelOrderSchema = Joi.object({
     cancel_proof: Joi.string().trim().max(2048).optional()
 });
 
+const storeGuestPushTokenSchema = Joi.object({
+    token: Joi.string().trim().max(255).pattern(/^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_\-+.=:/]{8,236}\]$/).required(),
+    platform: Joi.string().trim().lowercase().valid('ios', 'android').required(),
+    app: Joi.string().trim().min(1).max(80).required(),
+    brand: Joi.string().trim().min(1).max(80).required(),
+    push_proof: Joi.string().trim().max(2048).optional()
+});
+const storeGuestPushTokenDeleteSchema = Joi.object({
+    token: Joi.string().trim().max(255).pattern(/^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_\-+.=:/]{8,236}\]$/).required(),
+    push_proof: Joi.string().trim().max(2048).optional()
+});
+
 const storeClaimOrderSchema = Joi.object({
     claim_token: Joi.string().trim().min(16).max(2048).required()
 });
@@ -198,6 +210,8 @@ export const validateStoreTrackingPinParam = validateSchema(storeTrackingPinPara
 export const validateStorePaymentSessionParam = validateSchema(storePaymentSessionParamSchema, 'params', 'validatedParams');
 export const validateStoreCancelOrder = validateSchema(storeCancelOrderSchema, 'body', 'validatedData');
 export const validateStoreClaimOrder = validateSchema(storeClaimOrderSchema, 'body', 'validatedData');
+export const validateStoreGuestPushToken = validateSchema(storeGuestPushTokenSchema, 'body', 'validatedData');
+export const validateStoreGuestPushTokenDelete = validateSchema(storeGuestPushTokenDeleteSchema, 'body', 'validatedData');
 export const validateStoreOrderHistoryQuery = validateSchema(storeOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateStoreCatalogQuery = validateSchema(storeCatalogQuerySchema, 'query', 'validatedQuery');
 export const validateStoreQrQuery = validateSchema(storeQrQuerySchema, 'query', 'validatedQuery');

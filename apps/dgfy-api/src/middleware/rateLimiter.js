@@ -60,6 +60,8 @@ const dgfyTenantSessionWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SE
 const dgfyTenantSessionMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS) || (isDevelopment ? 50 : 10);
 const dgfyAccountSearchWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
 const dgfyAccountSearchMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const dgfyPushTokenWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_PUSH_TOKEN_WINDOW_MS) || 15 * 60 * 1000;
+const dgfyPushTokenMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_PUSH_TOKEN_MAX_REQUESTS) || (isDevelopment ? 60 : 20);
 const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS) || 60 * 60 * 1000; // 1 hour
 const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const companyRegistrationDraftWindowMs = parseInt(process.env.RATE_LIMIT_COMPANY_REGISTRATION_DRAFT_WINDOW_MS) || 15 * 60 * 1000;
@@ -120,6 +122,7 @@ const rateLimitCounters = {
   pos_drawer_authorization: 0,
   dgfy_tenant_session: 0,
   dgfy_account_search: 0,
+  dgfy_push_token: 0,
   registration: 0,
   geo_search: 0,
   inventory_push: 0,
@@ -1288,6 +1291,41 @@ export const dgfyAccountSearchLimiter = rateLimit({
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
     return false;
   },
+});
+
+// Push-token writes are authenticated customer lifecycle mutations. Keep a
+// separate account/IP budget so successful registrations remain rate-limited
+// without consuming the sign-in and password-recovery buckets.
+export const dgfyPushTokenLimiter = rateLimit({
+  windowMs: dgfyPushTokenWindowMs,
+  max: dgfyPushTokenMaxRequests,
+  message: createRateLimitError('Too many push-token changes. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('dgfy_push_token'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const accountId = String(req.dgfyAccount?.id || 'unknown-account').trim();
+    return `dgfy_push_token:${accountId || 'unknown-account'}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many push-token changes. Please wait before trying again.',
+      'dgfy_push_token',
+      'account_ip'
+    );
+    logRateLimitEvent(req, 'dgfy_push_token', response.retryAfterSeconds, 'account_ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
 });
 
 // POS rate limiter: tenant/user/terminal scoped to avoid IP-only throttling on shared networks
