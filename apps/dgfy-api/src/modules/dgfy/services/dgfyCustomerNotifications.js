@@ -1,19 +1,10 @@
 import logger from '../../../config/logger.js';
 import { dgfyCustomerRepository } from '../repositories/dgfyCustomerRepository.js';
 import { publishDgfyCustomerEvent } from './dgfyCustomerEventBus.js';
+import { dispatchAccountOrderStatusPush } from '../../pushDelivery/index.js';
+import { STATUS_COPY } from '../../pushDelivery/utils/orderStatusCopy.js';
 
-const STATUS_COPY = {
-    placed: ['Order placed', 'Your order was received by the store.'],
-    confirmed: ['Order confirmed', 'The store confirmed your order.'],
-    preparing: ['Order preparing', 'The store is preparing your order.'],
-    ready_for_pickup: ['Ready for pickup', 'Your order is ready for pickup.'],
-    out_for_delivery: ['Out for delivery', 'Your order is on the way.'],
-    delivered: ['Order delivered', 'Your delivery was completed.'],
-    picked_up: ['Order picked up', 'Your pickup order was completed.'],
-    completed: ['Order completed', 'Your order was completed.'],
-    cancelled: ['Order cancelled', 'Your order was cancelled.'],
-    rejected: ['Order rejected', 'The store rejected your order.']
-};
+export { STATUS_COPY };
 
 const normalizeStatus = (value) => String(value || '').trim().toLowerCase();
 const normalizeReference = (value) => String(value || '').trim().toUpperCase();
@@ -88,6 +79,9 @@ export const dispatchDgfyCustomerActivityUpdate = async (activity = {}) => {
             publishDgfyCustomerEvent(accountId, 'notification.created', {
                 notification: result.notification
             });
+        }
+        if (result?.created) {
+            void dispatchAccountOrderStatusPush(activity, { eventKey: payload.event_key, created: true }).catch(() => null);
         }
         return { notification: result?.notification || null, published: true };
     } catch (error) {
