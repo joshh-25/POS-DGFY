@@ -169,7 +169,7 @@ describe('production environment validation', () => {
         DGLAUNDRY_INTEGRATION_ENABLED: 'true',
         DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
         DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc',
-        DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback'
+        DGFY_DGLAUNDRY_REDIRECT_URI: 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback'
       }
     });
     expect(stagingWithProdCallback.errors).toContain(
@@ -199,10 +199,11 @@ describe('production environment validation', () => {
       }
     });
     expect(productionWithStagingCallback.errors).toContain(
-      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://laundry.surebizcorp.com/api/v1/session/dgfy/callback for production'
+      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback for production'
     );
 
-    const productionWithProdCallback = validateProductionEnv({
+    // #2513: the old Surebiz host is no longer a valid production callback.
+    const productionWithLegacyCallback = validateProductionEnv({
       env: {
         ...baseEnv,
         DGLAUNDRY_INTEGRATION_ENABLED: 'true',
@@ -211,8 +212,21 @@ describe('production environment validation', () => {
         DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback'
       }
     });
+    expect(productionWithLegacyCallback.errors).toContain(
+      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback for production'
+    );
+
+    const productionWithProdCallback = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'production',
+        DGFY_OIDC_ISSUER: 'https://api.dgfy.ph/oidc',
+        DGFY_DGLAUNDRY_REDIRECT_URI: 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback'
+      }
+    });
     expect(productionWithProdCallback.errors).not.toContain(
-      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://laundry.surebizcorp.com/api/v1/session/dgfy/callback for production'
+      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback for production'
     );
   });
 
