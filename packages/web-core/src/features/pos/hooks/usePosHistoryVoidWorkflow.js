@@ -24,6 +24,7 @@ import {
     normalizePosHistoryPageSize
 } from '../utils/posHistoryQuery.js';
 import { isCheckoutQueueEntry } from '../utils/posCheckoutTerminalQueue.js';
+import { isRetryableBackendFailure } from '../../../services/backendReachability.js';
 
 const isParkedSaleCancellationApproval = (approvalRequest) => (
     approvalRequest?.action_type === 'pos_parked_sale_cancel'
@@ -212,7 +213,7 @@ export const usePosHistoryVoidWorkflow = ({
             setHistoryPage(normalizedPage);
         } catch (error) {
             if (!isCurrentRequest()) return;
-            if (!error?.response) {
+            if (isRetryableBackendFailure(error)) {
                 setHistoryRows([]);
                 setHistoryPagination({ page: normalizedPage, limit, total: 0, totalPages: 1 });
                 setHistoryPage(normalizedPage);
