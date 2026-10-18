@@ -1,5 +1,6 @@
 import { storeRepository } from './repositories/storeRepository.js';
 import { pushDeviceTokenRepository } from '../pushDelivery/repositories/pushDeviceTokenRepository.js';
+import { dispatchStaffNewOnlineOrderPush } from '../pushDelivery/index.js';
 import { buildDeleteGuestPushTokenUseCase, buildRegisterGuestPushTokenUseCase } from '../pushDelivery/usecases/pushTokenUseCases.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { tenantRevenueRepository } from '../tenantRevenue/repositories/tenantRevenueRepository.js';
@@ -160,6 +161,7 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
 });
 export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
     storeRepository,
+    dispatchStaffNewOnlineOrderPush,
     downpaymentSettingsRepository,
     inventoryReservationService,
     tenantRevenueRepository

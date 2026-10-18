@@ -44,6 +44,11 @@ receipt state, timestamps, and safe error codes. Staff tokens are revoked on sig
 deactivation/removal, device-unregistered receipts, or 90 days without refresh. Permission and
 location changes are enforced again at dispatch time.
 
+The checkout call runs after a fresh order transaction commits and does not delay or fail checkout;
+idempotent replays do not dispatch. Deactivation, company removal, and inactivity cleanup revoke
+staff bindings best-effort. Reverting checkout dispatch needs no order-state repair, while rolling
+back the owner migration discards only staff token bindings that the prior schema cannot represent.
+
 No live request-time compliance preflight was executed in this local session. The
 `NOT-EXECUTED-2569-2026-10-18` reference is the expected PR-open placeholder; the automatic sweep
 will reconcile it after the declaration lands on `develop`.
