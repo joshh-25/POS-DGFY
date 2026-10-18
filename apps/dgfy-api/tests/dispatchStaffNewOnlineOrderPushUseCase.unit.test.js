@@ -30,7 +30,7 @@ const createDispatcher = ({
     tokens = tokenRows(),
     users = audience,
     resolveLocation = jest.fn().mockResolvedValue({ location_id: 7 }),
-    reservePending = jest.fn(async (payload) => ({ status: 'created', log: { id: `log-${payload.token_id}` } })),
+    reservePending = jest.fn(async (payload) => ({ status: 'created', log: { id: `log-${payload.token_id}`, token_id: payload.token_id } })),
     send = jest.fn(async (messages) => messages.map(() => ({ status: 'accepted', ticketId: 'ticket-1' })))
 } = {}) => {
     const deviceRepository = {

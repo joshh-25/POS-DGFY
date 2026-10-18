@@ -75,7 +75,7 @@ describe('pushDeviceTokenRepository', () => {
     });
 
     it('revokes the old owner when a token is reassigned', async () => {
-        const oldRow = { id: 'old', revoked_at: null, update: jest.fn().mockResolvedValue(undefined) };
+        const oldRow = { id: 'old', token: payload.token, revoked_at: null, update: jest.fn().mockResolvedValue(undefined) };
         tokenModel.findAll.mockResolvedValue([oldRow]);
         tokenModel.create.mockResolvedValue({ id: 'new', ...payload, ...accountOwner });
         await expect(pushDeviceTokenRepository.registerToken(payload, accountOwner)).resolves.toMatchObject({ id: 'new' });
