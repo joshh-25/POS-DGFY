@@ -29457,3 +29457,95 @@ Not complete. Record only after merge and successful implementation validation.
 ### Next phase number
 
 Phase 512. No explicit dependency.
+
+## Phase 512 - POS backend-unreachable classification (#1476)
+
+### Initiative and release
+
+POS terminal reliability, current release.
+
+### Objective and scope
+
+Unify backend-unreachable and per-operation retry classification for POS checkout, operation
+replay, catalog fallback, incoming-order polling, terminal reachability, and transient Sentry
+reporting. Preserve checkout idempotency, the cash-only/no-discount/non-resumed-sale offline
+constraints, operator-triggered replay, and existing backend authority. Add bounded polling/SSE
+backoff and focused outage regression coverage. Categories/folders caching remains deferred to #993;
+the IMS Skupervisor twin and backend pool fixes remain out of scope.
+
+### Status
+
+`in_progress` — implementation and validation are underway; the branch is unmerged.
+
+### Dependencies
+
+Issue #1476 defines scope. No explicit phase dependency blocks this work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0014](../architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md),
+[ADR 0055](../architecture/adr/0055-pos-catalog-invalidation-stream.md),
+[ADR 0067](../architecture/adr/0067-chrome-80-es-compatibility-floor.md),
+[POS Offline Sync Contract](POS_OFFLINE_SYNC_CONTRACT.md),
+[request-time preflight protocol](../compliance/request-time-preflight-protocol.md),
+[impact declaration](../compliance/impact-declarations/2026-10-18-pos-backend-unreachable-classifier.md),
+and [Issue #1476](https://github.com/Sieitzz/dgfy-platform/issues/1476). This is within the
+existing POS boundary; no ADR amendment is required.
+
+### Implementation targets
+
+[Shared classifier](../../packages/web-core/src/services/backendReachability.js),
+[API outcome snapshot](../../packages/web-core/src/services/api.js),
+[Sentry transient threshold](../../packages/web-core/src/observability/sentryClient.js),
+POS checkout/catalog/history workflows, incoming-order polling, POS catalog SSE, terminal queue
+replay, and [outage checkout E2E](../../apps/dgfy-pos/tests/e2e/pos/backend-outage-checkout-queue.spec.js).
+Focused coverage is in the adjacent `__tests__` files under `packages/web-core/src/services`,
+`observability`, and `features/pos`.
+
+### Acceptance and validation evidence
+
+- [x] A single shared module owns unreachable and retryable status classification; in-scope private
+      status sets and `!error.response`-only predicates are removed.
+- [x] Eligible cash checkout failures queue under the original idempotency key; non-cash,
+      discounted, and resumed parked-sale checkouts remain blocked.
+- [x] Gateway failures mark the backend unreachable; 500/429 responses and cancelled requests do
+      not. A successful response restores reachability.
+- [x] Automatic incoming-order/catalog polls skip overlapping work and back off; SSE reconnects
+      include jitter and recover on success or operator connectivity events.
+- [x] POS transient Sentry reporting requires three consecutive transient failures; server errors
+      still report immediately and the existing failure classes/fingerprints remain intact.
+- [x] POS and affected shared-trunk builds, focused tests, compliance, docs, architecture, and
+      app-version-floor checks pass. The provisioned-stack E2E result is reported explicitly.
+
+### Evidence
+
+Focused Vitest validation passed 9 suites / 162 tests. `npm run build:pos`,
+`npm run build:skupervisor`, `npm run build:store`, and `npm run build:opis` passed, including
+the POS Chrome 80 compatibility guard. `npm run check:architecture`, `npm run lint:docs`,
+`npm run check:compliance`, `node scripts/check-app-version-bump.js`, changed-file `node --check`,
+the in-scope duplicate-predicate scan, and `git diff --check` passed. Playwright listed both new
+outage E2E cases; runtime E2E was not run because no local POS server or provisioned service stack
+was available. Live request-time compliance preflight was not run; its `NOT-EXECUTED-*` reference
+is accepted for PR-open and is due to the continuous sweep. PR review and merge remain outstanding.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — issue #1476 verifies the merged POS candidate is deployed and the terminal
+      starts with the normal reachability state; this blocks issue verification and closure.
+- [ ] operational — issue #1476 verifies an authenticated terminal under a controlled 502 or
+      transport outage: eligible cash sales persist in the queue, protected checkout types remain
+      open for retry, and queued work is submitted only by operator action; this blocks issue
+      verification and closure.
+- [ ] operational — issue #1476 verifies successful API recovery clears the terminal's unreachable
+      state and incoming-order polling returns to its normal cadence; this blocks issue verification
+      and closure.
+
+### Next phase number
+
+Phase 513. No explicit dependency.
