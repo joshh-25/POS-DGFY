@@ -308,7 +308,10 @@ describe('POS transaction void route transport contract', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.data.pos_transaction_id).toBe(178);
-        expect(response.body.data.payload).toEqual({ reason: 'Manager correction' });
+        expect(response.body.data.payload).toEqual({
+            reason: 'Manager correction',
+            auto_refund: false
+        });
         expect(response.body.data.actor).toEqual(expect.objectContaining({
             user_id: 99,
             role: 'admin'
@@ -318,6 +321,42 @@ describe('POS transaction void route transport contract', () => {
             location_id: 7
         });
         expect(mockVoidTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('dispatches an eligible cash refund request with its passcode', async () => {
+        const response = await request(app)
+            .post('/api/v1/pos/transactions/178/void')
+            .set('x-pos-terminal-id', 'COUNTER-01')
+            .send({
+                reason: 'Manager correction',
+                auto_refund: true,
+                refund_passcode: '1234'
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.payload).toEqual({
+            reason: 'Manager correction',
+            auto_refund: true,
+            refund_passcode: '1234'
+        });
+        expect(mockVoidTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['non-digit', '12a4'],
+        ['too-short', '123']
+    ])('rejects a %s refund passcode without dispatching the void', async (_case, refund_passcode) => {
+        const response = await request(app)
+            .post('/api/v1/pos/transactions/178/void')
+            .set('x-pos-terminal-id', 'COUNTER-01')
+            .send({
+                reason: 'Manager correction',
+                auto_refund: true,
+                refund_passcode
+            });
+
+        expect(response.status).toBe(422);
+        expect(mockVoidTransaction).not.toHaveBeenCalled();
     });
 
     it('protects cash refunds with cash-drawer permission and validates the cashier shift payload', async () => {
