@@ -1,5 +1,10 @@
 import { jest } from '@jest/globals';
 
+const {
+    clearTenantCapabilityCache,
+    getCachedCapabilityEnabled
+} = await import('../src/modules/shared/utils/tenantCapabilitySettingCache.js');
+
 const settings = new Map();
 const runContexts = [];
 
@@ -55,6 +60,7 @@ const { buildUpdateTenantCapabilitiesUseCase } = await import(
 
 describe('update tenant capabilities rollback behavior', () => {
     beforeEach(() => {
+        clearTenantCapabilityCache();
         settings.clear();
         settings.set('store_is_visible', 'false');
         settings.set('customer_access_mode', 'catalog');
@@ -64,6 +70,7 @@ describe('update tenant capabilities rollback behavior', () => {
     });
 
     it('rolls Storefront settings back and skips audit logging when discovery sync fails', async () => {
+        await expect(getCachedCapabilityEnabled('tenant-1', 'tenant_pos_enabled', async () => true)).resolves.toBe(true);
         const tenantAdminRepository = {
             findTenantById: jest.fn().mockResolvedValue({
                 id: 'tenant-1',
@@ -77,8 +84,16 @@ describe('update tenant capabilities rollback behavior', () => {
         const tenantConnector = {
             getConnection: jest.fn().mockResolvedValue(tenantSequelize)
         };
+        let capabilitySeenDuringSync;
         const syncStorefrontDiscoveryIndexForTenant = jest.fn()
-            .mockRejectedValueOnce(new Error('index service unavailable'))
+            .mockImplementationOnce(async () => {
+                capabilitySeenDuringSync = await getCachedCapabilityEnabled(
+                    'tenant-1',
+                    'tenant_pos_enabled',
+                    async () => settings.get('tenant_pos_enabled') !== 'false'
+                );
+                throw new Error('index service unavailable');
+            })
             .mockResolvedValueOnce(undefined);
         const useCase = buildUpdateTenantCapabilitiesUseCase({
             tenantAdminRepository,
@@ -92,6 +107,7 @@ describe('update tenant capabilities rollback behavior', () => {
             body: {
                 reason: 'Tenant requested temporary storefront pause',
                 storefront_visible: true,
+                pos_enabled: false,
                 customer_access_mode: 'transaction',
                 platform_max_customer_access_mode: 'transaction'
             },
@@ -103,9 +119,13 @@ describe('update tenant capabilities rollback behavior', () => {
         expect(settings.get('store_is_visible')).toBe('false');
         expect(settings.get('customer_access_mode')).toBe('catalog');
         expect(settings.get('platform_max_customer_access_mode')).toBe('catalog');
+        expect(capabilitySeenDuringSync).toBe(false);
         expect(syncStorefrontDiscoveryIndexForTenant).toHaveBeenCalledTimes(2);
         expect(tenantAdminRepository.createTenantAdminAuditLog).not.toHaveBeenCalled();
         expect(runContexts).toHaveLength(2);
+        const reload = jest.fn(async () => settings.get('tenant_pos_enabled') !== 'false');
+        await expect(getCachedCapabilityEnabled('tenant-1', 'tenant_pos_enabled', reload)).resolves.toBe(true);
+        expect(reload).toHaveBeenCalledTimes(1);
     });
 
     it('updates registration readiness through onboarding progress and audits the change', async () => {
