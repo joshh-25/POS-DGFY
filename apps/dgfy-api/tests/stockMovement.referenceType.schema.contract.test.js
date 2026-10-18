@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from '@jest/globals';
 import defaultDb from '../src/models/index.js';
+import { REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS } from '../scripts/sync-tenant-schemas.js';
 
 const posParkedSaleReferenceTypeMigrationSource = fs.readFileSync(
     path.resolve(process.cwd(), '../dgfy-migration-runner/migrations/20261007000001-add-pos-parked-sale-reference-type.cjs'),
@@ -28,6 +29,36 @@ describe('stock_movements.reference_type schema contract', () => {
         const declaredValues = defaultDb.StockMovement.rawAttributes.reference_type.values;
         for (const literal of REFERENCE_TYPE_LITERALS_WRITTEN_BY_APP_CODE) {
             expect(declaredValues).toContain(literal);
+        }
+    });
+
+    it('keeps Sequelize ENUMs and tenant schema registry contracts in sync', () => {
+        const modelsByTable = new Map(Object.values(defaultDb)
+            .filter((model) => model?.rawAttributes && typeof model.getTableName === 'function')
+            .map((model) => [model.getTableName(), model]));
+        const comparableContracts = [];
+
+        for (const [tableName, columns] of Object.entries(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS)) {
+            const model = modelsByTable.get(tableName);
+            if (!model) continue;
+
+            for (const [columnName, contract] of Object.entries(columns)) {
+                const modelValues = model.rawAttributes[columnName]?.values;
+                if (!Array.isArray(modelValues)) continue;
+
+                comparableContracts.push({
+                    column: `${tableName}.${columnName}`,
+                    modelValues,
+                    registryValues: contract.enumValues
+                });
+            }
+        }
+
+        expect(comparableContracts.length).toBeGreaterThan(0);
+        for (const { column, modelValues, registryValues } of comparableContracts) {
+            expect({ [column]: [...modelValues].sort() }).toEqual({
+                [column]: [...registryValues].sort()
+            });
         }
     });
 
