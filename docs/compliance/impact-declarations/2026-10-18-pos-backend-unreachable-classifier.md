@@ -12,8 +12,8 @@ verification_evidence: npm exec vitest run focused web-core suites (9 suites/162
 rollback_note: Revert the shared classifier and POS integrations together; existing queued checkout intents remain durable and use the existing operator-controlled replay path.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-18T16:02:39+08:00
-preflight_request_ref: NOT-EXECUTED-1476-2026-10-18
+preflight_run_at: 2026-10-18T09:08:43.947Z
+preflight_request_ref: PREFLIGHT-39113795566-2026-10-18-POS-BACKEND-UNREACHABLE-CLASSIFIER
 ---
 
 # POS backend-unreachable classifier
