@@ -5,11 +5,11 @@ owner: engineering
 last_reviewed: 2026-10-19
 related_adr: 0097-outbound-push-notification-delivery-contract.md
 declaration_id: 2026-10-19-push-diagnostics-backend
-classification: major
-surfaces: settings,privacy,pos
+classification: regulatory
+surfaces: settings,compliance,privacy,pos
 reason_codes_impacted: NONE
 policy_version: 2026.10.19
-verification_evidence: focused Jest suites for diagnostics use cases, dispatch-event recording, read-repository redaction, route contract, migration and enrollment repository; check:architecture, check:adr, lint:docs, check:compliance and app-version checks
+verification_evidence: focused API Jest suites for diagnostics use cases, dispatch-event recording, redaction, route contract, migration and enrollment repository; Platform Admin component tests and build; check:architecture, lint:docs, check:compliance and app-version checks
 rollback_note: Remove the push-diagnostics admin and enrollment routes and the dispatch-event recorder; the additive migration can be rolled back (it drops only the three new tables) and no existing push, order, or tenant data needs repair. Revoking the admin.push_diagnostics grant or leaving no enrolled device already disables the page and test sends.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -17,14 +17,14 @@ preflight_run_at: 2026-10-19T00:00:00.000Z
 preflight_request_ref: NOT-EXECUTED-2579-2026-10-19
 ---
 
-# Platform Admin Push Diagnostics (backend)
+# Platform Admin Push Diagnostics
 
 ## Compliance Impact Classification
 
-Major. The change adds a Platform Admin route family and page grant in the authentication middleware,
-persists operator-enrolled device tokens, and adds an operator view of push registration and delivery
-metadata. Device tokens and their association with accounts, guest orders, and tenant staff are
-personal data under the
+Regulatory. The change adds a Platform Admin route family and page grant in the authentication
+middleware, persists operator-enrolled device tokens, and adds an operator view of push registration
+and delivery metadata. Device tokens and their association with accounts, guest orders, and tenant
+staff are personal data under the
 [Data Privacy Act of 2012 (Republic Act No. 10173)](https://officialgazette.gov.ph/2012/08/15/republic-act-no-10173/).
 
 ## Affected Surfaces
@@ -35,6 +35,9 @@ personal data under the
   `routes/pushDiagnosticsEnrollment.js`: read-only diagnostics, enrollment codes, test send (`privacy`).
 - `apps/dgfy-api/src/modules/pushDelivery/`: best-effort recording of dispatch decisions for order
   status and POS staff new-online-order pushes (`pos`); delivery behavior is unchanged.
+- `apps/dgfy-admin/Pages/PushDiagnostics.jsx`, the `/admin/push-diagnostics` route, navigation, and
+  `apps/dgfy-admin/src/services/adminService.js`: Platform Admin read and controlled diagnostic-device
+  actions (`settings`, `compliance`, and privacy-sensitive operational metadata).
 - Landlord database: `push_dispatch_events`, `push_diagnostic_devices`, and
   `push_diagnostic_enrollment_codes` (additive migration).
 
@@ -58,7 +61,7 @@ overview fails closed if its audit row cannot be written.
 
 The page grant is delegated only by the Platform Master. Staging and production each show only their
 own database; the label comes from `DEPLOY_ENV_LABEL`. The provider stays `unconfigured` by default and
-this change adds no credentials. The Platform Admin UI is a separate follow-up PR; no mobile client is
+this change adds no credentials. The Platform Admin UI is included in PR #2580; no mobile client is
 changed here.
 
 No live request-time compliance preflight was executed in this local session. The

@@ -142,6 +142,14 @@ export const recordPlatformInvoiceCashPayment = async (invoiceId, payload) => (a
 export const creditPlatformInvoice = async (invoiceId, payload) => (await adminApi.post(`/admin/invoices/${invoiceId}/credits/full`, payload, requireAdminAuthConfig())).data;
 export const deliverPlatformInvoiceEmail = async (invoiceId) => (await adminApi.post(`/admin/invoices/${invoiceId}/deliveries/email`, {}, requireAdminAuthConfig())).data;
 export const downloadPlatformInvoiceArtifact = async (invoiceId) => (await adminApi.get(`/admin/invoices/${invoiceId}/artifact`, { ...requireAdminAuthConfig(), responseType: 'blob' }));
+export const getPushDiagnosticsOverview = async () => (await adminApi.get('/admin/push-diagnostics/overview', { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
+export const listPushDiagnosticsRegistrations = async (params = {}) => (await adminApi.get('/admin/push-diagnostics/registrations', { ...requireAdminAuthConfig(), params, skipGlobalErrorToast: true })).data?.data;
+export const listPushDiagnosticsAttempts = async (params = {}) => (await adminApi.get('/admin/push-diagnostics/attempts', { ...requireAdminAuthConfig(), params, skipGlobalErrorToast: true })).data?.data;
+export const listPushDiagnosticDevices = async () => (await adminApi.get('/admin/push-diagnostics/diagnostic-devices', { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
+export const createPushDiagnosticEnrollmentCode = async () => (await adminApi.post('/admin/push-diagnostics/enrollment-codes', {}, { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
+export const revokePushDiagnosticDevice = async (deviceId) => (await adminApi.delete(`/admin/push-diagnostics/diagnostic-devices/${encodeURIComponent(deviceId)}`, { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
+// The target is the enrolled device id only; the request deliberately carries no body.
+export const sendPushDiagnosticTest = async (deviceId) => (await adminApi.post(`/admin/push-diagnostics/diagnostic-devices/${encodeURIComponent(deviceId)}/test-send`, undefined, { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
 export const listPlatformAdmins = async () => (await adminApi.get('/admin/platform-admins', requireAdminAuthConfig())).data;
 export const getPlatformAdminReadiness = async () => (await adminApi.get('/admin/platform-admins/readiness', requireAdminAuthConfig())).data;
 export const createPlatformAdmin = async (payload) => (await adminApi.post('/admin/platform-admins', payload, requireAdminAuthConfig())).data;
