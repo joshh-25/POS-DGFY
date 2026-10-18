@@ -4,7 +4,9 @@ import { generateStoreCancelProof, generateStorePushProof } from '../src/modules
 import {
     buildDeleteGuestPushTokenUseCase,
     buildRegisterAccountPushTokenUseCase,
-    buildRegisterGuestPushTokenUseCase
+    buildRegisterGuestPushTokenUseCase,
+    buildDeleteStaffPushTokenUseCase,
+    buildRegisterStaffPushTokenUseCase
 } from '../src/modules/pushDelivery/usecases/pushTokenUseCases.js';
 
 const tenantId = '7d54bdb5-7b8a-4a10-a788-6b8897770001';
@@ -113,6 +115,49 @@ describe('push token use cases', () => {
         expect(repository.registerToken).toHaveBeenCalledWith(payload, {
             dgfy_account_id: 'd5cba9b3-c2f8-4768-8e80-101010101010'
         });
+    });
+
+    it('registers and refreshes staff tokens under the authenticated tenant/user pair', async () => {
+        const repository = { registerToken: jest.fn().mockResolvedValue({ id: 'staff-device-1' }) };
+        const register = buildRegisterStaffPushTokenUseCase({ repository });
+        const staffPayload = {
+            token,
+            previous_token: 'ExponentPushToken[previousdevice]',
+            platform: 'android',
+            app: 'fiscalpos',
+            brand: 'Fiscal POS'
+        };
+
+        const result = await register({ tenantId, userId: 14, payload: staffPayload });
+
+        expect(result).toMatchObject({
+            success: true,
+            data: { registered: true, token_id: 'staff-device-1' }
+        });
+        expect(JSON.stringify(result)).not.toContain(token);
+        expect(repository.registerToken).toHaveBeenCalledWith({
+            token,
+            platform: 'android',
+            app: 'fiscalpos',
+            brand: 'Fiscal POS'
+        }, { staff_tenant_id: tenantId, staff_user_id: 14 }, {
+            previousToken: 'ExponentPushToken[previousdevice]'
+        });
+
+        const invalidApp = await register({ tenantId, userId: 14, payload: { ...staffPayload, app: 'storefront' } });
+        expect(invalidApp.error.code).toBe('VALIDATION_FAILED');
+        const missingIdentity = await register({ tenantId, userId: 0, payload: staffPayload });
+        expect(missingIdentity.error.code).toBe('AUTHENTICATION_FAILED');
+    });
+
+    it('deletes a staff token only for the authenticated tenant/user owner', async () => {
+        const repository = { revokeStaffToken: jest.fn().mockResolvedValue(1) };
+        const remove = buildDeleteStaffPushTokenUseCase({ repository });
+
+        const result = await remove({ tenantId, userId: 14, token });
+
+        expect(result).toMatchObject({ success: true, data: { revoked: true } });
+        expect(repository.revokeStaffToken).toHaveBeenCalledWith({ token, tenantId, userId: 14 });
     });
 
     it('deletes a guest token only for the proof-bound order', async () => {
