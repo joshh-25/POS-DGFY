@@ -11,8 +11,8 @@ verification_evidence: changed-file JavaScript syntax checks pass; check:archite
 rollback_note: Set PUSH_PROVIDER=unconfigured to disable provider delivery. Reverting the staff routes and post-commit dispatcher does not require order-state repair. The additive migration can be rolled back; staff-only token bindings are dropped because the previous owner schema cannot represent them, while customer token bindings and delivery history remain intact.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-18T10:15:59Z
-preflight_request_ref: NOT-EXECUTED-2569-2026-10-18
+preflight_run_at: 2026-10-18T11:26:19.301Z
+preflight_request_ref: PREFLIGHT-39122891967-2026-10-18-POS-STAFF-PUSH-TOKENS
 ---
 
 # POS Staff New-Online-Order Push Tokens
