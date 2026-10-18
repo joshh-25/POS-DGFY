@@ -29732,12 +29732,12 @@ Not complete. Record only after merge and successful implementation validation.
 
 Phase 515. No explicit dependency.
 
-## Phase 515 - Platform Admin push diagnostics, backend (#2579)
+## Phase 515 - Platform Admin push diagnostics (#2579)
 
 ### Initiative and release
 
-Outbound push delivery operations, current release. This is PR 1 of 2; the Platform Admin UI and the
-operator runbook follow in a second phase-515 PR.
+Outbound push delivery operations, current release. Backend, Platform Admin page, operator runbook,
+and their validation are scoped to one PR (#2580).
 
 ### Objective and scope
 
@@ -29751,8 +29751,8 @@ Mobile and POS clients calling the enrollment endpoint are out of scope.
 
 ### Status
 
-`in_progress` — backend implementation and repository-level checks pass on the feature branch; PR
-review, merge, the admin UI PR, deployment, `DEPLOY_ENV_LABEL` provisioning, and real-device evidence
+`in_progress` — backend and admin UI implementation and focused validation pass on the feature
+branch; PR review, merge, deployment, `DEPLOY_ENV_LABEL` provisioning, and real-device evidence
 remain outstanding.
 
 ### Dependencies
@@ -29777,6 +29777,9 @@ on another phase. Test send is usable only after a mobile or POS client calls th
 ### Implementation targets
 
 [Diagnostics module](../../apps/dgfy-api/src/modules/pushDiagnostics/README.md),
+[Platform Admin diagnostics page](../../apps/dgfy-admin/Pages/PushDiagnostics.jsx),
+[Platform Admin diagnostics tests](../../apps/dgfy-admin/src/pages/__tests__/PushDiagnostics.test.jsx),
+[operator runbook](../ops/PUSH_DIAGNOSTICS_RUNBOOK.md),
 [dispatch event recorder](../../apps/dgfy-api/src/modules/pushDelivery/utils/dispatchEventRecorder.js),
 [diagnostic device repository](../../apps/dgfy-api/src/modules/pushDelivery/repositories/pushDiagnosticDeviceRepository.js),
 [admin routes](../../apps/dgfy-api/src/routes/adminPushDiagnostics.js),
@@ -29805,17 +29808,26 @@ Focused tests: [use cases](../../apps/dgfy-api/tests/pushDiagnosticsUseCases.uni
 - [x] Test send accepts no body, targets only an enrolled diagnostic device, and is limited per admin
       and per device.
 - [x] Authorization, redaction, outcome mapping, and test-send restriction tests were added.
-- [ ] Admin UI, operator runbook, and rendered-UI proof (PR 2).
+- [x] Admin UI shows the connected environment, readiness indicators, outcome counts, pseudonymous
+      registrations and attempts, dispatch reasons, and controlled diagnostic-device actions.
+- [x] Operator runbook documents state meanings, registration/dispatch/provider/receipt triage,
+      environment configuration, and the client enrollment dependency.
+- [x] Admin UI tests cover environment banners, empty states, provider/receipt labels, sensitive-field
+      redaction, one-time code display, no accidental test send, confirmation gating, and 429 messages.
+- [x] Rendered UI proof for desktop (1440 px) and mobile (390 px) viewports; mocked API data only,
+      with no browser errors or page-width overflow. Screenshots: `.tmp/push-diagnostics-render/`.
 - [ ] PR review and merge to `develop`; phase remains `in_progress` until then.
 
 ### Evidence
 
-Focused Jest suites and repository checks are recorded in the PR's Testing Evidence. No provider,
-production environment, or real device was exercised; Expo remains `unconfigured` by default.
+Focused backend Jest suites and repository checks are recorded in the PR's Testing Evidence. Admin UI
+component tests, the app build, and rendered desktop/mobile checks with mocked API data pass in this
+continuation. No provider, production environment, or real device was exercised; Expo remains
+`unconfigured` by default.
 
 ### Completion date
 
-Not complete. Record only after both PRs merge and implementation validation passes.
+Not complete. Record after PR #2580 merges and implementation validation passes.
 
 ### Post-merge verification
 

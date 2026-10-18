@@ -30,3 +30,6 @@ write `platform_admin_audit_logs` rows (`push_diagnostics.*`). Dispatch events a
 devices follow the 30-day push log retention in `pushReceiptScheduler`.
 
 Controllers are transport only; use cases coordinate; repositories own persistence and the audit writes.
+
+For operator status meanings, triage, environment labeling, and the diagnostic-device workflow, see
+the [Platform Admin push diagnostics runbook](../../../../../docs/ops/PUSH_DIAGNOSTICS_RUNBOOK.md).
