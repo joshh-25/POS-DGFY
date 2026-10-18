@@ -1,0 +1,102 @@
+--- a/docker-compose.api.yml
++++ b/docker-compose.api.yml
+@@ -125,13 +125,14 @@
+       TENANT_PAYOUT_ENCRYPTION_KEY: ${TENANT_PAYOUT_ENCRYPTION_KEY}
+       SMS_PHONE_HASH_SECRET: ${SMS_PHONE_HASH_SECRET}
+ 
+-      # --- #2303: DGLaundry OIDC/partner identity (inert while
+-      # DGLAUNDRY_INTEGRATION_ENABLED stays false -- see entrypoint.sh's
+-      # root branch, which gates the entire secret-copy step on this flag).
+-      # Scoped to the 5 secrets DGFY currently owns; DGLaundry's two public
+-      # keys (machine-assertion, request-signing) are added once received --
+-      # until then DGLAUNDRY_INTEGRATION_ENABLED must stay false, since the
+-      # entrypoint hard-fails if any of all 7 expected files is missing.
++      # --- #2303/#2304: DGLaundry OIDC/partner identity.  The entrypoint's
++      # secret-copy step (entrypoint.sh, root branch) is gated on
++      # DGLAUNDRY_INTEGRATION_ENABLED and hard-fails if any of the 7 files is
++      # missing: the 5 DGFY-owned secrets plus DGLaundry's machine-assertion and
++      # request-signing public keys (both added by connect-dgfy-prod.sh).
++      # DGLAUNDRY_INTEGRATION_ENABLED now defaults to true so a plain
++      # ./deploy-sops.sh keeps it on; deploy-sops.sh refuses to start if any of
++      # the files is missing, so this cannot half-enable.
+       DGLAUNDRY_CONNECTION_SECRET_SOURCE_DIR: /run/secrets
+       DGFY_OIDC_ISSUER: https://api.dgfy.ph/oidc
+       DGFY_OIDC_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-oidc-private.pem
+@@ -140,18 +141,26 @@
+       DGFY_DGLAUNDRY_CLIENT_ID: dglaundry-web
+       DGFY_DGLAUNDRY_CLIENT_SECRET_FILE: /run/dgfy-secrets/dglaundry-oidc-client-secret
+       DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: dglaundry-machine
++      DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: /run/dgfy-secrets/dglaundry-machine-assertion.pub.pem
+       DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: dglaundry-service
+-      DGFY_DGLAUNDRY_REDIRECT_URI: https://laundry.surebizcorp.com/api/v1/session/dgfy/callback
++      DGFY_DGLAUNDRY_REDIRECT_URI: https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback
+       DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: dgfy-event-prod-ed25519
+       DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-event-signing.pem
+       DGFY_DGLAUNDRY_PARTNER_APP_ID: dglaundry
+       DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE: /run/dgfy-secrets/dgfy-request-signing.pem
+       DGLAUNDRY_PARTNER_SIGNING_KEY_ID: dgfy-request-prod-p256
++      DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: /run/dgfy-secrets/dglaundry-request-signing.pub.pem
++      DGLAUNDRY_PARTNER_REQUEST_KEY_ID: dglaundry-request-prod-p256
++      DGLAUNDRY_INTEGRATION_KEY_ID: dglaundry-event-prod-ed25519
++      # Public {"<kid>": "<pub PEM>"} registry; exported by deploy-sops.sh from
++      # secrets/dglaundry-event-keys.  Empty default keeps `docker compose ps` etc. working.
++      DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON: ${DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON:-}
++      DGLAUNDRY_PARTNER_CONTRACT_VERSION: external-runtime-v0.1
+       DGLAUNDRY_INTEGRATION_ENVIRONMENT: production
+-      DGLAUNDRY_PARTNER_BASE_URL: https://laundry.surebizcorp.com
+-      DGLAUNDRY_PARTNER_AUDIENCE: https://laundry.surebizcorp.com
++      DGLAUNDRY_PARTNER_BASE_URL: https://dglaundry.dgfy.ph
++      DGLAUNDRY_PARTNER_AUDIENCE: https://dglaundry.dgfy.ph
+       DGLAUNDRY_SIGNATURE_PROFILE: http-message-signatures-v1
+-      DGLAUNDRY_INTEGRATION_ENABLED: ${DGLAUNDRY_INTEGRATION_ENABLED:-false}
++      DGLAUNDRY_INTEGRATION_ENABLED: ${DGLAUNDRY_INTEGRATION_ENABLED:-true}
+     tmpfs:
+       - /run/dgfy-secrets
+     secrets:
+@@ -165,6 +174,10 @@
+         target: dgfy-event-signing.pem
+       - source: dgfy-request-signing-key
+         target: dgfy-request-signing.pem
++      - source: dglaundry-machine-assertion-public-key
++        target: dglaundry-machine-assertion.pub.pem
++      - source: dglaundry-request-signing-public-key
++        target: dglaundry-request-signing.pub.pem
+     volumes:
+       - ./data/dgfy-api/uploads:/app/uploads
+       - ./data/dgfy-api/storage:/app/storage
+@@ -195,3 +208,7 @@
+     environment: DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY
+   dgfy-request-signing-key:
+     environment: DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY
++  dglaundry-machine-assertion-public-key:
++    environment: DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY
++  dglaundry-request-signing-public-key:
++    environment: DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY
+--- a/deploy-sops.sh
++++ b/deploy-sops.sh
+@@ -78,17 +78,20 @@
+ # silently inert, not a startup risk -- but we still fail loudly on a
+ # genuinely missing file so a bad ciphertext deploy is caught immediately.
+ #
+-# DGLaundry's two public keys are not listed yet -- they are not in the
+-# ciphertext store until DGLaundry provides them (requested, pending as of
+-# 2026-10-08) -- do not add them here until the matching files exist in
+-# secrets/, and do not flip DGLAUNDRY_INTEGRATION_ENABLED to true until all
+-# seven are present (the entrypoint hard-fails on any single missing one).
++# DGLaundry's two public keys and its event-key registry (#2304) are created by
++# connect-dgfy-prod.sh and listed below; DGLAUNDRY_INTEGRATION_ENABLED defaults
++# to true in docker-compose.api.yml, so all seven entrypoint files must exist
++# (the entrypoint hard-fails on any single missing one) -- and this loop
++# refuses to start if any file here is missing.
+ OIDC_SECRET_PAIRS=(
+   "secrets/dgfy-oidc-private.pem:DGFY_OIDC_PRIVATE_KEY"
+   "secrets/dgfy-oidc-public.pem:DGFY_OIDC_PUBLIC_KEY"
+   "secrets/dglaundry-oidc-client-secret:DGFY_DGLAUNDRY_CLIENT_SECRET"
+   "secrets/dgfy-event-signing.pem:DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY"
+   "secrets/dgfy-request-signing.pem:DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY"
++  "secrets/dglaundry-machine-assertion.pub.pem:DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY"
++  "secrets/dglaundry-request-signing.pub.pem:DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY"
++  "secrets/dglaundry-event-keys:DGLAUNDRY_INTEGRATION_PUBLIC_KEYS_JSON"
+ )
+ set -a
+ for pair in "${OIDC_SECRET_PAIRS[@]}"; do

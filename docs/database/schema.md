@@ -19,6 +19,7 @@
 - [Account Phone Contact Addendum (2026-05-15)](#account-phone-contact-addendum-2026-05-15)
 - [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
+- [Outbound Push Delivery Addendum (2026-10-17)](#outbound-push-delivery-addendum-2026-10-17)
 - [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
 - [POS Parked Sale Foundation (2026-08-12)](#pos-parked-sale-foundation-2026-08-12)
 
@@ -314,6 +315,25 @@ Landlord tables:
 6. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
 7. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
 8. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`, `delete`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
+
+## Outbound Push Delivery Addendum (2026-10-17; staff-owner extension 2026-10-18)
+
+Migration: `20261017000001-create-push-device-tokens-and-delivery-logs.cjs`.
+
+Landlord tables:
+
+1. `push_device_tokens` stores the Expo token, platform, app and brand labels, exactly one account, guest-order, or staff-user owner, last-seen time, and revocation metadata. MySQL enforces owner exclusivity with a CHECK constraint and at most one active row per case-sensitive token with a generated active-token key. Application registration also validates the owner and serializes the five-device guest cap under the landlord tenant row. Staff owners use the tenant UUID plus tenant `user_id`, with index `idx_push_device_tokens_staff_active`.
+2. `push_delivery_logs` stores a unique event/token dedupe key, token HMAC, purpose, provider outcome, ticket/receipt metadata, safe error code, optional tenant and public order reference, and timestamps. It has no raw token or message body and no foreign key to a tenant-owned order or token row.
+
+Migration `20261018000001-add-staff-push-token-owners.cjs` adds nullable `staff_tenant_id` and
+`staff_user_id` columns, the staff-owner index, and the staff branch of the owner CHECK constraint.
+Rolling it back removes staff-owned token bindings because they have no equivalent owner in the
+pre-staff schema; customer token bindings and delivery history remain intact.
+
+The API revokes guest bindings after a final order-status push, when an order is linked to a
+Storefront customer, or after seven days. Account and staff tokens inactive for 90 days are revoked.
+Revoked token rows and delivery logs are purged after 30 days by default. `PUSH_TOKEN_HASH_SECRET`
+must be provisioned in production before push-token hashes can be recorded.
 
 Operational contract:
 

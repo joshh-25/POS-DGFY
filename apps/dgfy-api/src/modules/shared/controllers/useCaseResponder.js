@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/node';
 import { mapDomainErrorToHttp } from '../contracts/domainErrorMapper.js';
 import { isExpectedDomainFailure } from '../contracts/domainErrors.js';
 import { isSentryInitialized } from '../../../config/sentry.js';
+import { recordConnectionAcquireTimeout } from '../../../utils/dbPoolDiagnostics.js';
 
 export const resolveDomainFailure = (
     result,
@@ -28,8 +29,8 @@ export const resolveDomainFailure = (
 // DomainError's `cause` option), is the original infrastructure error --
 // captured in preference to the remapped DomainError so the event carries
 // the real stack instead of a stackless wrapper.
-const captureUseCaseFailure = (statusCode, result) => {
-    if (statusCode < 500 || !isSentryInitialized()) return;
+const captureUseCaseFailure = (statusCode, result, req) => {
+    if (statusCode < 500) return;
 
     const domainError = result?.error;
     // An expected precondition failure (optional integration not configured/enabled) is known
@@ -41,6 +42,9 @@ const captureUseCaseFailure = (statusCode, result) => {
     if (isExpectedDomainFailure(domainError)) return;
     const original = domainError?.cause || domainError;
     if (!original) return;
+
+    recordConnectionAcquireTimeout(original, { req });
+    if (!isSentryInitialized()) return;
 
     Sentry.captureException(original, {
         level: 'error',
@@ -63,7 +67,7 @@ export const sendUseCaseResult = (
 ) => {
     if (!result?.success) {
         const failure = resolveDomainFailure(result, fallbackStatusCode, fallbackErrorMessage);
-        captureUseCaseFailure(failure.statusCode, result);
+        captureUseCaseFailure(failure.statusCode, result, res?.req);
         const errorPayload = errorPayloadResolver
             ? errorPayloadResolver(failure, result)
             : {

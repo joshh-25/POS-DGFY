@@ -3305,6 +3305,69 @@ List incoming online orders for POS fulfillment queue.
 1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
 2. Completed, cancelled, and rejected orders are excluded from this queue endpoint.
 
+### POST /pos/staff-push-tokens
+Register or refresh an Expo push token for the authenticated POS staff user.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+**Middleware**: Existing POS rate limiter and device-proof policy
+
+**Request Body**
+```json
+{
+  "token": "ExpoPushToken[xxxxxxxxxxxxxxxx]",
+  "previous_token": "ExponentPushToken[yyyyyyyyyyyyyyyy]",
+  "platform": "android",
+  "app": "pos",
+  "brand": "Omni POS"
+}
+```
+
+`previous_token` is optional and is used when the device receives a replacement Expo token. The
+server binds the token to the authenticated `(tenant_id, user_id)`; owner fields are not accepted
+from the client.
+
+**Response**
+```json
+{ "success": true, "data": { "registered": true, "token_id": "<uuid>" } }
+```
+
+### DELETE /pos/staff-push-tokens
+Revoke the authenticated staff user's token, for example on sign-out.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+**Middleware**: Existing POS rate limiter and device-proof policy
+
+**Request Body**
+```json
+{ "token": "ExpoPushToken[xxxxxxxxxxxxxxxx]" }
+```
+
+**Response**
+```json
+{ "success": true, "data": { "revoked": true } }
+```
+
+### POS new-online-order push data
+The API sends this best-effort notification after a new online order commits. It is a wake-up hint;
+`GET /pos/incoming-orders` remains authoritative.
+
+```json
+{
+  "title": "New online order",
+  "body": "A new online order is waiting in POS.",
+  "data": {
+    "event": "pos_new_online_order",
+    "order_id": 12345,
+    "location_id": 7
+  }
+}
+```
+
+`location_id` is the resolved active location or `null`. This payload contains no tracking PIN,
+customer data, order lines, company token, or access token.
+
 ### GET /pos/order-history
 List online orders that are no longer in the active fulfillment queue but still
 need operational visibility in POS.
@@ -4525,13 +4588,14 @@ this source contract.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `target_type`, `limit`, and `offset`. |
+| `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `refund_status` (comma-separated refund states), `target_type`, `limit`, and `offset`. |
 | `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
 | `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
 | `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks, parent split-capability confirmation status, and the remaining external evidence required before live money movement. |
 | `POST` | `/payment-sessions/:payment_session_id/reconcile` | Admin-only recovery check against the PayMongo Payment Intent API. It finalizes only when a paid provider payment record exists and its amount/currency match the locked session; otherwise it reports the provider state or returns a review conflict. |
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
+| `POST` | `/payment-sessions/:payment_session_id/refunds/:refund_id/retry` | Explicitly retry a failed refund or a `PROVIDER_REFUND_NOT_FOUND` review row after a fresh provider read confirms there is no unlinked matching refund. Returns `409` for ineligible or active refund conflicts. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account` | Create a PayMongo merchant child account for an existing tenant and store it as pending readiness. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account/sync-requirements` | Pull current PayMongo child-merchant onboarding requirements into local readiness metadata. |
@@ -4589,7 +4653,10 @@ this source contract.
 - `custom` is supported by backend payload shape for provider testing, but the current admin UI exposes only proportional, tenant, and DGFY strategies.
 - Non-proportional `split_refund.refund_sources` must total exactly the requested refund amount in centavos before the provider API is called.
 - Refund submission records `pending` refunds without marking the order refunded until PayMongo reports terminal success.
-- The PayMongo webhook handler updates stored refund attempts for `payment.refunded` and `payment.refund.updated` events when the provider refund ID matches `commerce_payment_refunds`, then recomputes payment-session and tenant-order payment status.
+- The PayMongo webhook handler and scheduled authenticated PayMongo read reconciler use the same idempotent status applier. The reconciler links only one unique provider refund matching amount and creation time; no match after 30 minutes or multiple matches becomes `manual_review_required` and raises an operator alert.
+- A definite provider rejection remains `failed`, raises a per-refund error alert immediately, and is never automatically retried. The admin retry endpoint creates a new refund row and preserves the original attempt for audit history.
+- A pending refund older than `COMMERCE_REFUND_PENDING_ALERT_HOURS` (default 24) raises a warning alert, throttled for six hours. Reconciliation runs every 15 minutes by default and can be disabled with `COMMERCE_REFUND_RECONCILE_ENABLED=false`.
+- Refund rows expose `updated_at`; the payment-session list can filter by `refund_status` so failed or review-required attempts remain discoverable even when the session itself is finalized.
 - Possible tenant order payment statuses for commerce QR Ph refunds are `refund_pending`, `partial_refunded`, and `refunded`.
 
 **Settlement Report Notes**
@@ -4643,6 +4710,7 @@ Track online-store order status for public users.
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
+For rejected or cancelled orders, the payload includes `refund: null` or the latest refund's `status` (`processing`, `refunded`, or `under_review`), public `reference`, `amount_centavos`, and `updated_at`. The lookup is scoped by tenant and POS transaction. Provider refund IDs, failure details, and provider payloads are never returned. For other fulfillment states, `refund` is `null`.
 **Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
 
 ### PATCH /store/orders/:tracking_pin/cancel

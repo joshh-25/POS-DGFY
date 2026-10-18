@@ -3,6 +3,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import dbStore from '../../../utils/dbStore.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import { assertNoUnfulfillableLocationForTransactionMode } from '../../settings/usecases/customerAccessModeFulfillmentPolicy.js';
+import { invalidateTenantCapabilityCache } from '../../shared/utils/tenantCapabilitySettingCache.js';
 import {
     buildCustomerAccessCapabilityMetadata,
     normalizeTenantCapabilities,
@@ -238,6 +239,7 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                     return { before, after };
                 });
             });
+            invalidateTenantCapabilityCache(tenant.id);
 
             const storefrontPatchForSync = {
                 ...patch,
@@ -280,6 +282,7 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                             }
                         });
                     });
+                    invalidateTenantCapabilityCache(tenant.id);
                     try {
                         await syncStorefrontDiscoveryIndexForTenant({ tenantId: tenant.id });
                     } catch (rollbackSyncError) {

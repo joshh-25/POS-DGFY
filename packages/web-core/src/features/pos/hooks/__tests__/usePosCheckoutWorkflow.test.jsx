@@ -215,6 +215,95 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
+    it.each([
+        { name: '408 response', error: { response: { status: 408 } } },
+        { name: '502 response', error: { response: { status: 502 } } },
+        { name: '503 response', error: { response: { status: 503 } } },
+        { name: '504 response', error: { response: { status: 504 } } },
+        { name: '500 response', error: { response: { status: 500 } } },
+        { name: '429 response', error: { response: { status: 429 } } },
+        { name: 'timeout', error: { code: 'ETIMEDOUT' } },
+        { name: 'network failure', error: { code: 'ERR_NETWORK', request: {} } }
+    ])('queues a first-attempt cash checkout after a $name', async ({ error }) => {
+        createPosCheckout.mockRejectedValueOnce(error);
+        const { result, props } = renderCheckout();
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        const submittedPayload = createPosCheckout.mock.calls[0][0];
+        const queuedEntry = enqueueTerminalOperationIntent.mock.calls[0][0];
+        expect(enqueueTerminalOperationIntent).toHaveBeenCalledTimes(1);
+        expect(queuedEntry.payload.idempotency_key).toBe(submittedPayload.idempotency_key);
+        expect(queuedEntry.source).toBe('network_failure');
+        expect(props.setCart).toHaveBeenCalledWith([]);
+        expect(posToast.message).toHaveBeenCalledWith(expect.stringContaining('Offline transaction saved locally.'));
+        expect(posToast.error).not.toHaveBeenCalledWith('POS checkout failed');
+    });
+
+    it('keeps a non-cash cart open when a retryable response would otherwise queue the checkout', async () => {
+        createPosCheckout.mockRejectedValueOnce({ response: { status: 502 } });
+        const { result, props } = renderCheckout({ paymentType: 'gcash', isCashPayment: false });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(enqueueTerminalOperationIntent).not.toHaveBeenCalled();
+        expect(props.setCart).not.toHaveBeenCalledWith([]);
+        expect(posToast.error).toHaveBeenCalledWith(
+            'Only cash transactions can be recorded offline. Reconnect before using an external payment method.'
+        );
+    });
+
+    it('keeps a resumed parked-sale cart open after a retryable checkout failure', async () => {
+        createPosCheckout.mockRejectedValueOnce({ response: { status: 502 } });
+        const { result, props } = renderCheckout({
+            activeParkedSale: { pos_parked_sale_id: 27, snapshot: { lines: [] } }
+        });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(enqueueTerminalOperationIntent).not.toHaveBeenCalled();
+        expect(props.setCart).not.toHaveBeenCalledWith([]);
+        expect(posToast.error).toHaveBeenCalledWith(
+            'Reconnect before checking out this resumed parked sale. Your cart is still open.'
+        );
+    });
+
+    it('keeps a discounted checkout online-only after a retryable failure', async () => {
+        createPosCheckout.mockRejectedValueOnce({ response: { status: 502 } });
+        const { result, props } = renderCheckout({
+            appliedDiscount: { type: 'employee', employee_directory_id: 44 }
+        });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(enqueueTerminalOperationIntent).not.toHaveBeenCalled();
+        expect(props.setCart).not.toHaveBeenCalledWith([]);
+        expect(posToast.error).toHaveBeenCalledWith(
+            'Connection lost. Reconnect before completing a discounted sale.'
+        );
+    });
+
+    it('does not queue or clear the cart for a deterministic 4xx checkout error', async () => {
+        createPosCheckout.mockRejectedValueOnce({ response: { status: 422, data: { message: 'Invalid sale' } } });
+        const { result, props } = renderCheckout();
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(enqueueTerminalOperationIntent).not.toHaveBeenCalled();
+        expect(props.setCart).not.toHaveBeenCalledWith([]);
+        expect(posToast.error).toHaveBeenCalled();
+    });
+
     it('marks a snapshot-matching parked line as original when its client marker is missing', async () => {
         const parkedSale = {
             pos_parked_sale_id: 27,

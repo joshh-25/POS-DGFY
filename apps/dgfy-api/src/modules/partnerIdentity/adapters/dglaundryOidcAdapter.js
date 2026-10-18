@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { dgfyLaundryRepository } from '../../dgfyLaundry/repositories/dgfyLaundryRepository.js';
 import { buildDgfyLaundryProviderUseCases } from '../../dgfyLaundry/usecases/dgfyLaundryProviderUseCases.js';
+import { resolveDglaundryRedirectUri } from '../../dgfyLaundry/dglaundryOrigin.js';
 
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const readFile = (path) => {
@@ -17,16 +18,17 @@ export const dglaundryMachineClientId = () => String(process.env.DGFY_DGLAUNDRY_
 export const isDglaundryParPkceConfigured = () => Boolean(
   String(process.env.DGFY_DGLAUNDRY_CLIENT_ID || 'dglaundry-web').trim()
   && configuredSecret()
-  && /^https:\/\//i.test(String(process.env.DGFY_DGLAUNDRY_REDIRECT_URI || 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback').trim())
+  && /^https:\/\//i.test(resolveDglaundryRedirectUri())
 );
 
 // @compat-seam id=oidc-dglaundry-env-client-source
 export const dglaundryLegacyClientSource = async (clientId) => {
   const browserId = dglaundryBrowserClientId();
   const machineId = dglaundryMachineClientId();
-  const redirect = String(process.env.DGFY_DGLAUNDRY_REDIRECT_URI || 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback').trim();
+  const redirect = resolveDglaundryRedirectUri();
   const postLogout = String(process.env.DGFY_DGLAUNDRY_POST_LOGOUT_REDIRECT_URI || '').trim();
-  if (clientId === browserId && configuredSecret()) return {
+  // No redirect (neither DGFY_DGLAUNDRY_REDIRECT_URI nor DGLAUNDRY_PARTNER_BASE_URL) means the browser client is not configured (#2513).
+  if (clientId === browserId && configuredSecret() && redirect) return {
     id: `legacy:${browserId}`, app_id: 'legacy:dglaundry', client_id: browserId, client_type: 'browser', environment: process.env.NODE_ENV || 'development',
     status: 'active', auth_method: 'client_secret_basic', legacy_secret: configuredSecret(), audience: browserId,
     redirect_uris: [redirect], post_logout_redirect_uris: postLogout ? [postLogout] : [], allowed_scopes: scopes,

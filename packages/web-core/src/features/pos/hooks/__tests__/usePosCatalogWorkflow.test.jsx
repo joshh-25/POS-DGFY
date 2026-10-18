@@ -9,6 +9,13 @@ const mocks = vi.hoisted(() => ({
     loadOfflinePosSnapshot: vi.fn(),
     saveOfflinePosSnapshot: vi.fn()
 }));
+const noop = () => {};
+const offlineSnapshotScope = Object.freeze({
+    tenantId: 'tenant-a',
+    terminalId: 'POS-01',
+    locationId: '10',
+    userId: '100'
+});
 
 vi.mock('../../services/posService.js', () => ({
     fetchPosCatalog: mocks.fetchPosCatalog
@@ -95,12 +102,9 @@ describe('usePosCatalogWorkflow catalog capacity', () => {
         const { result } = renderHook(() => usePosCatalogWorkflow({
             canViewHistory: true,
             currentViewMode: 'checkout',
-            offlineSnapshotScope: {
-                tenantId: 'tenant-a',
-                terminalId: 'POS-01',
-                locationId: '10',
-                userId: '100'
-            }
+            setReceiptSettings: noop,
+            setLowStockDisplayThreshold: noop,
+            offlineSnapshotScope
         }));
 
         await waitFor(() => expect(mocks.fetchPosCatalog).toHaveBeenCalledTimes(1));
@@ -113,6 +117,51 @@ describe('usePosCatalogWorkflow catalog capacity', () => {
 
         expect(result.current.catalog).toEqual([savedItem]);
         expect(result.current.catalogError).toBe('Failed to load POS catalog');
+    });
+
+    it('uses the scoped catalog snapshot after a gateway failure', async () => {
+        const cachedCatalog = [{ item_id: 31, name: 'Cached item' }];
+        mocks.loadOfflinePosSnapshot.mockReturnValue({
+            catalog: cachedCatalog,
+            receipt_settings: {}
+        });
+        mocks.fetchPosCatalog.mockRejectedValueOnce({
+            response: { status: 502, data: { message: 'Gateway unavailable' } }
+        });
+
+        const { result } = renderHook(() => usePosCatalogWorkflow({
+            canViewHistory: true,
+            currentViewMode: 'checkout',
+            setReceiptSettings: noop,
+            setLowStockDisplayThreshold: noop,
+            offlineSnapshotScope
+        }));
+
+        await waitFor(() => expect(result.current.catalog).toEqual(cachedCatalog));
+        expect(result.current.catalogError).toContain('Backend unavailable');
+    });
+
+    it('does not use the catalog snapshot after an aborted refresh', async () => {
+        mocks.loadOfflinePosSnapshot.mockReturnValue({
+            catalog: [{ item_id: 32, name: 'Cached item' }],
+            receipt_settings: {}
+        });
+        const aborted = new Error('request cancelled');
+        aborted.name = 'CanceledError';
+        aborted.code = 'ERR_CANCELED';
+        mocks.fetchPosCatalog.mockRejectedValueOnce(aborted);
+
+        const { result } = renderHook(() => usePosCatalogWorkflow({
+            canViewHistory: true,
+            currentViewMode: 'checkout',
+            setReceiptSettings: noop,
+            setLowStockDisplayThreshold: noop,
+            offlineSnapshotScope
+        }));
+
+        await waitFor(() => expect(mocks.fetchPosCatalog).toHaveBeenCalledTimes(1));
+        expect(result.current.catalog).toEqual([]);
+        expect(mocks.loadOfflinePosSnapshot).not.toHaveBeenCalled();
     });
 
     it('removes the iMin startup wait and coalesces search requests at 150ms', async () => {

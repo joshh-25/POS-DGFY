@@ -1,5 +1,6 @@
 import {
   validateCommercePaymentRefundBody,
+  validateCommercePaymentRefundParam,
   validateCommercePaymentSessionParam,
   validateCreateDglaundryBookingPaymentSessionBody,
   validateListCommercePaymentSessionsQuery,
@@ -43,6 +44,23 @@ describe('commerce payment validators', () => {
       status: 'paid,refund_pending',
       limit: 25
     }));
+  });
+
+  it('accepts comma-delimited refund status filters and retry references', async () => {
+    const query = await runMiddleware(validateListCommercePaymentSessionsQuery, {
+      query: { refund_status: 'failed,manual_review_required,pending' }
+    });
+    const params = await runMiddleware(validateCommercePaymentRefundParam, {
+      params: { payment_session_id: 'CPS-ABC123DEF4', refund_id: 'CRF-ABC123DEF4' }
+    });
+    const invalidParams = await runMiddleware(validateCommercePaymentRefundParam, {
+      params: { payment_session_id: 'CPS-ABC123DEF4', refund_id: 'ref_provider' }
+    });
+
+    expect(query.nextCalled).toBe(true);
+    expect(query.req.validatedQuery.refund_status).toBe('failed,manual_review_required,pending');
+    expect(params.nextCalled).toBe(true);
+    expect(invalidParams.nextCalled).toBe(false);
   });
 
   it('requires exactly one refund amount representation', async () => {

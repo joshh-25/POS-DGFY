@@ -1,4 +1,7 @@
 import { storeRepository } from './repositories/storeRepository.js';
+import { pushDeviceTokenRepository } from '../pushDelivery/repositories/pushDeviceTokenRepository.js';
+import { dispatchStaffNewOnlineOrderPush } from '../pushDelivery/index.js';
+import { buildDeleteGuestPushTokenUseCase, buildRegisterGuestPushTokenUseCase } from '../pushDelivery/usecases/pushTokenUseCases.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { tenantRevenueRepository } from '../tenantRevenue/repositories/tenantRevenueRepository.js';
 import { downpaymentSettingsRepository } from '../downpayment/repositories/downpaymentSettingsRepository.js';
@@ -56,6 +59,15 @@ import {
     buildFollowStorefrontUseCase,
     buildUnfollowStorefrontUseCase
 } from './usecases/storeUseCases.js';
+
+export const registerGuestPushTokenUseCase = buildRegisterGuestPushTokenUseCase({
+    repository: pushDeviceTokenRepository,
+    storeRepository
+});
+export const deleteGuestPushTokenUseCase = buildDeleteGuestPushTokenUseCase({
+    repository: pushDeviceTokenRepository,
+    storeRepository
+});
 
 export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({
     storeRepository,
@@ -149,11 +161,12 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
 });
 export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
     storeRepository,
+    dispatchStaffNewOnlineOrderPush,
     downpaymentSettingsRepository,
     inventoryReservationService,
     tenantRevenueRepository
 });
-export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
+export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository, commercePaymentRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
 // Phase 144 (#824): resolved lazily, on call, rather than statically imported. There is a real
 // module cycle here -- `commercePayments/usecases/finalizePaidCommerceSession.js` statically

@@ -5,6 +5,8 @@ const STORE_JWT_SECRET = process.env.STORE_JWT_SECRET || `${baseSecret}:store`;
 const STORE_JWT_EXPIRY = process.env.STORE_JWT_EXPIRY || '24h';
 const STORE_CANCEL_PROOF_SECRET = process.env.STORE_CANCEL_PROOF_SECRET || `${baseSecret}:store:cancel-proof`;
 const STORE_CANCEL_PROOF_EXPIRY = process.env.STORE_CANCEL_PROOF_EXPIRY || '30m';
+const STORE_PUSH_PROOF_SECRET = process.env.STORE_PUSH_PROOF_SECRET || `${baseSecret}:store:push-proof`;
+const STORE_PUSH_PROOF_EXPIRY = process.env.STORE_PUSH_PROOF_EXPIRY || '24h';
 const STORE_CLAIM_TOKEN_SECRET = process.env.STORE_CLAIM_TOKEN_SECRET || `${baseSecret}:store:claim`;
 const STORE_CLAIM_TOKEN_EXPIRY = process.env.STORE_CLAIM_TOKEN_EXPIRY || '30m';
 const STORE_GUEST_CHECKOUT_PROOF_SECRET = process.env.STORE_GUEST_CHECKOUT_PROOF_SECRET || `${baseSecret}:store:guest-checkout-proof`;
@@ -85,6 +87,25 @@ export const generateStoreCancelProof = ({ trackingPin, tenantId, orderId, store
 
 export const verifyStoreCancelProof = (token) => jwt.verify(token, STORE_CANCEL_PROOF_SECRET);
 
+export const generateStorePushProof = ({ trackingPin, tenantId, orderId, storeCustomerId = null }) => {
+    const normalizedTenantId = normalizeTenantIdentifier(tenantId);
+    if (!normalizedTenantId) throw new Error('generateStorePushProof requires a valid tenant identifier');
+    const normalizedTrackingPin = String(trackingPin || '').trim().toUpperCase();
+    if (!normalizedTrackingPin) throw new Error('generateStorePushProof requires trackingPin');
+    const normalizedOrderId = parsePositiveInt(orderId);
+    if (!normalizedOrderId) throw new Error('generateStorePushProof requires orderId');
+    if (parsePositiveInt(storeCustomerId)) throw new Error('generateStorePushProof does not support account-linked orders');
+
+    return jwt.sign({
+        type: 'store_push_proof',
+        tracking_pin: normalizedTrackingPin,
+        tenant_id: normalizedTenantId,
+        order_id: normalizedOrderId
+    }, STORE_PUSH_PROOF_SECRET, { expiresIn: STORE_PUSH_PROOF_EXPIRY });
+};
+
+export const verifyStorePushProof = (token) => jwt.verify(token, STORE_PUSH_PROOF_SECRET);
+
 export const generateStoreClaimToken = ({ trackingPin, tenantId, orderId, email }) => {
     const normalizedTenantId = normalizeTenantIdentifier(tenantId);
     if (!normalizedTenantId) {
@@ -147,6 +168,7 @@ export const verifyStoreGuestCheckoutVerificationGrant = (token, options) => (
 export const getStoreTokenConfig = () => ({
     expiresIn: STORE_JWT_EXPIRY,
     cancelProofExpiresIn: STORE_CANCEL_PROOF_EXPIRY,
+    pushProofExpiresIn: STORE_PUSH_PROOF_EXPIRY,
     claimTokenExpiresIn: STORE_CLAIM_TOKEN_EXPIRY,
     guestCheckoutProofExpiresIn: STORE_GUEST_CHECKOUT_PROOF_EXPIRY,
     guestCheckoutVerificationGrantExpiresIn: STORE_GUEST_CHECKOUT_VERIFICATION_GRANT_EXPIRY

@@ -12,6 +12,7 @@ import {
   listTenantPaymentAccounts,
   operateTenantPayMongoChildAccount,
   reconcilePaymentSession,
+  retryPaymentSessionRefund,
   retryPaymentSessionFinalization,
   upsertTenantPaymentAccount
 } from '../modules/commercePayments/controllers/commercePaymentHandlers.js';
@@ -21,6 +22,7 @@ import { optionalStoreCustomer } from '../middleware/storeAuth.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import {
   validateCommercePaymentRefundBody,
+  validateCommercePaymentRefundParam,
   validateCommercePaymentSessionParam,
   validateCreateDglaundryBookingPaymentSessionBody,
   validateListCommercePaymentSessionsQuery,
@@ -50,6 +52,7 @@ router.post('/admin/payment-sessions/:payment_session_id/reconcile', setNoStoreC
 router.post('/admin/payment-sessions/:payment_session_id/confirm-test', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, confirmPaymentSessionSandbox);
 router.post('/admin/payment-sessions/:payment_session_id/retry-finalization', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, retryPaymentSessionFinalization);
 router.post('/admin/payment-sessions/:payment_session_id/refunds', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, validateCommercePaymentRefundBody, createPaymentSessionRefund);
+router.post('/admin/payment-sessions/:payment_session_id/refunds/:refund_id/retry', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentRefundParam, retryPaymentSessionRefund);
 router.get('/admin/tenant-payment-accounts', setNoStoreCacheControl, authenticateAdmin, validateTenantPaymentAccountsQuery, listTenantPaymentAccounts);
 router.post('/admin/tenants/:tenant_id/paymongo-child-account', setNoStoreCacheControl, authenticateAdmin, validateTenantPaymentAccountParam, validateTenantPayMongoChildAccountBody, createTenantPayMongoChildAccount);
 router.post('/admin/tenants/:tenant_id/paymongo-child-account/:action', setNoStoreCacheControl, authenticateAdmin, validateTenantPayMongoChildAccountActionParam, operateTenantPayMongoChildAccount);

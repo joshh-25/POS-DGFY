@@ -12,8 +12,9 @@ import {
   shouldFallbackToCurrentCompanyTokenAfterLookupError
 } from '../terminalUnlockDiagnostics.js';
 
-const apiError = ({ status, data = {}, url = '/auth/login', message = 'Request failed' } = {}) => ({
+const apiError = ({ status, data = {}, url = '/auth/login', message = 'Request failed', request } = {}) => ({
   message,
+  request,
   response: status ? { status, data } : undefined,
   config: { url }
 });
@@ -88,7 +89,7 @@ describe('terminal unlock diagnostics', () => {
   });
 
   it('retries company lookup during backend cold starts but stops on deterministic client errors', () => {
-    expect(isRetryableCompanyLookupError(apiError())).toBe(true);
+    expect(isRetryableCompanyLookupError(apiError({ request: {} }))).toBe(true);
     expect(isRetryableCompanyLookupError(apiError({ status: 503 }))).toBe(true);
     expect(isRetryableCompanyLookupError(apiError({ status: 429 }))).toBe(false);
     expect(isRetryableCompanyLookupError(apiError({ status: 404 }))).toBe(false);

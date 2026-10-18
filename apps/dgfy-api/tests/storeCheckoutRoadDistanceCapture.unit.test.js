@@ -9,6 +9,7 @@
 // provider returns. Distance capture must never leak into fee math.
 
 import { jest } from '@jest/globals';
+import dbStore from '../src/utils/dbStore.js';
 
 const {
     buildStoreCheckoutUseCase
@@ -218,6 +219,54 @@ describe('buildStoreCheckoutUseCase — Phase 236 (#1328) road-distance capture'
         // total, regardless of distance/source above.
         expect(result.data.totals.delivery_fee).toBe(50);
         expect(result.data.totals.total_amount).toBe(550);
+    });
+
+    test('dispatches one detached staff wake-up after commit and does not dispatch on idempotent replay', async () => {
+        const storeRepository = buildFakeCheckoutStoreRepository();
+        const timeline = [];
+        let commitCount = 0;
+        storeRepository._transaction.commit.mockImplementation(async () => {
+            commitCount += 1;
+            timeline.push(`commit-${commitCount}`);
+            storeRepository._transaction.finished = 'commit';
+        });
+        let finishDispatch;
+        let observedTenantContext;
+        const tenantContext = { User: { tenantScoped: true }, UserLocationGrant: {} };
+        const dispatchStaffNewOnlineOrderPush = jest.fn(() => {
+            timeline.push('dispatch');
+            observedTenantContext = dbStore.getStore();
+            return new Promise((resolve) => { finishDispatch = resolve; });
+        });
+        const useCase = buildStoreCheckoutUseCase({
+            storeRepository,
+            dispatchStaffNewOnlineOrderPush,
+            recordOrderActivity: jest.fn().mockResolvedValue(undefined),
+            dispatchOrderSmsAlert: jest.fn().mockResolvedValue(undefined)
+        });
+        const payload = withGuestProof(deliveryCheckoutPayload({ idempotency_key: 'staff-push-checkout-replay' }));
+
+        const results = await dbStore.run(tenantContext, async () => {
+            const created = await useCase({ tenantId: TENANT_ID, payload });
+            await Promise.resolve();
+            const existingOrder = await storeRepository.getOrderById(9101);
+            existingOrder.request_hash = storeRepository.createOnlineTransactionWithLines.mock.calls[0][0].header.request_hash;
+            storeRepository.findTransactionByIdempotencyKey.mockResolvedValue(existingOrder);
+            const replay = await useCase({ tenantId: TENANT_ID, payload });
+            return { created, replay };
+        });
+
+        expect(results.created.success).toBe(true);
+        expect(results.replay).toMatchObject({ success: true, data: { idempotent_replay: true } });
+        expect(dispatchStaffNewOnlineOrderPush).toHaveBeenCalledTimes(1);
+        expect(dispatchStaffNewOnlineOrderPush).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: TENANT_ID,
+            order: expect.objectContaining({ pos_transaction_id: 9101, order_source: 'online_store' })
+        }));
+        expect(timeline.indexOf('dispatch')).toBeGreaterThan(timeline.indexOf('commit-1'));
+        expect(observedTenantContext).toBe(tenantContext);
+        expect(finishDispatch).toEqual(expect.any(Function));
+        finishDispatch();
     });
 
     // #1377 review, RF-4: the test.each above proves legacy absent-config defaulting is

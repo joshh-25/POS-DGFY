@@ -1,7 +1,7 @@
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { buildDglaundryRuntimeAttestationUseCase } from './dglaundryRuntimeAttestationUseCase.js';
+import { resolveDglaundryOrigin } from '../dglaundryOrigin.js';
 
-const LAUNDRY_ORIGIN = 'https://laundry.surebizcorp.com';
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const contractVersion = () => process.env.DGLAUNDRY_PARTNER_CONTRACT_VERSION || 'external-runtime-v0.1';
 const toTrimmed = (value) => String(value || '').trim();
@@ -98,6 +98,10 @@ export const buildDgfyLaundryProviderUseCases = ({ repository, runtimeAttestatio
     async launch({ dgfyAccount, companyId, branchId = null }) {
         const { companies, company } = await chooseCompany({ repository, dgfyAccount, companyId });
         if (!company) return { selection_required: true, companies };
+        const url = resolveDglaundryOrigin();
+        if (!url) {
+            throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'The DGLaundry origin is not configured (DGLAUNDRY_PARTNER_BASE_URL).', { statusCode: 503 });
+        }
         await repository.audit({
             action: 'laundry_operations_launch',
             dgfyAccountId: dgfyAccount.id,
@@ -110,7 +114,7 @@ export const buildDgfyLaundryProviderUseCases = ({ repository, runtimeAttestatio
             subject: String(dgfyAccount.id),
             company,
             branch_id: branchId,
-            url: LAUNDRY_ORIGIN
+            url
         };
     },
 
@@ -239,6 +243,6 @@ export const buildDgfyLaundryProviderUseCases = ({ repository, runtimeAttestatio
         return result;
     },
 
-    constants: { LAUNDRY_ORIGIN, ISSUER },
+    constants: { ISSUER },
     chooseCompany: ({ dgfyAccount, companyId }) => chooseCompany({ repository, dgfyAccount, companyId })
 });

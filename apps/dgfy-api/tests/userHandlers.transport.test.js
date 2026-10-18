@@ -6,6 +6,9 @@ const mockInviteUserUseCase = jest.fn();
 const mockResendUserInvitationUseCase = jest.fn();
 const mockCreateInvitationManualLinkUseCase = jest.fn();
 const mockCancelUserInvitationUseCase = jest.fn();
+const mockUpdateUserStatusUseCase = jest.fn();
+const mockRemoveUserFromCompanyUseCase = jest.fn();
+const mockRevokeStaffPushTokensForUser = jest.fn();
 const mockChangePasswordUseCase = jest.fn();
 const mockResetLocalCashierPasswordUseCase = jest.fn();
 const mockGetUserLocationGrantsUseCase = jest.fn();
@@ -22,7 +25,7 @@ jest.unstable_mockModule('../src/modules/users/index.js', () => ({
   getAllUsersUseCase: jest.fn(),
   getRoleCatalogUseCase: jest.fn(),
   updateUserRoleUseCase: jest.fn(),
-  updateUserStatusUseCase: jest.fn(),
+  updateUserStatusUseCase: mockUpdateUserStatusUseCase,
   updateUserPermissionsUseCase: jest.fn(),
   updatePosApprovalPinUseCase: jest.fn(),
   updatePosDayClosePinUseCase: jest.fn(),
@@ -33,7 +36,11 @@ jest.unstable_mockModule('../src/modules/users/index.js', () => ({
   resendUserInvitationUseCase: mockResendUserInvitationUseCase,
   createInvitationManualLinkUseCase: mockCreateInvitationManualLinkUseCase,
   cancelUserInvitationUseCase: mockCancelUserInvitationUseCase,
-  removeUserFromCompanyUseCase: jest.fn()
+  removeUserFromCompanyUseCase: mockRemoveUserFromCompanyUseCase
+}));
+
+jest.unstable_mockModule('../src/modules/pushDelivery/index.js', () => ({
+  revokeStaffPushTokensForUser: mockRevokeStaffPushTokensForUser
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
@@ -50,6 +57,8 @@ let inviteUser;
 let changePassword;
 let getUserLocationGrants;
 let updateUserLocationGrants;
+let updateUserStatus;
+let removeUserFromCompany;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/users/controllers/userHandlers.js');
@@ -59,6 +68,8 @@ beforeAll(async () => {
   changePassword = mod.changePassword;
   getUserLocationGrants = mod.getUserLocationGrants;
   updateUserLocationGrants = mod.updateUserLocationGrants;
+  updateUserStatus = mod.updateUserStatus;
+  removeUserFromCompany = mod.removeUserFromCompany;
 });
 
 const createRes = () => {
@@ -125,6 +136,49 @@ describe('userHandlers transport contracts', () => {
       surface: 'users',
       action: 'view_current_user'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('revokes staff push tokens best-effort after deactivation', async () => {
+    mockUpdateUserStatusUseCase.mockResolvedValue({ success: true, data: { is_active: false } });
+    mockRevokeStaffPushTokensForUser.mockRejectedValue(new Error('landlord database unavailable'));
+    const req = {
+      user: { user_id: 1, tenant_id: 'tenant-1' },
+      tenant: { id: 'tenant-1' },
+      params: { user_id: '14' },
+      validatedData: { is_active: false },
+      headers: {}
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await updateUserStatus(req, res, next);
+
+    expect(mockRevokeStaffPushTokensForUser).toHaveBeenCalledWith({
+      tenantId: 'tenant-1', userId: '14', reason: 'staff_deactivated'
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('revokes staff push tokens after successful removal', async () => {
+    mockRemoveUserFromCompanyUseCase.mockResolvedValue({ success: true, data: { user_id: 14 } });
+    mockRevokeStaffPushTokensForUser.mockResolvedValue(1);
+    const req = {
+      user: { user_id: 1, tenant_id: 'tenant-1' },
+      tenant: { id: 'tenant-1' },
+      params: { user_id: '14' },
+      headers: {}
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await removeUserFromCompany(req, res, next);
+
+    expect(mockRevokeStaffPushTokensForUser).toHaveBeenCalledWith({
+      tenantId: 'tenant-1', userId: '14', reason: 'staff_removed'
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
     expect(next).not.toHaveBeenCalled();
   });
 

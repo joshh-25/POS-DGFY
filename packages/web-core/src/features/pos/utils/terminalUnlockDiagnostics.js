@@ -1,4 +1,8 @@
 import { getCapabilityBlockMessage } from '../../../utils/tenantCapabilityMessages.js';
+import {
+  isBackendUnreachable,
+  isRetryableBackendFailure
+} from '../../../services/backendReachability.js';
 
 export const POS_TERMINAL_LOGIN_ERROR_CODES = Object.freeze({
   MULTIPLE_TENANTS: 'POS_LOGIN_MULTIPLE_TENANTS',
@@ -139,14 +143,6 @@ const getRequestPath = (error) => {
 // `new Error(...)` -- e.g. "terminal already in use", "shift linked to an
 // unavailable terminal" -- has neither, so it is never misread as the
 // backend being unreachable.
-const NETWORK_TRANSPORT_ERROR_CODES = new Set(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT']);
-
-const isNetworkTransportError = (error) => {
-  const code = String(error?.code || '').trim();
-  if (NETWORK_TRANSPORT_ERROR_CODES.has(code)) return true;
-  return Boolean(error?.request) && !error?.response;
-};
-
 // Single place both the toast copy (resolveTerminalLoginErrorMessage) and
 // the inline diagnostics panel / Sentry capture (TerminalPage.jsx) derive
 // their "what kind of failure was this" read from, so the two can never
@@ -159,7 +155,8 @@ export const classifyTerminalLoginFailure = (error) => {
   // a request config (i.e. it came from axios, not a local throw).
   const requestPath = error?.config?.url ? getRequestPath(error) : '';
   const code = getErrorCode(error);
-  const kind = status ? 'http' : (isNetworkTransportError(error) ? 'network' : 'local');
+  const kind = status ? (isBackendUnreachable(error) ? 'network' : 'http')
+    : (isBackendUnreachable(error) ? 'network' : 'local');
   return { kind, status: status || null, requestPath: requestPath || '', code: code || '' };
 };
 
@@ -171,7 +168,7 @@ export const shouldFallbackToCurrentCompanyTokenAfterLookupError = (error) => {
 
 export const isRetryableCompanyLookupError = (error) => {
   const status = getStatus(error);
-  return !status || status === 408 || status >= 500;
+  return status === 429 ? false : isRetryableBackendFailure(error);
 };
 
 export const isCompanyTokenResolutionError = (error) => {
@@ -217,7 +214,7 @@ export const resolveTerminalLoginErrorMessage = (error) => {
   }
 
   if (!status) {
-    if (isNetworkTransportError(error)) {
+    if (isBackendUnreachable(error)) {
       return 'Unable to reach the POS backend. Check the server connection and try again.';
     }
     // No status and no transport failure means this was thrown locally
