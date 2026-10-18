@@ -40,6 +40,17 @@ const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
 const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
+const EXPO_PUSH_TOKEN_PATTERN = /^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_\-+.=:/]{8,236}\]$/;
+const staffPushTokenRegistrationSchema = Joi.object({
+    token: Joi.string().trim().max(255).pattern(EXPO_PUSH_TOKEN_PATTERN).required(),
+    previous_token: Joi.string().trim().max(255).pattern(EXPO_PUSH_TOKEN_PATTERN).allow('').optional(),
+    platform: Joi.string().trim().lowercase().valid('ios', 'android').required(),
+    app: Joi.string().trim().valid('pos', 'fiscalpos').required(),
+    brand: Joi.string().trim().min(1).max(80).required()
+});
+const staffPushTokenDeletionSchema = Joi.object({
+    token: Joi.string().trim().max(255).pattern(EXPO_PUSH_TOKEN_PATTERN).required()
+});
 
 const restaurantServiceChargeSchema = Joi.object({
     enabled: Joi.boolean().default(false),
@@ -1746,6 +1757,8 @@ export const validateTerminalShiftHistoryQuery = validateSchema(terminalShiftHis
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
+export const validateStaffPushTokenRegistration = validateSchema(staffPushTokenRegistrationSchema, 'body', 'validatedData');
+export const validateStaffPushTokenDeletion = validateSchema(staffPushTokenDeletionSchema, 'body', 'validatedData');
 export const validateProcurementExportQuery = validateSchema(procurementExportQuerySchema, 'query', 'validatedQuery');
 export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');

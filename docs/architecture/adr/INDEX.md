@@ -119,7 +119,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0094 | [Outbound SMS delivery contract, log, and PII retention](0094-outbound-sms-delivery-contract-log-and-pii-retention.md) | `amended` | outbound_sms_delivery_contract_and_log | 2027-04-10 | 0 |
 | 0095 | [Offline POS Sync Contract Convergence](0095-offline-pos-sync-contract-convergence.md) | `proposed` | pos_offline_sync_contract | 2027-04-10 | 4 |
 | 0096 | [Contact Inquiry Provider Configuration](0096-contact-inquiry-provider-configuration.md) | `proposed` | contact_inquiry_provider_configuration | 2027-04-14 | 0 |
-| 0097 | [Outbound push-notification delivery contract](0097-outbound-push-notification-delivery-contract.md) | `accepted` | outbound_push_notification_delivery_contract | 2027-04-17 | 0 |
+| 0097 | [Outbound push-notification delivery contract](0097-outbound-push-notification-delivery-contract.md) | `amended` | outbound_push_notification_delivery_contract | 2027-04-17 | 1 |
 
 ## Renumbered (collision stubs)
 

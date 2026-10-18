@@ -4155,6 +4155,7 @@ export const buildStoreCheckoutUseCase = ({
     storeRepository,
     recordOrderActivity = recordDgfyOrderActivity,
     dispatchOrderSmsAlert = dispatchDgfyOrderSmsAlert,
+    dispatchStaffNewOnlineOrderPush = () => Promise.resolve(null),
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -4685,6 +4686,10 @@ export const buildStoreCheckoutUseCase = ({
                 options: { transaction }
             });
             await transaction.commit();
+            void Promise.resolve().then(() => dispatchStaffNewOnlineOrderPush({
+                tenantId: normalizedTenantId,
+                order: created
+            })).catch(() => null);
             await recordOrderActivity({
                 tenantId: normalizedTenantId,
                 order: created,

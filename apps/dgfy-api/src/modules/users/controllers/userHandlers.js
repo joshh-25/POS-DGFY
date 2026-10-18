@@ -24,6 +24,7 @@ import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js'
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import { invalidateUserAuthCache } from '../../../middleware/auth.js';
 import { requestEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
+import { revokeStaffPushTokensForUser } from '../../pushDelivery/index.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -349,6 +350,14 @@ export const updateUserStatus = async (req, res, next) => {
       isActive
     });
 
+    if (result?.success && !isActive) {
+      await revokeStaffPushTokensForUser({
+        tenantId: req.tenant?.id || req.user?.tenant_id,
+        userId: req.params.user_id,
+        reason: 'staff_deactivated'
+      }).catch(() => null);
+    }
+
     invalidateUserAuthCache({
       tenantId: req.tenant?.id || null,
       companyToken: req.headers['x-company-token'] || null,
@@ -649,6 +658,14 @@ export const removeUserFromCompany = async (req, res, next) => {
       adminUserId: req.user.user_id,
       targetUserId: req.params.user_id
     });
+
+    if (result?.success) {
+      await revokeStaffPushTokensForUser({
+        tenantId: req.tenant?.id || req.user?.tenant_id,
+        userId: req.params.user_id,
+        reason: 'staff_removed'
+      }).catch(() => null);
+    }
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,

@@ -3305,6 +3305,69 @@ List incoming online orders for POS fulfillment queue.
 1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
 2. Completed, cancelled, and rejected orders are excluded from this queue endpoint.
 
+### POST /pos/staff-push-tokens
+Register or refresh an Expo push token for the authenticated POS staff user.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+**Middleware**: Existing POS rate limiter and device-proof policy
+
+**Request Body**
+```json
+{
+  "token": "ExpoPushToken[xxxxxxxxxxxxxxxx]",
+  "previous_token": "ExponentPushToken[yyyyyyyyyyyyyyyy]",
+  "platform": "android",
+  "app": "pos",
+  "brand": "Omni POS"
+}
+```
+
+`previous_token` is optional and is used when the device receives a replacement Expo token. The
+server binds the token to the authenticated `(tenant_id, user_id)`; owner fields are not accepted
+from the client.
+
+**Response**
+```json
+{ "success": true, "data": { "registered": true, "token_id": "<uuid>" } }
+```
+
+### DELETE /pos/staff-push-tokens
+Revoke the authenticated staff user's token, for example on sign-out.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+**Middleware**: Existing POS rate limiter and device-proof policy
+
+**Request Body**
+```json
+{ "token": "ExpoPushToken[xxxxxxxxxxxxxxxx]" }
+```
+
+**Response**
+```json
+{ "success": true, "data": { "revoked": true } }
+```
+
+### POS new-online-order push data
+The API sends this best-effort notification after a new online order commits. It is a wake-up hint;
+`GET /pos/incoming-orders` remains authoritative.
+
+```json
+{
+  "title": "New online order",
+  "body": "A new online order is waiting in POS.",
+  "data": {
+    "event": "pos_new_online_order",
+    "order_id": 12345,
+    "location_id": 7
+  }
+}
+```
+
+`location_id` is the resolved active location or `null`. This payload contains no tracking PIN,
+customer data, order lines, company token, or access token.
+
 ### GET /pos/order-history
 List online orders that are no longer in the active fulfillment queue but still
 need operational visibility in POS.

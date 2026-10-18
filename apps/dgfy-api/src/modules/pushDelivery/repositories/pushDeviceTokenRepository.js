@@ -11,19 +11,37 @@ const ownerMatches = (row, owner = {}) => (
     && String(row?.guest_tenant_id || '') === String(owner.guest_tenant_id || '')
     && String(row?.guest_order_reference || '') === String(owner.guest_order_reference || '')
     && Number(row?.guest_pos_transaction_id || 0) === Number(owner.guest_pos_transaction_id || 0)
+    && String(row?.staff_tenant_id || '') === String(owner.staff_tenant_id || '')
+    && Number(row?.staff_user_id || 0) === Number(owner.staff_user_id || 0)
 );
 
 const hasExactlyOneOwner = (owner = {}) => {
     const hasAccountOwner = Boolean(owner.dgfy_account_id);
+    const hasAnyGuestOwnerField = Boolean(
+        owner.guest_tenant_id || owner.guest_order_reference || owner.guest_pos_transaction_id
+    );
     const hasGuestOwner = Boolean(
         owner.guest_tenant_id && owner.guest_order_reference && Number(owner.guest_pos_transaction_id) > 0
     );
-    return hasAccountOwner !== hasGuestOwner
-        && (!hasAccountOwner || (!owner.guest_tenant_id && !owner.guest_order_reference && !owner.guest_pos_transaction_id))
-        && (!hasGuestOwner || !owner.dgfy_account_id);
+    const hasAnyStaffOwnerField = Boolean(owner.staff_tenant_id || owner.staff_user_id);
+    const staffUserId = Number(owner.staff_user_id);
+    const hasStaffOwner = Boolean(
+        owner.staff_tenant_id && Number.isInteger(staffUserId) && staffUserId > 0
+    );
+    const ownerCount = Number(hasAccountOwner) + Number(hasGuestOwner) + Number(hasStaffOwner);
+    return ownerCount === 1
+        && (!hasAnyGuestOwnerField || hasGuestOwner)
+        && (!hasAnyStaffOwnerField || hasStaffOwner)
+        && (!hasAccountOwner || (!hasAnyGuestOwnerField && !hasAnyStaffOwnerField))
+        && (!hasGuestOwner || !hasAnyStaffOwnerField)
+        && (!hasStaffOwner || !hasAnyGuestOwnerField);
 };
 
-const registerTokenInTransaction = async (payload, owner, { retry = true, maxActiveGuestTokens = 0 } = {}) => {
+const registerTokenInTransaction = async (payload, owner, {
+    retry = true,
+    maxActiveGuestTokens = 0,
+    previousToken = null
+} = {}) => {
     try {
         return await PushDeviceToken.sequelize.transaction(async (transaction) => {
             const hasGuestOwner = Boolean(owner.guest_tenant_id);
@@ -42,13 +60,23 @@ const registerTokenInTransaction = async (payload, owner, { retry = true, maxAct
                 }
             }
 
+            const tokensToLock = Array.from(new Set([payload.token, previousToken].filter(Boolean))).sort();
             const rows = await PushDeviceToken.findAll({
-                where: { token: payload.token },
+                where: { token: { [Op.in]: tokensToLock } },
+                order: [['token', 'ASC']],
                 transaction,
                 lock: transaction.LOCK.UPDATE
             });
-            const active = rows.find((row) => !row.revoked_at);
+            const previousActive = previousToken && previousToken !== payload.token
+                ? rows.find((row) => row.token === previousToken && !row.revoked_at)
+                : null;
             const now = new Date();
+
+            if (previousActive && ownerMatches(previousActive, owner)) {
+                await previousActive.update({ revoked_at: now, revoke_reason: 'refreshed' }, { transaction });
+            }
+
+            const active = rows.find((row) => row.token === payload.token && !row.revoked_at);
             if (active && ownerMatches(active, owner)) {
                 await active.update({
                     platform: payload.platform,
@@ -94,7 +122,7 @@ const registerTokenInTransaction = async (payload, owner, { retry = true, maxAct
         });
     } catch (error) {
         if (retry && isDuplicateKeyError(error)) {
-            return registerTokenInTransaction(payload, owner, { retry: false, maxActiveGuestTokens });
+            return registerTokenInTransaction(payload, owner, { retry: false, maxActiveGuestTokens, previousToken });
         }
         throw error;
     }
@@ -129,6 +157,13 @@ export const pushDeviceTokenRepository = {
         }).then((rows) => rows.map(toPlain));
     },
 
+    listActiveForStaffTenant(tenantId) {
+        return PushDeviceToken.findAll({
+            where: { staff_tenant_id: tenantId, revoked_at: null },
+            order: [['created_at', 'ASC']]
+        }).then((rows) => rows.map(toPlain));
+    },
+
     countActiveForGuestOrder({ tenantId, reference } = {}) {
         return PushDeviceToken.count({
             where: {
@@ -153,6 +188,29 @@ export const pushDeviceTokenRepository = {
                 guest_tenant_id: tenantId,
                 guest_order_reference: reference,
                 ...(posTransactionId ? { guest_pos_transaction_id: posTransactionId } : {}),
+                revoked_at: null
+            }
+        });
+        return affected;
+    },
+
+    async revokeStaffToken({ token, tenantId, userId, reason = 'deleted' } = {}) {
+        const [affected] = await PushDeviceToken.update({ revoked_at: new Date(), revoke_reason: reason }, {
+            where: {
+                token,
+                staff_tenant_id: tenantId,
+                staff_user_id: userId,
+                revoked_at: null
+            }
+        });
+        return affected;
+    },
+
+    async revokeStaffTokensForUser({ tenantId, userId, reason = 'staff_removed' } = {}) {
+        const [affected] = await PushDeviceToken.update({ revoked_at: new Date(), revoke_reason: reason }, {
+            where: {
+                staff_tenant_id: tenantId,
+                staff_user_id: userId,
                 revoked_at: null
             }
         });
@@ -227,6 +285,23 @@ export const pushDeviceTokenRepository = {
         return affected;
     },
 
+    async revokeInactiveStaffTokens(cutoff, { limit = 1000 } = {}) {
+        const rows = await PushDeviceToken.findAll({
+            where: {
+                staff_tenant_id: { [Op.ne]: null },
+                staff_user_id: { [Op.ne]: null },
+                revoked_at: null,
+                last_seen_at: { [Op.lt]: cutoff }
+            },
+            attributes: ['id'], limit, order: [['last_seen_at', 'ASC']]
+        });
+        if (!rows.length) return 0;
+        const [affected] = await PushDeviceToken.update({ revoked_at: new Date(), revoke_reason: 'staff_inactive' }, {
+            where: { id: { [Op.in]: rows.map((row) => row.id) }, revoked_at: null }
+        });
+        return affected;
+    },
+
     async purgeRevokedTokens(cutoff, { limit = 1000 } = {}) {
         const rows = await PushDeviceToken.findAll({
             where: { revoked_at: { [Op.lt]: cutoff } },
@@ -270,7 +345,12 @@ export const pushDeliveryLogRepository = {
                 if (tokenCount >= tokenLimit) return { status: 'token_limit', log: null };
 
                 const orderCount = await PushDeliveryLog.count({
-                    where: { tenant_id: payload.tenant_id, reference: payload.reference, status: countedStatuses },
+                    where: {
+                        tenant_id: payload.tenant_id,
+                        reference: payload.reference,
+                        purpose: payload.purpose,
+                        status: countedStatuses
+                    },
                     transaction
                 });
                 if (orderCount >= orderLimit) return { status: 'order_limit', log: null };

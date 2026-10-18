@@ -13,6 +13,8 @@ export default (sequelize) => {
         guest_tenant_id: { type: DataTypes.UUID, allowNull: true },
         guest_order_reference: { type: DataTypes.STRING(32), allowNull: true },
         guest_pos_transaction_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
+        staff_tenant_id: { type: DataTypes.UUID, allowNull: true },
+        staff_user_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
         last_seen_at: { type: DataTypes.DATE, allowNull: false },
         revoked_at: { type: DataTypes.DATE, allowNull: true },
         revoke_reason: { type: DataTypes.STRING(80), allowNull: true }
@@ -25,6 +27,7 @@ export default (sequelize) => {
         indexes: [
             { fields: ['dgfy_account_id', 'revoked_at'], name: 'idx_push_device_tokens_account_active' },
             { fields: ['guest_tenant_id', 'guest_order_reference', 'revoked_at'], name: 'idx_push_device_tokens_guest_active' },
+            { fields: ['staff_tenant_id', 'staff_user_id', 'revoked_at'], name: 'idx_push_device_tokens_staff_active' },
             { fields: ['created_at', 'revoked_at'], name: 'idx_push_device_tokens_retention' }
         ]
     });

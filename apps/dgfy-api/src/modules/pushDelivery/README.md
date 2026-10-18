@@ -1,9 +1,9 @@
 # Push delivery
 
-This module sends best-effort Storefront order-status push notifications to Expo tokens. It owns
-token registration, provider adapters, delivery history, receipt processing, and token retention.
-Routes and controllers call use cases; repositories are the only layer that reads the landlord
-models.
+This module sends best-effort Storefront order-status and POS staff new-online-order push
+notifications to Expo tokens. It owns token registration, provider adapters, delivery history,
+receipt processing, and token retention. Routes and controllers call use cases; repositories are
+the only layer that reads landlord models.
 
 ## Delivery contract
 
@@ -21,6 +21,39 @@ models.
 - A unique event/token dedupe key prevents repeat delivery. Expo tokens have one active owner;
   reassignment revokes the old binding. Guest orders allow at most five active devices, serialized
   under the landlord tenant row lock.
+
+### POS staff new-online-order wake-up
+
+POS staff register with `POST /api/v1/pos/staff-push-tokens` and delete with
+`DELETE /api/v1/pos/staff-push-tokens`. Both routes use the authenticated tenant user, the existing
+POS limiter/device-proof middleware, and the `pos:view` permission gate. Registration accepts
+`token`, `platform` (`ios` or `android`), `app` (`pos` or `fiscalpos`), and `brand`; optional
+`previous_token` lets a client replace a refreshed Expo token. The owner is always the authenticated
+`(tenant_id, user_id)` pair. Sign-out calls `DELETE`; tenant switching may re-register the same token
+under the new tenant, which moves its single active owner. Clients should register on launch to
+refresh `last_seen_at`.
+
+After a fresh online-order transaction commits, the API sends one detached, best-effort
+`staff_new_online_order` event. Idempotent checkout replays do not dispatch. Audience checks run for
+each user at send time: the user must be active, not deleted, have effective `pos:view`, and pass
+the existing location-access rule for the order. If `location_id` is null, the existing
+`resolveMovementLocation` rule resolves it; the staff member does not need an open shift. A failure
+to resolve one user's permissions or location skips that user without blocking others. Deactivation
+and removal revoke the user's staff tokens best-effort. Permission or location-grant changes are
+enforced by the next dispatch-time check. The retention scheduler revokes staff tokens not refreshed
+for the same 90-day window used for account tokens.
+
+The fixed title/body are `New online order` and `A new online order is waiting in POS.` The
+notification data contains only `event: pos_new_online_order`, the numeric `order_id`, and the
+resolved `location_id` (or `null`). It never carries a tracking PIN, customer details, order lines,
+`company_token`, or access tokens. Staff logs use their own purpose and per-order cap so fan-out does
+not consume the Storefront order-status limit. `GET /api/v1/pos/incoming-orders` remains authoritative;
+push is only a wake-up hint.
+
+As with the existing status events, there is no outbox. A process crash after commit but before the
+detached dispatcher runs can lose the wake-up push. Provider/network/logging failures never fail or
+delay checkout. Expo remains disabled until separately provisioned credentials and provider
+configuration are enabled.
 
 ## Guest proof
 
