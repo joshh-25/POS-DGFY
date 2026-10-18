@@ -25,6 +25,7 @@ describe('push receipt scheduler', () => {
         const deviceRepository = {
             revokeGuestBindingsPastTtl: jest.fn().mockResolvedValue(1),
             revokeInactiveAccountTokens: jest.fn().mockResolvedValue(2),
+            revokeInactiveStaffTokens: jest.fn().mockResolvedValue(5),
             purgeRevokedTokens: jest.fn().mockResolvedValue(3)
         };
         const logRepository = { purgeDeliveryLogs: jest.fn().mockResolvedValue(4) };
@@ -38,11 +39,12 @@ describe('push receipt scheduler', () => {
         expect(result).toEqual({
             status: 'completed',
             receipts: { status: 'completed', checked: 2 },
-            retention: { guestRevoked: 1, accountRevoked: 2, tokensPurged: 3, logsPurged: 4 }
+            retention: { guestRevoked: 1, accountRevoked: 2, staffRevoked: 5, tokensPurged: 3, logsPurged: 4 }
         });
         expect(acquireLock).toHaveBeenCalledWith('scheduler:push_receipts_and_retention', 900);
         expect(releaseLock).toHaveBeenCalledWith('scheduler:push_receipts_and_retention');
         expect(deviceRepository.revokeGuestBindingsPastTtl).toHaveBeenCalledWith(new Date('2026-10-10T00:00:00.000Z'));
+        expect(deviceRepository.revokeInactiveStaffTokens).toHaveBeenCalledWith(new Date('2026-07-19T00:00:00.000Z'));
     });
 
     it('does not run a cycle when another worker owns the lock', async () => {

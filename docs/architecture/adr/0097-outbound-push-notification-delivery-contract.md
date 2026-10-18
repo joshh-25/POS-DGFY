@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-10-17
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-18
 review_by: 2027-04-17
 applies_to: outbound_push_delivery
 topic: outbound_push_notification_delivery_contract
@@ -13,8 +13,9 @@ topic: outbound_push_notification_delivery_contract
 
 ## Status
 
-Accepted on 2026-10-17. Expo delivery remains disabled until its credentials and provider
-configuration are provisioned.
+Amended on 2026-10-18 by the POS staff new-online-order push contract below. Originally accepted on
+2026-10-17. Expo delivery remains disabled until its credentials and provider configuration are
+provisioned.
 
 ## Context
 
@@ -97,3 +98,35 @@ SMS behavior remains unchanged.
 - [Issue #2554](https://github.com/Sieitzz/dgfy-platform/issues/2554).
 - [Expo send-notifications guide](https://docs.expo.dev/push-notifications/sending-notifications/).
 - [Push delivery module README](../../../apps/dgfy-api/src/modules/pushDelivery/README.md).
+
+## Amendments
+
+### 2026-10-18 — POS staff new-online-order wake-up push (#2569)
+
+- **Clauses amended:** Decisions 4, 9, and 10 (`[default]`). No `[binding]` clause changes.
+- **Decision 4:** A token has exactly one owner: a DGFY account, a guest order, or a tenant staff
+  user (`staff_tenant_id` + `staff_user_id`). The existing single-active-owner-per-token rule
+  applies across all three types. A staff refresh may supply `previous_token`; the old binding is
+  revoked as `refreshed` only when it is still active and owned by that same tenant/user pair.
+- **Decision 9:** POS staff registration and deletion use authenticated
+  `/api/v1/pos/staff-push-tokens` routes gated by `pos:view` and the existing POS middleware. The
+  tenant and user owner values come from the authenticated request, never the body. Re-registering
+  the same token refreshes `last_seen_at`; sign-out deletes the token, while a tenant switch may
+  re-register it under the new tenant and move its single active binding.
+- **Decision 10:** The sole POS/staff event is a best-effort `pos_new_online_order` push after a
+  fresh online-order transaction commits. It targets active, non-deleted staff with effective
+  `pos:view` permission and location access for that order. If the order has no location, targeting
+  uses the existing `resolveMovementLocation` rule; shift state is not required. The payload uses
+  fixed generic copy and only `order_id` plus `location_id`; it excludes the tracking PIN, customer
+  data, order lines, `company_token`, and access tokens. `GET /pos/incoming-orders` remains the
+  authoritative queue. Replays do not dispatch, and the existing no-outbox crash-loss window
+  remains accepted.
+- Staff events use the separate `staff_new_online_order` delivery purpose, so their per-order
+  reservation cap does not consume the Storefront order-status cap. Token hourly limits, HMAC
+  logging, adapter modes, receipt polling, and `DeviceNotRegistered` revocation remain shared.
+- Eligibility is checked again at dispatch time. Deactivation and staff removal revoke bindings
+  best-effort; permission or location-grant changes stop targeting without a separate revoke hook.
+  Staff bindings inactive for the existing 90-day account-token window are revoked by retention.
+  Clients call deletion on sign-out and re-register on launch to refresh `last_seen_at`.
+- Expo remains `unconfigured` by default. This amendment does not add a mobile client, provider
+  credentials, web push, an outbox, or any other staff-notification event.

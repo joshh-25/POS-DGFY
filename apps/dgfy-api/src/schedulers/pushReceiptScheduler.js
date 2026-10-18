@@ -26,16 +26,17 @@ export const runPushReceiptCycle = async ({
         if (!isPushDeliveryRetentionEnabled()) return { status: 'completed', receipts: receiptResult, retention: 'disabled' };
 
         const currentTime = now();
-        const [guestRevoked, accountRevoked, tokensPurged, logsPurged] = await Promise.all([
+        const [guestRevoked, accountRevoked, staffRevoked, tokensPurged, logsPurged] = await Promise.all([
             deviceRepository.revokeGuestBindingsPastTtl(beforeDays(getPushGuestTokenTtlDays(), currentTime)),
             deviceRepository.revokeInactiveAccountTokens(beforeDays(getPushAccountTokenMaxAgeDays(), currentTime)),
+            deviceRepository.revokeInactiveStaffTokens(beforeDays(getPushAccountTokenMaxAgeDays(), currentTime)),
             deviceRepository.purgeRevokedTokens(beforeDays(getPushDeliveryLogRetentionDays(), currentTime)),
             logRepository.purgeDeliveryLogs(beforeDays(getPushDeliveryLogRetentionDays(), currentTime))
         ]);
         return {
             status: 'completed',
             receipts: receiptResult,
-            retention: { guestRevoked, accountRevoked, tokensPurged, logsPurged }
+            retention: { guestRevoked, accountRevoked, staffRevoked, tokensPurged, logsPurged }
         };
     } finally {
         cycleInProgress = false;

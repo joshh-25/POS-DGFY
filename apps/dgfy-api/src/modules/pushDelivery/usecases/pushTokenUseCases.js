@@ -7,6 +7,7 @@ const normalizePin = (value) => String(value || '').trim().toUpperCase();
 const normalizePlatform = (value) => String(value || '').trim().toLowerCase();
 const finalStatuses = new Set(['completed', 'cancelled', 'rejected']);
 const MAX_GUEST_TOKENS_PER_ORDER = 5;
+const STAFF_PUSH_APPS = new Set(['pos', 'fiscalpos']);
 
 const validateTokenPayload = (payload = {}) => {
     const token = String(payload.token || '').trim();
@@ -23,6 +24,28 @@ const validateTokenPayload = (payload = {}) => {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'App and brand are required and must be 80 characters or fewer.');
     }
     return { token, platform, app, brand };
+};
+
+const validateStaffTokenPayload = (payload = {}) => {
+    const tokenPayload = validateTokenPayload(payload);
+    if (!STAFF_PUSH_APPS.has(tokenPayload.app)) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'App must be pos or fiscalpos.');
+    }
+
+    const previousToken = String(payload.previous_token || '').trim();
+    if (previousToken && !isValidExpoPushToken(previousToken)) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A valid previous Expo push token is required.');
+    }
+    return { ...tokenPayload, previous_token: previousToken || null };
+};
+
+const normalizeStaffIdentity = ({ tenantId, userId } = {}) => {
+    const normalizedTenantId = String(tenantId || '').trim();
+    const normalizedUserId = Number(userId);
+    if (!normalizedTenantId || !Number.isSafeInteger(normalizedUserId) || normalizedUserId <= 0) {
+        throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated tenant staff identity is required.');
+    }
+    return { tenantId: normalizedTenantId, userId: normalizedUserId };
 };
 
 const mapFailure = (error, fallbackMessage) => {
@@ -164,9 +187,48 @@ export const buildDeleteGuestPushTokenUseCase = ({ repository, storeRepository }
     }
 };
 
+export const buildRegisterStaffPushTokenUseCase = ({ repository }) => async ({ tenantId, userId, payload } = {}) => {
+    try {
+        const identity = normalizeStaffIdentity({ tenantId, userId });
+        const tokenPayload = validateStaffTokenPayload(payload);
+        const saved = await repository.registerToken({
+            token: tokenPayload.token,
+            platform: tokenPayload.platform,
+            app: tokenPayload.app,
+            brand: tokenPayload.brand
+        }, {
+            staff_tenant_id: identity.tenantId,
+            staff_user_id: identity.userId
+        }, { previousToken: tokenPayload.previous_token });
+        return ok({ registered: true, token_id: saved.id });
+    } catch (error) {
+        return mapFailure(error, 'Staff push token registration failed.');
+    }
+};
+
+export const buildDeleteStaffPushTokenUseCase = ({ repository }) => async ({ tenantId, userId, token } = {}) => {
+    try {
+        const identity = normalizeStaffIdentity({ tenantId, userId });
+        const normalizedToken = String(token || '').trim();
+        if (!isValidExpoPushToken(normalizedToken)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A valid Expo push token is required.');
+        }
+        const revoked = await repository.revokeStaffToken({
+            token: normalizedToken,
+            tenantId: identity.tenantId,
+            userId: identity.userId
+        });
+        return ok({ revoked: revoked > 0 });
+    } catch (error) {
+        return mapFailure(error, 'Staff push token removal failed.');
+    }
+};
+
 export default {
     buildRegisterAccountPushTokenUseCase,
     buildDeleteAccountPushTokenUseCase,
     buildRegisterGuestPushTokenUseCase,
-    buildDeleteGuestPushTokenUseCase
+    buildDeleteGuestPushTokenUseCase,
+    buildRegisterStaffPushTokenUseCase,
+    buildDeleteStaffPushTokenUseCase
 };
