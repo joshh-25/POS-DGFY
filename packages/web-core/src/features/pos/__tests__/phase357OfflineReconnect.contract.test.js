@@ -111,4 +111,27 @@ describe('Phase 357 offline/reconnect reconciliation', () => {
       })
     ]);
   });
+
+  it.each([429, 500, 502])('uses the shared retry policy for terminal-operation replay status %s', async (status) => {
+    const intentId = 'phase357-retry-' + status;
+    createPosParkedSale.mockRejectedValueOnce({ response: { status } });
+    await enqueueTerminalOperationIntent({
+      intent_id: intentId,
+      operation: 'parked_sale',
+      queue_scope: scope,
+      payload: { total_amount: 25 }
+    }, 'offline');
+
+    const candidates = await listTerminalOperationQueueEntries({ scope, includeResolved: false });
+    const result = await replayTerminalOperationCandidates({ candidates, maxRetries: 3 });
+
+    expect(result).toMatchObject({ replayedCount: 0, retryScheduledCount: 1, failedManualCount: 0 });
+    await expect(listTerminalOperationQueueEntries({ scope, includeResolved: false })).resolves.toEqual([
+      expect.objectContaining({
+        intent_id: intentId,
+        status: TERMINAL_QUEUE_STATUS.QUEUED,
+        attempt_count: 1
+      })
+    ]);
+  });
 });

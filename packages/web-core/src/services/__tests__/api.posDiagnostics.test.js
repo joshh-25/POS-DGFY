@@ -50,9 +50,66 @@ describe('POS request diagnostics (ring buffer + attribution headers)', () => {
     expect(outcomes[0]).toMatchObject({ method: 'GET', url: '/pos/terminal/shifts/current', status: 500, kind: 'http' });
   });
 
+  it('marks gateway failures unreachable and exposes a recent terminal-offline snapshot', async () => {
+    const {
+      default: api,
+      getBackendReachabilitySnapshot,
+      getRecentApiOutcomes,
+      isTerminalOffline
+    } = await import('../api.js');
+    apiMock.onGet('/pos/outage').reply(502, { message: 'gateway unavailable' });
+
+    await api.get('/pos/outage', { skipTransientRetry: true }).catch(() => {});
+
+    expect(getRecentApiOutcomes()[0]).toMatchObject({ status: 502, kind: 'network' });
+    const snapshot = getBackendReachabilitySnapshot();
+    expect(snapshot).toMatchObject({ reachable: false, consecutiveUnreachable: 1 });
+    expect(isTerminalOffline(snapshot.lastOutcomeAt + 30_000)).toBe(true);
+    expect(isTerminalOffline(snapshot.lastOutcomeAt + 30_001)).toBe(false);
+  });
+
+  it('keeps 429 and 500 reachable and resets the snapshot after a successful response', async () => {
+    const { default: api, getBackendReachabilitySnapshot, getRecentApiOutcomes } = await import('../api.js');
+    apiMock.onGet('/pos/server-error').reply(500, { message: 'application failure' });
+    await api.get('/pos/server-error', { skipTransientRetry: true }).catch(() => {});
+    expect(getRecentApiOutcomes()[0]).toMatchObject({ status: 500, kind: 'http' });
+    expect(getBackendReachabilitySnapshot()).toMatchObject({ reachable: true, consecutiveUnreachable: 0 });
+
+    apiMock.onGet('/pos/rate-limited').reply(429, { message: 'rate limited' });
+    await api.get('/pos/rate-limited', { skipTransientRetry: true }).catch(() => {});
+    expect(getRecentApiOutcomes()[1]).toMatchObject({ status: 429, kind: 'http' });
+    expect(getBackendReachabilitySnapshot()).toMatchObject({ reachable: true, consecutiveUnreachable: 0 });
+
+    apiMock.onGet('/pos/outage').reply(502, { message: 'gateway unavailable' });
+    await api.get('/pos/outage', { skipTransientRetry: true }).catch(() => {});
+    expect(getBackendReachabilitySnapshot().reachable).toBe(false);
+
+    apiMock.onGet('/pos/recovered').reply(200, { data: [] });
+    await api.get('/pos/recovered');
+    expect(getBackendReachabilitySnapshot()).toMatchObject({ reachable: true, consecutiveUnreachable: 0 });
+  });
+
+  it('does not let a cancelled request change backend reachability', async () => {
+    const { default: api, getBackendReachabilitySnapshot, getRecentApiOutcomes } = await import('../api.js');
+    apiMock.onGet('/pos/outage').reply(502, { message: 'gateway unavailable' });
+    await api.get('/pos/outage', { skipTransientRetry: true }).catch(() => {});
+    const unreachableSnapshot = getBackendReachabilitySnapshot();
+    const controller = new AbortController();
+    controller.abort();
+
+    await api.get('/pos/cancelled', { signal: controller.signal }).catch(() => {});
+
+    expect(getRecentApiOutcomes()[1]).toMatchObject({ status: null, kind: 'http', cancelled: true });
+    expect(getBackendReachabilitySnapshot()).toEqual(unreachableSnapshot);
+  });
+
   it('classifies a network failure with no status as kind "network"', async () => {
     const { default: api, getRecentApiOutcomes } = await import('../api.js');
-    apiMock.onGet('/pos/incoming-orders').networkError();
+    apiMock.onGet('/pos/incoming-orders').reply(() => {
+      const error = new Error('Network Error');
+      error.code = 'ERR_NETWORK';
+      return Promise.reject(error);
+    });
 
     await api.get('/pos/incoming-orders', { skipTransientRetry: true }).catch(() => {});
 
@@ -126,7 +183,11 @@ describe('POS request diagnostics (ring buffer + attribution headers)', () => {
     apiMock.onGet('/pos/catalog').reply(200, { data: [] });
     await api.get('/pos/catalog');
 
-    apiMock.onGet('/pos/incoming-orders').networkError();
+    apiMock.onGet('/pos/incoming-orders').reply(() => {
+      const error = new Error('Network Error');
+      error.code = 'ERR_NETWORK';
+      return Promise.reject(error);
+    });
     await api.get('/pos/incoming-orders', { skipTransientRetry: true }).catch(() => {});
 
     expect(seen).toHaveLength(2);

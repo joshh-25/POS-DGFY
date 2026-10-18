@@ -1,3 +1,5 @@
+import { GATEWAY_FAILURE_STATUS_CODES } from './backendReachability.js';
+
 // Retry policy for transient upstream failures (gateway restarts, a single
 // worker reload) on IDEMPOTENT requests only. Kept as pure functions so the
 // backoff math and eligibility rules are unit-testable without axios or a
@@ -21,7 +23,7 @@ export const TRANSIENT_RETRY_MAX_DELAY_MS = 2000;
 export const TRANSIENT_RETRY_TOTAL_BUDGET_MS = 8000;
 export const MAX_HONOURED_RETRY_AFTER_SECONDS = 5;
 
-export const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+export const RETRYABLE_STATUSES = GATEWAY_FAILURE_STATUS_CODES;
 export const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options']);
 
 // Axios error `code` values that mean "this was not a transport failure" and

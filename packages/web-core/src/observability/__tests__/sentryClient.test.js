@@ -629,6 +629,52 @@ describe('captureRequestFailure', () => {
     vi.doUnmock('@sentry/react');
   });
 
+  it('reports POS transient failures only after the configured consecutive threshold', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 503, transientFailureThreshold: 3 });
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 504, transientFailureThreshold: 3 });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureException.mock.calls[0][1].tags.request_failure_class).toBe('transient');
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 500, transientFailureThreshold: 3 });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(2);
+    expect(Sentry.captureException.mock.calls[1][1].tags.request_failure_class).toBe('server');
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('resets the POS transient threshold after a successful request', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+    freshModule.noteRequestSuccess();
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('does not count transient failures across an intervening server failure', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 503, transientFailureThreshold: 3 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 500, transientFailureThreshold: 3 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 504, transientFailureThreshold: 3 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 502, transientFailureThreshold: 3 });
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureException.mock.calls[0][1].tags.request_failure_class).toBe('server');
+    vi.doUnmock('@sentry/react');
+  });
+
   it('collapses transient 5xx across different endpoints into one fingerprint during a restart', async () => {
     const { freshModule, Sentry } = await importInitializedSentryClient();
 
