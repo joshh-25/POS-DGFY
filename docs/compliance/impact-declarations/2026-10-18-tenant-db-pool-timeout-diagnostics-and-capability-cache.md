@@ -11,8 +11,8 @@ verification_evidence: Focused API Jest validation (9 suites, 96 tests); node --
 rollback_note: Revert the capability-setting cache and its invalidation hooks to restore per-request reads. Revert the timeout recorder, Sentry tenant tag, pool snapshot, and runbook note to remove the added diagnostics. No database migration or environment change is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-18T08:14:35Z
-preflight_request_ref: NOT-EXECUTED-2560-2026-10-18
+preflight_run_at: 2026-10-18T09:08:43.947Z
+preflight_request_ref: PREFLIGHT-39113795566-2026-10-18-TENANT-DB-POOL-TIMEOUT-DIAGNOSTICS-AND-CAPABILITY-CACHE
 ---
 
 # Tenant DB Pool Timeout Diagnostics and Capability Cache

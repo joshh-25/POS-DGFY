@@ -11,8 +11,8 @@ verification_evidence: Focused API tests (9 suites, 29 tests), API lint (zero er
 rollback_note: Set PUSH_PROVIDER=unconfigured to disable provider delivery. Reverting the feature removes token routes and best-effort dispatch; no order state repair is required. The additive landlord tables can remain until a separately reviewed data-retention decision.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-17T15:25:24Z
-preflight_request_ref: NOT-EXECUTED-2554-2026-10-17
+preflight_run_at: 2026-10-18T09:08:43.945Z
+preflight_request_ref: PREFLIGHT-39113795566-2026-10-17-ORDER-STATUS-PUSH-NOTIFICATIONS
 ---
 
 # Customer Order-Status Push Notifications
