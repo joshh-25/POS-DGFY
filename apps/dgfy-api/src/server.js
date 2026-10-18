@@ -24,6 +24,7 @@ import express from 'express'; // Added missing express import if it was implici
 import { testConnection } from './config/database.js';
 import { assertConnectionBudget } from './config/connectionBudget.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { dbPoolTimeoutDiagnostics } from './middleware/dbPoolTimeoutDiagnostics.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
 import requestOutcomeLogger from './middleware/requestOutcomeLogger.js';
@@ -908,6 +909,7 @@ app.use('/api/v1/business-admin', businessAdminRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
+app.use(dbPoolTimeoutDiagnostics);
 app.use(sentryErrorHandler);
 app.use(errorHandler);
 

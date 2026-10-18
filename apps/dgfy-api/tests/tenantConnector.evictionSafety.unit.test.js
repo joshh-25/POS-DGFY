@@ -120,6 +120,52 @@ const seedEntry = (tenantId, { sequelize, lastUsed = Date.now(), tenantName = `t
 };
 
 describe('TenantConnector — eviction safety (issue #474 follow-up)', () => {
+  test('getTenantPoolSnapshot maps sequelize-pool getters and returns null for an uncached tenant', () => {
+    const sequelize = {
+      connectionManager: {
+        pool: {
+          using: 2,
+          waiting: 3,
+          size: 7,
+          available: 5,
+          maxSize: 7
+        }
+      }
+    };
+    seedEntry('snapshot-tenant', { sequelize });
+
+    expect(tenantConnector.getTenantPoolSnapshot('snapshot-tenant')).toEqual({
+      using: 2,
+      waiting: 3,
+      size: 7,
+      available: 5,
+      max: 7
+    });
+    expect(tenantConnector.getTenantPoolSnapshot('not-cached')).toBeNull();
+  });
+
+  test('getTenantPoolSnapshot tolerates absent or throwing pool getters', () => {
+    const sequelize = {
+      connectionManager: {
+        pool: {
+          get using() {
+            throw new Error('getter unavailable');
+          },
+          size: 4
+        }
+      }
+    };
+    seedEntry('partial-snapshot', { sequelize });
+
+    expect(tenantConnector.getTenantPoolSnapshot('partial-snapshot')).toEqual({
+      using: null,
+      waiting: null,
+      size: 4,
+      available: null,
+      max: null
+    });
+  });
+
   test('A: isBusy() reads pool.using and treats a missing pool as busy', () => {
     const { sequelize: busySeq } = makeFakeSequelize({ using: 2 });
     const { sequelize: idleSeq } = makeFakeSequelize({ using: 0 });

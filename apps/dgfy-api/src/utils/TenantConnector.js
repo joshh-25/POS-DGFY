@@ -349,6 +349,36 @@ class TenantConnector {
     }
 
     /**
+     * Return a defensive snapshot of a cached tenant's Sequelize pool.
+     * sequelize-pool 7.1.0 exposes `maxSize` (mapped here to the stable
+     * diagnostic field `max`) along with the other numeric getters.
+     * @param {string} tenantId
+     * @returns {{using: number|null, waiting: number|null, size: number|null, available: number|null, max: number|null}|null}
+     */
+    getTenantPoolSnapshot(tenantId) {
+        const cached = this.connections.get(tenantId);
+        const pool = cached?.sequelize?.connectionManager?.pool;
+        if (!pool) return null;
+
+        const readNumber = (property) => {
+            try {
+                const value = pool[property];
+                return typeof value === 'number' && Number.isFinite(value) ? value : null;
+            } catch {
+                return null;
+            }
+        };
+
+        return {
+            using: readNumber('using'),
+            waiting: readNumber('waiting'),
+            size: readNumber('size'),
+            available: readNumber('available'),
+            max: readNumber('maxSize')
+        };
+    }
+
+    /**
      * Close a specific connection.
      *
      * Removes the entry from the cache immediately, so no new caller can be

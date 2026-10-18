@@ -59,6 +59,7 @@ import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from 
 import { applyPosTaxPolicyAuditLog, resolvePosTaxPolicyAuditBeforeValue } from './posTaxPolicyAuditLog.js';
 import logger from '../../../config/logger.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { invalidateTenantCapabilityCache } from '../../shared/utils/tenantCapabilitySettingCache.js';
 import { isPlatformControlledImageClientConversionKey } from '../../shared/utils/imageClientConversionGate.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
@@ -85,6 +86,7 @@ const clearCapabilityCachesIfTouched = async (settingsData) => {
     ));
     if (!touched) return;
     clearWorkflowCapabilitySettingsCache();
+    invalidateTenantCapabilityCache();
     clearStoreProfileResolutionCache();
     // Dynamic import deliberately - inventory/index.js imports settings/index.js
     // (itemRepository.js reads getAllSettingsUseCase), so a static import

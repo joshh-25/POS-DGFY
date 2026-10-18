@@ -29546,6 +29546,85 @@ Not complete. Record only after merge and successful implementation validation.
       state and incoming-order polling returns to its normal cadence; this blocks issue verification
       and closure.
 
+## Phase 513 - Tenant DB pool acquire-timeout diagnostics and capability lookup caching (#2560)
+
+### Initiative and release
+
+API reliability, current release.
+
+### Objective and scope
+
+Make the next tenant DB connection acquire-timeout episode diagnosable with a tenant Sentry tag,
+request and pool context, and a structured log. Reduce avoidable tenant-pool pressure by caching
+tenant POS/IMS capability setting reads for 15 seconds with same-process write invalidation. This
+phase does not claim a proven root cause, tune pool sizing, change HTTP behavior, or satisfy the
+issue's post-deploy acceptance criteria.
+
+### Status
+
+`in_progress` — implementation and focused validation are complete; repository gates, PR review,
+merge, and post-deploy observation remain outstanding.
+
+### Dependencies
+
+Issue [#2560](https://github.com/Sieitzz/dgfy-platform/issues/2560) defines the scoped behavior.
+There is no explicit dependency on another phase. Pool sizing and acquire tuning remain evidence-
+driven follow-up work and are not a prerequisite for this phase.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0002](../architecture/adr/0002-error-contract-unification.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[Production Observability Runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md), and
+[Issue #2560](https://github.com/Sieitzz/dgfy-platform/issues/2560). Classification:
+`within-existing-boundary`; HTTP error contracts remain unchanged and no ADR amendment is required.
+
+### Implementation targets
+
+[Sentry configuration](../../apps/dgfy-api/src/config/sentry.js),
+[tenant middleware](../../apps/dgfy-api/src/middleware/tenantHandler.js),
+[pool diagnostics](../../apps/dgfy-api/src/utils/dbPoolDiagnostics.js),
+[pool snapshot](../../apps/dgfy-api/src/utils/TenantConnector.js),
+[capability setting cache](../../apps/dgfy-api/src/modules/shared/utils/tenantCapabilitySettingCache.js),
+[capability gates](../../apps/dgfy-api/src/middleware/auth.js),
+[capability writer](../../apps/dgfy-api/src/modules/tenants/usecases/updateTenantCapabilitiesUseCase.js),
+[runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [x] Sentry tenant tag is set after tenant resolution and before tenant DB connection acquisition.
+- [x] Acquire-timeout diagnostics record tenant, route, method, request ID, tenant-pool and global
+      pool state on both Express and use-case failure capture paths without changing responses.
+- [x] POS/IMS capability settings are cached for 15 seconds; same-process writes invalidate the
+      cache after commit and rollback, and lookup failures remain fail-closed.
+- [x] Focused API validation passed: 9 Jest suites, 96 tests.
+- [x] `node --check` on every changed API JavaScript file; architecture, docs, compliance, and app
+      version checks passed before PR creation.
+- [ ] PR review and merge to `develop`; implementation validation must pass before status becomes
+      `completed`.
+
+### Evidence
+
+`npm --prefix apps/dgfy-api test -- --runTestsByPath ...` passed 9 suites and 96 tests, including
+cache TTL/single-flight/invalidation, capability-gate behavior, commit/rollback invalidation,
+Sentry scope tagging, acquire-timeout capture paths, error forwarding, and pool snapshot coverage.
+Changed-file `node --check`, architecture, compliance, docs/ADR, app-version, and whitespace checks
+passed before PR creation.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — issue #2560: observe several business days after rollout with no
+      `DGFY-BACKEND-P` events and no same-minute multi-tenant `DGFY-POS-C` timeout clusters. This
+      blocks issue closure.
+- [ ] operational — issue #2560: confirm acquire-timeout events and logs include the tenant tag,
+      route, request ID, and available pool counters. This blocks issue closure and informs any
+      evidence-driven pool-sizing follow-up.
+
 ### Next phase number
 
-Phase 513. No explicit dependency.
+Phase 514. No explicit dependency.

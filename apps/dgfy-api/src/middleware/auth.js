@@ -13,6 +13,7 @@ import {
 import { isAdminLikeRole } from '../config/userRoles.js';
 import logger from '../config/logger.js';
 import { resolveDegradedTenantContextFailure, sendTenantContextError } from './tenantHandler.js';
+import { getCachedCapabilityEnabled } from '../modules/shared/utils/tenantCapabilitySettingCache.js';
 
 const resolveAdminFinancialRole = (username, isMaster = false) => {
   const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -457,11 +458,13 @@ const filterCapabilityDisabledPermissions = async (req, permissions = []) => {
     return permissions;
   }
 
-  const setting = await SystemSetting.findOne({
-    where: { setting_key: 'tenant_pos_enabled' },
-    attributes: ['setting_value']
+  const posEnabled = await getCachedCapabilityEnabled(req.tenant.id, 'tenant_pos_enabled', async () => {
+    const setting = await SystemSetting.findOne({
+      where: { setting_key: 'tenant_pos_enabled' },
+      attributes: ['setting_value']
+    });
+    return parseCapabilityBoolean(setting?.setting_value, true);
   });
-  const posEnabled = parseCapabilityBoolean(setting?.setting_value, true);
   if (posEnabled) {
     return permissions;
   }
@@ -860,11 +863,13 @@ export const requireTenantCapability = (settingKey, capabilityLabel = 'This feat
         return next();
       }
 
-      const setting = await SystemSetting.findOne({
-        where: { setting_key: normalizedSettingKey },
-        attributes: ['setting_value']
+      const enabled = await getCachedCapabilityEnabled(req.tenant.id, normalizedSettingKey, async () => {
+        const setting = await SystemSetting.findOne({
+          where: { setting_key: normalizedSettingKey },
+          attributes: ['setting_value']
+        });
+        return parseCapabilityBoolean(setting?.setting_value, true);
       });
-      const enabled = parseCapabilityBoolean(setting?.setting_value, true);
       if (enabled) {
         return next();
       }
