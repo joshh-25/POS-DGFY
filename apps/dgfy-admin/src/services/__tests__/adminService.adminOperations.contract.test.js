@@ -46,6 +46,13 @@ describe('adminService admin operation contracts', () => {
     ['suspendStorefrontDomain', 'post', '/admin/tenants/tenant-1/storefront-domains/domain-1/suspend', () => adminService.suspendStorefrontDomain('tenant-1', 'domain-1', 'rollback')],
     ['removeStorefrontDomain', 'delete', '/admin/tenants/tenant-1/storefront-domains/domain-1', () => adminService.removeStorefrontDomain('tenant-1', 'domain-1', 'retire')],
     ['reconcileStorefrontDomainEligibility', 'post', '/admin/tenants/tenant-1/storefront-domains/reconcile-eligibility', () => adminService.reconcileStorefrontDomainEligibility('tenant-1', 'scheduled check')],
+    ['getPushDiagnosticsOverview', 'get', '/admin/push-diagnostics/overview', () => adminService.getPushDiagnosticsOverview()],
+    ['listPushDiagnosticsRegistrations', 'get', '/admin/push-diagnostics/registrations', () => adminService.listPushDiagnosticsRegistrations({ state: 'active' })],
+    ['listPushDiagnosticsAttempts', 'get', '/admin/push-diagnostics/attempts', () => adminService.listPushDiagnosticsAttempts({ window_hours: 24 })],
+    ['listPushDiagnosticDevices', 'get', '/admin/push-diagnostics/diagnostic-devices', () => adminService.listPushDiagnosticDevices()],
+    ['createPushDiagnosticEnrollmentCode', 'post', '/admin/push-diagnostics/enrollment-codes', () => adminService.createPushDiagnosticEnrollmentCode()],
+    ['revokePushDiagnosticDevice', 'delete', '/admin/push-diagnostics/diagnostic-devices/device-1', () => adminService.revokePushDiagnosticDevice('device-1')],
+    ['sendPushDiagnosticTest', 'post', '/admin/push-diagnostics/diagnostic-devices/device-1/test-send', () => adminService.sendPushDiagnosticTest('device-1')],
     ['listDgfyAccounts', 'get', '/dgfy/admin/accounts', () => adminService.listDgfyAccounts({ status: 'active' })],
     ['getDgfyAccount', 'get', '/dgfy/admin/accounts/acct-1', () => adminService.getDgfyAccount('acct-1')],
     ['createDgfyAccount', 'post', '/dgfy/admin/accounts', () => adminService.createDgfyAccount({ email: 'owner@example.test' })],
@@ -75,7 +82,7 @@ describe('adminService admin operation contracts', () => {
       } else {
         expect(config.headers['x-csrf-token']).toBeUndefined();
       }
-      return [200, { success: true, data: { ok: true } }];
+      return [200, { success: true, data: { success: true, ok: true } }];
     });
 
     await expect(callService()).resolves.toMatchObject({ success: true });
@@ -89,5 +96,18 @@ describe('adminService admin operation contracts', () => {
 
     await expect(adminService.listDgfyAccounts()).rejects.toThrow('Admin authentication required');
     expect(mockAdminApi.history.get).toHaveLength(0);
+  });
+
+  it('sends diagnostic test notifications to an enrolled device without a request body', async () => {
+    mockAdminApi.onPost('/admin/push-diagnostics/diagnostic-devices/device-1/test-send').reply((config) => {
+      expect(config.data).toBeUndefined();
+      return [200, { success: true, data: { state: 'accepted_receipt_pending' } }];
+    });
+
+    await adminService.sendPushDiagnosticTest('device-1');
+
+    expect(mockAdminApi.history.post).toHaveLength(1);
+    expect(mockAdminApi.history.post[0].url).toBe('/admin/push-diagnostics/diagnostic-devices/device-1/test-send');
+    expect(mockAdminApi.history.post[0].data).toBeUndefined();
   });
 });

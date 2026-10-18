@@ -7,6 +7,8 @@ describe('Platform Admin protected-route classification', () => {
     ['/api/v1/admin/tenant-intake/capabilities', ['admin.tenants', 'admin.dgfy_accounts']],
     ['/api/v1/admin/feedback', ['admin.feedback']],
     ['/api/v1/admin/contact-inquiries/pin4ms/config', ['admin.contact_inquiries']],
+    ['/api/v1/admin/push-diagnostics/overview', ['admin.push_diagnostics']],
+    ['/api/v1/admin/push-diagnostics/diagnostic-devices/id-1/test-send', ['admin.push_diagnostics']],
     ['/api/v1/admin/tenants', ['admin.tenants']],
     ['/api/v1/admin/tenants/pricing', ['admin.pricing']],
     // Issue #178 Phase 17: applying a template to ONE already-provisioned
@@ -33,6 +35,7 @@ describe('Platform Admin protected-route classification', () => {
     '/api/v1/admin/platform-admins',
     '/api/v1/admin/unclassified-legacy-operation',
     '/api/v1/admin/tenant-intake-other',
+    '/api/v1/admin/push-diagnostics-other',
     '/api/v1/admin/templates',
     '/api/v1/admin/templates/5/publish'
   ])('makes %s master-only', (originalUrl) => {

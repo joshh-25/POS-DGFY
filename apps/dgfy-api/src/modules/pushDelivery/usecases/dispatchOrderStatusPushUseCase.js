@@ -1,6 +1,7 @@
 import logger from '../../../config/logger.js';
 import { PUSH_NOTIFICATION_STATUSES, STATUS_COPY } from '../utils/orderStatusCopy.js';
 import { hashExpoPushToken, toSafePushErrorCode } from '../utils/pushTokenSecurity.js';
+import { pickReservationReason } from '../utils/dispatchEventRecorder.js';
 
 const TOKEN_HOURLY_LIMIT = 10;
 const ORDER_LIFETIME_LIMIT = 15;
@@ -38,10 +39,11 @@ export const buildDispatchOrderStatusPushUseCase = ({
     deviceRepository,
     logRepository,
     adapterResolver,
+    recordEvent = null,
     hashToken = hashExpoPushToken,
     now = () => new Date()
 }) => {
-    const dispatch = async ({ activity = {}, eventKey = null, ownerType } = {}) => {
+    const run = async ({ activity = {}, eventKey = null, ownerType } = {}) => {
         const status = normalizeStatus(activity.status);
         const reference = normalizeReference(activity.reference);
         const tenantId = String(activity.tenant_id || '').trim();
@@ -78,6 +80,8 @@ export const buildDispatchOrderStatusPushUseCase = ({
             }).catch(() => null);
             const messageKey = eventKey || eventKeyFor(activity, status);
             const deliveryRef = [];
+            const reservationCounts = {};
+            let hashFailures = 0;
             const currentTime = now();
             const expectedOwner = ownerType === 'account'
                 ? { dgfy_account_id: accountId }
@@ -95,6 +99,7 @@ export const buildDispatchOrderStatusPushUseCase = ({
                     tokenHash = hashToken(tokenRow.token);
                 } catch (error) {
                     logSafeWarning('[Push] Token hashing failed; delivery was skipped', error);
+                    hashFailures += 1;
                     continue;
                 }
 
@@ -118,6 +123,7 @@ export const buildDispatchOrderStatusPushUseCase = ({
                     orderLimit: ORDER_LIFETIME_LIMIT,
                     owner: expectedOwner
                 });
+                reservationCounts[reservation.status] = (reservationCounts[reservation.status] || 0) + 1;
                 if (reservation.status === 'order_limit') break;
                 if (reservation.status !== 'created' || !reservation.log) continue;
                 deliveryRef.push({
@@ -168,6 +174,15 @@ export const buildDispatchOrderStatusPushUseCase = ({
                 }
             }
 
+            if (!deliveryRef.length) {
+                return {
+                    status: 'completed',
+                    attempted: 0,
+                    reason: hashFailures && !Object.keys(reservationCounts).length
+                        ? 'token_hash_failed'
+                        : pickReservationReason(reservationCounts)
+                };
+            }
             return { status: 'completed', attempted: deliveryRef.length };
         } catch (error) {
             logSafeWarning('[Push] Order-status dispatch failed', error);
@@ -184,9 +199,25 @@ export const buildDispatchOrderStatusPushUseCase = ({
         }
     };
 
+    const recordResult = async (activity = {}, result) => {
+        if (recordEvent) {
+            await recordEvent({
+                purpose: 'order_status',
+                result,
+                tenantId: String(activity.tenant_id || '').trim() || null,
+                reference: normalizeReference(activity.reference) || null
+            });
+        }
+        return result;
+    };
+
+    const dispatch = async (args = {}) => recordResult(args.activity, await run(args));
+
     return {
         dispatchAccount: (activity, { eventKey: key = null, created = false } = {}) => (
-            created ? dispatch({ activity, eventKey: key, ownerType: 'account' }) : Promise.resolve({ status: 'skipped', reason: 'notification_not_created' })
+            created
+                ? dispatch({ activity, eventKey: key, ownerType: 'account' })
+                : recordResult(activity, { status: 'skipped', reason: 'notification_not_created' })
         ),
         dispatchGuest: (activity) => dispatch({ activity, ownerType: 'guest' })
     };

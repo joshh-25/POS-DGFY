@@ -29816,3 +29816,113 @@ Not complete. Record only after merge and successful implementation validation.
 ### Next phase number
 
 Phase 516. No explicit dependency.
+
+## Phase 516 - Platform Admin push diagnostics (#2579)
+
+### Initiative and release
+
+Outbound push delivery operations, current release. Backend, Platform Admin page, operator runbook,
+and their validation are scoped to one PR (#2580).
+
+### Objective and scope
+
+Let an authorized Platform Admin see where push delivery stops in the connected environment:
+presence-only provider/secret readiness, pseudonymous registrations, delivery attempts with a
+provider-acceptance vs receipt state, and the skipped/suppressed dispatch reasons that were never
+persisted. Add an audited, rate-limited test send to an operator-enrolled diagnostic device only. The
+surface is Platform Admin (`apps/dgfy-admin`, `admin.push_diagnostics`), not OPIS: the data is
+landlord-wide operator data and OPIS is the tenant-scoped merchant back office (ADRs 0047, 0087, 0089).
+Mobile and POS clients calling the enrollment endpoint are out of scope.
+
+### Status
+
+`in_progress` — backend and admin UI implementation and focused validation pass on the feature
+branch; PR review, merge, deployment, `DEPLOY_ENV_LABEL` provisioning, and real-device evidence
+remain outstanding.
+
+### Dependencies
+
+Issue [#2579](https://github.com/Sieitzz/dgfy-platform/issues/2579). There is no explicit dependency
+on another phase. Test send is usable only after a mobile or POS client calls the enrollment endpoint
+(separate work); every other view works without it.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md),
+[API specification](../api/specification.md), [Database schema](../database/schema.md), and the
+[route permission matrix](../testing/platform-admin-route-permission-matrix.md). Classification:
+`cross-boundary`; the affected clauses (ADR 0097 Decisions 6 and 10, ADR 0047 Consequences) are
+`[default]` and amended in this PR; no new ADR or tech-lead approval is required.
+
+### Implementation targets
+
+[Diagnostics module](../../apps/dgfy-api/src/modules/pushDiagnostics/README.md),
+[Platform Admin diagnostics page](../../apps/dgfy-admin/Pages/PushDiagnostics.jsx),
+[Platform Admin diagnostics tests](../../apps/dgfy-admin/src/pages/__tests__/PushDiagnostics.test.jsx),
+[operator runbook](../ops/PUSH_DIAGNOSTICS_RUNBOOK.md),
+[dispatch event recorder](../../apps/dgfy-api/src/modules/pushDelivery/utils/dispatchEventRecorder.js),
+[diagnostic device repository](../../apps/dgfy-api/src/modules/pushDelivery/repositories/pushDiagnosticDeviceRepository.js),
+[admin routes](../../apps/dgfy-api/src/routes/adminPushDiagnostics.js),
+[enrollment route](../../apps/dgfy-api/src/routes/pushDiagnosticsEnrollment.js),
+[route classification](../../apps/dgfy-api/src/middleware/auth.js),
+[rate limiters](../../apps/dgfy-api/src/middleware/rateLimiter.js),
+[retention scheduler](../../apps/dgfy-api/src/schedulers/pushReceiptScheduler.js), and the
+[diagnostics migration](../../apps/dgfy-migration-runner/migrations/20261019000001-create-push-diagnostics-tables.cjs).
+Focused tests: [use cases](../../apps/dgfy-api/tests/pushDiagnosticsUseCases.unit.test.js),
+[transport](../../apps/dgfy-api/tests/pushDiagnostics.transport.test.js),
+[read-repository redaction](../../apps/dgfy-api/tests/pushDiagnosticsReadRepository.redaction.unit.test.js),
+[dispatch-event recording](../../apps/dgfy-api/tests/pushDispatchEventRecording.unit.test.js),
+[enrollment repository](../../apps/dgfy-api/tests/pushDiagnosticDeviceRepository.unit.test.js), and the
+[migration](../../apps/dgfy-api/tests/createPushDiagnosticsTables.migration.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Access to diagnostics requires an active Platform Admin session and `admin.push_diagnostics`
+      (route classification and an explicit guard); opening the overview, issuing a code, enrolling,
+      revoking, and test sends are audited, and the overview fails closed when its audit row fails.
+- [x] The environment label comes from `DEPLOY_ENV_LABEL` (then `SENTRY_ENVIRONMENT`, else `unknown`)
+      and each deployment reads only its own database.
+- [x] Readiness is presence-only; responses contain no raw token, secret, owner id, tenant id,
+      tracking PIN, order id, or ticket id.
+- [x] Skipped/suppressed reasons, including `no_active_tokens`, are recorded in `push_dispatch_events`.
+- [x] Test send accepts no body, targets only an enrolled diagnostic device, and is limited per admin
+      and per device.
+- [x] Authorization, redaction, outcome mapping, and test-send restriction tests were added.
+- [x] Admin UI shows the connected environment, readiness indicators, outcome counts, pseudonymous
+      registrations and attempts, dispatch reasons, and controlled diagnostic-device actions.
+- [x] Operator runbook documents state meanings, registration/dispatch/provider/receipt triage,
+      environment configuration, and the client enrollment dependency.
+- [x] Admin UI tests cover environment banners, empty states, provider/receipt labels, sensitive-field
+      redaction, one-time code display, no accidental test send, confirmation gating, and 429 messages.
+- [x] Rendered UI proof for desktop (1440 px) and mobile (390 px) viewports; mocked API data only,
+      with no browser errors or page-width overflow. Screenshots: `.tmp/push-diagnostics-render/`.
+- [ ] PR review and merge to `develop`; phase remains `in_progress` until then.
+
+### Evidence
+
+Focused backend Jest suites and repository checks are recorded in the PR's Testing Evidence. Admin UI
+component tests, the app build, and rendered desktop/mobile checks with mocked API data pass in this
+continuation. No provider, production environment, or real device was exercised; Expo remains
+`unconfigured` by default.
+
+### Completion date
+
+Not complete. Record after PR #2580 merges and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — the admin routes are classified (a delegated admin without the grant gets 403) and
+      the migration applied to the connected environment; owner: Verifier; blocks issue closure.
+- [ ] configuration — set `DEPLOY_ENV_LABEL` in the staging and production API environment files and
+      confirm the page banner matches each; owner: release; blocks issue closure.
+- [ ] real-device — enroll an operator device through a client that calls the enrollment endpoint and
+      send one test push; owner: mobile QA; blocks enabling the test send for operators.
+
+### Next phase number
+
+Phase 517. No explicit dependency.

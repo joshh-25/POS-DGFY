@@ -1,5 +1,8 @@
 import { pushDeviceTokenRepository, pushDeliveryLogRepository } from './repositories/pushDeviceTokenRepository.js';
 import { staffPushAudienceRepository } from './repositories/staffPushAudienceRepository.js';
+import { pushDispatchEventRepository } from './repositories/pushDispatchEventRepository.js';
+import { pushDiagnosticDeviceRepository, pushDiagnosticEnrollmentCodeRepository } from './repositories/pushDiagnosticDeviceRepository.js';
+import { buildDispatchEventRecorder } from './utils/dispatchEventRecorder.js';
 import { resolvePushAdapter } from './adapters/index.js';
 import {
     buildDeleteAccountPushTokenUseCase,
@@ -14,10 +17,13 @@ import { buildDispatchStaffNewOnlineOrderPushUseCase } from './usecases/dispatch
 import { buildProcessPushReceiptsUseCase } from './usecases/processPushReceiptsUseCase.js';
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
 
+const recordDispatchEvent = buildDispatchEventRecorder({ repository: pushDispatchEventRepository });
+
 const orderStatusPush = buildDispatchOrderStatusPushUseCase({
     deviceRepository: pushDeviceTokenRepository,
     logRepository: pushDeliveryLogRepository,
-    adapterResolver: resolvePushAdapter
+    adapterResolver: resolvePushAdapter,
+    recordEvent: recordDispatchEvent
 });
 
 const staffNewOnlineOrderPush = buildDispatchStaffNewOnlineOrderPushUseCase({
@@ -25,7 +31,8 @@ const staffNewOnlineOrderPush = buildDispatchStaffNewOnlineOrderPushUseCase({
     logRepository: pushDeliveryLogRepository,
     audienceRepository: staffPushAudienceRepository,
     adapterResolver: resolvePushAdapter,
-    resolveLocation: resolveMovementLocation
+    resolveLocation: resolveMovementLocation,
+    recordEvent: recordDispatchEvent
 });
 
 export const registerAccountPushTokenUseCase = buildRegisterAccountPushTokenUseCase({ repository: pushDeviceTokenRepository });
@@ -41,7 +48,12 @@ export const revokeStaffPushTokensForUser = (input) => pushDeviceTokenRepository
 export const processPushReceiptsUseCase = buildProcessPushReceiptsUseCase({
     repository: {
         ...pushDeliveryLogRepository,
-        revokeTokenById: (...args) => pushDeviceTokenRepository.revokeTokenById(...args)
+        // A receipt for an operator diagnostic device reuses the same log row/poller; its token_id
+        // points at push_diagnostic_devices, so DeviceNotRegistered must revoke from either table.
+        revokeTokenById: async (tokenId, reason) => (
+            (await pushDeviceTokenRepository.revokeTokenById(tokenId, reason))
+            + (await pushDiagnosticDeviceRepository.revokeById(tokenId, reason))
+        )
     },
     adapterResolver: resolvePushAdapter
 });
@@ -49,6 +61,9 @@ export const processPushReceiptsUseCase = buildProcessPushReceiptsUseCase({
 export {
     pushDeviceTokenRepository,
     pushDeliveryLogRepository,
+    pushDispatchEventRepository,
+    pushDiagnosticDeviceRepository,
+    pushDiagnosticEnrollmentCodeRepository,
     buildRegisterAccountPushTokenUseCase,
     buildDeleteAccountPushTokenUseCase,
     buildRegisterGuestPushTokenUseCase,

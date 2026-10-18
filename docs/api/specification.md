@@ -6529,6 +6529,24 @@ Platform Admin authentication uses an HttpOnly landlord session cookie. `/admin/
 
 Blank delegated-user password input applies the documented temporary default. Explicit creation/reset passwords and own-password changes require at least eight characters. Password values are never returned by list/read endpoints or written to audit details.
 
+### Push diagnostics (Platform Admin)
+
+Operator-only diagnostics for outbound push delivery (ADR 0097, #2579). Every `/admin/push-diagnostics*` endpoint requires an active Platform Admin session with `admin.push_diagnostics` and returns `Cache-Control: no-store`. Responses describe only the connected API environment (`environment.label` comes from `DEPLOY_ENV_LABEL`, then `SENTRY_ENVIRONMENT`, else `unknown`) and never contain raw push tokens, secret values, owner identifiers, tracking PINs, tenant ids, or provider ticket ids. Registrations and delivery rows carry pseudonymous refs derived from the keyed token hash; order references are one-way keyed correlation refs.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/admin/push-diagnostics/overview` | Environment label, presence-only provider/secret readiness, registration counts by app/brand/platform, 24h/7d delivery and dispatch-decision counts. Audited (`push_diagnostics.accessed`) before data is returned |
+| `GET` | `/admin/push-diagnostics/registrations` | Capped list (`limit` <= 100; filters `app`, `brand`, `platform`, `state`) |
+| `GET` | `/admin/push-diagnostics/attempts` | Recent delivery attempts with a derived `state` and recent dispatch decisions with `reason_code` (`window_hours` <= 168; filters `purpose`, `status`, `outcome`) |
+| `GET` | `/admin/push-diagnostics/diagnostic-devices` | Enrolled diagnostic devices (no tokens) |
+| `POST` | `/admin/push-diagnostics/enrollment-codes` | Issue a single-use code valid for 10 minutes; the plaintext is returned once. Audited |
+| `DELETE` | `/admin/push-diagnostics/diagnostic-devices/:id` | Revoke a diagnostic device. Audited |
+| `POST` | `/admin/push-diagnostics/diagnostic-devices/:id/test-send` | Send a fixed-copy test push to that device only. Accepts no body (any field, including a token, is rejected); limited per admin (3 per 10 minutes) and per device (10 per hour); audited; recorded in `push_delivery_logs` with purpose `diagnostic_test` |
+
+Delivery `state` values: `no_provider` (unconfigured or simulated; nothing was delivered), `pending_dispatch`, `send_failed`, `rejected_by_expo`, `accepted_receipt_pending` (accepted by Expo, receipt not yet checked), `receipt_ok` (Expo handed the message to APNs/FCM), `receipt_error`, `receipt_other`. None of them states that a notification was displayed on a device.
+
+`POST /push-diagnostics/enroll` is the device-side enrollment call and is session-less: the body `{code, token, platform, app, brand}` must carry a valid, unexpired, unused code issued above. Every code failure returns the same `404`. The response contains only `{enrolled, ref}`. It is limited per IP (10 per 15 minutes).
+
 ### QA landlord invoices
 
 All `/admin/invoices*` endpoints require an active Platform Admin session with `admin.invoices`. These records are landlord-only and QA-only; they do not create tenant POS receipts, inventory movements, subscriptions, or payment-provider transactions.
