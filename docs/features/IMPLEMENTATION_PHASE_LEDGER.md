@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-18
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -29628,3 +29628,106 @@ Not complete. Record only after merge and successful implementation validation.
 ### Next phase number
 
 Phase 514. No explicit dependency.
+
+## Phase 514 - POS staff Expo push tokens and new online-order wake-up (#2569)
+
+### Initiative and release
+
+POS staff mobile integration, current release.
+
+### Objective and scope
+
+Register tenant-scoped POS staff Expo tokens and send one deduplicated, best-effort wake-up push
+after a fresh online order commits. Staff audience is revalidated by activity, `pos:view`, and the
+order's location access. `GET /pos/incoming-orders` remains authoritative. Storefront account and
+guest push behavior remains unchanged.
+
+### Status
+
+`in_progress` — implementation and repository-level checks are being completed on the feature
+branch; merge, deployment, provider, and real-device evidence remain outstanding.
+
+### Dependencies
+
+Issue [#2569](https://github.com/Sieitzz/dgfy-platform/issues/2569) defines the scoped behavior.
+There is no explicit dependency on another phase. Mobile integration remains tracked by
+[dgfy-mobile #413](https://github.com/Sieitzz/dgfy-mobile/issues/413) after the API contract is
+settled.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md),
+[Push delivery README](../../apps/dgfy-api/src/modules/pushDelivery/README.md),
+[API specification](../api/specification.md), [Database schema](../database/schema.md), and
+[Issue #2569](https://github.com/Sieitzz/dgfy-platform/issues/2569). Classification:
+`cross-boundary`; ADR 0097's affected clauses are `[default]`, amended in this PR; no new ADR or
+tech-lead approval is required.
+
+### Implementation targets
+
+[Push token model](../../apps/dgfy-api/src/models/Landlord/PushDeviceToken.js),
+[staff token repository](../../apps/dgfy-api/src/modules/pushDelivery/repositories/pushDeviceTokenRepository.js),
+[staff audience repository](../../apps/dgfy-api/src/modules/pushDelivery/repositories/staffPushAudienceRepository.js),
+[staff dispatcher](../../apps/dgfy-api/src/modules/pushDelivery/usecases/dispatchStaffNewOnlineOrderPushUseCase.js),
+[POS routes](../../apps/dgfy-api/src/routes/pos.js),
+[checkout hook](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[staff lifecycle handlers](../../apps/dgfy-api/src/modules/users/controllers/userHandlers.js),
+[retention scheduler](../../apps/dgfy-api/src/schedulers/pushReceiptScheduler.js), and
+[staff-owner migration](../../apps/dgfy-migration-runner/migrations/20261018000001-add-staff-push-token-owners.cjs).
+Focused tests cover [token ownership](../../apps/dgfy-api/tests/pushDeviceTokenRepository.unit.test.js),
+[registration use cases](../../apps/dgfy-api/tests/pushTokenUseCases.unit.test.js),
+[audience resolution](../../apps/dgfy-api/tests/staffPushAudienceRepository.unit.test.js),
+[dispatch](../../apps/dgfy-api/tests/dispatchStaffNewOnlineOrderPushUseCase.unit.test.js),
+[route contract](../../apps/dgfy-api/tests/posStaffPushTokens.route.contract.test.js),
+[migration](../../apps/dgfy-api/tests/addStaffPushTokenOwners.migration.test.js), and
+[checkout post-commit behavior](../../apps/dgfy-api/tests/storeCheckoutRoadDistanceCapture.unit.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Staff owner fields, mutually exclusive owner binding, same-owner refresh, token reassignment,
+      and optional `previous_token` revocation are implemented.
+- [x] Authenticated POS registration/deletion routes use `pos:view`; checkout dispatch runs only
+      after commit on the fresh branch and remains detached from the checkout result.
+- [x] Dispatch rechecks active/deleted status, effective permission, and location access; payload
+      is limited to the event, opaque order id, and location id. Storefront order-limit accounting is
+      purpose-scoped and unchanged for `order_status`.
+- [x] Staff lifecycle revocation, 90-day inactivity retention, API/ADR/schema documentation, and
+      this phase record are implemented.
+- [x] Focused repository, use-case, dispatch, route, migration, lifecycle, scheduler, and checkout
+      regression tests were added; the optional Jest Tier 2 suite was not run in this session.
+- [x] Changed-file JavaScript syntax checks pass. `npm run check:architecture`, `npm run
+      check:adr`, `npm run lint:docs`, `npm run check:compliance`, and
+      `node scripts/check-app-version-bump.js` pass. Focused Jest Tier 2 tests were authored but
+      not run.
+- [ ] PR review and merge to `develop`; phase remains `in_progress` until then.
+
+### Evidence
+
+Repository-level Tier 0 results: changed JavaScript syntax checks, architecture guardrails and
+controller boundaries, strict ADR validation, governed-doc lint, compliance and API-contract
+checks, and app-version checks all pass. Focused Jest Tier 2 tests were authored but not run.
+Expo remains `unconfigured`; no live provider or device delivery was exercised. The contract
+documents the no-outbox crash-loss window and keeps polling authoritative.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — confirm both authenticated staff-token routes are available with the expected
+      permission and device-proof gates; owner: Verifier; blocks issue closure.
+- [ ] provider — verify production remains `unconfigured` until provider onboarding and secrets are
+      separately approved; owner: release; blocks enabling live push delivery.
+- [ ] real-device — validate Omni and Fiscal POS registration, token refresh, sign-out/tenant
+      switching, and a new-order wake-up while backgrounded; owner: POS/mobile QA; blocks issue
+      closure and mobile #414 integration.
+- [ ] mobile contract — after merge, post the settled paths, request/response shapes, and payload
+      schema to [dgfy-mobile #413](https://github.com/Sieitzz/dgfy-mobile/issues/413); owner: Worker.
+
+### Next phase number
+
+Phase 515. No explicit dependency.

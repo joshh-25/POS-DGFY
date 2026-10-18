@@ -48,6 +48,8 @@ The checkout call runs after a fresh order transaction commits and does not dela
 idempotent replays do not dispatch. Deactivation, company removal, and inactivity cleanup revoke
 staff bindings best-effort. Reverting checkout dispatch needs no order-state repair, while rolling
 back the owner migration discards only staff token bindings that the prior schema cannot represent.
+The route and payload contract, owner schema, ADR 0097 amendment, and Phase 514 ledger entry document
+the integration boundary and its rollout limitations.
 
 No live request-time compliance preflight was executed in this local session. The
 `NOT-EXECUTED-2569-2026-10-18` reference is the expected PR-open placeholder; the automatic sweep
