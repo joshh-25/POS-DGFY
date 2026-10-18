@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-19
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -116,6 +116,27 @@ checkout code.
   together with tenant revenue sharing.
 
 ## Amendments
+
+### 2026-10-19: Preserve unknown-session alerts for live payments (#1091)
+
+Clause 3's unknown-session paid-event alert remains error-level where the event
+can represent collected live money. Expected non-live PayMongo fan-out must not
+create an operational alert in test-mode environments, where it is not a
+money-loss signal.
+
+1. A runtime configured for PayMongo `live` continues to raise the existing
+   `paymongo.commerce_webhook_unknown_session_paid` error alert for an unknown
+   `payment.paid` or `checkout_session.payment.paid` event.
+2. A test-mode runtime suppresses that alert only when the normalized event
+   `livemode` value is not `true`. An event reporting `livemode: true` keeps the
+   alert, including when received by a test-mode runtime.
+3. Suppression retains the warning log with runtime/event mode context and the
+   `ignored/session_not_found` webhook audit row. The `200
+   {handled:false, reason:'session_not_found'}` response, paid-event scoping,
+   alert key, and retry behavior remain unchanged.
+
+This is an observability gate only: it does not change signature verification,
+payment acceptance, session lookup, revenue posting, or settlement behavior.
 
 ### 2026-10-17: Recover commerce refunds when provider webhooks are missing (#2549)
 
