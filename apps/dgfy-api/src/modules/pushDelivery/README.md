@@ -89,6 +89,19 @@ Delivery history contains no message content. Provider credentials and productio
 in SOPS, not source control. No provider is selected or enabled by this module's default
 configuration.
 
+## Operator diagnostics (#2579)
+
+Dispatch decisions that never create a per-token delivery log (no eligible device, policy skips such
+as `status_not_notifiable`, rate caps, hash failures) are recorded best-effort in
+`push_dispatch_events` through `utils/dispatchEventRecorder.js`; a recording failure is logged and
+swallowed so checkout and status transitions are unaffected. Operator-enrolled diagnostic devices are
+kept in `push_diagnostic_devices` (not `push_device_tokens`), and their test sends reuse
+`push_delivery_logs` with purpose `diagnostic_test` and the receipt poller. The read-only Platform
+Admin views, enrollment codes, and the test send live in
+[`modules/pushDiagnostics`](../pushDiagnostics/README.md). Set `DEPLOY_ENV_LABEL` (for example
+`staging` or `production`) in the API environment file so those views identify the environment;
+`NODE_ENV` is `production` on both.
+
 See [ADR 0097](../../../../docs/architecture/adr/0097-outbound-push-notification-delivery-contract.md),
 [ADR 0094](../../../../docs/architecture/adr/0094-outbound-sms-delivery-contract-log-and-pii-retention.md),
 and [Expo's send-notifications guide](https://docs.expo.dev/push-notifications/sending-notifications/).
