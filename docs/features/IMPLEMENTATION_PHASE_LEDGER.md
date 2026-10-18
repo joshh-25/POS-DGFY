@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-18
-review_by: 2027-02-15
+last_reviewed: 2026-10-19
+review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
 ---
@@ -29731,3 +29731,88 @@ Not complete. Record only after merge and successful implementation validation.
 ### Next phase number
 
 Phase 515. No explicit dependency.
+
+## Phase 515 - PayMongo unknown-session paid alert mode gating (#1091)
+
+### Initiative and release
+
+PayMongo commerce webhook hardening, current release.
+
+### Objective and scope
+
+Keep the unknown-session paid-webhook error alert for live-money events while
+suppressing expected non-live events in test-mode runtimes. Preserve the warning
+log, `ignored/session_not_found` audit row, response contract, event-type scope,
+alert key, and retry behavior. No payment acceptance, revenue posting,
+settlement, schema, or deployment change is in scope.
+
+### Status
+
+`in_progress` — implementation validation is complete; PR review, merge, and
+post-deploy verification remain outstanding.
+
+### Dependencies
+
+Issue [#1091](https://github.com/Sieitzz/dgfy-platform/issues/1091) defines the
+behavior. No earlier phase is an explicit dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[PayMongo production activation](../ops/PAYMONGO_PRODUCTION_ACTIVATION.md), and
+[Issue #1091](https://github.com/Sieitzz/dgfy-platform/issues/1091). Classification:
+`within-existing-boundary`; the existing use-case-to-config dependency is reused,
+and ADR 0052's untagged clause 3 is refined by a dated amendment in this PR.
+
+### Implementation targets
+
+[Webhook use case](../../apps/dgfy-api/src/modules/commercePayments/usecases/handlePayMongoCommerceWebhookUseCase.js),
+[webhook regression tests](../../apps/dgfy-api/tests/finalizePaidCommerceSession.usecase.test.js),
+[ADR 0052 amendment](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[compliance declaration](../compliance/impact-declarations/2026-10-19-paymongo-unknown-session-alert-livemode-gating.md),
+and this phase record.
+
+### Acceptance and validation evidence
+
+- [x] Test-mode unknown-session paid events with absent or non-live `livemode` do
+  not raise the operational alert and still return `handled:false` with the
+  `ignored/session_not_found` audit row.
+- [x] Live-mode unknown-session paid events and events marked `livemode: true`
+  retain the existing error alert.
+- [x] Other event types and matched-session handling retain their existing
+  behavior; no API, schema, migration, or payment-posting contract changes.
+- [x] Four focused payment suites pass (45 tests); changed backend syntax,
+  architecture guardrails/controller boundaries, docs/ADR lint, compliance, and
+  app-version checks pass.
+- [ ] PR review and merge to `develop`; phase remains `in_progress` until then.
+
+### Evidence
+
+The implementation injects the existing lazy PayMongo mode helper into the
+webhook use case. Event livemode follows the existing normalization convention;
+the helper remains local because the current equivalent is private to a sibling
+use case, and importing one use case from another would add unnecessary coupling.
+The four requested payment regression suites passed (45 tests). `node --check`,
+`npm run check:architecture`, `npm run lint:docs`, `npm run check:compliance`,
+and `node scripts/check-app-version-bump.js` also passed.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — after DEV/STAGING deploy, send or observe a cross-environment
+  test checkout and confirm `DGFY-BACKEND-6` receives no new unknown-session
+  alert in a window covering the event; owner: Verifier; blocks issue closure and
+  the claim that deployment verification passed.
+- [ ] operational — optionally inspect DEV `commerce_payment_webhook_audit` for
+  `ignored/session_not_found` rows after the same checkout; owner: Verifier or
+  Pat; supporting evidence only and does not replace deployment verification.
+
+### Next phase number
+
+Phase 516. No explicit dependency.

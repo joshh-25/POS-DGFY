@@ -773,7 +773,7 @@ describe('PayMongo paid webhook replay', () => {
   });
 });
 
-describe('PayMongo webhook unknown session escalation (#476)', () => {
+describe('PayMongo webhook unknown session escalation (#476, #1091)', () => {
   const buildUnknownSessionRepository = () => ({
     findSessionByPublicReference: jest.fn().mockResolvedValue(null),
     findSessionByProviderPaymentIntent: jest.fn().mockResolvedValue(null),
@@ -788,7 +788,8 @@ describe('PayMongo webhook unknown session escalation (#476)', () => {
       commercePaymentRepository,
       paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
       logger: { warn: jest.fn(), error: jest.fn() },
-      raiseOperationalAlert
+      raiseOperationalAlert,
+      getPayMongoMode: () => 'live'
     });
 
     const result = await useCase({
@@ -825,6 +826,201 @@ describe('PayMongo webhook unknown session escalation (#476)', () => {
     }));
   });
 
+  it('suppresses a test-mode alert for an unknown-session non-live payment and keeps the audit row', async () => {
+    const commercePaymentRepository = buildUnknownSessionRepository();
+    const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
+    const logger = { warn: jest.fn(), error: jest.fn() };
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger,
+      raiseOperationalAlert,
+      getPayMongoMode: () => 'test'
+    });
+
+    const result = await useCase({
+      headers: { 'paymongo-signature': 'verified-test-signature' },
+      rawBody: '{"data":{}}',
+      body: {
+        data: {
+          id: 'evt_orphan_test_paid',
+          attributes: {
+            type: 'payment.paid',
+            data: {
+              id: 'pay_orphan_test',
+              attributes: {
+                status: 'paid',
+                livemode: false,
+                metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      data: { handled: false, reason: 'session_not_found' }
+    }));
+    expect(raiseOperationalAlert).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith('PayMongo commerce webhook ignored: session not found', expect.objectContaining({
+      payMongoMode: 'test',
+      eventLivemode: false,
+      alertSuppressed: 'test_mode'
+    }));
+    expect(commercePaymentRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      changes: expect.objectContaining({
+        event: 'commerce_payment_webhook_ignored',
+        payment_session_status: 'session_not_found'
+      })
+    }));
+  });
+
+  it('suppresses an unknown-session checkout alert in test mode when nested payment livemode is absent', async () => {
+    const commercePaymentRepository = buildUnknownSessionRepository();
+    const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
+    const logger = { warn: jest.fn(), error: jest.fn() };
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger,
+      raiseOperationalAlert,
+      getPayMongoMode: () => 'test'
+    });
+
+    const result = await useCase({
+      headers: { 'paymongo-signature': 'verified-test-signature' },
+      rawBody: '{"data":{}}',
+      body: {
+        data: {
+          id: 'evt_orphan_checkout_paid',
+          attributes: {
+            type: 'checkout_session.payment.paid',
+            data: {
+              id: 'cs_orphan_paid',
+              attributes: {
+                status: 'paid',
+                metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' },
+                payments: [{
+                  data: {
+                    id: 'pay_orphan_checkout',
+                    attributes: {
+                      status: 'paid',
+                      metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' }
+                    }
+                  }
+                }]
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      data: { handled: false, reason: 'session_not_found' }
+    }));
+    expect(raiseOperationalAlert).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith('PayMongo commerce webhook ignored: session not found', expect.objectContaining({
+      payMongoMode: 'test',
+      eventLivemode: false,
+      alertSuppressed: 'test_mode'
+    }));
+  });
+
+  it('keeps the alert for a live-mode event received by a test-mode runtime', async () => {
+    const commercePaymentRepository = buildUnknownSessionRepository();
+    const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger: { warn: jest.fn(), error: jest.fn() },
+      raiseOperationalAlert,
+      getPayMongoMode: () => 'test'
+    });
+
+    const result = await useCase({
+      headers: { 'paymongo-signature': 'verified-test-signature' },
+      rawBody: '{"data":{}}',
+      body: {
+        data: {
+          id: 'evt_orphan_live_paid',
+          attributes: {
+            type: 'payment.paid',
+            livemode: true,
+            data: {
+              id: 'pay_orphan_live',
+              attributes: {
+                status: 'paid',
+                metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      data: { handled: false, reason: 'session_not_found' }
+    }));
+    expect(raiseOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'paymongo.commerce_webhook_unknown_session_paid',
+      level: 'error'
+    }));
+  });
+
+  it('raises an operational alert for an unknown-session checkout payment in live mode', async () => {
+    const commercePaymentRepository = buildUnknownSessionRepository();
+    const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
+      logger: { warn: jest.fn(), error: jest.fn() },
+      raiseOperationalAlert,
+      getPayMongoMode: () => 'live'
+    });
+
+    await useCase({
+      headers: { 'paymongo-signature': 'verified-live-signature' },
+      rawBody: '{"data":{}}',
+      body: {
+        data: {
+          id: 'evt_orphan_live_checkout_paid',
+          attributes: {
+            type: 'checkout_session.payment.paid',
+            data: {
+              id: 'cs_orphan_live_paid',
+              attributes: {
+                status: 'paid',
+                livemode: true,
+                metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' },
+                payments: [{
+                  data: {
+                    id: 'pay_orphan_live_checkout',
+                    attributes: {
+                      status: 'paid',
+                      livemode: true,
+                      metadata: { commerce_payment_session: 'CPS-DOES-NOT-EXIST' }
+                    }
+                  }
+                }]
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(raiseOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'paymongo.commerce_webhook_unknown_session_paid',
+      level: 'error',
+      context: expect.objectContaining({ event_type: 'checkout_session.payment.paid' })
+    }));
+  });
+
   it('does not alert for a non-payment.paid event with no matching session', async () => {
     const commercePaymentRepository = buildUnknownSessionRepository();
     const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
@@ -832,7 +1028,8 @@ describe('PayMongo webhook unknown session escalation (#476)', () => {
       commercePaymentRepository,
       paymongoService: { verifyWebhookSignature: jest.fn().mockReturnValue(true) },
       logger: { warn: jest.fn(), error: jest.fn() },
-      raiseOperationalAlert
+      raiseOperationalAlert,
+      getPayMongoMode: () => 'test'
     });
 
     const result = await useCase({
