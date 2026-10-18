@@ -57,6 +57,8 @@ import { getDiscountLineRef } from '../utils/posDiscountSelection.js';
 import { isParkedSaleOriginalLine } from '../utils/posParkedSaleResume.js';
 import { isPosOperatorAuthorityInvalidError } from '../utils/terminalShiftEntryDecision.js';
 import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
+import { isRequestCancelled, isRetryableBackendFailure } from '../../../services/backendReachability.js';
+import { isTerminalOffline } from '../../../services/api.js';
 
 const parseTransactionPaymentBreakdown = (value) => {
     if (Array.isArray(value)) return value;
@@ -372,7 +374,6 @@ export const usePosCheckoutWorkflow = ({
                     }
                     await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
                     failedManualCount += 1;
-                    if (!error?.response) continue;
                 }
             }
         } finally {
@@ -489,7 +490,7 @@ export const usePosCheckoutWorkflow = ({
             if (!sessionEnd) toast.error('Unable to return this parked sale because its original items are unavailable.');
             return false;
         }
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (isTerminalOffline()) {
             if (!sessionEnd) toast.error('Reconnect before cancelling parked-sale editing. The parked sale is still claimed and the current items were kept.');
             return false;
         }
@@ -566,8 +567,7 @@ export const usePosCheckoutWorkflow = ({
         }
         if (
             paymentType === 'employee_credit'
-            && typeof navigator !== 'undefined'
-            && navigator.onLine === false
+            && isTerminalOffline()
         ) {
             toast.error('Employee Credit requires an online connection.');
             return;
@@ -610,7 +610,7 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Employee Credit cannot be combined with split payment.');
             return;
         }
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (isTerminalOffline()) {
             toast.error('Split Payment requires an online connection.');
             return;
         }
@@ -989,7 +989,7 @@ export const usePosCheckoutWorkflow = ({
             subtotal_amount: Number(cartSubtotal || 0),
             total_amount: Number(cartTotal || 0)
         };
-        const offlinePark = typeof navigator !== 'undefined' && navigator.onLine === false;
+        const offlinePark = isTerminalOffline();
         if (offlinePark && activeParkedSale?.pos_parked_sale_id) {
             toast.error('Reconnect before parking this resumed sale again. Your cart is still open.');
             return;
@@ -1107,7 +1107,7 @@ export const usePosCheckoutWorkflow = ({
             toast.error('Unable to return this parked sale because its original items are unavailable.');
             return false;
         }
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (isTerminalOffline()) {
             toast.error('Reconnect before cancelling payment. The parked sale is still claimed and the current items were kept.');
             return false;
         }
@@ -1347,15 +1347,19 @@ export const usePosCheckoutWorkflow = ({
             setCheckoutConfirmModalOpen(true);
             return;
         }
-        const offlineCheckout = typeof navigator !== 'undefined' && navigator.onLine === false;
-        if (offlineCheckout && activeParkedSale?.pos_parked_sale_id) {
-            toast.error('Reconnect before checking out this resumed parked sale. Your cart is still open.');
-            return;
-        }
-        if (offlineCheckout && !isCashPayment) {
-            toast.error('Only cash transactions can be recorded offline. Reconnect before using an external payment method.');
-            return;
-        }
+        const blockUnsupportedOfflineCheckout = () => {
+            if (activeParkedSale?.pos_parked_sale_id) {
+                toast.error('Reconnect before checking out this resumed parked sale. Your cart is still open.');
+                return true;
+            }
+            if (!isCashPayment) {
+                toast.error('Only cash transactions can be recorded offline. Reconnect before using an external payment method.');
+                return true;
+            }
+            return false;
+        };
+        const offlineCheckout = isTerminalOffline();
+        if (offlineCheckout && blockUnsupportedOfflineCheckout()) return;
 
         const payload = {
             idempotency_key: createIdempotencyKey(),
@@ -1571,9 +1575,12 @@ export const usePosCheckoutWorkflow = ({
         try {
             data = await createPosCheckout(payload);
         } catch (error) {
-            if (!error?.response) {
+            if (isRequestCancelled(error)) return;
+            if (isRetryableBackendFailure(error)) {
                 if (appliedDiscount) {
                     toast.error('Connection lost. Reconnect before completing a discounted sale.');
+                } else if (blockUnsupportedOfflineCheckout()) {
+                    return;
                 } else {
                     await queueCheckoutIntentLocally('network_failure');
                 }

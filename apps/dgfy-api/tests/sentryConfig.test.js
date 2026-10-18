@@ -7,6 +7,7 @@ import {
   resolveSentryEnvironment,
   resolveTracesSampleRate,
   sanitizeSentryEvent,
+  setSentryTenantTag,
   sentryRequestContext,
   shouldReportErrorToSentry
 } from '../src/config/sentry.js';
@@ -14,6 +15,12 @@ import { extractSentryTraceId, requestContext } from '../src/middleware/requestC
 import { DomainError, DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
 describe('backend Sentry config', () => {
+  test('does not set a tenant tag before Sentry is initialized', () => {
+    setSentryTenantTag('tenant-before-init');
+
+    expect(Sentry.getIsolationScope().getScopeData().tags.tenant_id).toBeUndefined();
+  });
+
   test('is inactive by default even when a DSN is present', () => {
     const config = resolveSentryConfig({
       SENTRY_BACKEND_DSN: 'https://example@sentry.test/1',
@@ -373,7 +380,7 @@ describe('sentryRequestContext isolation scope', () => {
     });
   });
 
-  test('sets request/tenant tags on the isolation scope for the current request', () => {
+  test('sets request tags and a resolved tenant tag on the isolation scope', () => {
     const req = {
       requestId: 'req-abc',
       traceId: 'trace-abc',
@@ -384,13 +391,15 @@ describe('sentryRequestContext isolation scope', () => {
     let tagsSeenInsideNext = null;
 
     sentryRequestContext(req, {}, () => {
+      setSentryTenantTag(req.tenant.id);
       tagsSeenInsideNext = Sentry.getIsolationScope().getScopeData().tags;
     });
 
     expect(tagsSeenInsideNext).toMatchObject({
       service: 'backend',
       request_id: 'req-abc',
-      surface: 'pos'
+      surface: 'pos',
+      tenant_id: '99'
     });
     // No `trace_id` tag on purpose: Sentry already carries the real
     // distributed trace id at contexts.trace.trace_id and indexes it as the

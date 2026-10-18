@@ -1,5 +1,6 @@
 import express from 'express';
 import * as storeController from '../controllers/storeController.js';
+import { deleteStoreGuestPushToken, registerStoreGuestPushToken } from '../modules/pushDelivery/controllers/storePushTokenHandlers.js';
 import {
     listPublicCatalog as listPublicServiceCatalog,
     getPublicAvailability as getPublicServiceAvailability,
@@ -32,6 +33,8 @@ import {
     validateStoreGuestCheckoutOtpVerify,
     validateStoreGuestCheckoutGrantExchange,
     validateStoreCheckoutPaymentSession,
+    validateStoreGuestPushToken,
+    validateStoreGuestPushTokenDelete,
     validateStoreCreateAddress,
     validateStoreUpdateAddress,
     validateStoreAddressIdParam,
@@ -178,6 +181,8 @@ router.get('/laundry/payment-sessions/:payment_session_id', requireWorkflowCapab
 router.post('/laundry/payment-sessions/:payment_session_id/cancel', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storePaymentSessionCancelLimiter, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.cancelCheckoutPaymentSession);
 router.post('/fnb/reservations', requireWorkflowCapability('fnbDining', 'Food & Beverage'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateFnbReservation, createPublicFnbReservation);
 
+router.post('/track/:tracking_pin/push-tokens', setNoStoreCacheControl, storeTrackingLimiter, validateStoreTrackingPinParam, validateStoreGuestPushToken, registerStoreGuestPushToken);
+router.delete('/track/:tracking_pin/push-tokens', setNoStoreCacheControl, storeTrackingLimiter, validateStoreTrackingPinParam, validateStoreGuestPushTokenDelete, deleteStoreGuestPushToken);
 router.get('/track/:tracking_pin', storeTrackingReadLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
 router.post('/orders/:tracking_pin/claim', setNoStoreCacheControl, storeTrackingLimiter, authenticateStoreCustomer, validateStoreTrackingPinParam, validateStoreClaimOrder, storeController.claimOrder);
 router.patch('/orders/:tracking_pin/cancel', setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateStoreTrackingPinParam, validateStoreCancelOrder, storeController.cancelOrder);

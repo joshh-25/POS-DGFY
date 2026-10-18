@@ -36,6 +36,10 @@ const { buildListTenantsUseCase } = await import(
 const { readTenantCapabilities } = await import(
     '../src/modules/tenants/usecases/tenantCapabilitySettings.js'
 );
+const {
+    clearTenantCapabilityCache,
+    getCachedCapabilityEnabled
+} = await import('../src/modules/shared/utils/tenantCapabilitySettingCache.js');
 
 const makeTenantBackend = (initialSettings = {}) => {
     const store = new Map(Object.entries(initialSettings));
@@ -100,6 +104,7 @@ describe('tenant capability write durability and read-back (#1923)', () => {
     let syncStorefrontDiscoveryIndexForTenant;
 
     beforeEach(() => {
+        clearTenantCapabilityCache();
         backends = {
             'tenant-a': makeTenantBackend({
                 tenant_ims_enabled: 'true',
@@ -222,5 +227,23 @@ describe('tenant capability write durability and read-back (#1923)', () => {
         });
         expect(own.storefront_visible).toBe(true);
         expect(own.registration_stage).toBe('registered');
+    });
+
+    it('invalidates the tenant capability cache after a committed platform-admin write', async () => {
+        await expect(getCachedCapabilityEnabled('tenant-a', 'tenant_pos_enabled', async () => true)).resolves.toBe(true);
+
+        const result = await buildUpdateUseCase()({
+            id: 'tenant-a',
+            body: {
+                reason: 'Platform admin disabled POS while reducing tenant access',
+                pos_enabled: false
+            },
+            actor: { username: 'platform_admin' }
+        });
+
+        expect(result.success).toBe(true);
+        const reload = jest.fn(async () => backends['tenant-a'].store.get('tenant_pos_enabled') === 'true');
+        await expect(getCachedCapabilityEnabled('tenant-a', 'tenant_pos_enabled', reload)).resolves.toBe(false);
+        expect(reload).toHaveBeenCalledTimes(1);
     });
 });

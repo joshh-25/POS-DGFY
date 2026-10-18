@@ -164,6 +164,8 @@ import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
 import EmailDeliveryLogFactory from './Landlord/EmailDeliveryLog.js';
 import SmsDeliveryLogFactory from './Landlord/SmsDeliveryLog.js';
+import PushDeviceTokenFactory from './Landlord/PushDeviceToken.js';
+import PushDeliveryLogFactory from './Landlord/PushDeliveryLog.js';
 import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
@@ -255,6 +257,8 @@ const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
 const EmailDeliveryLog = EmailDeliveryLogFactory(sequelize);
 const SmsDeliveryLog = SmsDeliveryLogFactory(sequelize);
+const PushDeviceToken = PushDeviceTokenFactory(sequelize);
+const PushDeliveryLog = PushDeliveryLogFactory(sequelize);
 const SmsMarketingConsent = SmsMarketingConsentFactory(sequelize);
 const SmsConsentEvent = SmsConsentEventFactory(sequelize);
 const SmsGlobalSuppression = SmsGlobalSuppressionFactory(sequelize);
@@ -1409,6 +1413,8 @@ const db = {
   EmailOtp,
   EmailDeliveryLog,
   SmsDeliveryLog,
+  PushDeviceToken,
+  PushDeliveryLog,
   SmsMarketingConsent,
   SmsConsentEvent,
   SmsGlobalSuppression,
@@ -1658,6 +1664,8 @@ export {
   EmailOtp,
   EmailDeliveryLog,
   SmsDeliveryLog,
+  PushDeviceToken,
+  PushDeliveryLog,
   SmsMarketingConsent,
   SmsConsentEvent,
   SmsGlobalSuppression,

@@ -13,7 +13,12 @@ import {
 import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 import { resolveApiBaseUrl, getRuntimeConfig } from '../utils/runtimeConfig.js';
-import { tagRequestFailureContext, captureRequestFailure } from '../observability/sentryClient.js';
+import {
+  tagRequestFailureContext,
+  captureRequestFailure,
+  noteRequestSuccess
+} from '../observability/sentryClient.js';
+import { isBackendUnreachable, isRequestCancelled } from './backendReachability.js';
 import {
   isRetryableTransientFailure,
   computeTransientRetryDelayMs,
@@ -93,6 +98,12 @@ const POS_TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 // by axios's own request/response lifecycle.
 const API_OUTCOME_BUFFER_LIMIT = 10;
 const apiOutcomeBuffer = [];
+export const BACKEND_REACHABILITY_STALE_AFTER_MS = 30_000;
+let backendReachabilitySnapshot = {
+  reachable: true,
+  consecutiveUnreachable: 0,
+  lastOutcomeAt: null
+};
 
 // Lightweight pub/sub so a component (the POS Online/Offline indicator,
 // TerminalPage.jsx) can react to real request outcomes as they happen
@@ -110,6 +121,21 @@ export const onApiOutcome = (callback) => {
 };
 
 const recordApiOutcome = (entry) => {
+  const outcomeAt = Number(entry?.at) || Date.now();
+  if (entry?.kind === 'network') {
+    backendReachabilitySnapshot = {
+      reachable: false,
+      consecutiveUnreachable: backendReachabilitySnapshot.consecutiveUnreachable + 1,
+      lastOutcomeAt: outcomeAt
+    };
+  } else if (entry?.status !== null && entry?.status !== undefined) {
+    backendReachabilitySnapshot = {
+      reachable: true,
+      consecutiveUnreachable: 0,
+      lastOutcomeAt: outcomeAt
+    };
+  }
+
   apiOutcomeBuffer.push(entry);
   if (apiOutcomeBuffer.length > API_OUTCOME_BUFFER_LIMIT) {
     apiOutcomeBuffer.shift();
@@ -125,6 +151,17 @@ const recordApiOutcome = (entry) => {
 };
 
 export const getRecentApiOutcomes = () => apiOutcomeBuffer.slice();
+
+export const getBackendReachabilitySnapshot = () => ({ ...backendReachabilitySnapshot });
+
+export const isTerminalOffline = (now = Date.now()) => {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+
+  const snapshot = backendReachabilitySnapshot;
+  if (snapshot.reachable || snapshot.lastOutcomeAt === null) return false;
+  const outcomeAgeMs = Number(now) - snapshot.lastOutcomeAt;
+  return outcomeAgeMs >= 0 && outcomeAgeMs <= BACKEND_REACHABILITY_STALE_AFTER_MS;
+};
 
 // Set by POS terminal-unlock/shift-open failure handling
 // (TerminalPage.jsx's reportTerminalFailure) so the request a cashier
@@ -811,6 +848,7 @@ api.interceptors.response.use(
 api.interceptors.response.use(
   (response) => {
     if (IS_POS_SURFACE) {
+      noteRequestSuccess();
       recordApiOutcome({
         method: String(response.config?.method || 'get').toUpperCase(),
         url: response.config?.url || '',
@@ -833,11 +871,13 @@ api.interceptors.response.use(
     // would leave several duplicate entries in the ring buffer.
     if (IS_POS_SURFACE && !error.__requestFailureReported) {
       const status = error.response?.status ?? null;
+      const cancelled = isRequestCancelled(error);
       recordApiOutcome({
         method: String(error.config?.method || 'get').toUpperCase(),
         url: error.config?.url || '',
         status,
-        kind: status ? 'http' : 'network',
+        kind: isBackendUnreachable(error) ? 'network' : 'http',
+        cancelled,
         ref: activePosErrorRef || null,
         durationMs: Date.now() - (error.config?._outcomeStartedAt ?? Date.now()),
         at: Date.now()
@@ -873,7 +913,8 @@ api.interceptors.response.use(
         method: error.config?.method,
         url: error.config?.url,
         status: error.response?.status,
-        requestId
+        requestId,
+        transientFailureThreshold: IS_POS_SURFACE ? 3 : undefined
       });
     }
     return Promise.reject(error);

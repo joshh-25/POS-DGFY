@@ -3,18 +3,14 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import {
   getPaymentIdFromPayMongoResource
 } from './finalizePaidCommerceSession.js';
-import { reconcileRefundedPaymentState } from './commercePaymentAdminUseCases.js';
 import {
   recordTenantRevenueChargebackUseCase,
   recordSucceededTenantRevenueRefundUseCase
 } from '../../tenantRevenue/index.js';
 import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifiedPaidCommerceSession.js';
-import {
-  buildRefundLedgerIdempotencyKey,
-  mapRefundStatusToLedgerStatus,
-  updateTenantOrderPaymentEntryStatus
-} from '../repositories/tenantOrderPaymentLedgerRepository.js';
-import { cancelDglaundryBookingReservations, expireDglaundryBookingSession, notifyDglaundryBookingRefund } from './finalizeDglaundryBookingSession.js';
+import { cancelDglaundryBookingReservations, expireDglaundryBookingSession } from './finalizeDglaundryBookingSession.js';
+import { applyProviderRefundStatus } from './applyProviderRefundStatus.js';
+import { updateTenantOrderPaymentEntryStatus } from '../repositories/tenantOrderPaymentLedgerRepository.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 
@@ -194,62 +190,28 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       return ok({ handled: false, status: 'refund_session_not_found' });
     }
 
-    const attrs = getAttributes(resource);
-    const providerStatus = String(attrs.status || '').toLowerCase();
-    const status = ['succeeded', 'success', 'refunded'].includes(providerStatus)
-      ? 'succeeded'
-      : (['failed', 'cancelled', 'canceled'].includes(providerStatus) ? 'failed' : 'pending');
-    const updatedRefund = await commercePaymentRepository.updateRefundById(refund.refund_id, {
-      status,
-      provider_payload: resource,
-      failure_code: status === 'failed' ? 'PROVIDER_REFUND_FAILED' : null,
-      failure_reason: status === 'failed' ? (attrs.failed_message || 'PayMongo reported refund failure.') : null
-    });
-    // Phase 144 (#824): promote the tenant-side `pos_order_payments` refund row this refund was
-    // submitted with (written pending by createCommercePaymentRefundUseCase) to its terminal
-    // status. This is the async half of a PayMongo refund -- the reason that ledger row carries a
-    // status enum at all rather than only ever being written on success.
-    //
-    // The helper never throws (see repositories/tenantOrderPaymentLedgerRepository.js): an unreachable tenant
-    // database must not fail webhook acknowledgement, or PayMongo retries a money event.
-    await updateOrderPaymentLedgerEntryStatus({
-      commercePaymentRepository,
+    const applied = await applyProviderRefundStatus({
+      refund,
       session,
-      idempotencyKey: buildRefundLedgerIdempotencyKey(refund.public_reference),
-      status: mapRefundStatusToLedgerStatus(status),
-      providerEventId
+      providerResource: resource,
+      actor: 'paymongo_webhook',
+      providerEventId,
+      source: 'paymongo_webhook',
+      deps: {
+        commercePaymentRepository,
+        logger,
+        raiseAlert: raiseOperationalAlert,
+        recordSucceededRevenueRefund,
+        updateOrderPaymentLedgerEntryStatus,
+        partnerClient
+      }
     });
-
-    const updatedSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
-    if (status === 'succeeded') {
-      const revenueResult = await recordSucceededRevenueRefund({
-        session: updatedSession,
-        refund: updatedRefund,
-        actor: 'paymongo_webhook'
-      });
-      if (!revenueResult.success) throw revenueResult.error;
-      await notifyDglaundryBookingRefund({ session: updatedSession, refund: updatedRefund, providerEventId, partnerClient }).catch((error) => {
-        logger?.warn?.('DGLaundry refund notification is pending retry.', { error: error?.message, paymentSession: session.public_reference });
-      });
-    }
-    await commercePaymentRepository.createAuditLog?.({
-      user_id: null,
-      entity_type: 'CommercePayment',
-      entity_id: refund.refund_id,
-      action: 'UPDATE',
-      changes: {
-        event: 'commerce_payment_refund_webhook_reconciled',
-        provider_event_id: providerEventId,
-        refund_reference: refund.public_reference,
-        provider_refund_id: refundId,
-        provider_status: providerStatus,
-        stored_status: status,
-        payment_session_id: session.public_reference,
-        payment_session_status: updatedSession.status
-      },
-      user_agent: 'PayMongo Commerce Webhook'
+    return ok({
+      handled: true,
+      status: 'refund_updated',
+      idempotent_replay: applied.idempotent_replay,
+      payment_session: applied.session?.public_reference || session.public_reference
     });
-    return ok({ handled: true, status: 'refund_updated', payment_session: session.public_reference });
   };
 
   const handleAccountLifecycleEvent = async ({ eventType, resource, providerEventId }) => {

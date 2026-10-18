@@ -4,6 +4,7 @@ import {
     CHECKOUT_QUEUE_OPERATION,
     CHECKOUT_REPLAY_BATCH_SIZE,
     CHECKOUT_RETRY_BACKOFF_BASE_MS,
+    RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES,
     computeCheckoutReplayBackoffMs,
     createIdempotencyKey,
     isCheckoutQueueEntry,
@@ -22,9 +23,13 @@ describe('POS checkout terminal queue utilities', () => {
     });
 
     it('classifies retryable failures and preserves API error details', () => {
-        expect(isRetryableCheckoutReplayError(new Error('network down'))).toBe(true);
+        expect(isRetryableCheckoutReplayError({ request: {} })).toBe(true);
         expect(isRetryableCheckoutReplayError({ response: { status: 503 } })).toBe(true);
+        expect(isRetryableCheckoutReplayError({ response: { status: 429 } })).toBe(true);
+        expect(isRetryableCheckoutReplayError({ response: { status: 500 } })).toBe(true);
         expect(isRetryableCheckoutReplayError({ response: { status: 400 } })).toBe(false);
+        expect(RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES.has(408)).toBe(true);
+        expect(RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES.has(504)).toBe(true);
         expect(resolveCheckoutReplayErrorDetails({
             message: 'fallback',
             code: 'CLIENT',

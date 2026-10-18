@@ -272,7 +272,7 @@ const validateDglaundryProviderConfig = (env, errors) => {
   const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
   const expectedRedirect = integrationEnvironment === 'staging'
     ? 'https://dglaundry.stage.dgfy.ph/api/v1/session/dgfy/callback'
-    : 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+    : 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback';
   if (integrationEnvironment && redirect !== expectedRedirect) {
     errors.push(`DGFY_DGLAUNDRY_REDIRECT_URI must be ${expectedRedirect} for ${integrationEnvironment}`);
   }

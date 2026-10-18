@@ -12,7 +12,8 @@ export const buildDglaundryEventSpecimens = ({
   env = process.env,
   now = new Date()
 } = {}) => {
-  const authority = new URL(env.DGLAUNDRY_PARTNER_BASE_URL || 'https://laundry.surebizcorp.com').host;
+  if (!env.DGLAUNDRY_PARTNER_BASE_URL) throw new Error('DGLAUNDRY_PARTNER_BASE_URL is required to generate specimens for the target environment.');
+  const authority = new URL(env.DGLAUNDRY_PARTNER_BASE_URL).host;
   const eventPath = '/api/v1/integrations/dgfy/events';
   const source = new URL(env.DGFY_EVENT_SOURCE || 'https://api.dgfy.ph').origin;
   const timestamp = now.toISOString();

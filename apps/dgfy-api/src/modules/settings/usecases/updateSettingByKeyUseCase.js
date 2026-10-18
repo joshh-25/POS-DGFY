@@ -59,6 +59,7 @@ import {
     sanitizeSingleSettingForRead
 } from './posTerminalRegistrySecrets.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { invalidateTenantCapabilityCache } from '../../shared/utils/tenantCapabilitySettingCache.js';
 import { isPlatformControlledImageClientConversionKey } from '../../shared/utils/imageClientConversionGate.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
@@ -79,6 +80,7 @@ const CAPABILITY_CACHE_SENSITIVE_KEYS = Object.freeze([
 const clearCapabilityCachesIfKeyTouched = async (settingKey) => {
     if (!CAPABILITY_CACHE_SENSITIVE_KEYS.includes(settingKey)) return;
     clearWorkflowCapabilitySettingsCache();
+    invalidateTenantCapabilityCache();
     clearStoreProfileResolutionCache();
     // Dynamic import deliberately - see updateSettingsUseCase.js's identical
     // comment: a static import here would form a settings <-> inventory

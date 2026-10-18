@@ -1,26 +1,26 @@
 {
-  "generatedAt": "2026-10-12T03:28:20.427Z",
-  "totalFiles": 829,
+  "generatedAt": "2026-10-17T16:13:52.414Z",
+  "totalFiles": 853,
   "byClassification": {
-    "keep": 764,
-    "delete": 21,
+    "keep": 787,
+    "delete": 22,
     "consolidate": 36,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
-    "migration": 48,
-    "(none)": 285,
+    "migration": 49,
+    "(none)": 293,
     "middleware": 14,
     "handler": 1,
     "transport": 45,
     "integration": 13,
-    "unit": 81,
+    "unit": 90,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
     "storeTemplateKey": 1,
-    "usecase": 70,
+    "usecase": 72,
     "contract": 50,
     "ratelimit.e2e": 1,
     "hardening": 1,
@@ -29,6 +29,7 @@
     "db.integration": 5,
     "idempotency": 1,
     "util": 4,
+    "route": 3,
     "audit": 1,
     "routeContracts": 1,
     "api": 1,
@@ -40,6 +41,7 @@
     "budgetFeature": 1,
     "workflowMode": 2,
     "syncMode": 1,
+    "push": 1,
     "checkoutFallback.unit": 1,
     "parity.unit": 1,
     "invitationSchema": 1,
@@ -55,11 +57,11 @@
     "repository": 12,
     "loggingPolicy": 1,
     "helper": 1,
-    "route": 2,
     "routes": 2,
     "qa": 1,
     "complianceActivationReadiness.e2e": 1,
     "sessionIsolation.e2e": 1,
+    "resolveItemId": 1,
     "tenantCompanyToken": 1,
     "alwaysAvailable": 1,
     "imageGeneration": 1,
@@ -144,6 +146,7 @@
     "storefrontBootstrap": 1,
     "money": 1,
     "rollback": 1,
+    "dgfySync": 1,
     "modeRbac": 1,
     "posDayClosePin": 1,
     "supertest": 1,
@@ -803,7 +806,7 @@
     },
     {
       "path": "tests/adminForceNonCompliant.handler.test.js",
-      "lines": 216,
+      "lines": 221,
       "caseCount": 4,
       "describeTitles": [
         "adminForceNonCompliant handler"
@@ -844,7 +847,7 @@
     },
     {
       "path": "tests/adminForceNonCompliant.transport.test.js",
-      "lines": 215,
+      "lines": 221,
       "caseCount": 7,
       "describeTitles": [
         "POST /api/v1/admin/tenants/:id/force-non-compliant transport contracts",
@@ -1109,7 +1112,7 @@
     },
     {
       "path": "tests/adminTenantCapabilities.transport.test.js",
-      "lines": 231,
+      "lines": 237,
       "caseCount": 7,
       "describeTitles": [
         "tenant capability admin transport contracts",
@@ -3513,6 +3516,39 @@
       "findings": []
     },
     {
+      "path": "tests/businessAdminBootstrapCapability.route.test.js",
+      "lines": 78,
+      "caseCount": 2,
+      "describeTitles": [
+        "Business Admin bootstrap capability boundary"
+      ],
+      "expectCount": 6,
+      "expectResCount": 4,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": true,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "route",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: route)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/businessAdminCustomerHistory.contract.test.js",
       "lines": 132,
       "caseCount": 2,
@@ -4711,15 +4747,15 @@
     },
     {
       "path": "tests/commercePaymentRefunds.usecases.test.js",
-      "lines": 339,
-      "caseCount": 8,
+      "lines": 434,
+      "caseCount": 10,
       "describeTitles": [
         "commerce payment refund use-cases",
         "tenant order-payment ledger mirroring (Phase 144, #824)"
       ],
-      "expectCount": 23,
+      "expectCount": 30,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 11,
+      "toHaveBeenCalledCount": 15,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -4758,12 +4794,12 @@
     },
     {
       "path": "tests/commercePaymentRouteMount.contract.test.js",
-      "lines": 27,
-      "caseCount": 3,
+      "lines": 33,
+      "caseCount": 4,
       "describeTitles": [
         "commerce payment route mount contract"
       ],
-      "expectCount": 5,
+      "expectCount": 6,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 2,
@@ -4879,12 +4915,12 @@
     },
     {
       "path": "tests/commercePaymentValidator.test.js",
-      "lines": 161,
-      "caseCount": 9,
+      "lines": 179,
+      "caseCount": 10,
       "describeTitles": [
         "commerce payment validators"
       ],
-      "expectCount": 26,
+      "expectCount": 30,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -4917,6 +4953,105 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/commerceRefundReconciliation.usecase.test.js",
+      "lines": 294,
+      "caseCount": 6,
+      "describeTitles": [
+        "commerce refund reconciliation"
+      ],
+      "expectCount": 29,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 11,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/commerceRefundReconciliationScheduler.unit.test.js",
+      "lines": 49,
+      "caseCount": 2,
+      "describeTitles": [
+        "commerce refund reconciliation scheduler"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/commerceRefundRetry.usecase.test.js",
+      "lines": 123,
+      "caseCount": 4,
+      "describeTitles": [
+        "commerce refund retry"
+      ],
+      "expectCount": 17,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 6,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
       "rule": "R5-default",
       "findings": []
     },
@@ -5095,14 +5230,14 @@
     },
     {
       "path": "tests/companyRegistrationDraftUseCases.test.js",
-      "lines": 468,
-      "caseCount": 8,
+      "lines": 523,
+      "caseCount": 10,
       "describeTitles": [
         "company registration draft use cases"
       ],
-      "expectCount": 30,
+      "expectCount": 38,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 14,
+      "toHaveBeenCalledCount": 17,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5261,6 +5396,39 @@
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/companyRegistrationStorageProvisioning.test.js",
+      "lines": 33,
+      "caseCount": 2,
+      "describeTitles": [
+        "company registration private storage provisioning"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 1,
+      "textRatio": 1,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "delete",
+      "reason": "source-text-only (text_ratio=1)",
+      "rule": "R3-source-text-only",
       "findings": []
     },
     {
@@ -6456,6 +6624,41 @@
       "findings": []
     },
     {
+      "path": "tests/createPushDeviceTokensAndDeliveryLogs.migration.test.js",
+      "lines": 61,
+      "caseCount": 2,
+      "describeTitles": [
+        "create push token and delivery log migration"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/createSmsDeliveryLogs.migration.test.js",
       "lines": 38,
       "caseCount": 2,
@@ -6865,6 +7068,39 @@
       "findings": []
     },
     {
+      "path": "tests/customerActivityRecorder.push.test.js",
+      "lines": 64,
+      "caseCount": 2,
+      "describeTitles": [
+        "customerActivityRecorder push integration"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "push",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: push)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/customerActivityRecorder.test.js",
       "lines": 125,
       "caseCount": 3,
@@ -6895,7 +7131,8 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
-          "docs/compliance/impact-declarations/2026-06-18-pos-dgfy-order-activity-sync.md"
+          "docs/compliance/impact-declarations/2026-06-18-pos-dgfy-order-activity-sync.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },
@@ -7846,14 +8083,14 @@
     },
     {
       "path": "tests/dgfyAccountRepository.invitationSchema.test.js",
-      "lines": 84,
-      "caseCount": 2,
+      "lines": 121,
+      "caseCount": 3,
       "describeTitles": [
         "DGFY account repository invitation schema guard"
       ],
-      "expectCount": 8,
+      "expectCount": 12,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 8,
+      "toHaveBeenCalledCount": 11,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -7861,7 +8098,7 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 1,
+      "srcImportCount": 2,
       "deadImportCount": 0,
       "suffix": "invitationSchema",
       "conditionalSkip": false,
@@ -8298,12 +8535,12 @@
     },
     {
       "path": "tests/dgfyAuthUseCases.test.js",
-      "lines": 2560,
-      "caseCount": 63,
+      "lines": 2625,
+      "caseCount": 64,
       "describeTitles": [
         "dgfyAuthUseCases"
       ],
-      "expectCount": 275,
+      "expectCount": 279,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 106,
       "readFileSyncCount": 0,
@@ -8686,14 +8923,14 @@
     },
     {
       "path": "tests/dgfyLaundryProviderUseCases.test.js",
-      "lines": 101,
-      "caseCount": 9,
+      "lines": 122,
+      "caseCount": 10,
       "describeTitles": [
         "DGLaundry provider foundation use cases"
       ],
-      "expectCount": 15,
+      "expectCount": 17,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 2,
+      "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -9060,12 +9297,12 @@
     },
     {
       "path": "tests/dgfyTenantSessionService.test.js",
-      "lines": 98,
+      "lines": 100,
       "caseCount": 1,
       "describeTitles": [
         "DGFY tenant session authority normalization"
       ],
-      "expectCount": 3,
+      "expectCount": 5,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -9097,7 +9334,7 @@
     },
     {
       "path": "tests/dglaundryBookingPayment.usecase.test.js",
-      "lines": 174,
+      "lines": 178,
       "caseCount": 7,
       "describeTitles": [
         "DGLaundry booking payment session"
@@ -9272,12 +9509,12 @@
     },
     {
       "path": "tests/dglaundryEventSpecimens.test.js",
-      "lines": 45,
-      "caseCount": 1,
+      "lines": 52,
+      "caseCount": 2,
       "describeTitles": [
         "DGLaundry signed event specimens"
       ],
-      "expectCount": 5,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -9298,6 +9535,40 @@
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dglaundryOrigin.test.js",
+      "lines": 51,
+      "caseCount": 5,
+      "describeTitles": [
+        "DGLaundry origin resolution (#2513)",
+        "DGLaundry OIDC client source uses configured hosts only (#2513)"
+      ],
+      "expectCount": 9,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -9488,7 +9759,7 @@
     },
     {
       "path": "tests/dglaundryQualificationProbeUseCase.test.js",
-      "lines": 112,
+      "lines": 113,
       "caseCount": 3,
       "describeTitles": [
         "DGLaundry qualification probes"
@@ -9523,12 +9794,12 @@
     },
     {
       "path": "tests/dglaundryRuntimeAttestation.test.js",
-      "lines": 87,
-      "caseCount": 3,
+      "lines": 101,
+      "caseCount": 5,
       "describeTitles": [
         "DGLaundry runtime attestation"
       ],
-      "expectCount": 9,
+      "expectCount": 13,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -9592,6 +9863,41 @@
       "classification": "consolidate",
       "reason": "transport-responder-only (>=90% call/res assertions, <=6 cases)",
       "rule": "R4-transport-responder-only",
+      "findings": []
+    },
+    {
+      "path": "tests/dispatchOrderStatusPushUseCase.unit.test.js",
+      "lines": 107,
+      "caseCount": 4,
+      "describeTitles": [
+        "dispatchOrderStatusPushUseCase"
+      ],
+      "expectCount": 15,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
       "findings": []
     },
     {
@@ -11791,14 +12097,14 @@
     },
     {
       "path": "tests/geoCatalogSyncService.test.js",
-      "lines": 149,
-      "caseCount": 8,
+      "lines": 193,
+      "caseCount": 10,
       "describeTitles": [
         "syncTenantGeoCatalog"
       ],
-      "expectCount": 13,
+      "expectCount": 22,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 12,
+      "toHaveBeenCalledCount": 14,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -11900,6 +12206,74 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoHouseNumberQuery.test.js",
+      "lines": 159,
+      "caseCount": 14,
+      "describeTitles": [
+        "parseHouseNumberQuery",
+        "matchesTypedStreet",
+        "mapHouseNumberSearch"
+      ],
+      "expectCount": 22,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoInventoryWorker.resolveItemId.test.js",
+      "lines": 113,
+      "caseCount": 5,
+      "describeTitles": [
+        "resolveItemId"
+      ],
+      "expectCount": 16,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 7,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 3,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "resolveItemId",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: resolveItemId)",
       "rule": "R5-default",
       "findings": []
     },
@@ -12053,17 +12427,19 @@
     },
     {
       "path": "tests/geoPhotonFeatureMapper.test.js",
-      "lines": 203,
-      "caseCount": 19,
+      "lines": 269,
+      "caseCount": 26,
       "describeTitles": [
         "composeAddressLine",
         "mapPrecision",
         "mapComponents",
         "mapLandmarks",
         "mapReverseGeocodeResponse",
-        "mapForwardSearchResponse"
+        "mapForwardSearchResponse",
+        "composeForwardAddressLine (#2484)",
+        "mapForwardSearchResponse components (#2484)"
       ],
-      "expectCount": 47,
+      "expectCount": 57,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -12096,14 +12472,14 @@
     },
     {
       "path": "tests/geoQuadruperProvider.test.js",
-      "lines": 144,
-      "caseCount": 11,
+      "lines": 243,
+      "caseCount": 17,
       "describeTitles": [
         "quadruperGeocodeProvider"
       ],
-      "expectCount": 21,
+      "expectCount": 34,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
+      "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -12548,7 +12924,7 @@
     },
     {
       "path": "tests/hostingProfilePreflight.test.js",
-      "lines": 101,
+      "lines": 102,
       "caseCount": 4,
       "describeTitles": [
         "hosting profile preflight validator"
@@ -15089,12 +15465,12 @@
     },
     {
       "path": "tests/modeRolePresets.test.js",
-      "lines": 235,
+      "lines": 236,
       "caseCount": 16,
       "describeTitles": [
         "mode-aware role preset catalog"
       ],
-      "expectCount": 49,
+      "expectCount": 50,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -15192,6 +15568,41 @@
         "live": [
           "docs/reference/DEVELOPMENT_HISTORY.md",
           "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/nginxStorefrontAppLinks.test.js",
+      "lines": 158,
+      "caseCount": 4,
+      "describeTitles": [
+        "Storefront app-link association responses"
+      ],
+      "expectCount": 18,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 1,
+      "textRatio": 0.39,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/ops/STOREFRONT_APP_LINKS.md"
         ],
         "historical": [],
         "hardcoded": []
@@ -15793,13 +16204,13 @@
     },
     {
       "path": "tests/partnerIdentityOidcProvider.test.js",
-      "lines": 320,
-      "caseCount": 8,
+      "lines": 362,
+      "caseCount": 11,
       "describeTitles": [
         "platform partner OIDC provider"
       ],
-      "expectCount": 30,
-      "expectResCount": 0,
+      "expectCount": 39,
+      "expectResCount": 1,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
       "textRatio": 0,
@@ -16202,6 +16613,39 @@
       "findings": []
     },
     {
+      "path": "tests/paymongoRefundService.test.js",
+      "lines": 68,
+      "caseCount": 3,
+      "describeTitles": [
+        "PayMongo refund service"
+      ],
+      "expectCount": 12,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/paymongoWebhookSignature.test.js",
       "lines": 236,
       "caseCount": 9,
@@ -16513,8 +16957,78 @@
       "findings": []
     },
     {
+      "path": "tests/pin4msCredentialCrypto.test.js",
+      "lines": 50,
+      "caseCount": 4,
+      "describeTitles": [
+        "Pin4MS credential encryption"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/pin4msCredentialTransport.test.js",
+      "lines": 24,
+      "caseCount": 3,
+      "describeTitles": [
+        "Pin4MS credential transport policy"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/platformAdminRouteClassification.test.js",
-      "lines": 45,
+      "lines": 46,
       "caseCount": 3,
       "describeTitles": [
         "Platform Admin protected-route classification"
@@ -16773,12 +17287,12 @@
     },
     {
       "path": "tests/posBranchDirectory.usecase.test.js",
-      "lines": 238,
-      "caseCount": 8,
+      "lines": 291,
+      "caseCount": 9,
       "describeTitles": [
         "POS branch directory and read-only branch view"
       ],
-      "expectCount": 29,
+      "expectCount": 32,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
@@ -16796,7 +17310,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-10-16-pos-terminal-branch-scope-and-permission-scroll.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -16946,14 +17462,14 @@
     },
     {
       "path": "tests/posCashRefund.usecase.test.js",
-      "lines": 357,
-      "caseCount": 8,
+      "lines": 382,
+      "caseCount": 9,
       "describeTitles": [
         "POS walk-in cash refund use case"
       ],
-      "expectCount": 39,
+      "expectCount": 43,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 2,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17769,15 +18285,15 @@
     },
     {
       "path": "tests/posCheckoutFnbContracts.usecase.test.js",
-      "lines": 4073,
-      "caseCount": 60,
+      "lines": 4425,
+      "caseCount": 64,
       "describeTitles": [
         "POS historical parked-sale settlement",
         "POS checkout F&B contracts"
       ],
-      "expectCount": 283,
+      "expectCount": 302,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 118,
+      "toHaveBeenCalledCount": 124,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 5,
@@ -17871,12 +18387,12 @@
     },
     {
       "path": "tests/posDayClosePinSelfService.contract.test.js",
-      "lines": 63,
+      "lines": 64,
       "caseCount": 5,
       "describeTitles": [
-        "POS Day Close PIN self-service contract"
+        "POS Global PIN self-service contract"
       ],
-      "expectCount": 19,
+      "expectCount": 20,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 1,
@@ -18292,17 +18808,17 @@
     },
     {
       "path": "tests/posDevicePrintReceipt.unit.test.js",
-      "lines": 409,
-      "caseCount": 10,
+      "lines": 447,
+      "caseCount": 11,
       "describeTitles": [
         "buildPrintPosReceiptUseCase — client-delegated printing",
         "buildClaimOnlineOrderReceiptAutoPrintUseCase",
         "buildPrintPosShiftSummaryUseCase",
         "buildPrintPosZReadingUseCase"
       ],
-      "expectCount": 34,
+      "expectCount": 39,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 16,
+      "toHaveBeenCalledCount": 19,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -18548,12 +19064,12 @@
     },
     {
       "path": "tests/posDiscountApprovalPolicy.unit.test.js",
-      "lines": 106,
-      "caseCount": 9,
+      "lines": 127,
+      "caseCount": 10,
       "describeTitles": [
         "POS discount approval policy"
       ],
-      "expectCount": 9,
+      "expectCount": 11,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -18699,12 +19215,12 @@
     },
     {
       "path": "tests/posDrawerAuthorization.unit.test.js",
-      "lines": 79,
-      "caseCount": 3,
+      "lines": 96,
+      "caseCount": 4,
       "describeTitles": [
         "POS cash drawer authorization"
       ],
-      "expectCount": 6,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -18759,7 +19275,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/testing/test-cost-inventory.json"
+          "docs/testing/test-cost-inventory.json",
+          "output/plans/00_POS_In_Terminal_Void_Approval_Popup_Plan.docx"
         ],
         "historical": [],
         "hardcoded": []
@@ -18805,6 +19322,39 @@
       "findings": []
     },
     {
+      "path": "tests/posGlobalPinPolicy.unit.test.js",
+      "lines": 27,
+      "caseCount": 3,
+      "describeTitles": [
+        "POS global PIN policy"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/posGovernedDiscountLineId.contract.test.js",
       "lines": 23,
       "caseCount": 1,
@@ -18843,14 +19393,14 @@
     },
     {
       "path": "tests/posHandlers.transport.test.js",
-      "lines": 1682,
-      "caseCount": 36,
+      "lines": 1759,
+      "caseCount": 38,
       "describeTitles": [
         "posHandlers transport contracts"
       ],
-      "expectCount": 132,
+      "expectCount": 135,
       "expectResCount": 73,
-      "toHaveBeenCalledCount": 132,
+      "toHaveBeenCalledCount": 134,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -18942,6 +19492,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posItemVoidRefundScope.test.js",
+      "lines": 43,
+      "caseCount": 1,
+      "describeTitles": [
+        "POS item void refund scope"
+      ],
+      "expectCount": 1,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -19752,13 +20335,13 @@
     },
     {
       "path": "tests/posPaymentBreakdown.test.js",
-      "lines": 239,
+      "lines": 238,
       "caseCount": 9,
       "describeTitles": [
         "POS close-report payment breakdown",
         "POS delivery provider payment breakdown"
       ],
-      "expectCount": 47,
+      "expectCount": 46,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -19865,14 +20448,14 @@
     },
     {
       "path": "tests/posProviderRefund.usecase.test.js",
-      "lines": 429,
-      "caseCount": 8,
+      "lines": 463,
+      "caseCount": 9,
       "describeTitles": [
         "POS provider-owned refund use case"
       ],
-      "expectCount": 47,
+      "expectCount": 52,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 12,
+      "toHaveBeenCalledCount": 14,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -19939,6 +20522,39 @@
       "findings": []
     },
     {
+      "path": "tests/posRefundPasscodePolicy.unit.test.js",
+      "lines": 76,
+      "caseCount": 4,
+      "describeTitles": [
+        "POS refund passcode policy"
+      ],
+      "expectCount": 5,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/posReports.breakdown.route.contract.test.js",
       "lines": 20,
       "caseCount": 2,
@@ -19975,12 +20591,12 @@
     },
     {
       "path": "tests/posReports.repository.test.js",
-      "lines": 1891,
-      "caseCount": 31,
+      "lines": 2241,
+      "caseCount": 35,
       "describeTitles": [
         "posRepository reports analytics"
       ],
-      "expectCount": 118,
+      "expectCount": 128,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
@@ -20019,12 +20635,12 @@
     },
     {
       "path": "tests/posReports.usecase.test.js",
-      "lines": 600,
+      "lines": 605,
       "caseCount": 21,
       "describeTitles": [
         "POS reports usecases"
       ],
-      "expectCount": 83,
+      "expectCount": 86,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 13,
       "readFileSyncCount": 0,
@@ -21463,12 +22079,12 @@
     },
     {
       "path": "tests/posUserOperatingScope.test.js",
-      "lines": 50,
-      "caseCount": 8,
+      "lines": 68,
+      "caseCount": 9,
       "describeTitles": [
         "Phase 355 tenant-user operating scope"
       ],
-      "expectCount": 10,
+      "expectCount": 11,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
@@ -21905,7 +22521,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/testing/test-cost-inventory.json"
+          "docs/testing/test-cost-inventory.json",
+          "output/plans/00_POS_In_Terminal_Void_Approval_Popup_Plan.docx"
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
@@ -21921,12 +22538,12 @@
     },
     {
       "path": "tests/posVoidFinancialOutcome.test.js",
-      "lines": 94,
-      "caseCount": 6,
+      "lines": 113,
+      "caseCount": 7,
       "describeTitles": [
         "POS void financial outcome classification"
       ],
-      "expectCount": 6,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -22291,6 +22908,41 @@
       "findings": []
     },
     {
+      "path": "tests/processPushReceiptsUseCase.unit.test.js",
+      "lines": 38,
+      "caseCount": 2,
+      "describeTitles": [
+        "processPushReceiptsUseCase"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/processVerifiedPaidCommerceSession.usecase.test.js",
       "lines": 278,
       "caseCount": 7,
@@ -22404,12 +23056,12 @@
     },
     {
       "path": "tests/productionEnvGuard.test.js",
-      "lines": 120,
-      "caseCount": 5,
+      "lines": 144,
+      "caseCount": 6,
       "describeTitles": [
         "production startup environment guard"
       ],
-      "expectCount": 14,
+      "expectCount": 16,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -22445,12 +23097,12 @@
     },
     {
       "path": "tests/productionEnvValidation.test.js",
-      "lines": 502,
-      "caseCount": 21,
+      "lines": 663,
+      "caseCount": 28,
       "describeTitles": [
         "production environment validation"
       ],
-      "expectCount": 62,
+      "expectCount": 77,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -22711,6 +23363,142 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: applicationResult)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/pushDeviceTokenRepository.unit.test.js",
+      "lines": 113,
+      "caseCount": 6,
+      "describeTitles": [
+        "pushDeviceTokenRepository"
+      ],
+      "expectCount": 21,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 14,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/pushProviderAdapters.unit.test.js",
+      "lines": 60,
+      "caseCount": 4,
+      "describeTitles": [
+        "push provider adapters"
+      ],
+      "expectCount": 9,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/pushReceiptScheduler.unit.test.js",
+      "lines": 58,
+      "caseCount": 2,
+      "describeTitles": [
+        "push receipt scheduler"
+      ],
+      "expectCount": 7,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/pushTokenUseCases.unit.test.js",
+      "lines": 137,
+      "caseCount": 4,
+      "describeTitles": [
+        "push token use cases"
+      ],
+      "expectCount": 16,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
       "rule": "R5-default",
       "findings": []
     },
@@ -24070,12 +24858,12 @@
     },
     {
       "path": "tests/runtimeSchemaAuditService.test.js",
-      "lines": 1040,
-      "caseCount": 11,
+      "lines": 473,
+      "caseCount": 13,
       "describeTitles": [
         "runtimeSchemaAuditService"
       ],
-      "expectCount": 32,
+      "expectCount": 40,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -27521,12 +28309,12 @@
     },
     {
       "path": "tests/storeRepository.locationStockFallback.test.js",
-      "lines": 400,
-      "caseCount": 11,
+      "lines": 434,
+      "caseCount": 12,
       "describeTitles": [
         "storeRepository location-stock schema fallback"
       ],
-      "expectCount": 23,
+      "expectCount": 25,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -27725,14 +28513,14 @@
     },
     {
       "path": "tests/storeUsecases.applicationResult.test.js",
-      "lines": 2537,
-      "caseCount": 58,
+      "lines": 2619,
+      "caseCount": 60,
       "describeTitles": [
         "store use-cases application result contract"
       ],
-      "expectCount": 194,
+      "expectCount": 203,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 22,
+      "toHaveBeenCalledCount": 25,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -28149,14 +28937,14 @@
     },
     {
       "path": "tests/storefrontDiscoveryIndexService.catalogVisibility.test.js",
-      "lines": 645,
-      "caseCount": 8,
+      "lines": 700,
+      "caseCount": 9,
       "describeTitles": [
         "storefrontDiscoveryIndexService catalog visibility"
       ],
-      "expectCount": 33,
+      "expectCount": 38,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 7,
+      "toHaveBeenCalledCount": 8,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 4,
@@ -29960,12 +30748,12 @@
     },
     {
       "path": "tests/tenantModelFactory.contract.test.js",
-      "lines": 136,
+      "lines": 137,
       "caseCount": 3,
       "describeTitles": [
         "tenantModelFactory contract"
       ],
-      "expectCount": 23,
+      "expectCount": 24,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -30618,12 +31406,12 @@
     },
     {
       "path": "tests/tenantSchemaSyncScripts.test.js",
-      "lines": 912,
-      "caseCount": 46,
+      "lines": 927,
+      "caseCount": 47,
       "describeTitles": [
         "tenant schema sync script contracts"
       ],
-      "expectCount": 212,
+      "expectCount": 219,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
@@ -30968,15 +31756,48 @@
       "findings": []
     },
     {
+      "path": "tests/userService.dgfySync.test.js",
+      "lines": 330,
+      "caseCount": 6,
+      "describeTitles": [
+        "userService DGFY account synchronization"
+      ],
+      "expectCount": 24,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 19,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "dgfySync",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: dgfySync)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/userService.modeRbac.test.js",
-      "lines": 212,
-      "caseCount": 3,
+      "lines": 265,
+      "caseCount": 5,
       "describeTitles": [
         "userService mode-aware RBAC persistence"
       ],
-      "expectCount": 13,
+      "expectCount": 18,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 9,
+      "toHaveBeenCalledCount": 12,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -31043,14 +31864,14 @@
     },
     {
       "path": "tests/userUsecases.applicationResult.test.js",
-      "lines": 135,
-      "caseCount": 8,
+      "lines": 154,
+      "caseCount": 9,
       "describeTitles": [
         "user use-cases application result contract"
       ],
-      "expectCount": 21,
+      "expectCount": 23,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,

@@ -57,6 +57,7 @@ import {
 } from '../../deliveryPricing/index.js';
 import {
     generateStoreCancelProof,
+    generateStorePushProof,
     generateStoreClaimToken,
     generateStoreToken,
     getStoreTokenConfig,
@@ -1574,6 +1575,23 @@ const buildCancelProofForOrder = ({ order, tenantId }) => {
     } catch (error) {
         logger.error('[StoreSecurity] Failed to generate cancellation proof token', {
             error: error.message,
+            order_id: orderId
+        });
+        return null;
+    }
+};
+
+const buildPushProofForOrder = ({ order, tenantId }) => {
+    const orderId = parsePositiveInt(order?.pos_transaction_id);
+    const trackingPin = String(order?.tracking_pin || '').trim().toUpperCase();
+    const storeCustomerId = parsePositiveInt(order?.store_customer_id);
+    if (!orderId || !trackingPin || storeCustomerId || order?.dgfy_account_id || order?.storeCustomer?.dgfy_account_id) return null;
+
+    try {
+        return generateStorePushProof({ trackingPin, tenantId, orderId, storeCustomerId: null });
+    } catch (error) {
+        logger.error('[StoreSecurity] Failed to generate push proof token', {
+            error_code: String(error?.code || error?.name || 'push_proof_generation_failed').toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 80),
             order_id: orderId
         });
         return null;
@@ -4254,6 +4272,7 @@ export const buildStoreCheckoutUseCase = ({
                     order: existing,
                     tenantId: normalizedTenantId
                 });
+                const pushProof = buildPushProofForOrder({ order: existing, tenantId: normalizedTenantId });
                 const accountAction = await buildOrderAccountAction({
                     storeRepository,
                     order: existing,
@@ -4283,7 +4302,9 @@ export const buildStoreCheckoutUseCase = ({
                     tracking_pin: existing.tracking_pin,
                     account_action: accountAction,
                     cancel_proof: cancelProof,
-                    cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
+                    cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null,
+                    push_proof: pushProof,
+                    push_proof_expires_in: pushProof ? getStoreTokenConfig().pushProofExpiresIn : null
                 });
             }
 
@@ -4655,6 +4676,7 @@ export const buildStoreCheckoutUseCase = ({
                 order: created,
                 tenantId: normalizedTenantId
             });
+            const pushProof = buildPushProofForOrder({ order: created, tenantId: normalizedTenantId });
             const accountAction = await buildOrderAccountAction({
                 storeRepository,
                 order: created,
@@ -4871,7 +4893,9 @@ export const buildStoreCheckoutUseCase = ({
                     : null,
                 account_action: accountAction,
                 cancel_proof: cancelProof,
-                cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
+                cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null,
+                push_proof: pushProof,
+                push_proof_expires_in: pushProof ? getStoreTokenConfig().pushProofExpiresIn : null
             });
         } catch (error) {
             if (!transaction.finished) {
@@ -6026,7 +6050,7 @@ export const buildConfirmStoreCheckoutSandboxPaymentUseCase = ({
     };
 };
 
-export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
+export const buildTrackStoreOrderUseCase = ({ storeRepository, commercePaymentRepository = null }) => {
     return async ({ trackingPin, tenantId }) => {
         let normalizedTrackingPin = null;
         try {
@@ -6050,6 +6074,27 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
 
             const rejected = order.fulfillment_status === 'rejected';
             const cancelled = order.fulfillment_status === 'cancelled';
+            let refund = null;
+            if ((rejected || cancelled) && commercePaymentRepository && order.pos_transaction_id) {
+                const session = await commercePaymentRepository.findSessionByTenantAndPosTransaction({
+                    tenantId,
+                    posTransactionId: order.pos_transaction_id
+                });
+                if (session) {
+                    const latestRefund = (await commercePaymentRepository.listRefundsBySession(session.session_id))[0] || null;
+                    if (latestRefund) {
+                        const latestStatus = String(latestRefund.status || '').toLowerCase();
+                        refund = {
+                            status: ['succeeded', 'success', 'refunded'].includes(latestStatus)
+                                ? 'refunded'
+                                : (['failed', 'manual_review_required'].includes(latestStatus) ? 'under_review' : 'processing'),
+                            reference: latestRefund.public_reference,
+                            amount_centavos: Number(latestRefund.amount_centavos || 0),
+                            updated_at: latestRefund.updated_at || null
+                        };
+                    }
+                }
+            }
             // Phase 210 (#1179). Gated on `rejected` so a reason can never leak on a non-rejected
             // order (defensive: the column is only ever written on reject anyway).
             const rejectionReason = String(order?.rejection_reason || '').trim();
@@ -6075,6 +6120,7 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
                         ? 'This order was cancelled.'
                         : 'Tracking information loaded successfully.',
                 rejection_reason: rejected ? (rejectionReason || null) : null,
+                refund,
                 order: serializeOrderForPublicTracking(order),
                 review_invites: reviewInvites
             });

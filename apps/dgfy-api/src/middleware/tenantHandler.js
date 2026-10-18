@@ -8,6 +8,7 @@ import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { resolveTenantByStoreSlug } from '../services/storefrontTenantResolver.js';
 import { readRequestHostname, resolveActiveStorefrontDomain } from '../modules/storefrontDomains/index.js';
 import { getTenantContextToken, getTenantRefreshToken } from '../utils/browserSessionCookies.js';
+import { setSentryTenantTag } from '../config/sentry.js';
 
 // Short-lived in-memory cache for tenant lookups.
 // Avoids a DB round-trip to the landlord database on every single API request.
@@ -399,6 +400,7 @@ export const tenantHandler = async (req, res, next) => {
         // Attach tenant to request immediately so public endpoints (reactivation, resubmit)
         // can access req.tenant.id even if the tenant DB is not yet provisioned.
         req.tenant = tenant;
+        setSentryTenantTag(tenant.id);
 
         // 3. Get Connection — may fail for tenants whose DB has not been provisioned yet
         // (e.g. rejected registrations). Fall back to default context while keeping req.tenant.

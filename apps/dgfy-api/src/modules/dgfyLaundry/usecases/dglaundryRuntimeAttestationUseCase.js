@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
+import { resolveDglaundryOrigin } from '../dglaundryOrigin.js';
 
-const LAUNDRY_ORIGIN = 'https://laundry.surebizcorp.com';
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const enabled = (value) => String(value || '').trim().toLowerCase() === 'true';
 
@@ -63,6 +63,8 @@ export const buildDglaundryRuntimeAttestationUseCase = ({
   let apiOrigin = null;
   try { apiOrigin = new URL(ISSUER).origin; }
   catch { details.issuer = 'Configured OIDC issuer is not a valid absolute URL.'; }
+  const laundryOrigin = resolveDglaundryOrigin();
+  if (!laundryOrigin) details.laundryOrigin = 'DGLAUNDRY_PARTNER_BASE_URL is not configured as a valid origin.';
   let parPkceReady = false;
   try { parPkceReady = Boolean(parPkceConfiguredFn() && replayStatePersistenceReady); }
   catch { details.parPkceReady = 'The existing PAR/PKCE configuration check failed.'; }
@@ -73,7 +75,7 @@ export const buildDglaundryRuntimeAttestationUseCase = ({
     applicationShas: { 'dgfy-api': runtime.present ? runtime.runtimeSha : null },
     branchAllowlistSha256,
     issuer: ISSUER,
-    origins: { api: apiOrigin, laundry: LAUNDRY_ORIGIN },
+    origins: { api: apiOrigin, laundry: laundryOrigin },
     paymentsMode: paymongoMode || 'unconfigured',
     publicAdmission: bookingPaymentsEnabled,
     testAdmission: ['test', 'sandbox'].includes(paymongoMode),
