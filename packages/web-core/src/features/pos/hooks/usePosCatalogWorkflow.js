@@ -1,5 +1,10 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { getFolders } from '@/services/itemService.js';
+import { getBackendReachabilitySnapshot } from '@/services/api.js';
+import {
+    createUnreachablePollScheduler,
+    isRetryableBackendFailure
+} from '@/services/backendReachability.js';
 import { isIminWrapperRuntime, posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { fetchPosCatalog } from '../services/posService';
 import { preserveCatalogRows } from '../services/posCatalogReadCoordinator.js';
@@ -214,7 +219,7 @@ export const usePosCatalogWorkflow = ({
         });
     }, [offlineSnapshotScope]);
 
-    const loadCatalog = useCallback(async () => {
+    const loadCatalog = useCallback(async ({ skipIfInFlight = false } = {}) => {
         if (sessionLocked) {
             catalogRequestInFlightKeyRef.current = '';
             catalogRequestSequenceRef.current += 1;
@@ -235,9 +240,12 @@ export const usePosCatalogWorkflow = ({
             return;
         }
         const requestKey = buildCatalogRequestKey(deferredSearch, selectedLocationId);
-        if (catalogRequestInFlightKeyRef.current === requestKey) {
-            catalogReadRerunRef.current = true;
-            return;
+        if (catalogRequestInFlightKeyRef.current) {
+            if (skipIfInFlight) return;
+            if (catalogRequestInFlightKeyRef.current === requestKey) {
+                catalogReadRerunRef.current = true;
+                return;
+            }
         }
         catalogRequestAbortControllerRef.current?.abort?.();
         // AbortController is available in supported iMin WebViews, but keep
@@ -267,7 +275,7 @@ export const usePosCatalogWorkflow = ({
             if (catalogRequestSequenceRef.current !== requestSequence) return;
             if (requestAbortController?.signal?.aborted || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return;
             const offlineSnapshot = loadOfflinePosSnapshot(offlineSnapshotScope);
-            if (!error?.response && offlineSnapshot?.catalog?.length) {
+            if (isRetryableBackendFailure(error) && offlineSnapshot?.catalog?.length) {
                 setCatalog(offlineSnapshot.catalog);
                 setReceiptSettings((current) => Object.keys(current || {}).length > 0
                     ? current
@@ -275,7 +283,7 @@ export const usePosCatalogWorkflow = ({
                 setLowStockDisplayThreshold(normalizeLowStockDisplayThreshold(
                     offlineSnapshot.receipt_settings?.inventory_low_stock_display_threshold
                 ));
-                setCatalogError('Offline mode: showing the last synced catalog. Stock is verified again when transactions sync.');
+                setCatalogError('Backend unavailable: showing the last synced catalog. Stock is verified again when transactions sync.');
                 return;
             }
             const apiMessage = error?.response?.data?.message;
@@ -331,14 +339,14 @@ export const usePosCatalogWorkflow = ({
         }
     }, [sessionLocked]);
 
-    const refreshCatalogAfterInvalidation = useCallback(() => {
+    const refreshCatalogAfterInvalidation = useCallback(({ skipIfInFlight = false } = {}) => {
         if (catalogRefreshDebounceRef.current) {
             window.clearTimeout(catalogRefreshDebounceRef.current);
         }
         catalogRefreshDebounceRef.current = window.setTimeout(() => {
             catalogRefreshDebounceRef.current = null;
             loadPosFolders();
-            loadCatalog();
+            loadCatalog({ skipIfInFlight });
         }, 150);
     }, [loadCatalog, loadPosFolders]);
 
@@ -363,11 +371,26 @@ export const usePosCatalogWorkflow = ({
             if (document.visibilityState === 'visible') refreshCatalogAfterInvalidation();
         };
         const refreshWhenOnline = () => refreshCatalogAfterInvalidation();
-        const fallbackRefresh = window.setInterval(refreshIfVisible, 60000);
+        const pollScheduler = createUnreachablePollScheduler({
+            run: async () => {
+                if (document.visibilityState !== 'visible') return;
+                await Promise.all([
+                    loadPosFolders(),
+                    loadCatalog({ skipIfInFlight: true })
+                ]);
+            },
+            isInFlight: () => Boolean(catalogRequestInFlightKeyRef.current),
+            getConsecutiveFailures: () => getBackendReachabilitySnapshot().consecutiveUnreachable,
+            baseMs: 60_000,
+            capMs: 5 * 60_000,
+            jitter: 0.2,
+            setTimeoutFn: (callback, delayMs) => window.setTimeout(callback, delayMs),
+            clearTimeoutFn: (timer) => window.clearTimeout(timer)
+        });
         document.addEventListener('visibilitychange', refreshIfVisible);
         window.addEventListener('online', refreshWhenOnline);
         return () => {
-            window.clearInterval(fallbackRefresh);
+            pollScheduler.stop();
             document.removeEventListener('visibilitychange', refreshIfVisible);
             window.removeEventListener('online', refreshWhenOnline);
             if (catalogRefreshDebounceRef.current) {
@@ -375,7 +398,7 @@ export const usePosCatalogWorkflow = ({
                 catalogRefreshDebounceRef.current = null;
             }
         };
-    }, [canViewHistory, refreshCatalogAfterInvalidation, sessionLocked]);
+    }, [canViewHistory, loadCatalog, loadPosFolders, refreshCatalogAfterInvalidation, sessionLocked]);
 
     useEffect(() => {
         if (sessionLocked) return undefined;

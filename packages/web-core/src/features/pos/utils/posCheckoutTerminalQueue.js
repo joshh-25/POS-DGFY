@@ -1,7 +1,12 @@
+import {
+    BACKEND_RETRYABLE_STATUS_CODES,
+    isRetryableBackendFailure
+} from '../../../services/backendReachability.js';
+
 export const CHECKOUT_QUEUE_OPERATION = 'checkout';
 export const CHECKOUT_QUEUE_MAX_RETRIES = 5;
 export const CHECKOUT_REPLAY_BATCH_SIZE = 20;
-export const RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+export const RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES = BACKEND_RETRYABLE_STATUS_CODES;
 export const CHECKOUT_RETRY_BACKOFF_BASE_MS = 1500;
 
 export const isCheckoutQueueEntry = (entry) => (
@@ -9,9 +14,7 @@ export const isCheckoutQueueEntry = (entry) => (
 );
 
 export const isRetryableCheckoutReplayError = (error) => {
-    if (!error?.response) return true;
-    const status = Number(error?.response?.status || 0);
-    return RETRYABLE_CHECKOUT_REPLAY_STATUS_CODES.has(status);
+    return isRetryableBackendFailure(error);
 };
 
 export const resolveCheckoutReplayErrorDetails = (error) => ({

@@ -1,3 +1,4 @@
+import { isRetryableBackendFailure } from '../../../services/backendReachability.js';
 import {
   closeTerminalShift,
   createPosParkedSale,
@@ -10,13 +11,7 @@ import {
   markTerminalOperationRetryScheduled
 } from '../services/terminalOperationQueueStore.js';
 
-const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
-
-const isRetryableError = (error) => {
-  if (!error?.response) return true;
-  const status = Number(error?.response?.status || 0);
-  return RETRYABLE_STATUS_CODES.has(status);
-};
+const isRetryableError = isRetryableBackendFailure;
 
 const resolveErrorDetails = (error) => ({
   message: String(error?.response?.data?.message || error?.message || 'Operation replay failed').trim(),
