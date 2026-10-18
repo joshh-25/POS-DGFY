@@ -13,8 +13,8 @@ verification_evidence: focused API Jest suites for diagnostics use cases, dispat
 rollback_note: Remove the push-diagnostics admin and enrollment routes and the dispatch-event recorder; the additive migration can be rolled back (it drops only the three new tables) and no existing push, order, or tenant data needs repair. Revoking the admin.push_diagnostics grant or leaving no enrolled device already disables the page and test sends.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-19T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2579-2026-10-19
+preflight_run_at: 2026-10-18T17:16:54.283Z
+preflight_request_ref: PREFLIGHT-39148362837-2026-10-19-PUSH-DIAGNOSTICS-BACKEND
 ---
 
 # Platform Admin Push Diagnostics
