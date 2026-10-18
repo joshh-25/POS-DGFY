@@ -52,9 +52,16 @@ zero precedent here. Use `mcp__claude_ai_Sentry__*` unless there's a specific re
   `SENTRY_BACKEND_DSN` into the API's SOPS file but dropped the previous non-secret values
   `SENTRY_ENABLED=true` and `SENTRY_ENVIRONMENT=PROD`. With those values absent, the compose defaults
   left backend reporting off for about seven weeks. The host was corrected on 2026-10-15 by adding
-  both values to `secrets/dgfy-api.env`; the DSN maps to `dgfy-backend`. Arrival of a new PROD backend
-  event has not yet been verified, so check for one after the next backend error before treating the
-  reporting path as restored. See #2502.
+  both values to `secrets/dgfy-api.env`; the DSN maps to `dgfy-backend`. **Verified 2026-10-18:**
+  `DGFY-BACKEND-P` is a PROD `dgfy-backend` event, first seen 2026-10-15T11:40Z (after the fix), so
+  the reporting path is restored. Two gaps remain: backend events carry no `tenant_id`, and
+  `SENTRY_TRACES_SAMPLE_RATE=0` on the host means PROD has no spans — see #2502 and #2560.
+- **Event-level reads need explicit fields.** `search_issues` can't take `OR`, and `search_errors`
+  with `environment:production` fails — the environment names are `DEV`, `STAGING`, `PROD`
+  (upper-case). For a per-event timeline (timestamp, release, tenant, failed request), use
+  `search_errors` with `fields: ["timestamp","issue","release","tags[tenant_id]","tags[request_status]"]`
+  and read each issue's `failed_request` context via `get_sentry_resource`; the generic aggregate
+  query hides same-second multi-tenant clustering, which is how the #2560 stall pattern was found.
 - **Sentry release and image revision can differ** (#633). At the 2026-10-15 incident check,
   `SENTRY_RELEASE=ee18e2e13` while the running image's `org.opencontainers.image.revision` label was
   `5521a8548`. They were different identifiers for the same deployment; check both when correlating
