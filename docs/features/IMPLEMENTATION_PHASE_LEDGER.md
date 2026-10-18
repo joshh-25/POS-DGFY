@@ -29644,8 +29644,8 @@ guest push behavior remains unchanged.
 
 ### Status
 
-`in_progress` — implementation and repository-level checks are being completed on the feature
-branch; merge, deployment, provider, and real-device evidence remain outstanding.
+`in_progress` — implementation and repository-level checks pass on the feature branch; PR review,
+merge, deployment, provider, and real-device evidence remain outstanding.
 
 ### Dependencies
 
