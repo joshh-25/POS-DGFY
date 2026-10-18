@@ -3,7 +3,7 @@ import { buildDispatchStaffNewOnlineOrderPushUseCase } from '../src/modules/push
 
 const tenantId = '7d54bdb5-7b8a-4a10-a788-6b8897770001';
 const tokenFor = (userId) => `ExponentPushToken[deviceuser${userId}]`;
-const tokenRows = (userIds = [1, 2, 3, 4]) => userIds.map((userId) => ({
+const tokenRows = (userIds = [1, 2, 3, 4, 5]) => userIds.map((userId) => ({
     id: `token-${userId}`,
     token: tokenFor(userId),
     staff_tenant_id: tenantId,
@@ -11,9 +11,10 @@ const tokenRows = (userIds = [1, 2, 3, 4]) => userIds.map((userId) => ({
 }));
 const audience = [
     { user_id: 1, is_active: true, deleted_at: null, permissions: ['pos:view'] },
-    { user_id: 2, is_active: true, deleted_at: null, permissions: ['sales:view'] },
+    { user_id: 2, is_active: true, deleted_at: null, permissions: ['pos:view'] },
     { user_id: 3, is_active: false, deleted_at: null, permissions: ['pos:view'] },
-    { user_id: 4, is_active: true, deleted_at: null, is_master_admin: true, permissions: [] }
+    { user_id: 4, is_active: true, deleted_at: null, is_master_admin: true, permissions: [] },
+    { user_id: 5, is_active: true, deleted_at: null, permissions: ['sales:view'] }
 ];
 const order = (overrides = {}) => ({
     pos_transaction_id: 901,
@@ -77,6 +78,7 @@ describe('dispatchStaffNewOnlineOrderPushUseCase', () => {
 
         expect(result).toEqual({ status: 'completed', attempted: 2 });
         expect(resolveLocation).toHaveBeenCalledTimes(3);
+        expect(resolveLocation).not.toHaveBeenCalledWith(expect.objectContaining({ userId: 5 }));
         expect(reservePending).toHaveBeenCalledTimes(2);
         expect(reservePending).toHaveBeenCalledWith(expect.objectContaining({
             purpose: 'staff_new_online_order',
