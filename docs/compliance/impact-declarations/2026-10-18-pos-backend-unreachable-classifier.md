@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.17
-verification_evidence: Four consuming-app production builds, focused web-core tests (9 suites/162 tests), Playwright E2E listing, architecture/docs/compliance checks, app-version-floor check, JavaScript syntax and whitespace checks
+verification_evidence: npm exec vitest run focused web-core suites (9 suites/162 tests), npm run build:pos, npm run build:skupervisor, npm run build:store, npm run build:opis, npm run check:architecture, npm run lint:docs, npm run check:compliance, node scripts/check-app-version-bump.js, Playwright E2E listing (2 cases; runtime not run), JavaScript syntax and whitespace checks
 rollback_note: Revert the shared classifier and POS integrations together; existing queued checkout intents remain durable and use the existing operator-controlled replay path.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
