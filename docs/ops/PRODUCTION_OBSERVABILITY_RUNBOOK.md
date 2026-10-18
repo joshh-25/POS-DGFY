@@ -2,7 +2,7 @@
 
 Status: authoritative
 Owner: operations
-Last reviewed: 2026-06-16
+Last reviewed: 2026-10-18
 
 Use this runbook when production bugs, tenant reports, release regressions, or AI-agent investigations need traceable evidence.
 
@@ -39,6 +39,26 @@ Expected fields:
 - `error_code`
 - `ip_hash`
 - `user_agent_family`
+
+## Tenant DB Pool Acquire Timeouts
+
+Backend Sentry events for resolved tenant requests carry the indexed `tenant_id` tag. A Sequelize
+connection acquire timeout also carries `db_pool_acquire_timeout=true` and a `db_pool` context with
+the request route, method, request ID, tenant-pool counters, and global tenant-connector counters.
+The per-tenant snapshot is `null` when that tenant has no cached pool (including landlord-pool
+timeouts); individual counters may be `null` if the installed pool does not expose a numeric value.
+
+Search API logs for this message:
+
+```text
+[DbPool] Tenant connection acquire timeout
+```
+
+The incident record for #2560 reports `SENTRY_TRACES_SAMPLE_RATE` unset on PROD. Setting it is a
+host-configuration action for an operator; it is not changed by this repository note. When the
+variable is set, `GET /api/v1/pos/incoming-orders` remains sampled at a fixed 1% by the API's poll
+route sampler, so traces for that route stay sparse. The tenant tag and acquire-timeout log do not
+depend on performance trace sampling.
 
 ## Incident Bundle Workflow
 
