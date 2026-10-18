@@ -1,3 +1,5 @@
+import { GATEWAY_FAILURE_STATUS_CODES } from '../services/backendReachability.js';
+
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 
@@ -560,6 +562,7 @@ const REQUEST_FAILURE_COOLDOWN_MS = 60_000;
 const MAX_REQUEST_FAILURE_EVENTS_PER_SESSION = 20;
 const requestFailureLastSentAt = new Map();
 let requestFailureEventCount = 0;
+let consecutiveTransientRequestFailures = 0;
 
 // 502/503/504 (and a bare no-response failure) are treated as "transient":
 // symptomatic of a deploy window or a single gateway/worker restart rather
@@ -567,7 +570,11 @@ let requestFailureEventCount = 0;
 // application error. This only affects the `level` and a searchable tag on
 // the emitted event, never the fingerprint (see the comment on `fingerprint`
 // below for why grouping must not change).
-const TRANSIENT_REQUEST_STATUSES = new Set([502, 503, 504]);
+const TRANSIENT_REQUEST_STATUSES = GATEWAY_FAILURE_STATUS_CODES;
+
+export const noteRequestSuccess = () => {
+  consecutiveTransientRequestFailures = 0;
+};
 
 export const classifyRequestFailure = ({ status } = {}) => (
   (status === undefined || status === null || TRANSIENT_REQUEST_STATUSES.has(Number(status)))
@@ -584,7 +591,14 @@ export const classifyRequestFailure = ({ status } = {}) => (
  * Call this from the same trailing axios interceptor that already calls
  * tagRequestFailureContext, once a request has failed past every retry.
  */
-export const captureRequestFailure = ({ error, method, url, status, requestId } = {}) => {
+export const captureRequestFailure = ({
+  error,
+  method,
+  url,
+  status,
+  requestId,
+  transientFailureThreshold
+} = {}) => {
   // A canceled/aborted request is a caller decision (component unmount, a
   // superseded request), not a failure -- covers all three call sites
   // (api.js's trailing interceptor, requestJson.js's two paths) in one
@@ -598,6 +612,14 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
   const normalizedUrl = normalizeRequestUrl(url);
   const normalizedMethod = String(method || 'GET').toUpperCase();
   const failureClass = classifyRequestFailure({ status });
+  const threshold = Number(transientFailureThreshold);
+  if (Number.isFinite(threshold) && threshold > 0 && failureClass !== 'transient') {
+    consecutiveTransientRequestFailures = 0;
+  }
+  if (failureClass === 'transient' && Number.isFinite(threshold) && threshold > 0) {
+    consecutiveTransientRequestFailures += 1;
+    if (consecutiveTransientRequestFailures < threshold) return;
+  }
   // Network-class failures (no response at all -- offline, DNS, CORS) and
   // transient 5xx (502/503/504 -- a deploy window or a single gateway/worker
   // restart, see classifyRequestFailure above) both DROP the URL from the
