@@ -12,8 +12,8 @@ verification_evidence: node --check apps/dgfy-api/src/modules/commercePayments/u
 rollback_note: Revert this change to restore the unconditional error alert for unknown paid sessions. No payment data, schema, or retry behavior changes; audit rows and webhook responses remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-19T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-ISSUE-1091-PAYMONGO-ALERT
+preflight_run_at: 2026-10-18T17:16:54.280Z
+preflight_request_ref: PREFLIGHT-39148362837-2026-10-19-PAYMONGO-UNKNOWN-SESSION-ALERT-LIVEMODE-GATING
 ---
 
 # PayMongo Unknown-Session Alert Livemode Gating
