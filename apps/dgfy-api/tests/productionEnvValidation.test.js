@@ -659,4 +659,24 @@ describe('production environment validation', () => {
 
     expect(configured.ok).toBe(true);
   });
+
+  describe('DEPLOY_ENV_LABEL (push diagnostics environment banner)', () => {
+    const missingMessage = 'DEPLOY_ENV_LABEL is empty; the Platform Admin push diagnostics page cannot tell staging from production and will show "unknown"';
+
+    it('warns, without failing, when the label is missing', () => {
+      const result = validateProductionEnv({ env: { ...baseEnv } });
+      expect(result.warnings).toContain(missingMessage);
+      expect(result.errors).toEqual(expect.not.arrayContaining([expect.stringContaining('DEPLOY_ENV_LABEL')]));
+    });
+
+    it.each(['staging', 'production', 'Stage-2'])('accepts %s without a warning', (label) => {
+      const result = validateProductionEnv({ env: { ...baseEnv, DEPLOY_ENV_LABEL: label } });
+      expect(result.warnings.filter((warning) => warning.includes('DEPLOY_ENV_LABEL'))).toEqual([]);
+    });
+
+    it('warns about a malformed label', () => {
+      const result = validateProductionEnv({ env: { ...baseEnv, DEPLOY_ENV_LABEL: 'prod env!' } });
+      expect(result.warnings).toContain('DEPLOY_ENV_LABEL must be 1-30 letters, digits, "_" or "-"; push diagnostics will show "unknown"');
+    });
+  });
 });

@@ -31,6 +31,7 @@ const PaymentOperations = lazy(() => import('../Pages/PaymentOperations.jsx'));
 const AdminPricing = lazy(() => import('../Pages/AdminPricing.jsx'));
 const HostingStatus = lazy(() => import('../Pages/HostingStatus.jsx'));
 const InvoiceManager = lazy(() => import('../Pages/InvoiceManager.jsx'));
+const PushDiagnostics = lazy(() => import('../Pages/PushDiagnostics.jsx'));
 const PlatformAdminManager = lazy(() => import('../Pages/PlatformAdminManager.jsx'));
 const StoreTemplateManager = lazy(() => import('../Pages/StoreTemplateManager.jsx'));
 
@@ -95,6 +96,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route path="pricing" element={<AdminPricing />} />
               <Route path="hosting" element={<HostingStatus />} />
               <Route path="invoices" element={<InvoiceManager />} />
+              <Route path="push-diagnostics" element={<PushDiagnostics />} />
               <Route path="platform-admins" element={<PlatformAdminManager />} />
               <Route path="store-templates" element={<StoreTemplateManager />} />
             </Route>

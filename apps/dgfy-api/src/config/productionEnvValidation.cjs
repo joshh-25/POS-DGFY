@@ -452,6 +452,15 @@ const validateSentryConfig = (env, warnings) => {
   }
 };
 
+const validateDeployEnvLabel = (env, warnings) => {
+  const label = String(env.DEPLOY_ENV_LABEL || '').trim();
+  if (!label) {
+    warnings.push('DEPLOY_ENV_LABEL is empty; the Platform Admin push diagnostics page cannot tell staging from production and will show "unknown"');
+  } else if (!/^[a-z0-9][a-z0-9_-]{0,29}$/i.test(label)) {
+    warnings.push('DEPLOY_ENV_LABEL must be 1-30 letters, digits, "_" or "-"; push diagnostics will show "unknown"');
+  }
+};
+
 const validateProductionEnv = ({ env = process.env, profile = null, strictProduction = false } = {}) => {
   const errors = [];
   const warnings = [];
@@ -498,6 +507,7 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
   validateProfilePolicy({ profile: normalizedProfile, env, errors });
   validatePaymentConfig(env, errors, warnings);
   validateSentryConfig(env, warnings);
+  validateDeployEnvLabel(env, warnings);
   validateDglaundryProviderConfig(env, errors);
 
   if (normalizedNodeEnv && normalizedNodeEnv !== 'production') {
