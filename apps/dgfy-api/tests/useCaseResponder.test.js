@@ -12,6 +12,11 @@ jest.unstable_mockModule('../src/config/sentry.js', () => ({
   isSentryInitialized: isSentryInitializedMock
 }));
 
+const recordConnectionAcquireTimeoutMock = jest.fn();
+jest.unstable_mockModule('../src/utils/dbPoolDiagnostics.js', () => ({
+  recordConnectionAcquireTimeout: recordConnectionAcquireTimeoutMock
+}));
+
 const { ok, fail } = await import('../src/modules/shared/contracts/applicationResult.js');
 const { DomainError, DomainErrorCode } = await import('../src/modules/shared/contracts/domainErrors.js');
 const { resolveDomainFailure, sendUseCaseResult } = await import('../src/modules/shared/controllers/useCaseResponder.js');
@@ -112,6 +117,25 @@ describe('useCaseResponder', () => {
       expect(captureExceptionMock).toHaveBeenCalledWith(infraError, expect.anything());
     });
 
+    it('records acquire-timeout diagnostics with the request before Sentry capture', () => {
+      const res = createMockRes();
+      res.req = { requestId: 'req-acquire-timeout' };
+      const timeout = Object.assign(new Error('Operation timeout'), {
+        name: 'SequelizeConnectionAcquireTimeoutError'
+      });
+      const result = fail(new DomainError(
+        DomainErrorCode.INTERNAL_ERROR,
+        'Failed to acquire tenant connection',
+        { cause: timeout }
+      ));
+
+      sendUseCaseResult(res, result);
+
+      expect(recordConnectionAcquireTimeoutMock).toHaveBeenCalledWith(timeout, { req: res.req });
+      expect(recordConnectionAcquireTimeoutMock.mock.invocationCallOrder[0])
+        .toBeLessThan(captureExceptionMock.mock.invocationCallOrder[0]);
+    });
+
     it('does not capture a 4xx domain failure', () => {
       const res = createMockRes();
       const result = fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Missing field'));
@@ -137,6 +161,10 @@ describe('useCaseResponder', () => {
       sendUseCaseResult(res, result);
 
       expect(captureExceptionMock).not.toHaveBeenCalled();
+      expect(recordConnectionAcquireTimeoutMock).toHaveBeenCalledWith(
+        result.error,
+        { req: undefined }
+      );
     });
 
     // #508 -- a DomainError shaped as 503 for a known missing/disabled optional
