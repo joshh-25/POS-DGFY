@@ -33,6 +33,60 @@ const validProductionEnv = {
   ADMIN_PASSWORD_HASH: `$2b$12$${'a'.repeat(53)}`
 };
 
+const childEnvironmentKeys = [
+  'PATH',
+  'HOME',
+  'USERPROFILE',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'SystemRoot',
+  'WINDIR',
+  'COMSPEC',
+  'PATHEXT'
+];
+
+const buildChildEnvironment = (environment, parentEnvironment = process.env) => {
+  const platformEnvironment = Object.fromEntries(
+    childEnvironmentKeys
+      .filter((key) => parentEnvironment[key] !== undefined)
+      .map((key) => [key, parentEnvironment[key]])
+  );
+
+  return {
+    ...platformEnvironment,
+    ...environment
+  };
+};
+
+const spawnServer = (environment, parentEnvironment = process.env) => spawnSync(
+  process.execPath,
+  ['src/server.js'],
+  {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    timeout: 10000,
+    env: buildChildEnvironment(environment, parentEnvironment)
+  }
+);
+
+const validStartupEnvironment = {
+  ...validProductionEnv,
+  SKIP_SERVER_START: 'true',
+  SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123',
+  SENTRY_ENABLED: '',
+  SENTRY_ENVIRONMENT: ''
+};
+
+const expectSentryWarningStartup = (spawned) => {
+  const output = `${spawned.stdout}\n${spawned.stderr}`;
+
+  expect(spawned.status).toBe(0);
+  expect(output).toContain(
+    'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+  );
+};
+
 const evaluateStartupGuard = (env) => {
   const result = validateProductionEnv({ env });
   return {
@@ -87,31 +141,10 @@ describe('production startup environment guard', () => {
   });
 
   it('server startup exits non-zero before listen when production env is invalid', () => {
-    const spawned = spawnSync(process.execPath, ['src/server.js'], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        NODE_ENV: 'production',
-        SKIP_SERVER_START: 'true',
-        HOSTING_PROFILE: 'shared',
-        HOSTING_INSTANCE_COUNT: '1',
-        DB_HOST: '',
-        DB_USER: 'sku_user',
-        DB_NAME: 'sku_inventory',
-        DB_PASSWORD: 'database-password-production-like',
-        DB_AUTO_SYNC: 'false',
-        JWT_SECRET: validProductionEnv.JWT_SECRET,
-        REFRESH_TOKEN_SECRET: validProductionEnv.REFRESH_TOKEN_SECRET,
-        SMS_PHONE_HASH_SECRET: validProductionEnv.SMS_PHONE_HASH_SECRET,
-        CORS_ORIGIN: validProductionEnv.CORS_ORIGIN,
-        SESSION_COOKIE_SECURE: 'true',
-        AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
-        TEMP_FILE_STORAGE: 'local',
-        RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: '3600000',
-        RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: '5',
-        PAYMENTS_ENABLED: 'false'
-      }
+    const spawned = spawnServer({
+      ...validProductionEnv,
+      SKIP_SERVER_START: 'true',
+      DB_HOST: ''
     });
 
     expect(spawned.status).toBe(1);
@@ -120,24 +153,17 @@ describe('production startup environment guard', () => {
   });
 
   it('logs production validation warnings during server startup', () => {
-    const spawned = spawnSync(process.execPath, ['src/server.js'], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-      timeout: 10000,
-      env: {
-        ...process.env,
-        ...validProductionEnv,
-        SKIP_SERVER_START: 'true',
-        SENTRY_BACKEND_DSN: 'https://public@example.ingest.sentry.io/123',
-        SENTRY_ENABLED: '',
-        SENTRY_ENVIRONMENT: ''
-      }
-    });
+    expectSentryWarningStartup(spawnServer(validStartupEnvironment));
+  });
 
-    const output = `${spawned.stdout}\n${spawned.stderr}`;
-    expect(spawned.status).toBe(0);
-    expect(output).toContain(
-      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+  it('does not inherit REDIS_URL from the parent environment for a valid shared startup', () => {
+    const parentEnvironment = {
+      ...process.env,
+      REDIS_URL: 'redis://127.0.0.1:6379'
+    };
+
+    expectSentryWarningStartup(
+      spawnServer(validStartupEnvironment, parentEnvironment)
     );
   });
 });
