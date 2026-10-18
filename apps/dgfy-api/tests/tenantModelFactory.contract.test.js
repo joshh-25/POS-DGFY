@@ -49,6 +49,9 @@ describe('tenantModelFactory contract', () => {
             expect(models.DgfyAccountTenantMembership).toBeUndefined();
             expect(models.OidcSigningKey).toBeUndefined();
             expect(models.ContactInquiryProviderConfig).toBeUndefined();
+            expect(models.PushDispatchEvent).toBeUndefined();
+            expect(models.PushDiagnosticDevice).toBeUndefined();
+            expect(models.PushDiagnosticEnrollmentCode).toBeUndefined();
             expect(models.PartnerApp).toBeUndefined();
             expect(models.OidcClient).toBeUndefined();
             expect(models.StorefrontCustomDomain).toBeUndefined();
