@@ -4,12 +4,14 @@ import { adminPushTestSendLimiter } from '../middleware/rateLimiter.js';
 import { PLATFORM_ADMIN_PERMISSION_KEYS } from '../modules/platformAdmin/constants/permissions.js';
 import {
   createPushEnrollmentCode,
+  getPushDiagnosticsAppVisibility,
   getPushDiagnosticsOverview,
   listPushAttempts,
   listPushDiagnosticDevices,
   listPushRegistrations,
   revokePushDiagnosticDevice,
-  sendPushDiagnosticTest
+  sendPushDiagnosticTest,
+  setPushDiagnosticsAppVisibility
 } from '../modules/pushDiagnostics/controllers/pushDiagnosticsHandlers.js';
 
 const router = express.Router();
@@ -19,6 +21,8 @@ const router = express.Router();
 router.use(authenticateAdmin, requireAdminPermission(PLATFORM_ADMIN_PERMISSION_KEYS.PUSH_DIAGNOSTICS));
 
 router.get('/overview', getPushDiagnosticsOverview);
+router.get('/visibility', getPushDiagnosticsAppVisibility);
+router.put('/visibility/:app', setPushDiagnosticsAppVisibility);
 router.get('/registrations', listPushRegistrations);
 router.get('/attempts', listPushAttempts);
 router.get('/diagnostic-devices', listPushDiagnosticDevices);
