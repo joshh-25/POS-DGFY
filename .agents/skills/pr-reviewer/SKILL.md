@@ -148,6 +148,30 @@ authoritative docs remain the source of truth. A missing, malformed, mismatched,
 handoff is a hard stop when supplied. Without one, the existing reviewer workflow and fallback
 behavior are unchanged.
 
+## Omitted PR resolution
+
+Run this only when no PR number was supplied. An explicit PR or a Reviewer handoff with `pr: N`
+wins; a handoff with `pr: none` invokes this resolver. Follow [the shared omitted-target
+contract](../../../docs/ai/OMITTED_TARGET_RESOLUTION.md) for the worktree-scoped Orca adapter,
+branch signal, stop format, and resolution report.
+
+1. Before resolving the PR, stop if the valid Orca `linkedIssue` and branch number signal both
+   exist but disagree, even when a `linkedPR` is present.
+2. If the valid current-worktree Orca metadata has `linkedPR`, verify
+   `gh api repos/Sieitzz/dgfy-platform/pulls/N`. The PR must be open and its base repository must be
+   `Sieitzz/dgfy-platform`, compared case-insensitively. A closed, merged, malformed, missing, or
+   wrong-base link is stale: stop without falling through to a branch or issue guess.
+3. If `linkedPR` is absent, build a candidate set from one fully paginated listing of this
+   repository's open PRs. Collect the union of unique PR
+   numbers whose head branch matches the current branch with a same-repository head, or whose body
+   references the verified Orca issue (otherwise the branch number) with `closes`, `fixes`,
+   `resolves`, or `refs`.
+4. Exactly one candidate is required. Report whether it matched the current branch, issue
+   reference, or both. Zero or multiple candidates—including different PRs matching each source—
+   is a hard stop that requests `/pr-reviewer <PR>`.
+5. REST-verify the selected PR is still open and based on this repository before beginning the
+   audit. Keep every existing audit, fixed comment, first-live-use, board, and merge rule unchanged.
+
 ## Output — one PR comment, fixed shape
 
 Post via `gh pr comment <N> --body-file <file>`. Exactly one `## Review` comment per run, so a
