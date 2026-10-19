@@ -23,7 +23,7 @@ export function AddressesSection({
 }) {
   const allAddresses = Array.isArray(addresses) ? addresses : [];
   const THEME = theme;
-  const [addressDraft, setAddressDraft] = useState({ label: '', address_line: '', latitude: null, longitude: null, is_default: true });
+  const [addressDraft, setAddressDraft] = useState({ label: '', address_line: '', address_details: '', latitude: null, longitude: null, is_default: true });
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [addressModalMode, setAddressModalMode] = useState('create');
   const [deletingAddressId, setDeletingAddressId] = useState(null);
@@ -50,7 +50,7 @@ export function AddressesSection({
 
   const handleOpenAddAddressModal = () => {
     setAddressModalMode('create');
-    setAddressDraft({ label: '', address_line: '', latitude: null, longitude: null, is_default: true });
+    setAddressDraft({ label: '', address_line: '', address_details: '', latitude: null, longitude: null, is_default: true });
     setIsAddressModalOpen(true);
   };
 
@@ -69,6 +69,7 @@ export function AddressesSection({
     const payload = {
       label: String(draftPayload.label || '').trim(),
       address_line: String(draftPayload.address_line || '').trim(),
+      address_details: String(draftPayload.address_details || '').trim(),
       latitude: draftPayload.latitude,
       longitude: draftPayload.longitude,
       is_default: Boolean(draftPayload.is_default)
@@ -128,6 +129,7 @@ export function AddressesSection({
                     addressId: address.address_id,
                     label: getCustomerAddressTitle(address),
                     fullAddress: getCustomerAddressLine(address),
+                    addressDetails: String(address.address_details || '').trim(),
                     isDefault,
                     source: 'account'
                   }}
