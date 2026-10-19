@@ -432,6 +432,47 @@ describe('dgfyCustomerUseCases', () => {
         expect(repository.updateAddress).not.toHaveBeenCalled();
     });
 
+    it('stores trimmed address_details on create and nulls a blank or missing value (#2594)', async () => {
+        const repository = {
+            createAddress: jest.fn().mockImplementation((accountId, payload) => Promise.resolve({ address_id: 11, ...payload }))
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        await useCases.create({ account, body: { address_line: 'Rizal Street, Jaro', address_details: '  Blk 5 Lot 12  ' } });
+        await useCases.create({ account, body: { address_line: 'Rizal Street, Jaro', address_details: '   ' } });
+        await useCases.create({ account, body: { address_line: 'Rizal Street, Jaro' } });
+
+        expect(repository.createAddress.mock.calls.map(([, payload]) => payload.address_details))
+            .toEqual(['Blk 5 Lot 12', null, null]);
+    });
+
+    it('rejects address_details over 255 characters (#2594)', async () => {
+        const repository = { createAddress: jest.fn() };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.create({ account, body: { address_line: 'Somewhere', address_details: 'a'.repeat(256) } });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.createAddress).not.toHaveBeenCalled();
+    });
+
+    it('updates address_details only when the body carries it (#2594)', async () => {
+        const repository = {
+            updateAddress: jest.fn().mockImplementation((accountId, addressId, payload) => Promise.resolve({ address_id: Number(addressId), ...payload }))
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        await useCases.update({ account, addressId: 10, body: { address_details: 'Unit 3B' } });
+        await useCases.update({ account, addressId: 10, body: { address_details: '' } });
+        await useCases.update({ account, addressId: 10, body: { label: 'Office' } });
+
+        const updates = repository.updateAddress.mock.calls.map(([, , payload]) => payload);
+        expect(updates[0]).toEqual({ address_details: 'Unit 3B' });
+        expect(updates[1]).toEqual({ address_details: null });
+        expect(updates[2]).not.toHaveProperty('address_details');
+    });
+
     it('rejects a label over 100 characters on update', async () => {
         const repository = {
             getAddress: jest.fn().mockResolvedValue({
