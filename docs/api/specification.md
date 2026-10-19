@@ -3825,6 +3825,14 @@ IMS location clients should submit the merchant-editable address with the normal
 | `DELETE` | `/tenant-locations/:id` | Deactivate a location while preserving history |
 | `DELETE` | `/tenant-locations/:id/permanent` | Permanently delete an unused pin only |
 
+`POST` and `PUT /tenant-locations` accept an optional nullable `address_details` (#2595): the
+merchant's street number, unit, floor or building, at most 255 characters, trimmed, with a blank
+value stored as `null`. `address_line` remains the full display address every reader uses; the
+store-location editors send it as `<address_details>, <location>` and keep `address_details` apart
+so they can show the two parts again. The API does not require the field, so older clients and
+older locations stay valid; the editors require it. Approved company registrations copy
+`location.address_details` from the submitted draft onto the primary location.
+
 The Dine-in payment policy endpoint requires `downpayment:settings` (or master-admin/admin
 authority) and an assigned branch grant for non-tenant-wide users. Its request body is:
 
@@ -6403,7 +6411,7 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
 | `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
 
-`POST /dgfy/customer/addresses` and `PUT/PATCH /dgfy/customer/addresses/:address_id` accept `label`, `address_line`, optional nullable `latitude`, optional nullable `longitude`, and `is_default`. Latitude must be within `-90..90`, longitude must be within `-180..180`, and coordinates must be supplied or cleared as a pair. Text-only addresses remain valid fallback records and must not be rejected only because coordinates are absent. Coordinate-backed addresses are preferred for delivery checkout because Storefront checkout persists them as nullable `delivery_latitude` and `delivery_longitude` on the online POS transaction.
+`POST /dgfy/customer/addresses` and `PUT/PATCH /dgfy/customer/addresses/:address_id` accept `label`, `address_line`, optional nullable `address_details`, optional nullable `latitude`, optional nullable `longitude`, and `is_default`. `address_details` (#2594) is the customer's own house number, Blk/Lot, unit or building, at most 255 characters, trimmed, with a blank value stored as `null`; it is kept apart from the geocoded `address_line` so checkout can restore both parts, and an update leaves it untouched unless the body carries it. The API does not require it: addresses saved before it existed stay valid, and Storefront checkout asks for the details when such an address is used. Latitude must be within `-90..90`, longitude must be within `-180..180`, and coordinates must be supplied or cleared as a pair. Text-only addresses remain valid fallback records and must not be rejected only because coordinates are absent. Coordinate-backed addresses are preferred for delivery checkout because Storefront checkout persists them as nullable `delivery_latitude` and `delivery_longitude` on the online POS transaction.
 
 Storefront checkout keeps account-saved, temporary checkout, recommended store or branch, manual map, current-device, and text-only location states internally distinct while preserving the public checkout payload shape. A delivery checkout is valid when it has readable address text, with or without coordinates. If coordinates are present, POS incoming orders can render address text, coordinate text, and a map-navigation link; if coordinates are absent, POS must render the text address without a broken map link.
 
@@ -6528,6 +6536,37 @@ Platform Admin authentication uses an HttpOnly landlord session cookie. `/admin/
 | `DELETE` | `/admin/platform-admins/:adminId` | Remove an eligible delegated identity |
 
 Blank delegated-user password input applies the documented temporary default. Explicit creation/reset passwords and own-password changes require at least eight characters. Password values are never returned by list/read endpoints or written to audit details.
+
+### Push diagnostics (Platform Admin)
+
+Operator-only diagnostics for outbound push delivery (ADR 0097, #2579). Every `/admin/push-diagnostics*` endpoint requires an active Platform Admin session with `admin.push_diagnostics` and returns `Cache-Control: no-store`. Responses describe only the connected API environment (`environment.label` comes from `DEPLOY_ENV_LABEL`, then `SENTRY_ENVIRONMENT`, else `unknown`) and never contain raw push tokens, secret values, owner identifiers, tracking PINs, tenant ids, or provider ticket ids. Registrations and delivery rows carry pseudonymous refs derived from the keyed token hash; order references are one-way keyed correlation refs.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/admin/push-diagnostics/overview` | Environment label, presence-only provider/secret readiness, registration counts by app/brand/platform, 24h/7d delivery and dispatch-decision counts. Audited (`push_diagnostics.accessed`) before data is returned |
+| `GET` | `/admin/push-diagnostics/visibility` | Per-deployment visibility switches for `storefront`, `pos`, and `fiscalpos`; missing rows default off |
+| `PUT` | `/admin/push-diagnostics/visibility/:app` | Set `{enabled: boolean}` for one supported app; extra body fields are rejected. Changed values are audited atomically; a no-op is not audited |
+| `GET` | `/admin/push-diagnostics/registrations` | Capped list (`limit` <= 100; filters `app`, `brand`, `platform`, `state`) |
+| `GET` | `/admin/push-diagnostics/attempts` | Recent delivery attempts with a derived `state` and recent dispatch decisions with `reason_code` (`window_hours` <= 168; filters `purpose`, `status`, `outcome`) |
+| `GET` | `/admin/push-diagnostics/diagnostic-devices` | Enrolled diagnostic devices (no tokens) |
+| `POST` | `/admin/push-diagnostics/enrollment-codes` | Issue a single-use code valid for 10 minutes; the plaintext is returned once. Audited |
+| `DELETE` | `/admin/push-diagnostics/diagnostic-devices/:id` | Revoke a diagnostic device. Audited |
+| `POST` | `/admin/push-diagnostics/diagnostic-devices/:id/test-send` | Send a fixed-copy test push to that device only. Accepts no body (any field, including a token, is rejected); limited per admin (3 per 10 minutes) and per device (10 per hour); audited; recorded in `push_delivery_logs` with purpose `diagnostic_test` |
+
+Delivery `state` values: `no_provider` (unconfigured or simulated; nothing was delivered), `pending_dispatch`, `send_failed`, `rejected_by_expo`, `accepted_receipt_pending` (accepted by Expo, receipt not yet checked), `receipt_ok` (Expo handed the message to APNs/FCM), `receipt_error`, `receipt_other`. None of them states that a notification was displayed on a device.
+
+`POST /push-diagnostics/enroll` is the device-side enrollment call and is session-less: the body `{code, token, platform, app, brand}` must carry a valid, unexpired, unused code issued above. Every code failure returns the same `404`. The response contains only `{enrolled, ref}`. It is limited per IP (10 per 15 minutes).
+
+`GET /push-diagnostics/availability?app=<app>&brand=<brand>` is a separate session-less mobile read
+limited to 120 requests per IP per 15 minutes by default. It returns exactly `{enabled: boolean}`
+with `Cache-Control: public, max-age=30`. `app` must exactly match `storefront`, `pos`, or
+`fiscalpos`; `brand` must be present and match the existing 1–80 character brand shape. Brand is
+client-supplied metadata and does not select a setting: any well-formed brand receives the app-level
+value. Missing or malformed values and unrecognized query keys fail closed with `200 {enabled:false}`.
+Availability controls whether the mobile app shows its diagnostics screen; it does not change
+enrollment-code validity, enrollment, revocation, or test-send behavior. Storage failures return a
+generic `503` with `Cache-Control: no-store`; clients should keep the diagnostics screen hidden on
+any non-200 response.
 
 ### QA landlord invoices
 
@@ -7181,7 +7220,7 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
 - The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; adjust-mode click, marker drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Settings opens locked and requires `Adjust Pin` before map interactions can change coordinates. Onboarding starts in adjust mode only after searchable storefront visibility is enabled and no valid saved pin exists. The picker opens over Iloilo City, Philippines when no saved pin exists, but that is camera state only and must not be saved as an implicit merchant pin. Missing coordinates, `0,0`, and browser geolocation results outside the Philippines are invalid for merchant-store pins. Browser geolocation uses high-accuracy mode when available and shows reported accuracy feedback, but it remains best effort and cannot guarantee device precision. Click, drag, and geolocation selections may request PH reverse-geocoded address suggestions; reverse-geocode failure must not block coordinate saving.
-- `GET /api/v1/geo/reverse-geocode` returns PH address metadata for map pin suggestions. Successful responses include `provider` (`dgfy-quadruper` when resolved by the DGFY-operated Quadruper geocoding service, `dgfy-ph-local` when served by the bundled fallback dataset), `precision` (`house`, `street`, `barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, `components` (`housenumber`, `street`, `locality`, `district`, `city`, `state`, `postcode` — every field nullable), and `landmarks` (an always-present array, capped at five, of nearby named points of interest ordered by ascending distance, each with `name`, `category`, `osm_key`, `osm_value`, `distance_meters`, `latitude`, `longitude`; empty on the bundled-fallback path). PSGC code fields and `provenance` appear only on the bundled-fallback path, since OpenStreetMap carries no PSGC identifiers. The endpoint must not return vague `Near ...` labels; when no match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`. Reverse-geocode failure must not block saving valid coordinates.
+- `GET /api/v1/geo/reverse-geocode` returns PH address metadata for map pin suggestions. Successful responses include `provider` (`dgfy-quadruper` when resolved by the DGFY-operated Quadruper geocoding service, `dgfy-ph-local` when served by the bundled fallback dataset), `precision` (`house`, `street`, `barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, `components` (`housenumber`, `street`, `locality`, `district`, `city`, `state`, `postcode` — every field nullable), and `landmarks` (an always-present array, capped at five, of nearby named points of interest ordered by ascending distance, each with `name`, `category`, `osm_key`, `osm_value`, `distance_meters`, `latitude`, `longitude`; empty on the bundled-fallback path). PSGC code fields and `provenance` appear only on the bundled-fallback path, since OpenStreetMap carries no PSGC identifiers. The endpoint must not return vague `Near ...` labels; when no match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`. Reverse-geocode failure must not block saving valid coordinates. The `address_line` starts with the street when a feature naming one (a street feature's own name, or a house or point of interest's `street`) lies within 75 m of the pin, and then reports `precision="street"`; otherwise it stays at the administrative level and `precision` names that level. A reverse label never contains a house number or a point-of-interest name (#2593).
 - `GET /api/v1/geo/address-search` accepts `query` (2-120 chars), `limit` (1-20, default 8), and optional `lat`/`lon` bias coordinates. `lat` and `lon` are all-or-nothing: supplying exactly one returns `422`. Results are hard-filtered to the Philippines bounding box. Each result carries `address_line`, `latitude`, `longitude`, `precision`, `provider`, and `components` (same shape as reverse-geocode). Forward labels include the street, prefixed by the house number when OpenStreetMap has one. Resolution is promised to street level, not house level: a query with a leading house number (`52 Rizal Street`, `#52-A Rizal St, Jaro`) also searches the street part alone and returns matching streets at `precision="street"` with the typed number carried in `address_line` and `components.housenumber`; an exact house on that street ranks first at `precision="house"`. When no street matches, results are those of the query as typed. Location bias stays a ranking hint; the search area is not narrowed (#2484).
 - The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, compatibility `open`/`close`, and `intervals: [{ open, close }]` in `HH:mm` format. Legacy one-window `{ enabled, open, close }` entries normalize to one interval.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.

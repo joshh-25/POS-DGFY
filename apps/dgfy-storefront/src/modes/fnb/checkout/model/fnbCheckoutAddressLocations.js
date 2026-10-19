@@ -24,6 +24,8 @@ export function mapAccountAddressToCheckoutLocation(address, trimAddressCountryS
     source: 'account',
     label: String(address?.label || 'Saved address').trim() || 'Saved address',
     fullAddress,
+    // #2594: '' for an address saved before house/unit details existed.
+    addressDetails: String(address?.address_details || '').trim(),
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
     recommended: false,

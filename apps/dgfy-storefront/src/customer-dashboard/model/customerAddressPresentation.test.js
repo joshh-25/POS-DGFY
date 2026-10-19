@@ -20,6 +20,7 @@ describe('customer address presentation', () => {
       address_id: 10,
       label: 'Home',
       address_line: 'Ibarra Street, Aurora Subdivision, City Proper',
+      address_details: '',
       latitude: null,
       longitude: null,
       is_default: false

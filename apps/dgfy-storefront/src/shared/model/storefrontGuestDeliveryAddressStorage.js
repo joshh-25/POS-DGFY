@@ -17,6 +17,8 @@ export const normalizeGuestDeliveryAddress = (value) => {
   return {
     version: 1,
     addressLine,
+    // #2594: optional house/unit details; '' for an address remembered before they existed.
+    addressDetails: String(value.addressDetails || '').trim().slice(0, 255),
     latitude: hasFiniteCoordinates ? latitude : null,
     longitude: hasFiniteCoordinates ? longitude : null,
     savedAt: Number(value.savedAt) || Date.now()

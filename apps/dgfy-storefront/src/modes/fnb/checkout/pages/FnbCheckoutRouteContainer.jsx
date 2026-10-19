@@ -12,6 +12,8 @@ import { DeliveryPinMap } from '../../../../features/locations/components/Delive
 import { applyDeliveryAddressFieldChange, buildSearchSelectedPin, resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
+import { DeliveryAddressDetailsField } from '../../../../shared/components/checkout/DeliveryAddressDetailsField.jsx';
+import { useDeliveryAddressDetails } from '../../../../shared/hooks/useDeliveryAddressDetails.js';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
@@ -213,6 +215,7 @@ export function FnbCheckoutRouteContainer({
     isDeliveryOrder
   });
   const checkoutTypography = getCheckoutStepTypography();
+  const [deliveryAddressDetails, setDeliveryAddressDetails] = useDeliveryAddressDetails();
   const handleStartMapPin = () => {
     setDeliveryLocationAction('map');
     setSelectedSavedLocationId('');
@@ -229,11 +232,8 @@ export function FnbCheckoutRouteContainer({
     setDeliveryLocationAction('map');
     setSelectedSavedLocationId('');
     setPinLocationError('');
-    setCustomerPin({
-      latitude: Number(latitude.toFixed(6)),
-      longitude: Number(longitude.toFixed(6)),
-      address_line: addressLine
-    });
+    // #2594: the shared builder carries a searched house number to the details field.
+    setCustomerPin(buildSearchSelectedPin(result));
   };
   const handleAddLocationFromMap = async () => {
     const saved = await handleAddPinnedLocation?.();
@@ -381,6 +381,15 @@ export function FnbCheckoutRouteContainer({
                           {isFnbOrderResponsiveFlow ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
                         </button>
                       </div>
+                      <DeliveryAddressDetailsField
+                        value={deliveryAddressDetails}
+                        onValueChange={setDeliveryAddressDetails}
+                        locationAddress={deliveryLocationDisplayAddress}
+                        isMobileViewport={isFnbOrderResponsiveFlow}
+                        accentColor={fnbOrderBrand}
+                        accentTint={fnbOrderBrandTint}
+                        accentBorder={fnbOrderBrandSoft}
+                      />
                       {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
                       <div id="delivery-location-map-panel" style={{ position: 'relative', width: '100%', minWidth: 0 }}>
                         <DeliveryPinMap

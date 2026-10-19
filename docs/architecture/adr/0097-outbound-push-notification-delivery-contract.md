@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-10-17
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-19
 review_by: 2027-04-17
 applies_to: outbound_push_delivery
 topic: outbound_push_notification_delivery_contract
@@ -130,3 +130,55 @@ SMS behavior remains unchanged.
   Clients call deletion on sign-out and re-register on launch to refresh `last_seen_at`.
 - Expo remains `unconfigured` by default. This amendment does not add a mobile client, provider
   credentials, web push, an outbox, or any other staff-notification event.
+
+### 2026-10-19 — Platform Admin push diagnostics (#2579)
+
+- **Clauses amended:** Decisions 6 and 10 (`[default]`). No `[binding]` clause changes.
+- **Decision 10:** Adds one operator surface that is not a push event for customers or staff: Platform
+  Admin push diagnostics, served by `apps/dgfy-admin` under the `admin.push_diagnostics` page grant
+  (ADR 0047) and by `/api/v1/admin/push-diagnostics*`. It is read-only except for an audited test send
+  to an operator-enrolled diagnostic device, which uses the fixed purpose `diagnostic_test`, fixed
+  generic copy, a per-admin and per-device limit, and no customer or arbitrary token target. It adds no
+  mobile client, customer-facing push, web push, outbox, or replay. The page lives in Platform Admin
+  rather than OPIS because the data is landlord-wide operator data and OPIS is the tenant-scoped
+  merchant back office (ADR 0087/0089).
+- **Decision 6:** Dispatch decisions that never create a per-token delivery log (no eligible device,
+  policy skips, rate caps, hash failures, dispatch failure) are recorded in `push_dispatch_events` with
+  a fixed reason code, optional tenant and public order reference, and an eligible-token count. The
+  table holds no token, token hash, owner id, or message content, is written best-effort so a recording
+  failure never fails checkout or a status transition (Decision 8), and follows the same 30-day
+  retention as delivery logs. Diagnostic devices live in `push_diagnostic_devices` (raw Expo token,
+  never returned by any API, with the same single-active-token rule) so no operator concept is added to
+  `push_device_tokens`; their test sends reuse `push_delivery_logs` and the receipt poller, and a
+  `DeviceNotRegistered` result revokes the diagnostic device.
+- **Enrollment:** A Platform Admin issues a single-use, 10-minute enrollment code (stored only as a
+  keyed hash). The device presents the code and its Expo token to the session-less
+  `POST /api/v1/push-diagnostics/enroll`, which is per-IP limited and answers every code failure
+  identically. The mobile and POS clients that call it are separate work; until they do, no diagnostic
+  device exists and the test send stays unavailable.
+- **Redaction:** Diagnostics responses expose only presence booleans for configuration, a pseudonymous
+  registration ref (a prefix of the keyed token hash already stored in delivery logs), an owner *type*,
+  and one-way keyed correlation refs in place of tracking PINs and order ids. They never expose tokens,
+  secret values, tenant or owner identifiers, or provider ticket ids, and delivery states describe
+  provider acceptance and receipt only, never display on a device.
+- **Environment label:** Because `NODE_ENV` is `production` on staging and production alike, the page
+  shows `DEPLOY_ENV_LABEL` (falling back to `SENTRY_ENVIRONMENT`, otherwise `unknown`) and each
+  deployment shows only its own database.
+
+### 2026-10-19 — Per-app mobile push-diagnostics visibility (#2602)
+
+- **Clauses amended:** Decision 10 (`[default]`). No `[binding]` clause changes.
+- **Decision 10:** Platform Admin may enable or disable the diagnostics screen independently for the
+  fixed apps `storefront`, `pos`, and `fiscalpos`. The landlord table is deployment-local, defaults to
+  off when a row is missing, and does not change push enrollment, enrollment-code validity, device
+  revocation, or test-send rules. Changed values and their `push_diagnostics.visibility_changed`
+  audit row commit atomically; a no-op is not audited.
+- Mobile clients read only `{enabled}` from the session-less, per-IP-limited
+  `GET /api/v1/push-diagnostics/availability`. `app` must exactly match a supported app. `brand` is
+  required and shape-validated using the existing client-label pattern, but does not select a setting;
+  every well-formed brand receives the app-level value. Missing or malformed inputs and unknown query
+  keys fail closed to `{enabled:false}`. A successful response may be cached for 30 seconds; storage
+  errors return `503` with `Cache-Control: no-store`, and clients keep the screen hidden on non-200.
+- This is an operator-controlled UI visibility switch only. It adds no mobile client code and does not
+  authorize enrollment or test sends. It adds no brand registry, per-brand setting, push event, or
+  cross-deployment synchronization.

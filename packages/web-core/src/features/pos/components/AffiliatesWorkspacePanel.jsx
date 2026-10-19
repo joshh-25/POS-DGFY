@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { RefreshCcw, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import {
     upsertAffiliatePriceRule,
     deactivateAffiliatePriceRule
 } from '../services/affiliateService.js';
-import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { isIminWrapperRuntime, posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     bpsToPercentString,
     centavosToPesoString,
@@ -76,6 +76,23 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('list');
+    const [renderedTab, setRenderedTab] = useState('list');
+    const [paneInlineStyle, setPaneInlineStyle] = useState({
+        opacity: 1,
+        transition: 'transform 150ms ease, opacity 150ms ease'
+    });
+    const animationTimersRef = useRef([]);
+    const isIminRuntime = isIminWrapperRuntime();
+    const affiliateTabOrder = useMemo(
+        () => ['list', ...(canSeeCashoutQueue ? ['cashout'] : []), 'settings'],
+        [canSeeCashoutQueue]
+    );
+    const visibleTab = affiliateTabOrder.includes(renderedTab)
+        ? renderedTab
+        : (affiliateTabOrder[0] || 'list');
+    const selectedTab = affiliateTabOrder.includes(activeTab)
+        ? activeTab
+        : (affiliateTabOrder[0] || 'list');
     const [settingsDraft, setSettingsDraft] = useState(null);
     const [initialSettingsDraft, setInitialSettingsDraft] = useState(null);
     const [savingSettings, setSavingSettings] = useState(false);
@@ -102,6 +119,76 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
     const [affiliateRuleDrafts, setAffiliateRuleDrafts] = useState({});
     const [affiliateRuleBusyId, setAffiliateRuleBusyId] = useState(null);
     const [expandedRuleEnrollmentId, setExpandedRuleEnrollmentId] = useState(null);
+
+    const resolveAffiliateTabIndex = useCallback((tabId) => {
+        const index = affiliateTabOrder.indexOf(tabId);
+        return index >= 0 ? index : 0;
+    }, [affiliateTabOrder]);
+
+    const clearAnimationTimers = useCallback(() => {
+        animationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+        animationTimersRef.current = [];
+    }, []);
+
+    useEffect(() => () => clearAnimationTimers(), [clearAnimationTimers]);
+
+    useEffect(() => {
+        if (affiliateTabOrder.includes(activeTab)) return;
+        clearAnimationTimers();
+        const fallbackTab = affiliateTabOrder[0] || 'list';
+        setActiveTab(fallbackTab);
+        setRenderedTab(fallbackTab);
+        setPaneInlineStyle({ opacity: 1, transition: 'none' });
+    }, [activeTab, affiliateTabOrder, clearAnimationTimers]);
+
+    const handleAffiliateTabChange = useCallback((nextTab) => {
+        if (!affiliateTabOrder.includes(nextTab) || nextTab === activeTab) return;
+        clearAnimationTimers();
+
+        if (isIminRuntime) {
+            setActiveTab(nextTab);
+            setRenderedTab(nextTab);
+            setPaneInlineStyle({ opacity: 1, transition: 'none' });
+            return;
+        }
+
+        const movingForward = resolveAffiliateTabIndex(nextTab) > resolveAffiliateTabIndex(activeTab);
+        const exitOffset = movingForward ? -28 : 28;
+        const enterOffset = movingForward ? 28 : -28;
+
+        setActiveTab(nextTab);
+        setPaneInlineStyle({
+            transform: `translateX(${exitOffset}px)`,
+            opacity: 0,
+            transition: 'transform 150ms ease, opacity 150ms ease'
+        });
+
+        const swapTimer = window.setTimeout(() => {
+            setRenderedTab(nextTab);
+            setPaneInlineStyle({
+                transform: `translateX(${enterOffset}px)`,
+                opacity: 0,
+                transition: 'none'
+            });
+
+            const enterTimer = window.setTimeout(() => {
+                setPaneInlineStyle({
+                    transform: 'translateX(0)',
+                    opacity: 1,
+                    transition: 'transform 150ms ease, opacity 150ms ease'
+                });
+
+                const settleTimer = window.setTimeout(() => {
+                    setPaneInlineStyle({ opacity: 1, transition: 'none' });
+                }, 150);
+                animationTimersRef.current.push(settleTimer);
+            }, 16);
+
+            animationTimersRef.current.push(enterTimer);
+        }, 150);
+
+        animationTimersRef.current.push(swapTimer);
+    }, [activeTab, affiliateTabOrder, clearAnimationTimers, isIminRuntime, resolveAffiliateTabIndex]);
 
     const blockLocalPreviewAction = useCallback(() => {
         if (!localPreviewEnabled) return false;
@@ -475,16 +562,16 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
             {!loading && !error && settingsDraft && (
                 <>
                     <AffiliateSecondaryNav
-                        activeTab={activeTab}
-                        onChange={(tab) => {
-                            if (tab === 'cashout' && !canSeeCashoutQueue) return;
-                            setActiveTab(tab);
-                        }}
+                        activeTab={selectedTab}
+                        onChange={handleAffiliateTabChange}
                         canSeeCashoutQueue={canSeeCashoutQueue}
                     />
 
-                    <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
-                        {activeTab === 'list' && (
+                    <div
+                        className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden"
+                        style={paneInlineStyle}
+                    >
+                        {visibleTab === 'list' && (
                             <AffiliateListView
                                 affiliates={affiliates}
                                 canManage={canManage}
@@ -513,7 +600,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                             />
                         )}
 
-                        {activeTab === 'cashout' && canSeeCashoutQueue && (
+                        {visibleTab === 'cashout' && canSeeCashoutQueue && (
                             <AffiliateCashoutView
                                 cashouts={cashouts}
                                 affiliates={affiliates}
@@ -530,7 +617,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                             />
                         )}
 
-                        {activeTab === 'settings' && (
+                        {visibleTab === 'settings' && (
                             <AffiliateSettingsView
                                 canManageSettings={canManageSettings}
                                 settingsDraft={settingsDraft}

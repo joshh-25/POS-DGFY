@@ -91,6 +91,9 @@ shared Redis healthy rather than treating local fallback as distributed protecti
 | `lookupLimiter` | 5 | 5 min | `lookup:<ip>:<email>` | `/auth/lookup` |
 | `dgfyTenantSessionLimiter` | 10 | 15 min | `dgfy_tenant_session:<ip>:<account>:<tenant>` | `/dgfy/auth/tenant-session` (post-auth) |
 | `dgfyAccountSearchLimiter` | 30 | 1 min | `dgfy_account_search:<tenant>:<user>:<ip>:<query>` | `/dgfy/accounts/search` |
+| `adminPushTestSendLimiter` | 3 | 10 min | `admin_push_test_send:<admin id>` | `/admin/push-diagnostics/diagnostic-devices/:id/test-send` (post-auth; env `RATE_LIMIT_ADMIN_PUSH_TEST_SEND_{WINDOW_MS,MAX_REQUESTS}`) |
+| `pushDiagnosticEnrollLimiter` | 10 | 15 min | `push_diagnostic_enroll:<ip>` | `/push-diagnostics/enroll` (session-less; env `RATE_LIMIT_PUSH_DIAGNOSTIC_ENROLL_{WINDOW_MS,MAX_REQUESTS}`) |
+| `pushDiagnosticAvailabilityLimiter` | 120 | 15 min | `push_diagnostic_availability:<ip>` | `/push-diagnostics/availability` (session-less; env `RATE_LIMIT_PUSH_DIAGNOSTIC_AVAILABILITY_{WINDOW_MS,MAX_REQUESTS}`) |
 
 **`authLimiter` is shared across ~20 mount points, not just login/register** —
 `routes/auth.js` (`/register`, `/login`) and `routes/dgfy.js` (`/auth/register`, `/auth/login`,

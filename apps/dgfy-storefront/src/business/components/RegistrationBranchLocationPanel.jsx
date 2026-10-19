@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { STOREFRONT_TYPOGRAPHY } from '../../../../../packages/web-core/src/features/pos/settings/StorefrontSectionPrimitives.jsx';
 
+import MerchantAddressDetailsField from '../../../../../packages/web-core/src/components/maps/MerchantAddressDetailsField.jsx';
+import { hasMerchantAddressDetails } from '../../../../../packages/web-core/src/components/maps/merchantAddressDetails.js';
+
 const MapPinPicker = lazy(() => import('../../../../../packages/web-core/src/components/maps/MapPinPicker.jsx'));
 const REGISTRATION_LOCATION_MAP_HEIGHT_CLASS = 'h-[150px] rounded-xl sm:h-[340px] lg:h-[420px]';
 
@@ -28,13 +31,16 @@ function RegistrationBranchLocationPanel({
   candidate,
   onCandidateChange,
   onAddressChange,
+  onDetailsChange = () => {},
   onAdd,
   onCancel,
   onChangeLocation,
   disabled = false
 }) {
   const hasAddedLocation = Boolean(getLocationAddress(location) && hasCoordinates(location));
-  const isCandidateReady = Boolean(candidate && getLocationAddress(candidate) && hasCoordinates(candidate));
+  // #2595: a branch also needs the street no., unit, floor or building geocoding cannot supply.
+  const isCandidateReady = Boolean(candidate && getLocationAddress(candidate) && hasCoordinates(candidate)
+    && hasMerchantAddressDetails(candidate.address_details));
   const shouldHighlightLocationSearch = hasAddedLocation && Boolean(candidate);
   const shownLocation = candidate || location;
   const selectedAddress = getLocationAddress(candidate);
@@ -88,11 +94,21 @@ function RegistrationBranchLocationPanel({
                 className="h-9 rounded-lg border-slate-200 text-[13px]"
               />
             </div>
+            <MerchantAddressDetailsField
+              className="mt-3"
+              value={candidate.address_details || ''}
+              onChange={onDetailsChange}
+              locationAddress={selectedAddress}
+              disabled={disabled}
+              inputClassName="h-9 rounded-lg border-slate-200 text-[13px]"
+            />
             {!isCandidateReady ? (
               <p className="text-xs leading-5 text-slate-500" role="status">
-                {hasCoordinates(candidate)
-                  ? 'Add a business address to use this map pin.'
-                  : 'Choose a point on the map and provide its address before adding the branch.'}
+                {!hasCoordinates(candidate)
+                  ? 'Choose a point on the map and provide its address before adding the branch.'
+                  : !selectedAddress
+                    ? 'Add a business address to use this map pin.'
+                    : 'Add the street number, unit, floor or building before adding the branch.'}
               </p>
             ) : null}
             <div className="mt-3 flex justify-end">

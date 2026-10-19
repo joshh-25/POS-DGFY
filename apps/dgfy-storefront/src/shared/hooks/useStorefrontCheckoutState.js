@@ -26,6 +26,7 @@ export function useStorefrontCheckoutState() {
   const [guestDetailsEditMode, setGuestDetailsEditMode] = useCheckoutField('guestDetailsEditMode', 'GuestDetailsEditMode');
   const [isUsingDifferentGuestDetails, setIsUsingDifferentGuestDetails] = useCheckoutField('isUsingDifferentGuestDetails', 'IsUsingDifferentGuestDetails');
   const [customerAddress, setCustomerAddress] = useCheckoutField('customerAddress', 'CustomerAddress');
+  const [deliveryAddressDetails, setDeliveryAddressDetails] = useCheckoutField('deliveryAddressDetails', 'DeliveryAddressDetails');
   const [serviceLocationLandmarkNote, setServiceLocationLandmarkNote] = useCheckoutField('serviceLocationLandmarkNote', 'ServiceLocationLandmarkNote');
   const [serviceUnitType, setServiceUnitType] = useCheckoutField('serviceUnitType', 'ServiceUnitType');
   const [customerPin, setCustomerPin] = useCheckoutField('customerPin', 'CustomerPin');
@@ -93,6 +94,8 @@ export function useStorefrontCheckoutState() {
     setIsUsingDifferentGuestDetails,
     customerAddress,
     setCustomerAddress,
+    deliveryAddressDetails,
+    setDeliveryAddressDetails,
     serviceLocationLandmarkNote,
     setServiceLocationLandmarkNote,
     serviceUnitType,

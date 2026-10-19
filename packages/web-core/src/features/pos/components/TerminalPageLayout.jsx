@@ -660,8 +660,10 @@ export default function TerminalPageLayout({
     ? 'pointer-events-none select-none opacity-80 blur-[2px]'
     : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
-  // History, Reports, Settings, and Shift own their page-level gutters through
-  // PosPageFrame. Keep the generic shell padding for every other workspace.
+  // History, Reports, Settings, Shift, and Audit use the full-height workspace
+  // layout so their content can scroll inside the workspace and keep controls or
+  // pagination in the correct fixed position. Keep the generic shell padding for
+  // every other workspace.
   // MSME-restricted settings modes are remapped to Shift Controls and use the
   // same page frame as the direct Shift routes.
   const usesStandardPosPageFrame = IS_DGFY_POS_SURFACE
@@ -679,10 +681,12 @@ export default function TerminalPageLayout({
   const isAffiliateWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_affiliates';
   const isVoucherManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_vouchers';
   const isPricelistManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_pricelists';
+  const isAuditWorkspace = isOperationsWorkspaceMode && posViewMode === 'audit';
   const isFullBleedCatalogWorkspace = isItemsCatalogWorkspace
     || isAffiliateWorkspace
     || isVoucherManagementWorkspace
-    || isPricelistManagementWorkspace;
+    || isPricelistManagementWorkspace
+    || isAuditWorkspace;
   const workspaceContentModifierClassName = isItemsView
     ? ' pos-items-workspace-content'
     : isAffiliateWorkspace

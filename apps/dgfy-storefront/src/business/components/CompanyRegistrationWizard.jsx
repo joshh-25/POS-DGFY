@@ -20,6 +20,7 @@ import StorefrontSocialLinksSettings from '../../../../../packages/web-core/src/
 import StorefrontBusinessHoursScheduler from '../../../../../packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { createDefaultStorefrontBusinessHours } from '../../../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
 import RegistrationBranchLocationPanel from './RegistrationBranchLocationPanel.jsx';
+import { buildMerchantAddressPayload, hasMerchantAddressDetails, readMerchantAddressParts } from '../../../../../packages/web-core/src/components/maps/merchantAddressDetails.js';
 import StagedStorefrontImages from './StagedStorefrontImages.jsx';
 import {
   createCompanyRegistrationDraft,
@@ -598,15 +599,27 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
     setLocationCandidate(nextLocation);
   };
 
+  // #2595: the editor works on the geocoded location and the street no./unit details separately;
+  // a saved branch location's address_line is the combined `<details>, <location>`.
+  const toEditableLocation = (location = {}) => ({
+    ...location,
+    ...readMerchantAddressParts({ address_line: registrationLocationAddress(location), address_details: location?.address_details })
+  });
+
   const handleLocationCandidateChange = (nextLocation) => {
     const currentCandidate = locationCandidateRef.current;
-    const mergedLocation = { ...(currentCandidate || payloadRef.current.location || {}), ...nextLocation };
+    const mergedLocation = { ...(currentCandidate || toEditableLocation(payloadRef.current.location || {})), ...nextLocation };
     if (!currentCandidate && locationsShareCoordinates(mergedLocation, confirmedLocationRef.current)) return;
     setLocationCandidateDraft(mergedLocation);
   };
 
+  const handleLocationDetailsChange = (addressDetails) => {
+    const currentLocation = locationCandidateRef.current || toEditableLocation(payloadRef.current.location || {});
+    setLocationCandidateDraft({ ...currentLocation, address_details: addressDetails });
+  };
+
   const handleLocationAddressChange = (addressLine) => {
-    const currentLocation = locationCandidateRef.current || payloadRef.current.location || {};
+    const currentLocation = locationCandidateRef.current || toEditableLocation(payloadRef.current.location || {});
     setLocationCandidateDraft({
       ...currentLocation,
       address_line: addressLine,
@@ -803,11 +816,12 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
     if (!draftRef.current || isSaving || isSubmitting || !locationCandidate) return false;
     const addressLine = registrationLocationAddress(locationCandidate);
     if (!addressLine || !hasRegistrationLocationCoordinates(locationCandidate)) return false;
+    if (!hasMerchantAddressDetails(locationCandidate.address_details)) return false;
     const nextPayload = {
       ...payloadRef.current,
       location: {
         ...locationCandidate,
-        address_line: addressLine,
+        ...buildMerchantAddressPayload({ details: locationCandidate.address_details, location: addressLine }),
         latitude: Number(locationCandidate.latitude),
         longitude: Number(locationCandidate.longitude)
       }
@@ -957,9 +971,10 @@ export default function CompanyRegistrationWizard({ account, token, legalTerms, 
                 candidate={locationCandidate}
                 onCandidateChange={handleLocationCandidateChange}
                 onAddressChange={handleLocationAddressChange}
+                onDetailsChange={handleLocationDetailsChange}
                 onAdd={() => void addBranchLocation()}
                 onCancel={() => setLocationCandidateDraft(null)}
-                onChangeLocation={() => setLocationCandidateDraft({ ...payload.location })}
+                onChangeLocation={() => setLocationCandidateDraft(toEditableLocation(payload.location))}
                 disabled={isBusy}
               />
             </SectionCard>

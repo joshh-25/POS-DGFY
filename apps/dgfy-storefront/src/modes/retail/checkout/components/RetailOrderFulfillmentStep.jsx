@@ -4,6 +4,8 @@ import { DeliveryPinMap } from '../../../../features/locations/components/Delive
 import { resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
+import { DeliveryAddressDetailsField } from '../../../../shared/components/checkout/DeliveryAddressDetailsField.jsx';
+import { useDeliveryAddressDetails } from '../../../../shared/hooks/useDeliveryAddressDetails.js';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { RetailOrderExpandedMapModal } from './RetailOrderExpandedMapModal.jsx';
 import { RetailOrderSavedAddressesModal } from './RetailOrderSavedAddressesModal.jsx';
@@ -86,10 +88,12 @@ export function RetailOrderFulfillmentStep({
   showExpandedDeliveryMap = false,
   showMobileAddressModal = false,
   specialInstructions = '',
+  showAddressDetailsError = false,
   orderTimingPolicy = resolveOrderTimingPolicy(),
   storefrontHours
 }) {
   const [unavailableMessage, setUnavailableMessage] = useState('');
+  const [deliveryAddressDetails, setDeliveryAddressDetails] = useDeliveryAddressDetails();
   const [dateTimePickerOpen, setDateTimePickerOpen] = useState(false);
   const isDeliveryOrder = orderMethod === 'delivery';
   const resolvedOrderMethodOptions = orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS;
@@ -363,6 +367,16 @@ export function RetailOrderFulfillmentStep({
                   {isMobileViewport ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
                 </button>
               </div>
+              <DeliveryAddressDetailsField
+                value={deliveryAddressDetails}
+                onValueChange={setDeliveryAddressDetails}
+                locationAddress={deliveryLocationDisplayAddress}
+                showError={showAddressDetailsError}
+                isMobileViewport={isMobileViewport}
+                accentColor={RETAIL_ACCENT}
+                accentTint={RETAIL_ACCENT_TINT}
+                accentBorder={RETAIL_ACCENT_SOFT_BORDER}
+              />
               {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
               <div style={{ position: 'relative', width: '100%', minWidth: 0 }}>
                 <DeliveryPinMap

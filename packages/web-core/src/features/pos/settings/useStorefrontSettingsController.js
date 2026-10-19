@@ -3,6 +3,7 @@ import { resolveStorefrontTenantUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import { COVER_PHOTO_TRANSFORM_DEFAULT } from '@sieitzz/shared-constants/coverPhotoTransform';
 import { createDefaultLocationForm, createDefaultStorefrontForm } from './posSettingsModels.js';
+import { readMerchantAddressParts } from '@/src/components/maps/merchantAddressDetails.js';
 
 export default function useStorefrontSettingsController({ effectiveCustomerAccessMode = 'catalog', storefrontLocations = [] } = {}) {
   const [storefrontForm, setStorefrontForm] = useState(createDefaultStorefrontForm);
@@ -62,7 +63,8 @@ export default function useStorefrontSettingsController({ effectiveCustomerAcces
     if (!location) return;
     setEditingLocationId(location.location_id);
     setLocationForm({
-      name: String(location.name || ''), address_line: String(location.address_line || ''),
+      // #2595: the form edits the geocoded location and the merchant's details as two fields.
+      name: String(location.name || ''), ...readMerchantAddressParts(location),
       latitude: String(location.latitude ?? ''), longitude: String(location.longitude ?? ''),
       location_version: String(location.updated_at || ''), delivery_radius_km: String(location.delivery_radius_km ?? '5'),
       current_wait_time_minutes: String(location.current_wait_time_minutes ?? '15'), is_open: location.is_open !== false,

@@ -11,6 +11,7 @@ import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifie
 import { cancelDglaundryBookingReservations, expireDglaundryBookingSession } from './finalizeDglaundryBookingSession.js';
 import { applyProviderRefundStatus } from './applyProviderRefundStatus.js';
 import { updateTenantOrderPaymentEntryStatus } from '../repositories/tenantOrderPaymentLedgerRepository.js';
+import { getPayMongoMode as defaultGetPayMongoMode } from '../../../config/commercePaymentsFeature.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 
@@ -40,6 +41,17 @@ const getEventResource = (body = {}) => (
 );
 
 const getAttributes = (resource = {}) => resource?.attributes || resource || {};
+const hasLiveModeValue = (value) => value === true || String(value || '').trim().toLowerCase() === 'true';
+const getEventLivemode = ({ paymentResource = {}, resource = {}, body = {} } = {}) => {
+  const value = [
+    getAttributes(paymentResource).livemode,
+    getAttributes(resource).livemode,
+    getAttributes(body?.data?.attributes).livemode,
+    getAttributes(body).livemode
+  ].find((candidate) => candidate !== undefined && candidate !== null);
+
+  return hasLiveModeValue(value);
+};
 const getAccountId = (resource = {}) => {
   const attrs = getAttributes(resource);
   return resource?.id || attrs.account_id || attrs.merchant_id || attrs.id || null;
@@ -119,6 +131,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
   logger,
   recordSucceededRevenueRefund = recordSucceededTenantRevenueRefundUseCase,
   raiseOperationalAlert = async () => {},
+  getPayMongoMode = defaultGetPayMongoMode,
   processVerifiedPaidCommerceSession: processVerifiedPaidCommerceSessionOverride = null,
   partnerClient,
   // Phase 144 (#824): injected so the tenant-ledger wiring is assertable without module mocking,
@@ -338,11 +351,19 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       session = await findSessionForResource(resource) || await findSessionForResource(paymentResource);
 
       if (!session) {
+        const payMongoMode = getPayMongoMode();
+        const eventLivemode = getEventLivemode({ paymentResource, resource, body });
+        const isPaidEvent = eventType === 'payment.paid' || eventType === 'checkout_session.payment.paid';
+        const alertSuppressed = isPaidEvent && payMongoMode === 'test' && eventLivemode !== true;
+
         logger?.warn?.('PayMongo commerce webhook ignored: session not found', {
           eventType,
           providerEventId,
           paymentIntentId: getPaymentIntentId(paymentResource),
-          sessionReference: getSessionReference(resource)
+          sessionReference: getSessionReference(resource),
+          payMongoMode,
+          eventLivemode,
+          ...(alertSuppressed ? { alertSuppressed: 'test_mode' } : {})
         });
         await writeWebhookAudit({
           eventType,
@@ -351,11 +372,11 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           outcome: 'ignored',
           status: 'session_not_found'
         });
-        // #476: a paid event with no local session is money collected with no order record.
-        // Scoped to the money-bearing event types only -- refunds/account-lifecycle events
-        // already logger.warn and return the same way, and alerting on every ignored event
-        // type would bury this signal in noise.
-        if (eventType === 'payment.paid' || eventType === 'checkout_session.payment.paid') {
+        // #476: a paid event with no local session may be money collected with no order record.
+        // #1091 keeps the error alert for live-mode payments and live-mode anomalies, while
+        // suppressing expected non-live PayMongo fan-out in test-mode runtimes. Keep this scoped
+        // to money-bearing event types; alerting on every ignored event type would bury the signal.
+        if (isPaidEvent && !alertSuppressed) {
           await Promise.resolve(raiseOperationalAlert({
             key: 'paymongo.commerce_webhook_unknown_session_paid',
             level: 'error',

@@ -190,7 +190,8 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
-    await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/^Address$/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/Street no\., unit, floor or building/i), 'Unit 2');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
@@ -198,7 +199,9 @@ describe('OnboardingSetupModal behavior', () => {
     await waitFor(() => {
       expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalledWith(expect.objectContaining({
         name: 'Main Branch',
-        address_line: '123 Main Street',
+        // #2595: address_line is the full display address; the details are also kept apart.
+        address_line: 'Unit 2, 123 Main Street',
+        address_details: 'Unit 2',
         latitude: 14.5995,
         longitude: 120.9842,
         is_primary_storefront: true
@@ -230,8 +233,25 @@ describe('OnboardingSetupModal behavior', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Latitude/i).value).toBe('14.599512');
       expect(screen.getByLabelText(/Longitude/i).value).toBe('120.984246');
-      expect(screen.getByLabelText(/Address/i).value).toBe('Mock Pin Road, Manila');
+      expect(screen.getByLabelText(/^Address$/i).value).toBe('Mock Pin Road, Manila');
     });
+  });
+
+  it('blocks saving a searchable location until the street no. or unit is given (#2595)', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
+    await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
+    await user.type(screen.getByLabelText(/^Address$/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
+    await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
+    await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+    expect(mocks.onboardingServiceMock.saveOnboardingStep).not.toHaveBeenCalledWith(expect.objectContaining({ stepKey: 'primary_location' }));
   });
 
   it('shows mode-specific item presets and preserves partial row errors', async () => {
@@ -268,7 +288,8 @@ describe('OnboardingSetupModal behavior', () => {
     await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
-    await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/^Address$/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/Street no\., unit, floor or building/i), 'Unit 2');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
@@ -418,7 +439,8 @@ describe('OnboardingSetupModal behavior', () => {
     await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
-    await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/^Address$/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/Street no\., unit, floor or building/i), 'Unit 2');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
@@ -452,7 +474,8 @@ describe('OnboardingSetupModal behavior', () => {
     await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
-    await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/^Address$/i), '123 Main Street');
+    await user.type(screen.getByLabelText(/Street no\., unit, floor or building/i), 'Unit 2');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));

@@ -27,6 +27,7 @@ const FNB_CHECKOUT_THEME = {
 /** Shapes F&B checkout UI state without changing root checkout actions or contracts. */
 export function useFnbCheckoutPresentation({
   activePinnedDeliveryAddress,
+  deliveryAddressDetails = '',
   cartCount,
   checkoutResult,
   customerEmail,
@@ -57,6 +58,7 @@ export function useFnbCheckoutPresentation({
     isDeliveryOrder,
     hasPinnedDeliveryLocation,
     activePinnedDeliveryAddress,
+    deliveryAddressDetails,
     usePinnedAddress: true,
   }) && (!isDineInOrder || hasValidDineInSchedule);
   const isFnbOrderResponsiveFlow = isFnbOrderSubpage && isFnbMode && !isDesktopCheckout;

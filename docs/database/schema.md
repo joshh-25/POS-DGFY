@@ -308,7 +308,7 @@ Landlord account field update:
 Landlord tables:
 
 1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type (`order`, `service_booking`, `hospitality_booking`, or `fnb_order`), public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
-2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag.
+2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag. Nullable `address_details` (VARCHAR 255, migration `20261019000002-add-dgfy-customer-address-details.cjs`, #2594) holds the customer's own house number, Blk/Lot, unit or building, kept apart from the geocoded `address_line`; rows saved before it existed are `NULL`.
 3. `dgfy_customer_reviews` stores account-gated typed reviews. Reviews are purchase-gated by paid or completed DGFY customer activity, start pending approval, and identify `target_type`/`target_id` for product, service, Hospitality booking, F&B order, or F&B item review targets.
 4. `dgfy_customer_notifications` stores account-scoped notification rows for DGFY customer activity updates. Rows include DGFY account, optional tenant/activity linkage, public reference, idempotent `event_key`, notification type, title/body, status, `read_at`, timestamps, and indexes for account/time and unread account reads.
 5. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
@@ -324,6 +324,8 @@ Landlord tables:
 
 1. `push_device_tokens` stores the Expo token, platform, app and brand labels, exactly one account, guest-order, or staff-user owner, last-seen time, and revocation metadata. MySQL enforces owner exclusivity with a CHECK constraint and at most one active row per case-sensitive token with a generated active-token key. Application registration also validates the owner and serializes the five-device guest cap under the landlord tenant row. Staff owners use the tenant UUID plus tenant `user_id`, with index `idx_push_device_tokens_staff_active`.
 2. `push_delivery_logs` stores a unique event/token dedupe key, token HMAC, purpose, provider outcome, ticket/receipt metadata, safe error code, optional tenant and public order reference, and timestamps. It has no raw token or message body and no foreign key to a tenant-owned order or token row.
+3. `push_dispatch_events` (#2579) records one row per dispatch decision, including the skipped and suppressed reasons that never reach `push_delivery_logs` (`no_active_tokens`, `status_not_notifiable`, `token_limit`, ...): purpose, outcome (`dispatched|skipped|suppressed|failed`), a fixed reason code, optional tenant and public order reference, and the eligible-token count. It holds no token, owner identifier or message content, and follows the 30-day delivery-log retention.
+4. `push_diagnostic_devices` (#2579) holds operator-enrolled diagnostic devices separately from customer registrations: raw Expo token (never returned by any API; same case-sensitive, one-active-row-per-token rules as `push_device_tokens`), platform, app, brand, optional label, the enrolling Platform Admin id, and revocation metadata. `push_diagnostic_enrollment_codes` holds the keyed hash of each single-use, 10-minute enrollment code, its issuing admin, and the consuming device. Test sends write `push_delivery_logs` rows with purpose `diagnostic_test` whose `token_id` points at a diagnostic device (the log has no foreign key to a token table).
 
 Migration `20261018000001-add-staff-push-token-owners.cjs` adds nullable `staff_tenant_id` and
 `staff_user_id` columns, the staff-owner index, and the staff branch of the owner CHECK constraint.
@@ -984,6 +986,7 @@ CREATE TABLE tenant_locations (
     location_id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
     address_line TEXT NOT NULL,
+    address_details VARCHAR(255) NULL, -- #2595: merchant's street no./unit/floor/building; address_line holds `<details>, <location>`
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     delivery_radius_km DECIMAL(5, 2) NOT NULL DEFAULT 5,

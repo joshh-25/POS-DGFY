@@ -38,7 +38,7 @@ describe('quadruperGeocodeProvider', () => {
 
         const result = await quadruperGeocodeProvider.reverseGeocode({ latitude: 10.7202, longitude: 122.5621 });
 
-        expect(result.address_line).toBe('Bakhaw, Jaro, Iloilo City, Western Visayas, Philippines');
+        expect(result.address_line).toBe('Jalandoni Street, Bakhaw, Jaro, Iloilo City, Western Visayas');
         expect(result.provider).toBe('dgfy-quadruper');
     });
 
