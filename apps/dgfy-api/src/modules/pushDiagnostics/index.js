@@ -1,5 +1,6 @@
 import { pushDiagnosticsReadRepository } from './repositories/pushDiagnosticsReadRepository.js';
 import { pushDiagnosticsAuditRepository } from './repositories/pushDiagnosticsAuditRepository.js';
+import { pushDiagnosticsSettingsRepository } from './repositories/pushDiagnosticsSettingsRepository.js';
 import { buildPushDiagnosticsUseCases } from './usecases/pushDiagnosticsUseCases.js';
 import {
     pushDeliveryLogRepository,
@@ -12,6 +13,7 @@ import { getPushReceiptSchedulerStatus } from '../../schedulers/pushReceiptSched
 export const pushDiagnosticsUseCases = buildPushDiagnosticsUseCases({
     readRepository: pushDiagnosticsReadRepository,
     auditRepository: pushDiagnosticsAuditRepository,
+    settingsRepository: pushDiagnosticsSettingsRepository,
     deviceRepository: pushDiagnosticDeviceRepository,
     enrollmentRepository: pushDiagnosticEnrollmentCodeRepository,
     logRepository: pushDeliveryLogRepository,

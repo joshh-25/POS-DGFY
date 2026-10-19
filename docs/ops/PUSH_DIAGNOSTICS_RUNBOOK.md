@@ -103,6 +103,23 @@ The page refreshes on demand. If a refresh fails, it keeps the last successful s
 refresh error. A snapshot older than five minutes is flagged; refresh before using it for a live
 incident decision.
 
+## Mobile visibility switch
+
+The **Mobile app visibility** section controls whether the `storefront`, `pos`, and `fiscalpos` apps
+show their push diagnostics screen for this deployment. A change requires confirmation and is
+audited with the Platform Admin identity. Each deployment reads its own landlord setting; a missing
+setting defaults off.
+
+The mobile availability endpoint caches a successful value for up to 30 seconds. Devices may keep
+showing a recently enabled screen for that period after an operator turns it off. Visibility is a UI
+switch only: turning it off does not revoke enrolled devices, invalidate outstanding enrollment codes,
+or change enrollment and test-send rules. Clients must keep the diagnostics screen hidden when the
+availability call returns a non-200 response.
+
+The `brand` query value must be present and well-formed, but it is a client-supplied label and does not
+select a separate setting. Any well-formed brand receives the app-level switch; missing or malformed
+values and unknown query keys fail closed to `{ "enabled": false }`.
+
 ## Enroll an operator diagnostic device
 
 A client must implement the device-side call; the admin page does not collect or accept an Expo

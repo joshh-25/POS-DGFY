@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-10-18T16:33:14.410Z",
-  "totalFiles": 865,
+  "generatedAt": "2026-10-19T11:41:19.643Z",
+  "totalFiles": 868,
   "byClassification": {
-    "keep": 797,
+    "keep": 800,
     "delete": 23,
     "consolidate": 37,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
-    "migration": 51,
+    "migration": 53,
     "(none)": 295,
     "middleware": 14,
     "handler": 1,
     "transport": 46,
     "integration": 13,
-    "unit": 95,
+    "unit": 96,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
@@ -342,6 +342,41 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/addDgfyCustomerAddressDetails.migration.test.js",
+      "lines": 61,
+      "caseCount": 3,
+      "describeTitles": [
+        "add dgfy customer address details migration (#2594)"
+      ],
+      "expectCount": 7,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -4734,7 +4769,8 @@
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
           "docs/compliance/impact-declarations/2026-05-19-paymongo-qrph-commerce-payments.md",
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
-          "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md"
+          "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
+          "docs/compliance/impact-declarations/2026-10-19-paymongo-unknown-session-alert-livemode-gating.md"
         ],
         "hardcoded": []
       },
@@ -4819,6 +4855,7 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md",
+          "docs/compliance/impact-declarations/2026-10-19-paymongo-unknown-session-alert-livemode-gating.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6687,6 +6724,39 @@
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/createPushDiagnosticsAppSettings.migration.test.js",
+      "lines": 52,
+      "caseCount": 2,
+      "describeTitles": [
+        "create push diagnostics app settings migration"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -8773,14 +8843,14 @@
     },
     {
       "path": "tests/dgfyCustomerUseCases.test.js",
-      "lines": 1084,
-      "caseCount": 38,
+      "lines": 1125,
+      "caseCount": 42,
       "describeTitles": [
         "dgfyCustomerUseCases"
       ],
-      "expectCount": 145,
+      "expectCount": 152,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 43,
+      "toHaveBeenCalledCount": 44,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -11403,16 +11473,16 @@
     },
     {
       "path": "tests/finalizePaidCommerceSession.usecase.test.js",
-      "lines": 865,
-      "caseCount": 14,
+      "lines": 1062,
+      "caseCount": 18,
       "describeTitles": [
         "finalizePaidCommerceSession",
         "PayMongo paid webhook replay",
-        "PayMongo webhook unknown session escalation (#476)"
+        "PayMongo webhook unknown session escalation (#476, #1091)"
       ],
-      "expectCount": 32,
+      "expectCount": 42,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 18,
+      "toHaveBeenCalledCount": 25,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -11435,6 +11505,7 @@
           "docs/compliance/impact-declarations/2026-08-20-cart-quote-preview-no-checkout-contact.md",
           "docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md",
           "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
+          "docs/compliance/impact-declarations/2026-10-19-paymongo-unknown-session-alert-livemode-gating.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -12566,8 +12637,8 @@
     },
     {
       "path": "tests/geoPhotonFeatureMapper.test.js",
-      "lines": 269,
-      "caseCount": 26,
+      "lines": 312,
+      "caseCount": 31,
       "describeTitles": [
         "composeAddressLine",
         "mapPrecision",
@@ -12576,9 +12647,10 @@
         "mapReverseGeocodeResponse",
         "mapForwardSearchResponse",
         "composeForwardAddressLine (#2484)",
-        "mapForwardSearchResponse components (#2484)"
+        "mapForwardSearchResponse components (#2484)",
+        "reverse-geocode street (#2593)"
       ],
-      "expectCount": 57,
+      "expectCount": 70,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -17167,7 +17239,7 @@
     },
     {
       "path": "tests/platformAdminRouteClassification.test.js",
-      "lines": 49,
+      "lines": 52,
       "caseCount": 3,
       "describeTitles": [
         "Platform Admin protected-route classification"
@@ -22672,14 +22744,14 @@
     },
     {
       "path": "tests/posVoid.route.transport.test.js",
-      "lines": 480,
-      "caseCount": 10,
+      "lines": 519,
+      "caseCount": 12,
       "describeTitles": [
         "POS transaction void route transport contract"
       ],
-      "expectCount": 60,
-      "expectResCount": 18,
-      "toHaveBeenCalledCount": 23,
+      "expectCount": 65,
+      "expectResCount": 21,
+      "toHaveBeenCalledCount": 25,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -23230,8 +23302,8 @@
     },
     {
       "path": "tests/productionEnvGuard.test.js",
-      "lines": 144,
-      "caseCount": 6,
+      "lines": 170,
+      "caseCount": 7,
       "describeTitles": [
         "production startup environment guard"
       ],
@@ -23612,15 +23684,15 @@
     },
     {
       "path": "tests/pushDiagnostics.transport.test.js",
-      "lines": 168,
-      "caseCount": 11,
+      "lines": 218,
+      "caseCount": 15,
       "describeTitles": [
         "Platform Admin push diagnostics transport",
         "device-side enrollment transport"
       ],
-      "expectCount": 32,
-      "expectResCount": 16,
-      "toHaveBeenCalledCount": 6,
+      "expectCount": 48,
+      "expectResCount": 28,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -23682,15 +23754,48 @@
       "findings": []
     },
     {
+      "path": "tests/pushDiagnosticsSettingsRepository.unit.test.js",
+      "lines": 119,
+      "caseCount": 5,
+      "describeTitles": [
+        "push diagnostics settings repository"
+      ],
+      "expectCount": 16,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 7,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/pushDiagnosticsUseCases.unit.test.js",
-      "lines": 290,
-      "caseCount": 20,
+      "lines": 354,
+      "caseCount": 24,
       "describeTitles": [
         "push diagnostics use cases"
       ],
-      "expectCount": 55,
+      "expectCount": 65,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 20,
+      "toHaveBeenCalledCount": 24,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -31597,6 +31702,7 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
+          "docs/compliance/impact-declarations/2026-10-19-paymongo-unknown-session-alert-livemode-gating.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []

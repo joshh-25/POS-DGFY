@@ -8,15 +8,17 @@ const safeRequestMetadata = (request = {}) => ({
 });
 
 export const pushDiagnosticsAuditRepository = {
-    async write({ admin, action, reason = null, after = null, request = {} }) {
-        await PlatformAdminAuditLog.create({
+    async write({ admin, action, reason = null, before, after = null, request = {}, transaction = null }) {
+        const values = {
             actor_admin_id: admin?.id || null,
             actor_username_snapshot: admin?.username || null,
             action,
             reason: reason ? String(reason).slice(0, 500) : null,
             after_snapshot: after,
             request_metadata: safeRequestMetadata(request)
-        });
+        };
+        if (before !== undefined) values.before_snapshot = before;
+        await PlatformAdminAuditLog.create(values, transaction ? { transaction } : {});
     }
 };
 

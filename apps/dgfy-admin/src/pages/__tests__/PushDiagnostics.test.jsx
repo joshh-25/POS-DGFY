@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import PushDiagnostics from '../../../Pages/PushDiagnostics.jsx';
 
 const mocks = vi.hoisted(() => ({
     getPushDiagnosticsOverview: vi.fn(),
+    getPushDiagnosticsVisibility: vi.fn(),
+    setPushDiagnosticsVisibility: vi.fn(),
     listPushDiagnosticsRegistrations: vi.fn(),
     listPushDiagnosticsAttempts: vi.fn(),
     listPushDiagnosticDevices: vi.fn(),
@@ -18,6 +20,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/services/adminService', () => ({
     getPushDiagnosticsOverview: mocks.getPushDiagnosticsOverview,
+    getPushDiagnosticsVisibility: mocks.getPushDiagnosticsVisibility,
+    setPushDiagnosticsVisibility: mocks.setPushDiagnosticsVisibility,
     listPushDiagnosticsRegistrations: mocks.listPushDiagnosticsRegistrations,
     listPushDiagnosticsAttempts: mocks.listPushDiagnosticsAttempts,
     listPushDiagnosticDevices: mocks.listPushDiagnosticDevices,
@@ -65,12 +69,18 @@ const renderPage = () => render(<PushDiagnostics />);
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.getPushDiagnosticsOverview.mockResolvedValue(emptyOverview());
+    mocks.getPushDiagnosticsVisibility.mockResolvedValue({ apps: [
+        { app: 'storefront', enabled: false, updated_at: null },
+        { app: 'pos', enabled: false, updated_at: null },
+        { app: 'fiscalpos', enabled: false, updated_at: null }
+    ] });
     mocks.listPushDiagnosticsRegistrations.mockResolvedValue({ environment: { label: 'staging' }, items: [] });
     mocks.listPushDiagnosticsAttempts.mockResolvedValue({ environment: { label: 'staging' }, deliveries: [], dispatch_events: [] });
     mocks.listPushDiagnosticDevices.mockResolvedValue({ environment: { label: 'staging' }, items: [] });
     mocks.createPushDiagnosticEnrollmentCode.mockResolvedValue({ code: 'DGFY-ONE-TIME-72AF', expires_at: '2026-10-19T08:10:00.000Z' });
     mocks.revokePushDiagnosticDevice.mockResolvedValue({ revoked: true });
     mocks.sendPushDiagnosticTest.mockResolvedValue({ state: 'accepted_receipt_pending', status: 'accepted', simulated: false });
+    mocks.setPushDiagnosticsVisibility.mockImplementation(async (app, enabled) => ({ app, enabled, changed: true }));
 });
 
 afterEach(() => {
@@ -100,6 +110,52 @@ describe('PushDiagnostics', () => {
         expect(screen.getByText('No diagnostic devices have been enrolled.')).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Send test notification' }).disabled).toBe(true);
         expect(screen.getByText(/Test notifications stay disabled until a mobile or POS client completes enrollment/i)).toBeTruthy();
+        for (const app of ['Storefront', 'POS', 'Fiscal POS']) {
+            expect(screen.getByRole('switch', { name: `${app} diagnostics visibility` }).getAttribute('aria-checked')).toBe('false');
+        }
+    });
+
+    test('requires confirmation and waits for the server before changing app visibility', async () => {
+        let resolveChange;
+        mocks.setPushDiagnosticsVisibility.mockImplementationOnce(() => new Promise((resolve) => { resolveChange = resolve; }));
+        mocks.getPushDiagnosticsVisibility
+            .mockResolvedValueOnce({ apps: [
+                { app: 'storefront', enabled: false, updated_at: null },
+                { app: 'pos', enabled: false, updated_at: null },
+                { app: 'fiscalpos', enabled: false, updated_at: null }
+            ] })
+            .mockResolvedValue({ apps: [
+                { app: 'storefront', enabled: true, updated_at: '2026-10-19T08:10:00.000Z' },
+                { app: 'pos', enabled: false, updated_at: null },
+                { app: 'fiscalpos', enabled: false, updated_at: null }
+            ] });
+
+        renderPage();
+        const toggle = await screen.findByRole('switch', { name: 'Storefront diagnostics visibility' });
+        fireEvent.click(toggle);
+        expect(mocks.setPushDiagnosticsVisibility).not.toHaveBeenCalled();
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getByText(/does not affect enrollment or test sends/i)).toBeTruthy();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Enable Storefront diagnostics' }));
+
+        await waitFor(() => expect(mocks.setPushDiagnosticsVisibility).toHaveBeenCalledWith('storefront', true));
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+        await act(async () => {
+            resolveChange({ app: 'storefront', enabled: true, changed: true });
+        });
+        await waitFor(() => expect(screen.getByRole('switch', { name: 'Storefront diagnostics visibility' }).getAttribute('aria-checked')).toBe('true'));
+    });
+
+    test('keeps visibility unchanged when the confirmed update fails', async () => {
+        mocks.setPushDiagnosticsVisibility.mockRejectedValueOnce(new Error('Visibility update failed.'));
+        renderPage();
+        const toggle = await screen.findByRole('switch', { name: 'POS diagnostics visibility' });
+        fireEvent.click(toggle);
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Enable POS diagnostics' }));
+
+        expect(await screen.findByText('Visibility update failed.')).toBeTruthy();
+        expect(screen.getByRole('switch', { name: 'POS diagnostics visibility' }).getAttribute('aria-checked')).toBe('false');
     });
 
     test('maps provider acceptance and receipt states with careful labels', async () => {
@@ -192,6 +248,11 @@ describe('PushDiagnostics', () => {
     });
 
     test('keeps the last successful snapshot visible when refresh fails', async () => {
+        mocks.getPushDiagnosticsVisibility.mockResolvedValue({ apps: [
+            { app: 'storefront', enabled: true, updated_at: '2026-10-19T07:00:00.000Z' },
+            { app: 'pos', enabled: false, updated_at: null },
+            { app: 'fiscalpos', enabled: false, updated_at: null }
+        ] });
         renderPage();
         expect(await screen.findByText('staging environment')).toBeTruthy();
         mocks.getPushDiagnosticsOverview.mockRejectedValueOnce(new Error('API temporarily unavailable'));
@@ -201,5 +262,6 @@ describe('PushDiagnostics', () => {
         expect(await screen.findByText('Could not refresh push diagnostics.')).toBeTruthy();
         expect(screen.getByText(/Showing the last successful snapshot/)).toBeTruthy();
         expect(screen.getByText('staging environment')).toBeTruthy();
+        expect(screen.getByRole('switch', { name: 'Storefront diagnostics visibility' }).getAttribute('aria-checked')).toBe('true');
     });
 });

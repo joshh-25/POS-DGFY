@@ -6,6 +6,11 @@ import { toast } from 'sonner';
 import * as adminService from '@/services/adminService';
 
 const STALE_AFTER_MS = 5 * 60 * 1000;
+const VISIBILITY_APPS = Object.freeze([
+    { app: 'storefront', label: 'Storefront' },
+    { app: 'pos', label: 'POS' },
+    { app: 'fiscalpos', label: 'Fiscal POS' }
+]);
 
 const EMPTY_OVERVIEW = {
     environment: { label: 'unknown', source: 'unset' },
@@ -167,11 +172,13 @@ export default function PushDiagnostics() {
     const [attempts, setAttempts] = useState([]);
     const [dispatchEvents, setDispatchEvents] = useState([]);
     const [diagnosticDevices, setDiagnosticDevices] = useState([]);
+    const [visibilitySettings, setVisibilitySettings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadedAt, setLoadedAt] = useState(null);
     const [clockTick, setClockTick] = useState(Date.now());
     const [loadError, setLoadError] = useState('');
     const [actionError, setActionError] = useState('');
+    const [visibilityError, setVisibilityError] = useState('');
     const [registrationFilter, setRegistrationFilter] = useState('all');
     const [windowHours, setWindowHours] = useState('24');
     const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -183,17 +190,19 @@ export default function PushDiagnostics() {
         setLoading(true);
         setLoadError('');
         try {
-            const [nextOverview, registrationResponse, attemptResponse, deviceResponse] = await Promise.all([
+            const [nextOverview, registrationResponse, attemptResponse, deviceResponse, visibilityResponse] = await Promise.all([
                 adminService.getPushDiagnosticsOverview(),
                 adminService.listPushDiagnosticsRegistrations({ state: registrationFilter }),
                 adminService.listPushDiagnosticsAttempts({ window_hours: Number(windowHours) }),
-                adminService.listPushDiagnosticDevices()
+                adminService.listPushDiagnosticDevices(),
+                adminService.getPushDiagnosticsVisibility()
             ]);
             setOverview(nextOverview || EMPTY_OVERVIEW);
             setRegistrations(registrationResponse?.items || []);
             setAttempts(attemptResponse?.deliveries || []);
             setDispatchEvents(attemptResponse?.dispatch_events || []);
             setDiagnosticDevices(deviceResponse?.items || []);
+            setVisibilitySettings(visibilityResponse?.apps || []);
             setLoadedAt(Date.now());
         } catch (error) {
             setLoadError(formatError(error));
@@ -250,8 +259,11 @@ export default function PushDiagnostics() {
     const confirmDeviceAction = async () => {
         if (!confirmation) return false;
         const current = confirmation;
-        const actionKey = current.type + ':' + current.device.id;
+        const actionKey = current.type === 'visibility'
+            ? `visibility:${current.app}`
+            : current.type + ':' + current.device.id;
         setActionError('');
+        setVisibilityError('');
         setBusyAction(actionKey);
         try {
             if (current.type === 'send') {
@@ -259,16 +271,24 @@ export default function PushDiagnostics() {
                 const receiptText = result?.state ? statusLabel(result.state) : 'Request accepted for processing';
                 const modeText = result?.simulated ? ' (simulated; no provider send)' : '';
                 toast.success(receiptText + modeText + '.');
-            } else {
+            } else if (current.type === 'revoke') {
                 await adminService.revokePushDiagnosticDevice(current.device.id);
                 toast.success('Diagnostic device revoked.');
+            } else {
+                const result = await adminService.setPushDiagnosticsVisibility(current.app, current.enabled);
+                const enabled = result?.enabled === true;
+                setVisibilitySettings((previous) => previous.map((setting) => (
+                    setting.app === current.app ? { ...setting, enabled } : setting
+                )));
+                toast.success(`${VISIBILITY_APPS.find(({ app }) => app === current.app)?.label || current.app} diagnostics visibility turned ${enabled ? 'on' : 'off'}.`);
             }
             setConfirmation(null);
             await loadData();
             return true;
         } catch (error) {
             const message = formatError(error);
-            setActionError(message);
+            if (current.type === 'visibility') setVisibilityError(message);
+            else setActionError(message);
             toast.error(message);
             return { success: false, message };
         } finally {
@@ -280,11 +300,22 @@ export default function PushDiagnostics() {
         if (!open) setConfirmation(null);
     };
 
-    const confirmedLabel = confirmation?.type === 'send' ? 'Send test notification' : 'Revoke device';
-    const confirmationTitle = confirmation?.type === 'send' ? 'Send a diagnostic test notification?' : 'Revoke this diagnostic device?';
+    const visibilityLabel = VISIBILITY_APPS.find(({ app }) => app === confirmation?.app)?.label || confirmation?.app;
+    const confirmedLabel = confirmation?.type === 'send'
+        ? 'Send test notification'
+        : confirmation?.type === 'visibility'
+            ? `${confirmation.enabled ? 'Enable' : 'Disable'} ${visibilityLabel} diagnostics`
+            : 'Revoke device';
+    const confirmationTitle = confirmation?.type === 'send'
+        ? 'Send a diagnostic test notification?'
+        : confirmation?.type === 'visibility'
+            ? `${confirmation.enabled ? 'Enable' : 'Disable'} diagnostics for ${visibilityLabel}?`
+            : 'Revoke this diagnostic device?';
     const confirmationDescription = confirmation?.type === 'send'
         ? 'This sends fixed generic copy to the enrolled diagnostic device only. The API request contains no token or message body.'
-        : 'This device will no longer be eligible for diagnostic test notifications.';
+        : confirmation?.type === 'visibility'
+            ? `This controls whether the ${visibilityLabel} mobile app shows its diagnostics screen. It does not affect enrollment or test sends. Devices pick up the change after the 30-second cache TTL.`
+            : 'This device will no longer be eligible for diagnostic test notifications.';
 
     return (
         <main className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
@@ -334,6 +365,41 @@ export default function PushDiagnostics() {
 
             {hasSnapshot ? (
                 <>
+                    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="mobile-visibility-heading">
+                        <div>
+                            <h2 id="mobile-visibility-heading" className="text-lg font-bold text-slate-950">Mobile app visibility</h2>
+                            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">Control whether each mobile app shows its push diagnostics screen. This does not affect enrollment or test sends. Devices pick up a change after the 30-second cache TTL.</p>
+                        </div>
+                        {visibilityError ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{visibilityError}</p> : null}
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            {VISIBILITY_APPS.map(({ app, label }) => {
+                                const enabled = visibilitySettings.find((setting) => setting.app === app)?.enabled === true;
+                                return (
+                                    <div key={app} className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 px-4 py-3">
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-900">{label}</p>
+                                            <p className="mt-1 text-xs text-slate-500">Diagnostics screen {enabled ? 'visible' : 'hidden'}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            role="switch"
+                                            aria-label={`${label} diagnostics visibility`}
+                                            aria-checked={enabled}
+                                            disabled={busy}
+                                            onClick={() => {
+                                                setVisibilityError('');
+                                                setConfirmation({ type: 'visibility', app, enabled: !enabled });
+                                            }}
+                                            className={'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ' + (enabled ? 'bg-emerald-600' : 'bg-slate-300')}
+                                        >
+                                            <span className={'inline-block h-4 w-4 transform rounded-full bg-white transition-transform ' + (enabled ? 'translate-x-6' : 'translate-x-1')} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
+
                     <section className="space-y-3" aria-labelledby="readiness-heading">
                         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                             <div>

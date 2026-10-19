@@ -31,6 +31,11 @@ const makeUseCases = (overrides = {}) => {
         listDispatchEvents: jest.fn().mockResolvedValue([])
     };
     const auditRepository = { write: jest.fn().mockResolvedValue(undefined) };
+    const settingsRepository = {
+        listVisibilitySettings: jest.fn().mockResolvedValue([]),
+        getEnabledByApp: jest.fn().mockResolvedValue(false),
+        setVisibility: jest.fn(async ({ app, enabled }) => ({ app, enabled, changed: true }))
+    };
     const deviceRepository = {
         list: jest.fn().mockResolvedValue([]),
         findActiveById: jest.fn().mockResolvedValue({ id: 'device-1', token: TOKEN, platform: 'ios', app: 'storefront', brand: 'dgfy' }),
@@ -46,10 +51,10 @@ const makeUseCases = (overrides = {}) => {
     const send = jest.fn().mockResolvedValue([{ status: 'accepted', ticketId: 'ticket-1' }]);
     const adapterResolver = jest.fn(() => ({ mode: 'expo', adapter: { send } }));
     const useCases = buildPushDiagnosticsUseCases({
-        readRepository, auditRepository, deviceRepository, enrollmentRepository, logRepository, adapterResolver,
+        readRepository, auditRepository, settingsRepository, deviceRepository, enrollmentRepository, logRepository, adapterResolver,
         env: ENV, now: () => NOW, random: () => 'rand', ...overrides
     });
-    return { useCases, readRepository, auditRepository, deviceRepository, enrollmentRepository, logRepository, send, adapterResolver };
+    return { useCases, readRepository, auditRepository, settingsRepository, deviceRepository, enrollmentRepository, logRepository, send, adapterResolver };
 };
 
 const rejects = async (promise, matcher) => {
@@ -134,6 +139,65 @@ describe('push diagnostics use cases', () => {
             expect(result.deliveries.map((row) => row.state)).toEqual(['accepted_receipt_pending', 'receipt_ok', 'no_provider']);
             const since = readRepository.listDeliveries.mock.calls[0][0].since;
             expect(NOW.getTime() - since.getTime()).toBe(168 * 60 * 60 * 1000);
+        });
+    });
+
+    describe('mobile app visibility', () => {
+        it('lists all supported apps, defaults missing rows to off, and returns only safe fields', async () => {
+            const { useCases, settingsRepository } = makeUseCases();
+            settingsRepository.listVisibilitySettings.mockResolvedValue([
+                { app: 'pos', enabled: true, updated_at: NOW, updated_by_admin_id: ADMIN.id, secret: 'omit' }
+            ]);
+
+            const result = await useCases.listAppVisibility();
+
+            expect(result.apps).toEqual([
+                { app: 'storefront', enabled: false, updated_at: null },
+                { app: 'pos', enabled: true, updated_at: NOW.toISOString() },
+                { app: 'fiscalpos', enabled: false, updated_at: null }
+            ]);
+            expect(JSON.stringify(result)).not.toContain(ADMIN.id);
+            expect(JSON.stringify(result)).not.toContain('secret');
+        });
+
+        it('validates app and exact boolean request body before delegating a change', async () => {
+            const { useCases, settingsRepository } = makeUseCases();
+            await expect(useCases.setAppVisibility({ admin: ADMIN, app: 'storefront', body: { enabled: true }, request: REQUEST }))
+                .resolves.toEqual({ app: 'storefront', enabled: true, changed: true });
+            expect(settingsRepository.setVisibility).toHaveBeenCalledWith({ app: 'storefront', enabled: true, admin: ADMIN, request: REQUEST });
+
+            for (const app of ['Storefront', 'unknown']) {
+                await rejects(useCases.setAppVisibility({ app, body: { enabled: true } }), { code: 'VALIDATION_FAILED' });
+            }
+            for (const body of [undefined, null, [], { enabled: 'true' }, { enabled: true, extra: 1 }, {}]) {
+                await rejects(useCases.setAppVisibility({ app: 'storefront', body }), { code: 'VALIDATION_FAILED' });
+            }
+            expect(settingsRepository.setVisibility).toHaveBeenCalledTimes(1);
+        });
+
+        it('fails closed for invalid availability inputs and applies an app setting to any well-formed brand', async () => {
+            const { useCases, settingsRepository } = makeUseCases();
+            settingsRepository.getEnabledByApp.mockResolvedValue(true);
+
+            for (const query of [
+                {}, { app: 'unknown', brand: 'dgfy' }, { app: 'pos' }, { app: 'pos', brand: 'bad brand' },
+                { app: 'pos', brand: 'dgfy', extra: 'ignored' }, { app: ['pos'], brand: 'dgfy' }
+            ]) {
+                await expect(useCases.getAvailability(query)).resolves.toEqual({ enabled: false });
+            }
+            await expect(useCases.getAvailability({ app: 'pos', brand: 'zzz' })).resolves.toEqual({ enabled: true });
+            expect(settingsRepository.getEnabledByApp).toHaveBeenCalledTimes(1);
+            expect(settingsRepository.getEnabledByApp).toHaveBeenCalledWith('pos');
+        });
+
+        it('maps availability storage errors to a generic 503', async () => {
+            const { useCases, settingsRepository } = makeUseCases();
+            settingsRepository.getEnabledByApp.mockRejectedValue(new Error('database secret=hidden'));
+            await rejects(useCases.getAvailability({ app: 'pos', brand: 'dgfy' }), {
+                statusCode: 503,
+                code: 'SERVICE_UNAVAILABLE',
+                message: 'Push diagnostics availability is temporarily unavailable.'
+            });
         });
     });
 

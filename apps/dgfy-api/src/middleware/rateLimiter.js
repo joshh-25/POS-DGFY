@@ -66,6 +66,8 @@ const adminPushTestSendWindowMs = parseInt(process.env.RATE_LIMIT_ADMIN_PUSH_TES
 const adminPushTestSendMaxRequests = parseInt(process.env.RATE_LIMIT_ADMIN_PUSH_TEST_SEND_MAX_REQUESTS) || (isDevelopment ? 30 : 3);
 const pushDiagnosticEnrollWindowMs = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_ENROLL_WINDOW_MS) || 15 * 60 * 1000;
 const pushDiagnosticEnrollMaxRequests = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_ENROLL_MAX_REQUESTS) || (isDevelopment ? 100 : 10);
+const pushDiagnosticAvailabilityWindowMs = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_AVAILABILITY_WINDOW_MS) || 15 * 60 * 1000;
+const pushDiagnosticAvailabilityMaxRequests = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_AVAILABILITY_MAX_REQUESTS) || 120;
 const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS) || 60 * 60 * 1000; // 1 hour
 const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const companyRegistrationDraftWindowMs = parseInt(process.env.RATE_LIMIT_COMPANY_REGISTRATION_DRAFT_WINDOW_MS) || 15 * 60 * 1000;
@@ -129,6 +131,7 @@ const rateLimitCounters = {
   dgfy_push_token: 0,
   admin_push_test_send: 0,
   push_diagnostic_enroll: 0,
+  push_diagnostic_availability: 0,
   registration: 0,
   geo_search: 0,
   inventory_push: 0,
@@ -330,6 +333,7 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/dgfy/auth/tenant-session')) return 'dgfy_tenant_session';
   if (path.includes('/dgfy/accounts/search')) return 'dgfy_account_search';
   if (path.includes('/admin/push-diagnostics') && path.includes('/test-send')) return 'admin_push_test_send';
+  if (path.includes('/push-diagnostics/availability')) return 'push_diagnostic_availability';
   if (path.includes('/push-diagnostics/enroll')) return 'push_diagnostic_enroll';
   if (path.includes('/store/auth/')) return 'store_auth';
   if (path.includes('/store/track/') || path.includes('/store/orders/')) return 'store_tracking';
@@ -1389,6 +1393,39 @@ export const pushDiagnosticEnrollLimiter = rateLimit({
       'ip'
     );
     logRateLimitEvent(req, 'push_diagnostic_enroll', response.retryAfterSeconds, 'ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
+});
+
+// Availability is polled at mobile app startup, so it has a more generous per-IP budget than
+// enrollment while remaining independently configurable for carrier NAT traffic.
+export const pushDiagnosticAvailabilityLimiter = rateLimit({
+  windowMs: pushDiagnosticAvailabilityWindowMs,
+  max: pushDiagnosticAvailabilityMaxRequests,
+  message: createRateLimitError('Too many availability checks. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('push_diagnostic_availability'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    return `push_diagnostic_availability:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many availability checks. Please wait before trying again.',
+      'push_diagnostic_availability',
+      'ip'
+    );
+    logRateLimitEvent(req, 'push_diagnostic_availability', response.retryAfterSeconds, 'ip');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

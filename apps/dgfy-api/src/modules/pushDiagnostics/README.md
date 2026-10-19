@@ -29,6 +29,22 @@ Opening the overview, creating an enrollment code, enrolling and revoking a devi
 write `platform_admin_audit_logs` rows (`push_diagnostics.*`). Dispatch events and revoked diagnostic
 devices follow the 30-day push log retention in `pushReceiptScheduler`.
 
+## Mobile diagnostics visibility
+
+Platform Admin can switch the diagnostics screen on or off separately for `storefront`, `pos`, and
+`fiscalpos` in each deployment's landlord database. Missing rows default off. A changed value and its
+admin audit row commit in one transaction; a no-op does not create an audit row. Turning visibility
+off hides the mobile screen after its cached value expires, but does not revoke devices, invalidate
+enrollment codes, or change enrollment or test-send rules.
+
+Mobile clients read `GET /api/v1/push-diagnostics/availability?app=<app>&brand=<brand>` without a
+session. The response is exactly `{enabled: boolean}`, cached publicly for up to 30 seconds, and
+limited to 120 requests per IP per 15 minutes by default. `brand` must be present and well-formed
+according to the existing client-label shape, but it does not select a setting; any well-formed brand
+gets the app-level value. Missing or malformed inputs and unknown query keys return
+`200 {enabled:false}`. A database error returns a generic `503` with `Cache-Control: no-store`, so a
+client must keep the diagnostics screen hidden for any non-200 response.
+
 Controllers are transport only; use cases coordinate; repositories own persistence and the audit writes.
 
 For operator status meanings, triage, environment labeling, and the diagnostic-device workflow, see

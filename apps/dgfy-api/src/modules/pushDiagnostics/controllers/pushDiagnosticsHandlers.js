@@ -49,3 +49,29 @@ export const sendPushDiagnosticTest = respond((req) => pushDiagnosticsUseCases.s
     request: requestContext(req)
 }));
 export const enrollPushDiagnosticDevice = respond((req) => pushDiagnosticsUseCases.enrollDevice(req.body), 201);
+export const getPushDiagnosticsAppVisibility = respond(
+    () => pushDiagnosticsUseCases.listAppVisibility()
+);
+export const setPushDiagnosticsAppVisibility = respond((req) => pushDiagnosticsUseCases.setAppVisibility({
+    admin: req.admin,
+    app: req.params.app,
+    body: req.body,
+    request: requestContext(req)
+}));
+
+export const getPushDiagnosticsAvailability = async (req, res, next) => {
+    try {
+        const result = await pushDiagnosticsUseCases.getAvailability(req.query);
+        return res.set('Cache-Control', 'public, max-age=30').json(result);
+    } catch (error) {
+        res.set('Cache-Control', 'no-store');
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({
+                success: false,
+                error_code: error.code,
+                message: error.message
+            });
+        }
+        return next(error);
+    }
+};
