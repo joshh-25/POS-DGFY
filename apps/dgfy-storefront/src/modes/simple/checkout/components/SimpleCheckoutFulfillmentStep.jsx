@@ -1,7 +1,9 @@
 import { ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
-import { resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { buildSearchSelectedPin, resolveDeliveryAddressInputValue } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
+import { DeliveryAddressDetailsField } from '../../../../shared/components/checkout/DeliveryAddressDetailsField.jsx';
+import { useDeliveryAddressDetails } from '../../../../shared/hooks/useDeliveryAddressDetails.js';
 import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
 import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
 import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';
@@ -65,6 +67,7 @@ export function SimpleCheckoutFulfillmentStep({
   onSpecialInstructionsChange,
   onStartMapPin
 }) {
+  const [deliveryAddressDetails, setDeliveryAddressDetails] = useDeliveryAddressDetails();
   if (!isDgfyCustomerSignedIn && !canUseGuestCheckoutFlow) {
     return renderGuestCheckoutEntry({
       title: 'Continue to your order',
@@ -95,11 +98,8 @@ export function SimpleCheckoutFulfillmentStep({
     const longitude = Number(result?.longitude);
     const addressLine = String(result?.addressLine || '').trim();
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !addressLine) return;
-    onPinChange?.({
-      latitude: Number(latitude.toFixed(6)),
-      longitude: Number(longitude.toFixed(6)),
-      address_line: addressLine
-    });
+    // #2594: the shared builder carries a searched house number to the details field.
+    onPinChange?.(buildSearchSelectedPin(result));
   };
   const handleAddLocationFromMap = async () => {
     const saved = await onAddPinnedLocation?.();
@@ -163,6 +163,15 @@ export function SimpleCheckoutFulfillmentStep({
                   {isMobileViewport ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
                 </button>
               </div>
+              <DeliveryAddressDetailsField
+                value={deliveryAddressDetails}
+                onValueChange={setDeliveryAddressDetails}
+                locationAddress={deliveryLocationDisplayAddress}
+                isMobileViewport={isMobileViewport}
+                accentColor={SIMPLE_BRAND}
+                accentTint={SIMPLE_BRAND_TINT}
+                accentBorder={SIMPLE_BRAND_SOFT}
+              />
               {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
               <div style={{ position: 'relative', width: '100%', minWidth: 0 }}>
                 <DeliveryPinMap

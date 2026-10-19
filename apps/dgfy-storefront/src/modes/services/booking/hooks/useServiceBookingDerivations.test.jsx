@@ -49,6 +49,20 @@ describe('useServiceBookingDerivations fulfillment gates', () => {
     expect(result.current.fulfillmentStepComplete).toBe(false);
   });
 
+  it('asks for house/unit details once the pickup address is set, then combines them (#2594)', () => {
+    const base = {
+      serviceAppointmentAt: '2026-08-10T09:00:00',
+      serviceOrderMethod: 'pickup',
+      customerAddress: 'Rizal Street, Jaro, Iloilo City'
+    };
+    const { result: withoutDetails } = renderHook(() => useServiceBookingDerivations(buildProps(base)));
+    expect(withoutDetails.current.missingScheduleAndServiceInfo).toEqual(['House No. or Unit']);
+
+    const { result: withDetails } = renderHook(() => useServiceBookingDerivations(buildProps({ ...base, deliveryAddressDetails: 'Blk 5 Lot 12' })));
+    expect(withDetails.current.missingScheduleAndServiceInfo).toEqual([]);
+    expect(withDetails.current.serviceLocationSummaryDraft).toBe('Blk 5 Lot 12, Rizal Street, Jaro, Iloilo City');
+  });
+
   it('does not require an appointment schedule for quote requests', () => {
     const { result } = renderHook(() => useServiceBookingDerivations(buildProps({
       serviceOrderMethod: 'quote'

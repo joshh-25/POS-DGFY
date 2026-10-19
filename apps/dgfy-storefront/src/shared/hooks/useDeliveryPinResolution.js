@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { buildPinnedDeliveryAddress, getSearchSelectedPinAddress, resolveDeliveryAddress } from '../../features/locations/utils/pinnedDeliveryAddress.js';
+import { useEffect, useMemo, useRef } from 'react';
+import { buildPinnedDeliveryAddress, getSearchSelectedPinAddress, getSearchSelectedPinHouseNumber, resolveDeliveryAddress } from '../../features/locations/utils/pinnedDeliveryAddress.js';
 import { reverseGeocodeDeliveryCoordinates } from '../../services/geocodingService.js';
 import { trimAddressCountrySuffix } from '../model/storefrontCatalogModel.js';
 
@@ -14,6 +14,7 @@ import { trimAddressCountrySuffix } from '../model/storefrontCatalogModel.js';
 export function useDeliveryPinResolution({
   customerAddress,
   customerPin,
+  deliveryAddressDetails = '',
   deliveryLocationDisplayAddress,
   hasPinnedDeliveryLocation,
   isDeliveryOrder,
@@ -21,6 +22,7 @@ export function useDeliveryPinResolution({
   resolvedDeliveryAddress,
   setCustomerAddress,
   setCustomerPin,
+  setDeliveryAddressDetails,
   setDeliveryLocationAction,
   setPinLocationError,
   setPinLocationLoading,
@@ -29,6 +31,10 @@ export function useDeliveryPinResolution({
   setSelectedSavedLocationId
 }) {
   const locationResolutionEnabled = isDeliveryOrder || isCustomerLocationFlow;
+  // Read through a ref so typing details never re-runs the pin effect below (which would
+  // re-resolve the pin on every keystroke).
+  const deliveryAddressDetailsRef = useRef(deliveryAddressDetails);
+  deliveryAddressDetailsRef.current = deliveryAddressDetails;
   const handlePinMyLocation = () => {
     if (!navigator?.geolocation) {
       setPinLocationError('Geolocation is not supported on this device/browser.');
@@ -85,6 +91,11 @@ export function useDeliveryPinResolution({
       setPinLocationError('');
       setResolvedDeliveryAddress(searchSelectedAddress);
       setCustomerAddress(searchSelectedAddress);
+      // #2594: a searched house number prefills the details field, never over the customer's own.
+      const houseNumber = getSearchSelectedPinHouseNumber(customerPin);
+      if (houseNumber && !String(deliveryAddressDetailsRef.current || '').trim()) {
+        setDeliveryAddressDetails?.(houseNumber);
+      }
       return;
     }
     const controller = new AbortController();
