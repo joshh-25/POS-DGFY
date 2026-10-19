@@ -11,8 +11,8 @@ verification_evidence: focused dgfy-api tenant-location validator, use-case, reg
 rollback_note: Revert the store-location details field, its helpers, the tenant-location API acceptance, registration materialization copy, tenant-schema registry entry, focused tests, docs and this declaration together. The nullable tenant_locations.address_details column may stay in place (unused) or be removed with the migration's down step; address_line already holds the full display address, so no reader depends on the column.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-19T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-19-MERCHANT-STORE-LOCATION-ADDRESS-DETAILS
+preflight_run_at: 2026-10-19T13:55:04.041Z
+preflight_request_ref: PREFLIGHT-39263518035-2026-10-19-MERCHANT-STORE-LOCATION-ADDRESS-DETAILS
 ---
 
 # Merchant store-location street number, unit and building
