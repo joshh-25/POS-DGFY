@@ -30010,3 +30010,92 @@ Not complete. Record after the #2594 Storefront PR merges and implementation val
 ### Next phase number
 
 Phase 518. No explicit dependency.
+
+## Phase 518 - Per-app mobile push-diagnostics visibility (#2602)
+
+### Initiative and release
+
+Platform Admin push diagnostics, current release. Adds deployment-local switches for the diagnostics
+screen in Storefront, POS, and Fiscal POS; no mobile client change is included.
+
+### Objective and scope
+
+Let an authorized Platform Admin enable or disable the mobile push-diagnostics screen independently
+for `storefront`, `pos`, and `fiscalpos`. Missing settings default off. The session-less mobile read
+returns only `{enabled}` and does not change enrollment, code validity, revocation, or test sends.
+Brand is required and shape-validated but does not select a separate setting. Classification:
+`within-existing-boundary`; amend ADR 0097 Decision 10 (`[default]`).
+
+### Status
+
+`in_progress` — implementation is on `feature/2602-push-diagnostics-visibility`; PR and merge are
+pending. No deployment or mobile-client verification has been performed.
+
+### Dependencies
+
+Issue [#2602](https://github.com/Sieitzz/dgfy-platform/issues/2602). No explicit dependency on an
+earlier phase. The mobile-side consumer remains dgfy-mobile#422 and is not in this phase's scope.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-app-boundary.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md), the
+[API specification](../api/specification.md), [rate-limit reference](../api/RATE_LIMITING.md),
+[runbook](../ops/PUSH_DIAGNOSTICS_RUNBOOK.md), and
+[route-permission matrix](../testing/platform-admin-route-permission-matrix.md).
+
+### Implementation targets
+
+[Settings migration](../../apps/dgfy-migration-runner/migrations/20261019000003-create-push-diagnostics-app-settings.cjs),
+[landlord setting model](../../apps/dgfy-api/src/models/Landlord/PushDiagnosticsAppSetting.js),
+[availability use case](../../apps/dgfy-api/src/modules/pushDiagnostics/usecases/pushDiagnosticsUseCases.js),
+[settings repository](../../apps/dgfy-api/src/modules/pushDiagnostics/repositories/pushDiagnosticsSettingsRepository.js),
+[admin router](../../apps/dgfy-api/src/routes/adminPushDiagnostics.js),
+[availability router](../../apps/dgfy-api/src/routes/pushDiagnosticsEnrollment.js), and
+[Platform Admin page](../../apps/dgfy-admin/Pages/PushDiagnostics.jsx). Focused tests cover migration,
+repository transaction and rollback behavior, use cases, transport and route classification, service
+contracts, and the page confirmation flow.
+
+### Acceptance and validation evidence
+
+- [x] All three apps default off and an authorized admin can confirm audited on/off changes; a no-op
+      creates no audit row and an audit failure rolls back the setting.
+- [x] Session-less availability validates app and brand shape, applies the app setting to any
+      well-formed brand, returns only `{enabled}`, and fails closed for invalid input or service error.
+- [x] Availability limiter defaults to 120 per IP per 15 minutes and its contract is documented.
+- [x] Route classification, API/UI contracts, compliance declaration, ADR, runbook, and module docs
+      are updated; no mobile client or OPIS behavior changes.
+- [x] Focused Jest/Vitest suites, `npm run build:admin`, `npm run check:architecture`,
+      `npm run check:adr`, `npm run lint:docs`, and `npm run check:compliance` pass.
+- [x] Rendered desktop and mobile UI evidence is recorded with mocked API data; there were no browser
+      errors or page-width overflow at 390 px. Screenshots: `.tmp/push-diagnostics-visibility-render/`.
+
+### Evidence
+
+The five focused backend Jest suites pass (91 tests); the two focused admin Vitest suites pass (58
+tests); `npm run build:admin`, `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+`npm run check:compliance`, changed-file `node --check`, and the develop-base version-floor audit pass.
+Rendered 1440 px desktop and 390 px mobile screenshots use mocked API data and show no browser errors
+or horizontal overflow. No provider, production environment, migration deployment, or real device is
+exercised in this phase. Full command output is recorded in the implementation PR's Testing Evidence.
+
+### Completion date
+
+Not complete. Record after the implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — the landlord migration is applied and a delegated admin without
+      `admin.push_diagnostics` still receives 403 for the new routes; owner: Verifier; blocks issue
+      closure.
+- [ ] mobile contract — dgfy-mobile#422 reads availability, keeps the screen hidden on non-200, and
+      uses the 30-second cache contract; owner: mobile QA; blocks issue closure.
+- [ ] operational — verify a switch change on each deployed environment and observe the maximum
+      30-second cache lag; owner: Verifier; blocks issue closure.
+
+### Next phase number
+
+Phase 519. No explicit dependency.

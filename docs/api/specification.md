@@ -6544,6 +6544,8 @@ Operator-only diagnostics for outbound push delivery (ADR 0097, #2579). Every `/
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/admin/push-diagnostics/overview` | Environment label, presence-only provider/secret readiness, registration counts by app/brand/platform, 24h/7d delivery and dispatch-decision counts. Audited (`push_diagnostics.accessed`) before data is returned |
+| `GET` | `/admin/push-diagnostics/visibility` | Per-deployment visibility switches for `storefront`, `pos`, and `fiscalpos`; missing rows default off |
+| `PUT` | `/admin/push-diagnostics/visibility/:app` | Set `{enabled: boolean}` for one supported app; extra body fields are rejected. Changed values are audited atomically; a no-op is not audited |
 | `GET` | `/admin/push-diagnostics/registrations` | Capped list (`limit` <= 100; filters `app`, `brand`, `platform`, `state`) |
 | `GET` | `/admin/push-diagnostics/attempts` | Recent delivery attempts with a derived `state` and recent dispatch decisions with `reason_code` (`window_hours` <= 168; filters `purpose`, `status`, `outcome`) |
 | `GET` | `/admin/push-diagnostics/diagnostic-devices` | Enrolled diagnostic devices (no tokens) |
@@ -6554,6 +6556,17 @@ Operator-only diagnostics for outbound push delivery (ADR 0097, #2579). Every `/
 Delivery `state` values: `no_provider` (unconfigured or simulated; nothing was delivered), `pending_dispatch`, `send_failed`, `rejected_by_expo`, `accepted_receipt_pending` (accepted by Expo, receipt not yet checked), `receipt_ok` (Expo handed the message to APNs/FCM), `receipt_error`, `receipt_other`. None of them states that a notification was displayed on a device.
 
 `POST /push-diagnostics/enroll` is the device-side enrollment call and is session-less: the body `{code, token, platform, app, brand}` must carry a valid, unexpired, unused code issued above. Every code failure returns the same `404`. The response contains only `{enrolled, ref}`. It is limited per IP (10 per 15 minutes).
+
+`GET /push-diagnostics/availability?app=<app>&brand=<brand>` is a separate session-less mobile read
+limited to 120 requests per IP per 15 minutes by default. It returns exactly `{enabled: boolean}`
+with `Cache-Control: public, max-age=30`. `app` must exactly match `storefront`, `pos`, or
+`fiscalpos`; `brand` must be present and match the existing 1–80 character brand shape. Brand is
+client-supplied metadata and does not select a setting: any well-formed brand receives the app-level
+value. Missing or malformed values and unrecognized query keys fail closed with `200 {enabled:false}`.
+Availability controls whether the mobile app shows its diagnostics screen; it does not change
+enrollment-code validity, enrollment, revocation, or test-send behavior. Storage failures return a
+generic `503` with `Cache-Control: no-store`; clients should keep the diagnostics screen hidden on
+any non-200 response.
 
 ### QA landlord invoices
 

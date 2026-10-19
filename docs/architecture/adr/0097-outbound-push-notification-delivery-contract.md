@@ -164,3 +164,21 @@ SMS behavior remains unchanged.
 - **Environment label:** Because `NODE_ENV` is `production` on staging and production alike, the page
   shows `DEPLOY_ENV_LABEL` (falling back to `SENTRY_ENVIRONMENT`, otherwise `unknown`) and each
   deployment shows only its own database.
+
+### 2026-10-19 — Per-app mobile push-diagnostics visibility (#2602)
+
+- **Clauses amended:** Decision 10 (`[default]`). No `[binding]` clause changes.
+- **Decision 10:** Platform Admin may enable or disable the diagnostics screen independently for the
+  fixed apps `storefront`, `pos`, and `fiscalpos`. The landlord table is deployment-local, defaults to
+  off when a row is missing, and does not change push enrollment, enrollment-code validity, device
+  revocation, or test-send rules. Changed values and their `push_diagnostics.visibility_changed`
+  audit row commit atomically; a no-op is not audited.
+- Mobile clients read only `{enabled}` from the session-less, per-IP-limited
+  `GET /api/v1/push-diagnostics/availability`. `app` must exactly match a supported app. `brand` is
+  required and shape-validated using the existing client-label pattern, but does not select a setting;
+  every well-formed brand receives the app-level value. Missing or malformed inputs and unknown query
+  keys fail closed to `{enabled:false}`. A successful response may be cached for 30 seconds; storage
+  errors return `503` with `Cache-Control: no-store`, and clients keep the screen hidden on non-200.
+- This is an operator-controlled UI visibility switch only. It adds no mobile client code and does not
+  authorize enrollment or test sends. It adds no brand registry, per-brand setting, push event, or
+  cross-deployment synchronization.
