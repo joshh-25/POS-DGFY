@@ -176,6 +176,27 @@ ADR 0022 supersedes the May 18 auto-activation decision for public company regis
 
 ## Amendments
 
+### 2026-10-19: Merchant street number, unit and building on store locations (#2595)
+
+The 2026-06-21 addendum's clauses 4-5 describe a single merchant-edited address field filled from
+map suggestions. Store locations gain a second, merchant-owned part.
+
+1. `tenant_locations.address_details` (nullable, at most 255 characters) holds the merchant's
+   street number, unit, floor or building, which geocoding cannot supply.
+2. `address_line` remains the full display address, `<address_details>, <location>`, so Storefront,
+   discovery and receipts read it unchanged. The store-location editors (onboarding, POS tenant
+   setup, Storefront settings, business registration) show the geocoded location and the details as
+   two fields, require the details, and recombine them on save.
+3. Map and search suggestions fill only the location part. They never write `address_details`, so
+   the binding rule that a suggestion must not overwrite merchant-edited text holds for the details
+   by construction; the location part keeps its existing behavior.
+4. The API keeps the field optional, so older clients and locations saved before it existed stay
+   valid. A saved `address_line` that no longer starts with its details is shown whole as the
+   location rather than guessed at.
+5. The column is added to the landlord connection and every active tenant schema by migration
+   `20261019000003-add-address-details-to-tenant-locations.cjs`, and is registered in
+   `sync-tenant-schemas.js` for any tenant that migration does not reach.
+
 ### 2026-10-19: Street in reverse-geocode labels (#2593)
 
 The 2026-09-17 amendment left reverse-geocode labels at the administrative level (barangay, city,

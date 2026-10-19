@@ -3825,6 +3825,14 @@ IMS location clients should submit the merchant-editable address with the normal
 | `DELETE` | `/tenant-locations/:id` | Deactivate a location while preserving history |
 | `DELETE` | `/tenant-locations/:id/permanent` | Permanently delete an unused pin only |
 
+`POST` and `PUT /tenant-locations` accept an optional nullable `address_details` (#2595): the
+merchant's street number, unit, floor or building, at most 255 characters, trimmed, with a blank
+value stored as `null`. `address_line` remains the full display address every reader uses; the
+store-location editors send it as `<address_details>, <location>` and keep `address_details` apart
+so they can show the two parts again. The API does not require the field, so older clients and
+older locations stay valid; the editors require it. Approved company registrations copy
+`location.address_details` from the submitted draft onto the primary location.
+
 The Dine-in payment policy endpoint requires `downpayment:settings` (or master-admin/admin
 authority) and an assigned branch grant for non-tenant-wide users. Its request body is:
 

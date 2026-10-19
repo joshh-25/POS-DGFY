@@ -986,6 +986,7 @@ CREATE TABLE tenant_locations (
     location_id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
     address_line TEXT NOT NULL,
+    address_details VARCHAR(255) NULL, -- #2595: merchant's street no./unit/floor/building; address_line holds `<details>, <location>`
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     delivery_radius_km DECIMAL(5, 2) NOT NULL DEFAULT 5,
