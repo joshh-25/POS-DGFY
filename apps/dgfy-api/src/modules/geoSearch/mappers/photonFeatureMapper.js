@@ -118,24 +118,73 @@ export const mapLandmarks = (features, origin) => {
         .slice(0, MAX_LANDMARKS);
 };
 
+/**
+ * #2593: how close a street-bearing feature must be before its street goes into a reverse label.
+ * Calibrated live on 2026-10-19: pins in Iloilo's built-up areas matched their own street at
+ * 12-42 m, while the nearest candidate for a pin between streets sat 87 m+ away.
+ */
+export const REVERSE_STREET_MAX_DISTANCE_METERS = 75;
+
+const featureStreet = (properties) => (
+    String(properties?.type || '').trim() === 'street' ? clean(properties?.name) : clean(properties?.street)
+);
+
+/**
+ * The street of the nearest feature that names one, or null when none is within
+ * REVERSE_STREET_MAX_DISTANCE_METERS. A street feature names itself; a house or POI names the
+ * street it sits on. Only the street is taken: never a house number, never a POI name.
+ */
+export const findReverseStreet = (features, origin) => {
+    let best = null;
+    (Array.isArray(features) ? features : []).forEach((feature) => {
+        const name = featureStreet(feature?.properties);
+        const coordinates = toCoordinates(feature);
+        if (!name || !coordinates) return;
+
+        const distance = distanceMeters(origin, coordinates);
+        if (distance > REVERSE_STREET_MAX_DISTANCE_METERS) return;
+        if (!best || distance < best.distanceMeters) {
+            best = { name, properties: feature.properties, distanceMeters: distance };
+        }
+    });
+    return best;
+};
+
+// A reverse label never carries a house number or a POI name, so a house- or street-typed
+// feature's own precision would overstate what the label says.
+const ADDRESS_LEVEL_TYPES = new Set(['house', 'street']);
+const mapAdministrativePrecision = (properties) => (
+    ADDRESS_LEVEL_TYPES.has(String(properties?.type || '').trim())
+        ? mapPrecision({ ...properties, type: null })
+        : mapPrecision(properties)
+);
+
 export const mapReverseGeocodeResponse = (payload, { latitude, longitude }) => {
     const features = Array.isArray(payload?.features) ? payload.features : [];
     if (features.length === 0) return null;
 
+    const origin = { latitude, longitude };
     const nearest = features[0];
     const properties = nearest?.properties || {};
-    const addressLine = composeAddressLine(properties);
+    const street = findReverseStreet(features, origin);
+
+    // The street's own feature supplies the rest of the label, so the barangay and city always
+    // belong to the street that was named.
+    const addressLine = street
+        ? dedupeSegments([street.name, ...composeAddressLine(street.properties).split(', ')]).slice(0, MAX_LABEL_SEGMENTS).join(', ')
+        : composeAddressLine(properties);
     if (!addressLine) return null;
 
-    const origin = { latitude, longitude };
     const nearestCoordinates = toCoordinates(nearest);
+    const components = mapComponents(properties);
+    if (street) components.street = street.name;
 
     return {
         address_line: addressLine,
         provider: QUADRUPER_PROVIDER,
-        precision: mapPrecision(properties),
+        precision: street ? 'street' : mapAdministrativePrecision(properties),
         distance_meters: nearestCoordinates ? distanceMeters(origin, nearestCoordinates) : null,
-        components: mapComponents(properties),
+        components,
         landmarks: mapLandmarks(features, origin)
     };
 };

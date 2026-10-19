@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-25
-last_reviewed: 2026-09-17
+last_reviewed: 2026-10-19
 review_by: 2026-10-25
 applies_to: architecture_decision
 topic: tenant_first_login_onboarding_and_storefront_readiness_contract
@@ -175,6 +175,27 @@ ADR 0022 supersedes the May 18 auto-activation decision for public company regis
 5. POS onboarding may use POS catalog readback as a local readiness hint, but backend onboarding completion remains governed by the tenant onboarding checklist and starter-item contract.
 
 ## Amendments
+
+### 2026-10-19: Street in reverse-geocode labels (#2593)
+
+The 2026-09-17 amendment left reverse-geocode labels at the administrative level (barangay, city,
+province), because the nearest Quadruper feature can lie up to 400 m from the pin. It is extended
+as follows.
+
+1. A reverse-geocode `address_line` starts with a street when a feature naming one lies within
+   75 m of the pin: a street feature's own name, or the `street` of a house or point of interest.
+   The closest such feature wins, and its own barangay, city and province complete the label.
+2. Beyond 75 m the label stays at the administrative level, exactly as before.
+3. A reverse label never contains a house number or a point-of-interest name; points of interest
+   remain in `landmarks[]`.
+4. `precision` describes the label: `street` when a street was added, otherwise the administrative
+   level the label carries. A house- or street-typed nearest feature no longer reports `house` or
+   `street` for a label that names neither.
+5. The bundled-fallback path is unchanged.
+
+The 2026-09-17 amendment's binding rules are unchanged: no vague `Near ...` labels, a suggestion
+never overwrites merchant-edited address text, and reverse-geocode failure never blocks saving
+valid coordinates.
 
 ### 2026-09-17: Quadruper geocoding provider (Phase 339)
 
