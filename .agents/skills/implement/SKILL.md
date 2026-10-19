@@ -98,6 +98,31 @@ authoritative docs, surface conflicts before editing, and never force-add the ig
 missing, malformed, mismatched, or ambiguous handoff is a hard stop; without one, the existing
 Worker workflow is unchanged.
 
+## Omitted target resolution
+
+This runs only when no issue, plan path, or manual handoff path was supplied. Explicit input keeps
+precedence; in particular, an explicit issue without a plan path does not trigger automatic plan
+pickup. Follow [the shared omitted-target contract](../../../docs/ai/OMITTED_TARGET_RESOLUTION.md)
+for the Orca adapter, branch signal, stop format, and resolution report.
+
+1. Determine assignment **A** from this worktree's verified Orca `linkedIssue`, then the current
+   branch number signal. Stop if both exist and disagree.
+2. Scan only `.tmp/plan-*.md` directly under this worktree's top-level `.tmp`. Validate each
+   candidate using "Planner handoff input" above and the shared Planner/Worker compatibility
+   contract. Front-matter `issue` is the identity; a filename mismatch is a conflict.
+3. With **A** known, use exactly one valid, ready plan for A as if its path were explicit, including
+   its Plan Handoff provenance. Stop if that plan is invalid, stale, or `needs-decision`, if more
+   than one plan matches, or if plan files exist but none identify A. If there are no plan files,
+   implement A directly. A lone plan file never establishes A.
+4. With no **A**, stop and request `/implement #N` or `/implement @.tmp/plan-N.md`.
+5. REST-verify A as described in the shared contract before creating a branch or writing the board:
+   it must be an open issue in this repository, not a PR or an `epic`-labeled issue. Do not check
+   for acceptance criteria.
+
+Direct issue resolution uses `develop`/`develop`; Orca and branch names never infer a hotfix. A
+matching planner artifact uses only its validated route under the handoff rules above, including
+the required current revalidation for any hotfix route.
+
 ## Checkpoint policy — stop and ask before proceeding
 
 No branch protection exists on this repo (no CODEOWNERS, no required-review config) — a self-imposed
