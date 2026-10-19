@@ -159,6 +159,8 @@ const resolveMaterializableLocation = ({ payload, companyName }) => {
     return {
         name: companyName,
         address_line: address,
+        // #2595: the merchant's street number, unit, floor or building, when the wizard captured it.
+        address_details: String(location.address_details || '').trim().slice(0, 255) || null,
         latitude: parseCoordinate(location.latitude, 'latitude', -90, 90),
         longitude: parseCoordinate(location.longitude, 'longitude', -180, 180),
         operating_hours: normalizeStorefrontBusinessHours(payload?.hours),

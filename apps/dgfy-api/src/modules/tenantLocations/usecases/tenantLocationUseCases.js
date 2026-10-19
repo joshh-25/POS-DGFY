@@ -37,6 +37,7 @@ const parseExpectedUpdateTimestamp = (payload = {}) => {
 const normalizePayload = (payload = {}) => ({
     name: String(payload.name || '').trim(),
     address_line: String(payload.address_line || '').trim(),
+    address_details: String(payload.address_details || '').trim() || null,
     latitude: Number(payload.latitude),
     longitude: Number(payload.longitude),
     delivery_radius_km: normalizeDeliveryRadiusKm(payload.delivery_radius_km),
