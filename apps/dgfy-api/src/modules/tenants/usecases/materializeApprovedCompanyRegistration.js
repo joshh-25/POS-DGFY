@@ -88,6 +88,8 @@ export const buildMaterializeApprovedCompanyRegistration = ({ connector = tenant
             const values = {
                 name: location.name || snapshot.company_name || tenant.name,
                 address_line: location.address_line,
+                // #2595: the merchant's street number, unit, floor or building, when captured.
+                address_details: String(location.address_details || '').trim().slice(0, 255) || null,
                 latitude,
                 longitude,
                 operating_hours: snapshot.hours || [],

@@ -77,6 +77,7 @@ export const createDefaultStorefrontForm = () => ({
 export const createDefaultLocationForm = () => ({
   name: '',
   address_line: '',
+  address_details: '',
   latitude: '10.7202',
   longitude: '122.5621',
   location_version: '',

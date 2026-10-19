@@ -16,6 +16,8 @@ const tenantLocationBaseSchema = Joi.object({
     address_line: Joi.string().trim().min(3).max(2000).required().messages({
         'any.required': 'Location address is required'
     }),
+    // #2595: optional on the API so older clients keep working; the store-location editors require it.
+    address_details: Joi.string().trim().max(255).allow('', null),
     latitude: Joi.number().min(-90).max(90).required().messages({
         'any.required': 'Latitude is required'
     }),

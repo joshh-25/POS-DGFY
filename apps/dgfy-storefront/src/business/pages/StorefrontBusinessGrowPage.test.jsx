@@ -524,6 +524,9 @@ describe('StorefrontBusinessGrowPage — three-step company registration', () =>
     expect(addBranchButton.disabled).toBe(true);
     expect(apiMock.patch).toHaveBeenCalledTimes(4);
     fireEvent.change(screen.getByLabelText('Business address'), { target: { value: '123 Test Street, Manila' } });
+    // #2595: the branch also needs the street no., unit, floor or building before it can be added.
+    expect(addBranchButton.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Street no\., unit, floor or building/), { target: { value: 'Unit 2' } });
     expect(addBranchButton.disabled).toBe(false);
     expect(apiMock.patch).toHaveBeenCalledTimes(4);
     fireEvent.click(addBranchButton);
@@ -533,7 +536,8 @@ describe('StorefrontBusinessGrowPage — three-step company registration', () =>
       current_step: 3,
       payload: expect.objectContaining({
         location: expect.objectContaining({
-          address_line: '123 Test Street, Manila',
+          address_line: 'Unit 2, 123 Test Street, Manila',
+          address_details: 'Unit 2',
           latitude: 14.5995,
           longitude: 120.9842
         })
@@ -544,7 +548,9 @@ describe('StorefrontBusinessGrowPage — three-step company registration', () =>
     expect(changeLocationButton.getAttribute('title')).toBe('Change location');
     fireEvent.click(changeLocationButton);
     expect(await screen.findByRole('heading', { name: 'Selected location' })).toBeTruthy();
+    // Editing splits the saved line back into the location and the details.
     expect(screen.getByLabelText('Business address').value).toBe('123 Test Street, Manila');
+    expect(screen.getByLabelText(/Street no\., unit, floor or building/).value).toBe('Unit 2');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
     expect(await screen.findByRole('button', { name: 'Change branch location' })).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/Company Registration Terms/i));
