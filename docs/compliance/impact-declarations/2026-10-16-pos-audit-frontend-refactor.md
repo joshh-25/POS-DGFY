@@ -11,8 +11,8 @@ verification_evidence: audit_contract_tests,pos_regression_suite,targeted_eslint
 rollback_note: Revert the scoped POS Audit workspace modules, responsive presentation changes, and this declaration together. No backend, database, migration, service, or API contract change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-16T18:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-POS-AUDIT-UI-2026-10-16
+preflight_run_at: 2026-10-19T13:55:04.039Z
+preflight_request_ref: PREFLIGHT-39263518035-2026-10-16-POS-AUDIT-FRONTEND-REFACTOR
 ---
 
 # POS Audit Frontend Refactor Compliance Impact

@@ -12,8 +12,8 @@ verification_evidence: 5 focused backend Jest suites (91 tests), 2 Platform Admi
 rollback_note: Revert the visibility routes, availability read, Platform Admin controls, focused tests, docs, and this declaration together; the additive migration down drops only push_diagnostics_app_settings and does not touch existing diagnostic devices, enrollment codes, push logs, or dispatch events.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-19T11:34:52.000Z
-preflight_request_ref: NOT-EXECUTED-2602-2026-10-19
+preflight_run_at: 2026-10-19T13:55:04.045Z
+preflight_request_ref: PREFLIGHT-39263518035-2026-10-19-PUSH-DIAGNOSTICS-VISIBILITY
 ---
 
 # Push diagnostics per-app visibility (#2602, Phase 518)
