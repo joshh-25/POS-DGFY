@@ -10,6 +10,7 @@ const NEW_INDEX = 'uk_geo_store_items_tenant_loc_key_item';
 const buildQueryInterface = ({
     table = true,
     locationKey = false,
+    oldIndex = true,
     newIndex = false,
     duplicateGroups = [],
     zeroLocationCount = 0
@@ -18,7 +19,7 @@ const buildQueryInterface = ({
         tables: table ? ['geo_store_items'] : [],
         columns: locationKey ? { location_key: { type: 'BIGINT UNSIGNED' } } : {},
         indexes: [
-            { name: OLD_INDEX },
+            ...(oldIndex ? [{ name: OLD_INDEX }] : []),
             ...(newIndex ? [{ name: NEW_INDEX }] : [])
         ],
         duplicateGroups: [...duplicateGroups],
@@ -138,7 +139,11 @@ describe('fix geo_store_items NULL-location unique key migration (#2605)', () =>
     });
 
     it('rolls back the new index and generated column before restoring the old unique index', async () => {
-        const { queryInterface, state } = buildQueryInterface({ locationKey: true, newIndex: true });
+        const { queryInterface, state } = buildQueryInterface({
+            locationKey: true,
+            oldIndex: false,
+            newIndex: true
+        });
 
         await migration.down(queryInterface);
 
