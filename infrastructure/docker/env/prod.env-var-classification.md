@@ -3,7 +3,7 @@ status: draft
 authority_level: default
 owner: architecture
 date: 2026-08-28
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-19
 review_by: 2027-04-11
 applies_to: production_deployment, secrets_management
 topic: prod_env_var_classification
@@ -74,6 +74,19 @@ is the input to that step, not a replacement for it.
 ### Additional unconditional production validator requirement
 
 - `SMS_PHONE_HASH_SECRET` — **secret** (bucket A; `productionEnvValidation.cjs:71-73` requires it whenever `NODE_ENV=production`, regardless of `SMS_PROVIDER`)
+
+### Push delivery — production-required, but NOT checked by `validateProductionEnv` (added 2026-10-19, #2579)
+
+- `PUSH_PROVIDER` — non-secret (bucket B; PROD literal `expo`, PROD-scoped only — DEV/STAGING set it through their own `.env`)
+- `PUSH_TOKEN_HASH_SECRET` — **secret** (bucket A; ADR 0097 and `PUSH_DIAGNOSTICS_RUNBOOK.md` require it in production for HMAC token hashing)
+- `EXPO_ACCESS_TOKEN` — **secret** (bucket A; optional, Expo enhanced push security, so the compose reference carries an empty default)
+
+`productionEnvValidation.cjs` has no push check (verified 2026-10-19), so unlike `SMS_PHONE_HASH_SECRET`
+a missing `PUSH_TOKEN_HASH_SECRET` does **not** crash-loop the container and is not caught by
+`deploy-sops.sh`'s pre-flight. It surfaces only in the read-only readiness indicators of
+Platform Admin push diagnostics. That is why the secret must be in `secrets/dgfy-api.env`
+**before** `PUSH_PROVIDER: expo` reaches the live compose file. Whether to promote this to a boot-time
+check is a separate decision, not made here.
 
 ### Conditionally required — depends on which features/profile are live
 
