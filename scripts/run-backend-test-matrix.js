@@ -27,6 +27,7 @@ const SUPPORTED_LANDLORD_TEST_DATABASE_NAMES = new Set([
   'sku_inventory_manager_test',
 ]);
 const MIGRATED_TEMPLATE_DB_NAME_PATTERN = /^test_mig_template_[A-Za-z0-9._-]+$/;
+const DB_TEST_FILENAME_PATTERN = /\.db\.[^/]*test\.js$/;
 
 function isMigratedTemplateDbName(value) {
   const name = String(value || '');
@@ -167,15 +168,23 @@ function classify(testPath) {
 
 // Splits the active test list into the "fast" tier (no real DB, default) and the "db" tier
 // (listed in backend-db-dependent-tests.js) -- #1015. Throws loudly if the manifest references a
-// path that no longer exists, so a rename/delete can't silently go stale.
-function partitionByDbManifest(activeTests) {
-  const manifestList = require('./backend-db-dependent-tests.js');
+// path that no longer exists or an active *.db.*test.js file is missing from the manifest.
+function partitionByDbManifest(activeTests, manifestList = require('./backend-db-dependent-tests.js')) {
   const manifestSet = new Set(manifestList);
-  const activeRelPaths = new Set(activeTests.map(relativeTestPath));
-  const staleEntries = manifestList.filter((entry) => !activeRelPaths.has(entry));
+  const activeRelPaths = activeTests.map(relativeTestPath);
+  const activeRelPathSet = new Set(activeRelPaths);
+  const staleEntries = manifestList.filter((entry) => !activeRelPathSet.has(entry));
   if (staleEntries.length > 0) {
     throw new Error(
       `backend-db-dependent-tests.js lists ${staleEntries.length} test path(s) that no longer exist: ${staleEntries.join(', ')}`
+    );
+  }
+  const unlistedDbTests = activeRelPaths.filter((entry) => (
+    DB_TEST_FILENAME_PATTERN.test(path.basename(entry)) && !manifestSet.has(entry)
+  ));
+  if (unlistedDbTests.length > 0) {
+    throw new Error(
+      `${unlistedDbTests.length} *.db.*test.js test(s) are not listed in scripts/backend-db-dependent-tests.js and would run in the no-DB fast tier: ${unlistedDbTests.join(', ')}. Add each to the manifest (or rename it if it truly needs no database).`
     );
   }
   const dbTests = activeTests.filter((testPath) => manifestSet.has(relativeTestPath(testPath)));
@@ -1092,6 +1101,8 @@ if (require.main === module) {
 module.exports = {
   getFastTierTestChunks,
   partitionFastTierTests,
+  partitionByDbManifest,
+  DB_TEST_FILENAME_PATTERN,
   buildMigratedTemplateDbName,
   isMigratedTemplateDbName,
   isCoverageComplete,
