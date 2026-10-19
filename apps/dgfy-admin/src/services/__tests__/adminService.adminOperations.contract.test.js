@@ -47,6 +47,8 @@ describe('adminService admin operation contracts', () => {
     ['removeStorefrontDomain', 'delete', '/admin/tenants/tenant-1/storefront-domains/domain-1', () => adminService.removeStorefrontDomain('tenant-1', 'domain-1', 'retire')],
     ['reconcileStorefrontDomainEligibility', 'post', '/admin/tenants/tenant-1/storefront-domains/reconcile-eligibility', () => adminService.reconcileStorefrontDomainEligibility('tenant-1', 'scheduled check')],
     ['getPushDiagnosticsOverview', 'get', '/admin/push-diagnostics/overview', () => adminService.getPushDiagnosticsOverview()],
+    ['getPushDiagnosticsVisibility', 'get', '/admin/push-diagnostics/visibility', () => adminService.getPushDiagnosticsVisibility()],
+    ['setPushDiagnosticsVisibility', 'put', '/admin/push-diagnostics/visibility/pos', () => adminService.setPushDiagnosticsVisibility('pos', true)],
     ['listPushDiagnosticsRegistrations', 'get', '/admin/push-diagnostics/registrations', () => adminService.listPushDiagnosticsRegistrations({ state: 'active' })],
     ['listPushDiagnosticsAttempts', 'get', '/admin/push-diagnostics/attempts', () => adminService.listPushDiagnosticsAttempts({ window_hours: 24 })],
     ['listPushDiagnosticDevices', 'get', '/admin/push-diagnostics/diagnostic-devices', () => adminService.listPushDiagnosticDevices()],
@@ -109,5 +111,16 @@ describe('adminService admin operation contracts', () => {
     expect(mockAdminApi.history.post).toHaveLength(1);
     expect(mockAdminApi.history.post[0].url).toBe('/admin/push-diagnostics/diagnostic-devices/device-1/test-send');
     expect(mockAdminApi.history.post[0].data).toBeUndefined();
+  });
+
+  it('sends only the enabled flag when changing app visibility', async () => {
+    mockAdminApi.onPut('/admin/push-diagnostics/visibility/fiscalpos').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ enabled: false });
+      return [200, { success: true, data: { app: 'fiscalpos', enabled: false, changed: true } }];
+    });
+
+    await expect(adminService.setPushDiagnosticsVisibility('fiscalpos', false)).resolves.toEqual({
+      app: 'fiscalpos', enabled: false, changed: true
+    });
   });
 });
