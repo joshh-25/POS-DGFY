@@ -6,6 +6,8 @@ const test = require('node:test');
 const {
   getFastTierTestChunks,
   partitionFastTierTests,
+  partitionByDbManifest,
+  DB_TEST_FILENAME_PATTERN,
   buildMigratedTemplateDbName,
   isMigratedTemplateDbName,
   isCoverageComplete,
@@ -15,6 +17,86 @@ const {
 } = require('./run-backend-test-matrix.js');
 
 const matrixSource = fs.readFileSync(path.join(__dirname, 'run-backend-test-matrix.js'), 'utf8');
+const API_DIR = path.resolve(__dirname, '../apps/dgfy-api');
+const TEST_DIR = path.join(API_DIR, 'tests');
+const backendDbManifest = require('./backend-db-dependent-tests.js');
+
+test('DB test filename pattern recognizes simple and integration test forms', () => {
+  assert.equal(DB_TEST_FILENAME_PATTERN.test('inventory.db.test.js'), true);
+  assert.equal(DB_TEST_FILENAME_PATTERN.test('inventory.db.integration.test.js'), true);
+  assert.equal(DB_TEST_FILENAME_PATTERN.test('inventory.integration.test.js'), false);
+});
+
+test('unlisted *.db.*test.js files fail before they can enter the no-DB fast tier', () => {
+  const testPath = path.join(TEST_DIR, 'unexpected.db.integration.test.js');
+
+  assert.throws(
+    () => partitionByDbManifest([testPath], []),
+    (error) => {
+      assert.ok(error.message.includes('1 *.db.*test.js test(s) are not listed in scripts/backend-db-dependent-tests.js'));
+      assert.ok(error.message.includes('tests/unexpected.db.integration.test.js'));
+      return true;
+    }
+  );
+});
+
+test('listed *.db.*test.js files are routed to the DB tier', () => {
+  const testPath = path.join(TEST_DIR, 'geoStoreItems.nullLocation.db.integration.test.js');
+  const partition = partitionByDbManifest([testPath], ['tests/geoStoreItems.nullLocation.db.integration.test.js']);
+
+  assert.deepEqual(partition.dbTests, [testPath]);
+  assert.deepEqual(partition.fastTests, []);
+});
+
+test('unlisted tests without the .db. filename marker remain in the fast tier', () => {
+  const testPath = path.join(TEST_DIR, 'ordinary.integration.test.js');
+  const partition = partitionByDbManifest([testPath], []);
+
+  assert.deepEqual(partition.dbTests, []);
+  assert.deepEqual(partition.fastTests, [testPath]);
+});
+
+test('stale DB manifest entries still fail with the existing message', () => {
+  assert.throws(
+    () => partitionByDbManifest([], ['tests/stale.db.integration.test.js']),
+    (error) => {
+      assert.equal(
+        error.message,
+        'backend-db-dependent-tests.js lists 1 test path(s) that no longer exist: tests/stale.db.integration.test.js'
+      );
+      return true;
+    }
+  );
+});
+
+test('every DB-named test in the API test tree is registered in the real manifest', () => {
+  const discoveredDbTests = [];
+
+  function visit(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== 'node_modules') visit(entryPath);
+      } else if (
+        entry.isFile()
+        && !entry.name.endsWith('.legacy.test.js')
+        && DB_TEST_FILENAME_PATTERN.test(entry.name)
+      ) {
+        discoveredDbTests.push(path.relative(API_DIR, entryPath).split(path.sep).join('/'));
+      }
+    }
+  }
+
+  visit(TEST_DIR);
+  const manifestSet = new Set(backendDbManifest);
+  const unlistedDbTests = discoveredDbTests.filter((testPath) => !manifestSet.has(testPath));
+  assert.deepEqual(
+    unlistedDbTests,
+    [],
+    `Unlisted DB tests: ${unlistedDbTests.join(', ')}`
+  );
+  assert.ok(discoveredDbTests.includes('tests/geoStoreItems.nullLocation.db.integration.test.js'));
+});
 
 test('migrated template database names are short, unique per run, and strictly guarded', () => {
   const previousRunId = process.env.GITHUB_RUN_ID;
