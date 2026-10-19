@@ -4,14 +4,19 @@ export const hasPrimaryContact = ({ phone = '', email = '' } = {}) => (
   String(phone || '').trim().length > 0 || String(email || '').trim().length > 0
 );
 
+// #2594: the customer's own house number, Blk/Lot, unit or building is required for delivery.
+export const hasDeliveryAddressDetails = (value = '') => String(value || '').trim().length > 0;
+
 export const hasDeliveryAddress = ({
   isDeliveryOrder = false,
   hasPinnedDeliveryLocation = false,
   activePinnedDeliveryAddress = '',
   customerAddress = '',
+  deliveryAddressDetails = '',
   usePinnedAddress = false
 } = {}) => {
   if (!isDeliveryOrder) return true;
+  if (!hasDeliveryAddressDetails(deliveryAddressDetails)) return false;
   if (usePinnedAddress) {
     return Boolean(hasPinnedDeliveryLocation) && String(activePinnedDeliveryAddress || '').trim().length > 0;
   }
@@ -26,6 +31,7 @@ export const isCustomerStepComplete = ({
   hasPinnedDeliveryLocation = false,
   activePinnedDeliveryAddress = '',
   customerAddress = '',
+  deliveryAddressDetails = '',
   usePinnedAddress = false
 } = {}) => (
   hasCustomerName(customerName)
@@ -35,6 +41,7 @@ export const isCustomerStepComplete = ({
     hasPinnedDeliveryLocation,
     activePinnedDeliveryAddress,
     customerAddress,
+    deliveryAddressDetails,
     usePinnedAddress
   })
 );

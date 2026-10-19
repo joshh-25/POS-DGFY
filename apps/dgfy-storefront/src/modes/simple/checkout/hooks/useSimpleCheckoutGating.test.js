@@ -22,13 +22,30 @@ describe('useSimpleCheckoutGating', () => {
     expect(result.current.simpleCheckoutAllowed).toBe(false);
   });
 
-  it('allows final checkout after the delivery address is selected', () => {
+  it('keeps final checkout blocked until the house/unit details are given (#2594)', () => {
     const { result } = renderHook(() => useSimpleCheckoutGating({
       ...baseProps,
-      customerAddress: '123 Main Street'
+      customerAddress: 'Rizal Street, Jaro, Iloilo City'
     }));
 
     expect(result.current.simpleCustomerStepComplete).toBe(true);
+    expect(result.current.simpleCheckoutAllowed).toBe(false);
+  });
+
+  it('allows final checkout after the delivery address and its details are given', () => {
+    const { result } = renderHook(() => useSimpleCheckoutGating({
+      ...baseProps,
+      customerAddress: 'Rizal Street, Jaro, Iloilo City',
+      deliveryAddressDetails: 'Blk 5 Lot 12'
+    }));
+
+    expect(result.current.simpleCustomerStepComplete).toBe(true);
+    expect(result.current.simpleCheckoutAllowed).toBe(true);
+  });
+
+  it('does not ask for details on a pickup order', () => {
+    const { result } = renderHook(() => useSimpleCheckoutGating({ ...baseProps, isDeliveryOrder: false }));
+
     expect(result.current.simpleCheckoutAllowed).toBe(true);
   });
 });

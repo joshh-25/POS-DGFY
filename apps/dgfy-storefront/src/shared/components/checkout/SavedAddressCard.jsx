@@ -10,7 +10,9 @@ import { Edit2, MapPin, MoreHorizontal, Star, Trash2 } from 'lucide-react';
  *   - DGFY customer account dashboard addresses panel (DgfyCustomerAccountPage.jsx)
  *
  * Props:
- *   address     {id, addressId, label, fullAddress, isDefault, source}
+ *   address     {id, addressId, label, addressDetails, fullAddress, isDefault, source}
+ *               addressDetails is the customer's house/unit (#2594); an account address without it
+ *               is flagged so the customer knows checkout will ask for it.
  *   isSelected  bool  — applies the industry-colored border + tinted background
  *   isBusy      bool  — dims the card and disables action buttons during API calls
  *   onSelect    fn(address) — called when the card body is clicked
@@ -41,6 +43,8 @@ export function SavedAddressCard({
   const [isHovered, setIsHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const addressDetails = String(address?.addressDetails || '').trim();
+  const missingAddressDetails = address?.source === 'account' && !addressDetails;
 
   useEffect(() => {
     if (layoutVariant !== 'dashboard' || !isMenuOpen) return undefined;
@@ -283,9 +287,19 @@ export function SavedAddressCard({
                 </span>
               ) : null}
             </div>
+            {addressDetails ? (
+              <p data-testid="saved-address-details" style={{ margin: '4px 0 0', color: '#1e293b', fontSize: 13, fontWeight: 600, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
+                {addressDetails}
+              </p>
+            ) : null}
             {address.fullAddress ? (
               <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13, fontWeight: 500, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
                 {address.fullAddress}
+              </p>
+            ) : null}
+            {missingAddressDetails ? (
+              <p data-testid="saved-address-missing-details" style={{ margin: '4px 0 0', color: '#8a5300', fontSize: 12, fontWeight: 700, lineHeight: 1.4 }}>
+                Missing house or unit details
               </p>
             ) : null}
           </div>
@@ -487,8 +501,14 @@ export function SavedAddressCard({
         {/* Text content */}
         <div style={{ minWidth: 0, flex: 1, paddingTop: compact ? 1 : 2 }}>
           <p style={{ ...primaryTextStyle, ...(compact ? { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } : {}) }}>{address.label || 'Saved Address'}</p>
+          {addressDetails ? (
+            <p data-testid="saved-address-details" style={{ ...secondaryTextStyle, color: '#1e293b', fontWeight: 600 }}>{addressDetails}</p>
+          ) : null}
           {address.fullAddress ? (
             <p style={{ ...secondaryTextStyle, ...(compact ? { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } : {}) }}>{address.fullAddress}</p>
+          ) : null}
+          {missingAddressDetails ? (
+            <p data-testid="saved-address-missing-details" style={{ ...secondaryTextStyle, color: '#8a5300', fontWeight: 700 }}>Missing house or unit details</p>
           ) : null}
         </div>
       </button>

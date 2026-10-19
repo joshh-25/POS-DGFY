@@ -31,6 +31,21 @@ export function resolveDeliveryAddress({
   return buildPinnedDeliveryAddress(customerPin) || '';
 }
 
+/**
+ * #2594: the delivery address the order carries, `<details>, <location>`. Details are the
+ * customer's own house number, Blk/Lot, unit or building; the location comes from search, a map
+ * pin or a saved address. Either part may be missing (the caller's gating requires details), and
+ * a location that already starts with the details is not prefixed twice.
+ */
+export function composeDeliveryAddress(details = '', location = '') {
+  const cleanDetails = String(details || '').trim().replace(/[\s,]+$/, '');
+  const cleanLocation = String(location || '').trim().replace(/^[\s,]+/, '');
+  if (!cleanDetails) return cleanLocation;
+  if (!cleanLocation) return cleanDetails;
+  if (cleanLocation.toLowerCase().startsWith(`${cleanDetails.toLowerCase()},`)) return cleanLocation;
+  return `${cleanDetails}, ${cleanLocation}`;
+}
+
 export function hasExplicitDeliveryAddressEdit(customerAddress = '', comparedTo = '') {
   const rawTyped = String(customerAddress || '');
   const typed = rawTyped.trim();
@@ -91,11 +106,21 @@ export function getSearchSelectedPinAddress(pin) {
 
 /** #759: the map pin for a chosen address-search suggestion, carrying its address line. */
 export function buildSearchSelectedPin(result) {
-  return {
+  const pin = {
     latitude: Number(Number(result.latitude).toFixed(6)),
     longitude: Number(Number(result.longitude).toFixed(6)),
     address_line: result.addressLine
   };
+  // #2594: a house number the search resolved (a typed `52 Rizal Street`, #2484) rides along so
+  // it can prefill the delivery details field.
+  const houseNumber = String(result.houseNumber || '').trim();
+  if (houseNumber) pin.house_number = houseNumber;
+  return pin;
+}
+
+/** #2594: the house number a search-selected pin carries, or ''. */
+export function getSearchSelectedPinHouseNumber(pin) {
+  return String(pin?.house_number || '').trim();
 }
 
 /**
