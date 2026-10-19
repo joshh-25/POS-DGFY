@@ -2,11 +2,13 @@ import {
     QUADRUPER_PROVIDER,
     composeAddressLine,
     composeForwardAddressLine,
+    findReverseStreet,
     mapComponents,
     mapForwardSearchResponse,
     mapLandmarks,
     mapPrecision,
-    mapReverseGeocodeResponse
+    mapReverseGeocodeResponse,
+    REVERSE_STREET_MAX_DISTANCE_METERS
 } from '../src/modules/geoSearch/mappers/photonFeatureMapper.js';
 
 // Recorded live from https://quadruper.com/geocode on 2026-09-17.
@@ -136,16 +138,16 @@ describe('mapLandmarks', () => {
 describe('mapReverseGeocodeResponse', () => {
     const origin = { latitude: 10.7202, longitude: 122.5621 };
 
-    it('never uses the nearest feature name as the address line', () => {
+    it('never uses the nearest feature name as the address line, only the street it sits on', () => {
         const result = mapReverseGeocodeResponse({
             type: 'FeatureCollection',
             features: [feature(ILOILO_RESTAURANT_PROPERTIES, 122.5620412, 10.7200869)]
         }, origin);
 
-        expect(result.address_line).toBe('Bakhaw, Jaro, Iloilo City, Western Visayas, Philippines');
+        expect(result.address_line).toBe('Jalandoni Street, Bakhaw, Jaro, Iloilo City, Western Visayas');
         expect(result.address_line).not.toContain('Peri Todd');
         expect(result.provider).toBe(QUADRUPER_PROVIDER);
-        expect(result.precision).toBe('house');
+        expect(result.precision).toBe('street');
         expect(result.components.street).toBe('Jalandoni Street');
         expect(Array.isArray(result.landmarks)).toBe(true);
     });
@@ -259,10 +261,51 @@ describe('mapForwardSearchResponse components (#2484)', () => {
         expect(street.components.street).toBe('Rizal Street');
     });
 
-    it('leaves reverse-geocode labels unchanged', () => {
-        const result = mapReverseGeocodeResponse({
-            features: [feature(SPACE_BAR_PROPERTIES, 122.5650, 10.7000)]
-        }, { latitude: 10.7, longitude: 122.565 });
+});
+
+describe('reverse-geocode street (#2593)', () => {
+    const pin = { latitude: 10.7, longitude: 122.565 };
+
+    it('names the street of a nearby place without its name', () => {
+        const result = mapReverseGeocodeResponse({ features: [feature(SPACE_BAR_PROPERTIES, 122.565, 10.7002)] }, pin);
+        expect(result.address_line).toBe('Ibarra Street, Aurora Subdivision, City Proper, Iloilo City, Western Visayas');
+        expect(result.address_line).not.toContain('Space Bar');
+        expect(result.precision).toBe('street');
+    });
+
+    it('keeps the barangay-level label when the nearest street is beyond the limit', () => {
+        // 0.0008 deg of latitude is about 89 m.
+        const result = mapReverseGeocodeResponse({ features: [feature(SPACE_BAR_PROPERTIES, 122.565, 10.7008)] }, pin);
         expect(result.address_line).toBe('Aurora Subdivision, City Proper, Iloilo City, Western Visayas, Philippines');
+        expect(result.precision).toBe('barangay');
+    });
+
+    it('reads a street feature\'s own name', () => {
+        const result = mapReverseGeocodeResponse({ features: [feature(ILOILO_RIZAL_STREET_PROPERTIES, 122.565, 10.7003)] }, pin);
+        expect(result.address_line).toBe('Rizal Street, Iloilo Central Business District, City Proper, Iloilo City, Western Visayas');
+        expect(result.components.street).toBe('Rizal Street');
+    });
+
+    it('takes the closest street even when Photon lists another feature first', () => {
+        const result = mapReverseGeocodeResponse({
+            features: [
+                feature(SPACE_BAR_PROPERTIES, 122.565, 10.7005),
+                feature(ILOILO_RIZAL_STREET_PROPERTIES, 122.565, 10.7002)
+            ]
+        }, pin);
+        expect(result.address_line.startsWith('Rizal Street, ')).toBe(true);
+    });
+
+    it('never carries a house number into a reverse label', () => {
+        const result = mapReverseGeocodeResponse({ features: [feature(CAINTA_HOUSE_PROPERTIES, 121.1, 14.6001)] }, { latitude: 14.6, longitude: 121.1 });
+        expect(result.address_line).toBe('Saint Anthony Street, Rodfer Ⅱ, Cainta, Rizal, Philippines');
+        expect(result.components.housenumber).toBe('52');
+    });
+
+    it('returns null from findReverseStreet when nothing usable is in range', () => {
+        expect(findReverseStreet([], pin)).toBeNull();
+        expect(findReverseStreet(null, pin)).toBeNull();
+        expect(findReverseStreet([{ properties: { street: 'Ibarra Street' } }], pin)).toBeNull();
+        expect(REVERSE_STREET_MAX_DISTANCE_METERS).toBe(75);
     });
 });
