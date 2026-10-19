@@ -74,6 +74,8 @@ submit invitations, rates, price rules, or cashouts.
   preserving the shared layout defaults and all non-Affiliate workspace routes.
 - The test batch adds Affiliate behavior, spacing/search contracts, and reactivation service
   coverage only; it does not alter runtime services, API contracts, or backend test suites.
+- The follow-up tab-transition batch keeps the existing tab IDs, permission gating, and rendered
+  list/cashout/settings workflows unchanged while adding presentation-only directional animation.
 - The reactivation service uses the existing dedicated endpoint from `origin/develop`; no fallback
   PATCH path or new API contract is introduced.
 - No backend, migration, database, or Android change is included.
