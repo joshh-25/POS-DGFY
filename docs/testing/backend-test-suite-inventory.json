@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-10-19T11:41:19.643Z",
-  "totalFiles": 868,
+  "generatedAt": "2026-10-19T13:19:43.110Z",
+  "totalFiles": 871,
   "byClassification": {
-    "keep": 800,
+    "keep": 803,
     "delete": 23,
     "consolidate": 37,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
-    "migration": 53,
-    "(none)": 295,
+    "migration": 54,
+    "(none)": 296,
     "middleware": 14,
     "handler": 1,
     "transport": 46,
@@ -63,6 +63,7 @@
     "sessionIsolation.e2e": 1,
     "resolveItemId": 1,
     "tenantCompanyToken": 1,
+    "nullLocation.db.integration": 1,
     "alwaysAvailable": 1,
     "imageGeneration": 1,
     "schemaCompatibility": 3,
@@ -11590,6 +11591,39 @@
       "findings": []
     },
     {
+      "path": "tests/fixGeoStoreItemsNullLocationUniqueKey.migration.test.js",
+      "lines": 156,
+      "caseCount": 5,
+      "describeTitles": [
+        "fix geo_store_items NULL-location unique key migration (#2605)"
+      ],
+      "expectCount": 23,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/fnbFolderModifierAssignments.migration.test.js",
       "lines": 35,
       "caseCount": 1,
@@ -12788,6 +12822,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoStoreItems.nullLocation.db.integration.test.js",
+      "lines": 213,
+      "caseCount": 3,
+      "describeTitles": [
+        "geo_store_items NULL-location uniqueness MySQL integration"
+      ],
+      "expectCount": 15,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 3,
+      "deadImportCount": 0,
+      "suffix": "nullLocation.db.integration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: nullLocation.db.integration)",
       "rule": "R5-default",
       "findings": []
     },
@@ -30970,6 +31037,43 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: usecases)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/tenantLocationAddressDetails.test.js",
+      "lines": 153,
+      "caseCount": 9,
+      "describeTitles": [
+        "tenant location address_details validation (#2595)",
+        "tenant location create normalizes address_details (#2595)",
+        "tenant schema registry (#2595)",
+        "add address_details to tenant_locations migration (#2595)",
+        "approved registration copies address_details to the primary location (#2595)"
+      ],
+      "expectCount": 15,
+      "expectResCount": 1,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 3,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },

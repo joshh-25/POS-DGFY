@@ -120,7 +120,7 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **868** | db-manifest members: **32** | findings: **3**
+Total active test files: **871** | db-manifest members: **32** | findings: **3**
 
 ### By classification
 
@@ -129,17 +129,17 @@ Total active test files: **868** | db-manifest members: **32** | findings: **3**
 | consolidate | 37 |
 | delete | 23 |
 | demote | 5 |
-| keep | 800 |
+| keep | 803 |
 | trim | 3 |
 
 ### By suffix
 
 | Suffix | Count |
 | --- | --- |
-| (none) | 295 |
+| (none) | 296 |
 | unit | 96 |
 | usecase | 72 |
-| migration | 53 |
+| migration | 54 |
 | contract | 50 |
 | transport | 46 |
 | usecases | 37 |
@@ -198,6 +198,7 @@ Total active test files: **868** | db-manifest members: **32** | findings: **3**
 | sessionIsolation.e2e | 1 |
 | resolveItemId | 1 |
 | tenantCompanyToken | 1 |
+| nullLocation.db.integration | 1 |
 | alwaysAvailable | 1 |
 | imageGeneration | 1 |
 | publicRoutes.transport | 1 |
@@ -595,6 +596,7 @@ Total active test files: **868** | db-manifest members: **32** | findings: **3**
 | tests/finalizePaidCommerceSession.usecase.test.js | 1062 | 18 | keep | R5-default | default keep (suffix: usecase) |
 | tests/fiscalEvidenceContract.unit.test.js | 117 | 3 | keep | R1-pin | compliance evidence citation: docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.json, docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.md |
 | tests/fixEmailOtpDeliveryStatus.migration.test.js | 144 | 6 | keep | R5-default | default keep (suffix: migration) |
+| tests/fixGeoStoreItemsNullLocationUniqueKey.migration.test.js | 156 | 5 | keep | R5-default | default keep (suffix: migration) |
 | tests/fnbFolderModifierAssignments.migration.test.js | 35 | 1 | keep | R1-pin | hardcoded reference: scripts/run-fnb-readiness-gate.js |
 | tests/fnbKitchenQueueTemplateGate.route.test.js | 102 | 4 | keep | R5-default | default keep (suffix: route) |
 | tests/fnbMode.usecases.test.js | 804 | 25 | keep | R1-pin | hardcoded reference: scripts/run-fnb-readiness-gate.js |
@@ -627,6 +629,7 @@ Total active test files: **868** | db-manifest members: **32** | findings: **3**
 | tests/geoQuadruperProvider.test.js | 243 | 17 | keep | R5-default | default keep (suffix: (none)) |
 | tests/geoSearchRepository.tenantCompanyToken.test.js | 99 | 1 | keep | R5-default | default keep (suffix: tenantCompanyToken) |
 | tests/geoSearchReverseGeocode.usecase.test.js | 112 | 6 | keep | R5-default | default keep (suffix: usecase) |
+| tests/geoStoreItems.nullLocation.db.integration.test.js | 213 | 3 | keep | R5-default | default keep (suffix: nullLocation.db.integration) |
 | tests/grandMatadorCatalogAudit.test.js | 36 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/grandMatadorCatalogImport.test.js | 101 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/guestCheckoutDisabledEnforcement.usecase.test.js | 510 | 8 | keep | R5-default | default keep (suffix: usecase) |
@@ -1103,6 +1106,7 @@ Total active test files: **868** | db-manifest members: **32** | findings: **3**
 | tests/tenantIntake.extraction.test.js | 72 | 8 | keep | R5-default | default keep (suffix: extraction) |
 | tests/tenantIntake.transport.test.js | 59 | 3 | keep | R5-default | default keep (suffix: transport) |
 | tests/tenantIntake.usecases.test.js | 169 | 16 | keep | R5-default | default keep (suffix: usecases) |
+| tests/tenantLocationAddressDetails.test.js | 153 | 9 | keep | R5-default | default keep (suffix: (none)) |
 | tests/tenantLocationDeliveryRadiusPhase329.usecases.test.js | 153 | 3 | keep | R5-default | default keep (suffix: usecases) |
 | tests/tenantLocationDeliveryTimingPolicy.usecases.test.js | 411 | 11 | keep | R5-default | default keep (suffix: usecases) |
 | tests/tenantLocationDineInPaymentPolicy.route.test.js | 84 | 2 | keep | R5-default | default keep (suffix: route) |
