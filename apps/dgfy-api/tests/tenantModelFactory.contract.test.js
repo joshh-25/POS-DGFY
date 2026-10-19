@@ -52,6 +52,7 @@ describe('tenantModelFactory contract', () => {
             expect(models.PushDispatchEvent).toBeUndefined();
             expect(models.PushDiagnosticDevice).toBeUndefined();
             expect(models.PushDiagnosticEnrollmentCode).toBeUndefined();
+            expect(models.PushDiagnosticsAppSetting).toBeUndefined();
             expect(models.PartnerApp).toBeUndefined();
             expect(models.OidcClient).toBeUndefined();
             expect(models.StorefrontCustomDomain).toBeUndefined();

@@ -15,6 +15,7 @@ export const STOREFRONT_LOCATION_LABELS = Object.freeze({
   addLocation: 'Add Location',
   branchName: 'Branch Name',
   address: 'Address',
+  addressDetails: 'Street no., unit, floor or building',
   active: 'Active',
   inactive: 'Inactive',
   primaryLocation: 'Primary location',

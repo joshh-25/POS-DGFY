@@ -3,6 +3,7 @@ import logger from '../../../config/logger.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { deriveDeliveryState } from '../domain/deliveryState.js';
 import { buildReadiness, resolveEnvironmentLabel } from '../domain/environmentReadiness.js';
+import { PUSH_DIAGNOSTICS_VISIBILITY_APPS } from '../domain/visibilityApps.js';
 import {
     generatePushDiagnosticEnrollmentCode,
     hashExpoPushToken,
@@ -69,6 +70,7 @@ const publicDevice = (row, secret) => ({
 export const buildPushDiagnosticsUseCases = ({
     readRepository,
     auditRepository,
+    settingsRepository,
     deviceRepository,
     enrollmentRepository,
     logRepository,
@@ -282,6 +284,56 @@ export const buildPushDiagnosticsUseCases = ({
         return { enrolled: true, ref: toPushRegistrationRef(token, { secret: env.PUSH_TOKEN_HASH_SECRET }) };
     };
 
+    const listAppVisibility = async () => {
+        const rows = await settingsRepository.listVisibilitySettings(PUSH_DIAGNOSTICS_VISIBILITY_APPS);
+        const settingsByApp = new Map(rows.map((row) => [row.app, row]));
+        return {
+            apps: PUSH_DIAGNOSTICS_VISIBILITY_APPS.map((app) => {
+                const row = settingsByApp.get(app);
+                const updatedAt = row?.updated_at ? new Date(row.updated_at) : null;
+                return {
+                    app,
+                    enabled: row?.enabled === true,
+                    updated_at: updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt.toISOString() : null
+                };
+            })
+        };
+    };
+
+    const setAppVisibility = async ({ admin, app, body, request } = {}) => {
+        if (!PUSH_DIAGNOSTICS_VISIBILITY_APPS.includes(app)) throw validation('Unknown mobile app.');
+        if (!body || typeof body !== 'object' || Array.isArray(body)
+            || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'enabled')
+            || typeof body.enabled !== 'boolean') {
+            throw validation('Request body must contain only a boolean enabled value.');
+        }
+        return settingsRepository.setVisibility({ app, enabled: body.enabled, admin, request });
+    };
+
+    const getAvailability = async (query = {}) => {
+        if (!query || typeof query !== 'object' || Array.isArray(query)
+            || Object.keys(query).some((key) => !['app', 'brand'].includes(key))) {
+            return { enabled: false };
+        }
+        const { app, brand } = query;
+        if (typeof app !== 'string' || !PUSH_DIAGNOSTICS_VISIBILITY_APPS.includes(app)
+            || typeof brand !== 'string' || !FILTER_PATTERN.test(brand)) {
+            return { enabled: false };
+        }
+        try {
+            return { enabled: await settingsRepository.getEnabledByApp(app) };
+        } catch (error) {
+            logger.error('[PushDiagnostics] Availability lookup failed', {
+                errorName: error?.name || 'Error'
+            });
+            throw new DomainError(
+                DomainErrorCode.SERVICE_UNAVAILABLE,
+                'Push diagnostics availability is temporarily unavailable.',
+                { cause: error }
+            );
+        }
+    };
+
     return {
         getOverview,
         listRegistrations,
@@ -290,7 +342,10 @@ export const buildPushDiagnosticsUseCases = ({
         listDiagnosticDevices,
         revokeDiagnosticDevice,
         sendTestNotification,
-        enrollDevice
+        enrollDevice,
+        listAppVisibility,
+        setAppVisibility,
+        getAvailability
     };
 };
 

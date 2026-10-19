@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { CheckCircle2, Expand, MapPin, Navigation, Plus, X } from 'lucide-react';
 import { SavedAddressCard } from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { DeliveryAddressSearchField } from '../../../../shared/components/checkout/DeliveryAddressSearchField.jsx';
+import { DeliveryAddressDetailsField } from '../../../../shared/components/checkout/DeliveryAddressDetailsField.jsx';
+import { useDeliveryAddressDetails } from '../../../../shared/hooks/useDeliveryAddressDetails.js';
+import { buildSearchSelectedPin } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { ServiceBookingSectionHeader } from './ServiceBookingSectionHeader.jsx';
 import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
@@ -102,6 +105,7 @@ export function ServiceBookingLocationSection({
 }) {
   const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
   const [addressSearchDraft, setAddressSearchDraft] = useState(null);
+  const [deliveryAddressDetails, setDeliveryAddressDetails] = useDeliveryAddressDetails();
   const displayedAddress = String(deliveryLocationDisplayAddress || '');
   const addressSearchQuery = addressSearchDraft?.sourceAddress === displayedAddress
     ? addressSearchDraft.value
@@ -198,11 +202,8 @@ export function ServiceBookingLocationSection({
     setAddressSearchDraft({ sourceAddress: displayedAddress, value: addressLine });
     setDeliveryLocationAction('map');
     setSelectedSavedLocationId('');
-    setCustomerPin({
-      latitude: Number(latitude.toFixed(6)),
-      longitude: Number(longitude.toFixed(6)),
-      address_line: addressLine
-    });
+    // #2594: the shared builder carries a searched house number to the details field.
+    setCustomerPin(buildSearchSelectedPin(result));
   };
 
   if (isOnlineFlow) return null;
@@ -612,6 +613,18 @@ export function ServiceBookingLocationSection({
                   </button>
                 ) : null}
               </div>
+
+              <DeliveryAddressDetailsField
+                value={deliveryAddressDetails}
+                onValueChange={setDeliveryAddressDetails}
+                locationAddress={deliveryLocationDisplayAddress}
+                isMobileViewport={isMobileViewport}
+                helpText="Our team uses this to find your door."
+                previewLabel="Full service address"
+                accentColor={servicesPrimary}
+                accentTint={servicesPrimarySoft}
+                accentBorder={servicesPrimaryBorder}
+              />
 
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <MapPin size={14} color="#64748b" />

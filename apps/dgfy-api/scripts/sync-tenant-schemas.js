@@ -41,6 +41,7 @@ export function assertTenantSchemaMutationModeAllowed(mode, environment = proces
 
 export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     tenant_locations: Object.freeze({
+        address_details: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `address_details` VARCHAR(255) NULL COMMENT 'Merchant-entered street number, unit, floor or building (#2595)' AFTER `address_line`" }),
         allow_dine_in_pay_at_store: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `allow_dine_in_pay_at_store` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Per-location: customer may pay in store for dine-in'" }),
         scheduling_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `scheduling_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may pick a scheduled fulfillment date/time'" }),
         immediate_fulfillment_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `immediate_fulfillment_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may choose immediate (NOW) fulfillment'" }),

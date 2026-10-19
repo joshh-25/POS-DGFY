@@ -22,6 +22,10 @@ export default (sequelize) => {
             type: DataTypes.TEXT,
             allowNull: false
         },
+        address_details: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
         latitude: {
             type: DataTypes.DECIMAL(10, 8),
             allowNull: true

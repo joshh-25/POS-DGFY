@@ -12,7 +12,10 @@ const useCases = {
     listDiagnosticDevices: jest.fn(),
     revokeDiagnosticDevice: jest.fn(),
     sendTestNotification: jest.fn(),
-    enrollDevice: jest.fn()
+    enrollDevice: jest.fn(),
+    listAppVisibility: jest.fn(),
+    setAppVisibility: jest.fn(),
+    getAvailability: jest.fn()
 };
 
 jest.unstable_mockModule('../src/modules/pushDiagnostics/index.js', () => ({ pushDiagnosticsUseCases: useCases }));
@@ -34,7 +37,8 @@ jest.unstable_mockModule('../src/middleware/auth.js', () => ({
 }));
 jest.unstable_mockModule('../src/middleware/rateLimiter.js', () => ({
     adminPushTestSendLimiter: (_req, _res, next) => { callOrder.push('test-send-limiter'); next(); },
-    pushDiagnosticEnrollLimiter: (_req, _res, next) => { callOrder.push('enroll-limiter'); next(); }
+    pushDiagnosticEnrollLimiter: (_req, _res, next) => { callOrder.push('enroll-limiter'); next(); },
+    pushDiagnosticAvailabilityLimiter: (_req, _res, next) => { callOrder.push('availability-limiter'); next(); }
 }));
 
 let app;
@@ -55,11 +59,16 @@ beforeEach(() => {
     callOrder.length = 0;
     useCases.getOverview.mockResolvedValue({ environment: { label: 'staging', source: 'DEPLOY_ENV_LABEL' } });
     useCases.sendTestNotification.mockResolvedValue({ provider_mode: 'expo', status: 'accepted', state: 'accepted_receipt_pending' });
+    useCases.listAppVisibility.mockResolvedValue({ apps: [{ app: 'storefront', enabled: false, updated_at: null }] });
+    useCases.setAppVisibility.mockImplementation(async ({ app, body }) => ({ app, enabled: body.enabled, changed: true }));
+    useCases.getAvailability.mockResolvedValue({ enabled: true });
 });
 
 describe('Platform Admin push diagnostics transport', () => {
     it.each([
         ['get', '/api/v1/admin/push-diagnostics/overview'],
+        ['get', '/api/v1/admin/push-diagnostics/visibility'],
+        ['put', '/api/v1/admin/push-diagnostics/visibility/pos'],
         ['get', '/api/v1/admin/push-diagnostics/registrations'],
         ['get', '/api/v1/admin/push-diagnostics/attempts'],
         ['get', '/api/v1/admin/push-diagnostics/diagnostic-devices'],
@@ -83,6 +92,27 @@ describe('Platform Admin push diagnostics transport', () => {
         expect(useCases.getOverview).toHaveBeenCalledWith({
             admin: expect.objectContaining({ id: 'admin-1' }),
             request: expect.objectContaining({ method: 'GET', path: '/api/v1/admin/push-diagnostics/overview' })
+        });
+    });
+
+    it('returns app visibility with no-store and requires the existing page grant', async () => {
+        const response = await request(app).get('/api/v1/admin/push-diagnostics/visibility').set(granted);
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body).toEqual({ success: true, data: { apps: [{ app: 'storefront', enabled: false, updated_at: null }] } });
+        expect(useCases.listAppVisibility).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the requested visibility value and admin audit context to the use case', async () => {
+        const response = await request(app).put('/api/v1/admin/push-diagnostics/visibility/pos').set(granted).send({ enabled: true });
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body).toEqual({ success: true, data: { app: 'pos', enabled: true, changed: true } });
+        expect(useCases.setAppVisibility).toHaveBeenCalledWith({
+            admin: expect.objectContaining({ id: 'admin-1' }),
+            app: 'pos',
+            body: { enabled: true },
+            request: expect.objectContaining({ method: 'PUT', path: '/api/v1/admin/push-diagnostics/visibility/pos' })
         });
     });
 
@@ -158,8 +188,28 @@ describe('device-side enrollment transport', () => {
         expect(response.body).toEqual({ success: false, error_code: 'RESOURCE_NOT_FOUND', message: 'Enrollment code is invalid or expired.' });
     });
 
+    it('checks availability without a session and returns only the enabled flag with the short public cache', async () => {
+        const response = await request(app).get('/api/v1/push-diagnostics/availability?app=pos&brand=zzz');
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('public, max-age=30');
+        expect(response.body).toEqual({ enabled: true });
+        expect(callOrder).toEqual(['availability-limiter']);
+        expect(useCases.getAvailability).toHaveBeenCalledWith({ app: 'pos', brand: 'zzz' });
+    });
+
+    it('returns a no-store 503 when availability storage is unavailable', async () => {
+        useCases.getAvailability.mockRejectedValue(new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'Push diagnostics availability is temporarily unavailable.'));
+        const response = await request(app).get('/api/v1/push-diagnostics/availability?app=pos&brand=dgfy');
+        expect(response.status).toBe(503);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body).toEqual({ success: false, error_code: 'SERVICE_UNAVAILABLE', message: 'Push diagnostics availability is temporarily unavailable.' });
+    });
+
     it('exposes no other session-less diagnostics route', async () => {
-        for (const [method, path] of [['get', '/overview'], ['get', '/attempts'], ['post', '/test-send'], ['get', '/enroll']]) {
+        for (const [method, path] of [
+            ['get', '/overview'], ['get', '/attempts'], ['post', '/test-send'],
+            ['get', '/enroll'], ['get', '/visibility'], ['post', '/availability']
+        ]) {
             const response = await request(app)[method](`/api/v1/push-diagnostics${path}`);
             expect(response.status).toBe(404);
         }

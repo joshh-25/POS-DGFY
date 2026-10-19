@@ -15,6 +15,7 @@ const FOCUSABLE_SELECTOR = [
 const getDraftSnapshot = (draft = {}) => JSON.stringify({
   label: String(draft.label || ''),
   address_line: String(draft.address_line || ''),
+  address_details: String(draft.address_details || ''),
   latitude: draft.latitude ?? null,
   longitude: draft.longitude ?? null,
   is_default: Boolean(draft.is_default)
@@ -105,7 +106,10 @@ export function AddressEditorModal({ isMobileViewport, theme: THEME, addressModa
   };
 
   const title = isCreate ? 'Add New Address' : 'Edit Address';
-  const actionDisabled = isSaving || !String(addressDraft?.address_line || '').trim();
+  // #2594: house/unit details are required, matching checkout.
+  const actionDisabled = isSaving
+    || !String(addressDraft?.address_line || '').trim()
+    || !String(addressDraft?.address_details || '').trim();
 
   return (
     <>
@@ -197,7 +201,21 @@ export function AddressEditorModal({ isMobileViewport, theme: THEME, addressModa
                       />
                     </label>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.label, lineHeight: 1.3, fontWeight: 700, color: THEME.text }}>
-                      <span>Label / Landmark / Unit <span style={{ color: THEME.muted, fontWeight: 500 }}>(optional)</span></span>
+                      <span>House no., Blk/Lot, unit or building <span aria-hidden="true" style={{ color: THEME.orange || '#b91c1c' }}>*</span></span>
+                      <input
+                        aria-label="House no., Blk/Lot, unit or building"
+                        value={String(addressDraft?.address_details || '')}
+                        onChange={(e) => setAddressDraft((previous) => ({ ...previous, address_details: e.target.value }))}
+                        placeholder="e.g. Blk 5 Lot 12, Unit 3B, blue gate"
+                        maxLength={255}
+                        autoComplete="address-line1"
+                        style={fieldStyle}
+                        className="dgfy-address-editor__input"
+                        required
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.label, lineHeight: 1.3, fontWeight: 700, color: THEME.text }}>
+                      <span>Label / Landmark <span style={{ color: THEME.muted, fontWeight: 500 }}>(optional)</span></span>
                       <input
                         value={String(addressDraft?.label || '')}
                         onChange={(e) => setAddressDraft((previous) => ({ ...previous, label: e.target.value }))}

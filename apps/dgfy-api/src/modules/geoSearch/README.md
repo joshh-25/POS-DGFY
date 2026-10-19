@@ -18,7 +18,7 @@ Flow:
 | `providers/localGeocodeProvider.js` | Bundled PH-local dataset behind the same interface; the fallback |
 | `providers/geocodeCircuitBreaker.js` | Five-failure / 60-second breaker guarding the remote provider |
 | `providers/geocodeCache.js` | Redis cache keyed on the service's `import_date` |
-| `mappers/photonFeatureMapper.js` | Photon Feature → DGFY contract; label composer, precision map, landmark assembly |
+| `mappers/photonFeatureMapper.js` | Photon Feature → DGFY contract; label composer (reverse labels add a street within 75 m, #2593), precision map, landmark assembly |
 | `mappers/houseNumberQuery.js` | Street-level resolution for queries with a leading house number (#2484) |
 | `landmarks/landmarkClassifier.js` | `osm_key`/`osm_value` allowlist deciding what counts as a landmark |
 | `shared/geoDistance.js` | Haversine shared by the mapper and the local provider |

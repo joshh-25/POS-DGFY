@@ -36,6 +36,8 @@ import {
 import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import MerchantAddressDetailsField from '@/src/components/maps/MerchantAddressDetailsField.jsx';
+import { buildMerchantAddressPayload, hasMerchantAddressDetails, readMerchantAddressParts } from '@/src/components/maps/merchantAddressDetails.js';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
@@ -109,7 +111,8 @@ const normalizeTerminalDrafts = (entries = []) => {
 const createLocationDraft = (location = {}, companyName = '', options = {}) => ({
   location_id: toPositiveInt(location?.location_id),
   name: String(location?.name || companyName || 'Main Store').trim(),
-  address_line: String(location?.address_line || '').trim(),
+  // #2595: the editor holds the geocoded location and the merchant's details as two fields.
+  ...readMerchantAddressParts(location),
   latitude: location?.latitude ?? '',
   longitude: location?.longitude ?? '',
   delivery_radius_km: normalizeDeliveryRadiusKm(location?.delivery_radius_km),
@@ -173,6 +176,7 @@ export default function PosTenantSetupModal({
   const [localStorefrontAssets, setLocalStorefrontAssets] = useState({ profile: '', cover: '' });
   const [storefrontAssetPreviewErrors, setStorefrontAssetPreviewErrors] = useState({ profile: false, cover: false });
   const [locationSaving, setLocationSaving] = useState(false);
+  const [locationDetailsAttempted, setLocationDetailsAttempted] = useState(false);
   const [hoursSaving, setHoursSaving] = useState(false);
   const [storefrontContinueAttempted, setStorefrontContinueAttempted] = useState(false);
   const [starterSetupSaving, setStarterSetupSaving] = useState(false);
@@ -533,12 +537,17 @@ export default function PosTenantSetupModal({
       toast.error('Search for an address or place the map pin before saving. If the pin is selected, wait for its address to finish loading.');
       return;
     }
+    if (!hasMerchantAddressDetails(locationDraft.address_details)) {
+      setLocationDetailsAttempted(true);
+      toast.error('Add the street number, unit, floor or building before saving.');
+      return;
+    }
 
     setLocationSaving(true);
     try {
       const payload = {
         name,
-        address_line: addressLine,
+        ...buildMerchantAddressPayload({ details: locationDraft.address_details, location: addressLine }),
         latitude,
         longitude,
         delivery_radius_km: normalizeDeliveryRadiusKm(locationDraft.delivery_radius_km),
@@ -1182,6 +1191,13 @@ export default function PosTenantSetupModal({
                         onChange={handleLocationPinChange}
                       />
                     </React.Suspense>
+                    <MerchantAddressDetailsField
+                      className="mt-4"
+                      value={locationDraft.address_details}
+                      onChange={(value) => setLocationDraft((current) => ({ ...current, address_details: value }))}
+                      locationAddress={locationDraft.address_line}
+                      showError={locationDetailsAttempted}
+                    />
                     <div className="mt-4 flex justify-end">
                       <Button
                         type="button"

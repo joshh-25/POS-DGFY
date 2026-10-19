@@ -308,7 +308,7 @@ Landlord account field update:
 Landlord tables:
 
 1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type (`order`, `service_booking`, `hospitality_booking`, or `fnb_order`), public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
-2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag.
+2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag. Nullable `address_details` (VARCHAR 255, migration `20261019000002-add-dgfy-customer-address-details.cjs`, #2594) holds the customer's own house number, Blk/Lot, unit or building, kept apart from the geocoded `address_line`; rows saved before it existed are `NULL`.
 3. `dgfy_customer_reviews` stores account-gated typed reviews. Reviews are purchase-gated by paid or completed DGFY customer activity, start pending approval, and identify `target_type`/`target_id` for product, service, Hospitality booking, F&B order, or F&B item review targets.
 4. `dgfy_customer_notifications` stores account-scoped notification rows for DGFY customer activity updates. Rows include DGFY account, optional tenant/activity linkage, public reference, idempotent `event_key`, notification type, title/body, status, `read_at`, timestamps, and indexes for account/time and unread account reads.
 5. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
@@ -986,6 +986,7 @@ CREATE TABLE tenant_locations (
     location_id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
     address_line TEXT NOT NULL,
+    address_details VARCHAR(255) NULL, -- #2595: merchant's street no./unit/floor/building; address_line holds `<details>, <location>`
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     delivery_radius_km DECIMAL(5, 2) NOT NULL DEFAULT 5,

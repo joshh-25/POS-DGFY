@@ -32,6 +32,7 @@ import {
   normalizeStorefrontBusinessHours
 } from '@/src/features/settings/storefrontBusinessHours.js';
 import { createDefaultLocationForm } from './posSettingsModels.js';
+import MerchantAddressDetailsField from '@/src/components/maps/MerchantAddressDetailsField.jsx';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const RequiredMark = () => <span className="ml-1 text-rose-600">*</span>;
@@ -2040,6 +2041,13 @@ export default function PosStorefrontSettingsPane({
                       <Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.address}<RequiredMark /></Label>
                       <Input value={locationForm.address_line} onChange={(event) => setLocationForm((current) => ({ ...current, address_line: event.target.value }))} placeholder="Street, City, Province" className="h-9 rounded-lg border-slate-200 text-[13px]" />
                     </div>
+                    <MerchantAddressDetailsField
+                      value={locationForm.address_details}
+                      onChange={(value) => setLocationForm((current) => ({ ...current, address_details: value }))}
+                      locationAddress={locationForm.address_line}
+                      label={STOREFRONT_LOCATION_LABELS.addressDetails}
+                      inputClassName="h-9 rounded-lg border-slate-200 text-[13px]"
+                    />
                   </div>
 
                   <div className="mt-5 border-t border-slate-100 pt-4">

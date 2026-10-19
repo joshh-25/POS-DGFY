@@ -16,6 +16,7 @@ export function useSignedInCheckoutAddresses({
   authToken,
   customerAddress,
   customerPin,
+  deliveryAddressDetails = '',
   deliveryLocationAction,
   isDeliveryOrder,
   isCustomerLocationFlow = false,
@@ -29,6 +30,7 @@ export function useSignedInCheckoutAddresses({
   selectedSavedLocationId,
   setCustomerAddress,
   setCustomerPin,
+  setDeliveryAddressDetails,
   setDeliveryLocationAction,
   setPinLocationError,
   setResolvedDeliveryAddress,
@@ -91,6 +93,9 @@ export function useSignedInCheckoutAddresses({
     setPinLocationError('');
     setResolvedDeliveryAddress(String(location.fullAddress || ''));
     setCustomerAddress(String(location.fullAddress || ''));
+    // #2594: a saved address restores its house/unit details; one saved before details existed
+    // (or the branch fallback) leaves the field empty so checkout asks for them.
+    setDeliveryAddressDetails?.(String(location.addressDetails || ''));
 
     if (Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude))) {
       setCustomerPin({
@@ -100,7 +105,7 @@ export function useSignedInCheckoutAddresses({
       return;
     }
     setCustomerPin(null);
-  }, [setCustomerAddress, setCustomerPin, setDeliveryLocationAction, setPinLocationError, setResolvedDeliveryAddress, setSelectedSavedLocationId]);
+  }, [setCustomerAddress, setCustomerPin, setDeliveryAddressDetails, setDeliveryLocationAction, setPinLocationError, setResolvedDeliveryAddress, setSelectedSavedLocationId]);
 
   const refreshDgfyCheckoutAddresses = useCallback(async () => {
     if (!isSignedIn) return [];
@@ -129,6 +134,7 @@ export function useSignedInCheckoutAddresses({
         label: saveAsHome ? 'Home' : (String(landmarkNote || '').trim() || extractSavedLocationLabel(activePinnedDeliveryAddress)),
         landmarkNote: String(landmarkNote || '').trim(),
         fullAddress: activePinnedDeliveryAddress,
+        addressDetails: String(deliveryAddressDetails || '').trim(),
         latitude: hasPinnedDeliveryLocation ? Number(Number(customerPin.latitude).toFixed(6)) : null,
         longitude: hasPinnedDeliveryLocation ? Number(Number(customerPin.longitude).toFixed(6)) : null,
         recommended: false
@@ -156,6 +162,7 @@ export function useSignedInCheckoutAddresses({
             body: {
               label: baseLocation.label,
               address_line: baseLocation.fullAddress,
+              address_details: baseLocation.addressDetails || null,
               latitude: baseLocation.latitude,
               longitude: baseLocation.longitude,
               is_default: saveAsHome || accountSavedDeliveryLocations.length === 0
@@ -190,6 +197,7 @@ export function useSignedInCheckoutAddresses({
       setDeliveryLocationAction('saved');
       writeGuestDeliveryAddress({
         addressLine: baseLocation.fullAddress,
+        addressDetails: baseLocation.addressDetails,
         latitude: baseLocation.latitude,
         longitude: baseLocation.longitude
       });
@@ -198,7 +206,7 @@ export function useSignedInCheckoutAddresses({
     } finally {
       savingPinnedLocationRef.current = false;
     }
-  }, [accountSavedDeliveryLocations, activePinnedDeliveryAddress, authToken, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, isCustomerLocationFlow, isSignedIn, landmarkNote, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, setDeliveryLocationAction, setPinLocationError, setSavedPinnedLocations, setSelectedSavedLocationId, toast]);
+  }, [accountSavedDeliveryLocations, activePinnedDeliveryAddress, authToken, canAddPinnedLocation, customerPin, deliveryAddressDetails, hasPinnedDeliveryLocation, isCustomerLocationFlow, isSignedIn, landmarkNote, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, setDeliveryLocationAction, setPinLocationError, setSavedPinnedLocations, setSelectedSavedLocationId, toast]);
 
   const handleSetDefaultDeliveryAddress = useCallback(async (location) => {
     if (!location?.addressId) return;
@@ -215,25 +223,31 @@ export function useSignedInCheckoutAddresses({
     }
   }, [applySavedDeliveryLocation, authToken, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, toast]);
 
+  const savedAddressTextEdited = hasExplicitDeliveryAddressEdit(customerAddress, activeSavedLocation?.fullAddress);
+  // #2594: changed house/unit details also make the saved address updatable.
+  const savedAddressDetailsEdited = String(deliveryAddressDetails || '').trim() !== String(activeSavedLocation?.addressDetails || '').trim();
   const canUpdateSavedAddress = deliveryLocationAction === 'saved'
     && Boolean(activeSavedLocation?.addressId)
-    && hasExplicitDeliveryAddressEdit(customerAddress, activeSavedLocation?.fullAddress);
+    && (savedAddressTextEdited || savedAddressDetailsEdited);
 
   const handleUpdateSavedAddress = useCallback(async () => {
     if (!activeSavedLocation?.addressId) return;
-    if (!hasExplicitDeliveryAddressEdit(customerAddress, activeSavedLocation.fullAddress)) return;
+    if (!savedAddressTextEdited && !savedAddressDetailsEdited) return;
     try {
       await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(activeSavedLocation.addressId)}`, {
         method: 'PATCH',
         authToken,
-        body: { address_line: String(customerAddress || '').trim() }
+        body: {
+          ...(savedAddressTextEdited ? { address_line: String(customerAddress || '').trim() } : {}),
+          address_details: String(deliveryAddressDetails || '').trim() || null
+        }
       });
       await refreshDgfyCheckoutAddresses();
       toast.success('Address updated.');
     } catch (error) {
       toast.error(normalizeErrorMessage(error, 'Unable to update address.'));
     }
-  }, [activeSavedLocation, authToken, customerAddress, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, toast]);
+  }, [activeSavedLocation, authToken, customerAddress, deliveryAddressDetails, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, savedAddressDetailsEdited, savedAddressTextEdited, toast]);
 
   const handleRemoveDeliveryAddress = useCallback(async (location) => {
     if (!location) return;

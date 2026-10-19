@@ -20,6 +20,7 @@ const addresses = [
     address_id: 10,
     label: 'Home',
     address_line: 'Ibarra Street, Aurora Subdivision, City Proper',
+    address_details: 'Blk 5 Lot 12',
     is_default: true
   },
   {
@@ -71,6 +72,7 @@ describe('AddressesSection address lifecycle', () => {
 
     expect(screen.getByRole('heading', { name: 'Edit Address' })).toBeTruthy();
     expect(screen.getByPlaceholderText('e.g. Home, Office, Near Plaza').value).toBe('Home');
+    expect(screen.getByLabelText('House no., Blk/Lot, unit or building').value).toBe('Blk 5 Lot 12');
     expect(screen.getByRole('checkbox', { name: 'Set as default address' }).checked).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Address' }));
@@ -78,6 +80,7 @@ describe('AddressesSection address lifecycle', () => {
     await waitFor(() => expect(onSaveAddress).toHaveBeenCalledWith(
       expect.objectContaining({
         label: 'Home',
+        address_details: 'Blk 5 Lot 12',
         is_default: true
       }),
       expect.objectContaining({ address_id: 10 })
@@ -95,16 +98,41 @@ describe('AddressesSection address lifecycle', () => {
     fireEvent.change(screen.getByPlaceholderText('e.g. Home, Office, Near Plaza'), {
       target: { value: 'Delivery' }
     });
+    fireEvent.change(screen.getByLabelText('House no., Blk/Lot, unit or building'), {
+      target: { value: '  Unit 3B ' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Save Address' }));
 
     await waitFor(() => expect(onSaveAddress).toHaveBeenCalledWith(
       expect.objectContaining({
         label: 'Delivery',
         address_line: 'Agarwood Street, Tacas, Jaro',
+        address_details: 'Unit 3B',
         is_default: true
       }),
       null
     ));
+  });
+
+  it('keeps Save disabled until the house/unit details are given (#2594)', () => {
+    const onSaveAddress = vi.fn().mockResolvedValue(true);
+    renderSection({ onSaveAddress });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add New Address' }));
+    fireEvent.change(screen.getByLabelText('Full Delivery Address'), {
+      target: { value: 'Agarwood Street, Tacas, Jaro' }
+    });
+    const save = screen.getByRole('button', { name: 'Save Address' });
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+    expect(onSaveAddress).not.toHaveBeenCalled();
+  });
+
+  it('shows saved details on the card and flags an address saved without them (#2594)', () => {
+    renderSection();
+
+    expect(screen.getByText('Blk 5 Lot 12')).toBeTruthy();
+    expect(screen.getAllByText('Missing house or unit details')).toHaveLength(1);
   });
 
   it('keeps mobile actions compact, right-aligns them, and exposes delete directly', () => {

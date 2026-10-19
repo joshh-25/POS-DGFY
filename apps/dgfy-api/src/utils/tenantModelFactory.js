@@ -92,6 +92,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'PushDispatchEvent',
     'PushDiagnosticDevice',
     'PushDiagnosticEnrollmentCode',
+    'PushDiagnosticsAppSetting',
     'CompanyRegistrationApplication',
     'CompanyRegistrationAttempt',
     'CompanyRegistrationEvent',

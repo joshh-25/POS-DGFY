@@ -42,6 +42,7 @@ describe('guest delivery address storage (#1219)', () => {
     expect(normalized).toEqual({
       version: 1,
       addressLine: 'Blue gate, Purok 3',
+      addressDetails: '',
       latitude: null,
       longitude: null,
       savedAt: normalized.savedAt
@@ -54,6 +55,12 @@ describe('guest delivery address storage (#1219)', () => {
     expect(written.addressLine).toBe('Blue gate, Purok 3');
     const read = readGuestDeliveryAddress();
     expect(read).toEqual(written);
+  });
+
+  it('round-trips house/unit details and trims them (#2594)', () => {
+    installLocalStorage();
+    writeGuestDeliveryAddress({ addressLine: 'Rizal Street, Jaro', addressDetails: '  Blk 5 Lot 12 ', latitude: 10.72, longitude: 122.56 });
+    expect(readGuestDeliveryAddress().addressDetails).toBe('Blk 5 Lot 12');
   });
 
   it('tolerates corrupt JSON already in storage', () => {

@@ -22,6 +22,7 @@ const baseProps = () => ({
   selectedSavedLocationId: 'account-address-1',
   setCustomerAddress: vi.fn(),
   setCustomerPin: vi.fn(),
+  setDeliveryAddressDetails: vi.fn(),
   setDeliveryLocationAction: vi.fn(),
   setPinLocationError: vi.fn(),
   setResolvedDeliveryAddress: vi.fn(),
@@ -106,5 +107,66 @@ describe('useSignedInCheckoutAddresses (#1219)', () => {
     expect(firstResult).toBe(true);
     expect(secondResult).toBe(false);
     expect(requestJson).toHaveBeenCalledTimes(1);
+  });
+
+  it('applying a saved address restores its house/unit details, or clears them for an older address (#2594)', () => {
+    const props = {
+      ...baseProps(),
+      accountAddresses: [
+        { address_id: 1, address_line: 'Rizal Street, Jaro, Iloilo City', address_details: 'Blk 5 Lot 12', is_default: true },
+        { address_id: 2, address_line: 'Oton, Iloilo' }
+      ],
+      // 'map' keeps the hook from auto-applying the default address on mount.
+      deliveryLocationAction: 'map'
+    };
+    const { result } = renderHook(() => useSignedInCheckoutAddresses(props));
+    const [withDetails, withoutDetails] = result.current.accountSavedDeliveryLocations;
+
+    act(() => result.current.applySavedDeliveryLocation(withDetails));
+    act(() => result.current.applySavedDeliveryLocation(withoutDetails));
+
+    expect(props.setDeliveryAddressDetails.mock.calls).toEqual([['Blk 5 Lot 12'], ['']]);
+  });
+
+  it('saves house/unit details with a new account address (#2594)', async () => {
+    const requestJson = vi.fn().mockResolvedValue({ address: { address_id: 9 } });
+    const { result } = renderHook(() => useSignedInCheckoutAddresses({
+      ...baseProps(),
+      customerAddress: 'Rizal Street, Jaro, Iloilo City',
+      customerPin: { latitude: 10.72, longitude: 122.56 },
+      deliveryAddressDetails: ' Blk 5 Lot 12 ',
+      deliveryLocationAction: 'map',
+      requestJson,
+      refreshAccountAddresses: vi.fn().mockResolvedValue([]),
+      selectedSavedLocationId: ''
+    }));
+
+    await act(async () => { await result.current.handleAddPinnedLocation(); });
+
+    expect(requestJson).toHaveBeenCalledWith('/api/v1/dgfy/customer/addresses', expect.objectContaining({
+      method: 'POST',
+      body: expect.objectContaining({ address_line: 'Rizal Street, Jaro, Iloilo City', address_details: 'Blk 5 Lot 12' })
+    }));
+  });
+
+  it('offers to update a saved address whose details changed, sending only the details (#2594)', async () => {
+    const requestJson = vi.fn().mockResolvedValue({});
+    const { result } = renderHook(() => useSignedInCheckoutAddresses({
+      ...baseProps(),
+      accountAddresses: [{ address_id: 1, address_line: 'Rizal Street, Jaro, Iloilo City', address_details: 'Blk 5', is_default: true }],
+      customerAddress: 'Rizal Street, Jaro, Iloilo City',
+      resolvedDeliveryAddress: 'Rizal Street, Jaro, Iloilo City',
+      deliveryAddressDetails: 'Blk 5 Lot 12',
+      requestJson,
+      refreshAccountAddresses: vi.fn().mockResolvedValue([])
+    }));
+
+    expect(result.current.canUpdateSavedAddress).toBe(true);
+    await act(async () => { await result.current.handleUpdateSavedAddress(); });
+
+    expect(requestJson).toHaveBeenCalledWith('/api/v1/dgfy/customer/addresses/1', expect.objectContaining({
+      method: 'PATCH',
+      body: { address_details: 'Blk 5 Lot 12' }
+    }));
   });
 });

@@ -143,6 +143,8 @@ export const creditPlatformInvoice = async (invoiceId, payload) => (await adminA
 export const deliverPlatformInvoiceEmail = async (invoiceId) => (await adminApi.post(`/admin/invoices/${invoiceId}/deliveries/email`, {}, requireAdminAuthConfig())).data;
 export const downloadPlatformInvoiceArtifact = async (invoiceId) => (await adminApi.get(`/admin/invoices/${invoiceId}/artifact`, { ...requireAdminAuthConfig(), responseType: 'blob' }));
 export const getPushDiagnosticsOverview = async () => (await adminApi.get('/admin/push-diagnostics/overview', { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
+export const getPushDiagnosticsVisibility = async () => (await adminApi.get('/admin/push-diagnostics/visibility', { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
+export const setPushDiagnosticsVisibility = async (app, enabled) => (await adminApi.put(`/admin/push-diagnostics/visibility/${encodeURIComponent(app)}`, { enabled }, { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
 export const listPushDiagnosticsRegistrations = async (params = {}) => (await adminApi.get('/admin/push-diagnostics/registrations', { ...requireAdminAuthConfig(), params, skipGlobalErrorToast: true })).data?.data;
 export const listPushDiagnosticsAttempts = async (params = {}) => (await adminApi.get('/admin/push-diagnostics/attempts', { ...requireAdminAuthConfig(), params, skipGlobalErrorToast: true })).data?.data;
 export const listPushDiagnosticDevices = async () => (await adminApi.get('/admin/push-diagnostics/diagnostic-devices', { ...requireAdminAuthConfig(), skipGlobalErrorToast: true })).data?.data;
