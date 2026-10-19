@@ -32,6 +32,8 @@ export const checkoutInitialState = {
     guestDetailsEditMode: false,
     isUsingDifferentGuestDetails: false,
     customerAddress: '',
+    // #2594: the customer's own house number, Blk/Lot, unit or building for the delivery address.
+    deliveryAddressDetails: '',
     serviceLocationLandmarkNote: '',
     serviceUnitType: '',
     customerPin: null,
@@ -89,6 +91,7 @@ const checkoutFields = {
   guestDetailsEditMode: 'GuestDetailsEditMode',
   isUsingDifferentGuestDetails: 'IsUsingDifferentGuestDetails',
   customerAddress: 'CustomerAddress',
+  deliveryAddressDetails: 'DeliveryAddressDetails',
   serviceLocationLandmarkNote: 'ServiceLocationLandmarkNote',
   serviceUnitType: 'ServiceUnitType',
   customerPin: 'CustomerPin',

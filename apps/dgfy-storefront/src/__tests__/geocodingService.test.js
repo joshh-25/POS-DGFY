@@ -42,13 +42,16 @@ describe('#759 searchDeliveryAddresses -- forward geocoding through dgfy-api', (
     requestJson.mockResolvedValue({
       results: [
         { address_line: 'Jaro Plaza, Jaro, Iloilo City', latitude: '10.7246', longitude: 122.5585, precision: 'street' },
+        { address_line: '52 Rizal Street, Jaro, Iloilo City', latitude: 10.72, longitude: 122.56, precision: 'street', components: { housenumber: '52' } },
         { address_line: '', latitude: 10.7, longitude: 122.5 },
         { address_line: 'No coordinates', latitude: null, longitude: 122.5 }
       ]
     });
 
     await expect(searchDeliveryAddresses({ query: 'Jaro' })).resolves.toEqual([
-      { addressLine: 'Jaro Plaza, Jaro, Iloilo City', latitude: 10.7246, longitude: 122.5585, precision: 'street' }
+      { addressLine: 'Jaro Plaza, Jaro, Iloilo City', latitude: 10.7246, longitude: 122.5585, precision: 'street', houseNumber: null },
+      // #2594: the house number the search resolved rides along to prefill the details field.
+      { addressLine: '52 Rizal Street, Jaro, Iloilo City', latitude: 10.72, longitude: 122.56, precision: 'street', houseNumber: '52' }
     ]);
   });
 });

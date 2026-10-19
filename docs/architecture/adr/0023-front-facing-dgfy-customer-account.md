@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-08
-last_reviewed: 2026-08-27
+last_reviewed: 2026-10-19
 review_by: 2027-01-08
 applies_to: dgfy_accounts, storefront_account, customer_orders, customer_tracking
 topic: front_facing_dgfy_customer_account
@@ -90,3 +90,20 @@ Required validation for this flow:
   history as belonging only to the active branch while the API returned all branches/stores.
 - Validation: Branch-filtered API/use-case/validator tests, Storefront scope and stale-response
   tests, Storefront/API lint/build, architecture/docs/ADR/API-contract checks.
+
+## Amendments (2026-10-19)
+
+- Clause amended: Decision 10 (untagged; `default` tier per ADR 0039), saved-address management.
+- Change: A saved address carries the customer's own house number, Blk/Lot, unit or building as
+  nullable `address_details`, kept apart from the geocoded `address_line` (#2594). Every Storefront
+  delivery checkout and every customer-address service booking requires those details and sends the
+  order's existing `delivery_address` text as `<details>, <location>`; no order schema changes.
+  Applying a saved address restores both parts; an address saved before the field existed leaves
+  the details empty, and checkout asks for them. The account editor requires details for new and
+  edited addresses; the API itself does not, so older rows stay valid.
+- Reason: Geocoding cannot supply a house number in most PH cities (#2484, #2593), and riders were
+  receiving barangay-level addresses. Customers had been told to put unit numbers in Special
+  Instructions, which is not read as part of the address.
+- Validation: dgfy-api use-case and migration tests (PR #2598); Storefront validation, field, saved
+  address, pin-resolution and booking-derivation tests, Storefront build, and a rendered component
+  check at 390 px and 1280 px.

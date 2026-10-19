@@ -95,3 +95,33 @@ describe('useDeliveryPinResolution -- pin-to-address lookup (#506, #759)', () =>
     await waitFor(() => expect(props.setCustomerAddress).toHaveBeenCalledWith('Pinned map location (10.720000, 122.540000)'));
   });
 });
+
+describe('useDeliveryPinResolution -- searched house number prefill (#2594)', () => {
+  const searchPin = { latitude: 10.7246, longitude: 122.5585, address_line: '52 Rizal Street, Jaro, Iloilo City', house_number: '52' };
+
+  it('prefills empty house/unit details with the house number a search resolved', () => {
+    const props = { ...baseProps(), isDeliveryOrder: true, hasPinnedDeliveryLocation: true, customerPin: searchPin, setDeliveryAddressDetails: vi.fn() };
+    renderHook(() => useDeliveryPinResolution(props));
+
+    expect(props.setDeliveryAddressDetails).toHaveBeenCalledWith('52');
+  });
+
+  it('never overwrites details the customer already typed', () => {
+    const props = { ...baseProps(), isDeliveryOrder: true, hasPinnedDeliveryLocation: true, customerPin: searchPin, deliveryAddressDetails: 'Unit 3B', setDeliveryAddressDetails: vi.fn() };
+    renderHook(() => useDeliveryPinResolution(props));
+
+    expect(props.setDeliveryAddressDetails).not.toHaveBeenCalled();
+  });
+
+  it('does not re-resolve the pin when only the details change', async () => {
+    reverseGeocodeDeliveryCoordinates.mockResolvedValue('Diversion Road, Mandurriao, Iloilo City');
+    const props = { ...baseProps(), isDeliveryOrder: true, hasPinnedDeliveryLocation: true, customerPin: { latitude: 10.72, longitude: 122.54 } };
+    const { rerender } = renderHook((overrides) => useDeliveryPinResolution({ ...props, ...overrides }), { initialProps: {} });
+    await waitFor(() => expect(reverseGeocodeDeliveryCoordinates).toHaveBeenCalledTimes(1));
+
+    rerender({ deliveryAddressDetails: 'Blk 5' });
+    rerender({ deliveryAddressDetails: 'Blk 5 Lot 12' });
+
+    expect(reverseGeocodeDeliveryCoordinates).toHaveBeenCalledTimes(1);
+  });
+});

@@ -8,6 +8,7 @@ export function useSimpleCheckoutGating({
   checkoutAllowed = false,
   customerAddress = '',
   customerEmail = '',
+  deliveryAddressDetails = '',
   customerName = '',
   customerPhone = '',
   fnbScheduleMode = 'asap',
@@ -24,6 +25,7 @@ export function useSimpleCheckoutGating({
     customerEmail,
     isDeliveryOrder,
     customerAddress,
+    deliveryAddressDetails,
     usePinnedAddress: false
   }) && guestCheckoutOtpVerified;
   const simpleHasCustomerIdentity = hasCustomerName(customerName);

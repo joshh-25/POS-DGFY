@@ -177,6 +177,7 @@ import { DeliveryPinMap } from './features/locations/components/DeliveryPinMapLa
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
   buildPinnedDeliveryAddress,
+  composeDeliveryAddress,
   normalizeCoordinatePair,
   resolveAddressSearchBias,
   resolveDeliveryAddress,
@@ -649,6 +650,8 @@ export default function StorefrontApp() {
     setIsUsingDifferentGuestDetails,
     customerAddress,
     setCustomerAddress,
+    deliveryAddressDetails,
+    setDeliveryAddressDetails,
     serviceLocationLandmarkNote,
     setServiceLocationLandmarkNote,
     serviceUnitType,
@@ -1341,6 +1344,7 @@ export default function StorefrontApp() {
     const savedGuestAddress = readGuestDeliveryAddress();
     if (!savedGuestAddress) return;
     setCustomerAddress(savedGuestAddress.addressLine);
+    if (savedGuestAddress.addressDetails) setDeliveryAddressDetails(savedGuestAddress.addressDetails);
     if (Number.isFinite(savedGuestAddress.latitude) && Number.isFinite(savedGuestAddress.longitude)) {
       setCustomerPin({ latitude: savedGuestAddress.latitude, longitude: savedGuestAddress.longitude });
     }
@@ -1765,6 +1769,7 @@ export default function StorefrontApp() {
   } = useServiceBookingDerivations({
     customerAddress,
     customerEmail,
+    deliveryAddressDetails,
     customerName,
     customerPhone,
     customerPin,
@@ -2320,7 +2325,8 @@ export default function StorefrontApp() {
     customerUsername: accountIdentityRawUsername,
     customerPhone,
     customerPin,
-    deliveryAddress: resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin }),
+    // #2594: the order's address is the customer's house/unit details plus the location.
+    deliveryAddress: composeDeliveryAddress(deliveryAddressDetails, resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin })),
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
@@ -2738,6 +2744,7 @@ export default function StorefrontApp() {
     authToken: dgfyAuthToken,
     customerAddress,
     customerPin,
+    deliveryAddressDetails,
     deliveryLocationAction,
     isDeliveryOrder,
     isCustomerLocationFlow: serviceFlowMethod === 'on_site',
@@ -2751,6 +2758,7 @@ export default function StorefrontApp() {
     selectedSavedLocationId,
     setCustomerAddress,
     setCustomerPin,
+    setDeliveryAddressDetails,
     setDeliveryLocationAction,
     setPinLocationError,
     setResolvedDeliveryAddress,
@@ -2764,6 +2772,7 @@ export default function StorefrontApp() {
   const { activeServiceLocationSummary, handlePinMyLocation } = useDeliveryPinResolution({
     customerAddress,
     customerPin,
+    deliveryAddressDetails,
     deliveryLocationDisplayAddress,
     hasPinnedDeliveryLocation,
     isDeliveryOrder,
@@ -2771,6 +2780,7 @@ export default function StorefrontApp() {
     resolvedDeliveryAddress,
     setCustomerAddress,
     setCustomerPin,
+    setDeliveryAddressDetails,
     setDeliveryLocationAction,
     setPinLocationError,
     setPinLocationLoading,
@@ -3018,6 +3028,7 @@ export default function StorefrontApp() {
     showFnbMobileOrderSummary,
   } = useFnbCheckoutPresentation({
     activePinnedDeliveryAddress,
+    deliveryAddressDetails,
     cartCount,
     checkoutResult,
     customerEmail,
@@ -3601,6 +3612,7 @@ export default function StorefrontApp() {
     cart,
     checkoutAllowed,
     customerAddress,
+    deliveryAddressDetails,
     customerEmail,
     customerName,
     customerPhone,
