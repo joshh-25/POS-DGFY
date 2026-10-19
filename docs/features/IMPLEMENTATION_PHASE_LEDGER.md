@@ -29926,3 +29926,87 @@ Not complete. Record after PR #2580 merges and implementation validation passes.
 ### Next phase number
 
 Phase 517. No explicit dependency.
+
+## Phase 517 - Delivery address precision: street on map pins and required house/unit details (#2593, #2594, #2595)
+
+### Initiative and release
+
+Storefront delivery addresses, current release. Three issues, one PR each: the reverse-geocode
+street rule (#2593, PR #2597), the saved-address `address_details` field (#2594, API PR) together
+with the Storefront checkout details field (#2594, Storefront PR), and the merchant store-location
+picker (#2595, blocked on a storage decision).
+
+### Objective and scope
+
+Give riders an address they can deliver to. A map pin's label names its street when a feature
+naming one lies within 75 m (#2593). Every Storefront delivery checkout and customer-location
+service booking requires the customer's own house number, Blk/Lot, unit or building, combined into
+the existing `delivery_address` text as `<details>, <location>` with no order schema change (#2594).
+Saved addresses keep the details in a new nullable landlord column, `dgfy_customer_addresses.address_details`.
+The tenant-scoped `customer_addresses` table is out of scope: no frontend uses its API. Approved UI
+reference: https://claude.ai/artifact/875Z9232zSG5Qh6BMxvfC1.
+
+### Status
+
+`in_progress` — PR #2597 (#2593) is open for review; the #2594 API change (migration, model, use
+case, API spec) is implemented with focused tests; the Storefront change and #2595 remain.
+
+### Dependencies
+
+Issues [#2593](https://github.com/Sieitzz/dgfy-platform/issues/2593),
+[#2594](https://github.com/Sieitzz/dgfy-platform/issues/2594) and
+[#2595](https://github.com/Sieitzz/dgfy-platform/issues/2595). No explicit dependency on another
+phase. The Storefront part of #2594 needs the API part deployed before saved details persist; the
+API ignores the field until then, so the order of merges is not a correctness risk. #2595 is blocked
+on its storage decision.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0013](../architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md)
+(2026-09-17 Quadruper amendment, extended by a 2026-10-19 amendment in PR #2597),
+[ADR 0023](../architecture/adr/0023-front-facing-dgfy-customer-account.md) (saved-address management),
+and the [API specification](../api/specification.md). Classification: `within-existing-boundary`
+for #2593 and #2594; the ADR 0013 change is a dated amendment to an untagged clause.
+
+### Implementation targets
+
+[Photon feature mapper](../../apps/dgfy-api/src/modules/geoSearch/mappers/photonFeatureMapper.js),
+[DGFY customer use cases](../../apps/dgfy-api/src/modules/dgfy/usecases/dgfyCustomerUseCases.js),
+[DGFY customer repository](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyCustomerRepository.js),
+[DgfyCustomerAddress model](../../apps/dgfy-api/src/models/Landlord/DgfyCustomerAddress.js), and the
+[address-details migration](../../apps/dgfy-migration-runner/migrations/20261019000002-add-dgfy-customer-address-details.cjs).
+Focused tests: [mapper](../../apps/dgfy-api/tests/geoPhotonFeatureMapper.test.js),
+[customer use cases](../../apps/dgfy-api/tests/dgfyCustomerUseCases.test.js), and the
+[migration](../../apps/dgfy-api/tests/addDgfyCustomerAddressDetails.migration.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Reverse-geocode labels name the street within 75 m, keep the barangay-level label beyond it,
+      and never carry a house number or POI name (#2593; 97 geo tests, live Quadruper check in PR #2597).
+- [x] Saved addresses accept, trim, cap (255) and return `address_details`; a blank value is `null`;
+      an update without the field leaves it untouched (#2594 API).
+- [x] The migration adds the nullable column idempotently and removes it on `down`.
+- [ ] Storefront checkouts require the details field, preview and submit `<details>, <location>`,
+      prefill a searched house number, and save/restore details with saved addresses (#2594 Storefront).
+- [ ] Merchant picker details (#2595), after its storage decision.
+
+### Evidence
+
+Focused Jest suites and repository checks are recorded in each PR's Testing Evidence.
+
+### Completion date
+
+Not complete. Record after the #2594 Storefront PR merges and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — the address-details migration applied to the connected landlord database before
+      the API that reads the column starts; owner: release; blocks issue closure.
+- [ ] rendered — a deployed Storefront delivery checkout shows the required details field and submits
+      `<details>, <location>`; owner: Verifier; blocks issue closure.
+
+### Next phase number
+
+Phase 518. No explicit dependency.
