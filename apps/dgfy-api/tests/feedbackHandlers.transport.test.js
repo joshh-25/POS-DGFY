@@ -61,7 +61,8 @@ describe('feedbackHandlers transport contracts', () => {
         user_id: 7,
         username: 'john',
         email: 'john@example.com'
-      }
+      },
+      feedbackIdentity: { kind: 'tenant_user', id: 7, name: 'john', email: 'john@example.com', verified: true }
     };
     const res = createRes();
 
@@ -75,6 +76,7 @@ describe('feedbackHandlers transport contracts', () => {
     expect(mockSubmitFeedbackUseCase).toHaveBeenCalledWith(expect.objectContaining({
       origin: { surface: 'ims', platform: 'web' },
       contact: { name: 'Ignored' },
+      identity: req.feedbackIdentity,
       correlationId: 'req-123'
     }));
     expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
@@ -115,6 +117,21 @@ describe('feedbackHandlers transport contracts', () => {
       eventType: 'feedback_submitted',
       surface: 'feedback',
       action: 'submit_feedback'
+    }));
+  });
+
+  it('stores no tenant for the default context and uses a resolved storefront tenant', async () => {
+    mockSubmitFeedbackUseCase.mockResolvedValue({ success: true, data: { id: 'guest-id' } });
+    mockGetStore.mockReturnValue({ tenantId: 'default', tenantName: 'SKU-Inventory-Manager (Default)' });
+    const guest = { body: { type: 'bug', description: 'Guest report', contact: { name: 'Guest', email: 'g@example.com' } } };
+    await submitFeedback(guest, createRes());
+    expect(mockSubmitFeedbackUseCase).toHaveBeenLastCalledWith(expect.objectContaining({ tenant: null, identity: undefined }));
+    expect(mockTrackProductUsageFromResult).toHaveBeenLastCalledWith(expect.objectContaining({ user: undefined, tenantId: null }));
+
+    const tenant = { ...guest, tenant: { id: 'tenant-uuid', name: 'Shop' } };
+    await submitFeedback(tenant, createRes());
+    expect(mockSubmitFeedbackUseCase).toHaveBeenLastCalledWith(expect.objectContaining({
+      tenant: { id: 'tenant-uuid', name: 'Shop' }
     }));
   });
 });

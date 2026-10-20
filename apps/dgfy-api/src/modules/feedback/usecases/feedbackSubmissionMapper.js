@@ -23,9 +23,14 @@ export const normalizeContext = (context, origin) => {
   }
 };
 
-export const toSubmission = ({ type, description, url, context, origin, contact, tenant, user, correlationId }) => {
-  const session = user?.id != null && user.id !== 'Anonymous';
+export const toSubmission = ({ type, description, url, context, origin, contact, tenant, identity, user, correlationId }) => {
+  // The user fallback is exclusively for historical JSONL imports.
+  const actor = identity || (user?.id != null && user.id !== 'Anonymous'
+    ? { kind: 'tenant_user', id: user.id, name: user.username, email: user.email, verified: true }
+    : null);
   const tenantId = tenant?.id && tenant.id !== 'default' ? tenant.id : null;
+  const submitterType = actor?.kind === 'store_customer' && actor.dgfyAccountId
+    ? 'dgfy_account' : actor?.kind || 'guest';
   return {
     type,
     description: description.trim(),
@@ -35,12 +40,13 @@ export const toSubmission = ({ type, description, url, context, origin, contact,
     client_platform: allowed(origin?.platform, FEEDBACK_PLATFORMS),
     app_version: bounded(origin?.app_version, 64),
     tenant_id: tenantId,
-    tenant_name: bounded(tenant?.name, 255),
-    submitter_type: session ? 'tenant_user' : 'guest',
-    tenant_user_id: session ? user.id : null,
-    submitter_name: bounded(session ? user.username : contact?.name, 255),
-    submitter_email: bounded(session ? user.email : contact?.email, 320),
-    contact_verified: session,
+    tenant_name: tenantId ? bounded(tenant?.name, 255) : null,
+    submitter_type: submitterType,
+    tenant_user_id: actor?.kind === 'tenant_user' ? actor.id : null,
+    dgfy_account_id: submitterType === 'dgfy_account' ? (actor.dgfyAccountId || actor.id) : null,
+    submitter_name: bounded(actor ? actor.name : contact?.name, 255),
+    submitter_email: bounded(actor ? actor.email : contact?.email, 320),
+    contact_verified: Boolean(actor?.verified),
     correlation_id: bounded(correlationId, 128),
     submitted_at: new Date()
   };
@@ -87,6 +93,8 @@ export const parseLegacyFeedbackLine = (line) => {
   });
   return {
     ...entry,
+    // Preserve historical import attribution even for the former default context.
+    tenant_name: bounded(parsed.tenant?.name, 255),
     context_json: normalizeContext({
       ...entry.context_json,
       ...(FEEDBACK_TYPES.includes(parsed.type) ? {} : { legacy_type: parsed.type })

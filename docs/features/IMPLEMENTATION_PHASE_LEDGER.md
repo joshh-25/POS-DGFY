@@ -30187,7 +30187,9 @@ timeout, HTTP behavior, and the connection budget remain unchanged. Classificati
 
 ### Status
 
-`in_progress` — implementation and validation are pending PR review and merge.
+`completed` — PR [#2623](https://github.com/Sieitzz/dgfy-platform/pull/2623) merged to
+`develop` on 2026-10-20 as `a9b8f2b04830f53b94c7eec543f63308a6099e1b`; implementation validation
+passed. Post-merge deployment and operational verification remain outstanding below.
 
 ### Dependencies
 
@@ -30212,18 +30214,18 @@ operator runbook.
 
 ### Acceptance and validation evidence
 
-- [ ] Tenant pool idle time defaults to 60000 ms and accepts a positive environment override;
+- [x] Tenant pool idle time defaults to 60000 ms and accepts a positive environment override;
       pool max, acquire, and budget arithmetic remain unchanged.
-- [ ] Physical connects report slow and failed attempts without changing connection results or
+- [x] Physical connects report slow and failed attempts without changing connection results or
       errors; timeout context exposes `creating`, `last_connect_ms`, `slow_connects`,
       `created_total`, and `evicted_total`.
-- [ ] Focused tests, changed-file syntax checks, architecture, compliance, docs, and version
-      checks pass; evidence is recorded in the PR.
-- [ ] PR review and merge to `develop`.
+- [x] Focused tests, changed-file syntax checks, architecture, compliance, docs, and version
+      checks pass; evidence is recorded in [PR #2623](https://github.com/Sieitzz/dgfy-platform/pull/2623).
+- [x] PR review and merge to `develop`.
 
 ### Completion date
 
-Not complete. Record after implementation merges and validation passes.
+2026-10-20
 
 ### Post-merge verification
 
@@ -30238,3 +30240,65 @@ Not complete. Record after implementation merges and validation passes.
 ### Next phase number
 
 Phase 521. No explicit dependency.
+
+## Phase 521 - Guest feedback submission (#582)
+
+### Initiative and release
+
+Feedback intake under epic #560, current release.
+
+### Objective and scope
+
+Allow anonymous feedback on the existing POST endpoint with validated self-reported contact,
+server-derived identity for staff, DGFY accounts and store customers, tenant-aware persistence,
+and a dedicated abuse limit. No client or migration work is included.
+
+### Status
+
+`in_progress` — implementation PR pending merge and validation.
+
+### Dependencies
+
+Phase 519's landlord table must be migrated in each target environment before this API is deployed.
+There is no phase-numbering dependency on an earlier unfinished phase.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+
+### Implementation targets
+
+[Feedback module](../../apps/dgfy-api/src/modules/feedback/README.md),
+[route](../../apps/dgfy-api/src/routes/feedback.js), [limiter](../../apps/dgfy-api/src/middleware/rateLimiter.js),
+and focused feedback identity, validation, mapping, and handler tests.
+
+### Acceptance and validation evidence
+
+- [ ] Anonymous feedback with valid name and email persists as an unverified guest; missing or
+      invalid contact returns 400.
+- [ ] Authenticated submissions ignore client identity and persist the correct staff, DGFY, or
+      store-customer identity; bad tokens never become guests.
+- [ ] Tenant-less submissions store null tenant ID and name; tenant-scoped submissions retain both.
+- [ ] A dedicated feedback limiter returns 429 at the configured threshold.
+- [ ] Focused tests and architecture, docs, compliance, inventory, syntax, and version checks pass;
+      evidence is recorded in the implementation PR.
+
+### Completion date
+
+Not complete. Record after implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] Confirm the Phase 519 landlord migration is applied before deploying this API.
+- [ ] STAGING: submit valid anonymous feedback, confirm 201 and a guest row in Platform Admin;
+      omit contact and confirm 400.
+- [ ] STAGING: confirm anonymous rate limiting returns 429 at the configured threshold.
+- [ ] PROD: repeat after promotion; promoter and verifier own deployment and verification.
+
+### Next phase number
+
+Phase 522. No explicit dependency.

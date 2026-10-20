@@ -2152,9 +2152,11 @@ stores `type`, `description`, `status` (`new`, `triaged`, `accepted`, `rejected`
 distinct from web Storefront (`storefront` + `web`).
 
 Nullable `tenant_id` has no foreign key; `tenant_name` is a snapshot. Identity is represented by
-`submitter_type` (`tenant_user`, `dgfy_account`, `guest`, `legacy`), nullable `tenant_user_id` and
+`submitter_type` (`tenant_user`, `dgfy_account`, `store_customer`, `guest`, `legacy`), nullable `tenant_user_id` and
 `dgfy_account_id`, `submitter_name`, `submitter_email`, and `contact_verified`. Contact supplied
-by a future guest is never marked verified. Nullable `subject_type`, `subject_ref`, and
+by a guest is never marked verified. An unlinked store customer is identified by the tenant and
+stored email; its customer ID has no column. A linked store customer uses `dgfy_account_id` and
+`submitter_type: dgfy_account` but retains `contact_verified: false`. Nullable `subject_type`, `subject_ref`, and
 `subject_label` reserve #596's selector shape without exposing a write contract yet.
 `correlation_id` matches the feedback engagement event request ID when that event is emitted.
 

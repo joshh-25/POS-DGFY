@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-10-20T06:52:29.946Z",
-  "totalFiles": 874,
+  "generatedAt": "2026-10-20T07:45:35.499Z",
+  "totalFiles": 878,
   "byClassification": {
-    "keep": 806,
+    "keep": 810,
     "delete": 23,
     "consolidate": 37,
     "trim": 3,
@@ -10,7 +10,7 @@
   },
   "bySuffix": {
     "migration": 55,
-    "(none)": 297,
+    "(none)": 300,
     "middleware": 14,
     "handler": 1,
     "transport": 46,
@@ -38,6 +38,7 @@
     "documentaryReadiness": 1,
     "profileMerge": 1,
     "authorization": 1,
+    "idle.unit": 1,
     "budgetFeature": 1,
     "workflowMode": 2,
     "syncMode": 1,
@@ -6369,6 +6370,39 @@
       "findings": []
     },
     {
+      "path": "tests/connectionBudget.idle.unit.test.js",
+      "lines": 23,
+      "caseCount": 2,
+      "describeTitles": [
+        "tenant pool idle window"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "idle.unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: idle.unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/controllerBoundaryScript.integration.test.js",
       "lines": 38,
       "caseCount": 2,
@@ -7456,7 +7490,7 @@
     },
     {
       "path": "tests/dbPoolDiagnostics.test.js",
-      "lines": 161,
+      "lines": 164,
       "caseCount": 7,
       "describeTitles": [
         "tenant DB pool timeout diagnostics"
@@ -11360,12 +11394,12 @@
     },
     {
       "path": "tests/feedbackHandlers.transport.test.js",
-      "lines": 121,
-      "caseCount": 2,
+      "lines": 138,
+      "caseCount": 3,
       "describeTitles": [
         "feedbackHandlers transport contracts"
       ],
-      "expectCount": 8,
+      "expectCount": 11,
       "expectResCount": 4,
       "toHaveBeenCalledCount": 7,
       "readFileSyncCount": 0,
@@ -11391,6 +11425,39 @@
       "classification": "consolidate",
       "reason": "transport-responder-only (>=90% call/res assertions, <=6 cases)",
       "rule": "R4-transport-responder-only",
+      "findings": []
+    },
+    {
+      "path": "tests/feedbackIdentity.test.js",
+      "lines": 77,
+      "caseCount": 4,
+      "describeTitles": [
+        "optional feedback identity"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 7,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
       "findings": []
     },
     {
@@ -11425,16 +11492,82 @@
       "findings": []
     },
     {
+      "path": "tests/feedbackRoute.test.js",
+      "lines": 65,
+      "caseCount": 3,
+      "describeTitles": [
+        "feedback route middleware order"
+      ],
+      "expectCount": 10,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": true,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/feedbackSubmissionValidator.test.js",
+      "lines": 50,
+      "caseCount": 4,
+      "describeTitles": [
+        "feedback submission validator"
+      ],
+      "expectCount": 8,
+      "expectResCount": 2,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/feedbackUsecases.applicationResult.test.js",
-      "lines": 97,
-      "caseCount": 6,
+      "lines": 119,
+      "caseCount": 8,
       "describeTitles": [
         "feedback submission contract",
         "feedback read and legacy mapping"
       ],
-      "expectCount": 20,
+      "expectCount": 24,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -24165,12 +24298,12 @@
     },
     {
       "path": "tests/rateLimiter.behavior.test.js",
-      "lines": 568,
-      "caseCount": 23,
+      "lines": 583,
+      "caseCount": 24,
       "describeTitles": [
         "Rate limiter behavior"
       ],
-      "expectCount": 83,
+      "expectCount": 86,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -30833,14 +30966,14 @@
     },
     {
       "path": "tests/tenantConnector.evictionSafety.unit.test.js",
-      "lines": 347,
-      "caseCount": 11,
+      "lines": 417,
+      "caseCount": 16,
       "describeTitles": [
         "TenantConnector — eviction safety (issue #474 follow-up)"
       ],
-      "expectCount": 36,
+      "expectCount": 49,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 14,
+      "toHaveBeenCalledCount": 17,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,

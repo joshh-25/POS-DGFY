@@ -4,7 +4,7 @@ import { mapFeedbackUseCaseError } from './feedbackUseCaseError.js';
 import { FEEDBACK_TYPES, toSubmission } from './feedbackSubmissionMapper.js';
 
 export const buildSubmitFeedbackUseCase = ({ feedbackRepository }) => {
-  return async ({ type, description, url, context, origin, contact, tenant, user, correlationId }) => {
+  return async ({ type, description, url, context, origin, contact, tenant, identity, correlationId }) => {
     if (!type || typeof description !== 'string' || !description.trim()) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -20,7 +20,19 @@ export const buildSubmitFeedbackUseCase = ({ feedbackRepository }) => {
       ));
     }
 
-    const entry = toSubmission({ type, description, url, context, origin, contact, tenant, user, correlationId });
+    if (!identity && (
+      typeof contact?.name !== 'string' || !contact.name.trim() || contact.name.trim().length > 255 ||
+      typeof contact?.email !== 'string' || contact.email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)
+    )) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Guest name and valid email are required',
+        { statusCode: 400 }
+      ));
+    }
+
+    const entry = toSubmission({ type, description, url, context, origin, contact, tenant, identity, correlationId });
 
     try {
       const created = await feedbackRepository.create(entry);

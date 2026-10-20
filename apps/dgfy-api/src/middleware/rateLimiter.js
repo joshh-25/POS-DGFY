@@ -50,6 +50,9 @@ const affiliateShareResolveWindowMs = parseInt(process.env.RATE_LIMIT_AFFILIATE_
 const affiliateShareResolveMaxRequests = parseInt(process.env.RATE_LIMIT_AFFILIATE_SHARE_RESOLVE_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontFollowMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const feedbackSubmissionWindowMs = parseInt(process.env.RATE_LIMIT_FEEDBACK_SUBMIT_WINDOW_MS) || 10 * 60 * 1000;
+const feedbackAnonymousMax = parseInt(process.env.RATE_LIMIT_FEEDBACK_SUBMIT_ANONYMOUS_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
+const feedbackCredentialedMax = parseInt(process.env.RATE_LIMIT_FEEDBACK_SUBMIT_CREDENTIALED_MAX_REQUESTS) || (isDevelopment ? 80 : 20);
 const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
@@ -1098,6 +1101,31 @@ export const storefrontFollowLimiter = rateLimit({
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
     return false;
   },
+});
+
+export const feedbackSubmissionLimiter = rateLimit({
+  windowMs: feedbackSubmissionWindowMs,
+  max: (req) => (req.headers.authorization || getCookie(req, SESSION_COOKIE_NAMES.storefront) ||
+    getCookie(req, SESSION_COOKIE_NAMES.dgfy)) ? feedbackCredentialedMax : feedbackAnonymousMax,
+  message: createRateLimitError('Too many feedback submissions. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('feedback_submit'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const credentialed = Boolean(req.headers.authorization || getCookie(req, SESSION_COOKIE_NAMES.storefront) ||
+      getCookie(req, SESSION_COOKIE_NAMES.dgfy));
+    return `feedback_submit:${req.tenant?.id || 'no-tenant'}:${ip}:${credentialed ? 'credentialed' : 'anonymous'}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(req, options,
+      'Too many feedback submissions. Please wait before trying again.', 'feedback_submit', 'tenant_ip_credential');
+    logRateLimitEvent(req, 'feedback_submit', response.retryAfterSeconds, 'tenant_ip_credential');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => process.env.NODE_ENV === 'test' || (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true'),
 });
 
 // Tenant onboarding telemetry limiter (master-admin authenticated surface).

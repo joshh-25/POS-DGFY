@@ -5,15 +5,18 @@ The landlord `feedback_submissions` table is the source of truth. The Platform A
 service is a compatibility facade over this module. The existing `admin.feedback` permission
 continues to protect list and stats reads.
 
-`POST /api/v1/feedback` currently requires a tenant-user session. The body accepts `type`
+`POST /api/v1/feedback` accepts guests and tenant-user, DGFY-account, or store-customer sessions. The body accepts `type`
 (`bug`, `idea`, `question`, `other`), a 1–5000 character `description`, optional `url` and
-`context`, optional `origin` (`surface`, `platform`, `app_version`), and optional guest `contact`
-(`name`, `email`). It returns HTTP 201 with `{ message, id }`. The route remains authenticated;
-unauthenticated contact submission is deferred to #582. A session's name/email overrides body
-contact and is marked verified. A future guest contact is unverified. Unknown origin values are
+`context`, optional `origin` (`surface`, `platform`, `app_version`), and guest `contact`
+(`name`, `email`). It returns HTTP 201 with `{ message, id }`. Guest contact is required,
+self-reported, and unverified. A session's name/email overrides body contact; DGFY accounts use
+their email verification state, while store customers remain unverified. Unknown origin values are
 normalized to `unknown` and retained in `context_json.origin_raw` when the 8 KB context bound
 allows. Storefront web uses `storefront` + `web`; native Storefront uses `storefront` + `ios` or
-`android`.
+`android`. The dedicated feedback limit defaults to five anonymous or twenty credentialed
+requests per tenant and IP in ten minutes. Invalid credentials return 401; mismatched store
+tenant returns 403; excess requests return 429 with `Retry-After`. Browser sessions require
+`x-csrf-token`.
 
 The request ID is stored as `correlation_id`, matching the engagement event's correlation ID.
 A database failure returns a 500 result; clients can retain their draft and retry. No file

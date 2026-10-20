@@ -6,16 +6,10 @@ import { trackProductUsageFromResult } from '../../../services/productUsageTelem
 export const submitFeedback = async (req, res) => {
   try {
     const store = dbStore.getStore();
-    const tenant = store ? {
-      id: store.tenantId,
-      name: store.tenantName
-    } : null;
-
-    const user = req.user ? {
-      id: req.user.user_id,
-      username: req.user.username,
-      email: req.user.email
-    } : null;
+    const tenant = req.tenant?.id ? { id: req.tenant.id, name: req.tenant.name }
+      : store?.tenantId && store.tenantId !== 'default'
+        ? { id: store.tenantId, name: store.tenantName }
+        : null;
 
     const result = await submitFeedbackUseCase({
       type: req.body?.type,
@@ -26,7 +20,7 @@ export const submitFeedback = async (req, res) => {
       contact: req.body?.contact,
       correlationId: req.requestId,
       tenant,
-      user
+      identity: req.feedbackIdentity
     });
 
     await trackProductUsageFromResult({
