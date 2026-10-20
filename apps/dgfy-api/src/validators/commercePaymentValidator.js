@@ -30,10 +30,10 @@ const buildValidationErrorResponse = (error) => ({
   timestamp: new Date().toISOString()
 });
 
-const validateSchema = (schema, source, target) => (req, res, next) => {
+const validateSchema = (schema, source, target, { stripUnknown = true } = {}) => (req, res, next) => {
   const { error, value } = schema.validate(req[source], {
     abortEarly: false,
-    stripUnknown: true,
+    stripUnknown,
     convert: true
   });
 
@@ -51,6 +51,25 @@ const paymentSessionParamSchema = Joi.object({
 
 const paymentSessionRefundParamSchema = paymentSessionParamSchema.keys({
   refund_id: Joi.string().trim().uppercase().pattern(/^CRF-[A-Z0-9]{10}$/).required()
+});
+
+const commercePaymentRefundRetryBodySchema = Joi.object({
+  reason: Joi.string().trim().min(3).max(255).required()
+}).unknown(false);
+
+const listCommercePaymentRefundsQuerySchema = Joi.object({
+  status: Joi.alternatives().try(
+    Joi.string().trim().custom((value, helpers) => {
+      const statuses = value.split(',').map((entry) => entry.trim()).filter(Boolean);
+      const invalid = statuses.find((status) => !REFUND_STATUSES.includes(status));
+      if (invalid) return helpers.error('any.invalid');
+      return statuses.join(',');
+    }),
+    Joi.array().items(Joi.string().valid(...REFUND_STATUSES))
+  ).optional(),
+  tenant_id: tenantIdSchema.optional(),
+  limit: Joi.number().integer().min(1).max(250).default(100),
+  offset: Joi.number().integer().min(0).default(0)
 });
 
 const listPaymentSessionsQuerySchema = Joi.object({
@@ -186,7 +205,14 @@ const refundBodySchema = Joi.object({
 
 export const validateCommercePaymentSessionParam = validateSchema(paymentSessionParamSchema, 'params', 'validatedParams');
 export const validateCommercePaymentRefundParam = validateSchema(paymentSessionRefundParamSchema, 'params', 'validatedParams');
+export const validateCommercePaymentRefundRetryBody = validateSchema(
+  commercePaymentRefundRetryBodySchema,
+  'body',
+  'validatedBody',
+  { stripUnknown: false }
+);
 export const validateListCommercePaymentSessionsQuery = validateSchema(listPaymentSessionsQuerySchema, 'query', 'validatedQuery');
+export const validateListCommercePaymentRefundsQuery = validateSchema(listCommercePaymentRefundsQuerySchema, 'query', 'validatedQuery');
 export const validateTenantPaymentAccountsQuery = validateSchema(tenantPaymentAccountsQuerySchema, 'query', 'validatedQuery');
 export const validateTenantPaymentAccountParam = validateSchema(tenantPaymentAccountParamSchema, 'params', 'validatedParams');
 export const validateTenantPayMongoChildAccountActionParam = validateSchema(tenantPayMongoChildAccountActionParamSchema, 'params', 'validatedParams');
