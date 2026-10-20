@@ -12,8 +12,8 @@ verification_evidence: focused commerce refund retry/list Jest suites,Platform A
 rollback_note: Revert the Admin retry/list routes, append-only retry link, UI, related tests and docs together. Apply the migration down only after rolling back the API code; it removes the retry link, FK, and index but preserves refund rows. Do not delete or rewrite refund/audit history.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-20T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-20-ADMIN-COMMERCE-REFUND-RETRY
+preflight_run_at: 2026-10-20T08:46:05.914Z
+preflight_request_ref: PREFLIGHT-39395133842-2026-10-20-ADMIN-COMMERCE-REFUND-RETRY
 ---
 
 # Platform Admin commerce refund retry (#2549)
