@@ -37,6 +37,7 @@ const buildRepository = (overrides = {}) => ({
     status: 'pending'
   }),
   findRefundByPublicReference: jest.fn().mockResolvedValue(null),
+  findRetryChildOf: jest.fn().mockResolvedValue(null),
   updateRefundById: jest.fn().mockImplementation(async (refundId, payload) => ({
     refund_id: refundId,
     public_reference: 'CRF-ABC123DEF4',
@@ -281,6 +282,74 @@ describe('commerce payment refund use-cases', () => {
       amount: 5000,
       splitRefund: null
     }));
+  });
+
+  it('stores the original refund id on the new retry row inside the locked transaction', async () => {
+    const original = {
+      refund_id: 7,
+      public_reference: 'CRF-ORIGINAL01',
+      payment_session_id: baseSession.session_id,
+      status: 'failed',
+      amount_centavos: 5000,
+      reason: 'duplicate'
+    };
+    const commercePaymentRepository = buildRepository({
+      findRefundByPublicReference: jest.fn().mockResolvedValue(original)
+    });
+    const useCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository,
+      paymongoService: {
+        createRefund: jest.fn().mockResolvedValue({ id: 'ref_retry', attributes: { status: 'pending' } })
+      }
+    });
+
+    const result = await useCase({
+      paymentSessionId: baseSession.public_reference,
+      payload: { amount_centavos: 5000, refund_strategy: 'proportional', reason: 'duplicate' },
+      actor: 'admin',
+      retryOfRefundReference: original.public_reference
+    });
+
+    expect(result.success).toBe(true);
+    expect(commercePaymentRepository.findRetryChildOf).toHaveBeenCalledWith(7, expect.objectContaining({
+      transaction: expect.anything(),
+      lock: true
+    }));
+    expect(commercePaymentRepository.createRefund).toHaveBeenCalledWith(expect.objectContaining({
+      retry_of_refund_id: 7,
+      payment_session_id: baseSession.session_id
+    }), expect.anything());
+    expect(commercePaymentRepository.updateRefundById).not.toHaveBeenCalledWith(7, expect.anything(), expect.anything());
+  });
+
+  it('rechecks chain-head eligibility under the lock before creating a retry row', async () => {
+    const original = {
+      refund_id: 7,
+      public_reference: 'CRF-ORIGINAL01',
+      payment_session_id: baseSession.session_id,
+      status: 'failed',
+      amount_centavos: 5000
+    };
+    const commercePaymentRepository = buildRepository({
+      findRefundByPublicReference: jest.fn().mockResolvedValue(original),
+      findRetryChildOf: jest.fn().mockResolvedValue({ refund_id: 8, public_reference: 'CRF-CHILD00001' })
+    });
+    const useCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository,
+      paymongoService: { createRefund: jest.fn() }
+    });
+
+    const result = await useCase({
+      paymentSessionId: baseSession.public_reference,
+      payload: { amount_centavos: 5000 },
+      actor: 'admin',
+      retryOfRefundReference: original.public_reference
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(409);
+    expect(result.error.message).toBe('Retry the latest attempt instead.');
+    expect(commercePaymentRepository.createRefund).not.toHaveBeenCalled();
   });
 });
 

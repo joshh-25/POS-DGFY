@@ -57,6 +57,12 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 - Definite refund failures stay excluded from settlement, raise an immediate
   operator alert, and remain unchanged until an administrator explicitly retries
   or resolves them.
+- Platform Admin Payment Operations lists attempts across sessions and offers Retry
+  only for an eligible latest attempt with no other active refund. The administrator
+  must provide a reason and confirm the session, order, amount, and original reference;
+  the server performs a fresh PayMongo read before creating a linked attempt. Retry
+  and blocked outcomes are audited with the authenticated actor, reason, references,
+  and provider outcome or block code. Earlier attempts remain unchanged.
 - Ambiguous submissions and orphaned pre-provider refund rows are reconciled from
   authenticated PayMongo reads. A unique matching provider refund is linked and
   applied through the same idempotent path as a webhook; zero or multiple matches

@@ -462,6 +462,8 @@ Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePa
 CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
 CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
+CommercePaymentRefund.belongsTo(CommercePaymentRefund, { foreignKey: 'retry_of_refund_id', as: 'retryOf' });
+CommercePaymentRefund.hasMany(CommercePaymentRefund, { foreignKey: 'retry_of_refund_id', as: 'retryAttempts' });
 Tenant.hasMany(TenantRevenueFeePolicy, { foreignKey: 'tenant_id', as: 'revenueFeePolicies' });
 TenantRevenueFeePolicy.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantRevenueTransaction, { foreignKey: 'tenant_id', as: 'revenueTransactions' });

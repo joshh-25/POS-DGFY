@@ -4598,13 +4598,14 @@ this source contract.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `refund_status` (comma-separated refund states), `target_type`, `limit`, and `offset`. |
+| `GET` | `/refunds` | List refund attempts across payment sessions. Supports comma-separated `status`, `tenant_id`, `limit`, and `offset`; returns `retry_of`, `has_retry`, and server-computed `retry_eligible` with the session reference and order metadata. |
 | `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
 | `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
 | `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks, parent split-capability confirmation status, and the remaining external evidence required before live money movement. |
 | `POST` | `/payment-sessions/:payment_session_id/reconcile` | Admin-only recovery check against the PayMongo Payment Intent API. It finalizes only when a paid provider payment record exists and its amount/currency match the locked session; otherwise it reports the provider state or returns a review conflict. |
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
-| `POST` | `/payment-sessions/:payment_session_id/refunds/:refund_id/retry` | Explicitly retry a failed refund or a `PROVIDER_REFUND_NOT_FOUND` review row after a fresh provider read confirms there is no unlinked matching refund. Returns `409` for ineligible or active refund conflicts. |
+| `POST` | `/payment-sessions/:payment_session_id/refunds/:refund_id/retry` | Explicitly retry a failed refund or a `PROVIDER_REFUND_NOT_FOUND` review row after a fresh provider read confirms there is no unlinked matching refund. Requires `{ "reason": "..." }` (trimmed, 3–255 characters); unknown body keys are rejected with `422`. Returns `409` for ineligible, older-chain-head, or active-refund conflicts. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account` | Create a PayMongo merchant child account for an existing tenant and store it as pending readiness. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account/sync-requirements` | Pull current PayMongo child-merchant onboarding requirements into local readiness metadata. |
@@ -4655,6 +4656,38 @@ this source contract.
 }
 ```
 
+**Refund Retry Request**
+```json
+{
+  "reason": "Provider confirmed no refund exists"
+}
+```
+
+The retry reason is stored in the audit log and is not sent to PayMongo. Body-less retry callers now receive `422`; the shipped Admin interface is the only known client of this route.
+
+**Admin Refund List Response**
+```json
+{
+  "refunds": [
+    {
+      "refund_id": "CRF-ABC123DEF4",
+      "retry_of": null,
+      "has_retry": false,
+      "retry_child_references": [],
+      "retry_eligible": true,
+      "payment_session": {
+        "public_reference": "CPS-ABC123DEF4",
+        "tenant_id": "550e8400-e29b-41d4-a716-446655440000",
+        "store_slug": "space-bar",
+        "pos_transaction_id": 2749,
+        "status": "refund_pending"
+      }
+    }
+  ],
+  "pagination": { "limit": 100, "offset": 0, "count": 1, "total": 1 }
+}
+```
+
 **Refund Strategy Notes**
 - `proportional` lets PayMongo apply the default split-refund distribution.
 - `tenant` sends a fixed split-refund source against the tenant transfer merchant.
@@ -4664,6 +4697,8 @@ this source contract.
 - Refund submission records `pending` refunds without marking the order refunded until PayMongo reports terminal success.
 - The PayMongo webhook handler and scheduled authenticated PayMongo read reconciler use the same idempotent status applier. The reconciler links only one unique provider refund matching amount and creation time; no match after 30 minutes or multiple matches becomes `manual_review_required` and raises an operator alert.
 - A definite provider rejection remains `failed`, raises a per-refund error alert immediately, and is never automatically retried. The admin retry endpoint creates a new refund row and preserves the original attempt for audit history.
+- A retry is allowed only for a failed attempt or a `manual_review_required` attempt with `PROVIDER_REFUND_NOT_FOUND`, when no other refund is active for its session. Only the latest attempt in a retry chain may be retried; each new row stores a nullable `retry_of_refund_id` self-link, serialized as the original public `retry_of` reference. The original row is never changed.
+- Every retry and blocked retry records an `audit_logs` event (`commerce_payment_refund_retried` or `commerce_payment_refund_retry_blocked`) against the original integer `refund_id`. The audit includes the authenticated actor username and UUID, request ID when available, operator reason, original/new public references, amount, provider refund ID, outcome or block code. The integer self-link is never exposed in API responses.
 - A pending refund older than `COMMERCE_REFUND_PENDING_ALERT_HOURS` (default 24) raises a warning alert, throttled for six hours. Reconciliation runs every 15 minutes by default and can be disabled with `COMMERCE_REFUND_RECONCILE_ENABLED=false`.
 - Refund rows expose `updated_at`; the payment-session list can filter by `refund_status` so failed or review-required attempts remain discoverable even when the session itself is finalized.
 - Possible tenant order payment statuses for commerce QR Ph refunds are `refund_pending`, `partial_refunded`, and `refunded`.
