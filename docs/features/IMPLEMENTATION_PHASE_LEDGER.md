@@ -29259,7 +29259,8 @@ reconciliation, an explicit authenticated admin retry endpoint, refund-status fi
 and a tenant-scoped customer-safe refund status in order tracking. It also amends ADR
 0052, the commerce-payment API contract, the feature flow contract, and the compliance
 impact declaration. No migration, automatic retry of definite failures, or Admin and
-Storefront UI work is included; the UI follows as Phase 512.
+Storefront UI work is included; the Admin retry workflow follows as Phase 522, while
+Storefront tracking UI remains unscheduled.
 
 ### Status
 
@@ -29356,8 +29357,8 @@ implementation validation passes.
 
 ### Next phase number
 
-Phase 512. PR 2 contains only Admin and Storefront UI. It follows this phase after merge,
-or may be stacked only when its target is updated to this branch.
+Phase 522. The Admin refund retry workflow is scoped to that phase; Storefront tracking
+UI remains unscheduled. No explicit dependency.
 
 ## Phase 511 - Customer order-status push notifications (#2554)
 
@@ -30302,3 +30303,84 @@ Not complete. Record after implementation merges and validation passes.
 ### Next phase number
 
 Phase 522. No explicit dependency.
+
+## Phase 522 - Platform Admin refund-retry operator workflow (#2549)
+
+### Initiative and release
+
+Commerce payment refund recovery, current release.
+
+### Objective and scope
+
+Add a cross-session refund-attempt list and a reason-required Platform Admin retry action.
+Persist append-only retry lineage in the landlord database, prevent retrying older chain
+members, audit successful and blocked actions, and show the new attempt's actual provider
+status. Storefront tracking UI and Phase 510 production/provider verification remain out
+of scope.
+
+### Status
+
+`in_progress` — implementation and validation are underway; merge and deployed verification
+remain outstanding.
+
+### Dependencies
+
+- The authenticated retry route and fresh PayMongo read from Phase 510 / PR #2556 are in
+  the current `develop` baseline.
+- The additive landlord migration must be applied before deploying the API change.
+- No phase-numbering dependency; Phase 521's unfinished implementation does not block this
+  work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Commerce payment API specification](../api/specification.md),
+[Commerce payment fulfillment and settlement](commerce-payment-fulfillment-settlement.md),
+and [request-time preflight protocol](../compliance/request-time-preflight-protocol.md).
+
+### Implementation targets
+
+Landlord refund model/repository/use cases and additive migration under
+`apps/dgfy-api` and `apps/dgfy-migration-runner`; Platform Admin Payment Operations under
+`apps/dgfy-admin`; API and Admin refund-retry/list tests; API, feature-flow, and compliance
+declaration documentation.
+
+### Acceptance and validation evidence
+
+- [ ] Refund attempts list across sessions with session/order references, status, provider
+  ID, failure detail, requester, age, `retry_of`, and server-computed eligibility.
+- [ ] Retry is available only for a failed or eligible provider-not-found review attempt
+  that is a chain head and has no other active session refund.
+- [ ] Retry requires a trimmed 3–255 character reason and explicit confirmation; client
+  identity fields are rejected and the server-authenticated actor is audited.
+- [ ] Every retry creates a linked row; the original remains unchanged. Success and blocked
+  attempts audit original/new references, amount, reason, actor, request ID when available,
+  and outcome or block code.
+- [ ] Fresh provider read remains fail-closed; ambiguous matching refunds and read failures
+  are blocked and audited.
+- [ ] Admin shows the new attempt reference and provider status without claiming success for
+  pending/created attempts.
+- [ ] Focused API Jest and Admin Vitest suites, API JavaScript/migration syntax checks,
+  Admin production build, compliance, architecture, docs, and app-version checks pass.
+
+### Completion date
+
+Not complete. Record after the scoped implementation merges and named validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord-only migration in each target environment before API
+  deployment; owner: Promoter; blocks API deployment.
+- [ ] deployment — verify the Admin attempts list and a sandbox retry display the returned
+  reference/status after deployment; owner: Verifier; blocks Phase 522 verification.
+- [ ] operational — confirm successful and blocked retry audit rows retain the authenticated
+  actor, request ID, reason, and integer original refund ID; owner: Verifier; blocks Phase 522
+  acceptance.
+
+### Next phase number
+
+Phase 523. No explicit dependency.
