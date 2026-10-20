@@ -120,7 +120,7 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **877** | db-manifest members: **33** | findings: **3**
+Total active test files: **878** | db-manifest members: **33** | findings: **3**
 
 ### By classification
 
@@ -129,7 +129,7 @@ Total active test files: **877** | db-manifest members: **33** | findings: **3**
 | consolidate | 37 |
 | delete | 23 |
 | demote | 5 |
-| keep | 809 |
+| keep | 810 |
 | trim | 3 |
 
 ### By suffix
@@ -177,6 +177,7 @@ Total active test files: **877** | db-manifest members: **33** | findings: **3**
 | documentaryReadiness | 1 |
 | profileMerge | 1 |
 | authorization | 1 |
+| idle.unit | 1 |
 | budgetFeature | 1 |
 | syncMode | 1 |
 | push | 1 |
@@ -458,6 +459,7 @@ Total active test files: **877** | db-manifest members: **33** | findings: **3**
 | tests/configurableDiscountManagementValidator.test.js | 76 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/configurableDiscountMigration.test.js | 266 | 2 | consolidate | R4-thin-file | thin-file (2 cases in 266 lines) |
 | tests/configurableDiscountSchema.contract.test.js | 79 | 2 | consolidate | R4-source-text-mixed | source-text-mixed (text_ratio=0.64) |
+| tests/connectionBudget.idle.unit.test.js | 23 | 2 | keep | R5-default | default keep (suffix: idle.unit) |
 | tests/controllerBoundaryScript.integration.test.js | 38 | 2 | keep | R5-default | default keep (suffix: integration) |
 | tests/controllerFacadeParity.test.js | 88 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/corsPolicy.test.js | 131 | 8 | keep | R5-default | default keep (suffix: (none)) |
@@ -488,7 +490,7 @@ Total active test files: **877** | db-manifest members: **33** | findings: **3**
 | tests/dashboardAndInsightsToolRegistry.test.js | 152 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dashboardHandlers.transport.test.js | 114 | 2 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/dashboardUsecases.applicationResult.test.js | 55 | 3 | keep | R5-default | default keep (suffix: applicationResult) |
-| tests/dbPoolDiagnostics.test.js | 161 | 7 | keep | R5-default | default keep (suffix: (none)) |
+| tests/dbPoolDiagnostics.test.js | 164 | 7 | keep | R5-default | default keep (suffix: (none)) |
 | tests/delegatedInventoryLookup.test.js | 160 | 10 | keep | R5-default | default keep (suffix: (none)) |
 | tests/deleteTenantUseCase.test.js | 264 | 11 | keep | R5-default | default keep (suffix: (none)) |
 | tests/deliveryCompletionEvidenceStorage.test.js | 51 | 1 | keep | R5-default | default keep (suffix: (none)) |
@@ -1104,7 +1106,7 @@ Total active test files: **877** | db-manifest members: **33** | findings: **3**
 | tests/tenantCapabilityRouteGates.test.js | 153 | 6 | keep | R5-default | default keep (suffix: (none)) |
 | tests/tenantCapabilitySettingCache.test.js | 96 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/tenantCapabilitySettings.test.js | 136 | 8 | keep | R5-default | default keep (suffix: (none)) |
-| tests/tenantConnector.evictionSafety.unit.test.js | 347 | 11 | keep | R5-default | default keep (suffix: evictionSafety.unit) |
+| tests/tenantConnector.evictionSafety.unit.test.js | 417 | 16 | keep | R5-default | default keep (suffix: evictionSafety.unit) |
 | tests/tenantCredentialSurface.security.test.js | 33 | 2 | demote | R0-override | import-only; no real query issued |
 | tests/tenantHandler.emailOtp.test.js | 581 | 15 | keep | R5-default | default keep (suffix: emailOtp) |
 | tests/tenantHandler.storefrontDomain.test.js | 156 | 7 | keep | R5-default | default keep (suffix: storefrontDomain) |

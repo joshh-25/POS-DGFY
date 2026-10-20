@@ -30171,7 +30171,77 @@ Not complete. Record after implementation merges and validation passes.
 
 Phase 520. No explicit dependency.
 
-## Phase 520 - Guest feedback submission (#582)
+## Phase 520 - Tenant pool warm idle window and physical connect diagnostics (#2560)
+
+### Initiative and release
+
+API reliability, current release.
+
+### Objective and scope
+
+Keep tenant MySQL connections warm between quiet POS polls and report slow or failed physical
+connects, pool creation state, and tenant-instance churn. This is evidence-driven follow-up to
+Phase 513 after the post-deploy acquire-timeout acceptance check failed. Pool capacity, acquire
+timeout, HTTP behavior, and the connection budget remain unchanged. Classification:
+`within-existing-boundary`.
+
+### Status
+
+`completed` — PR [#2623](https://github.com/Sieitzz/dgfy-platform/pull/2623) merged to
+`develop` on 2026-10-20 as `a9b8f2b04830f53b94c7eec543f63308a6099e1b`; implementation validation
+passed. Post-merge deployment and operational verification remain outstanding below.
+
+### Dependencies
+
+Issue [#2560](https://github.com/Sieitzz/dgfy-platform/issues/2560) defines the behavior. No
+explicit phase dependency; this phase uses telemetry produced by Phase 513.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), and
+[Production Observability Runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md). No ADR amendment
+or architecture exception is required.
+
+### Implementation targets
+
+[Connection budget configuration](../../apps/dgfy-api/src/config/connectionBudget.js),
+[TenantConnector](../../apps/dgfy-api/src/utils/TenantConnector.js), focused API tests, and the
+operator runbook.
+
+### Acceptance and validation evidence
+
+- [x] Tenant pool idle time defaults to 60000 ms and accepts a positive environment override;
+      pool max, acquire, and budget arithmetic remain unchanged.
+- [x] Physical connects report slow and failed attempts without changing connection results or
+      errors; timeout context exposes `creating`, `last_connect_ms`, `slow_connects`,
+      `created_total`, and `evicted_total`.
+- [x] Focused tests, changed-file syntax checks, architecture, compliance, docs, and version
+      checks pass; evidence is recorded in [PR #2623](https://github.com/Sieitzz/dgfy-platform/pull/2623).
+- [x] PR review and merge to `develop`.
+
+### Completion date
+
+2026-10-20
+
+### Post-merge verification
+
+- [ ] deployment — issue #2560: verify the configured idle window and new connect diagnostics
+      in deployed API logs and Sentry; owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: observe several business days without `DGFY-BACKEND-P` or
+      `DGFY-BACKEND-Q` acquire timeouts or same-minute multi-tenant `DGFY-POS-C` clusters;
+      owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: investigate host-side MySQL connect stalls if new timing
+      confirms them; owner: operator; blocks root-cause closure.
+
+### Next phase number
+
+Phase 521. No explicit dependency.
+
+## Phase 521 - Guest feedback submission (#582)
 
 ### Initiative and release
 
@@ -30195,7 +30265,8 @@ There is no phase-numbering dependency on an earlier unfinished phase.
 ### Contract and authority
 
 [Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
-[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
 [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
 [API specification](../api/specification.md), and [database schema](../database/schema.md).
 
@@ -30230,4 +30301,4 @@ Not complete. Record after implementation merges and validation passes.
 
 ### Next phase number
 
-Phase 521. No explicit dependency.
+Phase 522. No explicit dependency.
