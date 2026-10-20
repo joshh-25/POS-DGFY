@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-10-19T13:19:43.110Z",
-  "totalFiles": 871,
+  "generatedAt": "2026-10-20T06:52:29.946Z",
+  "totalFiles": 874,
   "byClassification": {
-    "keep": 803,
+    "keep": 806,
     "delete": 23,
     "consolidate": 37,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
-    "migration": 54,
-    "(none)": 296,
+    "migration": 55,
+    "(none)": 297,
     "middleware": 14,
     "handler": 1,
     "transport": 46,
     "integration": 13,
-    "unit": 96,
+    "unit": 97,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
@@ -154,7 +154,7 @@
     "supertest": 1,
     "enforcement.contract": 1
   },
-  "dbManifestCount": 32,
+  "dbManifestCount": 33,
   "findingsCount": 3,
   "files": [
     {
@@ -6663,6 +6663,37 @@
       "findings": []
     },
     {
+      "path": "tests/createFeedbackSubmissions.migration.test.js",
+      "lines": 44,
+      "caseCount": 1,
+      "describeTitles": [],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/createMenuImportJobUseCase.budgetFeature.test.js",
       "lines": 36,
       "caseCount": 1,
@@ -11329,14 +11360,14 @@
     },
     {
       "path": "tests/feedbackHandlers.transport.test.js",
-      "lines": 108,
+      "lines": 121,
       "caseCount": 2,
       "describeTitles": [
         "feedbackHandlers transport contracts"
       ],
-      "expectCount": 6,
+      "expectCount": 8,
       "expectResCount": 4,
-      "toHaveBeenCalledCount": 6,
+      "toHaveBeenCalledCount": 7,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -11363,13 +11394,11 @@
       "findings": []
     },
     {
-      "path": "tests/feedbackUsecases.applicationResult.test.js",
-      "lines": 43,
+      "path": "tests/feedbackRepository.unit.test.js",
+      "lines": 34,
       "caseCount": 2,
-      "describeTitles": [
-        "feedback use-cases application result contract"
-      ],
-      "expectCount": 5,
+      "describeTitles": [],
+      "expectCount": 10,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -11379,7 +11408,41 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 2,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/feedbackUsecases.applicationResult.test.js",
+      "lines": 97,
+      "caseCount": 6,
+      "describeTitles": [
+        "feedback submission contract",
+        "feedback read and legacy mapping"
+      ],
+      "expectCount": 20,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 4,
       "deadImportCount": 0,
       "suffix": "applicationResult",
       "conditionalSkip": false,
@@ -12827,7 +12890,7 @@
     },
     {
       "path": "tests/geoStoreItems.nullLocation.db.integration.test.js",
-      "lines": 213,
+      "lines": 216,
       "caseCount": 3,
       "describeTitles": [
         "geo_store_items NULL-location uniqueness MySQL integration"
@@ -12840,7 +12903,7 @@
       "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
-      "onDbManifest": false,
+      "onDbManifest": true,
       "usesCreateTestTenant": false,
       "srcImportCount": 3,
       "deadImportCount": 0,
@@ -12849,13 +12912,17 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/run-backend-test-matrix.test.js"
+        ],
         "historical": [],
-        "hardcoded": []
+        "hardcoded": [
+          "scripts/backend-db-dependent-tests.js"
+        ]
       },
       "classification": "keep",
-      "reason": "default keep (suffix: nullLocation.db.integration)",
-      "rule": "R5-default",
+      "reason": "hardcoded reference: scripts/backend-db-dependent-tests.js",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -13503,6 +13570,37 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: util)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/importLegacyFeedbackLog.test.js",
+      "lines": 35,
+      "caseCount": 1,
+      "describeTitles": [],
+      "expectCount": 7,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -23369,12 +23467,12 @@
     },
     {
       "path": "tests/productionEnvGuard.test.js",
-      "lines": 170,
-      "caseCount": 7,
+      "lines": 250,
+      "caseCount": 9,
       "describeTitles": [
         "production startup environment guard"
       ],
-      "expectCount": 16,
+      "expectCount": 24,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -31377,12 +31475,12 @@
     },
     {
       "path": "tests/tenantModelFactory.contract.test.js",
-      "lines": 140,
+      "lines": 142,
       "caseCount": 3,
       "describeTitles": [
         "tenantModelFactory contract"
       ],
-      "expectCount": 27,
+      "expectCount": 29,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,

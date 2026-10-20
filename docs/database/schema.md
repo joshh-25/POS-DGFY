@@ -20,6 +20,7 @@
 - [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
 - [Outbound Push Delivery Addendum (2026-10-17)](#outbound-push-delivery-addendum-2026-10-17)
+- [Feedback Submissions Addendum (2026-10-20)](#feedback-submissions-addendum-2026-10-20)
 - [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
 - [POS Parked Sale Foundation (2026-08-12)](#pos-parked-sale-foundation-2026-08-12)
 
@@ -2137,3 +2138,28 @@ The base tables are created by
 `20260722000001-create-storefront-custom-domains.cjs`; canonical/alias lifecycle
 columns and the operation queue are added by
 `20260723000001-expand-storefront-custom-domain-lifecycle.cjs`.
+
+## Feedback Submissions Addendum (2026-10-20)
+
+Migration: `20261020000001-create-feedback-submissions.cjs` (#561, Phase 519).
+
+`feedback_submissions` is a landlord table so Platform Admin can read across tenants and a
+future guest submission can exist without tenant context. `id` is a UUID primary key. The row
+stores `type`, `description`, `status` (`new`, `triaged`, `accepted`, `rejected`, `resolved`),
+`submitted_at`, review fields (`reviewed_at`, `reviewed_by_admin_id`, `review_note`,
+`linked_issue_url`), `surface`, `client_platform`, `app_version`, `page_url`, and bounded
+`context_json`. Origin is split so native Storefront (`storefront` + `ios`/`android`) remains
+distinct from web Storefront (`storefront` + `web`).
+
+Nullable `tenant_id` has no foreign key; `tenant_name` is a snapshot. Identity is represented by
+`submitter_type` (`tenant_user`, `dgfy_account`, `guest`, `legacy`), nullable `tenant_user_id` and
+`dgfy_account_id`, `submitter_name`, `submitter_email`, and `contact_verified`. Contact supplied
+by a future guest is never marked verified. Nullable `subject_type`, `subject_ref`, and
+`subject_label` reserve #596's selector shape without exposing a write contract yet.
+`correlation_id` matches the feedback engagement event request ID when that event is emitted.
+
+Indexes cover `submitted_at`, tenant/time, type/time, status/time, origin, and correlation. The
+nullable unique `legacy_source_hash` supports an idempotent import of the former host log.
+`created_at` and `updated_at` are standard timestamps. The application controls allowlists for
+client-supplied `type`, `surface`, and `client_platform`; only triage `status` is an SQL enum.
+The importer preserves the original log, reports malformed lines, and defaults to dry-run.

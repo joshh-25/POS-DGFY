@@ -30099,3 +30099,74 @@ Not complete. Record after the implementation merges and validation passes.
 ### Next phase number
 
 Phase 519. No explicit dependency.
+
+## Phase 519 - Durable feedback submissions (#561)
+
+### Initiative and release
+
+Feedback persistence under epic #560, current release.
+
+### Objective and scope
+
+Replace the host-local JSONL feedback store with a landlord `feedback_submissions` table, stable
+UUIDs, tenant and submitter attribution, client origin, triage columns, and request correlation.
+Move submit and Platform Admin read paths to the table; import prior host logs with an idempotent,
+dry-run-first command. Keep the existing authenticated feedback route and Admin permission.
+Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — implementation and PR for #561 are pending merge. No host import or deployed
+verification has been performed.
+
+### Dependencies
+
+Issue [#561](https://github.com/Sieitzz/dgfy-platform/issues/561). No explicit dependency on
+earlier phases. Guest route access remains #582; client placement remains #581; subject selector
+remains #596. Native Storefront consumption is dgfy-mobile#431.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+
+### Implementation targets
+
+[Landlord migration](../../apps/dgfy-migration-runner/migrations/20261020000001-create-feedback-submissions.cjs),
+[model](../../apps/dgfy-api/src/models/Landlord/FeedbackSubmission.js),
+[feedback module](../../apps/dgfy-api/src/modules/feedback/README.md),
+[legacy importer](../../apps/dgfy-api/scripts/import-legacy-feedback-log.js), and
+[web feedback widget](../../packages/web-core/Components/common/FeedbackWidget.jsx).
+Focused migration, repository, use-case, handler, parser, and importer checks provide implementation
+evidence.
+
+### Acceptance and validation evidence
+
+- [ ] Submissions persist in the landlord table and return a stable UUID.
+- [ ] Tenant/session or future guest attribution, Storefront web/native origin, and request
+      correlation are stored; existing Admin list/stats shape remains compatible.
+- [ ] No runtime file read/write path remains; the dry-run/import reports malformed and duplicate
+      entries and preserves the source file.
+- [ ] Focused checks, frontend build, architecture/ADR/docs/compliance gates, schema registry,
+      and version-floor check pass; evidence is recorded in the PR.
+
+### Completion date
+
+Not complete. Record after implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord migration before the new API image serves feedback; owner:
+      release; blocks #561 closure.
+- [ ] operational — on STAGING then PROD, dry-run the bind-mounted legacy log, review totals and
+      malformed lines, apply the import, and confirm the Admin list contains historical rows;
+      owner: operator/Verifier; blocks #561 closure.
+- [ ] operational — verify a new submission keeps its UUID across Admin reads and carries origin
+      and correlation metadata; owner: Verifier; blocks #561 closure.
+
+### Next phase number
+
+Phase 520. No explicit dependency.
