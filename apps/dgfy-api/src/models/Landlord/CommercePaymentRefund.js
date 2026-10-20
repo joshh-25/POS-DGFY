@@ -21,6 +21,16 @@ export default (sequelize) => sequelize.define('CommercePaymentRefund', {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE'
   },
+  retry_of_refund_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'commerce_payment_refunds',
+      key: 'refund_id'
+    },
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE'
+  },
   tenant_id: {
     type: DataTypes.UUID,
     allowNull: false,
@@ -109,6 +119,7 @@ export default (sequelize) => sequelize.define('CommercePaymentRefund', {
   updatedAt: 'updated_at',
   indexes: [
     { fields: ['payment_session_id'] },
+    { fields: ['retry_of_refund_id'] },
     { fields: ['tenant_id'] },
     { fields: ['provider_refund_id'] },
     { fields: ['status'] }
