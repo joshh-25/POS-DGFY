@@ -7426,7 +7426,9 @@ suspended, or removed hosts return `404`.
 
 ### POST /api/v1/feedback
 
-**Access:** authenticated tenant user. Guest submission is deferred to #582.
+**Access:** guests, tenant staff, DGFY accounts, and store customers. A request with an invalid,
+expired, or revoked credential is rejected; it never falls back to guest access. A store-customer
+session must match the resolved tenant.
 
 ```json
 {
@@ -7435,7 +7437,7 @@ suspended, or removed hosts return `404`.
   "url": "https://example.com/cart",
   "context": { "userAgent": "..." },
   "origin": { "surface": "storefront", "platform": "ios", "app_version": "1.2.3" },
-  "contact": { "name": "Optional guest name", "email": "guest@example.com" }
+  "contact": { "name": "Guest name", "email": "guest@example.com" }
 }
 ```
 
@@ -7451,9 +7453,14 @@ context bound. Native Storefront uses `storefront` + `ios`/`android`; web Storef
 `storefront` + `web`. This pair is the dgfy-mobile#431 origin contract. `app_version` is optional
 and capped at 64 characters. Origin is client-declared metadata.
 
-The current session supplies tenant ID and submitter identity. Body `contact` is ignored when a
-session exists. Future guest contact is unverified; accepting an unauthenticated request and its
-abuse controls belong to #582. The server stores the request ID as `correlation_id`, matching
+Guest `contact.name` (1–255 characters) and valid `contact.email` (at most 254 characters) are
+required. They are self-reported and stored with `contact_verified: false`. For authenticated
+submissions, the server derives identity from the session and ignores body `contact`. Tenant
+context is optional for guests; an absent tenant is stored as null. Browser requests carrying a
+session cookie must include `x-csrf-token`. A dedicated feedback limit defaults to five anonymous
+or twenty credentialed requests per IP and tenant in ten minutes. Invalid input returns 400,
+invalid credentials return 401, tenant mismatch returns 403, and the limit returns 429 with
+`Retry-After`. The server stores the request ID as `correlation_id`, matching
 `engagement_events.correlation_id` when an engagement event is emitted.
 
 **Response (201):** `{ "message": "Feedback submitted successfully", "id": "<uuid>" }`.

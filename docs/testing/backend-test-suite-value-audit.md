@@ -120,7 +120,7 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **874** | db-manifest members: **33** | findings: **3**
+Total active test files: **877** | db-manifest members: **33** | findings: **3**
 
 ### By classification
 
@@ -129,14 +129,14 @@ Total active test files: **874** | db-manifest members: **33** | findings: **3**
 | consolidate | 37 |
 | delete | 23 |
 | demote | 5 |
-| keep | 806 |
+| keep | 809 |
 | trim | 3 |
 
 ### By suffix
 
 | Suffix | Count |
 | --- | --- |
-| (none) | 297 |
+| (none) | 300 |
 | unit | 97 |
 | usecase | 72 |
 | migration | 55 |
@@ -590,9 +590,12 @@ Total active test files: **874** | db-manifest members: **33** | findings: **3**
 | tests/executeConfirmedActionUseCase.test.js | 135 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/externalProductImageImport.test.js | 107 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/externalProductLookup.test.js | 183 | 6 | keep | R5-default | default keep (suffix: (none)) |
-| tests/feedbackHandlers.transport.test.js | 121 | 2 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
+| tests/feedbackHandlers.transport.test.js | 138 | 3 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
+| tests/feedbackIdentity.test.js | 77 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/feedbackRepository.unit.test.js | 34 | 2 | keep | R5-default | default keep (suffix: unit) |
-| tests/feedbackUsecases.applicationResult.test.js | 97 | 6 | keep | R5-default | default keep (suffix: applicationResult) |
+| tests/feedbackRoute.test.js | 65 | 3 | keep | R5-default | default keep (suffix: (none)) |
+| tests/feedbackSubmissionValidator.test.js | 50 | 4 | keep | R5-default | default keep (suffix: (none)) |
+| tests/feedbackUsecases.applicationResult.test.js | 119 | 8 | keep | R5-default | default keep (suffix: applicationResult) |
 | tests/fileEncapsulation.test.js | 209 | 9 | keep | R5-default | default keep (suffix: (none)) |
 | tests/finalizeDglaundryBookingSession.test.js | 93 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/finalizePaidCommerceSession.usecase.test.js | 1062 | 18 | keep | R5-default | default keep (suffix: usecase) |
@@ -930,7 +933,7 @@ Total active test files: **874** | db-manifest members: **33** | findings: **3**
 | tests/pushReceiptScheduler.unit.test.js | 72 | 2 | keep | R5-default | default keep (suffix: unit) |
 | tests/pushTokenUseCases.unit.test.js | 182 | 6 | keep | R5-default | default keep (suffix: unit) |
 | tests/race_condition_repro.test.js | 85 | 1 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
-| tests/rateLimiter.behavior.test.js | 568 | 23 | keep | R5-default | default keep (suffix: behavior) |
+| tests/rateLimiter.behavior.test.js | 583 | 24 | keep | R5-default | default keep (suffix: behavior) |
 | tests/rateLimiterExemptionCoverage.contract.test.js | 110 | 7 | consolidate | R4-source-text-mixed | source-text-mixed (text_ratio=0.64) |
 | tests/rateLimiterStoreMode.test.js | 45 | 2 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
 | tests/rbacRouteCoverage.contract.test.js | 290 | 5 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
