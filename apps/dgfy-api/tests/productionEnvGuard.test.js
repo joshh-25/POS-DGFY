@@ -46,6 +46,9 @@ const childEnvironmentKeys = [
   'PATHEXT'
 ];
 
+const spawnTimeoutMs = 30000;
+const diagnosticOutputTailLength = 2000;
+
 const buildChildEnvironment = (environment, parentEnvironment = process.env) => {
   const platformEnvironment = Object.fromEntries(
     childEnvironmentKeys
@@ -59,16 +62,58 @@ const buildChildEnvironment = (environment, parentEnvironment = process.env) => 
   };
 };
 
-const spawnServer = (environment, parentEnvironment = process.env) => spawnSync(
-  process.execPath,
-  ['src/server.js'],
-  {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-    timeout: 10000,
-    env: buildChildEnvironment(environment, parentEnvironment)
+const formatSpawnFailureDiagnostics = (spawned) => {
+  const formatOutputTail = (output) => {
+    const text = String(output ?? '');
+    return text ? text.slice(-diagnosticOutputTailLength) : '(empty)';
+  };
+  const error = spawned.error
+    ? `${spawned.error.code ?? 'unknown'}${spawned.error.message ? `: ${spawned.error.message}` : ''}`
+    : 'none';
+
+  return [
+    'Child process diagnostics:',
+    `status: ${String(spawned.status)}`,
+    `signal: ${spawned.signal ?? 'none'}`,
+    `error: ${error}`,
+    `elapsedMs: ${spawned.elapsedMs}`,
+    `timeoutMs: ${spawnTimeoutMs}`,
+    `stdout (last ${diagnosticOutputTailLength} characters):\n${formatOutputTail(spawned.stdout)}`,
+    `stderr (last ${diagnosticOutputTailLength} characters):\n${formatOutputTail(spawned.stderr)}`
+  ].join('\n');
+};
+
+const withSpawnDiagnostics = (spawned, assertions) => {
+  try {
+    assertions();
+  } catch (error) {
+    const assertionError = error instanceof Error ? error : new Error(String(error));
+    assertionError.message = `${assertionError.message}\n\n${formatSpawnFailureDiagnostics(spawned)}`;
+    throw assertionError;
   }
-);
+};
+
+const spawnServer = (environment, parentEnvironment = process.env) => {
+  const startedAt = Date.now();
+  const spawned = spawnSync(
+    process.execPath,
+    ['src/server.js'],
+    {
+      cwd: process.cwd(),
+      // #2618 / run 39283210177: a spawn took 16.8 s on a shared self-hosted runner.
+      timeout: spawnTimeoutMs,
+      env: buildChildEnvironment(environment, parentEnvironment)
+    }
+  );
+  const elapsedMs = Date.now() - startedAt;
+
+  process.stdout.write(`[productionEnvGuard] child spawn completed in ${elapsedMs} ms (status: ${spawned.status})\n`);
+
+  return {
+    ...spawned,
+    elapsedMs
+  };
+};
 
 const validStartupEnvironment = {
   ...validProductionEnv,
@@ -81,10 +126,12 @@ const validStartupEnvironment = {
 const expectSentryWarningStartup = (spawned) => {
   const output = `${spawned.stdout}\n${spawned.stderr}`;
 
-  expect(spawned.status).toBe(0);
-  expect(output).toContain(
-    'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
-  );
+  withSpawnDiagnostics(spawned, () => {
+    expect(spawned.status).toBe(0);
+    expect(output).toContain(
+      'A Sentry backend DSN is configured but SENTRY_ENABLED is not true; backend errors will not reach Sentry'
+    );
+  });
 };
 
 const evaluateStartupGuard = (env) => {
@@ -140,6 +187,37 @@ describe('production startup environment guard', () => {
     expect(guard.result.warnings).toContain('Production environment validation is warning-only outside NODE_ENV=production');
   });
 
+  it('formats child process failure diagnostics with output tails', () => {
+    const diagnostics = formatSpawnFailureDiagnostics({
+      status: null,
+      signal: 'SIGTERM',
+      error: {
+        code: 'ETIMEDOUT',
+        message: 'spawnSync timed out'
+      },
+      stdout: 'startup stdout tail',
+      stderr: 'startup stderr tail',
+      elapsedMs: 16834
+    });
+
+    expect(diagnostics).toContain('status: null');
+    expect(diagnostics).toContain('signal: SIGTERM');
+    expect(diagnostics).toContain('error: ETIMEDOUT: spawnSync timed out');
+    expect(diagnostics).toContain(`elapsedMs: 16834`);
+    expect(diagnostics).toContain(`timeoutMs: ${spawnTimeoutMs}`);
+    expect(diagnostics).toContain('startup stdout tail');
+    expect(diagnostics).toContain('startup stderr tail');
+  });
+
+  it('does not pass REDIS_URL from the parent into the child environment', () => {
+    const childEnvironment = buildChildEnvironment(validStartupEnvironment, {
+      ...process.env,
+      REDIS_URL: 'redis://127.0.0.1:6379'
+    });
+
+    expect(childEnvironment).not.toHaveProperty('REDIS_URL');
+  });
+
   it('server startup exits non-zero before listen when production env is invalid', () => {
     const spawned = spawnServer({
       ...validProductionEnv,
@@ -147,14 +225,16 @@ describe('production startup environment guard', () => {
       DB_HOST: ''
     });
 
-    expect(spawned.status).toBe(1);
-    expect(`${spawned.stdout}\n${spawned.stderr}`).toContain('Missing required environment value: DB_HOST');
-    expect(`${spawned.stdout}\n${spawned.stderr}`).not.toContain('database-password-production-like');
-  });
+    withSpawnDiagnostics(spawned, () => {
+      expect(spawned.status).toBe(1);
+      expect(`${spawned.stdout}\n${spawned.stderr}`).toContain('Missing required environment value: DB_HOST');
+      expect(`${spawned.stdout}\n${spawned.stderr}`).not.toContain('database-password-production-like');
+    });
+  }, 60000);
 
   it('logs production validation warnings during server startup', () => {
     expectSentryWarningStartup(spawnServer(validStartupEnvironment));
-  });
+  }, 60000);
 
   it('does not inherit REDIS_URL from the parent environment for a valid shared startup', () => {
     const parentEnvironment = {
@@ -165,5 +245,5 @@ describe('production startup environment guard', () => {
     expectSentryWarningStartup(
       spawnServer(validStartupEnvironment, parentEnvironment)
     );
-  });
+  }, 60000);
 });
