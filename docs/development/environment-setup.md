@@ -91,6 +91,8 @@ DB_MAX_CONNECTIONS=151
 LANDLORD_DB_POOL_MAX=20
 TENANT_MAX_CACHED_CONNECTIONS=20
 TENANT_DB_POOL_MAX=5
+# Keep an unused tenant connection warm across POS polls (default: 60000 ms).
+TENANT_DB_POOL_IDLE_MS=60000
 # Auto-bootstrap storefront pin for newly activated tenants
 # - latitude: -90 to 90
 # - longitude: -180 to 180

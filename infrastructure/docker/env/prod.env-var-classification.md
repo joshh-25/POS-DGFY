@@ -29,7 +29,11 @@ start. Everything else under `scripts/` (E2E/smoke/verify/CI tooling) never exec
 inside the production container and is excluded from the counts below, listed separately
 at the bottom instead of silently dropped.
 
-**Result: 314 vars `dgfy-api` can read in its production runtime path** (325 total matches minus 11 CI/test/script-only names). `dgfy-migration-runner` reads 7, unchanged from Appendix A and confirmed correct.
+**Historical baseline:** the original classification counted 314 API runtime vars (325 matches
+minus 11 CI/test/script-only names). The source scan above now returns 435 names as of 2026-10-20;
+this incrementally maintained classification has not been fully reconciled to that scan. The new
+`TENANT_DB_POOL_IDLE_MS` setting is classified below. `dgfy-migration-runner` counted 7 in the
+original baseline.
 
 **Scope note (#1236):** this file's method (`grep`-ing `process.env.*` reads) only ever
 covers the two Node services above. `nginx`'s domain vars are never `process.env` reads —
@@ -787,9 +791,10 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 
 </details>
 
-<details><summary><code>TENANT_*</code> (9)</summary>
+<details><summary><code>TENANT_*</code> (10)</summary>
 
 - `TENANT_AUTOMATIC_PAYOUT_ENABLED`
+- `TENANT_DB_POOL_IDLE_MS` — optional; defaults to 60000 ms to keep connections warm between POS polls
 - `TENANT_DB_POOL_MAX`
 - `TENANT_EXTERNAL_PAYOUT_APPROVED`
 - `TENANT_MAX_CACHED_CONNECTIONS`

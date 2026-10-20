@@ -30170,3 +30170,71 @@ Not complete. Record after implementation merges and validation passes.
 ### Next phase number
 
 Phase 520. No explicit dependency.
+
+## Phase 520 - Tenant pool warm idle window and physical connect diagnostics (#2560)
+
+### Initiative and release
+
+API reliability, current release.
+
+### Objective and scope
+
+Keep tenant MySQL connections warm between quiet POS polls and report slow or failed physical
+connects, pool creation state, and tenant-instance churn. This is evidence-driven follow-up to
+Phase 513 after the post-deploy acquire-timeout acceptance check failed. Pool capacity, acquire
+timeout, HTTP behavior, and the connection budget remain unchanged. Classification:
+`within-existing-boundary`.
+
+### Status
+
+`in_progress` — implementation and validation are pending PR review and merge.
+
+### Dependencies
+
+Issue [#2560](https://github.com/Sieitzz/dgfy-platform/issues/2560) defines the behavior. No
+explicit phase dependency; this phase uses telemetry produced by Phase 513.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), and
+[Production Observability Runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md). No ADR amendment
+or architecture exception is required.
+
+### Implementation targets
+
+[Connection budget configuration](../../apps/dgfy-api/src/config/connectionBudget.js),
+[TenantConnector](../../apps/dgfy-api/src/utils/TenantConnector.js), focused API tests, and the
+operator runbook.
+
+### Acceptance and validation evidence
+
+- [ ] Tenant pool idle time defaults to 60000 ms and accepts a positive environment override;
+      pool max, acquire, and budget arithmetic remain unchanged.
+- [ ] Physical connects report slow and failed attempts without changing connection results or
+      errors; timeout context exposes `creating`, `last_connect_ms`, `slow_connects`,
+      `created_total`, and `evicted_total`.
+- [ ] Focused tests, changed-file syntax checks, architecture, compliance, docs, and version
+      checks pass; evidence is recorded in the PR.
+- [ ] PR review and merge to `develop`.
+
+### Completion date
+
+Not complete. Record after implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — issue #2560: verify the configured idle window and new connect diagnostics
+      in deployed API logs and Sentry; owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: observe several business days without `DGFY-BACKEND-P` or
+      `DGFY-BACKEND-Q` acquire timeouts or same-minute multi-tenant `DGFY-POS-C` clusters;
+      owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: investigate host-side MySQL connect stalls if new timing
+      confirms them; owner: operator; blocks root-cause closure.
+
+### Next phase number
+
+Phase 521. No explicit dependency.
