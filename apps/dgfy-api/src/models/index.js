@@ -163,6 +163,7 @@ import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
 import EmailDeliveryLogFactory from './Landlord/EmailDeliveryLog.js';
+import FeedbackSubmissionFactory from './Landlord/FeedbackSubmission.js';
 import SmsDeliveryLogFactory from './Landlord/SmsDeliveryLog.js';
 import PushDeviceTokenFactory from './Landlord/PushDeviceToken.js';
 import PushDeliveryLogFactory from './Landlord/PushDeliveryLog.js';
@@ -260,6 +261,7 @@ const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
 const EmailDeliveryLog = EmailDeliveryLogFactory(sequelize);
+const FeedbackSubmission = FeedbackSubmissionFactory(sequelize);
 const SmsDeliveryLog = SmsDeliveryLogFactory(sequelize);
 const PushDeviceToken = PushDeviceTokenFactory(sequelize);
 const PushDeliveryLog = PushDeliveryLogFactory(sequelize);
@@ -1420,6 +1422,7 @@ const db = {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  FeedbackSubmission,
   SmsDeliveryLog,
   PushDeviceToken,
   PushDeliveryLog,
@@ -1675,6 +1678,7 @@ export {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  FeedbackSubmission,
   SmsDeliveryLog,
   PushDeviceToken,
   PushDeliveryLog,

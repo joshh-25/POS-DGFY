@@ -23,6 +23,7 @@
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
 - [Admin Tenant Management Endpoints](#admin-tenant-management-endpoints)
 - [Storefront Custom Domain Endpoints](#storefront-custom-domain-endpoints)
+- [Feedback Endpoints](#feedback-endpoints)
 
 ### Integration
 - [Frontend-Backend Integration Points](#frontend-backend-integration-points)
@@ -7420,3 +7421,54 @@ request boundary. A canonical request returns `tenant_id`, `slug`,
 `routing_mode=custom_domain_alias` plus `redirect_to`; the frontend replaces the
 location while preserving path, query, and fragment. Unknown, inactive,
 suspended, or removed hosts return `404`.
+
+## Feedback Endpoints
+
+### POST /api/v1/feedback
+
+**Access:** authenticated tenant user. Guest submission is deferred to #582.
+
+```json
+{
+  "type": "bug",
+  "description": "Checkout button does not respond",
+  "url": "https://example.com/cart",
+  "context": { "userAgent": "..." },
+  "origin": { "surface": "storefront", "platform": "ios", "app_version": "1.2.3" },
+  "contact": { "name": "Optional guest name", "email": "guest@example.com" }
+}
+```
+
+`type` is required: `bug`, `idea`, `question`, or `other`. `description` is required after
+trimming and has a 5000-character maximum. Invalid type or description returns HTTP 400 with
+`message`. `url` and `context` are optional; the URL is capped at 2048 characters and context
+is bounded to 8 KB. Oversize context is stored as `{ "truncated": true }`.
+
+`origin.surface` accepts `storefront`, `pos`, `ims`, `opis`, `admin`, or `unknown`;
+`origin.platform` accepts `web`, `android`, `ios`, or `unknown`. Missing/unrecognized values
+become `unknown`, with unrecognized raw values retained in `context.origin_raw` subject to the
+context bound. Native Storefront uses `storefront` + `ios`/`android`; web Storefront uses
+`storefront` + `web`. This pair is the dgfy-mobile#431 origin contract. `app_version` is optional
+and capped at 64 characters. Origin is client-declared metadata.
+
+The current session supplies tenant ID and submitter identity. Body `contact` is ignored when a
+session exists. Future guest contact is unverified; accepting an unauthenticated request and its
+abuse controls belong to #582. The server stores the request ID as `correlation_id`, matching
+`engagement_events.correlation_id` when an engagement event is emitted.
+
+**Response (201):** `{ "message": "Feedback submitted successfully", "id": "<uuid>" }`.
+Database failure returns HTTP 500; clients should retain the draft for retry.
+
+### GET /api/v1/admin/feedback
+
+Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: [...], count }`,
+newest first, capped at 1000 rows. Filters: `type`, `search` (description or URL), `startDate`,
+`endDate` (inclusive through local end of day). Each row preserves `id`, `timestamp`, `type`,
+`description`, `url`, `context`, `tenant`, and `user`, and adds `status`, `surface`,
+`client_platform`, `app_version`, `submitter_type`, `contact_verified`, and `correlation_id`.
+`id` is a stable UUID. Missing URL appears as `N/A` for the existing Admin UI.
+
+### GET /api/v1/admin/feedback/stats
+
+Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: { total, bugs,
+ideas, latest } }`; `latest` is a feedback row or `null`.

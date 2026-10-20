@@ -15,13 +15,16 @@ export const submitFeedback = async (req, res) => {
       id: req.user.user_id,
       username: req.user.username,
       email: req.user.email
-    } : { id: 'Anonymous', username: 'Anonymous', email: 'N/A' };
+    } : null;
 
     const result = await submitFeedbackUseCase({
       type: req.body?.type,
       description: req.body?.description,
       url: req.body?.url,
       context: req.body?.context,
+      origin: req.body?.origin,
+      contact: req.body?.contact,
+      correlationId: req.requestId,
       tenant,
       user
     });
@@ -36,14 +39,18 @@ export const submitFeedback = async (req, res) => {
       result,
       successMetadataResolver: () => ({
         type: req.body?.type || null,
-        has_url: Boolean(req.body?.url)
+        has_url: Boolean(req.body?.url),
+        feedback_id: result.data?.id,
+        surface: result.data?.surface,
+        client_platform: result.data?.client_platform
       })
     });
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 201,
       successPayloadResolver: () => ({
-        message: result.data?.message || 'Feedback submitted successfully'
+        message: result.data?.message || 'Feedback submitted successfully',
+        id: result.data?.id
       }),
       errorPayloadResolver: (failure) => ({
         message: failure.message
