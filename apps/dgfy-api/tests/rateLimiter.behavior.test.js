@@ -17,6 +17,7 @@ let storeGuestCheckoutOtpVerifyLimiter;
 let mobilePosFreeSyncLimiter;
 let mobilePosFreeSyncRoundLimiter;
 let itemOperationsLimiter;
+let feedbackSubmissionLimiter;
 let logger;
 let defaultAuthRateLimitWindowMs;
 
@@ -40,6 +41,8 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_MAX_REQUESTS = '2';
   process.env.RATE_LIMIT_ITEM_OPERATIONS_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_ITEM_OPERATIONS_MAX_REQUESTS = '1';
+  process.env.RATE_LIMIT_FEEDBACK_SUBMIT_ANONYMOUS_MAX_REQUESTS = '5';
+  process.env.RATE_LIMIT_FEEDBACK_SUBMIT_CREDENTIALED_MAX_REQUESTS = '20';
   process.env.RATE_LIMIT_ALERT_THRESHOLD = '999999';
 
   const loggerModule = await import('../src/config/logger.js');
@@ -60,6 +63,7 @@ beforeAll(async () => {
   mobilePosFreeSyncLimiter = limiterModule.mobilePosFreeSyncLimiter;
   mobilePosFreeSyncRoundLimiter = limiterModule.mobilePosFreeSyncRoundLimiter;
   itemOperationsLimiter = limiterModule.itemOperationsLimiter;
+  feedbackSubmissionLimiter = limiterModule.feedbackSubmissionLimiter;
 });
 
 afterAll(() => {
@@ -71,6 +75,17 @@ beforeEach(() => {
 });
 
 describe('Rate limiter behavior', () => {
+  it('limits the sixth anonymous feedback request and supplies Retry-After', async () => {
+    const app = express();
+    app.use(feedbackSubmissionLimiter);
+    app.post('/feedback', (_req, res) => res.status(201).json({ ok: true }));
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await request(app).post('/feedback')).status).toBe(201);
+    }
+    const limited = await request(app).post('/feedback');
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+  });
   it('defaults authentication lockout to five minutes', () => {
     expect(defaultAuthRateLimitWindowMs).toBe(5 * 60 * 1000);
   });

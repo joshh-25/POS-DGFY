@@ -31,7 +31,7 @@ describe('feedback submission contract', () => {
       context: { userAgent: 'test' }, origin: { surface: 'storefront', platform: 'ios', app_version: '1.2.3' },
       contact: { name: 'Impersonator', email: 'not-session@example.com' },
       tenant: { id: 'tenant-uuid', name: 'Shop' },
-      user: { id: 7, username: 'Alice', email: 'alice@example.com' },
+      identity: { kind: 'tenant_user', id: 7, name: 'Alice', email: 'alice@example.com', verified: true },
       correlationId: 'request-123'
     });
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -58,9 +58,29 @@ describe('feedback submission contract', () => {
   it('bounds context and maps repository failure to an internal result', async () => {
     expect(normalizeContext({ blob: 'x'.repeat(9000) })).toEqual({ truncated: true });
     const { useCase } = build(jest.fn().mockRejectedValue(new Error('db unavailable')));
-    const result = await useCase({ type: 'bug', description: 'retry me' });
+    const result = await useCase({ type: 'bug', description: 'retry me', contact: { name: 'Guest', email: 'guest@example.com' } });
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.INTERNAL_ERROR);
+  });
+
+  it('rejects missing guest contact before persistence', async () => {
+    const { create, useCase } = build();
+    const result = await useCase({ type: 'bug', description: 'Hello' });
+    expect(result.error.statusCode).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ kind: 'dgfy_account', id: 'account-uuid', name: 'D G', email: 'd@example.com', verified: true }, 'dgfy_account', 'account-uuid'],
+    [{ kind: 'store_customer', id: 4, dgfyAccountId: 'linked-uuid', name: 'Linked', email: 'linked@example.com', verified: false }, 'dgfy_account', 'linked-uuid'],
+    [{ kind: 'store_customer', id: 5, name: 'Store', email: 'store@example.com', verified: false }, 'store_customer', null]
+  ])('maps account and customer identity without putting UUID into tenant_user_id', async (identity, kind, accountId) => {
+    const { create, useCase } = build();
+    await useCase({ type: 'idea', description: 'Hello', identity, contact: { name: 'Spoof', email: 'spoof@example.com' } });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      submitter_type: kind, dgfy_account_id: accountId, tenant_user_id: null,
+      submitter_name: identity.name, contact_verified: identity.verified
+    }));
   });
 });
 
@@ -83,13 +103,15 @@ describe('feedback read and legacy mapping', () => {
   });
 
   it('hashes identical legacy lines identically and preserves unrecognized old types', () => {
-    const line = JSON.stringify({ timestamp: '2026-10-01T00:00:00Z', type: 'suggestion', description: 'Old feedback', user: { id: 2, username: 'Bob' } });
+    const line = JSON.stringify({ timestamp: '2026-10-01T00:00:00Z', type: 'suggestion', description: 'Old feedback',
+      tenant: { id: 'default', name: 'Original default' }, user: { id: 2, username: 'Bob' } });
     const first = parseLegacyFeedbackLine(line);
     expect(first.legacy_source_hash).toBe(parseLegacyFeedbackLine(line).legacy_source_hash);
     expect(first.type).toBe('other');
     expect(first.context_json.legacy_type).toBe('suggestion');
     expect(first.submitter_type).toBe('legacy');
     expect(first.contact_verified).toBe(false);
+    expect(first.tenant_name).toBe('Original default');
     expect(first.submitted_at.toISOString()).toBe('2026-10-01T00:00:00.000Z');
     expect(() => parseLegacyFeedbackLine('{bad')).toThrow();
   });
