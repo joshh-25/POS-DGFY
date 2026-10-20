@@ -19,7 +19,7 @@ export default (sequelize) => {
     context_json: { type: DataTypes.JSON, allowNull: true },
     tenant_id: { type: DataTypes.UUID, allowNull: true },
     tenant_name: { type: DataTypes.STRING(255), allowNull: true },
-    submitter_type: { type: DataTypes.STRING(32), allowNull: false, validate: { isIn: [['tenant_user', 'dgfy_account', 'guest', 'legacy']] } },
+    submitter_type: { type: DataTypes.STRING(32), allowNull: false, validate: { isIn: [['tenant_user', 'dgfy_account', 'store_customer', 'guest', 'legacy']] } },
     tenant_user_id: { type: DataTypes.INTEGER, allowNull: true },
     dgfy_account_id: { type: DataTypes.UUID, allowNull: true },
     submitter_name: { type: DataTypes.STRING(255), allowNull: true },
