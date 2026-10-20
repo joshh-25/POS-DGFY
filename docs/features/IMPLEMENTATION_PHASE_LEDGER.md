@@ -29259,7 +29259,8 @@ reconciliation, an explicit authenticated admin retry endpoint, refund-status fi
 and a tenant-scoped customer-safe refund status in order tracking. It also amends ADR
 0052, the commerce-payment API contract, the feature flow contract, and the compliance
 impact declaration. No migration, automatic retry of definite failures, or Admin and
-Storefront UI work is included; the UI follows as Phase 512.
+Storefront UI work is included; the Admin retry workflow follows as Phase 522, while
+Storefront tracking UI remains unscheduled.
 
 ### Status
 
@@ -29356,8 +29357,8 @@ implementation validation passes.
 
 ### Next phase number
 
-Phase 512. PR 2 contains only Admin and Storefront UI. It follows this phase after merge,
-or may be stacked only when its target is updated to this branch.
+Phase 522. The Admin refund retry workflow is scoped to that phase; Storefront tracking
+UI remains unscheduled. No explicit dependency.
 
 ## Phase 511 - Customer order-status push notifications (#2554)
 
@@ -30099,3 +30100,287 @@ Not complete. Record after the implementation merges and validation passes.
 ### Next phase number
 
 Phase 519. No explicit dependency.
+
+## Phase 519 - Durable feedback submissions (#561)
+
+### Initiative and release
+
+Feedback persistence under epic #560, current release.
+
+### Objective and scope
+
+Replace the host-local JSONL feedback store with a landlord `feedback_submissions` table, stable
+UUIDs, tenant and submitter attribution, client origin, triage columns, and request correlation.
+Move submit and Platform Admin read paths to the table; import prior host logs with an idempotent,
+dry-run-first command. Keep the existing authenticated feedback route and Admin permission.
+Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — implementation and PR for #561 are pending merge. No host import or deployed
+verification has been performed.
+
+### Dependencies
+
+Issue [#561](https://github.com/Sieitzz/dgfy-platform/issues/561). No explicit dependency on
+earlier phases. Guest route access remains #582; client placement remains #581; subject selector
+remains #596. Native Storefront consumption is dgfy-mobile#431.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+
+### Implementation targets
+
+[Landlord migration](../../apps/dgfy-migration-runner/migrations/20261020000001-create-feedback-submissions.cjs),
+[model](../../apps/dgfy-api/src/models/Landlord/FeedbackSubmission.js),
+[feedback module](../../apps/dgfy-api/src/modules/feedback/README.md),
+[legacy importer](../../apps/dgfy-api/scripts/import-legacy-feedback-log.js), and
+[web feedback widget](../../packages/web-core/Components/common/FeedbackWidget.jsx).
+Focused migration, repository, use-case, handler, parser, and importer checks provide implementation
+evidence.
+
+### Acceptance and validation evidence
+
+- [ ] Submissions persist in the landlord table and return a stable UUID.
+- [ ] Tenant/session or future guest attribution, Storefront web/native origin, and request
+      correlation are stored; existing Admin list/stats shape remains compatible.
+- [ ] No runtime file read/write path remains; the dry-run/import reports malformed and duplicate
+      entries and preserves the source file.
+- [ ] Focused checks, frontend build, architecture/ADR/docs/compliance gates, schema registry,
+      and version-floor check pass; evidence is recorded in the PR.
+
+### Completion date
+
+Not complete. Record after implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord migration before the new API image serves feedback; owner:
+      release; blocks #561 closure.
+- [ ] operational — on STAGING then PROD, dry-run the bind-mounted legacy log, review totals and
+      malformed lines, apply the import, and confirm the Admin list contains historical rows;
+      owner: operator/Verifier; blocks #561 closure.
+- [ ] operational — verify a new submission keeps its UUID across Admin reads and carries origin
+      and correlation metadata; owner: Verifier; blocks #561 closure.
+
+### Next phase number
+
+Phase 520. No explicit dependency.
+
+## Phase 520 - Tenant pool warm idle window and physical connect diagnostics (#2560)
+
+### Initiative and release
+
+API reliability, current release.
+
+### Objective and scope
+
+Keep tenant MySQL connections warm between quiet POS polls and report slow or failed physical
+connects, pool creation state, and tenant-instance churn. This is evidence-driven follow-up to
+Phase 513 after the post-deploy acquire-timeout acceptance check failed. Pool capacity, acquire
+timeout, HTTP behavior, and the connection budget remain unchanged. Classification:
+`within-existing-boundary`.
+
+### Status
+
+`completed` — PR [#2623](https://github.com/Sieitzz/dgfy-platform/pull/2623) merged to
+`develop` on 2026-10-20 as `a9b8f2b04830f53b94c7eec543f63308a6099e1b`; implementation validation
+passed. Post-merge deployment and operational verification remain outstanding below.
+
+### Dependencies
+
+Issue [#2560](https://github.com/Sieitzz/dgfy-platform/issues/2560) defines the behavior. No
+explicit phase dependency; this phase uses telemetry produced by Phase 513.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), and
+[Production Observability Runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md). No ADR amendment
+or architecture exception is required.
+
+### Implementation targets
+
+[Connection budget configuration](../../apps/dgfy-api/src/config/connectionBudget.js),
+[TenantConnector](../../apps/dgfy-api/src/utils/TenantConnector.js), focused API tests, and the
+operator runbook.
+
+### Acceptance and validation evidence
+
+- [x] Tenant pool idle time defaults to 60000 ms and accepts a positive environment override;
+      pool max, acquire, and budget arithmetic remain unchanged.
+- [x] Physical connects report slow and failed attempts without changing connection results or
+      errors; timeout context exposes `creating`, `last_connect_ms`, `slow_connects`,
+      `created_total`, and `evicted_total`.
+- [x] Focused tests, changed-file syntax checks, architecture, compliance, docs, and version
+      checks pass; evidence is recorded in [PR #2623](https://github.com/Sieitzz/dgfy-platform/pull/2623).
+- [x] PR review and merge to `develop`.
+
+### Completion date
+
+2026-10-20
+
+### Post-merge verification
+
+- [ ] deployment — issue #2560: verify the configured idle window and new connect diagnostics
+      in deployed API logs and Sentry; owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: observe several business days without `DGFY-BACKEND-P` or
+      `DGFY-BACKEND-Q` acquire timeouts or same-minute multi-tenant `DGFY-POS-C` clusters;
+      owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: investigate host-side MySQL connect stalls if new timing
+      confirms them; owner: operator; blocks root-cause closure.
+
+### Next phase number
+
+Phase 521. No explicit dependency.
+
+## Phase 521 - Guest feedback submission (#582)
+
+### Initiative and release
+
+Feedback intake under epic #560, current release.
+
+### Objective and scope
+
+Allow anonymous feedback on the existing POST endpoint with validated self-reported contact,
+server-derived identity for staff, DGFY accounts and store customers, tenant-aware persistence,
+and a dedicated abuse limit. No client or migration work is included.
+
+### Status
+
+`in_progress` — implementation PR pending merge and validation.
+
+### Dependencies
+
+Phase 519's landlord table must be migrated in each target environment before this API is deployed.
+There is no phase-numbering dependency on an earlier unfinished phase.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+
+### Implementation targets
+
+[Feedback module](../../apps/dgfy-api/src/modules/feedback/README.md),
+[route](../../apps/dgfy-api/src/routes/feedback.js), [limiter](../../apps/dgfy-api/src/middleware/rateLimiter.js),
+and focused feedback identity, validation, mapping, and handler tests.
+
+### Acceptance and validation evidence
+
+- [ ] Anonymous feedback with valid name and email persists as an unverified guest; missing or
+      invalid contact returns 400.
+- [ ] Authenticated submissions ignore client identity and persist the correct staff, DGFY, or
+      store-customer identity; bad tokens never become guests.
+- [ ] Tenant-less submissions store null tenant ID and name; tenant-scoped submissions retain both.
+- [ ] A dedicated feedback limiter returns 429 at the configured threshold.
+- [ ] Focused tests and architecture, docs, compliance, inventory, syntax, and version checks pass;
+      evidence is recorded in the implementation PR.
+
+### Completion date
+
+Not complete. Record after implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] Confirm the Phase 519 landlord migration is applied before deploying this API.
+- [ ] STAGING: submit valid anonymous feedback, confirm 201 and a guest row in Platform Admin;
+      omit contact and confirm 400.
+- [ ] STAGING: confirm anonymous rate limiting returns 429 at the configured threshold.
+- [ ] PROD: repeat after promotion; promoter and verifier own deployment and verification.
+
+### Next phase number
+
+Phase 522. No explicit dependency.
+
+## Phase 522 - Platform Admin refund-retry operator workflow (#2549)
+
+### Initiative and release
+
+Commerce payment refund recovery, current release.
+
+### Objective and scope
+
+Add a cross-session refund-attempt list and a reason-required Platform Admin retry action.
+Persist append-only retry lineage in the landlord database, prevent retrying older chain
+members, audit successful and blocked actions, and show the new attempt's actual provider
+status. Storefront tracking UI and Phase 510 production/provider verification remain out
+of scope.
+
+### Status
+
+`in_progress` — implementation and validation are underway; merge and deployed verification
+remain outstanding.
+
+### Dependencies
+
+- The authenticated retry route and fresh PayMongo read from Phase 510 / PR #2556 are in
+  the current `develop` baseline.
+- The additive landlord migration must be applied before deploying the API change.
+- No phase-numbering dependency; Phase 521's unfinished implementation does not block this
+  work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Commerce payment API specification](../api/specification.md),
+[Commerce payment fulfillment and settlement](commerce-payment-fulfillment-settlement.md),
+and [request-time preflight protocol](../compliance/request-time-preflight-protocol.md).
+
+### Implementation targets
+
+Landlord refund model/repository/use cases and additive migration under
+`apps/dgfy-api` and `apps/dgfy-migration-runner`; Platform Admin Payment Operations under
+`apps/dgfy-admin`; API and Admin refund-retry/list tests; API, feature-flow, and compliance
+declaration documentation.
+
+### Acceptance and validation evidence
+
+- [ ] Refund attempts list across sessions with session/order references, status, provider
+  ID, failure detail, requester, age, `retry_of`, and server-computed eligibility.
+- [ ] Retry is available only for a failed or eligible provider-not-found review attempt
+  that is a chain head and has no other active session refund.
+- [ ] Retry requires a trimmed 3–255 character reason and explicit confirmation; client
+  identity fields are rejected and the server-authenticated actor is audited.
+- [ ] Every retry creates a linked row; the original remains unchanged. Success and blocked
+  attempts audit original/new references, amount, reason, actor, request ID when available,
+  and outcome or block code.
+- [ ] Fresh provider read remains fail-closed; ambiguous matching refunds and read failures
+  are blocked and audited.
+- [ ] Admin shows the new attempt reference and provider status without claiming success for
+  pending/created attempts.
+- [ ] Focused API Jest and Admin Vitest suites, API JavaScript/migration syntax checks,
+  Admin production build, compliance, architecture, docs, and app-version checks pass.
+
+### Completion date
+
+Not complete. Record after the scoped implementation merges and named validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord-only migration in each target environment before API
+  deployment; owner: Promoter; blocks API deployment.
+- [ ] deployment — verify the Admin attempts list and a sandbox retry display the returned
+  reference/status after deployment; owner: Verifier; blocks Phase 522 verification.
+- [ ] operational — confirm successful and blocked retry audit rows retain the authenticated
+  actor, request ID, reason, and integer original refund ID; owner: Verifier; blocks Phase 522
+  acceptance.
+
+### Next phase number
+
+Phase 523. No explicit dependency.

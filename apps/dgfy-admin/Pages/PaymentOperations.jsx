@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, CreditCard, Download, QrCode, RefreshCw, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -6,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import * as adminService from '@/services/adminService';
 import { toast } from 'sonner';
+import RefundAttemptsPanel from '@/features/admin/RefundAttemptsPanel.jsx';
 
 const money = (centavos) => `PHP ${((Number(centavos || 0)) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -13,7 +15,7 @@ const statusClass = (status) => {
   const normalized = String(status || '').toLowerCase();
   if (['finalized', 'paid', 'succeeded', 'active'].includes(normalized)) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (['awaiting_payment', 'pending', 'created', 'refund_pending'].includes(normalized)) return 'border-amber-200 bg-amber-50 text-amber-700';
-  if (['failed', 'expired', 'restricted'].includes(normalized)) return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (['failed', 'manual_review_required', 'expired', 'restricted'].includes(normalized)) return 'border-rose-200 bg-rose-50 text-rose-700';
   return 'border-slate-200 bg-slate-50 text-slate-700';
 };
 
@@ -59,6 +61,8 @@ const downloadCsv = (rows) => {
 };
 
 export default function PaymentOperations() {
+  const outletContext = useOutletContext() || {};
+  const adminProfile = outletContext.adminProfile || null;
   const [loading, setLoading] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
   const [creatingChildAccount, setCreatingChildAccount] = useState(false);
@@ -676,6 +680,8 @@ export default function PaymentOperations() {
         </div>
       )}
 
+      <RefundAttemptsPanel adminProfile={adminProfile} onSessionsRefresh={loadData} />
+
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
@@ -772,7 +778,11 @@ export default function PaymentOperations() {
                               {(session.refunds || []).length === 0 && <div>No refund attempts.</div>}
                               {(session.refunds || []).map((refund) => (
                                 <div key={refund.refund_id} className="rounded border border-slate-200 bg-white p-2">
-                                  <div><strong>{refund.refund_id}</strong> - {refund.status}</div>
+                                  <div>
+                                    <strong>{refund.refund_id}</strong>{' '}
+                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] ${statusClass(refund.status)}`}>{refund.status}</span>
+                                  </div>
+                                  {refund.retry_of && <div className="text-[11px] text-slate-600">Retry of {refund.retry_of}</div>}
                                   <div>{money(refund.amount_centavos)} / {refund.refund_strategy}</div>
                                   <div className="font-mono text-[11px]">{refund.provider_refund_id || 'provider pending'}</div>
                                 </div>

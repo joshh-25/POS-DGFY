@@ -1,7 +1,7 @@
 
 import { Sequelize } from 'sequelize';
 import logger from '../config/logger.js';
-import { getTenantMaxCachedConnections, getTenantPoolMax } from '../config/connectionBudget.js';
+import { getTenantMaxCachedConnections, getTenantPoolIdleMs, getTenantPoolMax } from '../config/connectionBudget.js';
 
 // Configuration
 // How many tenant Sequelize instances stay alive at once. Each one holds its own
@@ -25,6 +25,8 @@ class TenantConnector {
         this.connections = new Map(); // tenantId -> { sequelize, lastUsed, tenantName }
         this.pendingConnections = new Set(); // tenantIds currently being created
         this.cleanupInterval = null;
+        this.createdTotal = 0;
+        this.evictedTotal = 0;
     }
 
     /**
@@ -64,7 +66,7 @@ class TenantConnector {
                     min: 0,
                     // Fail fast (10s) instead of making users wait 30s for a connection slot
                     acquire: 10000,
-                    idle: 5000,  // Reduced from 10s to 5s for multi-tenant efficiency
+                    idle: getTenantPoolIdleMs(), // Keep a quiet POS tenant warm across poll ticks
                     evict: 1000  // Check for idle connections every 1s
                 },
                 define: {
@@ -75,6 +77,45 @@ class TenantConnector {
                 }
             }
         );
+
+        const connectDiagnostics = { lastConnectMs: null, slowConnectCount: 0 };
+        sequelize.tenantConnectDiagnostics = connectDiagnostics;
+        const connectionManager = sequelize.connectionManager;
+        // Sequelize 6 calls this private method once per physical connection. Keep
+        // the guard: an upgrade may remove it without changing connection behavior.
+        if (typeof connectionManager?._connect === 'function') {
+            const originalConnect = connectionManager._connect;
+            connectionManager._connect = async function (...args) {
+                const startedAt = Date.now();
+                try {
+                    const connection = await originalConnect.apply(this, args);
+                    const elapsedMs = Math.max(0, Date.now() - startedAt);
+                    connectDiagnostics.lastConnectMs = elapsedMs;
+                    if (elapsedMs >= 1000) {
+                        connectDiagnostics.slowConnectCount += 1;
+                        try {
+                            logger.warn('[DbPool] Slow tenant DB connect', {
+                                tenant_id: tenant.id,
+                                db_name: tenant.db_name,
+                                elapsed_ms: elapsedMs
+                            });
+                        } catch { /* Diagnostics must not change connection results. */ }
+                    }
+                    return connection;
+                } catch (error) {
+                    const elapsedMs = Math.max(0, Date.now() - startedAt);
+                    connectDiagnostics.lastConnectMs = elapsedMs;
+                    try {
+                        logger.error('[DbPool] Tenant DB connect failed', {
+                            tenant_id: tenant.id,
+                            elapsed_ms: elapsedMs,
+                            code: error?.code ?? error?.original?.code ?? null
+                        });
+                    } catch { /* Diagnostics must not replace the connection error. */ }
+                    throw error;
+                }
+            };
+        }
 
         // Test connection
         await sequelize.authenticate();
@@ -151,6 +192,7 @@ class TenantConnector {
                 lastUsed: Date.now(),
                 tenantName: tenant.name
             });
+            this.createdTotal += 1;
 
             logger.info(`Tenant connection pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS}`);
 
@@ -344,7 +386,9 @@ class TenantConnector {
             total: this.connections.size,
             pending: this.pendingConnections.size,
             capacity: MAX_CACHED_CONNECTIONS,
-            utilizationPercent: Math.round((this.connections.size / MAX_CACHED_CONNECTIONS) * 100)
+            utilizationPercent: Math.round((this.connections.size / MAX_CACHED_CONNECTIONS) * 100),
+            created_total: this.createdTotal,
+            evicted_total: this.evictedTotal
         };
     }
 
@@ -353,7 +397,7 @@ class TenantConnector {
      * sequelize-pool 7.1.0 exposes `maxSize` (mapped here to the stable
      * diagnostic field `max`) along with the other numeric getters.
      * @param {string} tenantId
-     * @returns {{using: number|null, waiting: number|null, size: number|null, available: number|null, max: number|null}|null}
+     * @returns {{using: number|null, waiting: number|null, size: number|null, available: number|null, max: number|null, creating: number|null, last_connect_ms: number|null, slow_connects: number}|null}
      */
     getTenantPoolSnapshot(tenantId) {
         const cached = this.connections.get(tenantId);
@@ -369,12 +413,19 @@ class TenantConnector {
             }
         };
 
+        const size = readNumber('size');
+        const using = readNumber('using');
+        const available = readNumber('available');
         return {
-            using: readNumber('using'),
+            using,
             waiting: readNumber('waiting'),
-            size: readNumber('size'),
-            available: readNumber('available'),
-            max: readNumber('maxSize')
+            size,
+            available,
+            max: readNumber('maxSize'),
+            creating: size === null || using === null || available === null
+                ? null : Math.max(0, size - using - available),
+            last_connect_ms: cached.sequelize.tenantConnectDiagnostics?.lastConnectMs ?? null,
+            slow_connects: cached.sequelize.tenantConnectDiagnostics?.slowConnectCount ?? 0
         };
     }
 
@@ -413,6 +464,7 @@ class TenantConnector {
         // or has to wait out the grace period, no new getConnection() call
         // should be able to hand this instance out again.
         this.connections.delete(tenantId);
+        this.evictedTotal += 1;
 
         const wasBusy = this.isBusy(sequelize);
         // Claim the pending slot only if nothing else already holds it

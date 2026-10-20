@@ -5,6 +5,7 @@ const storeSlug = 'phase-20-conditional-modifiers';
 
 const installRuntimeDiagnostics = (page) => {
   const diagnostics = [];
+  const unmockedApiRequests = [];
   const pathFor = (url) => {
     try {
       return new URL(url).pathname;
@@ -50,7 +51,17 @@ const installRuntimeDiagnostics = (page) => {
     }
   });
 
+  const assertNoUnmockedApiRequests = (checkpoint) => {
+    const routes = unmockedApiRequests.map(({ url }) => `unmocked route: ${url}`);
+    expect(
+      unmockedApiRequests,
+      `Unmocked /api request(s) after ${checkpoint}: ${routes.join(', ')}`
+    ).toEqual([]);
+    unmockedApiRequests.length = 0;
+  };
+
   const assertHealthy = async (checkpoint) => {
+    assertNoUnmockedApiRequests(checkpoint);
     await expect(page.locator('#root')).toBeVisible();
     await expect(page.locator('#root')).not.toBeEmpty();
     await expect(page.getByText(/Something went wrong|Unexpected error|Application error|ReferenceError/i)).toHaveCount(0);
@@ -58,10 +69,23 @@ const installRuntimeDiagnostics = (page) => {
     diagnostics.length = 0;
   };
 
-  return { diagnostics, assertHealthy };
+  return { diagnostics, unmockedApiRequests, assertHealthy, assertNoUnmockedApiRequests };
 };
 
-const installDeterministicStorefront = async (page) => {
+const installDeterministicStorefront = async (page, runtime) => {
+  const storefrontOrigin = new URL(storefrontURL).origin;
+
+  await page.route((url) => url.origin === storefrontOrigin && url.pathname.startsWith('/api/'), async (route) => {
+    const request = route.request();
+    const url = request.url();
+    runtime.unmockedApiRequests.push({ method: request.method(), url });
+    await route.fulfill({
+      status: 501,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: false, message: `unmocked route: ${url}` })
+    });
+  });
+
   const item = {
     item_id: 501,
     name: 'Phase 20 Burger',
@@ -113,6 +137,16 @@ const installDeterministicStorefront = async (page) => {
       active_location_snapshot: [],
       access_capabilities: { catalog: true, cart: true, quote: true, checkout: true },
       inventory_display_mode: 'availability'
+    } })
+  }));
+  await page.route(/\/api\/v1\/storefront\/reverse-geocode(?:\?|$)/, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: true, data: {
+      address_line: 'Diversion Road, Mandurriao, Iloilo City',
+      precision: 'barangay',
+      latitude: 10.7202,
+      longitude: 122.5621
     } })
   }));
   await page.route('**/api/v1/store/locations**', (route) => route.fulfill({
@@ -200,7 +234,7 @@ const assertConditionalFlow = async (page, runtime, onConditionalSelection = nul
 
 test('conditional F&B modifier is accessible and responsive on desktop and mobile @fnb @modifiers @phase25', async ({ page }, testInfo) => {
   const runtime = installRuntimeDiagnostics(page);
-  await installDeterministicStorefront(page);
+  await installDeterministicStorefront(page, runtime);
 
   await page.goto(`${storefrontURL}/tenant-store/${storeSlug}/item?item=501`, { waitUntil: 'domcontentloaded' });
   await assertConditionalFlow(page, runtime, async () => testInfo.attach('phase25-conditional-desktop', {
@@ -225,5 +259,6 @@ test('conditional F&B modifier is accessible and responsive on desktop and mobil
       body: JSON.stringify(runtime.diagnostics, null, 2), contentType: 'application/json'
     });
   }
+  runtime.assertNoUnmockedApiRequests('final runtime diagnostics');
   expect(runtime.diagnostics).toEqual([]);
 });

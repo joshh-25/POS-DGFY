@@ -8,6 +8,7 @@ import {
   getPayMongoSandboxCertification,
   getSettlementReport,
   handlePayMongoWebhook,
+  listPaymentRefunds,
   listPaymentSessions,
   listTenantPaymentAccounts,
   operateTenantPayMongoChildAccount,
@@ -23,9 +24,11 @@ import { authenticateAdmin } from '../middleware/auth.js';
 import {
   validateCommercePaymentRefundBody,
   validateCommercePaymentRefundParam,
+  validateCommercePaymentRefundRetryBody,
   validateCommercePaymentSessionParam,
   validateCreateDglaundryBookingPaymentSessionBody,
   validateListCommercePaymentSessionsQuery,
+  validateListCommercePaymentRefundsQuery,
   validateTenantPayMongoChildAccountActionParam,
   validateTenantPaymentAccountBody,
   validateTenantPaymentAccountParam,
@@ -41,6 +44,7 @@ router.post('/paymongo/webhook', setNoStoreCacheControl, handlePayMongoWebhook);
 router.post('/dglaundry/booking-groups/payment-sessions', setNoStoreCacheControl, requireTenantContext, optionalStoreCustomer, validateCreateDglaundryBookingPaymentSessionBody, createDglaundryBookingPaymentSession);
 router.get('/admin/certification/paymongo-sandbox', setNoStoreCacheControl, authenticateAdmin, getPayMongoSandboxCertification);
 router.get('/admin/settlement-report', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentSessionsQuery, getSettlementReport);
+router.get('/admin/refunds', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentRefundsQuery, listPaymentRefunds);
 router.get('/admin/payment-sessions', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentSessionsQuery, listPaymentSessions);
 router.get('/admin/payment-sessions/:payment_session_id', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, getPaymentSession);
 router.post('/admin/payment-sessions/:payment_session_id/reconcile', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, reconcilePaymentSession);
@@ -52,7 +56,7 @@ router.post('/admin/payment-sessions/:payment_session_id/reconcile', setNoStoreC
 router.post('/admin/payment-sessions/:payment_session_id/confirm-test', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, confirmPaymentSessionSandbox);
 router.post('/admin/payment-sessions/:payment_session_id/retry-finalization', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, retryPaymentSessionFinalization);
 router.post('/admin/payment-sessions/:payment_session_id/refunds', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, validateCommercePaymentRefundBody, createPaymentSessionRefund);
-router.post('/admin/payment-sessions/:payment_session_id/refunds/:refund_id/retry', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentRefundParam, retryPaymentSessionRefund);
+router.post('/admin/payment-sessions/:payment_session_id/refunds/:refund_id/retry', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentRefundParam, validateCommercePaymentRefundRetryBody, retryPaymentSessionRefund);
 router.get('/admin/tenant-payment-accounts', setNoStoreCacheControl, authenticateAdmin, validateTenantPaymentAccountsQuery, listTenantPaymentAccounts);
 router.post('/admin/tenants/:tenant_id/paymongo-child-account', setNoStoreCacheControl, authenticateAdmin, validateTenantPaymentAccountParam, validateTenantPayMongoChildAccountBody, createTenantPayMongoChildAccount);
 router.post('/admin/tenants/:tenant_id/paymongo-child-account/:action', setNoStoreCacheControl, authenticateAdmin, validateTenantPayMongoChildAccountActionParam, operateTenantPayMongoChildAccount);

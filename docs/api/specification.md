@@ -23,6 +23,7 @@
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
 - [Admin Tenant Management Endpoints](#admin-tenant-management-endpoints)
 - [Storefront Custom Domain Endpoints](#storefront-custom-domain-endpoints)
+- [Feedback Endpoints](#feedback-endpoints)
 
 ### Integration
 - [Frontend-Backend Integration Points](#frontend-backend-integration-points)
@@ -4597,13 +4598,14 @@ this source contract.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `refund_status` (comma-separated refund states), `target_type`, `limit`, and `offset`. |
+| `GET` | `/refunds` | List refund attempts across payment sessions. Supports comma-separated `status`, `tenant_id`, `limit`, and `offset`; returns `retry_of`, `has_retry`, and server-computed `retry_eligible` with the session reference and order metadata. |
 | `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
 | `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
 | `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks, parent split-capability confirmation status, and the remaining external evidence required before live money movement. |
 | `POST` | `/payment-sessions/:payment_session_id/reconcile` | Admin-only recovery check against the PayMongo Payment Intent API. It finalizes only when a paid provider payment record exists and its amount/currency match the locked session; otherwise it reports the provider state or returns a review conflict. |
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
-| `POST` | `/payment-sessions/:payment_session_id/refunds/:refund_id/retry` | Explicitly retry a failed refund or a `PROVIDER_REFUND_NOT_FOUND` review row after a fresh provider read confirms there is no unlinked matching refund. Returns `409` for ineligible or active refund conflicts. |
+| `POST` | `/payment-sessions/:payment_session_id/refunds/:refund_id/retry` | Explicitly retry a failed refund or a `PROVIDER_REFUND_NOT_FOUND` review row after a fresh provider read confirms there is no unlinked matching refund. Requires `{ "reason": "..." }` (trimmed, 3–255 characters); unknown body keys are rejected with `422`. Returns `409` for ineligible, older-chain-head, or active-refund conflicts. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account` | Create a PayMongo merchant child account for an existing tenant and store it as pending readiness. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account/sync-requirements` | Pull current PayMongo child-merchant onboarding requirements into local readiness metadata. |
@@ -4654,6 +4656,38 @@ this source contract.
 }
 ```
 
+**Refund Retry Request**
+```json
+{
+  "reason": "Provider confirmed no refund exists"
+}
+```
+
+The retry reason is stored in the audit log and is not sent to PayMongo. Body-less retry callers now receive `422`; the shipped Admin interface is the only known client of this route.
+
+**Admin Refund List Response**
+```json
+{
+  "refunds": [
+    {
+      "refund_id": "CRF-ABC123DEF4",
+      "retry_of": null,
+      "has_retry": false,
+      "retry_child_references": [],
+      "retry_eligible": true,
+      "payment_session": {
+        "public_reference": "CPS-ABC123DEF4",
+        "tenant_id": "550e8400-e29b-41d4-a716-446655440000",
+        "store_slug": "space-bar",
+        "pos_transaction_id": 2749,
+        "status": "refund_pending"
+      }
+    }
+  ],
+  "pagination": { "limit": 100, "offset": 0, "count": 1, "total": 1 }
+}
+```
+
 **Refund Strategy Notes**
 - `proportional` lets PayMongo apply the default split-refund distribution.
 - `tenant` sends a fixed split-refund source against the tenant transfer merchant.
@@ -4663,6 +4697,8 @@ this source contract.
 - Refund submission records `pending` refunds without marking the order refunded until PayMongo reports terminal success.
 - The PayMongo webhook handler and scheduled authenticated PayMongo read reconciler use the same idempotent status applier. The reconciler links only one unique provider refund matching amount and creation time; no match after 30 minutes or multiple matches becomes `manual_review_required` and raises an operator alert.
 - A definite provider rejection remains `failed`, raises a per-refund error alert immediately, and is never automatically retried. The admin retry endpoint creates a new refund row and preserves the original attempt for audit history.
+- A retry is allowed only for a failed attempt or a `manual_review_required` attempt with `PROVIDER_REFUND_NOT_FOUND`, when no other refund is active for its session. Only the latest attempt in a retry chain may be retried; each new row stores a nullable `retry_of_refund_id` self-link, serialized as the original public `retry_of` reference. The original row is never changed.
+- Every retry and blocked retry records an `audit_logs` event (`commerce_payment_refund_retried` or `commerce_payment_refund_retry_blocked`) against the original integer `refund_id`. The audit includes the authenticated actor username and UUID, request ID when available, operator reason, original/new public references, amount, provider refund ID, outcome or block code. The integer self-link is never exposed in API responses.
 - A pending refund older than `COMMERCE_REFUND_PENDING_ALERT_HOURS` (default 24) raises a warning alert, throttled for six hours. Reconciliation runs every 15 minutes by default and can be disabled with `COMMERCE_REFUND_RECONCILE_ENABLED=false`.
 - Refund rows expose `updated_at`; the payment-session list can filter by `refund_status` so failed or review-required attempts remain discoverable even when the session itself is finalized.
 - Possible tenant order payment statuses for commerce QR Ph refunds are `refund_pending`, `partial_refunded`, and `refunded`.
@@ -7420,3 +7456,61 @@ request boundary. A canonical request returns `tenant_id`, `slug`,
 `routing_mode=custom_domain_alias` plus `redirect_to`; the frontend replaces the
 location while preserving path, query, and fragment. Unknown, inactive,
 suspended, or removed hosts return `404`.
+
+## Feedback Endpoints
+
+### POST /api/v1/feedback
+
+**Access:** guests, tenant staff, DGFY accounts, and store customers. A request with an invalid,
+expired, or revoked credential is rejected; it never falls back to guest access. A store-customer
+session must match the resolved tenant.
+
+```json
+{
+  "type": "bug",
+  "description": "Checkout button does not respond",
+  "url": "https://example.com/cart",
+  "context": { "userAgent": "..." },
+  "origin": { "surface": "storefront", "platform": "ios", "app_version": "1.2.3" },
+  "contact": { "name": "Guest name", "email": "guest@example.com" }
+}
+```
+
+`type` is required: `bug`, `idea`, `question`, or `other`. `description` is required after
+trimming and has a 5000-character maximum. Invalid type or description returns HTTP 400 with
+`message`. `url` and `context` are optional; the URL is capped at 2048 characters and context
+is bounded to 8 KB. Oversize context is stored as `{ "truncated": true }`.
+
+`origin.surface` accepts `storefront`, `pos`, `ims`, `opis`, `admin`, or `unknown`;
+`origin.platform` accepts `web`, `android`, `ios`, or `unknown`. Missing/unrecognized values
+become `unknown`, with unrecognized raw values retained in `context.origin_raw` subject to the
+context bound. Native Storefront uses `storefront` + `ios`/`android`; web Storefront uses
+`storefront` + `web`. This pair is the dgfy-mobile#431 origin contract. `app_version` is optional
+and capped at 64 characters. Origin is client-declared metadata.
+
+Guest `contact.name` (1–255 characters) and valid `contact.email` (at most 254 characters) are
+required. They are self-reported and stored with `contact_verified: false`. For authenticated
+submissions, the server derives identity from the session and ignores body `contact`. Tenant
+context is optional for guests; an absent tenant is stored as null. Browser requests carrying a
+session cookie must include `x-csrf-token`. A dedicated feedback limit defaults to five anonymous
+or twenty credentialed requests per IP and tenant in ten minutes. Invalid input returns 400,
+invalid credentials return 401, tenant mismatch returns 403, and the limit returns 429 with
+`Retry-After`. The server stores the request ID as `correlation_id`, matching
+`engagement_events.correlation_id` when an engagement event is emitted.
+
+**Response (201):** `{ "message": "Feedback submitted successfully", "id": "<uuid>" }`.
+Database failure returns HTTP 500; clients should retain the draft for retry.
+
+### GET /api/v1/admin/feedback
+
+Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: [...], count }`,
+newest first, capped at 1000 rows. Filters: `type`, `search` (description or URL), `startDate`,
+`endDate` (inclusive through local end of day). Each row preserves `id`, `timestamp`, `type`,
+`description`, `url`, `context`, `tenant`, and `user`, and adds `status`, `surface`,
+`client_platform`, `app_version`, `submitter_type`, `contact_verified`, and `correlation_id`.
+`id` is a stable UUID. Missing URL appears as `N/A` for the existing Admin UI.
+
+### GET /api/v1/admin/feedback/stats
+
+Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: { total, bugs,
+ideas, latest } }`; `latest` is a feedback row or `null`.

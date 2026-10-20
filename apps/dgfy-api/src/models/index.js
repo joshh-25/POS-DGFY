@@ -163,6 +163,7 @@ import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
 import EmailDeliveryLogFactory from './Landlord/EmailDeliveryLog.js';
+import FeedbackSubmissionFactory from './Landlord/FeedbackSubmission.js';
 import SmsDeliveryLogFactory from './Landlord/SmsDeliveryLog.js';
 import PushDeviceTokenFactory from './Landlord/PushDeviceToken.js';
 import PushDeliveryLogFactory from './Landlord/PushDeliveryLog.js';
@@ -260,6 +261,7 @@ const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
 const EmailDeliveryLog = EmailDeliveryLogFactory(sequelize);
+const FeedbackSubmission = FeedbackSubmissionFactory(sequelize);
 const SmsDeliveryLog = SmsDeliveryLogFactory(sequelize);
 const PushDeviceToken = PushDeviceTokenFactory(sequelize);
 const PushDeliveryLog = PushDeliveryLogFactory(sequelize);
@@ -460,6 +462,8 @@ Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePa
 CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
 CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
+CommercePaymentRefund.belongsTo(CommercePaymentRefund, { foreignKey: 'retry_of_refund_id', as: 'retryOf' });
+CommercePaymentRefund.hasMany(CommercePaymentRefund, { foreignKey: 'retry_of_refund_id', as: 'retryAttempts' });
 Tenant.hasMany(TenantRevenueFeePolicy, { foreignKey: 'tenant_id', as: 'revenueFeePolicies' });
 TenantRevenueFeePolicy.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantRevenueTransaction, { foreignKey: 'tenant_id', as: 'revenueTransactions' });
@@ -1420,6 +1424,7 @@ const db = {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  FeedbackSubmission,
   SmsDeliveryLog,
   PushDeviceToken,
   PushDeliveryLog,
@@ -1675,6 +1680,7 @@ export {
   UserInvitation,
   EmailOtp,
   EmailDeliveryLog,
+  FeedbackSubmission,
   SmsDeliveryLog,
   PushDeviceToken,
   PushDeliveryLog,

@@ -10,6 +10,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'UserInvitation',
     'EmailOtp',
     'EmailDeliveryLog',
+    'FeedbackSubmission',
     'SmsDeliveryLog',
     'SmsMarketingConsent',
     'SmsConsentEvent',
