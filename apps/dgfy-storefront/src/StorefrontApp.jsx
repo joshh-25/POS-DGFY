@@ -1885,8 +1885,10 @@ export default function StorefrontApp() {
     setQuoteNeedsRefresh(true);
     // Phase 150 (#866): paymentElection changes the split the quote would compute at a
     // customer_choice store -- an election change must invalidate the quote exactly like changing
-    // the order method already does, or the UI shows a stale split against the new election.
-  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, checkoutVoucherCode, paymentElection, fnbPaymentType, isStorePage]);
+    // the order method already does, or the UI shows a stale split against the new election. The
+    // server quote is independent of the selected payment rail (it only validates that method),
+    // so switching rails must not invalidate a current quote.
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, checkoutVoucherCode, paymentElection, isStorePage]);
   useEffect(() => {
     if (!isSimpleMode) return;
     if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
@@ -3593,7 +3595,6 @@ export default function StorefrontApp() {
     isStorePage,
     normalizeStorefrontErrorMessage,
     orderMethod,
-    fnbPaymentType,
     paymentElection,
     quoteNeedsRefresh,
     requestQuote,
