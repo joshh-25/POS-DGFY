@@ -54,3 +54,6 @@ desktop/mobile browser checks passed without page/console errors. The initial ro
 HTTP parser failure did not recur in the isolated or final combined run.
 Database migration execution and deployed STAGING verification remain outstanding;
 see Phase 524's post-merge checklist. No deployed environment was changed.
+
+UI delivery: the Admin premium toggle and POS unavailable notice are included with
+their focused regression tests; the separate dine-in save is preserved.

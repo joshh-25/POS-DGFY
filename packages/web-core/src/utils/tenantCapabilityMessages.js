@@ -85,3 +85,5 @@ export const buildTenantCapabilityNoticeFromSettings = (settings = {}) => {
 
   return null;
 };
+
+export const DOWNPAYMENT_UNAVAILABLE_MESSAGE = "Downpayment isn't available for this store. DGFY Platform Admin controls access to downpayment. Customers pay in full online, or by Cash/COD if you've enabled it.";
