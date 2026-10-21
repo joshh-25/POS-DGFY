@@ -49,6 +49,8 @@ import { authenticate, checkAnyPermission } from '../middleware/auth.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
+import { requireTenantContext } from '../middleware/requireTenantContext.js';
+import { requireStorefrontVisible } from '../middleware/requireStorefrontVisible.js';
 import { setNoStoreCacheControl, setReadCacheControl } from '../middleware/cachePolicy.js';
 
 const router = express.Router();
@@ -67,6 +69,7 @@ router.use(authenticate);
 // change. Kept as per-route middleware, not sub-routers (see fnb.js for why).
 // The public storefront surface stays on the base reservations capability.
 publicRouter.use(requireWorkflowCapability('hospitalityReservations', 'Hospitality'));
+publicRouter.use(requireTenantContext, requireStorefrontVisible('hospitality'));
 
 const requireReservations = requireWorkflowCapability('hospitalityReservations', 'Hospitality');
 const requireRooms = requireWorkflowCapability('hospitalityRooms', 'Rooms');

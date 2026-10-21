@@ -22,6 +22,30 @@ describe('onboardingRepository schema compatibility', () => {
     mockDbStore.getStore.mockReturnValue({ tenantName: 'Tenant One' });
   });
 
+  it('rejects a locked visibility change before persisting onboarding progress', async () => {
+    const transaction = { id: 'visibility-policy-tx' };
+    const SystemSetting = {
+      sequelize: { transaction: jest.fn((callback) => callback(transaction)) },
+      findOne: jest.fn(({ where }) => Promise.resolve({
+        setting_value: where.setting_key === 'store_is_visible' ? 'false' : 'false'
+      })),
+      findAll: jest.fn(),
+      create: jest.fn()
+    };
+    mockDbStore.get.mockImplementation((name) => name === 'SystemSetting' ? SystemSetting : null);
+
+    await expect(onboardingRepository.saveStep({
+      stepKey: 'primary_location',
+      payload: { public_storefront_visible: true }
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      details: { reason_code: 'STORE_VISIBILITY_EDIT_PLATFORM_CONTROLLED' }
+    });
+    expect(SystemSetting.findOne).toHaveBeenCalledWith(expect.objectContaining({ transaction }));
+    expect(SystemSetting.findAll).not.toHaveBeenCalled();
+    expect(SystemSetting.create).not.toHaveBeenCalled();
+  });
+
   it('does not query missing item columns during checklist computation', async () => {
     const SystemSetting = {
       findAll: jest.fn().mockResolvedValue([]),

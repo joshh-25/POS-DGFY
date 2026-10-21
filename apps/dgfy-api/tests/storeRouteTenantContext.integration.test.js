@@ -55,7 +55,8 @@ jest.unstable_mockModule('../src/controllers/storeController.js', () => mockHand
 // as the first three tests already implicitly assume it would.
 const storage = new AsyncLocalStorage();
 const systemSettingFindAll = jest.fn().mockResolvedValue([]);
-const mockSystemSetting = { findAll: systemSettingFindAll };
+const systemSettingFindOne = jest.fn().mockResolvedValue({ setting_value: 'true' });
+const mockSystemSetting = { findAll: systemSettingFindAll, findOne: systemSettingFindOne };
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
@@ -78,7 +79,7 @@ const routeTokenBridge = (req, res, next) => {
 
     if (token === 'valid-store-token') {
         req.tenant = { id: 'tenant-ctx-1' };
-        return dbStore.run({ tenantId: 'tenant-ctx-1' }, next);
+        return dbStore.run({ tenantId: 'tenant-ctx-1', SystemSetting: mockSystemSetting }, next);
     }
 
     if (token === 'mismatch-store-token') {
@@ -107,6 +108,7 @@ describe('store route tenant context integration', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         systemSettingFindAll.mockResolvedValue([]);
+        systemSettingFindOne.mockResolvedValue({ setting_value: 'true' });
     });
 
     it('rejects track request when x-company-token is missing', async () => {
@@ -153,5 +155,46 @@ describe('store route tenant context integration', () => {
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
         expect(mockHandlers.trackOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('denies catalog with a previously known company token when hidden, then restores it when visible', async () => {
+        const { clearTenantCapabilityCache } = await import('../src/modules/shared/utils/tenantCapabilitySettingCache.js');
+        clearTenantCapabilityCache();
+        systemSettingFindOne.mockResolvedValue({ setting_value: 'false' });
+        const app = buildApp();
+        const hidden = await request(app).get('/api/v1/store/catalog').set('x-company-token', 'valid-store-token');
+        expect(hidden.status).toBe(404);
+        expect(hidden.body.code).toBe('STORE_NOT_VISIBLE');
+        expect(hidden.headers['cache-control']).toBe('no-store');
+        expect(mockHandlers.listStoreCatalog).not.toHaveBeenCalled();
+        clearTenantCapabilityCache();
+        systemSettingFindOne.mockResolvedValue({ setting_value: 'true' });
+        const visible = await request(app).get('/api/v1/store/catalog').set('x-company-token', 'valid-store-token');
+        expect(visible.status).toBe(200);
+        expect(mockHandlers.listStoreCatalog).toHaveBeenCalledTimes(1);
+    });
+
+    it('defaults every registered new-activity route to the hidden-store denial', async () => {
+        const { clearTenantCapabilityCache } = await import('../src/modules/shared/utils/tenantCapabilitySettingCache.js');
+        const { isExistingOrderRoute } = await import('../src/middleware/requireStorefrontVisible.js');
+        clearTenantCapabilityCache();
+        systemSettingFindOne.mockResolvedValue({ setting_value: 'false' });
+        const app = buildApp();
+        const routes = storeRouter.stack.filter((layer) => layer.route).flatMap((layer) =>
+            Object.keys(layer.route.methods).map((method) => ({ method, path: layer.route.path }))
+        );
+        expect(routes.length).toBeGreaterThan(35);
+        for (const { method, path } of routes) {
+            if (path === '/domain-context') continue;
+            const requestPath = path.replace(/:[^/]+/g, 'TEST');
+            const response = await request(app)[method](`/api/v1/store${requestPath}`)
+                .set('x-company-token', 'valid-store-token');
+            if (isExistingOrderRoute('store', method.toUpperCase(), requestPath)) {
+                expect(response.body.code).not.toBe('STORE_NOT_VISIBLE');
+            } else {
+                expect(response.status).toBe(404);
+                expect(response.body.code).toBe('STORE_NOT_VISIBLE');
+            }
+        }
     });
 });

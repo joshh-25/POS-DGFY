@@ -13,6 +13,7 @@ export const TENANT_CAPABILITY_SETTING_KEYS = Object.freeze({
     ims: 'tenant_ims_enabled',
     pos: 'tenant_pos_enabled',
     storefrontVisible: 'store_is_visible',
+    storefrontMerchantEditable: 'store_visibility_merchant_editable',
     customerAccessMode: 'customer_access_mode',
     platformMaxCustomerAccessMode: 'platform_max_customer_access_mode',
     onboardingProgress: 'tenant_onboarding_progress'
@@ -24,6 +25,7 @@ const TENANT_CAPABILITY_READ_KEYS = Object.freeze([
     TENANT_CAPABILITY_SETTING_KEYS.ims,
     TENANT_CAPABILITY_SETTING_KEYS.pos,
     TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible,
+    TENANT_CAPABILITY_SETTING_KEYS.storefrontMerchantEditable,
     ...CUSTOMER_ACCESS_SETTING_KEYS
 ]);
 
@@ -31,6 +33,7 @@ const DEFAULT_CAPABILITIES = Object.freeze({
     ims_enabled: true,
     pos_enabled: true,
     storefront_visible: false,
+    store_visibility_merchant_editable: true,
     customer_access_mode: DEFAULT_CUSTOMER_ACCESS_MODE,
     platform_max_customer_access_mode: 'transaction'
 });
@@ -139,6 +142,10 @@ export const normalizeTenantCapabilities = (settings = {}) => ({
         settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible],
         DEFAULT_CAPABILITIES.storefront_visible
     ),
+    store_visibility_merchant_editable: parseBoolean(
+        settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontMerchantEditable]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontMerchantEditable],
+        DEFAULT_CAPABILITIES.store_visibility_merchant_editable
+    ),
     customer_access_mode: normalizeCustomerAccessMode(
         settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode],
         DEFAULT_CAPABILITIES.customer_access_mode
@@ -229,6 +236,12 @@ export const normalizeTenantCapabilityPatch = (payload = {}) => {
             throw new Error('storefront_visible must be a boolean');
         }
         patch[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible] = serializeBoolean(payload.storefront_visible);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'store_visibility_merchant_editable')) {
+        if (typeof payload.store_visibility_merchant_editable !== 'boolean') {
+            throw new Error('store_visibility_merchant_editable must be a boolean');
+        }
+        patch[TENANT_CAPABILITY_SETTING_KEYS.storefrontMerchantEditable] = serializeBoolean(payload.store_visibility_merchant_editable);
     }
     if (Object.prototype.hasOwnProperty.call(payload, 'customer_access_mode')) {
         const normalized = String(payload.customer_access_mode || '').trim().toLowerCase();
