@@ -118,6 +118,7 @@ const DEFAULT_TENANT_CAPABILITIES = {
     ims_enabled: true,
     pos_enabled: true,
     storefront_visible: false,
+    store_visibility_merchant_editable: true,
     customer_access_mode: 'catalog',
     requested_customer_access_mode: 'catalog',
     effective_customer_access_mode: 'catalog',
@@ -525,6 +526,12 @@ const isCustomerAccessCapped = (capabilities = {}) => {
 const getCapabilityImpactPreview = (change = {}) => {
     const patch = change?.patch || {};
     const currentCapabilities = getTenantCapabilities(change?.tenant || {});
+    if (patch.store_visibility_merchant_editable === false) {
+        return { title: 'Tenant impact preview', message: 'The merchant will no longer be able to change Storefront / Maps visibility in Settings or onboarding. Platform Admin can still change it.' };
+    }
+    if (patch.store_visibility_merchant_editable === true) {
+        return { title: 'Tenant impact preview', message: 'The merchant will be able to change Storefront / Maps visibility again.' };
+    }
     if (patch.ims_enabled === false) {
         return {
             title: CAPABILITY_BLOCK_TITLE,
@@ -1755,6 +1762,7 @@ export default function TenantManager() {
             `IMS ${snapshot?.ims_enabled ? 'On' : 'Off'}`,
             `POS ${snapshot?.pos_enabled ? 'On' : 'Off'}`,
             `Storefront ${snapshot?.storefront_visible ? 'On' : 'Off'}`,
+            `Merchant visibility editing ${snapshot?.store_visibility_merchant_editable !== false ? 'On' : 'Off'}`,
             modeLabel
         ].join(' / ');
     };
@@ -1778,7 +1786,8 @@ export default function TenantManager() {
                 capabilities.customer_access_limitation_reason,
                 capabilities.ims_enabled ? 'ims enabled' : 'ims disabled',
                 capabilities.pos_enabled ? 'pos enabled' : 'pos disabled',
-                capabilities.storefront_visible ? 'storefront visible maps' : 'storefront hidden'
+                capabilities.storefront_visible ? 'storefront visible maps' : 'storefront hidden',
+                capabilities.store_visibility_merchant_editable !== false ? 'merchant visibility editing allowed' : 'merchant visibility editing locked'
             ]
                 .join(' ')
                 .toLowerCase()
@@ -2303,13 +2312,25 @@ export default function TenantManager() {
                                                     <CapabilityToggle
                                                         icon={MapPin}
                                                         label="Storefront / Maps"
-                                                        description="Public discovery, map feeds, and root storefront profile"
+                                                        description="Public discovery, direct storefront access, and new commerce activity"
                                                         value={capabilities.storefront_visible}
                                                         disabled={capabilityDisabled}
                                                         onClick={() => openCapabilityChange(
                                                             tenant,
                                                             { storefront_visible: !capabilities.storefront_visible },
                                                             `Storefront / Maps ${capabilities.storefront_visible ? 'Off' : 'On'}`
+                                                        )}
+                                                    />
+                                                    <CapabilityToggle
+                                                        icon={MapPin}
+                                                        label="Merchant can edit storefront visibility"
+                                                        description="Allow this tenant to change Storefront / Maps from Settings or onboarding"
+                                                        value={capabilities.store_visibility_merchant_editable !== false}
+                                                        disabled={capabilityDisabled}
+                                                        onClick={() => openCapabilityChange(
+                                                            tenant,
+                                                            { store_visibility_merchant_editable: capabilities.store_visibility_merchant_editable === false },
+                                                            `Merchant visibility editing ${capabilities.store_visibility_merchant_editable === false ? 'On' : 'Off'}`
                                                         )}
                                                     />
                                                     <div className="mt-3 border-t border-slate-200 pt-3">

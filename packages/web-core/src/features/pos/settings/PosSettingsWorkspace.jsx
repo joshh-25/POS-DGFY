@@ -1016,6 +1016,7 @@ export default function PosSettingsWorkspace({
       const hydratedStorefrontForm = {
         storeTenantSlug: String(settingsPayload?.store_tenant_slug?.value || '').trim().toLowerCase(),
         storeIsVisible: settingsPayload?.store_is_visible?.value !== false,
+        storeVisibilityMerchantEditable: settingsPayload?.store_visibility_merchant_editable?.value !== false,
         storeHasNoLocation: settingsPayload?.store_has_no_location?.value === true,
         ...customerAccessRuntime,
         storefrontTagline: String(settingsPayload?.storefront_tagline?.value || ''),
@@ -1708,6 +1709,7 @@ export default function PosSettingsWorkspace({
 
   const handleStorefrontBooleanChange = useCallback(async ({ settingKey, field, label, value, previousValue }) => {
     if (!canEditSettings || locked || !settingKey || !field) return;
+    if (settingKey === 'store_is_visible' && storefrontForm.storeVisibilityMerchantEditable === false) return;
     setStorefrontBooleanState((current) => ({ ...current, [settingKey]: 'saving' }));
     try {
       await updateSettingByKey(settingKey, value === true);

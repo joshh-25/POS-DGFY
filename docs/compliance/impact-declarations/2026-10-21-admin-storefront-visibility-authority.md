@@ -33,7 +33,8 @@ does not change payment capture, tax calculation, settlement, or terminal operat
 - `payments` — deny creation of new Storefront/DGLaundry payment sessions when hidden;
   allow reads/cancellation of existing sessions and provider callbacks.
 - `pos`, `terminal` — shared Storefront settings UI and IMS compatibility editor only;
-  checkout and terminal operations are unchanged.
+  the visibility gate does not touch authenticated `/api/v1/pos` routes, so checkout
+  and terminal operations remain available.
 
 ## Compliance Preconditions
 

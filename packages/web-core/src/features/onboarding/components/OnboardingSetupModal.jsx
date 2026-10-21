@@ -7,6 +7,7 @@ import {
   trackOnboardingEvent
 } from '../../../services/onboardingService.js';
 import { getAllSettings, uploadStorefrontAsset } from '../../../services/settingsService.js';
+import { STORE_VISIBILITY_EDIT_LOCKED_MESSAGE } from '../../../utils/tenantCapabilityMessages.js';
 import {
   createTenantLocation,
   listTenantLocations,
@@ -274,6 +275,7 @@ export default function OnboardingSetupModal({
   const [locationForm, setLocationForm] = useState(() => normalizeLocationForm(currentUser));
   const [locationDetailsAttempted, setLocationDetailsAttempted] = useState(false);
   const [publicStorefrontVisible, setPublicStorefrontVisible] = useState(false);
+  const [storeVisibilityMerchantEditable, setStoreVisibilityMerchantEditable] = useState(true);
   const [storeHasNoLocation, setStoreHasNoLocation] = useState(false);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
   const hasSavedPrimaryLocationPin = Boolean(primaryLocationId)
@@ -358,6 +360,7 @@ export default function OnboardingSetupModal({
           if (settings?.store_is_visible) {
             setPublicStorefrontVisible(settings.store_is_visible.value === true);
           }
+          setStoreVisibilityMerchantEditable(settings?.store_visibility_merchant_editable?.value !== false);
           if (settings?.store_has_no_location) {
             setStoreHasNoLocation(settings.store_has_no_location.value === true);
           }
@@ -888,10 +891,11 @@ export default function OnboardingSetupModal({
                     type="checkbox"
                     className="mt-1 h-4 w-4"
                     checked={publicStorefrontVisible === true}
-                    disabled={locationsLoading}
+                    disabled={locationsLoading || !storeVisibilityMerchantEditable}
                     onChange={(event) => setPublicStorefrontVisible(event.target.checked)}
                   />
                 </label>
+                {!storeVisibilityMerchantEditable && <p className="mt-2 text-xs text-amber-700">{STORE_VISIBILITY_EDIT_LOCKED_MESSAGE}</p>}
               </div>
               {publicStorefrontVisible === true && (
                 <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">

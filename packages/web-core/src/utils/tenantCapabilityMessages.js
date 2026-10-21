@@ -1,9 +1,10 @@
 export const CAPABILITY_BLOCK_TITLE = 'Platform admin changed your permissions';
+export const STORE_VISIBILITY_EDIT_LOCKED_MESSAGE = 'Platform Admin controls storefront visibility for this company. Contact Platform Admin to change it.';
 
 export const TENANT_CAPABILITY_MESSAGES = Object.freeze({
   tenant_ims_enabled: 'IMS access is disabled for this company. Inventory, purchases, settings, reports, and related workspace tools are unavailable until platform admin enables IMS again.',
   tenant_pos_enabled: 'POS access is disabled for this company. Catalog, checkout, scanning, and POS transactions are unavailable until platform admin enables POS again.',
-  store_is_visible: 'Storefront and map visibility are disabled for this company. Customers cannot find this store in public discovery until platform admin enables Storefront / Maps again.'
+  store_is_visible: 'Storefront and map visibility are disabled for this company. Customers cannot browse or place new orders until Storefront / Maps is turned on again.'
 });
 
 export const STOREFRONT_ACCESS_MODE_MESSAGES = Object.freeze({
