@@ -3549,8 +3549,10 @@ runs the payment lifecycle after the status change commits, and the result is re
 A store-initiated terminal state — `rejected`, or `cancelled` set through **this** endpoint —
 **always refunds**, even at a tenant whose `downpayment_refundable` is `false`. The store's
 inability to fulfil is not the customer's forfeiture (ADR 0070, 2026-08-22 amendment). Payment
-lifecycle failures never fail the status update itself: the status is already committed and the
-failure surfaces as `payment_action: 'refund_failed'` for administrator review.
+lifecycle failures never fail the status update itself: the status is already committed. Definitive
+provider failures are retried automatically against the same refund row with bounded backoff; no
+role-based approval is required. A permanent, exhausted, or ambiguous failure remains settlement-
+ineligible and surfaces as `payment_action: 'refund_failed'` for reconciliation.
 
 ### PATCH /pos/orders/:id/delivery-job/status
 Advance the manual delivery job for an online delivery order from the POS queue.
@@ -4696,11 +4698,12 @@ The retry reason is stored in the audit log and is not sent to PayMongo. Body-le
 - Non-proportional `split_refund.refund_sources` must total exactly the requested refund amount in centavos before the provider API is called.
 - Refund submission records `pending` refunds without marking the order refunded until PayMongo reports terminal success.
 - The PayMongo webhook handler and scheduled authenticated PayMongo read reconciler use the same idempotent status applier. The reconciler links only one unique provider refund matching amount and creation time; no match after 30 minutes or multiple matches becomes `manual_review_required` and raises an operator alert.
-- A definite provider rejection remains `failed`, raises a per-refund error alert immediately, and is never automatically retried. The admin retry endpoint creates a new refund row and preserves the original attempt for audit history.
+- A definite provider rejection is retried automatically against the same local refund row with bounded backoff. Permanent or exhausted failures remain `failed`, raise a per-refund error alert, and remain excluded from settlement.
 - A retry is allowed only for a failed attempt or a `manual_review_required` attempt with `PROVIDER_REFUND_NOT_FOUND`, when no other refund is active for its session. Only the latest attempt in a retry chain may be retried; each new row stores a nullable `retry_of_refund_id` self-link, serialized as the original public `retry_of` reference. The original row is never changed.
 - Every retry and blocked retry records an `audit_logs` event (`commerce_payment_refund_retried` or `commerce_payment_refund_retry_blocked`) against the original integer `refund_id`. The audit includes the authenticated actor username and UUID, request ID when available, operator reason, original/new public references, amount, provider refund ID, outcome or block code. The integer self-link is never exposed in API responses.
 - A pending refund older than `COMMERCE_REFUND_PENDING_ALERT_HOURS` (default 24) raises a warning alert, throttled for six hours. Reconciliation runs every 15 minutes by default and can be disabled with `COMMERCE_REFUND_RECONCILE_ENABLED=false`.
 - Refund rows expose `updated_at`; the payment-session list can filter by `refund_status` so failed or review-required attempts remain discoverable even when the session itself is finalized.
+- The PayMongo webhook handler updates stored refund attempts for `payment.refunded` and `payment.refund.updated` events when the provider refund ID matches `commerce_payment_refunds`, then recomputes payment-session and tenant-order payment status.
 - Possible tenant order payment statuses for commerce QR Ph refunds are `refund_pending`, `partial_refunded`, and `refunded`.
 
 **Settlement Report Notes**
@@ -4794,7 +4797,9 @@ so a merchant changing the toggle after payment cannot retroactively change the 
 null/unknown snapshot refunds. Both outcomes write a tenant-side `pos_order_payments` row (`kind`
 `'refund'` or `'forfeiture'`) linked to the original `'downpayment'` row; refund rows are written
 `pending` and promoted to `successful`/`failed` when the PayMongo refund webhook confirms. A payment
-lifecycle failure never fails the cancellation — it surfaces as `payment_action: 'refund_failed'`.
+lifecycle failure never fails the cancellation — the refund worker retries definitive provider
+failures automatically, while permanent/exhausted/ambiguous outcomes surface as
+`payment_action: 'refund_failed'` for reconciliation without an approval step.
 
 Governance: ADR 0069 clause 8 `[default]` (carried by ADR 0070, 2026-08-22 amendment) and ADR 0052
 clause 14 (2026-08-22 amendment).
@@ -6501,9 +6506,10 @@ Submit a public company registration request.
 
 **Current policy**
 - All new registrations persist `plan: "premium"` by default so mode-specific premium-gated surfaces are available after activation.
-- Public company registration is mandatory manual review. It creates a pending landlord tenant, pending founder membership, `company_registration_applications` row, immutable first attempt, submission event, and email-delivery record in one governed flow.
-- Registration does not provision a tenant database, activate the tenant, return a `company_token`, or start a tenant/POS session. The client opens `/register-company/status/:applicationId`.
-- Only Platform Admin approval may start provisioning. Provisioning failure remains retryable; rejection and resubmission preserve immutable attempts and applicant-visible reasons.
+- `auto_standard` is the default public company-registration mode. It creates the landlord tenant, application, immutable first attempt, submission event, and email-delivery record, then claims the application as approved/in-progress and starts background provisioning.
+- Registration returns `202 Accepted` with `setting_up_company`; it does not return a `company_token` or tenant session. The client opens `/register-company/status/:applicationId`, and successful provisioning sends the owner an email with the POS onboarding link.
+- Auto-provisioned tenants start with `tenant_pos_enabled=false` and `store_is_visible=false`. The owner can add catalog items and categories only; selling, checkout, scanning, operational POS pages, and public Storefront visibility remain unavailable until Platform Admin enables the audited capabilities.
+- Provisioning failure remains retryable and auditable. `manual` remains an explicit rollback/admin-review mode; rejection and resubmission preserve immutable attempts and applicant-visible reasons.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
 - Premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. Premium route access begins only after approval/provisioning and remains plan-driven in this phase.
 - Approval/rejection email delivery is non-blocking after the durable lifecycle transition. Email failure does not roll back a successful review/provisioning decision.
@@ -6530,18 +6536,21 @@ Combined provisioning accepts a DGFY account payload plus company payload and re
 
 Owner assignment accepts `dgfy_account_id`, `reason`, and optional `force` (default `true`). The target must be an existing active DGFY account. The backend must not infer ownership from raw email or phone values.
 
-**Response (201)**
+**Response (202)**
 ```json
 {
   "success": true,
-  "message": "Your premium plan registration has been submitted for review. You will be notified once approved.",
+  "message": "Your company is being prepared. We will email you the POS onboarding link when setup is ready.",
   "data": {
     "id": "tenant-id",
     "name": "ACME Corp",
-    "status": "pending",
+    "status": "setting_up_company",
     "plan": "premium",
     "workflow_mode": "food_manufacturing",
-    "application_id": "registration-application-uuid"
+    "application_id": "registration-application-uuid",
+    "review_status": "approved",
+    "provisioning_status": "in_progress",
+    "registration_access_mode": "catalog_only"
   }
 }
 ```
@@ -6828,9 +6837,12 @@ No body required.
 **Side Effects**:
 - Creates isolated tenant database with all required tables
 - Seeds default admin user with provided credentials
-- **Sends approval email** with login credentials and company token (if SMTP configured)
+- Sends the lifecycle email after the durable approval/provisioning transition. Restricted
+  registrations receive the POS onboarding link and remain capability-gated until Platform Admin
+  enables the relevant tenant capabilities; no company token is disclosed.
 - Uses the shared tenant model clone graph for all workflow modes. Tenant-local models are cloned from the canonical backend model registry; landlord-only models remain outside tenant databases.
-- If provisioning fails before activation, drops the partially created tenant database and restores approval-flow tenants to a retryable `pending` status.
+- If provisioning fails before activation, drops the partially created tenant database and restores
+  the approval-flow tenant to a retryable state.
 
 **Response Fields**:
 - `email_sent`: Boolean indicating whether approval notification email was sent successfully

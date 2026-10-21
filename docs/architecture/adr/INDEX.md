@@ -35,7 +35,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0010 | [Storefront Discovery Item-Match Index and Union Query Contract](0010-storefront-discovery-item-match-index-and-union-query.md) | `amended` | storefront_discovery_item_match_index_and_union_query | 2026-10-20 | 0 |
 | 0011 | [Compliance Downgrade Escape Hatches](0011-compliance-downgrade-escape-hatches.md) | `accepted` | compliance_downgrade_escape_hatches | 2026-10-21 | 6 |
 | 0012 | [DGFY Global Convenience Fee and UI Brand Separation](0012-dgfy-global-convenience-fee-and-ui-brand-separation.md) | `amended` | dgfy_global_convenience_fee_and_ui_brand_separation | 2026-10-23 | 1 |
-| 0013 | [Tenant First-Login Onboarding and Storefront Readiness Contract](0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md) | `amended` | tenant_first_login_onboarding_and_storefront_readiness_contract | 2026-10-25 | 0 |
+| 0013 | [Tenant First-Login Onboarding and Storefront Readiness Contract](0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md) | `amended` | tenant_first_login_onboarding_and_storefront_readiness_contract | 2027-04-16 | 0 |
 | 0014 | [Multi-Template Modes, POS Offline Replay Hardening, and Storefront Cache Contracts](0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md) | `amended` | multi_template_modes_pos_offline_sync_and_storefront_cache_contracts | 2026-10-27 | 0 |
 | 0015 | [Tenant User Invitation Registry](0015-tenant-user-invitation-registry.md) | `accepted` | tenant_user_invitation_registry | 2026-10-28 | 0 |
 | 0016 | [Services Mode Independent Booking And Ticketing](0016-services-mode-independent-booking-and-ticketing.md) | `accepted` | services_mode_independent_booking_and_ticketing | 2026-11-02 | 0 |
@@ -44,7 +44,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `amended` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
 | 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `amended` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
 | 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `amended` | email_otp_verification | 2026-11-17 | 0 |
-| 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `accepted` | global_dgfy_account_business_registration | 2027-01-08 | 0 |
+| 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `amended` | global_dgfy_account_business_registration | 2027-04-16 | 0 |
 | 0023 | [Front-Facing DGFY Customer Account](0023-front-facing-dgfy-customer-account.md) | `amended` | front_facing_dgfy_customer_account | 2027-01-08 | 0 |
 | 0024 | [Fulfilled Guest Item Reviews For Storefront Menu Details](0024-fulfilled-guest-item-reviews.md) | `accepted` | fulfilled_guest_item_reviews | 2027-01-08 | 0 |
 | 0025 | [POS Application Shells And LAN Host Runtime](0025-pos-application-shells-and-lan-host-runtime.md) | `amended` | pos_application_shells_and_lan_host_runtime | 2026-12-03 | 0 |

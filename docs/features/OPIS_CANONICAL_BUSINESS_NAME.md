@@ -7,12 +7,14 @@ OPIS is the admin-only home for changing the actual business name shown by the t
 ## Behavior
 
 - An admin or master admin can open `Settings → Profile` in OPIS and update the canonical business name.
+- The editor is rendered inside the `Profile Setting` pane. OPIS does not expose a second editable business-name control in `POS Setup → Business & Receipts`; that pane is reserved for receipt and fiscal metadata.
 - The API validates the name, updates the landlord tenant record, the tenant POS display setting (`pos_business_name`), and its audit row, then refreshes the storefront discovery index.
 - Tenant IDs, storefront URLs, QR tokens, products, orders, reports, and branch records are unchanged.
 - Registered Name, TIN, branch tax identifiers, and other fiscal/receipt metadata are unchanged.
 - Non-admin users can see the current identity but cannot submit a rename.
 - Re-saving the current name is a no-op when the POS display name is already synchronized; it does not create an audit row or run a discovery sync.
 - After a successful save, OPIS updates its visible business name immediately. An open POS terminal receives a tenant-scoped authenticated settings invalidation and reloads its settings without a page refresh.
+- An open Storefront revalidates the public profile while visible (on focus/visibility and on a 30-second interval) and updates the business name in place without reloading the catalog, branch selection, cart, or checkout state.
 
 ## Controlled POS synchronization
 
