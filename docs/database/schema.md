@@ -381,6 +381,7 @@ The tenant-local capability switches themselves remain in each tenant database's
 - `tenant_ims_enabled`
 - `tenant_pos_enabled`
 - `store_is_visible`
+- `store_visibility_merchant_editable` (Platform Admin edit-authority policy; missing row means editable)
 - `customer_access_mode`
 
 ### 2. Tenant Databases (Isolated Contexts)
