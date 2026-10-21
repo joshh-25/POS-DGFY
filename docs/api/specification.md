@@ -6734,7 +6734,8 @@ Update platform-admin capability controls for an active tenant.
 ```
 
 **Validation**
-- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, `store_visibility_merchant_editable`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
+- `downpayment_allowed` is a platform-owned strict boolean persisted in the landlord database. Submit it alone with `reason`; combining it with any other capability returns 422. Its audit row includes actor, reason, timestamp and `changed_fields: [downpayment_allowed]`. Capability reads include it even when the tenant database is not provisioned; missing landlord rows default to false.
+- At least one of `downpayment_allowed`, `ims_enabled`, `pos_enabled`, `storefront_visible`, `store_visibility_merchant_editable`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
 - Boolean fields must be JSON booleans, not strings.
 - `customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
 - `platform_max_customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
@@ -7538,3 +7539,22 @@ newest first, capped at 1000 rows. Filters: `type`, `search` (description or URL
 
 Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: { total, bugs,
 ideas, latest } }`; `latest` is a feedback row or `null`.
+
+
+## Downpayment settings — platform allowance (Phase 524, #2639)
+
+`GET /api/v1/downpayment/settings` retains stored merchant settings and adds
+`platform_downpayment_allowed` (boolean) and `effective_payment_mode`. If allowance is
+missing/false, the effective mode is `full_payment` even when stored `payment_mode`
+is `downpayment_required` or `customer_choice`.
+
+`PUT /api/v1/downpayment/settings` keeps tenant permission checks and fixed writable
+fields. Tenant attempts to write `platform_downpayment_allowed` return 403
+`AUTHORIZATION_FAILED`, reason `DOWNPAYMENT_ALLOWANCE_PLATFORM_CONTROLLED`. A disallowed
+tenant whose merged row would remain non-full receives 403 with reason
+`DOWNPAYMENT_NOT_ALLOWED_BY_PLATFORM`, including partial writes on a revoked row.
+Saving `full_payment` remains allowed. Existing version conflicts still return 409.
+
+The same effective policy governs public catalog, quote, checkout and payment sessions;
+crafted `payment_election: downpayment` cannot bypass it. Cash/COD ownership and existing
+partially paid order settlement/completion/refund terms are unchanged.

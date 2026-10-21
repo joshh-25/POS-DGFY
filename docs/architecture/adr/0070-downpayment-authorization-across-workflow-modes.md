@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-21
-last_reviewed: 2026-09-23
+last_reviewed: 2026-10-21
 review_by: 2027-02-21
 applies_to: retail_storefront, fnb_storefront, payments, checkout
 topic: downpayment_authorization_across_workflow_modes
@@ -126,6 +126,32 @@ here — see ADR 0069 for their text. Only clauses 6 and 7 are replaced; one new
   `[default]` tier.
 
 ## Amendments
+
+### 2026-10-21 — Downpayment requires a DGFY Platform Admin allowance
+
+Clause 6 (`default`) now permits configuration and use by **any tenant that DGFY
+Platform Admin has allowed**, regardless of workflow mode. Clause 7's binding
+reachability and backend enforcement requirements are unchanged.
+
+The landlord `tenant_downpayment_settings.platform_downpayment_allowed` column is
+platform-owned and defaults to false. Existing non-full-payment rows are grandfathered
+once by migration; completed migration reruns must preserve later revocations. Admin
+changes require a reason and commit with their audit row in one landlord transaction.
+Mixed landlord/tenant capability patches are rejected to avoid cross-database writes.
+This narrow policy can fold into #797's entitlement system later.
+
+Revocation preserves stored merchant settings but resolves every new catalog, quote,
+checkout and payment session to full payment. Missing allowance fails closed. Merchant
+writes cannot change the allowance or retain an effective non-full mode while revoked.
+Existing partially paid orders retain their settlement, completion and refund terms;
+Cash/COD remains merchant-owned. POS explains the restriction and preserves the separate
+dine-in policy action. Apply the landlord migration before deploying the API.
+
+Hardening: cover crafted elections, forbidden merchant writes, audit/readback, migration
+reruns, existing-order lifecycle regressions and independent dine-in saves. Run focused
+API/frontend tests, all shared-app builds, architecture, docs and compliance gates.
+STAGING migration/readback and lifecycle proof remain post-merge verification (Phase 524,
+#2639); #1923 retains its separate live persistence re-verification.
 
 ### 2026-09-25 — POS may settle existing unpaid cash dine-in orders
 

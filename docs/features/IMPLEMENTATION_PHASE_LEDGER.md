@@ -30453,3 +30453,62 @@ Not complete. Record after scoped implementation merges and named validation pas
 ### Next phase number
 
 Phase 524. No explicit dependency.
+
+
+## Phase 524 - Platform Admin downpayment allowance (#2639)
+
+### Initiative and release
+
+Premium payment controls, current release.
+
+### Objective and scope
+
+Landlord platform-owned allowance, grandfathering, audited Admin control, fail-closed
+new-checkout and merchant-write enforcement, and explanatory POS Payments UI. Preserve
+Cash/COD ownership and existing partially paid order lifecycle.
+
+### Status
+
+`in_progress` — implementation and local validation; merge is outstanding.
+
+### Dependencies
+
+No phase dependency. Apply landlord migration before API deployment.
+
+### Contract and authority
+
+[ADR 0070](../architecture/adr/0070-downpayment-authorization-across-workflow-modes.md),
+[Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[API](../api/specification.md), [schema](../database/schema.md).
+Implementation: `apps/dgfy-api/src/modules/downpayment`, `modules/tenants`,
+`modules/store`, Admin `TenantManager.jsx`, shared POS `DownpaymentSettingsPanel.jsx`.
+
+### Acceptance and validation evidence
+
+- Focused API tests cover merchant denial, effective checkout, persistence/audit,
+  catalog, payment sessions and existing-order settlement/completion/refund regressions.
+- Frontend tests cover Admin reason-required writes and unavailable POS controls with
+  independent dine-in saving. Build all five affected frontend apps.
+- Passed: 209 API tests (20 suites), 12 Admin tests, 20 POS/message tests; all five
+  frontend builds; JavaScript syntax, architecture, docs/ADR, develop unchanged-version
+  and compliance validation gates. Mocked desktop/mobile Admin and POS browser proof
+  passed with no page/console errors. Pat approved the migration and declaration on 2026-10-21 before commit.
+
+### Completion date
+
+Not complete; record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — apply landlord migration before API; verify grandfathering on existing
+  non-full rows and defaults on new tenants; owner: Promoter; blocks API deployment.
+- [ ] operational — verify Admin allow/revoke/reload/audit and merchant/storefront gating
+  on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] operational — verify partially paid delivery, pickup and dine-in settlement and
+  cancellation after revocation; owner: Verifier; blocks issue acceptance.
+- [ ] operational — retain #1923's separate STAGING persistence re-verification.
+
+### Next phase number
+
+Phase 525. No explicit dependency.

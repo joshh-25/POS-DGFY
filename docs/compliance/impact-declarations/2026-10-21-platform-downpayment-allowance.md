@@ -57,3 +57,6 @@ see Phase 524's post-merge checklist. No deployed environment was changed.
 
 UI delivery: the Admin premium toggle and POS unavailable notice are included with
 their focused regression tests; the separate dine-in save is preserved.
+
+Documentation closure: ADR 0070, API/schema contracts, the downpayment module README
+and Phase 524 ledger record the same allowance and migration-before-API requirement.
