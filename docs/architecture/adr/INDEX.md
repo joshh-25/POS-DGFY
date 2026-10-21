@@ -50,7 +50,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0025 | [POS Application Shells And LAN Host Runtime](0025-pos-application-shells-and-lan-host-runtime.md) | `amended` | pos_application_shells_and_lan_host_runtime | 2026-12-03 | 0 |
 | 0026 | [Browser Session Cookie Authority](0026-browser-session-cookie-authority.md) | `accepted` | browser_session_cookie_authority | 2027-01-08 | 0 |
 | 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `superseded` | paymongo_qrph_platform_split_settlement | 2026-07-30 | 0 |
-| 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-03-14 | 0 |
+| 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `amended` | dgfy_account_company_switching | 2027-04-22 | 0 |
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `amended` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 7 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2027-04-10 | 1 |
@@ -119,7 +119,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0094 | [Outbound SMS delivery contract, log, and PII retention](0094-outbound-sms-delivery-contract-log-and-pii-retention.md) | `amended` | outbound_sms_delivery_contract_and_log | 2027-04-10 | 0 |
 | 0095 | [Offline POS Sync Contract Convergence](0095-offline-pos-sync-contract-convergence.md) | `proposed` | pos_offline_sync_contract | 2027-04-10 | 4 |
 | 0096 | [Contact Inquiry Provider Configuration](0096-contact-inquiry-provider-configuration.md) | `proposed` | contact_inquiry_provider_configuration | 2027-04-14 | 0 |
-| 0097 | [Outbound push-notification delivery contract](0097-outbound-push-notification-delivery-contract.md) | `amended` | outbound_push_notification_delivery_contract | 2027-04-17 | 1 |
+| 0097 | [Outbound push-notification delivery contract](0097-outbound-push-notification-delivery-contract.md) | `amended` | outbound_push_notification_delivery_contract | 2027-04-17 | 3 |
 
 ## Renumbered (collision stubs)
 
