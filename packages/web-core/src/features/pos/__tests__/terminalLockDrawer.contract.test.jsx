@@ -73,7 +73,7 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.getByLabelText('Password')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Show password' })).toBeTruthy();
     expect(screen.getByLabelText(/Remember this device for 30 days/i)).toBeTruthy();
-    expect(screen.getByText(/Assigned cashiers continue directly/i)).toBeTruthy();
+    expect(screen.queryByText(/Assigned cashiers continue directly/i)).toBeNull();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
     expect(screen.queryByText(/Terminal ID/i)).toBeNull();
   });

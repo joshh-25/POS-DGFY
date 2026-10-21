@@ -2,6 +2,7 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import PosBranchSelectorDialog from '../components/PosBranchSelectorDialog.jsx';
 import TerminalOperationsWorkspace from '../components/TerminalOperationsWorkspace.jsx';
 
 const buildLocationsState = () => ({
@@ -352,7 +353,7 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(false);
   });
 
-  it('does not enable a branch open action when the same terminal id belongs to another branch', () => {
+  it('keeps branch selection out of shift controls when terminal ids overlap across branches', () => {
     render(<TerminalOperationsWorkspace {...buildAdminNoShiftProps({
       canAdminBypassShiftPrompt: false,
       terminalRegistry: [
@@ -383,7 +384,8 @@ describe('POS terminal location UX integration', () => {
     })} />);
 
     expect(screen.queryByTestId('pos-prepare-open-shift-2')).toBeNull();
-    expect(screen.getByText(/Select terminal Spacebar Register in Terminal Setup/)).toBeTruthy();
+    expect(screen.queryByText(/Select terminal Spacebar Register in Terminal Setup/)).toBeNull();
+    expect(screen.queryByTestId('pos-branch-directory')).toBeNull();
   });
 
   it('blocks opening a terminal that the confirmed branch monitor reports as occupied', async () => {
@@ -395,6 +397,82 @@ describe('POS terminal location UX integration', () => {
     expect(terminalSelector.textContent).toContain('In use by Cashier One');
     expect(terminalSelector.textContent).not.toContain('Available');
     expect(screen.getByRole('button', { name: 'Open Shift' }).disabled).toBe(true);
+  });
+
+  it('marks occupied branch cards as in use and shows the shift and active cashier', () => {
+    render(
+      <PosBranchSelectorDialog
+        open
+        mode="directory"
+        branchDirectoryState={{
+          loading: false,
+          errorMessage: '',
+          locations: [{
+            location_id: 1,
+            name: 'Main Branch',
+            open_shift_count: 1,
+            is_open: true,
+            can_view: true,
+            terminals: [{
+              terminal_id: 'MAIN-01',
+              label: 'Main Register',
+              status: 'occupied',
+              current_operator: { display_name: 'Active Cashier' },
+              shift: { cashier: { display_name: 'Shift Owner' } }
+            }]
+          }]
+        }}
+        isOnline
+        onOpenChange={vi.fn()}
+        onViewBranch={vi.fn(async () => true)}
+      />
+    );
+
+    const branchCard = screen.getByTestId('pos-branch-selector-card-1');
+
+    expect(branchCard.className).toContain('bg-slate-100/90');
+    expect(within(branchCard).getAllByText('In use')).toHaveLength(2);
+    expect(within(branchCard).getByText('Shift cashier: Shift Owner')).toBeTruthy();
+    expect(within(branchCard).getByText('Active cashier: Active Cashier')).toBeTruthy();
+    expect(within(branchCard).getByRole('button', { name: 'View Branch' }).disabled).toBe(false);
+  });
+
+  it('shows occupied branch cards to an administrator with an active shift', () => {
+    render(
+      <PosBranchSelectorDialog
+        open
+        mode="directory"
+        branchDirectoryState={{
+          loading: false,
+          errorMessage: '',
+          locations: [{
+            location_id: 1,
+            name: 'Main Branch',
+            open_shift_count: 1,
+            is_open: true,
+            can_view: true,
+            terminals: [{
+              terminal_id: 'MAIN-01',
+              label: 'Main Register',
+              status: 'occupied',
+              current_operator: { display_name: 'Active Cashier' },
+              shift: { cashier: { display_name: 'Admin One' } }
+            }]
+          }]
+        }}
+        isOnline
+        onOpenChange={vi.fn()}
+        onViewBranch={vi.fn(async () => true)}
+      />
+    );
+
+    const branchCard = screen.getByTestId('pos-branch-selector-card-1');
+
+    expect(branchCard).toBeTruthy();
+    expect(branchCard.className).toContain('bg-slate-100/90');
+    expect(within(branchCard).getByText('Shift cashier: Admin One')).toBeTruthy();
+    expect(within(branchCard).getByText('Active cashier: Active Cashier')).toBeTruthy();
+    expect(within(branchCard).getByRole('button', { name: 'View Branch' }).disabled).toBe(false);
   });
 
   it('keeps Admin Shift Location subtabs available while an admin shift is open', () => {
@@ -639,8 +717,9 @@ describe('POS terminal location UX integration', () => {
     render(<TerminalOperationsWorkspace {...props} />);
 
     expect(screen.queryByRole('combobox')).toBeNull();
-    expect(screen.getByText('Masu Cafe')).toBeTruthy();
-    expect(screen.getByTestId('pos-view-branch-1')).toBeTruthy();
+    expect(screen.queryByText('Masu Cafe')).toBeNull();
+    expect(screen.queryByTestId('pos-view-branch-1')).toBeNull();
+    expect(screen.queryByTestId('pos-branch-directory')).toBeNull();
     expect(screen.queryByText('View authorized branches and their current cashier/terminal occupancy. Branch viewing is read-only.')).toBeNull();
     expect(screen.getByText('Current Shift Location')).toBeTruthy();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
@@ -674,6 +753,26 @@ describe('POS terminal location UX integration', () => {
 
     expect(screen.queryByLabelText('Viewing Branch')).toBeNull();
     expect(screen.queryByText('Active Orders')).toBeNull();
+  });
+
+  it('shows a cashier their assigned branch, terminal, and identity without branch browsing', () => {
+    render(<TerminalOperationsWorkspace {...buildBaseProps({
+      terminalUser: {
+        role: 'cashier',
+        username: 'Cashier One',
+        email: 'cashier@example.com'
+      },
+      activeTerminalId: 'MAIN-01',
+      canViewBranchLocations: false
+    })} />);
+
+    const currentRegisterCard = screen.getByTestId('pos-current-register-card');
+    expect(within(currentRegisterCard).getByText('Main Branch')).toBeTruthy();
+    expect(within(currentRegisterCard).getByText('Main Register')).toBeTruthy();
+    expect(within(currentRegisterCard).getByText('Cashier One')).toBeTruthy();
+    expect(within(currentRegisterCard).getByText('No active shift')).toBeTruthy();
+    expect(screen.queryByTestId('pos-branch-directory')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'View Branch' })).toBeNull();
   });
 
   it('keeps a rejected shift switch actionable without taking over the destination terminal', async () => {

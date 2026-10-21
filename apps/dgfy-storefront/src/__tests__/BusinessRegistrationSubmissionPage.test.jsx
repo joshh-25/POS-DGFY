@@ -36,4 +36,23 @@ describe('BusinessRegistrationSubmissionPage', () => {
     expect(screen.queryByRole('link', { name: /view registration status/i })).toBeNull();
     expect(screen.getByRole('link', { name: /go to customer dashboard/i })).toBeTruthy();
   });
+
+  it('shows the POS handoff state after automatic approval', () => {
+    render(
+      <MemoryRouter
+        initialEntries={[{
+          pathname: '/business-registration-submission',
+          search: '?application_id=app-42',
+          state: { autoApproved: true }
+        }]}
+      >
+        <BusinessRegistrationSubmissionPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('heading', { name: 'Registration approved!' })).toBeTruthy();
+    expect(screen.getByText(/approved automatically/i)).toBeTruthy();
+    expect(screen.getByText(/POS onboarding link is on the way/i)).toBeTruthy();
+    expect(screen.getByText(/POS onboarding link when setup is ready/i)).toBeTruthy();
+  });
 });

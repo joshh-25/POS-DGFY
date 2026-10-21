@@ -135,14 +135,15 @@ export default function StorefrontBusinessGrowPage({ consentBanner = null }) {
 
   const handleSubmitted = (result) => {
     const registrationData = result || {};
-    if (registrationData.registration_id) {
-      toast.success('Registration submitted for approval.');
-      navigate(buildBusinessRegistrationSubmissionPath(registrationData.registration_id));
-      return;
-    }
-    if (registrationData.application_id) {
-      toast.success('Registration submitted for approval.');
-      navigate(buildBusinessRegistrationSubmissionPath(registrationData.application_id));
+    const statusReference = registrationData.application_id || registrationData.registration_id;
+    if (statusReference) {
+      const autoApproved = registrationData.review_status === 'approved';
+      toast.success(autoApproved
+        ? 'Business approved. POS onboarding is being prepared.'
+        : 'Registration submitted for approval.');
+      navigate(buildBusinessRegistrationSubmissionPath(statusReference, { autoApproved }), {
+        state: autoApproved ? { autoApproved: true } : undefined
+      });
       return;
     }
     if (!registrationData.registration_id && !registrationData.application_id) {

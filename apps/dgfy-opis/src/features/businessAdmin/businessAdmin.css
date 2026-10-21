@@ -1275,7 +1275,6 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-purchase-order-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .business-admin-purchase-order-card .business-admin-purchase-orders-actions { margin-top: 13px; padding-top: 12px; border-top: 1px solid #e7eff3; }
 .business-admin-chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
-.business-admin-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d4e4e9; border-radius: 99px; padding: 5px 9px; color: #3c6472; background: #f5fbfb; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
 .business-admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .business-admin-toolbar .business-admin-search { flex: 1; min-width: 180px; }
 .business-admin-detail-panel { border: 1px solid #cfe3e5; border-radius: 12px; background: #f6fffe; padding: 14px; margin-top: 13px; }

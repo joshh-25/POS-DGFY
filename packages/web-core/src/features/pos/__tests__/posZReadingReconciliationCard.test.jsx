@@ -59,6 +59,15 @@ describe('Daily Sales Check reconciliation layout', () => {
       z_payment_breakdown: [
         { payment_type: 'cash', payment_label: 'Cash', count: 2, amount: 80 },
         { payment_type: 'gcash', payment_label: 'GCash', count: 1, amount: 45.5 }
+      ],
+      report_payment_breakdown: [
+        { payment_method: 'Cash', gross_sales: 80, net_sales: 70 }
+      ],
+      report_voided_refunded_transactions: 1,
+      report_refunds_voids: 10,
+      report_adjustment_amount: 20,
+      report_adjustment_rows: [
+        { adjustment_type: 'cash_refund', tender_type: 'cash', status: 'succeeded', amount: 10 }
       ]
     };
     const options = {
@@ -71,8 +80,15 @@ describe('Daily Sales Check reconciliation layout', () => {
     const printHtml = buildDailySalesCheckPrintHtml(data, options);
 
     expect(csv).toContain('"Payment breakdown (saved Z-reading)",""');
+    expect(csv).toContain('"Cash payments before refunds","₱80.00"');
+    expect(csv).toContain('"Cash refunds / voids","−₱10.00"');
+    expect(csv).toContain('"Net cash sales","₱70.00"');
+    expect(csv).toContain('"Audit adjustment records","₱20.00"');
     expect(csv).toContain('"GCash","₱45.50 · 1 payment"');
     expect(printHtml).toContain('Payment breakdown (saved Z-reading)');
+    expect(printHtml).toContain('Cash refunds / voids');
+    expect(printHtml).toContain('₱70.00');
+    expect(printHtml).toContain('Audit reference; not an additional deduction.');
     expect(printHtml).toContain('GCash');
     expect(printHtml).toContain('₱45.50 · 1 payment');
   });
@@ -140,6 +156,13 @@ describe('Daily Sales Check reconciliation layout', () => {
             { payment_type: 'cash', payment_label: 'Cash', count: 2, amount: 80 },
             { payment_type: 'gcash', payment_label: 'GCash', count: 1, amount: 45.5 }
           ],
+          report_payment_breakdown: [
+            { payment_method: 'Cash', gross_sales: 80, net_sales: 70 }
+          ],
+          report_voided_refunded_transactions: 1,
+          report_adjustment_rows: [
+            { adjustment_type: 'cash_refund', tender_type: 'cash', status: 'succeeded', amount: 10 }
+          ],
           generated_at: '2026-09-29T05:08:00.000Z',
           evaluated_at: '2026-09-29T06:54:00.000Z'
         }}
@@ -163,8 +186,16 @@ describe('Daily Sales Check reconciliation layout', () => {
     expect(markup.indexOf('Z-reading total')).toBeLessThan(markup.indexOf('Difference'));
     expect(markup.indexOf('Difference')).toBeLessThan(markup.indexOf('Report net sales'));
     expect(markup).toContain('Different metric; includes line-level discounts/refunds');
-    expect(markup).toContain('Report refunds / voids');
+    expect(markup).toContain('Refunds / voids deducted from sales');
+    expect(markup).toContain('Void/refund activity');
+    expect(markup).toContain('Cash payments before refunds');
+    expect(markup).toContain('Cash refunds / voids');
+    expect(markup).toContain('Net cash sales');
+    expect(markup).toContain('₱70.00');
+    expect(markup).toContain('Audit adjustment records');
+    expect(markup).toContain('Audit reference; not an additional deduction.');
     expect(markup).toContain('Payment breakdown');
+    expect(markup).toContain('Payment method amounts are before refunds and voids.');
     expect(markup).toContain('From the saved Z-reading snapshot');
     expect(markup).toContain('Cash');
     expect(markup).toContain('GCash');

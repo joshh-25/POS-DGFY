@@ -42,6 +42,7 @@ export const buildCatalogRequestUrl = ({ isServicesMode = false, isLaundryMode =
 };
 
 const BRANCH_SWITCH_FEEDBACK_MIN_DURATION_MS = 300;
+const STOREFRONT_PROFILE_REFRESH_INTERVAL_MS = 30_000;
 
 /**
  * Stateful hook that owns storefront catalog/location loading.
@@ -112,6 +113,8 @@ export function useStoreCatalogLoader({
   // instead of merely ignoring their eventual response via the sequence
   // guard above -- an actual abort rather than a wasted in-flight request.
   const storeLoadAbortControllerRef = useRef(null);
+  const storeProfileRefreshAbortControllerRef = useRef(null);
+  const storeProfileRefreshInFlightRef = useRef(false);
   const branchSwitchFeedbackRef = useRef(null);
   const branchSwitchFeedbackTimerRef = useRef(null);
   const branchSwitchFeedbackSequenceRef = useRef(0);
@@ -438,6 +441,79 @@ export function useStoreCatalogLoader({
     if (!routeSlug) return;
     openStoreBySlug(routeSlug);
   }, [routeSlug, openStoreBySlug]);
+
+  // OPIS and Storefront are separate browser origins, so the Storefront cannot
+  // receive the authenticated POS settings stream or a same-origin browser
+  // event. Revalidate only the public profile while the page is visible. This
+  // updates the business name without reloading the catalog, branch selection,
+  // cart, or checkout state; focus/visibility refreshes cover the common case
+  // while the bounded interval covers a page that remains open in the foreground.
+  const refreshStoreProfile = useCallback(async () => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (!isStorePage || !normalized || storeLoadInFlightRef.current || storeProfileRefreshInFlightRef.current) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+    const abortController = new AbortController();
+    storeProfileRefreshAbortControllerRef.current?.abort();
+    storeProfileRefreshAbortControllerRef.current = abortController;
+    storeProfileRefreshInFlightRef.current = true;
+
+    try {
+      const profile = await requestJson(
+        `/api/v1/storefront/discovery/${encodeURIComponent(normalized)}`,
+        {
+          cache: 'no-store',
+          signal: abortController.signal,
+          skipRequestFailureCapture: true
+        }
+      );
+      const nextName = String(profile?.tenant_name || '').trim();
+      if (!nextName) return;
+
+      setSelectedStore((previous) => {
+        if (!previous || toSlug(previous.slug) !== normalized) return previous;
+        const previousTenantName = String(previous.tenant_name || '').trim();
+        const previousName = String(previous.name || '').trim();
+        if (previousTenantName === nextName && (!previousName || previousName === nextName)) return previous;
+
+        const next = { ...previous, tenant_name: nextName };
+        if (previousName && previousName === previousTenantName) next.name = nextName;
+        return next;
+      });
+    } catch (error) {
+      if (error?.name !== 'AbortError') return;
+    } finally {
+      if (storeProfileRefreshAbortControllerRef.current === abortController) {
+        storeProfileRefreshAbortControllerRef.current = null;
+        storeProfileRefreshInFlightRef.current = false;
+      }
+    }
+  }, [isStorePage, routeSlug, selectedStore?.slug, setSelectedStore]);
+
+  useEffect(() => {
+    if (!isStorePage || !selectedStore?.slug || typeof window === 'undefined') return undefined;
+
+    const refreshWhenVisible = () => {
+      void refreshStoreProfile();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden') refreshWhenVisible();
+    };
+
+    const intervalId = window.setInterval(refreshWhenVisible, STOREFRONT_PROFILE_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      storeProfileRefreshAbortControllerRef.current?.abort();
+      storeProfileRefreshAbortControllerRef.current = null;
+      storeProfileRefreshInFlightRef.current = false;
+    };
+  }, [isStorePage, refreshStoreProfile, selectedStore?.slug]);
 
   useEffect(() => {
     let cancelled = false;

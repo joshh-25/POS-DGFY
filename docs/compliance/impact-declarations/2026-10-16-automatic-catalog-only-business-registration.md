@@ -36,6 +36,7 @@ controls are enabled.
 - Registration status and transactional email delivery containing the POS onboarding link.
 - Tenant-local `tenant_pos_enabled=false` and `store_is_visible=false` defaults.
 - POS terminal routing/sidebar and backend capability enforcement.
+- POS branch/terminal selection and shift/resume workflows, including branch-aware admin read-only views.
 - OPIS catalog-only navigation and existing Platform Admin capability controls.
 
 ## Compliance Preconditions
@@ -61,6 +62,7 @@ controls are enabled.
 - Focused backend registration, email-template, capability-bootstrap, and ecosystem tests: 20 passed.
 - Focused OPIS catalog-only navigation tests: 16 passed.
 - Focused POS catalog-only sidebar and tenant-capability parsing tests: 2 passed.
+- Affected shared POS branch, shift, catalog, and Z-reading suite: 14 files and 260 tests passed.
 - POS, OPIS, Storefront, and IMS production builds completed successfully.
 - Landlord integration execution remains pending local schema repair; the current test database
   reports `Unknown column 'is_demo' in 'field list'` before lifecycle assertions can run.

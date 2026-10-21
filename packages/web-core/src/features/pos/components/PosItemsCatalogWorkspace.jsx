@@ -12,6 +12,8 @@ const PosServiceOptionsWorkspace = lazyWithChunkRetry(() => import('./PosService
 export default function ItemsCatalogWorkspace({
   itemsWorkspaceComponent: ItemsWorkspaceComponent,
   canViewPos = false,
+  catalogOnlyAccess = false,
+  effectiveCapabilities = [],
   canManageCategories = false,
   canManageServiceCatalog = false,
   canManageServiceOptions = false,
@@ -27,20 +29,21 @@ export default function ItemsCatalogWorkspace({
   sectionId,
   ...itemsWorkspaceProps
 }) {
+  const canViewCatalog = canViewPos || catalogOnlyAccess;
   const availableTabs = useMemo(() => [
-    ...(canViewPos ? [{ id: 'items', label: 'Items', icon: ClipboardList }] : []),
+    ...(canViewCatalog ? [{ id: 'items', label: 'Items', icon: ClipboardList }] : []),
     ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : []),
-    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && canManageServiceOptions
+    ...(!catalogOnlyAccess && normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && canManageServiceOptions
       ? [{ id: 'service-options', label: 'Service add-ons', icon: SlidersHorizontal }]
       : []),
-    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'fnb' && canViewFnbModifiers
+    ...(!catalogOnlyAccess && normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'fnb' && canViewFnbModifiers
       ? [{ id: 'fnb-modifiers', label: 'Item Options & Modifiers', icon: ListPlus }]
       : []),
-    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && Object.values(serviceOperationsPermissions).some(Boolean)
+    ...(!catalogOnlyAccess && normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && Object.values(serviceOperationsPermissions).some(Boolean)
       ? [{ id: 'service-operations', label: 'Service operations', icon: CalendarDays }]
       : [])
-  ], [canManageCategories, canManageServiceOptions, canViewFnbModifiers, canViewPos, itemsWorkspaceProps.workflowMode, serviceOperationsPermissions]);
-  const defaultTab = canViewPos ? 'items' : 'categories';
+  ], [canManageCategories, canManageServiceOptions, canViewCatalog, canViewFnbModifiers, catalogOnlyAccess, itemsWorkspaceProps.workflowMode, serviceOperationsPermissions]);
+  const defaultTab = canViewCatalog ? 'items' : 'categories';
   const [selectedTab, setSelectedTab] = useState(defaultTab);
   const [renderedTab, setRenderedTab] = useState(defaultTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -240,6 +243,8 @@ export default function ItemsCatalogWorkspace({
           <ItemsWorkspaceComponent
             {...itemsWorkspaceProps}
             canViewPos={canViewPos}
+            catalogOnlyAccess={catalogOnlyAccess}
+            effectiveCapabilities={effectiveCapabilities}
             canManageCategories={canManageCategories}
             canManageServiceCatalog={canManageServiceCatalog}
             canManageFnbModifiers={canManageFnbModifiers}

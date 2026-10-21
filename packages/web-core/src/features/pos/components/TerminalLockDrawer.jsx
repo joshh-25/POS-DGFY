@@ -297,15 +297,15 @@ export default function TerminalLockDrawer({
               </p>
             </div>
           ) : null}
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] leading-5 text-[#64748B]">
-            {legacyCompanySelectionActive
-              ? 'Continue to POS with the selected company.'
-              : (companySelectionActive
-                  ? (cashierCompanySelection
-                      ? 'POS will load this company’s registered terminals and cashier shift.'
-                      : 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.')
-                  : 'Owners can sign in with a DGFY account. Assigned cashiers continue directly to their registered terminal and shift.')}
-          </div>
+          {legacyCompanySelectionActive || companySelectionActive ? (
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] leading-5 text-[#64748B]">
+              {legacyCompanySelectionActive
+                ? 'Continue to POS with the selected company.'
+                : (cashierCompanySelection
+                    ? 'POS will load this company’s registered terminals and cashier shift.'
+                    : 'After company selection, POS will continue to onboarding or terminal unlock based on company setup.')}
+            </div>
+          ) : null}
           {legacyCompanySelectionActive && onLegacyCompanySelectionOpenChange ? (
             <Button
               type="button"

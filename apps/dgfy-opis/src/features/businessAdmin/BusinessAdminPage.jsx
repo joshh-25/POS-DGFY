@@ -2462,13 +2462,6 @@ function BusinessAdminSettingsEditor({
 
     return (
         <div data-testid={`business-admin-settings-editor-${definition?.key || 'unknown'}`}>
-            {definition?.key === 'profile' ? (
-                <CanonicalBusinessNameEditor
-                    currentName={bootstrap?.business?.name || ''}
-                    canEdit={canEditCanonicalBusinessName}
-                    onSaved={handleCanonicalBusinessNameSaved}
-                />
-            ) : null}
             <SettingsWorkspace
                 terminalUser={editorUser}
                 terminalMeta={{ pettyCashAmount: 0, pettyCashSymbol: 'PHP', locationBindingReadiness: null }}
@@ -2483,6 +2476,13 @@ function BusinessAdminSettingsEditor({
                 showTerminalOnlyControls={false}
                 settingsSurface="business-admin"
                 editorSection={definition?.key}
+                profileSettingsHeader={definition?.key === 'profile' ? (
+                    <CanonicalBusinessNameEditor
+                        currentName={bootstrap?.business?.name || ''}
+                        canEdit={canEditCanonicalBusinessName}
+                        onSaved={handleCanonicalBusinessNameSaved}
+                    />
+                ) : null}
                 onRefreshTerminalUser={handleReload}
                 onRefreshTerminalMeta={async () => {}}
                 onPosSetupSaved={handleReload}
@@ -3159,6 +3159,7 @@ export default function BusinessAdminPage() {
         [settingsSection]
     );
     const branches = useMemo(() => bootstrap?.business?.branches || [], [bootstrap]);
+    const catalogOnlyAccess = bootstrap?.access?.tenant_capabilities?.pos_enabled === false;
 
     useEffect(() => {
         const requestedBranchId = String(new URLSearchParams(location.search).get('branch_id') || '').trim();
@@ -3194,6 +3195,11 @@ export default function BusinessAdminPage() {
         navigate(target, options);
         return true;
     }, [navigate, settingsDirty]);
+
+    useEffect(() => {
+        if (!bootstrap || !catalogOnlyAccess || activeSection === 'catalog') return;
+        navigateBusinessAdmin(buildBackOfficeModulePath(rootPath, 'catalog'), { replace: true });
+    }, [activeSection, bootstrap, catalogOnlyAccess, navigateBusinessAdmin, rootPath]);
 
     const handleOrderDetailClose = useCallback(() => {
         setSelectedOrder(null);
@@ -3425,6 +3431,13 @@ export default function BusinessAdminPage() {
         if (!bootstrap) return;
         const requestId = requestRef.current + 1;
         requestRef.current = requestId;
+        if (catalogOnlyAccess && activeSection !== 'catalog') {
+            setSectionData(null);
+            setLoadedSection(activeSection);
+            setSectionError('');
+            setSectionLoading(false);
+            return;
+        }
         if (MIGRATED_BACKOFFICE_MODULE_KEYS.has(activeSection)) {
             setSectionData(null);
             setLoadedSection(activeSection);
@@ -3513,7 +3526,7 @@ export default function BusinessAdminPage() {
         } finally {
             if (requestRef.current === requestId) setSectionLoading(false);
         }
-    }, [activeSection, bootstrap, cashSummaryPage, expensesPage, inventoryPage, ordersPage, params, branchId]);
+    }, [activeSection, bootstrap, cashSummaryPage, catalogOnlyAccess, expensesPage, inventoryPage, ordersPage, params, branchId]);
 
     useEffect(() => {
         setSelectedOrder(null);
@@ -3888,7 +3901,7 @@ export default function BusinessAdminPage() {
                 {mobileNavOpen ? <button type="button" className="business-admin-mobile-sidebar-close" data-testid="business-admin-mobile-sidebar-close" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}><X size={16} /> Close menu</button> : null}
                 {BACKOFFICE_NAV_GROUPS.map((group) => {
                     const items = group.items.filter((item) => {
-                        if (!isBusinessAdminNavigationVisible(item)) return false;
+                        if (!isBusinessAdminNavigationVisible(item, { catalogOnlyAccess })) return false;
                         if (item.key === 'settings' && visibleSettingsSections.length === 0) return false;
                         if (!getBusinessAdminWorkflowPageName(item.key)) return true;
                         if (!workflowVisibilityReady) return false;
@@ -3950,10 +3963,6 @@ export default function BusinessAdminPage() {
                                 </select>
                             </div>
                         ) : null}
-                        {BUSINESS_ADMIN_UI_VISIBILITY.showAdminChip ? <span className="business-admin-chip"><UserRound size={13} /> {bootstrap.user?.username || bootstrap.user?.email || 'User'}</span> : null}
-                        {BUSINESS_ADMIN_UI_VISIBILITY.showRefresh ? <button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button> : null}
-                        {BUSINESS_ADMIN_UI_VISIBILITY.showSwitchLocation ? <GuardedLink href={buildPosTerminalUrl({ path: '/terminal', search: '?view=shift_controls' })} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button"><MapPin size={14} /> Switch location</GuardedLink> : null}
-                        {BUSINESS_ADMIN_UI_VISIBILITY.showPosTerminal ? <GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink> : null}
                     </div>
                 </div>
                 {showDateFilters ? (

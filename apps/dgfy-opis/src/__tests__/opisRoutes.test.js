@@ -119,20 +119,24 @@ describe('OPIS Back Office manifest', () => {
 describe('OPIS shell visibility', () => {
   it('hides only the requested navigation and header controls', () => {
     expect(BUSINESS_ADMIN_UI_VISIBILITY.hiddenNavigationKeys).toEqual(['company', 'storefront', 'onboarding']);
-    expect(BUSINESS_ADMIN_UI_VISIBILITY.showAdminChip).toBe(false);
-    expect(BUSINESS_ADMIN_UI_VISIBILITY.showRefresh).toBe(false);
-    expect(BUSINESS_ADMIN_UI_VISIBILITY.showSwitchLocation).toBe(false);
-    expect(BUSINESS_ADMIN_UI_VISIBILITY.showPosTerminal).toBe(false);
+    expect(BUSINESS_ADMIN_UI_VISIBILITY).not.toHaveProperty('showAdminChip');
+    expect(BUSINESS_ADMIN_UI_VISIBILITY).not.toHaveProperty('showRefresh');
+    expect(BUSINESS_ADMIN_UI_VISIBILITY).not.toHaveProperty('showSwitchLocation');
+    expect(BUSINESS_ADMIN_UI_VISIBILITY).not.toHaveProperty('showPosTerminal');
     expect(isBusinessAdminNavigationVisible({ key: 'company' })).toBe(false);
     expect(isBusinessAdminNavigationVisible({ key: 'storefront' })).toBe(false);
     expect(isBusinessAdminNavigationVisible({ key: 'onboarding' })).toBe(false);
     expect(isBusinessAdminNavigationVisible({ key: 'qr-codes' })).toBe(true);
     expect(isBusinessAdminNavigationVisible({ key: 'settings' })).toBe(true);
-    expect(businessAdminPageSource).toContain('isBusinessAdminNavigationVisible(item)');
-    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showAdminChip');
-    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showRefresh');
-    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showSwitchLocation');
-    expect(businessAdminPageSource).toContain('BUSINESS_ADMIN_UI_VISIBILITY.showPosTerminal');
+    expect(isBusinessAdminNavigationVisible({ key: 'catalog' }, { catalogOnlyAccess: true })).toBe(true);
+    expect(isBusinessAdminNavigationVisible({ key: 'orders' }, { catalogOnlyAccess: true })).toBe(false);
+    expect(businessAdminPageSource).toContain('isBusinessAdminNavigationVisible(item, { catalogOnlyAccess })');
+    expect(businessAdminPageSource).not.toContain('BUSINESS_ADMIN_UI_VISIBILITY.showAdminChip');
+    expect(businessAdminPageSource).not.toContain('BUSINESS_ADMIN_UI_VISIBILITY.showRefresh');
+    expect(businessAdminPageSource).not.toContain('BUSINESS_ADMIN_UI_VISIBILITY.showSwitchLocation');
+    expect(businessAdminPageSource).not.toContain('BUSINESS_ADMIN_UI_VISIBILITY.showPosTerminal');
+    expect(businessAdminPageSource).not.toContain('Switch location');
+    expect(businessAdminPageSource).not.toContain('>POS terminal</');
   });
 });
 
