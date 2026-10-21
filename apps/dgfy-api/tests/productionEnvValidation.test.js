@@ -169,7 +169,7 @@ describe('production environment validation', () => {
         DGLAUNDRY_INTEGRATION_ENABLED: 'true',
         DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
         DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc',
-        DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback'
+        DGFY_DGLAUNDRY_REDIRECT_URI: 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback'
       }
     });
     expect(stagingWithProdCallback.errors).toContain(
@@ -199,10 +199,11 @@ describe('production environment validation', () => {
       }
     });
     expect(productionWithStagingCallback.errors).toContain(
-      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://laundry.surebizcorp.com/api/v1/session/dgfy/callback for production'
+      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback for production'
     );
 
-    const productionWithProdCallback = validateProductionEnv({
+    // #2513: the old Surebiz host is no longer a valid production callback.
+    const productionWithLegacyCallback = validateProductionEnv({
       env: {
         ...baseEnv,
         DGLAUNDRY_INTEGRATION_ENABLED: 'true',
@@ -211,8 +212,21 @@ describe('production environment validation', () => {
         DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback'
       }
     });
+    expect(productionWithLegacyCallback.errors).toContain(
+      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback for production'
+    );
+
+    const productionWithProdCallback = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'production',
+        DGFY_OIDC_ISSUER: 'https://api.dgfy.ph/oidc',
+        DGFY_DGLAUNDRY_REDIRECT_URI: 'https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback'
+      }
+    });
     expect(productionWithProdCallback.errors).not.toContain(
-      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://laundry.surebizcorp.com/api/v1/session/dgfy/callback for production'
+      'DGFY_DGLAUNDRY_REDIRECT_URI must be https://dglaundry.dgfy.ph/api/v1/session/dgfy/callback for production'
     );
   });
 
@@ -644,5 +658,25 @@ describe('production environment validation', () => {
     });
 
     expect(configured.ok).toBe(true);
+  });
+
+  describe('DEPLOY_ENV_LABEL (push diagnostics environment banner)', () => {
+    const missingMessage = 'DEPLOY_ENV_LABEL is empty; the Platform Admin push diagnostics page cannot tell staging from production and will show "unknown"';
+
+    it('warns, without failing, when the label is missing', () => {
+      const result = validateProductionEnv({ env: { ...baseEnv } });
+      expect(result.warnings).toContain(missingMessage);
+      expect(result.errors).toEqual(expect.not.arrayContaining([expect.stringContaining('DEPLOY_ENV_LABEL')]));
+    });
+
+    it.each(['staging', 'production', 'Stage-2'])('accepts %s without a warning', (label) => {
+      const result = validateProductionEnv({ env: { ...baseEnv, DEPLOY_ENV_LABEL: label } });
+      expect(result.warnings.filter((warning) => warning.includes('DEPLOY_ENV_LABEL'))).toEqual([]);
+    });
+
+    it('warns about a malformed label', () => {
+      const result = validateProductionEnv({ env: { ...baseEnv, DEPLOY_ENV_LABEL: 'prod env!' } });
+      expect(result.warnings).toContain('DEPLOY_ENV_LABEL must be 1-30 letters, digits, "_" or "-"; push diagnostics will show "unknown"');
+    });
   });
 });

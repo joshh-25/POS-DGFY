@@ -70,11 +70,32 @@ describe('DGLaundry provider foundation use cases', () => {
         await expect(useCases.launch({ dgfyAccount: account, companyId: 'company-a' })).rejects.toMatchObject({ statusCode: 403 });
     });
 
-    it('returns the fixed DGLaundry operations origin and records the launch audit', async () => {
-        const repository = makeRepository();
-        const useCases = buildDgfyLaundryProviderUseCases({ repository });
-        await expect(useCases.launch({ dgfyAccount: account, companyId: 'company-a', branchId: 'branch-a' })).resolves.toMatchObject({ url: 'https://laundry.surebizcorp.com', company: { company_id: 'company-a' } });
-        expect(repository.audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'laundry_operations_launch', companyId: 'company-a' }));
+    describe('launch origin comes from configuration (#2513)', () => {
+        const savedBaseUrl = process.env.DGLAUNDRY_PARTNER_BASE_URL;
+        afterEach(() => {
+            if (savedBaseUrl === undefined) delete process.env.DGLAUNDRY_PARTNER_BASE_URL;
+            else process.env.DGLAUNDRY_PARTNER_BASE_URL = savedBaseUrl;
+        });
+
+        it.each([
+            ['https://dglaundry.dgfy.ph', 'https://dglaundry.dgfy.ph'],
+            ['https://dglaundry.stage.dgfy.ph/', 'https://dglaundry.stage.dgfy.ph']
+        ])('returns the configured DGLaundry origin for %s and records the launch audit', async (configured, expected) => {
+            process.env.DGLAUNDRY_PARTNER_BASE_URL = configured;
+            const repository = makeRepository();
+            const useCases = buildDgfyLaundryProviderUseCases({ repository });
+            await expect(useCases.launch({ dgfyAccount: account, companyId: 'company-a', branchId: 'branch-a' })).resolves.toMatchObject({ url: expected, company: { company_id: 'company-a' } });
+            expect(repository.audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'laundry_operations_launch', companyId: 'company-a' }));
+        });
+
+        it.each([undefined, '', 'not a url'])('refuses to launch, without auditing, when the origin is %p', async (configured) => {
+            if (configured === undefined) delete process.env.DGLAUNDRY_PARTNER_BASE_URL;
+            else process.env.DGLAUNDRY_PARTNER_BASE_URL = configured;
+            const repository = makeRepository();
+            const useCases = buildDgfyLaundryProviderUseCases({ repository });
+            await expect(useCases.launch({ dgfyAccount: account, companyId: 'company-a', branchId: 'branch-a' })).rejects.toMatchObject({ statusCode: 503 });
+            expect(repository.audit).not.toHaveBeenCalled();
+        });
     });
 
     it('returns an issuer+subject session context with explicit location mappings', async () => {

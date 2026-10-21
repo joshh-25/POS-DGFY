@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { hasCustomerName, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
+import { hasCustomerName, hasDeliveryAddressDetails, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
 import { applyDeliveryAddressFieldChange, buildSearchSelectedPin } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { RetailOrderAccountStep } from '../components/RetailOrderAccountStep.jsx';
 import { RetailOrderFulfillmentStep } from '../components/RetailOrderFulfillmentStep.jsx';
@@ -8,6 +8,7 @@ import { RetailOrderMobileSummaryPanel } from '../components/RetailOrderMobileSu
 import { RetailOrderPaymentStep } from '../components/RetailOrderPaymentStep.jsx';
 import { RetailOrderStoreHeader } from '../components/RetailOrderStoreHeader.jsx';
 import { RetailOrderSummaryContent } from '../components/RetailOrderSummaryContent.jsx';
+import { useDeliveryAddressDetails } from '../../../../shared/hooks/useDeliveryAddressDetails.js';
 import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
 import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
@@ -142,6 +143,8 @@ export function RetailOrderPage({
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
+  const [deliveryAddressDetails] = useDeliveryAddressDetails();
+  const [addressDetailsAttempted, setAddressDetailsAttempted] = useState(false);
 
   // Phase 142 (#823): unlike Simple (simpleOrderStep is hoisted into StorefrontApp.jsx so its
   // own PayMongo-return handler can jump it directly), Retail's `step` is local to this
@@ -158,6 +161,8 @@ export function RetailOrderPage({
   const storefrontClosedNotice = storefrontClosedByHours
     ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' })
     : null;
+  // #2594: a delivery cannot leave the fulfillment step without the customer's house/unit details.
+  const retailFulfillmentStepComplete = !isDeliveryOrder || hasDeliveryAddressDetails(deliveryAddressDetails);
   const retailCustomerStepComplete = hasCustomerName(customerName)
     && hasPrimaryContact({ phone: customerPhone, email: customerEmail })
     && guestCheckoutOtpVerified;
@@ -243,6 +248,11 @@ export function RetailOrderPage({
               setStep(1);
               return;
             }
+            if (nextStep > 2 && !retailFulfillmentStepComplete) {
+              setAddressDetailsAttempted(true);
+              setStep(2);
+              return;
+            }
             setStep(nextStep);
           }}
         />
@@ -315,7 +325,14 @@ export function RetailOrderPage({
               onBack={() => setStep(1)}
               onCloseExpandedMap={() => setShowExpandedDeliveryMap(false)}
               onCloseMobileAddressModal={() => setShowMobileAddressModal(false)}
-              onContinue={() => setStep(3)}
+              onContinue={() => {
+                if (!retailFulfillmentStepComplete) {
+                  setAddressDetailsAttempted(true);
+                  return;
+                }
+                setStep(3);
+              }}
+              showAddressDetailsError={addressDetailsAttempted}
               onCustomerAddressChange={handleDeliveryAddressChange}
               onOpenExpandedMap={() => setShowExpandedDeliveryMap(true)}
               onOpenMobileAddressList={() => setShowMobileAddressModal(true)}

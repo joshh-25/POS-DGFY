@@ -10,12 +10,15 @@ import {
   buildGetCommercePaymentSessionUseCase,
   buildGetCommerceSettlementReportUseCase,
   buildListCommercePaymentSessionsUseCase,
+  buildListCommercePaymentRefundsUseCase,
   buildReconcileCommercePaymentSessionUseCase,
   buildListTenantPaymentAccountsUseCase,
   buildOperateTenantPayMongoChildAccountUseCase,
   buildRetryCommercePaymentFinalizationUseCase,
+  buildRetryCommercePaymentRefundUseCase,
   buildUpsertTenantPaymentAccountUseCase
 } from './usecases/commercePaymentAdminUseCases.js';
+import { buildReconcilePendingCommerceRefundsUseCase } from './usecases/reconcilePendingCommerceRefundsUseCase.js';
 import { buildGetPayMongoSandboxCertificationUseCase } from './usecases/paymongoSandboxCertificationUseCase.js';
 import { buildHandleCommerceOrderLifecycleUseCase } from './usecases/commerceOrderLifecycleUseCase.js';
 import { recordTenantRevenueOrderFulfillmentUseCase } from '../tenantRevenue/index.js';
@@ -33,6 +36,10 @@ export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceW
 });
 
 export const listCommercePaymentSessionsUseCase = buildListCommercePaymentSessionsUseCase({
+  commercePaymentRepository
+});
+
+export const listCommercePaymentRefundsUseCase = buildListCommercePaymentRefundsUseCase({
   commercePaymentRepository
 });
 
@@ -62,7 +69,23 @@ export const confirmCommercePaymentSessionSandboxUseCase = buildConfirmCommerceP
 
 export const createCommercePaymentRefundUseCase = buildCreateCommercePaymentRefundUseCase({
   commercePaymentRepository,
-  paymongoService
+  paymongoService,
+  raiseAlert: raiseOperationalAlert,
+  logger
+});
+
+export const retryCommercePaymentRefundUseCase = buildRetryCommercePaymentRefundUseCase({
+  commercePaymentRepository,
+  paymongoService,
+  createCommercePaymentRefundUseCase
+});
+
+export const reconcilePendingCommerceRefundsUseCase = buildReconcilePendingCommerceRefundsUseCase({
+  commercePaymentRepository,
+  paymongoService,
+  raiseAlert: raiseOperationalAlert,
+  logger,
+  pendingAlertHours: () => Number.parseInt(process.env.COMMERCE_REFUND_PENDING_ALERT_HOURS || '24', 10) || 24
 });
 
 export const handleCommerceOrderLifecycleUseCase = buildHandleCommerceOrderLifecycleUseCase({

@@ -19,6 +19,8 @@
 - [Account Phone Contact Addendum (2026-05-15)](#account-phone-contact-addendum-2026-05-15)
 - [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
+- [Outbound Push Delivery Addendum (2026-10-17)](#outbound-push-delivery-addendum-2026-10-17)
+- [Feedback Submissions Addendum (2026-10-20)](#feedback-submissions-addendum-2026-10-20)
 - [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
 - [POS Parked Sale Foundation (2026-08-12)](#pos-parked-sale-foundation-2026-08-12)
 
@@ -307,13 +309,34 @@ Landlord account field update:
 Landlord tables:
 
 1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type (`order`, `service_booking`, `hospitality_booking`, or `fnb_order`), public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
-2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag.
+2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag. Nullable `address_details` (VARCHAR 255, migration `20261019000002-add-dgfy-customer-address-details.cjs`, #2594) holds the customer's own house number, Blk/Lot, unit or building, kept apart from the geocoded `address_line`; rows saved before it existed are `NULL`.
 3. `dgfy_customer_reviews` stores account-gated typed reviews. Reviews are purchase-gated by paid or completed DGFY customer activity, start pending approval, and identify `target_type`/`target_id` for product, service, Hospitality booking, F&B order, or F&B item review targets.
 4. `dgfy_customer_notifications` stores account-scoped notification rows for DGFY customer activity updates. Rows include DGFY account, optional tenant/activity linkage, public reference, idempotent `event_key`, notification type, title/body, status, `read_at`, timestamps, and indexes for account/time and unread account reads.
 5. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
 6. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
 7. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
 8. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`, `delete`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
+
+## Outbound Push Delivery Addendum (2026-10-17; staff-owner extension 2026-10-18)
+
+Migration: `20261017000001-create-push-device-tokens-and-delivery-logs.cjs`.
+
+Landlord tables:
+
+1. `push_device_tokens` stores the Expo token, platform, app and brand labels, exactly one account, guest-order, or staff-user owner, last-seen time, and revocation metadata. MySQL enforces owner exclusivity with a CHECK constraint and at most one active row per case-sensitive token with a generated active-token key. Application registration also validates the owner and serializes the five-device guest cap under the landlord tenant row. Staff owners use the tenant UUID plus tenant `user_id`, with index `idx_push_device_tokens_staff_active`.
+2. `push_delivery_logs` stores a unique event/token dedupe key, token HMAC, purpose, provider outcome, ticket/receipt metadata, safe error code, optional tenant and public order reference, and timestamps. It has no raw token or message body and no foreign key to a tenant-owned order or token row.
+3. `push_dispatch_events` (#2579) records one row per dispatch decision, including the skipped and suppressed reasons that never reach `push_delivery_logs` (`no_active_tokens`, `status_not_notifiable`, `token_limit`, ...): purpose, outcome (`dispatched|skipped|suppressed|failed`), a fixed reason code, optional tenant and public order reference, and the eligible-token count. It holds no token, owner identifier or message content, and follows the 30-day delivery-log retention.
+4. `push_diagnostic_devices` (#2579) holds operator-enrolled diagnostic devices separately from customer registrations: raw Expo token (never returned by any API; same case-sensitive, one-active-row-per-token rules as `push_device_tokens`), platform, app, brand, optional label, the enrolling Platform Admin id, and revocation metadata. `push_diagnostic_enrollment_codes` holds the keyed hash of each single-use, 10-minute enrollment code, its issuing admin, and the consuming device. Test sends write `push_delivery_logs` rows with purpose `diagnostic_test` whose `token_id` points at a diagnostic device (the log has no foreign key to a token table).
+
+Migration `20261018000001-add-staff-push-token-owners.cjs` adds nullable `staff_tenant_id` and
+`staff_user_id` columns, the staff-owner index, and the staff branch of the owner CHECK constraint.
+Rolling it back removes staff-owned token bindings because they have no equivalent owner in the
+pre-staff schema; customer token bindings and delivery history remain intact.
+
+The API revokes guest bindings after a final order-status push, when an order is linked to a
+Storefront customer, or after seven days. Account and staff tokens inactive for 90 days are revoked.
+Revoked token rows and delivery logs are purged after 30 days by default. `PUSH_TOKEN_HASH_SECRET`
+must be provisioned in production before push-token hashes can be recorded.
 
 Operational contract:
 
@@ -964,6 +987,7 @@ CREATE TABLE tenant_locations (
     location_id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
     address_line TEXT NOT NULL,
+    address_details VARCHAR(255) NULL, -- #2595: merchant's street no./unit/floor/building; address_line holds `<details>, <location>`
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     delivery_radius_km DECIMAL(5, 2) NOT NULL DEFAULT 5,
@@ -2114,3 +2138,30 @@ The base tables are created by
 `20260722000001-create-storefront-custom-domains.cjs`; canonical/alias lifecycle
 columns and the operation queue are added by
 `20260723000001-expand-storefront-custom-domain-lifecycle.cjs`.
+
+## Feedback Submissions Addendum (2026-10-20)
+
+Migration: `20261020000001-create-feedback-submissions.cjs` (#561, Phase 519).
+
+`feedback_submissions` is a landlord table so Platform Admin can read across tenants and a
+future guest submission can exist without tenant context. `id` is a UUID primary key. The row
+stores `type`, `description`, `status` (`new`, `triaged`, `accepted`, `rejected`, `resolved`),
+`submitted_at`, review fields (`reviewed_at`, `reviewed_by_admin_id`, `review_note`,
+`linked_issue_url`), `surface`, `client_platform`, `app_version`, `page_url`, and bounded
+`context_json`. Origin is split so native Storefront (`storefront` + `ios`/`android`) remains
+distinct from web Storefront (`storefront` + `web`).
+
+Nullable `tenant_id` has no foreign key; `tenant_name` is a snapshot. Identity is represented by
+`submitter_type` (`tenant_user`, `dgfy_account`, `store_customer`, `guest`, `legacy`), nullable `tenant_user_id` and
+`dgfy_account_id`, `submitter_name`, `submitter_email`, and `contact_verified`. Contact supplied
+by a guest is never marked verified. An unlinked store customer is identified by the tenant and
+stored email; its customer ID has no column. A linked store customer uses `dgfy_account_id` and
+`submitter_type: dgfy_account` but retains `contact_verified: false`. Nullable `subject_type`, `subject_ref`, and
+`subject_label` reserve #596's selector shape without exposing a write contract yet.
+`correlation_id` matches the feedback engagement event request ID when that event is emitted.
+
+Indexes cover `submitted_at`, tenant/time, type/time, status/time, origin, and correlation. The
+nullable unique `legacy_source_hash` supports an idempotent import of the former host log.
+`created_at` and `updated_at` are standard timestamps. The application controls allowlists for
+client-supplied `type`, `surface`, and `client_platform`; only triage `status` is an SQL enum.
+The importer preserves the original log, reports malformed lines, and defaults to dry-run.

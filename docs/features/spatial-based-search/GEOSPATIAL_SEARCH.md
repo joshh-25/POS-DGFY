@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: engineering
-last_reviewed: 2026-07-23
+last_reviewed: 2026-10-19
 applies_to: geo_search
 topic: geospatial_item_search
 ---
@@ -117,6 +117,7 @@ Index: `FULLTEXT ft_geo_items_name (name, normalized_name)`.
 | `id` | BIGINT UNSIGNED PK | Auto-increment |
 | `tenant_id` | UUID NOT NULL | Tenant identifier used by discovery joins |
 | `location_id` | BIGINT UNSIGNED NULL | `NULL` means all locations for the tenant |
+| `location_key` | BIGINT UNSIGNED generated, stored, NOT NULL | `IFNULL(location_id, 0)`; provides a non-NULL value for tenant-wide uniqueness while `location_id` remains NULL |
 | `item_id` | BIGINT UNSIGNED NOT NULL | FK to `geo_items` |
 | `sku_code` | VARCHAR(100) NULL | Tenant-supplied SKU retained from inventory push |
 | `price` | DECIMAL(12,2) NULL | Selling price snapshot |
@@ -124,7 +125,7 @@ Index: `FULLTEXT ft_geo_items_name (name, normalized_name)`.
 | `in_stock` | TINYINT(1) DEFAULT 1 | Search stock flag |
 | `last_updated_at` | DATETIME | Last inventory snapshot time |
 
-Unique key: `(tenant_id, location_id, item_id)`.
+Unique key: `uk_geo_store_items_tenant_loc_key_item` on `(tenant_id, location_key, item_id)`. `location_key` is generated from `location_id` (`0` for tenant-wide rows; real location IDs start at 1), so repeated tenant-wide snapshots collide while readers continue to use `location_id IS NULL` for the tenant-wide scope.
 
 ### `geo_item_aliases`
 

@@ -314,14 +314,23 @@ export const sentryRequestContext = (req, _res, next) => {
     Sentry.setTag('surface', req.headers?.['x-dgfy-surface'] || req.headers?.['x-app-surface'] || null);
     Sentry.setUser(req.user?.user_id || req.user?.id ? { id: String(req.user.user_id || req.user.id) } : null);
 
-    if (req.tenant?.id || req.tenantId) {
-      Sentry.setContext('tenant', {
-        id: String(req.tenant?.id || req.tenantId)
-      });
-    }
-
     return next();
   });
+};
+
+// Tenant resolution happens downstream of sentryRequestContext. Calling this
+// from tenantHandler therefore tags the request's isolation scope before a
+// tenant DB connection attempt can fail.
+export const setSentryTenantTag = (tenantId) => {
+  if (!initialized) return;
+  const normalizedTenantId = String(tenantId ?? '').trim();
+  if (!normalizedTenantId || normalizedTenantId === 'default') return;
+
+  try {
+    Sentry.setTag('tenant_id', normalizedTenantId);
+  } catch {
+    // Diagnostic metadata must never break a request.
+  }
 };
 
 // sentryErrorHandler runs BEFORE errorHandler (see server.js), so

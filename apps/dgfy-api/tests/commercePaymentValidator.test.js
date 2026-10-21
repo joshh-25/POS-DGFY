@@ -1,8 +1,11 @@
 import {
   validateCommercePaymentRefundBody,
+  validateCommercePaymentRefundParam,
+  validateCommercePaymentRefundRetryBody,
   validateCommercePaymentSessionParam,
   validateCreateDglaundryBookingPaymentSessionBody,
   validateListCommercePaymentSessionsQuery,
+  validateListCommercePaymentRefundsQuery,
   validateTenantPayMongoChildAccountActionParam,
   validateTenantPayMongoChildAccountBody,
   validateTenantPaymentAccountBody,
@@ -45,6 +48,23 @@ describe('commerce payment validators', () => {
     }));
   });
 
+  it('accepts comma-delimited refund status filters and retry references', async () => {
+    const query = await runMiddleware(validateListCommercePaymentSessionsQuery, {
+      query: { refund_status: 'failed,manual_review_required,pending' }
+    });
+    const params = await runMiddleware(validateCommercePaymentRefundParam, {
+      params: { payment_session_id: 'CPS-ABC123DEF4', refund_id: 'CRF-ABC123DEF4' }
+    });
+    const invalidParams = await runMiddleware(validateCommercePaymentRefundParam, {
+      params: { payment_session_id: 'CPS-ABC123DEF4', refund_id: 'ref_provider' }
+    });
+
+    expect(query.nextCalled).toBe(true);
+    expect(query.req.validatedQuery.refund_status).toBe('failed,manual_review_required,pending');
+    expect(params.nextCalled).toBe(true);
+    expect(invalidParams.nextCalled).toBe(false);
+  });
+
   it('requires exactly one refund amount representation', async () => {
     const result = await runMiddleware(validateCommercePaymentRefundBody, {
       body: { amount: 10, amount_centavos: 1000, refund_strategy: 'proportional' }
@@ -52,6 +72,70 @@ describe('commerce payment validators', () => {
 
     expect(result.nextCalled).toBe(false);
     expect(result.statusCode).toBe(422);
+  });
+
+  it.each([undefined, '', '   '])('requires a non-empty refund retry reason (%s)', async (reason) => {
+    const result = await runMiddleware(validateCommercePaymentRefundRetryBody, {
+      body: reason === undefined ? {} : { reason }
+    });
+
+    expect(result.nextCalled).toBe(false);
+    expect(result.statusCode).toBe(422);
+  });
+
+  it('trims and bounds refund retry reasons while rejecting client-supplied identity keys', async () => {
+    const accepted = await runMiddleware(validateCommercePaymentRefundRetryBody, {
+      body: { reason: '  Provider confirmed no refund exists  ' }
+    });
+    const tooLong = await runMiddleware(validateCommercePaymentRefundRetryBody, {
+      body: { reason: 'r'.repeat(256) }
+    });
+    const actor = await runMiddleware(validateCommercePaymentRefundRetryBody, {
+      body: { reason: 'Provider confirmed no refund exists', actor: 'spoofed-admin' }
+    });
+    const requestedBy = await runMiddleware(validateCommercePaymentRefundRetryBody, {
+      body: { reason: 'Provider confirmed no refund exists', requested_by: 'spoofed-admin' }
+    });
+
+    expect(accepted.nextCalled).toBe(true);
+    expect(accepted.req.validatedBody).toEqual({ reason: 'Provider confirmed no refund exists' });
+    expect(tooLong.nextCalled).toBe(false);
+    expect(tooLong.statusCode).toBe(422);
+    expect(actor.nextCalled).toBe(false);
+    expect(actor.statusCode).toBe(422);
+    expect(requestedBy.nextCalled).toBe(false);
+    expect(requestedBy.statusCode).toBe(422);
+  });
+
+  it('validates the admin refund list status and pagination query', async () => {
+    const accepted = await runMiddleware(validateListCommercePaymentRefundsQuery, {
+      query: {
+        status: 'failed,manual_review_required',
+        tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+        limit: '25',
+        offset: '10'
+      }
+    });
+    const invalidStatus = await runMiddleware(validateListCommercePaymentRefundsQuery, {
+      query: { status: 'failed,unknown' }
+    });
+    const invalidTenant = await runMiddleware(validateListCommercePaymentRefundsQuery, {
+      query: { tenant_id: 'not-a-uuid' }
+    });
+    const invalidLimit = await runMiddleware(validateListCommercePaymentRefundsQuery, {
+      query: { limit: '251' }
+    });
+
+    expect(accepted.nextCalled).toBe(true);
+    expect(accepted.req.validatedQuery).toEqual(expect.objectContaining({
+      status: 'failed,manual_review_required',
+      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+      limit: 25,
+      offset: 10
+    }));
+    expect(invalidStatus.statusCode).toBe(422);
+    expect(invalidTenant.statusCode).toBe(422);
+    expect(invalidLimit.statusCode).toBe(422);
   });
 
   it('sanitizes tenant readiness payloads', async () => {

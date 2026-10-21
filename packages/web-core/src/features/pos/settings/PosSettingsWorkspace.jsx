@@ -66,11 +66,13 @@ import {
 } from './storefrontContentSnapshot.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
+import { buildMerchantAddressPayload, hasMerchantAddressDetails } from '@/src/components/maps/merchantAddressDetails.js';
 
 
 const SETTINGS_FIELD_LABELS = {
   name: STOREFRONT_LOCATION_LABELS.branchName,
   address_line: STOREFRONT_LOCATION_LABELS.address,
+  address_details: STOREFRONT_LOCATION_LABELS.addressDetails,
   latitude: 'Latitude',
   longitude: 'Longitude',
   store_is_visible: 'Storefront Visible',
@@ -1790,7 +1792,8 @@ export default function PosSettingsWorkspace({
   const handleSaveLocation = useCallback(async () => {
     const payload = {
       name: String(locationForm.name || '').trim(),
-      address_line: String(locationForm.address_line || '').trim(),
+      // #2595: address_line is the full display address, `<details>, <location>`.
+      ...buildMerchantAddressPayload({ details: locationForm.address_details, location: locationForm.address_line }),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
       delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
@@ -1814,8 +1817,11 @@ export default function PosSettingsWorkspace({
     if (!payload.name) {
       localErrors.push({ field: 'name', message: `${STOREFRONT_LOCATION_LABELS.branchName} is required.` });
     }
-    if (!payload.address_line) {
+    if (!String(locationForm.address_line || '').trim()) {
       localErrors.push({ field: 'address_line', message: `${STOREFRONT_LOCATION_LABELS.address} is required.` });
+    }
+    if (!hasMerchantAddressDetails(locationForm.address_details)) {
+      localErrors.push({ field: 'address_details', message: `${STOREFRONT_LOCATION_LABELS.addressDetails} is required.` });
     }
     if (!Number.isFinite(payload.latitude)) {
       localErrors.push({ field: 'latitude', message: 'Latitude is required.' });

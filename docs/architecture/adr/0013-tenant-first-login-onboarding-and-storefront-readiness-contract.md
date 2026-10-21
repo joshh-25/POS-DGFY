@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-25
-last_reviewed: 2026-09-17
+last_reviewed: 2026-10-19
 review_by: 2026-10-25
 applies_to: architecture_decision
 topic: tenant_first_login_onboarding_and_storefront_readiness_contract
@@ -175,6 +175,48 @@ ADR 0022 supersedes the May 18 auto-activation decision for public company regis
 5. POS onboarding may use POS catalog readback as a local readiness hint, but backend onboarding completion remains governed by the tenant onboarding checklist and starter-item contract.
 
 ## Amendments
+
+### 2026-10-19: Merchant street number, unit and building on store locations (#2595)
+
+The 2026-06-21 addendum's clauses 4-5 describe a single merchant-edited address field filled from
+map suggestions. Store locations gain a second, merchant-owned part.
+
+1. `tenant_locations.address_details` (nullable, at most 255 characters) holds the merchant's
+   street number, unit, floor or building, which geocoding cannot supply.
+2. `address_line` remains the full display address, `<address_details>, <location>`, so Storefront,
+   discovery and receipts read it unchanged. The store-location editors (onboarding, POS tenant
+   setup, Storefront settings, business registration) show the geocoded location and the details as
+   two fields, require the details, and recombine them on save.
+3. Map and search suggestions fill only the location part. They never write `address_details`, so
+   the binding rule that a suggestion must not overwrite merchant-edited text holds for the details
+   by construction; the location part keeps its existing behavior.
+4. The API keeps the field optional, so older clients and locations saved before it existed stay
+   valid. A saved `address_line` that no longer starts with its details is shown whole as the
+   location rather than guessed at.
+5. The column is added to the landlord connection and every active tenant schema by migration
+   `20261019000003-add-address-details-to-tenant-locations.cjs`, and is registered in
+   `sync-tenant-schemas.js` for any tenant that migration does not reach.
+
+### 2026-10-19: Street in reverse-geocode labels (#2593)
+
+The 2026-09-17 amendment left reverse-geocode labels at the administrative level (barangay, city,
+province), because the nearest Quadruper feature can lie up to 400 m from the pin. It is extended
+as follows.
+
+1. A reverse-geocode `address_line` starts with a street when a feature naming one lies within
+   75 m of the pin: a street feature's own name, or the `street` of a house or point of interest.
+   The closest such feature wins, and its own barangay, city and province complete the label.
+2. Beyond 75 m the label stays at the administrative level, exactly as before.
+3. A reverse label never contains a house number or a point-of-interest name; points of interest
+   remain in `landmarks[]`.
+4. `precision` describes the label: `street` when a street was added, otherwise the administrative
+   level the label carries. A house- or street-typed nearest feature no longer reports `house` or
+   `street` for a label that names neither.
+5. The bundled-fallback path is unchanged.
+
+The 2026-09-17 amendment's binding rules are unchanged: no vague `Near ...` labels, a suggestion
+never overwrites merchant-edited address text, and reverse-geocode failure never blocks saving
+valid coordinates.
 
 ### 2026-09-17: Quadruper geocoding provider (Phase 339)
 

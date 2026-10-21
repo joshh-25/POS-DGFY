@@ -9,6 +9,7 @@ export default function PosFilterDialogShell({
   mobile = false,
   tabletPortrait = false,
   landscapeMobile = false,
+  contentSized = false,
   position = null,
   id,
   ariaLabelledBy,
@@ -51,11 +52,12 @@ export default function PosFilterDialogShell({
         maxWidth: `${position.width}px`,
         ...(position.maxHeight != null
           ? {
-              // A max-height alone does not give the flex column a definite
-              // height, so the body can remain content-sized and be clipped
-              // by the shell instead of becoming the scroll container.
+              // Content-sized surfaces keep short filter forms compact. The
+              // default fixed height is retained for multi-section dialogs
+              // such as History, while callers can opt into a max-height
+              // without forcing empty space below short content.
               maxHeight: `${position.maxHeight}px`,
-              height: `${position.maxHeight}px`
+              ...(contentSized ? {} : { height: `${position.maxHeight}px` })
             }
           : {}),
         boxSizing: 'border-box'

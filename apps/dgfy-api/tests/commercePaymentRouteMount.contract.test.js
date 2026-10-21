@@ -17,6 +17,20 @@ describe('commerce payment route mount contract', () => {
     );
   });
 
+  it('keeps refund retry admin-only and validates both public references', () => {
+    expect(routeSource).toContain('validateCommercePaymentRefundRetryBody');
+    expect(routeSource).toContain(
+      "router.post('/admin/payment-sessions/:payment_session_id/refunds/:refund_id/retry', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentRefundParam, validateCommercePaymentRefundRetryBody, retryPaymentSessionRefund);"
+    );
+  });
+
+  it('lists refund attempts behind the existing admin payment permission prefix', () => {
+    expect(routeSource).toContain('validateListCommercePaymentRefundsQuery');
+    expect(routeSource).toContain(
+      "router.get('/admin/refunds', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentRefundsQuery, listPaymentRefunds);"
+    );
+  });
+
   it('validates DGLaundry booking payment-session bodies before the controller', () => {
     expect(routeSource).toContain('validateCreateDglaundryBookingPaymentSessionBody');
     expect(routeSource).toContain(

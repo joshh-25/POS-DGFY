@@ -28,7 +28,8 @@ const normalizeSearchResult = (result) => {
     addressLine,
     latitude,
     longitude,
-    precision: result?.precision || null
+    precision: result?.precision || null,
+    houseNumber: String(result?.components?.housenumber || '').trim() || null
   };
 };
 

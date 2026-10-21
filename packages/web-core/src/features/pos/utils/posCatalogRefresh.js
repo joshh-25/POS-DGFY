@@ -1,10 +1,13 @@
 import { getAccessToken, getCompanyToken } from '@/services/browserSession.js';
+import { computeUnreachableBackoffMs, isBackendUnreachable } from '@/services/backendReachability.js';
 import { resolveApiBaseUrl } from '@/src/utils/runtimeConfig.js';
 
 const POS_CATALOG_UPDATED_EVENT = 'pos:catalog-updated';
 const POS_SETTINGS_UPDATED_EVENT = 'pos:settings-updated';
 const RECONNECT_DELAY_MIN_MS = 1000;
 const RECONNECT_DELAY_MAX_MS = 15000;
+const UNREACHABLE_RECONNECT_DELAY_MAX_MS = 60000;
+const RECONNECT_DELAY_JITTER = 0.2;
 
 export const notifyPosCatalogUpdated = () => {
     if (typeof window === 'undefined') return;
@@ -75,51 +78,65 @@ export const subscribeToRemotePosCatalogUpdates = ({
     let stopped = false;
     let controller = null;
     let reconnectTimer = null;
-    let reconnectDelay = RECONNECT_DELAY_MIN_MS;
+    let consecutiveReconnectFailures = 0;
 
-    const scheduleReconnect = () => {
+    const scheduleReconnect = (error) => {
         if (stopped) return;
+        consecutiveReconnectFailures += 1;
+        const unreachable = isBackendUnreachable(error);
+        const reconnectDelay = computeUnreachableBackoffMs({
+            baseMs: RECONNECT_DELAY_MIN_MS,
+            consecutiveFailures: consecutiveReconnectFailures,
+            capMs: unreachable ? UNREACHABLE_RECONNECT_DELAY_MAX_MS : RECONNECT_DELAY_MAX_MS,
+            jitter: RECONNECT_DELAY_JITTER
+        });
         reconnectTimer = window.setTimeout(() => {
             reconnectTimer = null;
             connect();
         }, reconnectDelay);
-        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_DELAY_MAX_MS);
     };
 
     const dispatchInvalidation = (event) => {
         if (event === 'connected') {
-            reconnectDelay = RECONNECT_DELAY_MIN_MS;
+            consecutiveReconnectFailures = 0;
             onConnected?.();
             notifyPosCatalogUpdated();
             return;
         }
         if (event === 'pos.catalog.changed') {
-            reconnectDelay = RECONNECT_DELAY_MIN_MS;
+            consecutiveReconnectFailures = 0;
             onCatalogChanged?.();
             notifyPosCatalogUpdated();
             return;
         }
         if (event === 'pos.settings.changed') {
-            reconnectDelay = RECONNECT_DELAY_MIN_MS;
+            consecutiveReconnectFailures = 0;
             onSettingsChanged?.();
             notifyPosSettingsUpdated();
         }
     };
 
     const connect = async () => {
-        controller = new AbortController();
+        if (stopped) return;
+        const requestController = new AbortController();
+        controller = requestController;
+        let reconnectError = null;
         try {
             const response = await fetch(getCatalogEventsUrl(), {
                 method: 'GET',
                 credentials: 'include',
                 cache: 'no-store',
                 headers: getCatalogEventsHeaders(),
-                signal: controller.signal
+                signal: requestController.signal
             });
             if (!response.ok || !response.body) {
-                throw new Error(`POS catalog event stream failed (${response.status || 'network'})`);
+                const error = new Error('POS catalog event stream failed (' + (response.status || 'network') + ')');
+                if (response.status) error.status = response.status;
+                else error.request = {};
+                throw error;
             }
 
+            consecutiveReconnectFailures = 0;
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
@@ -135,19 +152,46 @@ export const subscribeToRemotePosCatalogUpdates = ({
                 });
             }
         } catch (error) {
-            if (error?.name !== 'AbortError' && !stopped) {
+            if (error?.name !== 'AbortError' && !requestController.signal.aborted && !stopped) {
                 // The catalog still refreshes on focus/online below, while this
                 // bounded retry recovers from temporary network/server outages.
+                reconnectError = error?.response || error?.status != null
+                    ? error
+                    : { request: {}, code: error?.code, name: error?.name };
             }
         } finally {
-            if (!stopped) scheduleReconnect();
+            if (!stopped && !requestController.signal.aborted) scheduleReconnect(reconnectError);
+        }
+    };
+
+    const reconnectImmediately = () => {
+        if (stopped) return;
+        if (reconnectTimer) window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+        consecutiveReconnectFailures = 0;
+        const previousController = controller;
+        controller = null;
+        previousController?.abort();
+        connect();
+    };
+    const reconnectWhenVisible = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+            reconnectImmediately();
         }
     };
 
     connect();
+    window.addEventListener('online', reconnectImmediately);
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', reconnectWhenVisible);
+    }
     return () => {
         stopped = true;
         if (reconnectTimer) window.clearTimeout(reconnectTimer);
+        window.removeEventListener('online', reconnectImmediately);
+        if (typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', reconnectWhenVisible);
+        }
         controller?.abort();
     };
 };

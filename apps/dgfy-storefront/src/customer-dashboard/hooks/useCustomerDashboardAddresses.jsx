@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useDeliveryAddressDetails } from '../../shared/hooks/useDeliveryAddressDetails.js';
 
 export function useCustomerDashboardAddresses({ accountPanel, setAccountPanel, handleLoadAccountPanel, dgfySessionAccount, isDgfyCustomerSignedIn, requestJson, readDgfyAuthToken, normalizeCoordinatePair, normalizeStorefrontErrorMessage, setDeliveryLocationAction, setSelectedSavedLocationId, setPinLocationError, setResolvedDeliveryAddress, setCustomerAddress, setCustomerPin, createAddressPinEditorRenderer, DeliveryPinMap, reverseGeocodeDeliveryPin, buildPinnedDeliveryAddress, isMobileViewport }) {
   const [accountAddressActionId, setAccountAddressActionId] = useState('');
   const [pinAction, setPinAction] = useState({ mode: '', loading: false, error: '' });
   const pinRequestRef = useRef(0);
+  const [, setDeliveryAddressDetails] = useDeliveryAddressDetails();
   const useAccountAddressForCheckout = useCallback((address) => {
     if (!address) return;
     const addressLine = String(address.address_line || address.fullAddress || address.formatted_address || '').trim();
@@ -13,9 +15,11 @@ export function useCustomerDashboardAddresses({ accountPanel, setAccountPanel, h
     setSelectedSavedLocationId(String(address.id || (address.address_id ? `account-address-${address.address_id}` : 'account-address')));
     setPinLocationError('');
     if (addressLine) { setResolvedDeliveryAddress(addressLine); setCustomerAddress(addressLine); }
+    // #2594: '' for an address saved before house/unit details existed, so checkout asks for them.
+    setDeliveryAddressDetails(String(address.address_details || address.addressDetails || '').trim());
     if (coordinates) setCustomerPin(coordinates);
     toast.success('Saved address applied to checkout.');
-  }, [normalizeCoordinatePair, setCustomerAddress, setCustomerPin, setDeliveryLocationAction, setPinLocationError, setResolvedDeliveryAddress, setSelectedSavedLocationId]);
+  }, [normalizeCoordinatePair, setCustomerAddress, setCustomerPin, setDeliveryAddressDetails, setDeliveryLocationAction, setPinLocationError, setResolvedDeliveryAddress, setSelectedSavedLocationId]);
   const applyPin = useCallback(async ({ pin, onChange, mode }) => {
     const coordinates = normalizeCoordinatePair(pin);
     if (!coordinates || typeof onChange !== 'function') return;
@@ -46,7 +50,7 @@ export function useCustomerDashboardAddresses({ accountPanel, setAccountPanel, h
     setAccountAddressActionId(addressId ? `save:${addressId}` : 'new');
     try {
       const coordinates = normalizeCoordinatePair(draft);
-      await requestJson(addressId ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}` : '/api/v1/dgfy/customer/addresses', { method: addressId ? 'PUT' : 'POST', authToken: token, cache: 'no-store', body: { label: String(draft.label || 'Address').trim() || 'Address', address_line: addressLine, latitude: coordinates?.latitude ?? null, longitude: coordinates?.longitude ?? null, is_default: draft.is_default === true } });
+      await requestJson(addressId ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}` : '/api/v1/dgfy/customer/addresses', { method: addressId ? 'PUT' : 'POST', authToken: token, cache: 'no-store', body: { label: String(draft.label || 'Address').trim() || 'Address', address_line: addressLine, address_details: String(draft.address_details || '').trim() || null, latitude: coordinates?.latitude ?? null, longitude: coordinates?.longitude ?? null, is_default: draft.is_default === true } });
       toast.success(addressId ? 'Address updated.' : 'Address saved.');
       await handleLoadAccountPanel();
       return true;

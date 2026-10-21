@@ -8,7 +8,6 @@ background: false
 disable-model-invocation: true
 ---
 
-Review PR $ARGUMENTS on `Sieitzz/dgfy-platform`. If no PR number was given, find the PR for the
-current branch (`gh pr view`). Follow `.agents/skills/pr-reviewer/SKILL.md` in full — its audit
-scope, output format, merge policy, and first-live-use gate all still apply. Do not restate its
-rules here.
+Review PR $ARGUMENTS on `Sieitzz/dgfy-platform`. If no PR number was given, resolve it per
+`.agents/skills/pr-reviewer/SKILL.md` "Omitted PR resolution". Follow that canonical skill in full;
+do not restate its rules here.

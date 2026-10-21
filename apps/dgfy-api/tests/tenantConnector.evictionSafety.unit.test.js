@@ -70,9 +70,10 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 // otherwise be required. The mock instance starts idle (pool.using: 0) and
 // exposes authenticate()/sync()/close() so getConnection()'s own flow
 // (authenticate -> wrap sync -> cache) runs unmodified.
+let mockPhysicalConnect;
 const MockSequelize = jest.fn(function mockSequelizeConstructor(dbName) {
   this.dbName = dbName;
-  this.connectionManager = { pool: { using: 0 } };
+  this.connectionManager = { pool: { using: 0 }, ...(mockPhysicalConnect && { _connect: mockPhysicalConnect }) };
   this.authenticate = jest.fn().mockResolvedValue(undefined);
   this.sync = jest.fn().mockResolvedValue(undefined);
   this.close = jest.fn().mockResolvedValue(undefined);
@@ -83,15 +84,20 @@ jest.unstable_mockModule('sequelize', () => ({
 }));
 
 let tenantConnector;
+let getTenantPoolIdleMs;
 
 beforeAll(async () => {
   const mod = await import('../src/utils/TenantConnector.js');
   tenantConnector = mod.default;
+  ({ getTenantPoolIdleMs } = await import('../src/config/connectionBudget.js'));
 });
 
 afterEach(() => {
   tenantConnector.connections.clear();
   tenantConnector.pendingConnections.clear();
+  tenantConnector.createdTotal = 0;
+  tenantConnector.evictedTotal = 0;
+  mockPhysicalConnect = null;
   jest.clearAllMocks();
   jest.useRealTimers();
 });
@@ -120,6 +126,116 @@ const seedEntry = (tenantId, { sequelize, lastUsed = Date.now(), tenantName = `t
 };
 
 describe('TenantConnector — eviction safety (issue #474 follow-up)', () => {
+  test('getTenantPoolSnapshot maps sequelize-pool getters and returns null for an uncached tenant', () => {
+    const sequelize = {
+      connectionManager: {
+        pool: {
+          using: 2,
+          waiting: 3,
+          size: 7,
+          available: 5,
+          maxSize: 7
+        }
+      }
+    };
+    seedEntry('snapshot-tenant', { sequelize });
+
+    expect(tenantConnector.getTenantPoolSnapshot('snapshot-tenant')).toEqual({
+      using: 2,
+      waiting: 3,
+      size: 7,
+      available: 5,
+      max: 7,
+      creating: 0,
+      last_connect_ms: null,
+      slow_connects: 0
+    });
+    expect(tenantConnector.getTenantPoolSnapshot('not-cached')).toBeNull();
+  });
+
+  test('getTenantPoolSnapshot tolerates absent or throwing pool getters', () => {
+    const sequelize = {
+      connectionManager: {
+        pool: {
+          get using() {
+            throw new Error('getter unavailable');
+          },
+          size: 4
+        }
+      }
+    };
+    seedEntry('partial-snapshot', { sequelize });
+
+    expect(tenantConnector.getTenantPoolSnapshot('partial-snapshot')).toEqual({
+      using: null,
+      waiting: null,
+      size: 4,
+      available: null,
+      max: null,
+      creating: null,
+      last_connect_ms: null,
+      slow_connects: 0
+    });
+  });
+
+  test('snapshot identifies a physical connection being created and clamps inconsistent counters', () => {
+    const sequelize = { connectionManager: { pool: { size: 1, using: 0, available: 0 } } };
+    seedEntry('creating', { sequelize });
+    expect(tenantConnector.getTenantPoolSnapshot('creating').creating).toBe(1);
+    sequelize.connectionManager.pool.available = 2;
+    expect(tenantConnector.getTenantPoolSnapshot('creating').creating).toBe(0);
+  });
+
+  test('pool idle window and physical connect diagnostics preserve the connection result', async () => {
+    const connection = { threadId: 12 };
+    mockPhysicalConnect = jest.fn().mockResolvedValue(connection);
+    const tenant = { id: 'tenant-1', name: 'Tenant 1', db_name: 'tenant_1' };
+    const sequelize = await tenantConnector.getConnection(tenant);
+    expect(MockSequelize.mock.calls.at(-1)[3].pool.idle).toBe(getTenantPoolIdleMs());
+    const now = jest.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(2300);
+    expect(await sequelize.connectionManager._connect()).toBe(connection);
+    now.mockRestore();
+    expect(mockPhysicalConnect).toHaveBeenCalledTimes(1);
+    expect(loggerMock.warn).toHaveBeenCalledWith('[DbPool] Slow tenant DB connect', {
+      tenant_id: tenant.id, db_name: tenant.db_name, elapsed_ms: 1300
+    });
+    expect(tenantConnector.getTenantPoolSnapshot(tenant.id)).toEqual(expect.objectContaining({
+      last_connect_ms: 1300, slow_connects: 1
+    }));
+  });
+
+  test('failed physical connect logs timing and rethrows the original error', async () => {
+    const failure = Object.assign(new Error('connect failed'), { code: 'ETIMEDOUT' });
+    mockPhysicalConnect = jest.fn().mockRejectedValue(failure);
+    const sequelize = await tenantConnector._createSequelizeInstance({ id: 'tenant-2', db_name: 'tenant_2' });
+    const now = jest.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(2400);
+    await expect(sequelize.connectionManager._connect()).rejects.toBe(failure);
+    now.mockRestore();
+    expect(loggerMock.error).toHaveBeenCalledWith('[DbPool] Tenant DB connect failed', {
+      tenant_id: 'tenant-2', elapsed_ms: 1400, code: 'ETIMEDOUT'
+    });
+    expect(sequelize.tenantConnectDiagnostics.lastConnectMs).toBe(1400);
+  });
+
+  test('missing private _connect leaves the connection manager unchanged', async () => {
+    const sequelize = await tenantConnector._createSequelizeInstance({ id: 'tenant-3', db_name: 'tenant_3' });
+    expect(sequelize.connectionManager._connect).toBeUndefined();
+  });
+
+  test('instance churn counts successful cache creation, LRU removal, and idle cleanup', async () => {
+    await tenantConnector.getConnection({ id: 'new', name: 'New', db_name: 'tenant_new' });
+    const lru = makeFakeSequelize();
+    const idle = makeFakeSequelize();
+    seedEntry('lru', { sequelize: lru.sequelize, lastUsed: 1 });
+    seedEntry('idle', { sequelize: idle.sequelize, lastUsed: 2 });
+    await tenantConnector.evictConnections(1);
+    expect(tenantConnector.getPoolStats()).toEqual(expect.objectContaining({ created_total: 1, evicted_total: 1 }));
+    // 10-minute idle cleanup leaves the freshly created pool in place.
+    tenantConnector.connections.get('idle').lastUsed = Date.now() - 11 * 60 * 1000;
+    await tenantConnector.cleanupIdleConnections();
+    expect(tenantConnector.getPoolStats()).toEqual(expect.objectContaining({ created_total: 1, evicted_total: 2 }));
+  });
+
   test('A: isBusy() reads pool.using and treats a missing pool as busy', () => {
     const { sequelize: busySeq } = makeFakeSequelize({ using: 2 });
     const { sequelize: idleSeq } = makeFakeSequelize({ using: 0 });

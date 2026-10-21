@@ -26,6 +26,9 @@
 #     the 5 other SENTRY_* passthroughs already on dgfy-api's own `${VAR:-default}`
 #     lines (EDIT 3) -- undercounted as "(2)" in the version of this line written
 #     2026-08-28; corrected here, not a new decision
+#   Added 2026-10-19 (#2579, push diagnostics rollout) on top of the counts above,
+#     which are a 2026-08-28 snapshot and are NOT renumbered: A +2
+#     (EXPO_ACCESS_TOKEN, PUSH_TOKEN_HASH_SECRET), B +1 (PUSH_PROVIDER) -- see EDIT 3.
 #   dropped (2): duplicate MENU_IMPORT_BATCH_ENABLED line; FRONTEND_PROD_IMAGE_TAG
 #     (vestigial since the 2026-08-25 frontend-split restart -- confirm gone from
 #     the live .env before applying this fragment, don't assume)
@@ -235,6 +238,14 @@
 #       SMS_DELIVERY_LOG_RETENTION_DAYS: 30
 #       SMS_DEFAULT_REGION: PH
 #
+#       # --- bucket B: push delivery (#2579, ADR 0097) -- PROD-scoped literal. This
+#       # fragment is PROD-only, so a literal is safe here; do NOT copy it into the
+#       # shared docker-compose.api.yml, where it would override DEV/STAGING's .env
+#       # value. Apply only AFTER PUSH_TOKEN_HASH_SECRET exists in
+#       # secrets/dgfy-api.env (bucket A below): nothing in productionEnvValidation.cjs
+#       # enforces it, so expo delivery with a missing hash secret would boot silently.
+#       PUSH_PROVIDER: expo
+#
 #       # --- bucket B: rate limits / auth expiry / misc tuning ---
 #       RATE_LIMIT_ALERT_THRESHOLD: <copy literal from live .env -- Phase 3>
 #       RATE_LIMIT_MAX_REQUESTS: <copy literal from live .env -- Phase 3>
@@ -287,6 +298,12 @@
 #       SMTP_USER: ${SMTP_USER}
 #       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
 #       TENANT_PAYOUT_ENCRYPTION_KEY: ${TENANT_PAYOUT_ENCRYPTION_KEY}
+#       # Push delivery (#2579). EXPO_ACCESS_TOKEN is optional (Expo enhanced push
+#       # security), hence the empty default; PUSH_TOKEN_HASH_SECRET is required in
+#       # production for HMAC token hashing, hence no default -- same style as the
+#       # other required secrets above.
+#       EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+#       PUSH_TOKEN_HASH_SECRET: ${PUSH_TOKEN_HASH_SECRET}
 #       # Compose secrets use host environment values and expose them as
 #       # files under /run/secrets/ inside dgfy-api. deploy-sops.sh decrypts
 #       # the SOPS ciphertext into its process environment without writing

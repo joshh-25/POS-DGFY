@@ -1149,6 +1149,18 @@ export const buildReorderDgfyCustomerOrderUseCase = ({ repository = dgfyCustomer
     }
 };
 
+// #2594: the customer's own house number, Blk/Lot, unit or building. Optional on the API so
+// addresses saved before the field existed stay valid; checkout is what requires it.
+const ADDRESS_DETAILS_MAX_LENGTH = 255;
+const parseAddressDetails = (value) => {
+    if (value === undefined || value === null) return null;
+    const details = String(value).trim();
+    if (details.length > ADDRESS_DETAILS_MAX_LENGTH) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `address_details must be at most ${ADDRESS_DETAILS_MAX_LENGTH} characters.`, { statusCode: 422 });
+    }
+    return details || null;
+};
+
 export const buildManageDgfyCustomerAddressesUseCases = ({ repository = dgfyCustomerRepository } = {}) => ({
     list: async ({ account }) => {
         try {
@@ -1177,9 +1189,11 @@ export const buildManageDgfyCustomerAddressesUseCases = ({ repository = dgfyCust
             const latitude = parseOptionalCoordinate(body.latitude, { min: -90, max: 90, field: 'latitude' });
             const longitude = parseOptionalCoordinate(body.longitude, { min: -180, max: 180, field: 'longitude' });
             ensureCoordinatePair(latitude, longitude);
+            const addressDetails = parseAddressDetails(body.address_details);
             const address = await repository.createAddress(dgfyAccount.id, {
                 label,
                 address_line: addressLine,
+                address_details: addressDetails,
                 latitude,
                 longitude,
                 is_default: body.is_default === true
@@ -1206,6 +1220,7 @@ export const buildManageDgfyCustomerAddressesUseCases = ({ repository = dgfyCust
                 if (addressLine.length > 4000) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'address_line must be at most 4000 characters.', { statusCode: 422 });
                 updates.address_line = addressLine;
             }
+            if (body.address_details !== undefined) updates.address_details = parseAddressDetails(body.address_details);
             const nextLatitude = body.latitude !== undefined ? parseOptionalCoordinate(body.latitude, { min: -90, max: 90, field: 'latitude' }) : undefined;
             const nextLongitude = body.longitude !== undefined ? parseOptionalCoordinate(body.longitude, { min: -180, max: 180, field: 'longitude' }) : undefined;
             if (nextLatitude !== undefined || nextLongitude !== undefined) {

@@ -15,6 +15,17 @@ const customerActivityQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(25)
 });
 
+const expoPushToken = Joi.string().trim().max(255)
+    .pattern(/^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_\-+.=:/]{8,236}\]$/)
+    .required();
+const customerPushTokenSchema = Joi.object({
+    token: expoPushToken,
+    platform: Joi.string().trim().lowercase().valid('ios', 'android').required(),
+    app: Joi.string().trim().min(1).max(80).required(),
+    brand: Joi.string().trim().min(1).max(80).required()
+});
+const customerPushTokenDeleteSchema = Joi.object({ token: expoPushToken });
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -35,3 +46,13 @@ export const validateDgfyCustomerActivityQuery = (req, res, next) => {
     req.validatedQuery = value;
     return next();
 };
+
+const validateCustomerPushToken = (schema) => (req, res, next) => {
+    const { error, value } = schema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    if (error) return res.status(422).json(buildValidationErrorResponse(error));
+    req.validatedData = value;
+    return next();
+};
+
+export const validateDgfyCustomerPushToken = validateCustomerPushToken(customerPushTokenSchema);
+export const validateDgfyCustomerPushTokenDelete = validateCustomerPushToken(customerPushTokenDeleteSchema);

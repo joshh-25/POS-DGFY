@@ -72,7 +72,15 @@ import {
   shouldRefreshBusinessAdminSettingsUpdate,
   subscribeToBusinessAdminSettingsUpdates
 } from '../utils/businessAdminSettingsSync.js';
-import api, { onApiOutcome } from '@/services/api.js';
+import api, {
+  getBackendReachabilitySnapshot,
+  isTerminalOffline,
+  onApiOutcome
+} from '@/services/api.js';
+import {
+  createUnreachablePollScheduler,
+  isRetryableBackendFailure
+} from '@/services/backendReachability.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import {
   clearBrowserSession,
@@ -221,6 +229,8 @@ const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
 const TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
 const TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY = 'pos_terminal_admin_lock_context_v1';
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
+const ONLINE_ORDER_POLL_MAX_BACKOFF_MS = 60000;
+const ONLINE_ORDER_POLL_JITTER = 0.2;
 // Below both the poll cadence's tolerance and nginx's 60s proxy_read_timeout
 // (which matches api.js's global 60s axios default). Without this override,
 // a slow backend response races the client timeout against the proxy's, so
@@ -350,8 +360,6 @@ const TERMINAL_SECTION_IDS = {
   audit: 'pos-section-audit',
   approvals: 'pos-section-approvals'
 };
-const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
-
 const createIdempotencyKey = (prefix = 'pos-terminal') => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -464,11 +472,7 @@ const readRequestedPosView = (routeSearch = '') => {
   return String(new URLSearchParams(window.location.search).get(POS_VIEW_MODE_QUERY_KEY) || '').trim();
 };
 
-const isRetryableTerminalOperationError = (error) => {
-  if (!error?.response) return true;
-  const status = Number(error?.response?.status || 0);
-  return RETRYABLE_TERMINAL_OPERATION_STATUS_CODES.has(status);
-};
+const isRetryableTerminalOperationError = isRetryableBackendFailure;
 
 const SHIFT_LOCATION_CONFLICT_CODES = new Set([
   'POS_OPERATOR_ACTIVE_ELSEWHERE',
@@ -1027,6 +1031,7 @@ export default function TerminalPage() {
   const shiftClosedToastIdRef = useRef(null);
   const incomingOrdersShiftBlockedRef = useRef(false);
   const incomingOrdersRequestSequenceRef = useRef(0);
+  const incomingOrdersInFlightCountRef = useRef(0);
   const incomingOrdersScopeRef = useRef('');
   const operationalContextRequestSequenceRef = useRef(0);
   const operationalContextScopeRef = useRef('');
@@ -1124,14 +1129,13 @@ export default function TerminalPage() {
   // `isOnline` above only tells us the device has *a* network interface --
   // on Android that's true whenever any Wi-Fi/data connection exists, even
   // one that cannot reach pos.dev.dgfy.ph. This tracks whether the most
-  // recent real API call actually got a response, which is what the
-  // Online/Offline indicator should mean. Defaults true so the dot doesn't
-  // flash "Offline" before the first request completes. Display-only --
-  // every existing `if (!isOnline)` gate elsewhere in this file is left
-  // reading the network-interface signal unchanged.
-  const [apiReachable, setApiReachable] = useState(true);
+  // recent real API outcome reached the backend. This gates operator-
+  // authority loading and is combined with the device network signal in the
+  // isOnline prop passed to the terminal layout.
+  const [apiReachable, setApiReachable] = useState(() => getBackendReachabilitySnapshot().reachable);
   useEffect(() => {
     const unsubscribe = onApiOutcome((entry) => {
+      if (entry.cancelled || (entry.status === null && entry.kind !== 'network')) return;
       setApiReachable(entry.kind !== 'network');
     });
     return unsubscribe;
@@ -2159,6 +2163,7 @@ export default function TerminalPage() {
       }));
     }
 
+    incomingOrdersInFlightCountRef.current += 1;
     try {
       const params = {
         shift_id: activeQueueShiftId,
@@ -2180,7 +2185,7 @@ export default function TerminalPage() {
       if (!isCurrentRequest()) return;
       const isForbidden = error?.response?.status === 403;
       const isShiftUnavailable = isIncomingOrderShiftUnavailableError(error);
-      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const offline = isTerminalOffline();
       if (isShiftUnavailable) {
         incomingOrdersShiftBlockedRef.current = true;
         setShiftState((previous) => {
@@ -2198,11 +2203,13 @@ export default function TerminalPage() {
           ? 'Open a shift to view orders for this branch.'
           : (isForbidden
           ? (error?.response?.data?.message || 'Incoming orders are limited to the active shift location.')
-          : (offline ? 'You are offline. Incoming queue refresh is temporarily unavailable.' : (error?.response?.data?.message || 'Failed to load incoming online orders.')))
+          : (offline ? 'Backend unavailable. Incoming queue refresh is temporarily unavailable.' : (error?.response?.data?.message || 'Failed to load incoming online orders.')))
       });
       if (!isShiftUnavailable && !silent && !offline) {
         toast.error(error?.response?.data?.message || 'Failed to load incoming online orders.');
       }
+    } finally {
+      incomingOrdersInFlightCountRef.current = Math.max(0, incomingOrdersInFlightCountRef.current - 1);
     }
   }, [
     activeTerminalId,
@@ -3544,10 +3551,17 @@ export default function TerminalPage() {
       return undefined;
     }
     refreshIncomingOrders();
-    const timer = window.setInterval(() => {
-      refreshIncomingOrders({ silent: true });
-    }, ONLINE_ORDER_POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    const pollScheduler = createUnreachablePollScheduler({
+      run: () => refreshIncomingOrders({ silent: true }),
+      isInFlight: () => incomingOrdersInFlightCountRef.current > 0,
+      getConsecutiveFailures: () => getBackendReachabilitySnapshot().consecutiveUnreachable,
+      baseMs: ONLINE_ORDER_POLL_INTERVAL_MS,
+      capMs: ONLINE_ORDER_POLL_MAX_BACKOFF_MS,
+      jitter: ONLINE_ORDER_POLL_JITTER,
+      setTimeoutFn: (callback, delayMs) => window.setTimeout(callback, delayMs),
+      clearTimeoutFn: (timer) => window.clearTimeout(timer)
+    });
+    return () => pollScheduler.stop();
   }, [canViewPos, locked, onlineOrderQueueEnabled, refreshIncomingOrders]);
 
   useEffect(() => {

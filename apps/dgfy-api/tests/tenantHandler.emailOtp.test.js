@@ -35,6 +35,11 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
   }
 }));
 
+const setSentryTenantTag = jest.fn();
+jest.unstable_mockModule('../src/config/sentry.js', () => ({
+  setSentryTenantTag
+}));
+
 const { tenantHandler } = await import('../src/middleware/tenantHandler.js');
 
 describe('tenantHandler email OTP invitation routing', () => {
@@ -95,6 +100,50 @@ describe('tenantHandler email OTP invitation routing', () => {
     }), next);
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('tags a resolved tenant before attempting its database connection', async () => {
+    const req = {
+      path: '/api/v1/pos/incoming-orders',
+      headers: { 'x-company-token': 'tenant-token-tagged' },
+      body: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+    findTenantByToken.mockResolvedValueOnce({
+      id: 'tenant-tagged',
+      name: 'Tagged Tenant',
+      status: 'active',
+      plan: 'premium'
+    });
+
+    await tenantHandler(req, res, next);
+
+    expect(setSentryTenantTag).toHaveBeenCalledWith('tenant-tagged');
+    expect(setSentryTenantTag.mock.invocationCallOrder[0])
+      .toBeLessThan(getConnection.mock.invocationCallOrder[0]);
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('does not tag missing or invalid tenant contexts', async () => {
+    const makeRes = () => ({
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    });
+
+    await tenantHandler({ path: '/api/v1/pos/incoming-orders', headers: {}, body: {} }, makeRes(), jest.fn());
+    expect(setSentryTenantTag).not.toHaveBeenCalled();
+
+    findTenantByToken.mockResolvedValueOnce(null);
+    await tenantHandler({
+      path: '/api/v1/pos/incoming-orders',
+      headers: { 'x-company-token': 'invalid-tenant-token' },
+      body: {}
+    }, makeRes(), jest.fn());
+    expect(setSentryTenantTag).not.toHaveBeenCalled();
   });
 
   it('recovers tenant context from a tenant-bound bearer token for self-service Day Close PIN updates', async () => {

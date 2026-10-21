@@ -39,6 +39,7 @@ export const getCustomerAddressActionMeta = (value = '') => {
 export const createCustomerAddressDraft = (address = {}, { keepDefaultFlag = false } = {}) => ({
   label: getCustomerAddressNote(address),
   address_line: getCustomerAddressLine(address),
+  address_details: String(address?.address_details || '').trim(),
   latitude: address?.latitude ?? null,
   longitude: address?.longitude ?? null,
   is_default: keepDefaultFlag ? isCustomerAddressDefault(address) : false,

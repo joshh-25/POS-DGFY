@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-30
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-19
 review_by: 2027-01-31
 applies_to: storefront_commerce_payments_tenant_revenue_settlement
 topic: tenant_revenue_collection_ledger_settlement
@@ -116,6 +116,50 @@ checkout code.
   together with tenant revenue sharing.
 
 ## Amendments
+
+### 2026-10-19: Preserve unknown-session alerts for live payments (#1091)
+
+Clause 3's unknown-session paid-event alert remains error-level where the event
+can represent collected live money. Expected non-live PayMongo fan-out must not
+create an operational alert in test-mode environments, where it is not a
+money-loss signal.
+
+1. A runtime configured for PayMongo `live` continues to raise the existing
+   `paymongo.commerce_webhook_unknown_session_paid` error alert for an unknown
+   `payment.paid` or `checkout_session.payment.paid` event.
+2. A test-mode runtime suppresses that alert only when the normalized event
+   `livemode` value is not `true`. An event reporting `livemode: true` keeps the
+   alert, including when received by a test-mode runtime.
+3. Suppression retains the warning log with runtime/event mode context and the
+   `ignored/session_not_found` webhook audit row. The `200
+   {handled:false, reason:'session_not_found'}` response, paid-event scoping,
+   alert key, and retry behavior remain unchanged.
+
+This is an observability gate only: it does not change signature verification,
+payment acceptance, session lookup, revenue posting, or settlement behavior.
+
+### 2026-10-17: Recover commerce refunds when provider webhooks are missing (#2549)
+
+Clause 14's webhook-only status wording leaves an ambiguous refund submission or
+orphaned local row unresolved when PayMongo accepted the refund but its webhook
+was delayed or not delivered. This amendment keeps the signed webhook as the
+primary signal and adds an authenticated provider-read recovery path.
+
+1. The scheduled commerce-refund reconciler retrieves linked refund resources or
+   reads the payment's embedded refund list to safely link an unambiguous provider
+   refund. It sends verified status through the same idempotent applier used by
+   the webhook. Successful status from either source posts the same immutable
+   tenant-payable and proportional DGFY-fee reversal entries.
+2. A definite PayMongo rejection is not retried automatically. It is surfaced by
+   an immediate operational alert and a distinct administrator retry action.
+   Ambiguous or unmatched provider state is escalated for review, and retry is
+   allowed only after a fresh provider read finds no unlinked matching refund.
+3. The public order-tracking response may expose the latest refund's mapped
+   customer-safe status, public reference, amount, and update time. Provider IDs,
+   failure codes/reasons, and provider payloads remain private.
+
+The scheduled read path is a recovery mechanism, not a replacement for registered
+PayMongo webhooks or the existing settlement and production controls.
 
 ### 2026-08-17: Exact Hosted Checkout routing for active e-wallets
 

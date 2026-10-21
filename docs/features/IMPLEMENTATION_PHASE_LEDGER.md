@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-14
-review_by: 2027-02-15
+last_reviewed: 2026-10-19
+review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
 ---
@@ -29242,3 +29242,1145 @@ implementation validation passes.
 ### Next phase number
 
 Phase 510. No explicit dependency.
+
+## Phase 510 - Commerce refund failure recovery (#2549)
+
+### Initiative and release
+
+Storefront commerce payments, current release.
+
+### Objective and scope
+
+Ensure a commerce refund does not become a dead end when PayMongo rejects a request,
+the create request has an ambiguous outcome, a local `created` row is orphaned, or a
+refund webhook is delayed or missing. This phase adds safe PayMongo refund reads, one
+idempotent webhook/reconciler status applier, failed and stale alerts, bounded scheduled
+reconciliation, an explicit authenticated admin retry endpoint, refund-status filtering,
+and a tenant-scoped customer-safe refund status in order tracking. It also amends ADR
+0052, the commerce-payment API contract, the feature flow contract, and the compliance
+impact declaration. No migration, automatic retry of definite failures, or Admin and
+Storefront UI work is included; the Admin retry workflow follows as Phase 522, while
+Storefront tracking UI remains unscheduled.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and
+the required provider/operational verification remain outstanding.
+
+### Dependencies
+
+Issue #2549 defines the accepted behavior and PR 1 scope. There is no explicit blocking
+dependency on another phase. The existing ADR 0052 amendment route applies because
+clause 14 is untagged and therefore `[default]` under ADR 0039.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[Commerce payment flow](commerce-payment-fulfillment-settlement.md),
+[API Specification](../api/specification.md), [Compliance preflight protocol](../compliance/request-time-preflight-protocol.md),
+[Issue taxonomy](../process/ISSUE-TAXONOMY.md), and [PR conventions](../ai/PR.md).
+Classification: `major` / `payments`; no schema change or new architecture exception.
+
+### Implementation targets
+
+`apps/dgfy-api/src/services/paymongoService.js`,
+`apps/dgfy-api/src/modules/commercePayments/`,
+`apps/dgfy-api/src/modules/store/`,
+`apps/dgfy-api/src/routes/commercePayments.js`,
+`apps/dgfy-api/src/validators/commercePaymentValidator.js`,
+`apps/dgfy-api/src/schedulers/commerceRefundReconciliationScheduler.js`,
+`apps/dgfy-api/src/server.js`, `apps/dgfy-api/.env.example`, focused tests,
+`docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`,
+`docs/features/commerce-payment-fulfillment-settlement.md`,
+`docs/api/specification.md`, and
+`docs/compliance/impact-declarations/2026-10-17-commerce-refund-failure-recovery.md`.
+
+### Acceptance and validation evidence
+
+- [x] Definite PayMongo refund rejection logs safe detail, stores `failed`, raises a
+      per-refund alert, and writes an audit event; ambiguous errors remain pending.
+- [x] Webhook and reconciler status application are idempotent for refund, tenant
+      ledger, revenue reversal, and session state.
+- [x] Reconciliation handles linked IDs, a unique amount/time candidate, no match,
+      multiple matches, orphaned `created` rows, stale pending alerts, and per-row
+      provider failures without aborting the batch.
+- [x] Admin retry is limited to eligible failed/not-found rows, blocks active refunds,
+      verifies PayMongo immediately before submission, preserves the original row, and
+      records `retry_of` in audit history.
+- [x] Public tracking returns only the latest customer-safe refund fields and performs
+      the session lookup with tenant and POS transaction scope.
+- [x] `node --check` passes for every changed JavaScript file;
+      `npm run check:compliance`, `npm run check:architecture`, `npm run lint:docs`,
+      `node scripts/check-app-version-bump.js`, and the focused touched Jest suites pass.
+- [x] PR [#2556](https://github.com/Sieitzz/dgfy-platform/pull/2556) uses `Refs #2549`,
+      includes `## Plan Handoff`, and names the live
+      webhook-subscription confirmation as outstanding post-merge operator work.
+
+### Evidence
+
+PR [#2556](https://github.com/Sieitzz/dgfy-platform/pull/2556) is open against `develop`
+for the Phase 510 backend scope. The focused commerce refund and Store tracking Jest suites passed 103/103 tests across
+eight files. `node --check` passed for all 23 changed JavaScript files; compliance,
+architecture, docs/ADR lint, app-version-floor, and whitespace checks passed. The local
+disposable request-time preflight passed `no_breach` / `ALLOWED` under reference
+`PREFLIGHT-LOCAL-1792249298628-2026-10-17-COMMERCE-REFUND-FAILURE-RECOVERY`. Jest required
+`--forceExit` after completing the tests and closing tenant connections because existing
+module timers kept the process open. The live production webhook subscription has not
+been verified in this workspace.
+
+### Rollback
+
+Revert the API/service, scheduler, retry route, tracking payload, tests, documentation,
+ADR amendment, compliance declaration, and this phase's implementation together. No
+schema rollback or data migration is required. Existing external PayMongo refunds remain
+provider-owned financial events and are never reversed by code rollback.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and its named
+implementation validation passes.
+
+### Post-merge verification
+
+- [ ] provider — issue #2549 operator confirms the production PayMongo account has the
+      required refund webhook events registered; blocks issue closure and refund-flow
+      verification.
+- [ ] operational — confirm the scheduler runs in the deployed API environment and
+      produces no persistent provider-read errors or duplicate ledger/revenue entries;
+      blocks issue closure.
+- [ ] deployment — verify the deployed tracking endpoint exposes the mapped refund
+      fields for a controlled rejected/cancelled order without exposing provider data;
+      blocks issue closure.
+
+### Next phase number
+
+Phase 522. The Admin refund retry workflow is scoped to that phase; Storefront tracking
+UI remains unscheduled. No explicit dependency.
+
+## Phase 511 - Customer order-status push notifications (#2554)
+
+### Initiative and release
+
+Customer communications, current release.
+
+### Objective and scope
+
+Add provider-neutral, best-effort Expo push delivery for Storefront order-status transitions to
+DGFY-account devices and unlinked guest-order devices. Add authenticated account token routes,
+checkout-proof-authorized guest token routes, landlord token/log tables, receipt processing,
+retention, and the `unconfigured` default provider. The mobile consumer, web push, marketing push,
+POS/staff push, and Storefront-customer orders without a DGFY account are out of scope.
+
+### Status
+
+`in_progress` — implementation and required local validation are complete; PR review and merge
+remain outstanding, along with post-merge provider verification.
+
+### Dependencies
+
+Issue #2554 defines scope. No explicit phase dependency blocks this work. Expo credentials and
+real-device provider verification are post-merge operational dependencies for enabling real delivery,
+not for merging the provider-disabled implementation.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0094](../architecture/adr/0094-outbound-sms-delivery-contract-log-and-pii-retention.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md),
+[DGFY Customer Account](DGFY_CUSTOMER_ACCOUNT.md), [Database Schema](../database/schema.md),
+and [Issue #2554](https://github.com/Sieitzz/dgfy-platform/issues/2554). Classification:
+`cross-boundary`; new outbound push behavior has no earlier ADR and is governed by ADR 0097.
+
+### Implementation targets
+
+[Push delivery module](../../apps/dgfy-api/src/modules/pushDelivery/README.md),
+[token/log migration](../../apps/dgfy-migration-runner/migrations/20261017000001-create-push-device-tokens-and-delivery-logs.cjs),
+[Storefront checkout and proof](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[activity recorder](../../apps/dgfy-api/src/modules/dgfy/utils/customerActivityRecorder.js),
+[account notification dispatcher](../../apps/dgfy-api/src/modules/dgfy/services/dgfyCustomerNotifications.js),
+[receipt scheduler](../../apps/dgfy-api/src/schedulers/pushReceiptScheduler.js),
+and [focused push tests](../../apps/dgfy-api/tests/pushTokenUseCases.unit.test.js),
+[repository tests](../../apps/dgfy-api/tests/pushDeviceTokenRepository.unit.test.js),
+[dispatcher tests](../../apps/dgfy-api/tests/dispatchOrderStatusPushUseCase.unit.test.js),
+[receipt and scheduler tests](../../apps/dgfy-api/tests/processPushReceiptsUseCase.unit.test.js),
+[migration test](../../apps/dgfy-api/tests/createPushDeviceTokensAndDeliveryLogs.migration.test.js),
+and existing [customer activity recorder tests](../../apps/dgfy-api/tests/customerActivityRecorder.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Account pushes use newly-created in-app notifications; guest pushes use changed status
+      activity and exclude Storefront-customer orders.
+- [x] Explicit status allowlist and SMS-owned `placed` behavior are documented and implemented.
+- [x] Guest proof is separate, tenant/order/PIN-bound, expires after 24 hours by default, and is
+      returned from both regular checkout response paths.
+- [x] Account/guest token registration and deletion routes, rate limits, owner exclusivity,
+      active-token reassignment, five-device guest cap, and claim/final-status cleanup are wired.
+- [x] Landlord delivery history stores keyed token hashes and provider metadata without message
+      content or raw token; Expo is disabled by default.
+- [x] Receipt and retention scheduler is wired with a distributed lock; provider receipt failures
+      do not block retention.
+- [x] Focused Jest coverage passes for migration, repository ownership/cap and reservation locks,
+      proof rejection/expiry/type/binding, dedupe, provider failures, receipts, retention, and
+      status fanout (9 suites, 29 tests).
+- [x] `node --check` on changed API files and migration; `npm run check:architecture`,
+      `npm run check:adr`, `npm run lint:docs`, `npm run check:compliance`,
+      `npm run audit:backend-tests:check`, and `node scripts/check-app-version-bump.js`.
+- [ ] PR review and merge to `develop`; implementation validation passes before status becomes
+      `completed`.
+
+### Evidence
+
+The focused API run passed 9 suites and 29 tests. API lint passed with zero errors and four
+pre-existing warnings. `node --check`, `git diff --check`, architecture, ADR, docs, compliance,
+backend test-inventory, and app-version checks passed. The Expo provider remains disabled and no
+live compliance preflight was executed.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord migration before API code is activated; verify the migration
+      and runtime health in the release evidence. This blocks enabling Expo delivery.
+- [ ] provider — provision Expo project and APNs/FCM credentials in EAS/SOPS, send a staging push
+      to designated real devices, and confirm a receipt poll. This blocks changing
+      `PUSH_PROVIDER` from `unconfigured`.
+- [ ] operational — confirm provider errors and receipt-scheduler failures do not log raw tokens or
+      customer PII, and verify the retention cycle is active. This blocks production provider
+      enablement.
+
+### Next phase number
+
+Phase 512. No explicit dependency.
+
+## Phase 512 - POS backend-unreachable classification (#1476)
+
+### Initiative and release
+
+POS terminal reliability, current release.
+
+### Objective and scope
+
+Unify backend-unreachable and per-operation retry classification for POS checkout, operation
+replay, catalog fallback, incoming-order polling, terminal reachability, and transient Sentry
+reporting. Preserve checkout idempotency, the cash-only/no-discount/non-resumed-sale offline
+constraints, operator-triggered replay, and existing backend authority. Add bounded polling/SSE
+backoff and focused outage regression coverage. Categories/folders caching remains deferred to #993;
+the IMS Skupervisor twin and backend pool fixes remain out of scope.
+
+### Status
+
+`in_progress` — implementation and validation are underway; the branch is unmerged.
+
+### Dependencies
+
+Issue #1476 defines scope. No explicit phase dependency blocks this work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0014](../architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md),
+[ADR 0055](../architecture/adr/0055-pos-catalog-invalidation-stream.md),
+[ADR 0067](../architecture/adr/0067-chrome-80-es-compatibility-floor.md),
+[POS Offline Sync Contract](POS_OFFLINE_SYNC_CONTRACT.md),
+[request-time preflight protocol](../compliance/request-time-preflight-protocol.md),
+[impact declaration](../compliance/impact-declarations/2026-10-18-pos-backend-unreachable-classifier.md),
+and [Issue #1476](https://github.com/Sieitzz/dgfy-platform/issues/1476). This is within the
+existing POS boundary; no ADR amendment is required.
+
+### Implementation targets
+
+[Shared classifier](../../packages/web-core/src/services/backendReachability.js),
+[API outcome snapshot](../../packages/web-core/src/services/api.js),
+[Sentry transient threshold](../../packages/web-core/src/observability/sentryClient.js),
+POS checkout/catalog/history workflows, incoming-order polling, POS catalog SSE, terminal queue
+replay, and [outage checkout E2E](../../apps/dgfy-pos/tests/e2e/pos/backend-outage-checkout-queue.spec.js).
+Focused coverage is in the adjacent `__tests__` files under `packages/web-core/src/services`,
+`observability`, and `features/pos`.
+
+### Acceptance and validation evidence
+
+- [x] A single shared module owns unreachable and retryable status classification; in-scope private
+      status sets and `!error.response`-only predicates are removed.
+- [x] Eligible cash checkout failures queue under the original idempotency key; non-cash,
+      discounted, and resumed parked-sale checkouts remain blocked.
+- [x] Gateway failures mark the backend unreachable; 500/429 responses and cancelled requests do
+      not. A successful response restores reachability.
+- [x] Automatic incoming-order/catalog polls skip overlapping work and back off; SSE reconnects
+      include jitter and recover on success or operator connectivity events.
+- [x] POS transient Sentry reporting requires three consecutive transient failures; server errors
+      still report immediately and the existing failure classes/fingerprints remain intact.
+- [x] POS and affected shared-trunk builds, focused tests, compliance, docs, architecture, and
+      app-version-floor checks pass. The provisioned-stack E2E result is reported explicitly.
+
+### Evidence
+
+Focused Vitest validation passed 9 suites / 162 tests. `npm run build:pos`,
+`npm run build:skupervisor`, `npm run build:store`, and `npm run build:opis` passed, including
+the POS Chrome 80 compatibility guard. `npm run check:architecture`, `npm run lint:docs`,
+`npm run check:compliance`, `node scripts/check-app-version-bump.js`, changed-file `node --check`,
+the in-scope duplicate-predicate scan, and `git diff --check` passed. Playwright listed both new
+outage E2E cases; runtime E2E was not run because no local POS server or provisioned service stack
+was available. Live request-time compliance preflight was not run; its `NOT-EXECUTED-*` reference
+is accepted for PR-open and is due to the continuous sweep. PR review and merge remain outstanding.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — issue #1476 verifies the merged POS candidate is deployed and the terminal
+      starts with the normal reachability state; this blocks issue verification and closure.
+- [ ] operational — issue #1476 verifies an authenticated terminal under a controlled 502 or
+      transport outage: eligible cash sales persist in the queue, protected checkout types remain
+      open for retry, and queued work is submitted only by operator action; this blocks issue
+      verification and closure.
+- [ ] operational — issue #1476 verifies successful API recovery clears the terminal's unreachable
+      state and incoming-order polling returns to its normal cadence; this blocks issue verification
+      and closure.
+
+## Phase 513 - Tenant DB pool acquire-timeout diagnostics and capability lookup caching (#2560)
+
+### Initiative and release
+
+API reliability, current release.
+
+### Objective and scope
+
+Make the next tenant DB connection acquire-timeout episode diagnosable with a tenant Sentry tag,
+request and pool context, and a structured log. Reduce avoidable tenant-pool pressure by caching
+tenant POS/IMS capability setting reads for 15 seconds with same-process write invalidation. This
+phase does not claim a proven root cause, tune pool sizing, change HTTP behavior, or satisfy the
+issue's post-deploy acceptance criteria.
+
+### Status
+
+`in_progress` — implementation and focused validation are complete; repository gates, PR review,
+merge, and post-deploy observation remain outstanding.
+
+### Dependencies
+
+Issue [#2560](https://github.com/Sieitzz/dgfy-platform/issues/2560) defines the scoped behavior.
+There is no explicit dependency on another phase. Pool sizing and acquire tuning remain evidence-
+driven follow-up work and are not a prerequisite for this phase.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0002](../architecture/adr/0002-error-contract-unification.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[Production Observability Runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md), and
+[Issue #2560](https://github.com/Sieitzz/dgfy-platform/issues/2560). Classification:
+`within-existing-boundary`; HTTP error contracts remain unchanged and no ADR amendment is required.
+
+### Implementation targets
+
+[Sentry configuration](../../apps/dgfy-api/src/config/sentry.js),
+[tenant middleware](../../apps/dgfy-api/src/middleware/tenantHandler.js),
+[pool diagnostics](../../apps/dgfy-api/src/utils/dbPoolDiagnostics.js),
+[pool snapshot](../../apps/dgfy-api/src/utils/TenantConnector.js),
+[capability setting cache](../../apps/dgfy-api/src/modules/shared/utils/tenantCapabilitySettingCache.js),
+[capability gates](../../apps/dgfy-api/src/middleware/auth.js),
+[capability writer](../../apps/dgfy-api/src/modules/tenants/usecases/updateTenantCapabilitiesUseCase.js),
+[runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [x] Sentry tenant tag is set after tenant resolution and before tenant DB connection acquisition.
+- [x] Acquire-timeout diagnostics record tenant, route, method, request ID, tenant-pool and global
+      pool state on both Express and use-case failure capture paths without changing responses.
+- [x] POS/IMS capability settings are cached for 15 seconds; same-process writes invalidate the
+      cache after commit and rollback, and lookup failures remain fail-closed.
+- [x] Focused API validation passed: 9 Jest suites, 96 tests.
+- [x] `node --check` on every changed API JavaScript file; architecture, docs, compliance, and app
+      version checks passed before PR creation.
+- [ ] PR review and merge to `develop`; implementation validation must pass before status becomes
+      `completed`.
+
+### Evidence
+
+`npm --prefix apps/dgfy-api test -- --runTestsByPath ...` passed 9 suites and 96 tests, including
+cache TTL/single-flight/invalidation, capability-gate behavior, commit/rollback invalidation,
+Sentry scope tagging, acquire-timeout capture paths, error forwarding, and pool snapshot coverage.
+Changed-file `node --check`, architecture, compliance, docs/ADR, app-version, and whitespace checks
+passed before PR creation.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — issue #2560: observe several business days after rollout with no
+      `DGFY-BACKEND-P` events and no same-minute multi-tenant `DGFY-POS-C` timeout clusters. This
+      blocks issue closure.
+- [ ] operational — issue #2560: confirm acquire-timeout events and logs include the tenant tag,
+      route, request ID, and available pool counters. This blocks issue closure and informs any
+      evidence-driven pool-sizing follow-up.
+
+### Next phase number
+
+Phase 514. No explicit dependency.
+
+## Phase 514 - POS staff Expo push tokens and new online-order wake-up (#2569)
+
+### Initiative and release
+
+POS staff mobile integration, current release.
+
+### Objective and scope
+
+Register tenant-scoped POS staff Expo tokens and send one deduplicated, best-effort wake-up push
+after a fresh online order commits. Staff audience is revalidated by activity, `pos:view`, and the
+order's location access. `GET /pos/incoming-orders` remains authoritative. Storefront account and
+guest push behavior remains unchanged.
+
+### Status
+
+`in_progress` — implementation and repository-level checks pass on the feature branch; PR review,
+merge, deployment, provider, and real-device evidence remain outstanding.
+
+### Dependencies
+
+Issue [#2569](https://github.com/Sieitzz/dgfy-platform/issues/2569) defines the scoped behavior.
+There is no explicit dependency on another phase. Mobile integration remains tracked by
+[dgfy-mobile #413](https://github.com/Sieitzz/dgfy-mobile/issues/413) after the API contract is
+settled.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md),
+[Push delivery README](../../apps/dgfy-api/src/modules/pushDelivery/README.md),
+[API specification](../api/specification.md), [Database schema](../database/schema.md), and
+[Issue #2569](https://github.com/Sieitzz/dgfy-platform/issues/2569). Classification:
+`cross-boundary`; ADR 0097's affected clauses are `[default]`, amended in this PR; no new ADR or
+tech-lead approval is required.
+
+### Implementation targets
+
+[Push token model](../../apps/dgfy-api/src/models/Landlord/PushDeviceToken.js),
+[staff token repository](../../apps/dgfy-api/src/modules/pushDelivery/repositories/pushDeviceTokenRepository.js),
+[staff audience repository](../../apps/dgfy-api/src/modules/pushDelivery/repositories/staffPushAudienceRepository.js),
+[staff dispatcher](../../apps/dgfy-api/src/modules/pushDelivery/usecases/dispatchStaffNewOnlineOrderPushUseCase.js),
+[POS routes](../../apps/dgfy-api/src/routes/pos.js),
+[checkout hook](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+[staff lifecycle handlers](../../apps/dgfy-api/src/modules/users/controllers/userHandlers.js),
+[retention scheduler](../../apps/dgfy-api/src/schedulers/pushReceiptScheduler.js), and
+[staff-owner migration](../../apps/dgfy-migration-runner/migrations/20261018000001-add-staff-push-token-owners.cjs).
+Focused tests cover [token ownership](../../apps/dgfy-api/tests/pushDeviceTokenRepository.unit.test.js),
+[registration use cases](../../apps/dgfy-api/tests/pushTokenUseCases.unit.test.js),
+[audience resolution](../../apps/dgfy-api/tests/staffPushAudienceRepository.unit.test.js),
+[dispatch](../../apps/dgfy-api/tests/dispatchStaffNewOnlineOrderPushUseCase.unit.test.js),
+[route contract](../../apps/dgfy-api/tests/posStaffPushTokens.route.contract.test.js),
+[migration](../../apps/dgfy-api/tests/addStaffPushTokenOwners.migration.test.js), and
+[checkout post-commit behavior](../../apps/dgfy-api/tests/storeCheckoutRoadDistanceCapture.unit.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Staff owner fields, mutually exclusive owner binding, same-owner refresh, token reassignment,
+      and optional `previous_token` revocation are implemented.
+- [x] Authenticated POS registration/deletion routes use `pos:view`; checkout dispatch runs only
+      after commit on the fresh branch and remains detached from the checkout result.
+- [x] Dispatch rechecks active/deleted status, effective permission, and location access; payload
+      is limited to the event, opaque order id, and location id. Storefront order-limit accounting is
+      purpose-scoped and unchanged for `order_status`.
+- [x] Staff lifecycle revocation, 90-day inactivity retention, API/ADR/schema documentation, and
+      this phase record are implemented.
+- [x] Focused repository, use-case, dispatch, route, migration, lifecycle, scheduler, and checkout
+      regression tests were added; the optional Jest Tier 2 suite was not run in this session.
+- [x] Changed-file JavaScript syntax checks pass. `npm run check:architecture`, `npm run
+      check:adr`, `npm run lint:docs`, `npm run check:compliance`, and
+      `node scripts/check-app-version-bump.js` pass. Focused Jest Tier 2 tests were authored but
+      not run.
+- [ ] PR review and merge to `develop`; phase remains `in_progress` until then.
+
+### Evidence
+
+Repository-level Tier 0 results: changed JavaScript syntax checks, architecture guardrails and
+controller boundaries, strict ADR validation, governed-doc lint, compliance and API-contract
+checks, and app-version checks all pass. Focused Jest Tier 2 tests were authored but not run.
+Expo remains `unconfigured`; no live provider or device delivery was exercised. The contract
+documents the no-outbox crash-loss window and keeps polling authoritative.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — confirm both authenticated staff-token routes are available with the expected
+      permission and device-proof gates; owner: Verifier; blocks issue closure.
+- [ ] provider — verify production remains `unconfigured` until provider onboarding and secrets are
+      separately approved; owner: release; blocks enabling live push delivery.
+- [ ] real-device — validate Omni and Fiscal POS registration, token refresh, sign-out/tenant
+      switching, and a new-order wake-up while backgrounded; owner: POS/mobile QA; blocks issue
+      closure and mobile #414 integration.
+- [ ] mobile contract — after merge, post the settled paths, request/response shapes, and payload
+      schema to [dgfy-mobile #413](https://github.com/Sieitzz/dgfy-mobile/issues/413); owner: Worker.
+
+### Next phase number
+
+Phase 515. No explicit dependency.
+
+## Phase 515 - PayMongo unknown-session paid alert mode gating (#1091)
+
+### Initiative and release
+
+PayMongo commerce webhook hardening, current release.
+
+### Objective and scope
+
+Keep the unknown-session paid-webhook error alert for live-money events while
+suppressing expected non-live events in test-mode runtimes. Preserve the warning
+log, `ignored/session_not_found` audit row, response contract, event-type scope,
+alert key, and retry behavior. No payment acceptance, revenue posting,
+settlement, schema, or deployment change is in scope.
+
+### Status
+
+`in_progress` — implementation validation is complete; PR review, merge, and
+post-deploy verification remain outstanding.
+
+### Dependencies
+
+Issue [#1091](https://github.com/Sieitzz/dgfy-platform/issues/1091) defines the
+behavior. No earlier phase is an explicit dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[PayMongo production activation](../ops/PAYMONGO_PRODUCTION_ACTIVATION.md), and
+[Issue #1091](https://github.com/Sieitzz/dgfy-platform/issues/1091). Classification:
+`within-existing-boundary`; the existing use-case-to-config dependency is reused,
+and ADR 0052's untagged clause 3 is refined by a dated amendment in this PR.
+
+### Implementation targets
+
+[Webhook use case](../../apps/dgfy-api/src/modules/commercePayments/usecases/handlePayMongoCommerceWebhookUseCase.js),
+[webhook regression tests](../../apps/dgfy-api/tests/finalizePaidCommerceSession.usecase.test.js),
+[ADR 0052 amendment](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[compliance declaration](../compliance/impact-declarations/2026-10-19-paymongo-unknown-session-alert-livemode-gating.md),
+and this phase record.
+
+### Acceptance and validation evidence
+
+- [x] Test-mode unknown-session paid events with absent or non-live `livemode` do
+  not raise the operational alert and still return `handled:false` with the
+  `ignored/session_not_found` audit row.
+- [x] Live-mode unknown-session paid events and events marked `livemode: true`
+  retain the existing error alert.
+- [x] Other event types and matched-session handling retain their existing
+  behavior; no API, schema, migration, or payment-posting contract changes.
+- [x] Four focused payment suites pass (45 tests); changed backend syntax,
+  architecture guardrails/controller boundaries, docs/ADR lint, compliance, and
+  app-version checks pass.
+- [ ] PR review and merge to `develop`; phase remains `in_progress` until then.
+
+### Evidence
+
+The implementation injects the existing lazy PayMongo mode helper into the
+webhook use case. Event livemode follows the existing normalization convention;
+the helper remains local because the current equivalent is private to a sibling
+use case, and importing one use case from another would add unnecessary coupling.
+The four requested payment regression suites passed (45 tests). `node --check`,
+`npm run check:architecture`, `npm run lint:docs`, `npm run check:compliance`,
+and `node scripts/check-app-version-bump.js` also passed.
+
+### Completion date
+
+Not complete. Record only after merge and successful implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — after DEV/STAGING deploy, send or observe a cross-environment
+  test checkout and confirm `DGFY-BACKEND-6` receives no new unknown-session
+  alert in a window covering the event; owner: Verifier; blocks issue closure and
+  the claim that deployment verification passed.
+- [ ] operational — optionally inspect DEV `commerce_payment_webhook_audit` for
+  `ignored/session_not_found` rows after the same checkout; owner: Verifier or
+  Pat; supporting evidence only and does not replace deployment verification.
+
+### Next phase number
+
+Phase 516. No explicit dependency.
+
+## Phase 516 - Platform Admin push diagnostics (#2579)
+
+### Initiative and release
+
+Outbound push delivery operations, current release. Backend, Platform Admin page, operator runbook,
+and their validation are scoped to one PR (#2580).
+
+### Objective and scope
+
+Let an authorized Platform Admin see where push delivery stops in the connected environment:
+presence-only provider/secret readiness, pseudonymous registrations, delivery attempts with a
+provider-acceptance vs receipt state, and the skipped/suppressed dispatch reasons that were never
+persisted. Add an audited, rate-limited test send to an operator-enrolled diagnostic device only. The
+surface is Platform Admin (`apps/dgfy-admin`, `admin.push_diagnostics`), not OPIS: the data is
+landlord-wide operator data and OPIS is the tenant-scoped merchant back office (ADRs 0047, 0087, 0089).
+Mobile and POS clients calling the enrollment endpoint are out of scope.
+
+### Status
+
+`in_progress` — backend and admin UI implementation and focused validation pass on the feature
+branch; PR review, merge, deployment, `DEPLOY_ENV_LABEL` provisioning, and real-device evidence
+remain outstanding.
+
+### Dependencies
+
+Issue [#2579](https://github.com/Sieitzz/dgfy-platform/issues/2579). There is no explicit dependency
+on another phase. Test send is usable only after a mobile or POS client calls the enrollment endpoint
+(separate work); every other view works without it.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md),
+[API specification](../api/specification.md), [Database schema](../database/schema.md), and the
+[route permission matrix](../testing/platform-admin-route-permission-matrix.md). Classification:
+`cross-boundary`; the affected clauses (ADR 0097 Decisions 6 and 10, ADR 0047 Consequences) are
+`[default]` and amended in this PR; no new ADR or tech-lead approval is required.
+
+### Implementation targets
+
+[Diagnostics module](../../apps/dgfy-api/src/modules/pushDiagnostics/README.md),
+[Platform Admin diagnostics page](../../apps/dgfy-admin/Pages/PushDiagnostics.jsx),
+[Platform Admin diagnostics tests](../../apps/dgfy-admin/src/pages/__tests__/PushDiagnostics.test.jsx),
+[operator runbook](../ops/PUSH_DIAGNOSTICS_RUNBOOK.md),
+[dispatch event recorder](../../apps/dgfy-api/src/modules/pushDelivery/utils/dispatchEventRecorder.js),
+[diagnostic device repository](../../apps/dgfy-api/src/modules/pushDelivery/repositories/pushDiagnosticDeviceRepository.js),
+[admin routes](../../apps/dgfy-api/src/routes/adminPushDiagnostics.js),
+[enrollment route](../../apps/dgfy-api/src/routes/pushDiagnosticsEnrollment.js),
+[route classification](../../apps/dgfy-api/src/middleware/auth.js),
+[rate limiters](../../apps/dgfy-api/src/middleware/rateLimiter.js),
+[retention scheduler](../../apps/dgfy-api/src/schedulers/pushReceiptScheduler.js), and the
+[diagnostics migration](../../apps/dgfy-migration-runner/migrations/20261019000001-create-push-diagnostics-tables.cjs).
+Focused tests: [use cases](../../apps/dgfy-api/tests/pushDiagnosticsUseCases.unit.test.js),
+[transport](../../apps/dgfy-api/tests/pushDiagnostics.transport.test.js),
+[read-repository redaction](../../apps/dgfy-api/tests/pushDiagnosticsReadRepository.redaction.unit.test.js),
+[dispatch-event recording](../../apps/dgfy-api/tests/pushDispatchEventRecording.unit.test.js),
+[enrollment repository](../../apps/dgfy-api/tests/pushDiagnosticDeviceRepository.unit.test.js), and the
+[migration](../../apps/dgfy-api/tests/createPushDiagnosticsTables.migration.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Access to diagnostics requires an active Platform Admin session and `admin.push_diagnostics`
+      (route classification and an explicit guard); opening the overview, issuing a code, enrolling,
+      revoking, and test sends are audited, and the overview fails closed when its audit row fails.
+- [x] The environment label comes from `DEPLOY_ENV_LABEL` (then `SENTRY_ENVIRONMENT`, else `unknown`)
+      and each deployment reads only its own database.
+- [x] Readiness is presence-only; responses contain no raw token, secret, owner id, tenant id,
+      tracking PIN, order id, or ticket id.
+- [x] Skipped/suppressed reasons, including `no_active_tokens`, are recorded in `push_dispatch_events`.
+- [x] Test send accepts no body, targets only an enrolled diagnostic device, and is limited per admin
+      and per device.
+- [x] Authorization, redaction, outcome mapping, and test-send restriction tests were added.
+- [x] Admin UI shows the connected environment, readiness indicators, outcome counts, pseudonymous
+      registrations and attempts, dispatch reasons, and controlled diagnostic-device actions.
+- [x] Operator runbook documents state meanings, registration/dispatch/provider/receipt triage,
+      environment configuration, and the client enrollment dependency.
+- [x] Admin UI tests cover environment banners, empty states, provider/receipt labels, sensitive-field
+      redaction, one-time code display, no accidental test send, confirmation gating, and 429 messages.
+- [x] Rendered UI proof for desktop (1440 px) and mobile (390 px) viewports; mocked API data only,
+      with no browser errors or page-width overflow. Screenshots: `.tmp/push-diagnostics-render/`.
+- [ ] PR review and merge to `develop`; phase remains `in_progress` until then.
+
+### Evidence
+
+Focused backend Jest suites and repository checks are recorded in the PR's Testing Evidence. Admin UI
+component tests, the app build, and rendered desktop/mobile checks with mocked API data pass in this
+continuation. No provider, production environment, or real device was exercised; Expo remains
+`unconfigured` by default.
+
+### Completion date
+
+Not complete. Record after PR #2580 merges and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — the admin routes are classified (a delegated admin without the grant gets 403) and
+      the migration applied to the connected environment; owner: Verifier; blocks issue closure.
+- [ ] configuration — set `DEPLOY_ENV_LABEL` in the staging and production API environment files and
+      confirm the page banner matches each; owner: release; blocks issue closure.
+- [ ] real-device — enroll an operator device through a client that calls the enrollment endpoint and
+      send one test push; owner: mobile QA; blocks enabling the test send for operators.
+
+### Next phase number
+
+Phase 517. No explicit dependency.
+
+## Phase 517 - Delivery address precision: street on map pins and required house/unit details (#2593, #2594, #2595)
+
+### Initiative and release
+
+Storefront delivery addresses, current release. Three issues, one PR each: the reverse-geocode
+street rule (#2593, PR #2597), the saved-address `address_details` field (#2594, API PR) together
+with the Storefront checkout details field (#2594, Storefront PR), and the merchant store-location
+picker (#2595, blocked on a storage decision).
+
+### Objective and scope
+
+Give riders an address they can deliver to. A map pin's label names its street when a feature
+naming one lies within 75 m (#2593). Every Storefront delivery checkout and customer-location
+service booking requires the customer's own house number, Blk/Lot, unit or building, combined into
+the existing `delivery_address` text as `<details>, <location>` with no order schema change (#2594).
+Saved addresses keep the details in a new nullable landlord column, `dgfy_customer_addresses.address_details`.
+The tenant-scoped `customer_addresses` table is out of scope: no frontend uses its API. Approved UI
+reference: https://claude.ai/artifact/875Z9232zSG5Qh6BMxvfC1.
+
+### Status
+
+`in_progress` — PR #2597 (#2593) is open for review; the #2594 API change (migration, model, use
+case, API spec) is implemented with focused tests; the Storefront change and #2595 remain.
+
+### Dependencies
+
+Issues [#2593](https://github.com/Sieitzz/dgfy-platform/issues/2593),
+[#2594](https://github.com/Sieitzz/dgfy-platform/issues/2594) and
+[#2595](https://github.com/Sieitzz/dgfy-platform/issues/2595). No explicit dependency on another
+phase. The Storefront part of #2594 needs the API part deployed before saved details persist; the
+API ignores the field until then, so the order of merges is not a correctness risk. #2595 is blocked
+on its storage decision.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0013](../architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md)
+(2026-09-17 Quadruper amendment, extended by a 2026-10-19 amendment in PR #2597),
+[ADR 0023](../architecture/adr/0023-front-facing-dgfy-customer-account.md) (saved-address management),
+and the [API specification](../api/specification.md). Classification: `within-existing-boundary`
+for #2593 and #2594; the ADR 0013 change is a dated amendment to an untagged clause.
+
+### Implementation targets
+
+[Photon feature mapper](../../apps/dgfy-api/src/modules/geoSearch/mappers/photonFeatureMapper.js),
+[DGFY customer use cases](../../apps/dgfy-api/src/modules/dgfy/usecases/dgfyCustomerUseCases.js),
+[DGFY customer repository](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyCustomerRepository.js),
+[DgfyCustomerAddress model](../../apps/dgfy-api/src/models/Landlord/DgfyCustomerAddress.js), and the
+[address-details migration](../../apps/dgfy-migration-runner/migrations/20261019000002-add-dgfy-customer-address-details.cjs).
+Focused tests: [mapper](../../apps/dgfy-api/tests/geoPhotonFeatureMapper.test.js),
+[customer use cases](../../apps/dgfy-api/tests/dgfyCustomerUseCases.test.js), and the
+[migration](../../apps/dgfy-api/tests/addDgfyCustomerAddressDetails.migration.test.js).
+
+### Acceptance and validation evidence
+
+- [x] Reverse-geocode labels name the street within 75 m, keep the barangay-level label beyond it,
+      and never carry a house number or POI name (#2593; 97 geo tests, live Quadruper check in PR #2597).
+- [x] Saved addresses accept, trim, cap (255) and return `address_details`; a blank value is `null`;
+      an update without the field leaves it untouched (#2594 API).
+- [x] The migration adds the nullable column idempotently and removes it on `down`.
+- [ ] Storefront checkouts require the details field, preview and submit `<details>, <location>`,
+      prefill a searched house number, and save/restore details with saved addresses (#2594 Storefront).
+- [ ] Merchant picker details (#2595), after its storage decision.
+
+### Evidence
+
+Focused Jest suites and repository checks are recorded in each PR's Testing Evidence.
+
+### Completion date
+
+Not complete. Record after the #2594 Storefront PR merges and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — the address-details migration applied to the connected landlord database before
+      the API that reads the column starts; owner: release; blocks issue closure.
+- [ ] rendered — a deployed Storefront delivery checkout shows the required details field and submits
+      `<details>, <location>`; owner: Verifier; blocks issue closure.
+
+### Next phase number
+
+Phase 518. No explicit dependency.
+
+## Phase 518 - Per-app mobile push-diagnostics visibility (#2602)
+
+### Initiative and release
+
+Platform Admin push diagnostics, current release. Adds deployment-local switches for the diagnostics
+screen in Storefront, POS, and Fiscal POS; no mobile client change is included.
+
+### Objective and scope
+
+Let an authorized Platform Admin enable or disable the mobile push-diagnostics screen independently
+for `storefront`, `pos`, and `fiscalpos`. Missing settings default off. The session-less mobile read
+returns only `{enabled}` and does not change enrollment, code validity, revocation, or test sends.
+Brand is required and shape-validated but does not select a separate setting. Classification:
+`within-existing-boundary`; amend ADR 0097 Decision 10 (`[default]`).
+
+### Status
+
+`in_progress` — implementation is on `feature/2602-push-diagnostics-visibility`; PR and merge are
+pending. No deployment or mobile-client verification has been performed.
+
+### Dependencies
+
+Issue [#2602](https://github.com/Sieitzz/dgfy-platform/issues/2602). No explicit dependency on an
+earlier phase. The mobile-side consumer remains dgfy-mobile#422 and is not in this phase's scope.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-app-boundary.md),
+[ADR 0097](../architecture/adr/0097-outbound-push-notification-delivery-contract.md), the
+[API specification](../api/specification.md), [rate-limit reference](../api/RATE_LIMITING.md),
+[runbook](../ops/PUSH_DIAGNOSTICS_RUNBOOK.md), and
+[route-permission matrix](../testing/platform-admin-route-permission-matrix.md).
+
+### Implementation targets
+
+[Settings migration](../../apps/dgfy-migration-runner/migrations/20261019000003-create-push-diagnostics-app-settings.cjs),
+[landlord setting model](../../apps/dgfy-api/src/models/Landlord/PushDiagnosticsAppSetting.js),
+[availability use case](../../apps/dgfy-api/src/modules/pushDiagnostics/usecases/pushDiagnosticsUseCases.js),
+[settings repository](../../apps/dgfy-api/src/modules/pushDiagnostics/repositories/pushDiagnosticsSettingsRepository.js),
+[admin router](../../apps/dgfy-api/src/routes/adminPushDiagnostics.js),
+[availability router](../../apps/dgfy-api/src/routes/pushDiagnosticsEnrollment.js), and
+[Platform Admin page](../../apps/dgfy-admin/Pages/PushDiagnostics.jsx). Focused tests cover migration,
+repository transaction and rollback behavior, use cases, transport and route classification, service
+contracts, and the page confirmation flow.
+
+### Acceptance and validation evidence
+
+- [x] All three apps default off and an authorized admin can confirm audited on/off changes; a no-op
+      creates no audit row and an audit failure rolls back the setting.
+- [x] Session-less availability validates app and brand shape, applies the app setting to any
+      well-formed brand, returns only `{enabled}`, and fails closed for invalid input or service error.
+- [x] Availability limiter defaults to 120 per IP per 15 minutes and its contract is documented.
+- [x] Route classification, API/UI contracts, compliance declaration, ADR, runbook, and module docs
+      are updated; no mobile client or OPIS behavior changes.
+- [x] Focused Jest/Vitest suites, `npm run build:admin`, `npm run check:architecture`,
+      `npm run check:adr`, `npm run lint:docs`, and `npm run check:compliance` pass.
+- [x] Rendered desktop and mobile UI evidence is recorded with mocked API data; there were no browser
+      errors or page-width overflow at 390 px. Screenshots: `.tmp/push-diagnostics-visibility-render/`.
+
+### Evidence
+
+The five focused backend Jest suites pass (91 tests); the two focused admin Vitest suites pass (58
+tests); `npm run build:admin`, `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+`npm run check:compliance`, changed-file `node --check`, and the develop-base version-floor audit pass.
+Rendered 1440 px desktop and 390 px mobile screenshots use mocked API data and show no browser errors
+or horizontal overflow. No provider, production environment, migration deployment, or real device is
+exercised in this phase. Full command output is recorded in the implementation PR's Testing Evidence.
+
+### Completion date
+
+Not complete. Record after the implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — the landlord migration is applied and a delegated admin without
+      `admin.push_diagnostics` still receives 403 for the new routes; owner: Verifier; blocks issue
+      closure.
+- [ ] mobile contract — dgfy-mobile#422 reads availability, keeps the screen hidden on non-200, and
+      uses the 30-second cache contract; owner: mobile QA; blocks issue closure.
+- [ ] operational — verify a switch change on each deployed environment and observe the maximum
+      30-second cache lag; owner: Verifier; blocks issue closure.
+
+### Next phase number
+
+Phase 519. No explicit dependency.
+
+## Phase 519 - Durable feedback submissions (#561)
+
+### Initiative and release
+
+Feedback persistence under epic #560, current release.
+
+### Objective and scope
+
+Replace the host-local JSONL feedback store with a landlord `feedback_submissions` table, stable
+UUIDs, tenant and submitter attribution, client origin, triage columns, and request correlation.
+Move submit and Platform Admin read paths to the table; import prior host logs with an idempotent,
+dry-run-first command. Keep the existing authenticated feedback route and Admin permission.
+Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — implementation and PR for #561 are pending merge. No host import or deployed
+verification has been performed.
+
+### Dependencies
+
+Issue [#561](https://github.com/Sieitzz/dgfy-platform/issues/561). No explicit dependency on
+earlier phases. Guest route access remains #582; client placement remains #581; subject selector
+remains #596. Native Storefront consumption is dgfy-mobile#431.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+
+### Implementation targets
+
+[Landlord migration](../../apps/dgfy-migration-runner/migrations/20261020000001-create-feedback-submissions.cjs),
+[model](../../apps/dgfy-api/src/models/Landlord/FeedbackSubmission.js),
+[feedback module](../../apps/dgfy-api/src/modules/feedback/README.md),
+[legacy importer](../../apps/dgfy-api/scripts/import-legacy-feedback-log.js), and
+[web feedback widget](../../packages/web-core/Components/common/FeedbackWidget.jsx).
+Focused migration, repository, use-case, handler, parser, and importer checks provide implementation
+evidence.
+
+### Acceptance and validation evidence
+
+- [ ] Submissions persist in the landlord table and return a stable UUID.
+- [ ] Tenant/session or future guest attribution, Storefront web/native origin, and request
+      correlation are stored; existing Admin list/stats shape remains compatible.
+- [ ] No runtime file read/write path remains; the dry-run/import reports malformed and duplicate
+      entries and preserves the source file.
+- [ ] Focused checks, frontend build, architecture/ADR/docs/compliance gates, schema registry,
+      and version-floor check pass; evidence is recorded in the PR.
+
+### Completion date
+
+Not complete. Record after implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord migration before the new API image serves feedback; owner:
+      release; blocks #561 closure.
+- [ ] operational — on STAGING then PROD, dry-run the bind-mounted legacy log, review totals and
+      malformed lines, apply the import, and confirm the Admin list contains historical rows;
+      owner: operator/Verifier; blocks #561 closure.
+- [ ] operational — verify a new submission keeps its UUID across Admin reads and carries origin
+      and correlation metadata; owner: Verifier; blocks #561 closure.
+
+### Next phase number
+
+Phase 520. No explicit dependency.
+
+## Phase 520 - Tenant pool warm idle window and physical connect diagnostics (#2560)
+
+### Initiative and release
+
+API reliability, current release.
+
+### Objective and scope
+
+Keep tenant MySQL connections warm between quiet POS polls and report slow or failed physical
+connects, pool creation state, and tenant-instance churn. This is evidence-driven follow-up to
+Phase 513 after the post-deploy acquire-timeout acceptance check failed. Pool capacity, acquire
+timeout, HTTP behavior, and the connection budget remain unchanged. Classification:
+`within-existing-boundary`.
+
+### Status
+
+`completed` — PR [#2623](https://github.com/Sieitzz/dgfy-platform/pull/2623) merged to
+`develop` on 2026-10-20 as `a9b8f2b04830f53b94c7eec543f63308a6099e1b`; implementation validation
+passed. Post-merge deployment and operational verification remain outstanding below.
+
+### Dependencies
+
+Issue [#2560](https://github.com/Sieitzz/dgfy-platform/issues/2560) defines the behavior. No
+explicit phase dependency; this phase uses telemetry produced by Phase 513.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), and
+[Production Observability Runbook](../ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md). No ADR amendment
+or architecture exception is required.
+
+### Implementation targets
+
+[Connection budget configuration](../../apps/dgfy-api/src/config/connectionBudget.js),
+[TenantConnector](../../apps/dgfy-api/src/utils/TenantConnector.js), focused API tests, and the
+operator runbook.
+
+### Acceptance and validation evidence
+
+- [x] Tenant pool idle time defaults to 60000 ms and accepts a positive environment override;
+      pool max, acquire, and budget arithmetic remain unchanged.
+- [x] Physical connects report slow and failed attempts without changing connection results or
+      errors; timeout context exposes `creating`, `last_connect_ms`, `slow_connects`,
+      `created_total`, and `evicted_total`.
+- [x] Focused tests, changed-file syntax checks, architecture, compliance, docs, and version
+      checks pass; evidence is recorded in [PR #2623](https://github.com/Sieitzz/dgfy-platform/pull/2623).
+- [x] PR review and merge to `develop`.
+
+### Completion date
+
+2026-10-20
+
+### Post-merge verification
+
+- [ ] deployment — issue #2560: verify the configured idle window and new connect diagnostics
+      in deployed API logs and Sentry; owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: observe several business days without `DGFY-BACKEND-P` or
+      `DGFY-BACKEND-Q` acquire timeouts or same-minute multi-tenant `DGFY-POS-C` clusters;
+      owner: Verifier; blocks issue closure.
+- [ ] operational — issue #2560: investigate host-side MySQL connect stalls if new timing
+      confirms them; owner: operator; blocks root-cause closure.
+
+### Next phase number
+
+Phase 521. No explicit dependency.
+
+## Phase 521 - Guest feedback submission (#582)
+
+### Initiative and release
+
+Feedback intake under epic #560, current release.
+
+### Objective and scope
+
+Allow anonymous feedback on the existing POST endpoint with validated self-reported contact,
+server-derived identity for staff, DGFY accounts and store customers, tenant-aware persistence,
+and a dedicated abuse limit. No client or migration work is included.
+
+### Status
+
+`in_progress` — implementation PR pending merge and validation.
+
+### Dependencies
+
+Phase 519's landlord table must be migrated in each target environment before this API is deployed.
+There is no phase-numbering dependency on an earlier unfinished phase.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+
+### Implementation targets
+
+[Feedback module](../../apps/dgfy-api/src/modules/feedback/README.md),
+[route](../../apps/dgfy-api/src/routes/feedback.js), [limiter](../../apps/dgfy-api/src/middleware/rateLimiter.js),
+and focused feedback identity, validation, mapping, and handler tests.
+
+### Acceptance and validation evidence
+
+- [ ] Anonymous feedback with valid name and email persists as an unverified guest; missing or
+      invalid contact returns 400.
+- [ ] Authenticated submissions ignore client identity and persist the correct staff, DGFY, or
+      store-customer identity; bad tokens never become guests.
+- [ ] Tenant-less submissions store null tenant ID and name; tenant-scoped submissions retain both.
+- [ ] A dedicated feedback limiter returns 429 at the configured threshold.
+- [ ] Focused tests and architecture, docs, compliance, inventory, syntax, and version checks pass;
+      evidence is recorded in the implementation PR.
+
+### Completion date
+
+Not complete. Record after implementation merges and validation passes.
+
+### Post-merge verification
+
+- [ ] Confirm the Phase 519 landlord migration is applied before deploying this API.
+- [ ] STAGING: submit valid anonymous feedback, confirm 201 and a guest row in Platform Admin;
+      omit contact and confirm 400.
+- [ ] STAGING: confirm anonymous rate limiting returns 429 at the configured threshold.
+- [ ] PROD: repeat after promotion; promoter and verifier own deployment and verification.
+
+### Next phase number
+
+Phase 522. No explicit dependency.
+
+## Phase 522 - Platform Admin refund-retry operator workflow (#2549)
+
+### Initiative and release
+
+Commerce payment refund recovery, current release.
+
+### Objective and scope
+
+Add a cross-session refund-attempt list and a reason-required Platform Admin retry action.
+Persist append-only retry lineage in the landlord database, prevent retrying older chain
+members, audit successful and blocked actions, and show the new attempt's actual provider
+status. Storefront tracking UI and Phase 510 production/provider verification remain out
+of scope.
+
+### Status
+
+`in_progress` — implementation and validation are underway; merge and deployed verification
+remain outstanding.
+
+### Dependencies
+
+- The authenticated retry route and fresh PayMongo read from Phase 510 / PR #2556 are in
+  the current `develop` baseline.
+- The additive landlord migration must be applied before deploying the API change.
+- No phase-numbering dependency; Phase 521's unfinished implementation does not block this
+  work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Commerce payment API specification](../api/specification.md),
+[Commerce payment fulfillment and settlement](commerce-payment-fulfillment-settlement.md),
+and [request-time preflight protocol](../compliance/request-time-preflight-protocol.md).
+
+### Implementation targets
+
+Landlord refund model/repository/use cases and additive migration under
+`apps/dgfy-api` and `apps/dgfy-migration-runner`; Platform Admin Payment Operations under
+`apps/dgfy-admin`; API and Admin refund-retry/list tests; API, feature-flow, and compliance
+declaration documentation.
+
+### Acceptance and validation evidence
+
+- [ ] Refund attempts list across sessions with session/order references, status, provider
+  ID, failure detail, requester, age, `retry_of`, and server-computed eligibility.
+- [ ] Retry is available only for a failed or eligible provider-not-found review attempt
+  that is a chain head and has no other active session refund.
+- [ ] Retry requires a trimmed 3–255 character reason and explicit confirmation; client
+  identity fields are rejected and the server-authenticated actor is audited.
+- [ ] Every retry creates a linked row; the original remains unchanged. Success and blocked
+  attempts audit original/new references, amount, reason, actor, request ID when available,
+  and outcome or block code.
+- [ ] Fresh provider read remains fail-closed; ambiguous matching refunds and read failures
+  are blocked and audited.
+- [ ] Admin shows the new attempt reference and provider status without claiming success for
+  pending/created attempts.
+- [ ] Focused API Jest and Admin Vitest suites, API JavaScript/migration syntax checks,
+  Admin production build, compliance, architecture, docs, and app-version checks pass.
+
+### Completion date
+
+Not complete. Record after the scoped implementation merges and named validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — apply the landlord-only migration in each target environment before API
+  deployment; owner: Promoter; blocks API deployment.
+- [ ] deployment — verify the Admin attempts list and a sandbox retry display the returned
+  reference/status after deployment; owner: Verifier; blocks Phase 522 verification.
+- [ ] operational — confirm successful and blocked retry audit rows retain the authenticated
+  actor, request ID, reason, and integer original refund ID; owner: Verifier; blocks Phase 522
+  acceptance.
+
+### Next phase number
+
+Phase 523. No explicit dependency.

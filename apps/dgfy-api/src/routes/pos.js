@@ -3,6 +3,7 @@ import * as posController from '../controllers/posController.js';
 import * as employeeCreditController from '../modules/employeeCredit/controllers/employeeCreditHandlers.js';
 import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
 import * as deliveryPersonnelController from '../modules/deliveryPersonnel/controllers/deliveryPersonnelHandlers.js';
+import * as staffPushTokenHandlers from '../modules/pushDelivery/controllers/staffPushTokenHandlers.js';
 import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability, requireTenantAdminRole } from '../middleware/auth.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
@@ -60,6 +61,8 @@ import {
     validateTerminalShiftHistoryQuery,
     validateTerminalDashboardTodayQuery,
     validateIncomingOnlineOrdersQuery,
+    validateStaffPushTokenRegistration,
+    validateStaffPushTokenDeletion,
     validateOnlineOrderHistoryQuery,
     validateDeliveryPersonnelListQuery,
     validateAdminLocationMonitorQuery,
@@ -406,6 +409,8 @@ router.post('/esales-reports/generate', checkPermission(PERMISSIONS.POS.actions.
 router.patch('/esales-reports/:id/status', checkPermission(PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS), validatePosTransactionIdParam, validateUpdateESalesReportStatus, posController.updateESalesReportStatus);
 router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.verifyFiscalEventLedger);
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
+router.post('/staff-push-tokens', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateStaffPushTokenRegistration, staffPushTokenHandlers.registerPosStaffPushToken);
+router.delete('/staff-push-tokens', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateStaffPushTokenDeletion, staffPushTokenHandlers.deletePosStaffPushToken);
 router.get('/order-history', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validateOnlineOrderHistoryQuery, posController.listOnlineOrderHistory);
 router.get('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryPersonnelListQuery, posController.listActiveDeliveryPersonnel);
 router.get('/delivery-personnel/registry', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelRegistryQuery, deliveryPersonnelController.listDeliveryPersonnelRegistry);

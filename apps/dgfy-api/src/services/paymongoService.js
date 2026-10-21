@@ -39,6 +39,31 @@ const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = Number.parseInt(
     10
 );
 
+const redactPayMongoSecret = (value, secretKey) => {
+    let message = String(value || '');
+    if (!secretKey) return message;
+    const encodedAuthorization = Buffer.from(`${secretKey}:`).toString('base64');
+    return message
+        .replaceAll(secretKey, '[REDACTED]')
+        .replaceAll(encodedAuthorization, '[REDACTED]');
+};
+
+export const formatPayMongoError = (operation, error = {}, secretKey = null) => {
+    const status = error?.response?.status || error?.status || null;
+    const providerErrors = Array.isArray(error?.response?.data?.errors)
+        ? error.response.data.errors
+        : [];
+    const details = providerErrors.map((entry) => [entry?.code, entry?.detail]
+        .filter(Boolean)
+        .join(': '))
+        .filter(Boolean);
+    const detail = details.length > 0
+        ? details.join('; ')
+        : (error?.message || 'unknown error');
+    const statusText = status ? ` (HTTP ${status})` : '';
+    return redactPayMongoSecret(`PayMongo ${operation} failed${statusText}: ${detail}`, secretKey);
+};
+
 /**
  * PayMongo Service
  * Handles interactions with PayMongo API for payments and subscriptions.
@@ -574,7 +599,45 @@ export class PayMongoService {
             logger.info(`PayMongo refund created: ${response.data.data.id}`);
             return response.data.data;
         } catch (error) {
-            logger.error('PayMongo Create Refund Error:', error.response?.data || error.message);
+            logger.error(formatPayMongoError('Create Refund', error, this.secretKey));
+            throw error;
+        }
+    }
+
+    async retrieveRefund(refundId) {
+        const normalizedRefundId = String(refundId || '').trim();
+        if (!/^ref_[A-Za-z0-9_-]+$/.test(normalizedRefundId)) {
+            throw new Error('PayMongo refund ID must use the ref_ prefix.');
+        }
+
+        try {
+            const refundsBaseUrl = this.baseUrl.replace(/\/v1$/, '');
+            const response = await axios.get(`${refundsBaseUrl}/refunds/${encodeURIComponent(normalizedRefundId)}`, {
+                headers: this.getAuthHeader()
+            });
+            return response.data?.data || null;
+        } catch (error) {
+            if (error.response?.status === 404) return null;
+            logger.error(formatPayMongoError('Retrieve Refund', error, this.secretKey));
+            throw error;
+        }
+    }
+
+    async listPaymentRefunds(paymentId) {
+        const normalizedPaymentId = String(paymentId || '').trim();
+        if (!/^pay_[A-Za-z0-9]+$/.test(normalizedPaymentId)) {
+            throw new Error('PayMongo payment ID must use the pay_ prefix.');
+        }
+
+        try {
+            const payment = await this.getPayment(normalizedPaymentId);
+            const refunds = payment?.attributes?.refunds;
+            const resources = Array.isArray(refunds?.data)
+                ? refunds.data
+                : (Array.isArray(refunds) ? refunds : []);
+            return resources.map((resource) => resource?.data || resource).filter(Boolean);
+        } catch (error) {
+            logger.error(formatPayMongoError('List Payment Refunds', error, this.secretKey));
             throw error;
         }
     }
@@ -849,7 +912,7 @@ export class PayMongoService {
             return response.data.data;
         } catch (error) {
             if (error.response?.status === 404) return null;
-            logger.error('PayMongo Get Payment Error:', error.response?.data || error.message);
+            logger.error(formatPayMongoError('Get Payment', error, this.secretKey));
             throw error;
         }
     }

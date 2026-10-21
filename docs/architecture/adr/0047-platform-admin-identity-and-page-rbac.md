@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-07-28
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-19
 review_by: 2027-01-28
 topic: platform_admin_identity_rbac
 ---
@@ -52,3 +52,16 @@ The historical admin JWT represented a shared master credential and carried no r
 - Audit and secret handling follow this ADR's Consequences and the proposed partner administration
   matrix. This amendment defines the page grant; it does not claim routes are implemented.
 - Reference: `docs/api/PARTNER_ADMINISTRATION_MATRIX.md`; proposed ADR 0092.
+
+### 2026-10-19 — Push diagnostics page grant (#2579)
+
+- Clause amended: Consequences (default).
+- Change: add `admin.push_diagnostics` to the Platform Admin page-permission matrix and middleware
+  classification. The grant covers the read-only push diagnostics views (provider/secret presence,
+  pseudonymous registrations, delivery attempts, dispatch decisions), issuing enrollment codes,
+  revoking diagnostic devices, and the rate-limited test send to an enrolled diagnostic device.
+- Boundary: Platform Master alone grants or removes the page permission. Opening the overview and each
+  mutating action write `platform_admin_audit_logs` rows whose snapshots exclude tokens, enrollment
+  codes, secret values, and raw IP/user-agent values. The overview fails closed if its audit row cannot
+  be written.
+- Reference: ADR 0097 amendment of the same date; `docs/testing/platform-admin-route-permission-matrix.md`.

@@ -23,6 +23,7 @@
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
 - [Admin Tenant Management Endpoints](#admin-tenant-management-endpoints)
 - [Storefront Custom Domain Endpoints](#storefront-custom-domain-endpoints)
+- [Feedback Endpoints](#feedback-endpoints)
 
 ### Integration
 - [Frontend-Backend Integration Points](#frontend-backend-integration-points)
@@ -3305,6 +3306,69 @@ List incoming online orders for POS fulfillment queue.
 1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
 2. Completed, cancelled, and rejected orders are excluded from this queue endpoint.
 
+### POST /pos/staff-push-tokens
+Register or refresh an Expo push token for the authenticated POS staff user.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+**Middleware**: Existing POS rate limiter and device-proof policy
+
+**Request Body**
+```json
+{
+  "token": "ExpoPushToken[xxxxxxxxxxxxxxxx]",
+  "previous_token": "ExponentPushToken[yyyyyyyyyyyyyyyy]",
+  "platform": "android",
+  "app": "pos",
+  "brand": "Omni POS"
+}
+```
+
+`previous_token` is optional and is used when the device receives a replacement Expo token. The
+server binds the token to the authenticated `(tenant_id, user_id)`; owner fields are not accepted
+from the client.
+
+**Response**
+```json
+{ "success": true, "data": { "registered": true, "token_id": "<uuid>" } }
+```
+
+### DELETE /pos/staff-push-tokens
+Revoke the authenticated staff user's token, for example on sign-out.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+**Middleware**: Existing POS rate limiter and device-proof policy
+
+**Request Body**
+```json
+{ "token": "ExpoPushToken[xxxxxxxxxxxxxxxx]" }
+```
+
+**Response**
+```json
+{ "success": true, "data": { "revoked": true } }
+```
+
+### POS new-online-order push data
+The API sends this best-effort notification after a new online order commits. It is a wake-up hint;
+`GET /pos/incoming-orders` remains authoritative.
+
+```json
+{
+  "title": "New online order",
+  "body": "A new online order is waiting in POS.",
+  "data": {
+    "event": "pos_new_online_order",
+    "order_id": 12345,
+    "location_id": 7
+  }
+}
+```
+
+`location_id` is the resolved active location or `null`. This payload contains no tracking PIN,
+customer data, order lines, company token, or access token.
+
 ### GET /pos/order-history
 List online orders that are no longer in the active fulfillment queue but still
 need operational visibility in POS.
@@ -3761,6 +3825,14 @@ IMS location clients should submit the merchant-editable address with the normal
 | `PUT` | `/tenant-locations/:id/dine-in-payment-policy` | Update the branch-scoped Dine-in pay-in-store policy |
 | `DELETE` | `/tenant-locations/:id` | Deactivate a location while preserving history |
 | `DELETE` | `/tenant-locations/:id/permanent` | Permanently delete an unused pin only |
+
+`POST` and `PUT /tenant-locations` accept an optional nullable `address_details` (#2595): the
+merchant's street number, unit, floor or building, at most 255 characters, trimmed, with a blank
+value stored as `null`. `address_line` remains the full display address every reader uses; the
+store-location editors send it as `<address_details>, <location>` and keep `address_details` apart
+so they can show the two parts again. The API does not require the field, so older clients and
+older locations stay valid; the editors require it. Approved company registrations copy
+`location.address_details` from the submitted draft onto the primary location.
 
 The Dine-in payment policy endpoint requires `downpayment:settings` (or master-admin/admin
 authority) and an assigned branch grant for non-tenant-wide users. Its request body is:
@@ -4525,13 +4597,15 @@ this source contract.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `target_type`, `limit`, and `offset`. |
+| `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `refund_status` (comma-separated refund states), `target_type`, `limit`, and `offset`. |
+| `GET` | `/refunds` | List refund attempts across payment sessions. Supports comma-separated `status`, `tenant_id`, `limit`, and `offset`; returns `retry_of`, `has_retry`, and server-computed `retry_eligible` with the session reference and order metadata. |
 | `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
 | `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
 | `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks, parent split-capability confirmation status, and the remaining external evidence required before live money movement. |
 | `POST` | `/payment-sessions/:payment_session_id/reconcile` | Admin-only recovery check against the PayMongo Payment Intent API. It finalizes only when a paid provider payment record exists and its amount/currency match the locked session; otherwise it reports the provider state or returns a review conflict. |
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
+| `POST` | `/payment-sessions/:payment_session_id/refunds/:refund_id/retry` | Explicitly retry a failed refund or a `PROVIDER_REFUND_NOT_FOUND` review row after a fresh provider read confirms there is no unlinked matching refund. Requires `{ "reason": "..." }` (trimmed, 3–255 characters); unknown body keys are rejected with `422`. Returns `409` for ineligible, older-chain-head, or active-refund conflicts. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account` | Create a PayMongo merchant child account for an existing tenant and store it as pending readiness. |
 | `POST` | `/tenants/:tenant_id/paymongo-child-account/sync-requirements` | Pull current PayMongo child-merchant onboarding requirements into local readiness metadata. |
@@ -4582,6 +4656,38 @@ this source contract.
 }
 ```
 
+**Refund Retry Request**
+```json
+{
+  "reason": "Provider confirmed no refund exists"
+}
+```
+
+The retry reason is stored in the audit log and is not sent to PayMongo. Body-less retry callers now receive `422`; the shipped Admin interface is the only known client of this route.
+
+**Admin Refund List Response**
+```json
+{
+  "refunds": [
+    {
+      "refund_id": "CRF-ABC123DEF4",
+      "retry_of": null,
+      "has_retry": false,
+      "retry_child_references": [],
+      "retry_eligible": true,
+      "payment_session": {
+        "public_reference": "CPS-ABC123DEF4",
+        "tenant_id": "550e8400-e29b-41d4-a716-446655440000",
+        "store_slug": "space-bar",
+        "pos_transaction_id": 2749,
+        "status": "refund_pending"
+      }
+    }
+  ],
+  "pagination": { "limit": 100, "offset": 0, "count": 1, "total": 1 }
+}
+```
+
 **Refund Strategy Notes**
 - `proportional` lets PayMongo apply the default split-refund distribution.
 - `tenant` sends a fixed split-refund source against the tenant transfer merchant.
@@ -4589,7 +4695,12 @@ this source contract.
 - `custom` is supported by backend payload shape for provider testing, but the current admin UI exposes only proportional, tenant, and DGFY strategies.
 - Non-proportional `split_refund.refund_sources` must total exactly the requested refund amount in centavos before the provider API is called.
 - Refund submission records `pending` refunds without marking the order refunded until PayMongo reports terminal success.
-- The PayMongo webhook handler updates stored refund attempts for `payment.refunded` and `payment.refund.updated` events when the provider refund ID matches `commerce_payment_refunds`, then recomputes payment-session and tenant-order payment status.
+- The PayMongo webhook handler and scheduled authenticated PayMongo read reconciler use the same idempotent status applier. The reconciler links only one unique provider refund matching amount and creation time; no match after 30 minutes or multiple matches becomes `manual_review_required` and raises an operator alert.
+- A definite provider rejection remains `failed`, raises a per-refund error alert immediately, and is never automatically retried. The admin retry endpoint creates a new refund row and preserves the original attempt for audit history.
+- A retry is allowed only for a failed attempt or a `manual_review_required` attempt with `PROVIDER_REFUND_NOT_FOUND`, when no other refund is active for its session. Only the latest attempt in a retry chain may be retried; each new row stores a nullable `retry_of_refund_id` self-link, serialized as the original public `retry_of` reference. The original row is never changed.
+- Every retry and blocked retry records an `audit_logs` event (`commerce_payment_refund_retried` or `commerce_payment_refund_retry_blocked`) against the original integer `refund_id`. The audit includes the authenticated actor username and UUID, request ID when available, operator reason, original/new public references, amount, provider refund ID, outcome or block code. The integer self-link is never exposed in API responses.
+- A pending refund older than `COMMERCE_REFUND_PENDING_ALERT_HOURS` (default 24) raises a warning alert, throttled for six hours. Reconciliation runs every 15 minutes by default and can be disabled with `COMMERCE_REFUND_RECONCILE_ENABLED=false`.
+- Refund rows expose `updated_at`; the payment-session list can filter by `refund_status` so failed or review-required attempts remain discoverable even when the session itself is finalized.
 - Possible tenant order payment statuses for commerce QR Ph refunds are `refund_pending`, `partial_refunded`, and `refunded`.
 
 **Settlement Report Notes**
@@ -4643,6 +4754,7 @@ Track online-store order status for public users.
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
+For rejected or cancelled orders, the payload includes `refund: null` or the latest refund's `status` (`processing`, `refunded`, or `under_review`), public `reference`, `amount_centavos`, and `updated_at`. The lookup is scoped by tenant and POS transaction. Provider refund IDs, failure details, and provider payloads are never returned. For other fulfillment states, `refund` is `null`.
 **Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
 
 ### PATCH /store/orders/:tracking_pin/cancel
@@ -6335,7 +6447,7 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
 | `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
 
-`POST /dgfy/customer/addresses` and `PUT/PATCH /dgfy/customer/addresses/:address_id` accept `label`, `address_line`, optional nullable `latitude`, optional nullable `longitude`, and `is_default`. Latitude must be within `-90..90`, longitude must be within `-180..180`, and coordinates must be supplied or cleared as a pair. Text-only addresses remain valid fallback records and must not be rejected only because coordinates are absent. Coordinate-backed addresses are preferred for delivery checkout because Storefront checkout persists them as nullable `delivery_latitude` and `delivery_longitude` on the online POS transaction.
+`POST /dgfy/customer/addresses` and `PUT/PATCH /dgfy/customer/addresses/:address_id` accept `label`, `address_line`, optional nullable `address_details`, optional nullable `latitude`, optional nullable `longitude`, and `is_default`. `address_details` (#2594) is the customer's own house number, Blk/Lot, unit or building, at most 255 characters, trimmed, with a blank value stored as `null`; it is kept apart from the geocoded `address_line` so checkout can restore both parts, and an update leaves it untouched unless the body carries it. The API does not require it: addresses saved before it existed stay valid, and Storefront checkout asks for the details when such an address is used. Latitude must be within `-90..90`, longitude must be within `-180..180`, and coordinates must be supplied or cleared as a pair. Text-only addresses remain valid fallback records and must not be rejected only because coordinates are absent. Coordinate-backed addresses are preferred for delivery checkout because Storefront checkout persists them as nullable `delivery_latitude` and `delivery_longitude` on the online POS transaction.
 
 Storefront checkout keeps account-saved, temporary checkout, recommended store or branch, manual map, current-device, and text-only location states internally distinct while preserving the public checkout payload shape. A delivery checkout is valid when it has readable address text, with or without coordinates. If coordinates are present, POS incoming orders can render address text, coordinate text, and a map-navigation link; if coordinates are absent, POS must render the text address without a broken map link.
 
@@ -6460,6 +6572,37 @@ Platform Admin authentication uses an HttpOnly landlord session cookie. `/admin/
 | `DELETE` | `/admin/platform-admins/:adminId` | Remove an eligible delegated identity |
 
 Blank delegated-user password input applies the documented temporary default. Explicit creation/reset passwords and own-password changes require at least eight characters. Password values are never returned by list/read endpoints or written to audit details.
+
+### Push diagnostics (Platform Admin)
+
+Operator-only diagnostics for outbound push delivery (ADR 0097, #2579). Every `/admin/push-diagnostics*` endpoint requires an active Platform Admin session with `admin.push_diagnostics` and returns `Cache-Control: no-store`. Responses describe only the connected API environment (`environment.label` comes from `DEPLOY_ENV_LABEL`, then `SENTRY_ENVIRONMENT`, else `unknown`) and never contain raw push tokens, secret values, owner identifiers, tracking PINs, tenant ids, or provider ticket ids. Registrations and delivery rows carry pseudonymous refs derived from the keyed token hash; order references are one-way keyed correlation refs.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/admin/push-diagnostics/overview` | Environment label, presence-only provider/secret readiness, registration counts by app/brand/platform, 24h/7d delivery and dispatch-decision counts. Audited (`push_diagnostics.accessed`) before data is returned |
+| `GET` | `/admin/push-diagnostics/visibility` | Per-deployment visibility switches for `storefront`, `pos`, and `fiscalpos`; missing rows default off |
+| `PUT` | `/admin/push-diagnostics/visibility/:app` | Set `{enabled: boolean}` for one supported app; extra body fields are rejected. Changed values are audited atomically; a no-op is not audited |
+| `GET` | `/admin/push-diagnostics/registrations` | Capped list (`limit` <= 100; filters `app`, `brand`, `platform`, `state`) |
+| `GET` | `/admin/push-diagnostics/attempts` | Recent delivery attempts with a derived `state` and recent dispatch decisions with `reason_code` (`window_hours` <= 168; filters `purpose`, `status`, `outcome`) |
+| `GET` | `/admin/push-diagnostics/diagnostic-devices` | Enrolled diagnostic devices (no tokens) |
+| `POST` | `/admin/push-diagnostics/enrollment-codes` | Issue a single-use code valid for 10 minutes; the plaintext is returned once. Audited |
+| `DELETE` | `/admin/push-diagnostics/diagnostic-devices/:id` | Revoke a diagnostic device. Audited |
+| `POST` | `/admin/push-diagnostics/diagnostic-devices/:id/test-send` | Send a fixed-copy test push to that device only. Accepts no body (any field, including a token, is rejected); limited per admin (3 per 10 minutes) and per device (10 per hour); audited; recorded in `push_delivery_logs` with purpose `diagnostic_test` |
+
+Delivery `state` values: `no_provider` (unconfigured or simulated; nothing was delivered), `pending_dispatch`, `send_failed`, `rejected_by_expo`, `accepted_receipt_pending` (accepted by Expo, receipt not yet checked), `receipt_ok` (Expo handed the message to APNs/FCM), `receipt_error`, `receipt_other`. None of them states that a notification was displayed on a device.
+
+`POST /push-diagnostics/enroll` is the device-side enrollment call and is session-less: the body `{code, token, platform, app, brand}` must carry a valid, unexpired, unused code issued above. Every code failure returns the same `404`. The response contains only `{enrolled, ref}`. It is limited per IP (10 per 15 minutes).
+
+`GET /push-diagnostics/availability?app=<app>&brand=<brand>` is a separate session-less mobile read
+limited to 120 requests per IP per 15 minutes by default. It returns exactly `{enabled: boolean}`
+with `Cache-Control: public, max-age=30`. `app` must exactly match `storefront`, `pos`, or
+`fiscalpos`; `brand` must be present and match the existing 1–80 character brand shape. Brand is
+client-supplied metadata and does not select a setting: any well-formed brand receives the app-level
+value. Missing or malformed values and unrecognized query keys fail closed with `200 {enabled:false}`.
+Availability controls whether the mobile app shows its diagnostics screen; it does not change
+enrollment-code validity, enrollment, revocation, or test-send behavior. Storage failures return a
+generic `503` with `Cache-Control: no-store`; clients should keep the diagnostics screen hidden on
+any non-200 response.
 
 ### QA landlord invoices
 
@@ -7113,7 +7256,7 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
 - The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; adjust-mode click, marker drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Settings opens locked and requires `Adjust Pin` before map interactions can change coordinates. Onboarding starts in adjust mode only after searchable storefront visibility is enabled and no valid saved pin exists. The picker opens over Iloilo City, Philippines when no saved pin exists, but that is camera state only and must not be saved as an implicit merchant pin. Missing coordinates, `0,0`, and browser geolocation results outside the Philippines are invalid for merchant-store pins. Browser geolocation uses high-accuracy mode when available and shows reported accuracy feedback, but it remains best effort and cannot guarantee device precision. Click, drag, and geolocation selections may request PH reverse-geocoded address suggestions; reverse-geocode failure must not block coordinate saving.
-- `GET /api/v1/geo/reverse-geocode` returns PH address metadata for map pin suggestions. Successful responses include `provider` (`dgfy-quadruper` when resolved by the DGFY-operated Quadruper geocoding service, `dgfy-ph-local` when served by the bundled fallback dataset), `precision` (`house`, `street`, `barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, `components` (`housenumber`, `street`, `locality`, `district`, `city`, `state`, `postcode` — every field nullable), and `landmarks` (an always-present array, capped at five, of nearby named points of interest ordered by ascending distance, each with `name`, `category`, `osm_key`, `osm_value`, `distance_meters`, `latitude`, `longitude`; empty on the bundled-fallback path). PSGC code fields and `provenance` appear only on the bundled-fallback path, since OpenStreetMap carries no PSGC identifiers. The endpoint must not return vague `Near ...` labels; when no match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`. Reverse-geocode failure must not block saving valid coordinates.
+- `GET /api/v1/geo/reverse-geocode` returns PH address metadata for map pin suggestions. Successful responses include `provider` (`dgfy-quadruper` when resolved by the DGFY-operated Quadruper geocoding service, `dgfy-ph-local` when served by the bundled fallback dataset), `precision` (`house`, `street`, `barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, `components` (`housenumber`, `street`, `locality`, `district`, `city`, `state`, `postcode` — every field nullable), and `landmarks` (an always-present array, capped at five, of nearby named points of interest ordered by ascending distance, each with `name`, `category`, `osm_key`, `osm_value`, `distance_meters`, `latitude`, `longitude`; empty on the bundled-fallback path). PSGC code fields and `provenance` appear only on the bundled-fallback path, since OpenStreetMap carries no PSGC identifiers. The endpoint must not return vague `Near ...` labels; when no match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`. Reverse-geocode failure must not block saving valid coordinates. The `address_line` starts with the street when a feature naming one (a street feature's own name, or a house or point of interest's `street`) lies within 75 m of the pin, and then reports `precision="street"`; otherwise it stays at the administrative level and `precision` names that level. A reverse label never contains a house number or a point-of-interest name (#2593).
 - `GET /api/v1/geo/address-search` accepts `query` (2-120 chars), `limit` (1-20, default 8), and optional `lat`/`lon` bias coordinates. `lat` and `lon` are all-or-nothing: supplying exactly one returns `422`. Results are hard-filtered to the Philippines bounding box. Each result carries `address_line`, `latitude`, `longitude`, `precision`, `provider`, and `components` (same shape as reverse-geocode). Forward labels include the street, prefixed by the house number when OpenStreetMap has one. Resolution is promised to street level, not house level: a query with a leading house number (`52 Rizal Street`, `#52-A Rizal St, Jaro`) also searches the street part alone and returns matching streets at `precision="street"` with the typed number carried in `address_line` and `components.housenumber`; an exact house on that street ranks first at `precision="house"`. When no street matches, results are those of the query as typed. Location bias stays a ranking hint; the search area is not narrowed (#2484).
 - The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, compatibility `open`/`close`, and `intervals: [{ open, close }]` in `HH:mm` format. Legacy one-window `{ enabled, open, close }` entries normalize to one interval.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
@@ -7313,3 +7456,61 @@ request boundary. A canonical request returns `tenant_id`, `slug`,
 `routing_mode=custom_domain_alias` plus `redirect_to`; the frontend replaces the
 location while preserving path, query, and fragment. Unknown, inactive,
 suspended, or removed hosts return `404`.
+
+## Feedback Endpoints
+
+### POST /api/v1/feedback
+
+**Access:** guests, tenant staff, DGFY accounts, and store customers. A request with an invalid,
+expired, or revoked credential is rejected; it never falls back to guest access. A store-customer
+session must match the resolved tenant.
+
+```json
+{
+  "type": "bug",
+  "description": "Checkout button does not respond",
+  "url": "https://example.com/cart",
+  "context": { "userAgent": "..." },
+  "origin": { "surface": "storefront", "platform": "ios", "app_version": "1.2.3" },
+  "contact": { "name": "Guest name", "email": "guest@example.com" }
+}
+```
+
+`type` is required: `bug`, `idea`, `question`, or `other`. `description` is required after
+trimming and has a 5000-character maximum. Invalid type or description returns HTTP 400 with
+`message`. `url` and `context` are optional; the URL is capped at 2048 characters and context
+is bounded to 8 KB. Oversize context is stored as `{ "truncated": true }`.
+
+`origin.surface` accepts `storefront`, `pos`, `ims`, `opis`, `admin`, or `unknown`;
+`origin.platform` accepts `web`, `android`, `ios`, or `unknown`. Missing/unrecognized values
+become `unknown`, with unrecognized raw values retained in `context.origin_raw` subject to the
+context bound. Native Storefront uses `storefront` + `ios`/`android`; web Storefront uses
+`storefront` + `web`. This pair is the dgfy-mobile#431 origin contract. `app_version` is optional
+and capped at 64 characters. Origin is client-declared metadata.
+
+Guest `contact.name` (1–255 characters) and valid `contact.email` (at most 254 characters) are
+required. They are self-reported and stored with `contact_verified: false`. For authenticated
+submissions, the server derives identity from the session and ignores body `contact`. Tenant
+context is optional for guests; an absent tenant is stored as null. Browser requests carrying a
+session cookie must include `x-csrf-token`. A dedicated feedback limit defaults to five anonymous
+or twenty credentialed requests per IP and tenant in ten minutes. Invalid input returns 400,
+invalid credentials return 401, tenant mismatch returns 403, and the limit returns 429 with
+`Retry-After`. The server stores the request ID as `correlation_id`, matching
+`engagement_events.correlation_id` when an engagement event is emitted.
+
+**Response (201):** `{ "message": "Feedback submitted successfully", "id": "<uuid>" }`.
+Database failure returns HTTP 500; clients should retain the draft for retry.
+
+### GET /api/v1/admin/feedback
+
+Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: [...], count }`,
+newest first, capped at 1000 rows. Filters: `type`, `search` (description or URL), `startDate`,
+`endDate` (inclusive through local end of day). Each row preserves `id`, `timestamp`, `type`,
+`description`, `url`, `context`, `tenant`, and `user`, and adds `status`, `surface`,
+`client_platform`, `app_version`, `submitter_type`, `contact_verified`, and `correlation_id`.
+`id` is a stable UUID. Missing URL appears as `N/A` for the existing Admin UI.
+
+### GET /api/v1/admin/feedback/stats
+
+Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: { total, bugs,
+ideas, latest } }`; `latest` is a feedback row or `null`.

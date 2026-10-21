@@ -83,4 +83,18 @@ describe('DGLaundry runtime attestation', () => {
     delete process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY;
     delete process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID;
   });
+
+  it('reports the configured DGLaundry origin rather than a hardcoded host (#2513)', async () => {
+    process.env.DGLAUNDRY_PARTNER_BASE_URL = 'https://dglaundry.stage.dgfy.ph';
+    const result = await buildDglaundryRuntimeAttestationUseCase(dependencies())();
+    expect(result.attestation.origins.laundry).toBe('https://dglaundry.stage.dgfy.ph');
+    expect(result.details.laundryOrigin).toBeUndefined();
+  });
+
+  it('reports no DGLaundry origin, with a reason, when none is configured (#2513)', async () => {
+    delete process.env.DGLAUNDRY_PARTNER_BASE_URL;
+    const result = await buildDglaundryRuntimeAttestationUseCase(dependencies())();
+    expect(result.attestation.origins.laundry).toBeNull();
+    expect(result.details.laundryOrigin).toMatch(/DGLAUNDRY_PARTNER_BASE_URL/);
+  });
 });

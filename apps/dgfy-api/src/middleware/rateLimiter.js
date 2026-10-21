@@ -50,6 +50,9 @@ const affiliateShareResolveWindowMs = parseInt(process.env.RATE_LIMIT_AFFILIATE_
 const affiliateShareResolveMaxRequests = parseInt(process.env.RATE_LIMIT_AFFILIATE_SHARE_RESOLVE_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontFollowMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const feedbackSubmissionWindowMs = parseInt(process.env.RATE_LIMIT_FEEDBACK_SUBMIT_WINDOW_MS) || 10 * 60 * 1000;
+const feedbackAnonymousMax = parseInt(process.env.RATE_LIMIT_FEEDBACK_SUBMIT_ANONYMOUS_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
+const feedbackCredentialedMax = parseInt(process.env.RATE_LIMIT_FEEDBACK_SUBMIT_CREDENTIALED_MAX_REQUESTS) || (isDevelopment ? 80 : 20);
 const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
@@ -60,6 +63,14 @@ const dgfyTenantSessionWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SE
 const dgfyTenantSessionMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS) || (isDevelopment ? 50 : 10);
 const dgfyAccountSearchWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
 const dgfyAccountSearchMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
+const dgfyPushTokenWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_PUSH_TOKEN_WINDOW_MS) || 15 * 60 * 1000;
+const dgfyPushTokenMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_PUSH_TOKEN_MAX_REQUESTS) || (isDevelopment ? 60 : 20);
+const adminPushTestSendWindowMs = parseInt(process.env.RATE_LIMIT_ADMIN_PUSH_TEST_SEND_WINDOW_MS) || 10 * 60 * 1000;
+const adminPushTestSendMaxRequests = parseInt(process.env.RATE_LIMIT_ADMIN_PUSH_TEST_SEND_MAX_REQUESTS) || (isDevelopment ? 30 : 3);
+const pushDiagnosticEnrollWindowMs = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_ENROLL_WINDOW_MS) || 15 * 60 * 1000;
+const pushDiagnosticEnrollMaxRequests = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_ENROLL_MAX_REQUESTS) || (isDevelopment ? 100 : 10);
+const pushDiagnosticAvailabilityWindowMs = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_AVAILABILITY_WINDOW_MS) || 15 * 60 * 1000;
+const pushDiagnosticAvailabilityMaxRequests = parseInt(process.env.RATE_LIMIT_PUSH_DIAGNOSTIC_AVAILABILITY_MAX_REQUESTS) || 120;
 const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS) || 60 * 60 * 1000; // 1 hour
 const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const companyRegistrationDraftWindowMs = parseInt(process.env.RATE_LIMIT_COMPANY_REGISTRATION_DRAFT_WINDOW_MS) || 15 * 60 * 1000;
@@ -120,6 +131,10 @@ const rateLimitCounters = {
   pos_drawer_authorization: 0,
   dgfy_tenant_session: 0,
   dgfy_account_search: 0,
+  dgfy_push_token: 0,
+  admin_push_test_send: 0,
+  push_diagnostic_enroll: 0,
+  push_diagnostic_availability: 0,
   registration: 0,
   geo_search: 0,
   inventory_push: 0,
@@ -320,6 +335,9 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/auth/lookup')) return 'auth_lookup';
   if (path.includes('/dgfy/auth/tenant-session')) return 'dgfy_tenant_session';
   if (path.includes('/dgfy/accounts/search')) return 'dgfy_account_search';
+  if (path.includes('/admin/push-diagnostics') && path.includes('/test-send')) return 'admin_push_test_send';
+  if (path.includes('/push-diagnostics/availability')) return 'push_diagnostic_availability';
+  if (path.includes('/push-diagnostics/enroll')) return 'push_diagnostic_enroll';
   if (path.includes('/store/auth/')) return 'store_auth';
   if (path.includes('/store/track/') || path.includes('/store/orders/')) return 'store_tracking';
   if (path.includes('/storefront/discovery')) return 'storefront_discovery';
@@ -1085,6 +1103,31 @@ export const storefrontFollowLimiter = rateLimit({
   },
 });
 
+export const feedbackSubmissionLimiter = rateLimit({
+  windowMs: feedbackSubmissionWindowMs,
+  max: (req) => (req.headers.authorization || getCookie(req, SESSION_COOKIE_NAMES.storefront) ||
+    getCookie(req, SESSION_COOKIE_NAMES.dgfy)) ? feedbackCredentialedMax : feedbackAnonymousMax,
+  message: createRateLimitError('Too many feedback submissions. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('feedback_submit'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const credentialed = Boolean(req.headers.authorization || getCookie(req, SESSION_COOKIE_NAMES.storefront) ||
+      getCookie(req, SESSION_COOKIE_NAMES.dgfy));
+    return `feedback_submit:${req.tenant?.id || 'no-tenant'}:${ip}:${credentialed ? 'credentialed' : 'anonymous'}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(req, options,
+      'Too many feedback submissions. Please wait before trying again.', 'feedback_submit', 'tenant_ip_credential');
+    logRateLimitEvent(req, 'feedback_submit', response.retryAfterSeconds, 'tenant_ip_credential');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => process.env.NODE_ENV === 'test' || (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true'),
+});
+
 // Tenant onboarding telemetry limiter (master-admin authenticated surface).
 export const onboardingEventsLimiter = rateLimit({
   windowMs: onboardingEventsWindowMs,
@@ -1288,6 +1331,137 @@ export const dgfyAccountSearchLimiter = rateLimit({
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
     return false;
   },
+});
+
+// Push-token writes are authenticated customer lifecycle mutations. Keep a
+// separate account/IP budget so successful registrations remain rate-limited
+// without consuming the sign-in and password-recovery buckets.
+export const dgfyPushTokenLimiter = rateLimit({
+  windowMs: dgfyPushTokenWindowMs,
+  max: dgfyPushTokenMaxRequests,
+  message: createRateLimitError('Too many push-token changes. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('dgfy_push_token'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const accountId = String(req.dgfyAccount?.id || 'unknown-account').trim();
+    return `dgfy_push_token:${accountId || 'unknown-account'}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many push-token changes. Please wait before trying again.',
+      'dgfy_push_token',
+      'account_ip'
+    );
+    logRateLimitEvent(req, 'dgfy_push_token', response.retryAfterSeconds, 'account_ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
+});
+
+// Operator test sends hit a real push provider. Budget them per Platform Admin (not per IP) so a
+// shared office network cannot starve a second operator and one admin cannot burst the provider.
+export const adminPushTestSendLimiter = rateLimit({
+  windowMs: adminPushTestSendWindowMs,
+  max: adminPushTestSendMaxRequests,
+  message: createRateLimitError('Too many push test sends. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('admin_push_test_send'),
+  keyGenerator: (req) => `admin_push_test_send:${String(req.admin?.id || 'unknown-admin')}`,
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many push test sends. Please wait before trying again.',
+      'admin_push_test_send',
+      'admin'
+    );
+    logRateLimitEvent(req, 'admin_push_test_send', response.retryAfterSeconds, 'admin');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
+});
+
+// The device-side enrollment route is session-less and guarded by a single-use code, so it gets a
+// strict per-IP budget independent of every other limiter.
+export const pushDiagnosticEnrollLimiter = rateLimit({
+  windowMs: pushDiagnosticEnrollWindowMs,
+  max: pushDiagnosticEnrollMaxRequests,
+  message: createRateLimitError('Too many enrollment attempts. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('push_diagnostic_enroll'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    return `push_diagnostic_enroll:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many enrollment attempts. Please wait before trying again.',
+      'push_diagnostic_enroll',
+      'ip'
+    );
+    logRateLimitEvent(req, 'push_diagnostic_enroll', response.retryAfterSeconds, 'ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
+});
+
+// Availability is polled at mobile app startup, so it has a more generous per-IP budget than
+// enrollment while remaining independently configurable for carrier NAT traffic.
+export const pushDiagnosticAvailabilityLimiter = rateLimit({
+  windowMs: pushDiagnosticAvailabilityWindowMs,
+  max: pushDiagnosticAvailabilityMaxRequests,
+  message: createRateLimitError('Too many availability checks. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('push_diagnostic_availability'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    return `push_diagnostic_availability:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many availability checks. Please wait before trying again.',
+      'push_diagnostic_availability',
+      'ip'
+    );
+    logRateLimitEvent(req, 'push_diagnostic_availability', response.retryAfterSeconds, 'ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  }
 });
 
 // POS rate limiter: tenant/user/terminal scoped to avoid IP-only throttling on shared networks

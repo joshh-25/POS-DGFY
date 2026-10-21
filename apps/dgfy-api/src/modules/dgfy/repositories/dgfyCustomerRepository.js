@@ -355,6 +355,7 @@ export const dgfyCustomerRepository = {
             dgfy_account_id: dgfyAccountId,
             label: payload.label || 'Address',
             address_line: payload.address_line,
+            address_details: payload.address_details ?? null,
             latitude: payload.latitude ?? null,
             longitude: payload.longitude ?? null,
             is_default: payload.is_default === true || existingCount === 0

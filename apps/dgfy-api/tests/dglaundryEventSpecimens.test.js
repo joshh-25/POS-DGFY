@@ -18,6 +18,7 @@ describe('DGLaundry signed event specimens', () => {
     process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID = 'specimen-key';
     const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
     process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    process.env.DGLAUNDRY_PARTNER_BASE_URL = 'https://dglaundry.stage.dgfy.ph';
     process.env.DGLAUNDRY_INTEGRATION_KEY_ID = 'specimen-key';
     process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
     const { authority, path, specimens } = buildDglaundryEventSpecimens({ now: new Date('2026-10-08T10:00:00.000Z') });
@@ -32,6 +33,7 @@ describe('DGLaundry signed event specimens', () => {
       }) })
     });
 
+    expect(authority).toBe('dglaundry.stage.dgfy.ph');
     expect(Object.keys(specimens)).toEqual(['normal', 'payment', 'duplicate-payment']);
     for (const specimen of [specimens.normal, specimens.payment]) {
       expect(specimen.path).toBe('/api/v1/integrations/dgfy/events');
@@ -40,5 +42,10 @@ describe('DGLaundry signed event specimens', () => {
     expect(specimens['duplicate-payment']).toEqual(specimens.payment);
     await expect(verifier({ ...specimens['duplicate-payment'], rawBody: JSON.stringify(specimens['duplicate-payment'].body) }))
       .resolves.toEqual({ ok: false, code: 'DGLAUNDRY_SIGNATURE_REPLAY' });
+  });
+
+  it('refuses to guess the target host when DGLAUNDRY_PARTNER_BASE_URL is not set (#2513)', () => {
+    expect(() => buildDglaundryEventSpecimens({ env: {}, now: new Date('2026-10-08T10:00:00.000Z') }))
+      .toThrow('DGLAUNDRY_PARTNER_BASE_URL is required');
   });
 });

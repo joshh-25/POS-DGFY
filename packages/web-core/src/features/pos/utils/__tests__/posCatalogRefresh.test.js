@@ -1,5 +1,7 @@
-import { describe, expect, test } from 'vitest';
-import { parsePosCatalogEvent } from '../posCatalogRefresh.js';
+/** @vitest-environment jsdom */
+
+import { afterEach, describe, expect, it, test, vi } from 'vitest';
+import { parsePosCatalogEvent, subscribeToRemotePosCatalogUpdates } from '../posCatalogRefresh.js';
 
 describe('parsePosCatalogEvent', () => {
     test('parses a POS catalog invalidation frame', () => {
@@ -24,5 +26,29 @@ describe('parsePosCatalogEvent', () => {
                 event: 'pos.settings.changed',
                 data: { reason: 'business_name_updated' }
             });
+    });
+});
+
+describe('remote POS catalog stream recovery', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('reconnects immediately when the browser returns online or becomes visible', () => {
+        const fetchMock = vi.fn(() => new Promise(() => {}));
+        vi.stubGlobal('fetch', fetchMock);
+        const unsubscribe = subscribeToRemotePosCatalogUpdates();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        window.dispatchEvent(new Event('online'));
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true);
+
+        unsubscribe();
+        expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true);
     });
 });

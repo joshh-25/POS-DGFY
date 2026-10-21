@@ -528,7 +528,7 @@ export default function Layout({ children, currentPageName }) {
           {children}
         </div>
       </main>
-      <FeedbackWidget />
+      <FeedbackWidget surface="ims" />
     </div>
   );
 }

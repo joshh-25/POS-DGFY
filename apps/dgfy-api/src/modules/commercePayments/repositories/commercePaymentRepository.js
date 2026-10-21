@@ -16,6 +16,7 @@ const applyCreatedAtWindow = (where, filters = {}) => {
 const buildSessionWhere = (filters = {}) => {
   const where = {};
   if (filters.tenantId) where.tenant_id = filters.tenantId;
+  if (Array.isArray(filters.sessionIds)) where.session_id = { [Op.in]: filters.sessionIds };
   if (filters.status) {
     where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
   }
@@ -223,12 +224,149 @@ export const commercePaymentRepository = {
     return toPlain(row);
   },
 
+  findRefundById(refundId, options = {}) {
+    return db.CommercePaymentRefund.findByPk(refundId, {
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
+  findRefundByPublicReference(publicReference, options = {}) {
+    return db.CommercePaymentRefund.findOne({
+      where: { public_reference: publicReference },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
   listRefundsBySession(paymentSessionId, options = {}) {
     return db.CommercePaymentRefund.findAll({
       where: { payment_session_id: paymentSessionId },
+      include: [{
+        model: db.CommercePaymentRefund,
+        as: 'retryOf',
+        attributes: ['refund_id', 'public_reference'],
+        required: false
+      }],
       order: [['created_at', 'DESC']],
       transaction: options.transaction
     }).then((rows) => rows.map(toPlain));
+  },
+
+  async listRefundsForAdmin({ status = [], tenant_id: tenantId = null, limit = 100, offset = 0 } = {}, options = {}) {
+    const where = {};
+    if (tenantId) where.tenant_id = tenantId;
+    if (Array.isArray(status) && status.length > 0) where.status = { [Op.in]: status };
+    const boundedLimit = Math.max(1, Math.min(Number(limit) || 100, 250));
+    const boundedOffset = Math.max(0, Number(offset) || 0);
+    const [rows, total] = await Promise.all([
+      db.CommercePaymentRefund.findAll({
+        where,
+        attributes: [
+          'refund_id',
+          'public_reference',
+          'payment_session_id',
+          'retry_of_refund_id',
+          'provider_refund_id',
+          'provider_payment_id',
+          'amount_centavos',
+          'currency',
+          'reason',
+          'notes',
+          'refund_strategy',
+          'split_refund_payload',
+          'status',
+          'failure_code',
+          'failure_reason',
+          'requested_by',
+          'created_at',
+          'updated_at'
+        ],
+        include: [
+          {
+            model: db.CommercePaymentSession,
+            as: 'paymentSession',
+            attributes: ['public_reference', 'tenant_id', 'store_slug', 'pos_transaction_id', 'status'],
+            required: true
+          },
+          {
+            model: db.CommercePaymentRefund,
+            as: 'retryOf',
+            attributes: ['refund_id', 'public_reference'],
+            required: false
+          }
+        ],
+        order: [['created_at', 'DESC'], ['refund_id', 'DESC']],
+        limit: boundedLimit,
+        offset: boundedOffset,
+        transaction: options.transaction
+      }),
+      db.CommercePaymentRefund.count({ where, transaction: options.transaction })
+    ]);
+
+    const refundIds = rows.map((row) => Number(row.refund_id)).filter(Number.isInteger);
+    const sessionIds = [...new Set(rows.map((row) => Number(row.payment_session_id)).filter(Number.isInteger))];
+    const [children, activeRefundSessions] = refundIds.length > 0
+      ? await Promise.all([
+        db.CommercePaymentRefund.findAll({
+          attributes: ['retry_of_refund_id', 'public_reference'],
+          where: { retry_of_refund_id: { [Op.in]: refundIds } },
+          raw: true,
+          transaction: options.transaction
+        }),
+        db.CommercePaymentRefund.findAll({
+          attributes: ['payment_session_id'],
+          where: {
+            payment_session_id: { [Op.in]: sessionIds },
+            status: { [Op.in]: ['created', 'pending', 'succeeded'] }
+          },
+          group: ['payment_session_id'],
+          raw: true,
+          transaction: options.transaction
+        })
+      ])
+      : [[], []];
+
+    const childrenByParent = new Map();
+    for (const child of children) {
+      const parentId = String(child.retry_of_refund_id);
+      const existing = childrenByParent.get(parentId) || [];
+      existing.push(child.public_reference);
+      childrenByParent.set(parentId, existing);
+    }
+    const activeSessionIds = new Set(activeRefundSessions.map((row) => String(row.payment_session_id)));
+
+    return {
+      refunds: rows.map((row) => {
+        const plain = toPlain(row);
+        const retryChildren = childrenByParent.get(String(plain.refund_id)) || [];
+        const session = plain.paymentSession || null;
+        return {
+          ...plain,
+          retry_of: plain.retryOf?.public_reference || null,
+          has_retry: retryChildren.length > 0,
+          retry_child_references: retryChildren,
+          _has_active_refund: activeSessionIds.has(String(plain.payment_session_id)),
+          payment_session: session ? {
+            public_reference: session.public_reference,
+            tenant_id: session.tenant_id,
+            store_slug: session.store_slug,
+            pos_transaction_id: session.pos_transaction_id,
+            status: session.status
+          } : null
+        };
+      }),
+      total: Number(total || 0)
+    };
+  },
+
+  findRetryChildOf(refundId, options = {}) {
+    return db.CommercePaymentRefund.findOne({
+      attributes: ['refund_id', 'public_reference', 'status'],
+      where: { retry_of_refund_id: refundId },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
   },
 
   findRefundByProviderId(providerRefundId, options = {}) {
@@ -244,6 +382,35 @@ export const commercePaymentRepository = {
     return db.CommercePaymentRefund.findAll({
       where,
       order: [['created_at', 'DESC']],
+      transaction: options.transaction
+    }).then((rows) => rows.map(toPlain));
+  },
+
+  listSessionIdsByRefundStatuses(statuses = [], options = {}) {
+    if (!Array.isArray(statuses) || statuses.length === 0) return Promise.resolve([]);
+    return db.CommercePaymentRefund.findAll({
+      attributes: ['payment_session_id'],
+      where: { status: { [Op.in]: statuses } },
+      group: ['payment_session_id'],
+      raw: true,
+      transaction: options.transaction
+    }).then((rows) => rows.map((row) => row.payment_session_id));
+  },
+
+  listRefundsForReconciliation({ pendingCreatedBefore, limit = 50 } = {}, options = {}) {
+    return db.CommercePaymentRefund.findAll({
+      where: {
+        provider: 'paymongo',
+        [Op.or]: [
+          { status: 'pending' },
+          {
+            status: 'created',
+            created_at: { [Op.lte]: pendingCreatedBefore }
+          }
+        ]
+      },
+      order: [['created_at', 'ASC']],
+      limit: Math.max(1, Math.min(Number(limit) || 50, 250)),
       transaction: options.transaction
     }).then((rows) => rows.map(toPlain));
   },
@@ -265,16 +432,20 @@ export const commercePaymentRepository = {
 
   async createAuditLog(payload = {}, options = {}) {
     if (!db.AuditLog) return null;
-    const row = await db.AuditLog.create({
+    const auditPayload = {
       user_id: payload.user_id || null,
       entity_type: payload.entity_type,
-      entity_id: payload.entity_id || null,
+      entity_id: payload.entity_id ?? null,
       action: payload.action,
       changes: payload.changes || null,
       ip_address: payload.ip_address || null,
       user_agent: payload.user_agent || 'PayMongo Commerce Admin',
       timestamp: new Date()
-    }, { transaction: options.transaction });
+    };
+    for (const field of ['event_type', 'actor_username', 'reason', 'request_id']) {
+      if (Object.prototype.hasOwnProperty.call(payload, field)) auditPayload[field] = payload[field];
+    }
+    const row = await db.AuditLog.create(auditPayload, { transaction: options.transaction });
     return toPlain(row);
   },
 

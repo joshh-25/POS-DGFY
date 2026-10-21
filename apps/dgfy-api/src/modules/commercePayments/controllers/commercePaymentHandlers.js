@@ -8,9 +8,11 @@ import {
   getPayMongoSandboxCertificationUseCase,
   handlePayMongoCommerceWebhookUseCase,
   listCommercePaymentSessionsUseCase,
+  listCommercePaymentRefundsUseCase,
   listTenantPaymentAccountsUseCase,
   operateTenantPayMongoChildAccountUseCase,
   reconcileCommercePaymentSessionUseCase,
+  retryCommercePaymentRefundUseCase,
   retryCommercePaymentFinalizationUseCase,
   upsertTenantPaymentAccountUseCase
 } from '../index.js';
@@ -78,6 +80,15 @@ export const createDglaundryBookingPaymentSession = async (req, res, next) => {
 export const listPaymentSessions = async (req, res, next) => {
   try {
     const result = await listCommercePaymentSessionsUseCase({ query: req.validatedQuery || req.query || {} });
+    return sendResult(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listPaymentRefunds = async (req, res, next) => {
+  try {
+    const result = await listCommercePaymentRefundsUseCase({ query: req.validatedQuery || req.query || {} });
     return sendResult(res, result);
   } catch (error) {
     next(error);
@@ -154,6 +165,23 @@ export const createPaymentSessionRefund = async (req, res, next) => {
       paymentSessionId: (req.validatedParams || req.params).payment_session_id,
       payload: req.validatedBody || req.body || {},
       actor: req.admin?.username || req.user?.email || req.user?.username || null
+    });
+    return sendResult(res, result, 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const retryPaymentSessionRefund = async (req, res, next) => {
+  try {
+    const params = req.validatedParams || req.params;
+    const result = await retryCommercePaymentRefundUseCase({
+      paymentSessionId: params.payment_session_id,
+      refundId: params.refund_id,
+      actor: req.admin?.username || req.user?.email || req.user?.username || null,
+      actorAdminId: req.admin?.id || null,
+      reason: (req.validatedBody || req.body || {}).reason,
+      requestId: req.requestId || null
     });
     return sendResult(res, result, 201);
   } catch (error) {

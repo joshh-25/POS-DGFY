@@ -46,6 +46,15 @@ describe('adminService admin operation contracts', () => {
     ['suspendStorefrontDomain', 'post', '/admin/tenants/tenant-1/storefront-domains/domain-1/suspend', () => adminService.suspendStorefrontDomain('tenant-1', 'domain-1', 'rollback')],
     ['removeStorefrontDomain', 'delete', '/admin/tenants/tenant-1/storefront-domains/domain-1', () => adminService.removeStorefrontDomain('tenant-1', 'domain-1', 'retire')],
     ['reconcileStorefrontDomainEligibility', 'post', '/admin/tenants/tenant-1/storefront-domains/reconcile-eligibility', () => adminService.reconcileStorefrontDomainEligibility('tenant-1', 'scheduled check')],
+    ['getPushDiagnosticsOverview', 'get', '/admin/push-diagnostics/overview', () => adminService.getPushDiagnosticsOverview()],
+    ['getPushDiagnosticsVisibility', 'get', '/admin/push-diagnostics/visibility', () => adminService.getPushDiagnosticsVisibility()],
+    ['setPushDiagnosticsVisibility', 'put', '/admin/push-diagnostics/visibility/pos', () => adminService.setPushDiagnosticsVisibility('pos', true)],
+    ['listPushDiagnosticsRegistrations', 'get', '/admin/push-diagnostics/registrations', () => adminService.listPushDiagnosticsRegistrations({ state: 'active' })],
+    ['listPushDiagnosticsAttempts', 'get', '/admin/push-diagnostics/attempts', () => adminService.listPushDiagnosticsAttempts({ window_hours: 24 })],
+    ['listPushDiagnosticDevices', 'get', '/admin/push-diagnostics/diagnostic-devices', () => adminService.listPushDiagnosticDevices()],
+    ['createPushDiagnosticEnrollmentCode', 'post', '/admin/push-diagnostics/enrollment-codes', () => adminService.createPushDiagnosticEnrollmentCode()],
+    ['revokePushDiagnosticDevice', 'delete', '/admin/push-diagnostics/diagnostic-devices/device-1', () => adminService.revokePushDiagnosticDevice('device-1')],
+    ['sendPushDiagnosticTest', 'post', '/admin/push-diagnostics/diagnostic-devices/device-1/test-send', () => adminService.sendPushDiagnosticTest('device-1')],
     ['listDgfyAccounts', 'get', '/dgfy/admin/accounts', () => adminService.listDgfyAccounts({ status: 'active' })],
     ['getDgfyAccount', 'get', '/dgfy/admin/accounts/acct-1', () => adminService.getDgfyAccount('acct-1')],
     ['createDgfyAccount', 'post', '/dgfy/admin/accounts', () => adminService.createDgfyAccount({ email: 'owner@example.test' })],
@@ -54,6 +63,7 @@ describe('adminService admin operation contracts', () => {
     ['reactivateDgfyAccount', 'post', '/dgfy/admin/accounts/acct-1/reactivate', () => adminService.reactivateDgfyAccount('acct-1', { reason: 'resolved' })],
     ['deleteDgfyAccount', 'delete', '/dgfy/admin/accounts/acct-1', () => adminService.deleteDgfyAccount('acct-1', { reason: 'requested' })],
     ['listCommercePaymentSessions', 'get', '/commerce-payments/admin/payment-sessions', () => adminService.listCommercePaymentSessions({ status: 'paid' })],
+    ['listCommerceRefunds', 'get', '/commerce-payments/admin/refunds', () => adminService.listCommerceRefunds({ status: 'failed' })],
     ['getCommerceSettlementReport', 'get', '/commerce-payments/admin/settlement-report', () => adminService.getCommerceSettlementReport({ status: 'paid' })],
     ['getPayMongoSandboxCertification', 'get', '/commerce-payments/admin/certification/paymongo-sandbox', () => adminService.getPayMongoSandboxCertification()],
     ['listTenantPaymentAccounts', 'get', '/commerce-payments/admin/tenant-payment-accounts', () => adminService.listTenantPaymentAccounts()],
@@ -61,6 +71,7 @@ describe('adminService admin operation contracts', () => {
     ['createTenantPayMongoChildAccount', 'post', '/commerce-payments/admin/tenants/tenant-1/paymongo-child-account', () => adminService.createTenantPayMongoChildAccount('tenant-1', { trade_name: 'QA Store' })],
     ['operateTenantPayMongoChildAccount', 'post', '/commerce-payments/admin/tenants/tenant-1/paymongo-child-account/sync-readiness', () => adminService.operateTenantPayMongoChildAccount('tenant-1', 'sync-readiness')],
     ['createCommercePaymentRefund', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/refunds', () => adminService.createCommercePaymentRefund('PAY-123', { amount: 25 })],
+    ['retryCommercePaymentRefund', 'post', '/commerce-payments/admin/payment-sessions/CPS-ABC123DEF4/refunds/CRF-ABC123DEF4/retry', () => adminService.retryCommercePaymentRefund('CPS-ABC123DEF4', 'CRF-ABC123DEF4', { reason: 'Provider confirmed no refund exists' })],
     ['reconcileCommercePaymentSession', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/reconcile', () => adminService.reconcileCommercePaymentSession('PAY-123')],
     ['retryCommercePaymentFinalization', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/retry-finalization', () => adminService.retryCommercePaymentFinalization('PAY-123')]
   ])('%s sends %s %s over the cookie session with CSRF header for unsafe methods', async (_name, method, path, callService) => {
@@ -75,7 +86,7 @@ describe('adminService admin operation contracts', () => {
       } else {
         expect(config.headers['x-csrf-token']).toBeUndefined();
       }
-      return [200, { success: true, data: { ok: true } }];
+      return [200, { success: true, data: { success: true, ok: true } }];
     });
 
     await expect(callService()).resolves.toMatchObject({ success: true });
@@ -89,5 +100,40 @@ describe('adminService admin operation contracts', () => {
 
     await expect(adminService.listDgfyAccounts()).rejects.toThrow('Admin authentication required');
     expect(mockAdminApi.history.get).toHaveLength(0);
+  });
+
+  it('sends diagnostic test notifications to an enrolled device without a request body', async () => {
+    mockAdminApi.onPost('/admin/push-diagnostics/diagnostic-devices/device-1/test-send').reply((config) => {
+      expect(config.data).toBeUndefined();
+      return [200, { success: true, data: { state: 'accepted_receipt_pending' } }];
+    });
+
+    await adminService.sendPushDiagnosticTest('device-1');
+
+    expect(mockAdminApi.history.post).toHaveLength(1);
+    expect(mockAdminApi.history.post[0].url).toBe('/admin/push-diagnostics/diagnostic-devices/device-1/test-send');
+    expect(mockAdminApi.history.post[0].data).toBeUndefined();
+  });
+
+  it('sends only the enabled flag when changing app visibility', async () => {
+    mockAdminApi.onPut('/admin/push-diagnostics/visibility/fiscalpos').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ enabled: false });
+      return [200, { success: true, data: { app: 'fiscalpos', enabled: false, changed: true } }];
+    });
+
+    await expect(adminService.setPushDiagnosticsVisibility('fiscalpos', false)).resolves.toEqual({
+      app: 'fiscalpos', enabled: false, changed: true
+    });
+  });
+
+  it('sends only the operator reason when retrying a commerce refund', async () => {
+    mockAdminApi.onPost('/commerce-payments/admin/payment-sessions/CPS-ABC123DEF4/refunds/CRF-ABC123DEF4/retry').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ reason: 'Provider confirmed no refund exists' });
+      return [201, { success: true, data: { refund: { public_reference: 'CRF-RETRY0001' } } }];
+    });
+
+    await adminService.retryCommercePaymentRefund('CPS-ABC123DEF4', 'CRF-ABC123DEF4', {
+      reason: 'Provider confirmed no refund exists'
+    });
   });
 });

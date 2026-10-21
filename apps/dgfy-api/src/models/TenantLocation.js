@@ -15,6 +15,12 @@ const TenantLocation = sequelize.define('TenantLocation', {
         type: DataTypes.TEXT,
         allowNull: false
     },
+    // #2595: the merchant's street number, unit, floor or building; address_line holds the full
+    // display address (`<details>, <location>`), so this only lets the picker edit the two parts.
+    address_details: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
     latitude: {
         type: DataTypes.DECIMAL(10, 8),
         allowNull: false

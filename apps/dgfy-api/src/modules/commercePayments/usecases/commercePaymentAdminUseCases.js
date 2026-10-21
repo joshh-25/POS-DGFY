@@ -12,6 +12,7 @@ import {
   mapRefundStatusToLedgerStatus,
   writeTenantOrderPaymentEntry
 } from '../repositories/tenantOrderPaymentLedgerRepository.js';
+import { alertCommerceRefundFailed } from './commerceRefundAlerting.js';
 
 const randomReference = (prefix) => `${prefix}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
 const toInt = (value, fallback = null) => {
@@ -29,6 +30,7 @@ const normalizeReference = (value) => String(value || '').trim().toUpperCase();
 const TERMINAL_REFUND_SUCCESS_STATUSES = new Set(['succeeded', 'success', 'refunded']);
 const TERMINAL_REFUND_FAILURE_STATUSES = new Set(['failed', 'cancelled', 'canceled']);
 const ACTIVE_REFUND_STATUSES = ['pending', 'succeeded'];
+const RETRY_ACTIVE_REFUND_STATUSES = ['created', 'pending', 'succeeded'];
 const SUCCEEDED_REFUND_STATUSES = ['succeeded'];
 const SETTLEMENT_REPORT_STATUSES = ['finalized', 'paid', 'refund_pending', 'partial_refunded', 'refunded', 'split_failed_manual_settlement_required'];
 const PAID_PROVIDER_STATUSES = new Set(['paid', 'succeeded', 'success', 'completed']);
@@ -87,9 +89,12 @@ const serializeSession = (session = {}, refunds = []) => ({
   refunds: refunds.map(serializeRefund)
 });
 
-const serializeRefund = (refund = {}) => ({
+const serializeRefund = (refund = {}, retryOfReference = null) => ({
   refund_id: refund.public_reference,
   public_reference: refund.public_reference,
+  retry_of: typeof (retryOfReference || refund.retryOf?.public_reference || refund.retry_of) === 'string'
+    ? (retryOfReference || refund.retryOf?.public_reference || refund.retry_of)
+    : null,
   payment_session_id: refund.payment_session_id,
   provider_refund_id: refund.provider_refund_id,
   provider_payment_id: refund.provider_payment_id,
@@ -103,7 +108,8 @@ const serializeRefund = (refund = {}) => ({
   failure_code: refund.failure_code,
   failure_reason: refund.failure_reason,
   requested_by: refund.requested_by,
-  created_at: refund.created_at
+  created_at: refund.created_at,
+  updated_at: refund.updated_at
 });
 
 const normalizeReadinessMetadata = (payload = {}, actor = null) => {
@@ -291,10 +297,10 @@ const getBasePaidSessionStatus = (session = {}) => {
   return session.status;
 };
 
-export const reconcileRefundedPaymentState = async ({ commercePaymentRepository, session }) => {
+export const reconcileRefundedPaymentState = async ({ commercePaymentRepository, session, transaction = null }) => {
   const [succeededCentavos, pendingCentavos] = await Promise.all([
-    commercePaymentRepository.sumRefundCentavosByStatuses(session.session_id, SUCCEEDED_REFUND_STATUSES),
-    commercePaymentRepository.sumRefundCentavosByStatuses(session.session_id, ['pending'])
+    commercePaymentRepository.sumRefundCentavosByStatuses(session.session_id, SUCCEEDED_REFUND_STATUSES, { transaction }),
+    commercePaymentRepository.sumRefundCentavosByStatuses(session.session_id, ['pending'], { transaction })
   ]);
   const totalCentavos = Number(session.total_amount_centavos || 0);
   let paymentStatus = 'paid';
@@ -311,7 +317,11 @@ export const reconcileRefundedPaymentState = async ({ commercePaymentRepository,
     sessionStatus = 'refund_pending';
   }
 
-  const updatedSession = await commercePaymentRepository.updateSessionById(session.session_id, { status: sessionStatus });
+  const updatedSession = await commercePaymentRepository.updateSessionById(
+    session.session_id,
+    { status: sessionStatus },
+    { transaction }
+  );
   await updateTenantPaymentStatus({
     commercePaymentRepository,
     session: updatedSession || session,
@@ -320,17 +330,34 @@ export const reconcileRefundedPaymentState = async ({ commercePaymentRepository,
   return updatedSession || session;
 };
 
-const writePaymentAudit = async ({ commercePaymentRepository, entityId, action, changes, actor }) => {
-  await commercePaymentRepository.createAuditLog?.({
+const writePaymentAudit = async ({
+  commercePaymentRepository,
+  entityId,
+  action,
+  changes,
+  actor,
+  eventType,
+  actorUsername,
+  reason,
+  requestId
+}) => {
+  const payload = {
     user_id: null,
     entity_type: 'CommercePayment',
-    entity_id: entityId || null,
+    entity_id: entityId ?? null,
     action,
     changes: {
       ...changes,
       actor: actor || null
     },
     user_agent: 'PayMongo Commerce Admin'
+  };
+  if (eventType !== undefined) payload.event_type = eventType;
+  if (actorUsername !== undefined) payload.actor_username = actorUsername;
+  if (reason !== undefined) payload.reason = reason;
+  if (requestId !== undefined) payload.request_id = requestId;
+  await commercePaymentRepository.createAuditLog?.({
+    ...payload
   });
 };
 
@@ -412,12 +439,18 @@ export const buildListCommercePaymentSessionsUseCase = ({ commercePaymentReposit
   try {
     const tenantId = normalizeTenantId(query.tenant_id);
     const status = String(query.status || '').trim();
-    const sessions = await commercePaymentRepository.listSessions({
+    const refundStatus = String(query.refund_status || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    const sessionIds = refundStatus.length > 0
+      ? await commercePaymentRepository.listSessionIdsByRefundStatuses(refundStatus)
+      : null;
+    const filters = {
       tenantId,
       status: status ? status.split(',').map((entry) => entry.trim()).filter(Boolean) : null,
       targetType: query.target_type || null,
-      provider: 'paymongo'
-    }, {
+      provider: 'paymongo',
+      ...(sessionIds ? { sessionIds } : {})
+    };
+    const sessions = await commercePaymentRepository.listSessions(filters, {
       limit: Math.min(toInt(query.limit, 100) || 100, 250),
       offset: Math.max(toInt(query.offset, 0) || 0, 0)
     });
@@ -425,12 +458,7 @@ export const buildListCommercePaymentSessionsUseCase = ({ commercePaymentReposit
       const refunds = await commercePaymentRepository.listRefundsBySession(session.session_id);
       return serializeSession(session, refunds);
     }));
-    const total = await commercePaymentRepository.countSessions({
-      tenantId,
-      status: status ? status.split(',').map((entry) => entry.trim()).filter(Boolean) : null,
-      targetType: query.target_type || null,
-      provider: 'paymongo'
-    });
+    const total = await commercePaymentRepository.countSessions(filters);
     return ok({
       payment_sessions: withRefunds,
       pagination: {
@@ -445,15 +473,62 @@ export const buildListCommercePaymentSessionsUseCase = ({ commercePaymentReposit
   }
 };
 
+export const buildListCommercePaymentRefundsUseCase = ({ commercePaymentRepository }) => async ({ query = {} } = {}) => {
+  try {
+    const tenantId = normalizeTenantId(query.tenant_id);
+    if (query.tenant_id && !tenantId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id must be a valid UUID.', { statusCode: 422 });
+    }
+    const status = Array.isArray(query.status)
+      ? query.status.map((entry) => String(entry).trim()).filter(Boolean)
+      : String(query.status || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    const limit = Math.min(toInt(query.limit, 100) || 100, 250);
+    const offset = Math.max(toInt(query.offset, 0) || 0, 0);
+    const result = await commercePaymentRepository.listRefundsForAdmin({
+      status,
+      tenant_id: tenantId,
+      limit,
+      offset
+    });
+    const rows = (result.refunds || []).map((refund) => {
+      const isRetryEligibleStatus = refund.status === 'failed'
+        || (refund.status === 'manual_review_required' && refund.failure_code === 'PROVIDER_REFUND_NOT_FOUND');
+      return {
+        ...serializeRefund(refund, refund.retry_of),
+        has_retry: Boolean(refund.has_retry),
+        retry_child_references: Array.isArray(refund.retry_child_references) ? refund.retry_child_references : [],
+        retry_eligible: Boolean(isRetryEligibleStatus && !refund.has_retry && !refund._has_active_refund),
+        payment_session: refund.payment_session || null
+      };
+    });
+    return ok({
+      refunds: rows,
+      pagination: {
+        limit,
+        offset,
+        count: rows.length,
+        total: Number(result.total || 0)
+      }
+    });
+  } catch (error) {
+    return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
+  }
+};
+
 export const buildGetCommerceSettlementReportUseCase = ({ commercePaymentRepository }) => async ({ query = {} } = {}) => {
   try {
     const tenantId = normalizeTenantId(query.tenant_id);
     const status = String(query.status || '').trim();
+    const refundStatus = String(query.refund_status || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    const sessionIds = refundStatus.length > 0
+      ? await commercePaymentRepository.listSessionIdsByRefundStatuses(refundStatus)
+      : null;
     const sessions = await commercePaymentRepository.listSessions({
       tenantId,
       status: status ? status.split(',').map((entry) => entry.trim()).filter(Boolean) : SETTLEMENT_REPORT_STATUSES,
       targetType: query.target_type || null,
-      provider: 'paymongo'
+      provider: 'paymongo',
+      ...(sessionIds ? { sessionIds } : {})
     }, {
       limit: Math.min(toInt(query.limit, 250) || 250, 1000),
       offset: Math.max(toInt(query.offset, 0) || 0, 0)
@@ -1042,8 +1117,10 @@ export const buildCreateCommercePaymentRefundUseCase = ({
   revenueSharingEnabled = tenantRevenueSharingEnabled,
   // Phase 144 (#824): injected so the tenant-ledger wiring is assertable without module mocking,
   // matching how commerceOrderLifecycleUseCase takes its own writer.
-  writeOrderPaymentLedgerEntry = writeTenantOrderPaymentEntry
-}) => async ({ paymentSessionId, payload = {}, actor = null }) => {
+  writeOrderPaymentLedgerEntry = writeTenantOrderPaymentEntry,
+  raiseAlert = async () => {},
+  logger = console
+}) => async ({ paymentSessionId, payload = {}, actor = null, retryOfRefundReference = null }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
     const session = await commercePaymentRepository.findSessionByPublicReference(reference);
@@ -1058,12 +1135,10 @@ export const buildCreateCommercePaymentRefundUseCase = ({
     const requestedAmountCentavos = payload.amount_centavos
       ? toInt(payload.amount_centavos, 0)
       : toCentavos(payload.amount);
-    const refundedCentavos = await commercePaymentRepository.sumRefundedCentavos(session.session_id);
-    const refundableCentavos = Number(session.total_amount_centavos || 0) - refundedCentavos;
-    if (requestedAmountCentavos <= 0 || requestedAmountCentavos > refundableCentavos) {
+    if (requestedAmountCentavos <= 0) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Refund amount exceeds refundable balance', {
         statusCode: 422,
-        details: { refundable_centavos: refundableCentavos }
+        details: { refundable_centavos: Number(session.total_amount_centavos || 0) }
       });
     }
 
@@ -1102,20 +1177,86 @@ export const buildCreateCommercePaymentRefundUseCase = ({
       }
     }
 
-    const refund = await commercePaymentRepository.createRefund({
-      public_reference: randomReference('CRF'),
-      payment_session_id: session.session_id,
-      tenant_id: session.tenant_id,
-      provider: 'paymongo',
-      provider_payment_id: session.provider_payment_id,
-      amount_centavos: requestedAmountCentavos,
-      currency: session.currency || 'PHP',
-      reason: payload.reason || 'requested_by_customer',
-      notes: payload.notes ? String(payload.notes).slice(0, 255) : null,
-      refund_strategy: revenueSharingEnabled ? 'proportional' : strategy,
-      split_refund_payload: splitRefund,
-      status: 'created',
-      requested_by: actor || null
+    const retryReference = retryOfRefundReference ? normalizeReference(retryOfRefundReference) : null;
+    let retryOfRefundId = null;
+    const refund = await commercePaymentRepository.runInTransaction(async (transaction) => {
+      const lockedSession = await commercePaymentRepository.findSessionBySessionId(session.session_id, {
+        transaction,
+        lock: true
+      });
+      if (!lockedSession) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+      }
+
+      if (retryReference) {
+        const original = await commercePaymentRepository.findRefundByPublicReference(retryReference, {
+          transaction,
+          lock: true
+        });
+        if (!original || Number(original.payment_session_id) !== Number(lockedSession.session_id)) {
+          throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Refund not found for this payment session', { statusCode: 404 });
+        }
+        const retryable = original.status === 'failed'
+          || (original.status === 'manual_review_required' && original.failure_code === 'PROVIDER_REFUND_NOT_FOUND');
+        if (!retryable) {
+          throw new DomainError(DomainErrorCode.CONFLICT, 'This refund is not eligible for retry.', {
+            statusCode: 409,
+            observabilityReasonCode: 'COMMERCE_REFUND_RETRY_INELIGIBLE'
+          });
+        }
+        const retryChild = await commercePaymentRepository.findRetryChildOf(original.refund_id, {
+          transaction,
+          lock: true
+        });
+        if (retryChild) {
+          throw new DomainError(DomainErrorCode.CONFLICT, 'Retry the latest attempt instead.', {
+            statusCode: 409,
+            observabilityReasonCode: 'COMMERCE_REFUND_RETRY_HAS_CHILD'
+          });
+        }
+        const refunds = await commercePaymentRepository.listRefundsBySession(lockedSession.session_id, { transaction });
+        const anotherActiveRefund = refunds.some((row) => (
+          Number(row.refund_id) !== Number(original.refund_id)
+          && RETRY_ACTIVE_REFUND_STATUSES.includes(row.status)
+        ));
+        if (anotherActiveRefund) {
+          throw new DomainError(DomainErrorCode.CONFLICT, 'Another refund is already active for this payment session.', {
+            statusCode: 409,
+            observabilityReasonCode: 'COMMERCE_REFUND_RETRY_ACTIVE_REFUND'
+          });
+        }
+        retryOfRefundId = Number(original.refund_id);
+      }
+
+      const refundedCentavos = await commercePaymentRepository.sumRefundCentavosByStatuses(
+        lockedSession.session_id,
+        RETRY_ACTIVE_REFUND_STATUSES,
+        { transaction }
+      );
+      const refundableCentavos = Number(lockedSession.total_amount_centavos || 0) - refundedCentavos;
+      if (requestedAmountCentavos > refundableCentavos) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Refund amount exceeds refundable balance', {
+          statusCode: 422,
+          details: { refundable_centavos: refundableCentavos }
+        });
+      }
+
+      return commercePaymentRepository.createRefund({
+        public_reference: randomReference('CRF'),
+        payment_session_id: lockedSession.session_id,
+        retry_of_refund_id: retryOfRefundId,
+        tenant_id: lockedSession.tenant_id,
+        provider: 'paymongo',
+        provider_payment_id: lockedSession.provider_payment_id,
+        amount_centavos: requestedAmountCentavos,
+        currency: lockedSession.currency || 'PHP',
+        reason: payload.reason || 'requested_by_customer',
+        notes: payload.notes ? String(payload.notes).slice(0, 255) : null,
+        refund_strategy: revenueSharingEnabled ? 'proportional' : strategy,
+        split_refund_payload: splitRefund,
+        status: 'created',
+        requested_by: actor || null
+      }, { transaction });
     });
 
     let providerRefund;
@@ -1142,7 +1283,7 @@ export const buildCreateCommercePaymentRefundUseCase = ({
       if (pendingReconciliation) {
         const pendingSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
         return ok({
-          refund: serializeRefund(failed),
+          refund: serializeRefund(failed, retryReference),
           payment_session: serializeSession(
             pendingSession,
             await commercePaymentRepository.listRefundsBySession(session.session_id)
@@ -1151,7 +1292,23 @@ export const buildCreateCommercePaymentRefundUseCase = ({
           retryable: false
         });
       }
-      return ok({ refund: serializeRefund(failed), retryable: true });
+      await alertCommerceRefundFailed({ refund: failed, session, error, raiseAlert, logger });
+      await writePaymentAudit({
+        commercePaymentRepository,
+        entityId: refund.refund_id,
+        action: 'UPDATE',
+        actor,
+        changes: {
+          event: 'commerce_payment_refund_failed',
+          payment_session_id: session.public_reference,
+          refund_reference: refund.public_reference,
+          provider_payment_id: session.provider_payment_id,
+          amount_centavos: requestedAmountCentavos,
+          failure_code: failed?.failure_code,
+          failure_reason: failed?.failure_reason
+        }
+      });
+      return ok({ refund: serializeRefund(failed, retryReference), retryable: true });
     }
 
     const providerStatus = String(providerRefund?.attributes?.status || 'pending').toLowerCase();
@@ -1178,6 +1335,30 @@ export const buildCreateCommercePaymentRefundUseCase = ({
       });
       if (!revenueResult.success) throw revenueResult.error;
     }
+    if (nextRefundStatus === 'failed') {
+      await alertCommerceRefundFailed({
+        refund: updatedRefund,
+        session: updatedSession,
+        error: new Error(updatedRefund.failure_reason || 'PayMongo reported refund failure.'),
+        raiseAlert,
+        logger
+      });
+      await writePaymentAudit({
+        commercePaymentRepository,
+        entityId: refund.refund_id,
+        action: 'UPDATE',
+        actor,
+        changes: {
+          event: 'commerce_payment_refund_failed',
+          payment_session_id: session.public_reference,
+          refund_reference: refund.public_reference,
+          provider_refund_id: providerRefund?.id || null,
+          amount_centavos: requestedAmountCentavos,
+          failure_code: updatedRefund.failure_code,
+          failure_reason: updatedRefund.failure_reason
+        }
+      });
+    }
     await writePaymentAudit({
       commercePaymentRepository,
       entityId: refund.refund_id,
@@ -1195,10 +1376,202 @@ export const buildCreateCommercePaymentRefundUseCase = ({
     });
 
     return ok({
-      refund: serializeRefund(updatedRefund),
+      refund: serializeRefund(updatedRefund, retryReference),
       payment_session: serializeSession(updatedSession, await commercePaymentRepository.listRefundsBySession(session.session_id))
     });
   } catch (error) {
     return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
+  }
+};
+
+export const buildRetryCommercePaymentRefundUseCase = ({
+  commercePaymentRepository,
+  paymongoService,
+  createCommercePaymentRefundUseCase
+}) => async ({ paymentSessionId, refundId, actor = null, actorAdminId = null, reason = '', requestId = null }) => {
+  const paymentSessionReference = normalizeReference(paymentSessionId);
+  const refundReference = normalizeReference(refundId);
+  const normalizedReason = String(reason || '').trim();
+  let session = null;
+  let original = null;
+
+  const auditBlocked = async (blockCode) => {
+    const originalRefundId = original && Number.isInteger(Number(original.refund_id))
+      ? Number(original.refund_id)
+      : null;
+    await writePaymentAudit({
+      commercePaymentRepository,
+      entityId: originalRefundId,
+      action: 'UPDATE',
+      actor,
+      eventType: 'commerce_payment_refund_retry_blocked',
+      actorUsername: actor,
+      reason: normalizedReason,
+      requestId,
+      changes: {
+        payment_session_id: session?.public_reference || paymentSessionReference || null,
+        original_refund_reference: original?.public_reference || refundReference || null,
+        amount_centavos: original ? Number(original.amount_centavos || 0) : null,
+        actor_admin_id: actorAdminId || null,
+        retry_reason: normalizedReason,
+        block_code: blockCode
+      }
+    });
+  };
+
+  const rejectBlocked = async (blockCode, error) => {
+    await auditBlocked(blockCode);
+    throw error;
+  };
+
+  try {
+    if (normalizedReason.length < 3 || normalizedReason.length > 255) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Retry reason must be between 3 and 255 characters.', {
+        statusCode: 422
+      });
+    }
+
+    session = await commercePaymentRepository.findSessionByPublicReference(paymentSessionReference);
+    if (!session) {
+      await rejectBlocked('PAYMENT_SESSION_NOT_FOUND', new DomainError(
+        DomainErrorCode.RESOURCE_NOT_FOUND,
+        'Payment session not found.',
+        { statusCode: 404 }
+      ));
+    }
+    original = await commercePaymentRepository.findRefundByPublicReference(refundReference);
+    if (!original || Number(original.payment_session_id) !== Number(session.session_id)) {
+      await rejectBlocked('REFUND_NOT_FOUND_FOR_SESSION', new DomainError(
+        DomainErrorCode.RESOURCE_NOT_FOUND,
+        'Refund not found for this payment session.',
+        { statusCode: 404 }
+      ));
+    }
+    const eligible = original.status === 'failed'
+      || (original.status === 'manual_review_required' && original.failure_code === 'PROVIDER_REFUND_NOT_FOUND');
+    if (!eligible) {
+      await rejectBlocked('COMMERCE_REFUND_RETRY_INELIGIBLE', new DomainError(
+        DomainErrorCode.CONFLICT,
+        'This refund is not eligible for retry.',
+        { statusCode: 409, observabilityReasonCode: 'COMMERCE_REFUND_RETRY_INELIGIBLE' }
+      ));
+    }
+
+    const retryChild = await commercePaymentRepository.findRetryChildOf(original.refund_id);
+    if (retryChild) {
+      await rejectBlocked('COMMERCE_REFUND_RETRY_HAS_CHILD', new DomainError(
+        DomainErrorCode.CONFLICT,
+        'Retry the latest attempt instead.',
+        { statusCode: 409, observabilityReasonCode: 'COMMERCE_REFUND_RETRY_HAS_CHILD' }
+      ));
+    }
+
+    const refunds = await commercePaymentRepository.listRefundsBySession(session.session_id);
+    if (refunds.some((refund) => (
+      Number(refund.refund_id) !== Number(original.refund_id)
+      && RETRY_ACTIVE_REFUND_STATUSES.includes(refund.status)
+    ))) {
+      await rejectBlocked('COMMERCE_REFUND_RETRY_ACTIVE_REFUND', new DomainError(
+        DomainErrorCode.CONFLICT,
+        'Another refund is already active for this payment session.',
+        { statusCode: 409, observabilityReasonCode: 'COMMERCE_REFUND_RETRY_ACTIVE_REFUND' }
+      ));
+    }
+
+    if (typeof paymongoService?.listPaymentRefunds !== 'function') {
+      await rejectBlocked('COMMERCE_REFUND_RETRY_PROVIDER_READ_UNAVAILABLE', new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'PayMongo refund verification is unavailable.',
+        { statusCode: 503, observabilityReasonCode: 'COMMERCE_REFUND_RETRY_PROVIDER_READ_UNAVAILABLE' }
+      ));
+    }
+    let providerRefunds;
+    try {
+      providerRefunds = await paymongoService.listPaymentRefunds(session.provider_payment_id);
+    } catch (error) {
+      await rejectBlocked('COMMERCE_REFUND_RETRY_PROVIDER_READ_FAILED', new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'PayMongo could not be checked before retrying this refund.',
+        { statusCode: 503, cause: error, observabilityReasonCode: 'COMMERCE_REFUND_RETRY_PROVIDER_READ_FAILED' }
+      ));
+    }
+    if (!Array.isArray(providerRefunds)) {
+      await rejectBlocked('COMMERCE_REFUND_RETRY_PROVIDER_READ_INVALID', new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'PayMongo refund verification returned an invalid response.',
+        { statusCode: 503, observabilityReasonCode: 'COMMERCE_REFUND_RETRY_PROVIDER_READ_INVALID' }
+      ));
+    }
+    for (const providerRefund of providerRefunds) {
+      const attributes = providerRefund?.attributes || providerRefund || {};
+      const providerRefundId = String(providerRefund?.id || attributes.id || '').trim();
+      if (
+        providerRefundId.startsWith('ref_')
+        && Number(attributes.amount || 0) === Number(original.amount_centavos || 0)
+      ) {
+        const matchingLocalRefund = await commercePaymentRepository.findRefundByProviderId(providerRefundId);
+        const matchingManualReviewAttempt = original.status === 'manual_review_required'
+          && matchingLocalRefund
+          && Number(matchingLocalRefund.refund_id) === Number(original.refund_id);
+        if (matchingLocalRefund && !matchingManualReviewAttempt) continue;
+        await rejectBlocked('COMMERCE_REFUND_RETRY_UNLINKED_PROVIDER_MATCH', new DomainError(
+          DomainErrorCode.CONFLICT,
+          'An unlinked PayMongo refund with this amount already exists. Review it before retrying.',
+          { statusCode: 409, observabilityReasonCode: 'COMMERCE_REFUND_RETRY_UNLINKED_PROVIDER_MATCH' }
+        ));
+      }
+    }
+
+    const retryResult = await createCommercePaymentRefundUseCase({
+      paymentSessionId: paymentSessionReference,
+      payload: {
+        amount_centavos: Number(original.amount_centavos),
+        refund_strategy: original.refund_strategy || 'proportional',
+        reason: original.reason || 'requested_by_customer',
+        notes: `Retry of ${original.public_reference}`,
+        refund_sources: original.split_refund_payload?.refund_sources || []
+      },
+      actor,
+      retryOfRefundReference: original.public_reference
+    });
+    if (!retryResult?.success) {
+      await auditBlocked(retryResult?.error?.observabilityReasonCode || 'COMMERCE_REFUND_RETRY_CREATE_FAILED');
+      return retryResult;
+    }
+
+    const newRefund = retryResult.data?.refund || null;
+    const newRefundReference = newRefund?.public_reference || newRefund?.refund_id || null;
+
+    await writePaymentAudit({
+      commercePaymentRepository,
+      entityId: Number(original.refund_id),
+      action: 'CREATE',
+      actor,
+      eventType: 'commerce_payment_refund_retried',
+      actorUsername: actor,
+      reason: normalizedReason,
+      requestId,
+      changes: {
+        payment_session_id: session.public_reference,
+        original_refund_reference: original.public_reference,
+        new_refund_reference: newRefundReference,
+        amount_centavos: Number(original.amount_centavos),
+        outcome: newRefund?.status || null,
+        provider_refund_id: newRefund?.provider_refund_id || null,
+        actor_admin_id: actorAdminId || null,
+        retry_reason: normalizedReason
+      }
+    });
+    return {
+      ...retryResult,
+      data: {
+        ...retryResult.data,
+        refund: newRefund ? { ...newRefund, retry_of: original.public_reference } : newRefund
+      }
+    };
+  } catch (error) {
+    return fail(error instanceof DomainError
+      ? error
+      : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message || 'Failed to retry commerce payment refund.'));
   }
 };

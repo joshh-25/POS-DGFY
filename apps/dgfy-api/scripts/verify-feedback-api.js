@@ -1,10 +1,4 @@
 import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const API_URL = 'http://localhost:5000/api/v1';
 
@@ -45,20 +39,16 @@ async function verifyFeedback() {
             throw new Error(`Unexpected status code: ${feedbackResponse.status}`);
         }
 
-        // 3. Verify Log File
-        console.log('📂 Verifying log file content...');
-        const logPath = path.join(__dirname, '../logs/user_feedback.log');
-
-        if (fs.existsSync(logPath)) {
-            const content = fs.readFileSync(logPath, 'utf8');
-            if (content.includes('Test feedback logic via automated script')) {
-                console.log('✅ Log file contains the test entry');
-            } else {
-                console.error('❌ Log file found but test entry is missing');
-                console.log('Content:', content);
+        // 3. Verify durable row by the ID returned by the API.
+        const { FeedbackSubmission, sequelize } = await import('../src/models/index.js');
+        try {
+            const row = await FeedbackSubmission.findByPk(feedbackResponse.data.id);
+            if (!row || row.description !== feedbackData.description) {
+                throw new Error('Feedback row missing from landlord database');
             }
-        } else {
-            console.error('❌ Log file not found at:', logPath);
+            console.log('✅ Feedback row persisted with stable ID');
+        } finally {
+            await sequelize.close();
         }
 
     } catch (error) {

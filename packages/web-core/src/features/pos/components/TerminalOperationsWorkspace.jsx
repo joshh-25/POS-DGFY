@@ -59,6 +59,7 @@ const SETTINGS_VIEW_MODES = new Set([
   'settings_profile',
   'settings_pos',
   'settings_storefront',
+  'settings_affiliates',
   'terminal_setup'
 ]);
 const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);
@@ -317,7 +318,6 @@ function ShiftControlsWorkspace({
   );
   const activeTerminalMatchesOperatingLocation = !canAdminBypassShiftPrompt || Boolean(
     activeTerminalRegistryEntry
-    && Number(activeTerminalRegistryEntry?.location_id || 0) === Number(operatingLocationId || 0)
   );
   const selectedTerminalShift = openTerminalShiftById.get(String(selectedAdminTerminalId || '').trim()) || null;
   const selectedTerminalShiftOwnedByCurrentUser = isShiftOwnedByUserId(
@@ -2010,9 +2010,15 @@ export default function TerminalOperationsWorkspace({
     || SHIFT_WORKSPACE_MODES.has(effectiveViewMode);
   const isVoucherManagementView = effectiveViewMode === 'settings_vouchers';
   const isPricelistManagementView = effectiveViewMode === 'settings_pricelists';
-  const isFullBleedCatalogView = effectiveViewMode === 'items' || isVoucherManagementView || isPricelistManagementView;
+  const isAffiliateManagementView = effectiveViewMode === 'settings_affiliates';
+  const isFullBleedCatalogView = effectiveViewMode === 'items'
+    || isAffiliateManagementView
+    || isVoucherManagementView
+    || isPricelistManagementView;
   const workspaceShellClassName = usesOwnPageFrame
-    ? 'p-0'
+    ? isAffiliateManagementView
+      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-affiliates-workspace-shell'
+      : 'p-0'
     : isFullBleedCatalogView
       ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-catalog-workspace-shell'}`
       : 'p-5';

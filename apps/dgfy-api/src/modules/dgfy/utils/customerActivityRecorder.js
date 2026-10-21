@@ -1,5 +1,6 @@
 import { dgfyCustomerRepository } from '../repositories/dgfyCustomerRepository.js';
 import { dispatchDgfyCustomerActivityUpdate } from '../services/dgfyCustomerNotifications.js';
+import { dispatchGuestOrderStatusPush, revokeGuestOrderPushTokens } from '../../pushDelivery/index.js';
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeReference = (value) => String(value || '').trim().toUpperCase();
@@ -56,6 +57,15 @@ export const recordDgfyOrderActivity = async ({ tenantId, order, storeCustomer =
         occurred_at: order.created_at || new Date()
     });
 
+    if (activity?.store_customer_id || activity?.dgfy_account_id) {
+        void revokeGuestOrderPushTokens({
+            tenantId,
+            reference,
+            posTransactionId: order.pos_transaction_id || activity?.display_snapshot?.order_id || null,
+            reason: 'order_claimed'
+        }).catch(() => null);
+    }
+
     if (activity?.dgfy_account_id && activity.status === 'completed') {
         const points = Math.floor(Number(activity.total_amount || 0) / 100);
         await dgfyCustomerRepository.createLoyaltyIfMissing({
@@ -70,6 +80,8 @@ export const recordDgfyOrderActivity = async ({ tenantId, order, storeCustomer =
 
     if (activity?.dgfy_account_id && activity._status_changed !== false) {
         await dispatchDgfyCustomerActivityUpdate(activity).catch(() => null);
+    } else if (!activity?.dgfy_account_id && !activity?.store_customer_id && activity?._status_changed !== false) {
+        void dispatchGuestOrderStatusPush(activity).catch(() => null);
     }
 
     return activity;

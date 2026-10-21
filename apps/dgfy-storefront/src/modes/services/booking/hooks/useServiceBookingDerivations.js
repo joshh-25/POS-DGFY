@@ -14,7 +14,7 @@ import {
   getTimePartFromAppointment
 } from '../model/serviceBookingSchedule.js';
 import { buildServiceBookingSummaryModel } from '../model/serviceBookingSummary.js';
-import { resolveDeliveryAddress } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { composeDeliveryAddress, resolveDeliveryAddress } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { trimAddressCountrySuffix } from '../../../../shared/model/storefrontCatalogModel.js';
 import { getServicesLocalFlowDefinition } from '../model/servicesLocalFlow.js';
 import {
@@ -41,6 +41,7 @@ import {
 export function useServiceBookingDerivations({
   customerAddress,
   customerEmail,
+  deliveryAddressDetails = '',
   customerName,
   customerPhone,
   customerPin,
@@ -162,9 +163,11 @@ export function useServiceBookingDerivations({
     bookingStepOneAdditionalFields.filter((field) => !isBookingFieldComplete(field, serviceIntakeResponses[field.id]))
   ), [bookingStepOneAdditionalFields, serviceIntakeResponses]);
   const isAddressRequired = bookingFieldPlan.addressField?.required === true || bookingFieldPlan.requiresAddress;
-  const serviceLocationSummaryDraft = useMemo(() => (
+  // #2594: the booking's address is the customer's house/unit details plus the location.
+  const serviceLocationSummaryDraft = useMemo(() => composeDeliveryAddress(
+    deliveryAddressDetails,
     trimAddressCountrySuffix(resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin }))
-  ), [customerAddress, customerPin, resolvedDeliveryAddress]);
+  ), [customerAddress, customerPin, deliveryAddressDetails, resolvedDeliveryAddress]);
   const missingCustomerInformation = useMemo(() => {
     const missing = [];
     if (!String(customerName || '').trim()) missing.push('Customer Name');
@@ -179,6 +182,8 @@ export function useServiceBookingDerivations({
     const selectedTimeIsAvailable = bookingTimeSlotOptions.some((slot) => String(slot?.value || '') === String(selectedServiceTimePart || ''));
     if (serviceFlow.requiresAddress && !String(serviceLocationSummaryDraft || '').trim()) {
       missing.push('Service Location');
+    } else if (serviceFlow.requiresAddress && !String(deliveryAddressDetails || '').trim()) {
+      missing.push('House No. or Unit');
     }
     if (serviceFlow.requiresBranch && selectedLocationId == null && storefrontContext?.location_id == null) {
       missing.push('Service Branch');
@@ -195,7 +200,7 @@ export function useServiceBookingDerivations({
       missing.push(bookingFieldPlan.unitCountField.label);
     }
     return missing;
-  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, bookingTimeSlotOptions, isServicesMode, selectedLocationId, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceFlow.requiresAddress, serviceFlow.requiresBranch, serviceFlow.requiresSchedule, serviceLocationSummaryDraft, serviceUnitType, storefrontContext?.location_id]);
+  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, bookingTimeSlotOptions, deliveryAddressDetails, isServicesMode, selectedLocationId, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceFlow.requiresAddress, serviceFlow.requiresBranch, serviceFlow.requiresSchedule, serviceLocationSummaryDraft, serviceUnitType, storefrontContext?.location_id]);
   const accountStepComplete = missingCustomerInformation.length === 0;
   const fulfillmentStepComplete = missingScheduleAndServiceInfo.length === 0
     && missingStepOneAdditionalFields.length === 0;
