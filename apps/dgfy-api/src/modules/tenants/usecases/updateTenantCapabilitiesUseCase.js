@@ -179,6 +179,7 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                 'tenant_ims_enabled',
                 'tenant_pos_enabled',
                 'store_is_visible',
+                'store_visibility_merchant_editable',
                 'customer_access_mode',
                 'platform_max_customer_access_mode',
                 'tenant_onboarding_progress'

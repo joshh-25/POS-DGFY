@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-21
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -30384,3 +30384,72 @@ Not complete. Record after the scoped implementation merges and named validation
 ### Next phase number
 
 Phase 523. No explicit dependency.
+
+## Phase 523 - Platform Admin storefront visibility and merchant edit authority (#2633)
+
+### Initiative and release
+
+Public Storefront publication controls, current release.
+
+### Objective and scope
+
+Enforce tenant `store_is_visible` on new public ecommerce activity, including known-token
+requests, while preserving explicit existing-order operations. Give Platform Admin an
+independent tenant policy for merchant visibility editing; enforce it on Settings and
+onboarding writes and explain it in merchant UI. No new effective publication state
+or tenant schema migration.
+
+### Status
+
+`in_progress` — implementation and validation underway; merge and deployment verification
+remain outstanding.
+
+### Dependencies
+
+- None. Phase 522 is still in progress but has no explicit dependency relationship to this work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0017](../architecture/adr/0017-customer-access-modes-and-inventory-display.md),
+[API specification](../api/specification.md), [schema](../database/schema.md), and
+[Back Office settings ownership](backoffice.md).
+
+### Implementation targets
+
+API public visibility middleware, Platform Admin capability read/write model, tenant
+Settings and onboarding write guards; Admin, OPIS/web-core, and existing IMS merchant
+controls; focused tests and governed docs.
+
+### Acceptance and validation evidence
+
+- [ ] Hidden tenants receive no-store `404 STORE_NOT_VISIBLE` on new public commerce
+  routes, including known-token requests; explicit existing-order routes still work.
+- [ ] Admin visibility Off/On is independent of merchant edit authority and is audited;
+  a policy-only patch does not refresh discovery.
+- [ ] Merchant bulk, single-key, and onboarding writes cannot change visibility when
+  locked; unchanged bulk values remain allowed and policy-key writes are rejected.
+- [ ] Merchant controls show the stored state and explain a locked policy; discovery
+  and direct-alias behavior remains hidden when Off.
+- [ ] Focused API and frontend tests, affected app builds, API JavaScript syntax,
+  architecture and docs checks, compliance declaration, and app-version check.
+
+### Completion date
+
+Not complete. Record after scoped implementation merges and named validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — verify Admin Off/On persistence and known-token/slug responses
+  using a non-production tenant on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] operational — measure shared-cache and cross-process visibility lag after Off;
+  owner: Verifier; blocks Phase 523 operational closure.
+- [ ] operational — re-verify the separate Admin toggle persistence defect under
+  #1923; owner: Verifier; tracked by that issue.
+
+### Next phase number
+
+Phase 524. No explicit dependency.

@@ -146,6 +146,23 @@ describe('tenant capability write durability and read-back (#1923)', () => {
         logger: { error: jest.fn() }
     });
 
+    it('persists and audits policy-only changes without syncing discovery', async () => {
+        const result = await buildUpdateUseCase()({
+            id: 'tenant-a',
+            body: { reason: 'Platform manages publication', store_visibility_merchant_editable: false },
+            actor: { username: 'platform_admin' }
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data.capabilities.store_visibility_merchant_editable).toBe(false);
+        expect(syncStorefrontDiscoveryIndexForTenant).not.toHaveBeenCalled();
+        expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            before_snapshot: expect.objectContaining({ store_visibility_merchant_editable: true }),
+            after_snapshot: expect.objectContaining({ store_visibility_merchant_editable: false })
+        }));
+        const readBack = await readTenantCapabilities({ tenant: tenantRows['tenant-a'], tenantConnector });
+        expect(readBack.store_visibility_merchant_editable).toBe(false);
+    });
+
     it('returns the persisted storefront visibility and registration stage in the write response', async () => {
         const result = await buildUpdateUseCase()({
             id: 'tenant-a',

@@ -4148,6 +4148,28 @@ Resolve a public Storefront QR/deep-link barcode value.
 
 **Rules**
 - Storefront QR uses Storefront visibility only (`storefront_visible` and service storefront metadata), never POS visibility.
+
+**Tenant storefront publication gate (#2633).** `store_is_visible=false` returns
+`404 {"success":false,"code":"STORE_NOT_VISIBLE"}` with `Cache-Control: no-store`
+for new public Storefront, hospitality, and DGLaundry booking-payment activity,
+including requests with a previously known company token, slug, or custom domain.
+This covers catalog, locations, quotes, checkout, new bookings/reservations,
+registration, address/follow actions, and inventory push. Missing or invalid
+setting rows retain the legacy visible default. Existing-order routes remain
+available by explicit method/path carve-out: tracking and push tokens, login/me,
+order history/claim/cancel, payment-session read/cancel/test reconciliation,
+service and hospitality booking read/claim, and laundry order read/update/cancel
+plus payment-session read/cancel. The exact allowlist is in
+`apps/dgfy-api/src/middleware/requireStorefrontVisible.js`. PayMongo webhooks,
+signed DGLaundry events, and admin refunds remain outside this gate. Already
+cached catalog responses have `s-maxage=45`, `stale-while-revalidate=90`,
+and `stale-if-error=180` (potentially 135 seconds of stale service during
+revalidation or 225 seconds if the origin errors); other API processes can
+lag by up to 15 seconds, and custom-domain resolution by up to 30 seconds.
+An existing payment session created before Off may finish through its provider
+page and callback as the tenant's last accepted order. New quote, checkout, and
+payment-session creation requests are denied after Off. Merchant POS and other
+in-store operations are unaffected.
 - `ghost` mode blocks item detail exposure. `catalog` exposes item detail only. `inquiry` exposes item detail plus contact affordance. `transaction` allows cart/checkout handoff subject to stock, location, compliance, and payment gates.
 - Service booking QR payloads such as `SERVICE_BOOKING:<reference>` resolve to booking/ticket context and redact customer contact fields unless an authenticated/claim flow permits disclosure. They do not hand off to cart.
 - Public QR responses do not expose `cost_per_unit` or raw `current_stock`; they use the same `inventory_display` contract as `/store/catalog`.
@@ -6690,7 +6712,7 @@ List all tenant registrations with their status.
 - Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
 - `effective_plan`: authoritative plan value to render and use for admin presentation. Pending and active tenants return `premium` even if a historical stored `plan` value is still `standard`.
 - `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
-- `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, and `customer_access_mode=catalog`.
+- `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, `store_visibility_merchant_editable=true`, and `customer_access_mode=catalog`.
 - `capabilities.storefront_readiness`: indicates whether public Storefront visibility can publish through an active primary storefront location with valid coordinates.
 - `registration_action`: authoritative next action for a pending tenant's linked public registration. `approve` is returned only for `pending/not_started`; `retry` is returned for failed provisioning or an approved `in_progress` attempt older than the existing ten-minute retry window; `setting_up` and `reconcile` are non-actionable states. The approval and retry endpoints remain authoritative and continue to enforce these transitions atomically.
 
@@ -6703,6 +6725,7 @@ Update platform-admin capability controls for an active tenant.
   "ims_enabled": true,
   "pos_enabled": false,
   "storefront_visible": true,
+  "store_visibility_merchant_editable": false,
   "customer_access_mode": "inquiry",
   "platform_max_customer_access_mode": "transaction",
   "customer_access_registration_stage": "registered",
@@ -6711,7 +6734,7 @@ Update platform-admin capability controls for an active tenant.
 ```
 
 **Validation**
-- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
+- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, `store_visibility_merchant_editable`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
 - Boolean fields must be JSON booleans, not strings.
 - `customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
 - `platform_max_customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
@@ -7300,6 +7323,7 @@ Persist onboarding progress for a step (idempotent).
 
 For `primary_location`, the payload may include:
 - `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must either save a real active primary location for map publication or set `store_has_no_location=true` for a searchable/profile-only storefront.
+- If Platform Admin has set `store_visibility_merchant_editable=false`, changing `public_storefront_visible` returns 403 with `reason_code: STORE_VISIBILITY_EDIT_PLATFORM_CONTROLLED`. The same rule applies to `PUT /settings` and `PUT /settings/:key`; an unchanged visibility value in a bulk save is allowed. Tenant writes of `store_visibility_merchant_editable` itself are always rejected.
 - `store_has_no_location` (`boolean`, strict JSON boolean): when paired with `public_storefront_visible=true`, the tenant can be searched and opened by slug but public map pins, embedded maps, directions links, and public branch-location responses remain disabled.
 - `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
 - `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.

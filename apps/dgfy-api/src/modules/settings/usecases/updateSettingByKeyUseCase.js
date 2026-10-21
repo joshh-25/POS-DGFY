@@ -30,6 +30,7 @@ import {
     assertTerminalCashierAssignments
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
+import { assertStoreVisibilityEditAuthorized } from './storeVisibilityEditAuthority.js';
 import { assertPublicStorefrontHandleAvailable } from './publicStorefrontHandlePolicy.js';
 import {
     applyStoreProfileShadowWrite,
@@ -74,7 +75,8 @@ const CAPABILITY_CACHE_SENSITIVE_KEYS = Object.freeze([
     WORKFLOW_MODE_SETTING_KEY,
     ENABLED_CAPABILITIES_SETTING_KEY,
     DISABLED_CAPABILITIES_SETTING_KEY,
-    STORE_PROFILE_READ_SETTING_KEY
+    STORE_PROFILE_READ_SETTING_KEY,
+    'store_is_visible'
 ]);
 
 const clearCapabilityCachesIfKeyTouched = async (settingKey) => {
@@ -188,6 +190,7 @@ export const buildUpdateSettingByKeyUseCase = ({
         }
 
         try {
+            await assertStoreVisibilityEditAuthorized({ settingsRepository, settingsData: { [key]: value } });
             let normalizedValue = value;
             let strictBindingRegistryPatch = null;
             let terminalRegistryEntriesForValidation = null;

@@ -23,6 +23,13 @@ const runMiddleware = (middleware, req) => {
 };
 
 describe('admin tenant capability validators', () => {
+    it('accepts a policy-only patch with an audit reason', () => {
+        const req = { body: { store_visibility_merchant_editable: false, reason: 'Platform control' } };
+        const { res, next } = runMiddleware(validateTenantCapabilityPatch, req);
+        expect(res.statusCode).toBe(200);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.store_visibility_merchant_editable).toBe(false);
+    });
     it('rejects string booleans and requires a reason', () => {
         const { res, next } = runMiddleware(validateTenantCapabilityPatch, {
             body: {
