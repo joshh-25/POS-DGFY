@@ -1435,6 +1435,8 @@ const buildUnavailableZReadingReconciliation = ({ businessDate, locationId }) =>
     report_net_sales: 0,
     report_refunds_voids: 0,
     report_adjustment_amount: 0,
+    report_cash_refunds_voids: null,
+    report_voided_refunded_transactions: null,
     z_void_transaction_count: null,
     z_void_amount: null,
     message: 'Report reconciliation was unavailable when this Z-reading was prepared.'
@@ -15076,7 +15078,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                         tracked: true,
                         payment_action: 'refund_failed',
                         failure_reason: lifecycleResult.error?.message
-                            || 'The payment lifecycle action requires administrator review.'
+                            || 'The order was rejected, but the automatic refund remains pending for payment reconciliation.'
                     };
                 if (!lifecycleResult.success) {
                     logger.error('[PosUseCases] Commerce payment lifecycle failed after order status commit', {

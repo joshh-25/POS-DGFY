@@ -324,7 +324,7 @@ describe('POS automatic cashier shift lifecycle', () => {
         expect(fixture.transactions[0].finished).toBe('commit');
     });
 
-    test('missing operator recovery does not let a different cashier claim the shift', async () => {
+    test('does not let a different cashier claim the shift during missing operator recovery', async () => {
         const fixture = buildFixture();
         const otherCashier = {
             ...user,
@@ -351,7 +351,49 @@ describe('POS automatic cashier shift lifecycle', () => {
         }));
 
         expect(result.success).toBe(false);
-        expect(result.error.details?.reason_code).toBe('POS_OPERATOR_NOT_ON_BREAK');
+        expect(result.error.details?.reason_code).toBe('POS_SHIFT_OWNER_REQUIRED');
+        expect(fixture.getOperator()).toBeNull();
+        expect(fixture.transactions[0].finished).toBe('rollback');
+    });
+
+    test('an active break does not let a different cashier resume the shift owner\'s register', async () => {
+        const fixture = buildFixture();
+        const otherCashier = {
+            ...user,
+            user_id: 2,
+            username: 'cashier-2',
+            email: 'cashier-2@example.com'
+        };
+        fixture.setAttendance({
+            employee_attendance_session_id: 22,
+            user_id: 2,
+            location_id: 7,
+            status: 'open'
+        });
+        fixture.setBreak({
+            employee_break_segment_id: 23,
+            employee_attendance_session_id: 22,
+            status: 'open',
+            started_at: new Date(Date.now() - 30_000)
+        });
+
+        const result = await dbStore.run({
+            sequelize: { transaction: fixture.transactionFactory }
+        }, () => fixture.useCases.resume({
+            terminalId: 'REG-1',
+            locationId: 7,
+            shiftId: 55,
+            user: otherCashier,
+            tenantId: 'tenant-1',
+            requestId: 'reject-other-break-55'
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('POS_SHIFT_OWNER_REQUIRED');
+        expect(fixture.getBreak()).toMatchObject({
+            employee_break_segment_id: 23,
+            status: 'open'
+        });
         expect(fixture.getOperator()).toBeNull();
         expect(fixture.transactions[0].finished).toBe('rollback');
     });

@@ -1893,9 +1893,28 @@ const buildReportZReadingReconciliation = ({
     filters = {},
     snapshot = null,
     reportSummary = {},
-    adjustmentSummary = {}
+    adjustmentSummary = {},
+    adjustments = [],
+    reportPaymentBreakdown = []
 } = {}) => {
     const { dateFrom, dateTo } = resolveReportDateRange(filters);
+    const cashRefundAdjustments = (Array.isArray(adjustments) ? adjustments : []).filter((adjustment) => (
+        String(adjustment?.adjustment_type || '').trim().toLowerCase() === 'cash_refund'
+        && String(adjustment?.tender_type || '').trim().toLowerCase() === 'cash'
+        && String(adjustment?.status || '').trim().toLowerCase() === 'succeeded'
+    ));
+    const reportCashPayment = (Array.isArray(reportPaymentBreakdown) ? reportPaymentBreakdown : [])
+        .find((entry) => String(entry?.payment_method || entry?.payment_type || '').trim().toLowerCase() === 'cash');
+    const reportCashRefundsVoids = cashRefundAdjustments.length > 0
+        ? sumBy(cashRefundAdjustments, (adjustment) => adjustment?.amount)
+        : reportCashPayment
+            && Number.isFinite(Number(reportCashPayment.gross_sales))
+            && Number.isFinite(Number(reportCashPayment.net_sales))
+            ? round4(Math.max(0, Number(reportCashPayment.gross_sales) - Number(reportCashPayment.net_sales)))
+            : null;
+    const reportVoidedRefundedTransactions = Number.isFinite(Number(reportSummary.voided_refunded_transactions))
+        ? Number(reportSummary.voided_refunded_transactions)
+        : null;
     const base = {
         status: 'not_comparable',
         comparison_basis: 'completed_recognized_transaction_total',
@@ -1912,6 +1931,8 @@ const buildReportZReadingReconciliation = ({
         report_refunds_voids: round4(reportSummary.refunds_voids),
         report_adjustment_amount: round4(adjustmentSummary.succeeded_amount),
         report_adjustment_net_sales_impact: round4(adjustmentSummary.net_sales_impact),
+        report_cash_refunds_voids: reportCashRefundsVoids,
+        report_voided_refunded_transactions: reportVoidedRefundedTransactions,
         reconciliation_inputs: {
             transactions: 'PosTransaction.completed',
             payments: 'PosTransaction.payment_breakdown',
@@ -5433,7 +5454,9 @@ export const posRepository = {
             filters,
             snapshot: zReadingSnapshot,
             reportSummary: payload.daily_report?.summary,
-            adjustmentSummary: payload.daily_report?.adjustment_summary
+            adjustmentSummary: payload.daily_report?.adjustment_summary,
+            adjustments,
+            reportPaymentBreakdown: payload.daily_report?.payment_breakdown
         });
         const cashierNetSales = round4((payload.daily_report?.cashier_summary || []).reduce(
             (total, row) => total + Number(row.summary?.net_sales || 0),
@@ -5522,7 +5545,9 @@ export const posRepository = {
             filters,
             snapshot: zReadingSnapshot,
             reportSummary: reportPayload.daily_report?.summary,
-            adjustmentSummary: reportPayload.daily_report?.adjustment_summary
+            adjustmentSummary: reportPayload.daily_report?.adjustment_summary,
+            adjustments,
+            reportPaymentBreakdown: reportPayload.daily_report?.payment_breakdown
         });
     },
 

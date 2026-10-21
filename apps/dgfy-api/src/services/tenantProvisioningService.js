@@ -35,6 +35,7 @@ const ONBOARDING_STATE_SETTING_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_SETTING_KEY = 'tenant_onboarding_started_at';
 const ONBOARDING_COMPLETED_AT_SETTING_KEY = 'tenant_onboarding_completed_at';
 const ONBOARDING_PROGRESS_SETTING_KEY = 'tenant_onboarding_progress';
+const TENANT_POS_ENABLED_SETTING_KEY = 'tenant_pos_enabled';
 const STORE_IS_VISIBLE_SETTING_KEY = 'store_is_visible';
 const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
 const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
@@ -378,6 +379,29 @@ const seedDefaultCustomerAccessSettings = async (tenantSequelize, workflowMode =
     }
 };
 
+const seedTenantCapabilitySettings = async (tenantSequelize, tenantCapabilities = null) => {
+    if (!tenantCapabilities || typeof tenantCapabilities !== 'object') return;
+    if (!Object.prototype.hasOwnProperty.call(tenantCapabilities, 'pos_enabled')) return;
+
+    const posEnabled = tenantCapabilities.pos_enabled === true;
+    await tenantSequelize.query(
+        `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
+         VALUES (?, ?, 'boolean', ?, NOW())
+         ON DUPLICATE KEY UPDATE
+           setting_value = VALUES(setting_value),
+           data_type = VALUES(data_type),
+           description = VALUES(description),
+           updated_at = NOW()`,
+        {
+            replacements: [
+                TENANT_POS_ENABLED_SETTING_KEY,
+                posEnabled ? 'true' : 'false',
+                'Controls whether the tenant can use POS operational pages and transactions'
+            ]
+        }
+    );
+};
+
 /**
  * Provision a tenant - supports both:
  * 1. Full provisioning (new request with name, adminEmail, adminPassword)
@@ -403,7 +427,8 @@ export const provisionTenant = async (options) => {
         tenantId,
         dbName: providedDbName,
         companyToken: providedCompanyToken,
-        adminPasswordHash: providedPasswordHash
+        adminPasswordHash: providedPasswordHash,
+        tenantCapabilities = null
     } = options;
 
     // Determine if this is an approval (existing tenant) or new provisioning
@@ -574,6 +599,13 @@ export const provisionTenant = async (options) => {
             logger.info('[Provisioning] Customer access settings seeded', {
                 tenantId: uuid
             });
+            await seedTenantCapabilitySettings(tenantSequelize, tenantCapabilities);
+            if (tenantCapabilities?.pos_enabled !== undefined) {
+                logger.info('[Provisioning] Tenant capability settings seeded', {
+                    tenantId: uuid,
+                    posEnabled: tenantCapabilities.pos_enabled === true
+                });
+            }
 
             // 5. Update tenant status to active
             const Tenant = dbStore.get('Tenant');

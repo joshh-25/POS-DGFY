@@ -10,6 +10,7 @@ import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
 import { normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { normalizeStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
 import { DGFY_LEGAL_TERM_FLOWS } from '../../shared/utils/dgfyLegalTerms.js';
+import { resolveCompanyRegistrationStatusUrl, resolvePosOnboardingUrl } from '../entities/companyRegistrationStatusUrl.js';
 
 const IMAGE_CATEGORIES = new Map([
     ['profile_image', 'profile'],
@@ -56,7 +57,12 @@ const toFailure = (error, fallbackMessage) => {
     ));
 };
 
-const requireAdminActor = (actor) => {
+const requireAdminActor = (actor, { allowSystemActor = false } = {}) => {
+    if (
+        allowSystemActor
+        && actor?.actor_type === 'system'
+        && actor?.source === 'public_registration'
+    ) return null;
     if (actor && (actor.is_platform_admin === true || actor.admin_id || actor.id)) return null;
     return new DomainError(
         DomainErrorCode.AUTHORIZATION_FAILED,
@@ -88,7 +94,7 @@ const getPayloadFromDraft = (draft) => {
     return {
         payload: cloneJson(payload),
         submissionSnapshot,
-        legalTermsSnapshot: cloneJson(draft?.legal_terms_snapshot, {})
+        legalTermsSnapshot: parseSnapshot(draft?.legal_terms_snapshot)
     };
 };
 
@@ -434,7 +440,7 @@ export const buildMaterializeCompanyRegistrationDraftUseCase = ({
             ['storefront_hours', normalizedHours, 'json', 'Configured Storefront business hours.'],
             ['storefront_gallery_images', gallery, 'json', 'Storefront gallery images approved during registration.'],
             ['store_has_no_location', false, 'boolean', 'Whether the Storefront intentionally has no map location.'],
-            ['store_is_visible', true, 'boolean', 'Whether the Storefront is visible after approval and materialization.']
+            ['store_is_visible', false, 'boolean', 'Whether the Storefront is visible after Platform Admin enablement.']
         ];
 
         if (Array.isArray(storefront.categories)) {
@@ -524,6 +530,8 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
     idGenerator = uuidv4,
     now = () => new Date(),
     logger,
+    emailService,
+    allowSystemActor = false,
     runInBackground = (work) => setImmediate(() => { void work(); }),
     background = true
 }) => {
@@ -552,6 +560,41 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
         }));
     };
 
+    const sendOnboardingEmail = async ({ application, tenant }) => {
+        const delivery = application?.onboardingEmailDelivery
+            || await companyRegistrationRepository.findOnboardingEmailDelivery?.(application?.id);
+        if (
+            !delivery
+            || delivery.status === 'sent_to_provider'
+            || !emailService?.isEmailConfigured?.()
+            || typeof emailService?.sendCompanyOnboardingEmail !== 'function'
+        ) return;
+
+        try {
+            const deliveryResult = await emailService.sendCompanyOnboardingEmail({
+                email: tenant.admin_email,
+                companyName: tenant.name,
+                statusUrl: resolveCompanyRegistrationStatusUrl(application.id),
+                posUrl: resolvePosOnboardingUrl(tenant.id)
+            });
+            await companyRegistrationRepository.updateEmailDelivery(delivery, {
+                status: 'sent_to_provider',
+                provider_message_id: deliveryResult?.messageId || null,
+                sent_at: new Date(),
+                last_error_summary: null
+            });
+        } catch (error) {
+            await companyRegistrationRepository.updateEmailDelivery(delivery, {
+                status: 'failed',
+                last_error_summary: String(error.message || 'Onboarding email failed.').slice(0, 500)
+            }).catch(() => {});
+            logger?.warn?.('[RegistrationMaterialization] POS onboarding email failed', {
+                application_id: application.id,
+                error: error.message
+            });
+        }
+    };
+
     const runMaterialization = async ({ claim, retry }) => {
         const tenant = claim.tenant;
         let snapshot = mergeSnapshot(claim.draft.materialization_snapshot);
@@ -566,7 +609,8 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
                     adminPhone: tenant.admin_phone,
                     adminPasswordHash: tenant.admin_password_hash,
                     workflowMode: claim.industry.workflowMode,
-                    templateKey: claim.industry.templateKey
+                    templateKey: claim.industry.templateKey,
+                    tenantCapabilities: { pos_enabled: false }
                 });
                 await dgfyAccountRepository.upsertFounderMembership({
                     dgfyAccountId: tenant.owner_dgfy_account_id,
@@ -598,6 +642,7 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
                     menu_upload_count: materialized.menuUploadIds.length
                 }
             });
+            await sendOnboardingEmail({ application: claim.application, tenant });
             logger?.info?.('[RegistrationMaterialization] Completed', {
                 draft_id: claim.draft.id,
                 tenant_id: tenant.id,
@@ -717,6 +762,7 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
                 store_template_key: industry.templateKey,
                 ...(legacyBusinessType ? { business_type: legacyBusinessType } : {}),
                 registration_draft_id: plainDraft.id,
+                registration_access_mode: 'catalog_only',
                 store_is_visible: false
             }
         }, { transaction });
@@ -801,7 +847,7 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
     });
 
     return async ({ draftId, actor, retry = false }) => {
-        const actorError = requireAdminActor(actor);
+        const actorError = requireAdminActor(actor, { allowSystemActor });
         if (actorError) return fail(actorError);
 
         try {
@@ -863,6 +909,9 @@ export const buildApproveCompanyRegistrationDraftUseCase = ({
                         draft_id: claimed.draft.id,
                         tenant_id: claimed.tenant.id,
                         application_id: claimed.application?.id || claimed.draft.materialized_application_id || null,
+                        review_status: 'approved',
+                        provisioning_status: 'in_progress',
+                        registration_access_mode: 'catalog_only',
                         materialization_status: 'in_progress'
                     }
                 }

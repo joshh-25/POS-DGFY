@@ -11,7 +11,7 @@ import { Op } from 'sequelize';
 const transactionOptions = (transaction) => transaction ? { transaction } : {};
 
 export const companyRegistrationRepository = {
-  createInitial({ tenant, dgfyAccount, legalAcknowledgement, workflowMode, industryTag, registrationIndustry = null, storeTemplateKey = null, registrationSnapshot = null, transaction }) {
+  createInitial({ tenant, dgfyAccount, legalAcknowledgement, workflowMode, industryTag, registrationIndustry = null, storeTemplateKey = null, registrationSnapshot = null, emailEventType = 'submission_received', transaction }) {
     const options = transactionOptions(transaction);
     return CompanyRegistrationApplication.create({
       tenant_id: tenant.id, dgfy_account_id: dgfyAccount.id,
@@ -32,8 +32,9 @@ export const companyRegistrationRepository = {
         legal_terms_snapshot: legalAcknowledgement, decision: 'pending'
       }, options);
       await CompanyRegistrationEvent.create({ application_id: application.id, event_type: 'submitted', actor_type: 'applicant', actor_id: dgfyAccount.id }, options);
-      const delivery = await CompanyRegistrationEmailDelivery.create({ application_id: application.id, event_type: 'submission_received', recipient_email_snapshot: dgfyAccount.email }, options);
+      const delivery = await CompanyRegistrationEmailDelivery.create({ application_id: application.id, event_type: emailEventType, recipient_email_snapshot: dgfyAccount.email }, options);
       application.submissionEmailDelivery = delivery;
+      application.onboardingEmailDelivery = delivery;
       return application;
     });
   },
@@ -50,6 +51,9 @@ export const companyRegistrationRepository = {
     transaction
   }) {
     const options = transactionOptions(transaction);
+    const isSystemActor = actor?.actor_type === 'system';
+    const actorId = isSystemActor ? null : actor?.id || actor?.admin_id || null;
+    const eventActorType = isSystemActor ? 'system' : 'platform_admin';
     const application = await CompanyRegistrationApplication.create({
       tenant_id: tenant.id,
       dgfy_account_id: dgfyAccount.id,
@@ -72,26 +76,40 @@ export const companyRegistrationRepository = {
       },
       legal_terms_snapshot: legalTermsSnapshot,
       decision: 'approved',
-      actor_admin_id: actor?.id || actor?.admin_id || null,
-      actor_username_snapshot: actor?.username || null,
+      actor_admin_id: actorId,
+      actor_username_snapshot: isSystemActor ? null : actor?.username || null,
       decided_at: new Date()
     }, options);
 
     await CompanyRegistrationEvent.create({
       application_id: application.id,
-      event_type: 'approved',
-      actor_type: 'platform_admin',
-      actor_id: actor?.id || actor?.admin_id || null,
+      event_type: isSystemActor ? 'auto_approved' : 'approved',
+      actor_type: eventActorType,
+      actor_id: actorId,
       details: {
-        source: 'company_registration_draft',
-        registration_draft_id: submissionSnapshot?.registration_draft_id || null
+        source: isSystemActor ? 'public_registration' : 'company_registration_draft',
+        registration_draft_id: submissionSnapshot?.registration_draft_id || null,
+        ...(isSystemActor ? { access_mode: 'catalog_only' } : {})
       }
     }, options);
+
+    const onboardingDelivery = await CompanyRegistrationEmailDelivery.create({
+      application_id: application.id,
+      event_type: 'onboarding_ready',
+      recipient_email_snapshot: dgfyAccount.email
+    }, options);
+    application.onboardingEmailDelivery = onboardingDelivery;
 
     return application;
   },
   updateEmailDelivery(delivery, payload, transaction) {
     return delivery.update(payload, transactionOptions(transaction));
+  },
+  findOnboardingEmailDelivery(applicationId) {
+    return CompanyRegistrationEmailDelivery.findOne({
+      where: { application_id: applicationId, event_type: 'onboarding_ready' },
+      order: [['created_at', 'DESC']]
+    });
   },
   findOwned(applicationId, dgfyAccountId) {
     return CompanyRegistrationApplication.findOne({
@@ -203,6 +221,55 @@ export const companyRegistrationRepository = {
       await CompanyRegistrationAttempt.update({ decision: 'approved', actor_admin_id: actor?.id || null, actor_username_snapshot: actor?.username || null, decided_at: new Date() }, { where: { application_id: application.id, attempt_no: application.current_attempt_no }, transaction });
       await CompanyRegistrationEvent.create({ application_id: application.id, event_type: retry ? 'provisioning_retry_started' : 'approved', actor_type: 'platform_admin', actor_id: actor?.id || null }, { transaction });
       await CompanyRegistrationUpload.update({ expires_at: null }, { where: { application_id: application.id, purged_at: null, revoked_at: null }, transaction });
+      return application;
+    });
+  },
+  async markAutoProvisioningStarted({ tenantId }) {
+    return CompanyRegistrationApplication.sequelize.transaction(async (transaction) => {
+      const [changed] = await CompanyRegistrationApplication.update({
+        review_status: 'approved',
+        provisioning_status: 'in_progress',
+        optimistic_version: CompanyRegistrationApplication.sequelize.literal('optimistic_version + 1')
+      }, {
+        where: {
+          tenant_id: tenantId,
+          review_status: 'pending',
+          provisioning_status: 'not_started'
+        },
+        transaction
+      });
+      if (changed !== 1) return null;
+
+      const application = await CompanyRegistrationApplication.findOne({
+        where: { tenant_id: tenantId },
+        transaction
+      });
+      await CompanyRegistrationAttempt.update({
+        decision: 'approved',
+        actor_admin_id: null,
+        actor_username_snapshot: null,
+        decided_at: new Date()
+      }, {
+        where: {
+          application_id: application.id,
+          attempt_no: application.current_attempt_no
+        },
+        transaction
+      });
+      await CompanyRegistrationEvent.create({
+        application_id: application.id,
+        event_type: 'auto_approved',
+        actor_type: 'system',
+        actor_id: null,
+        details: {
+          source: 'public_registration',
+          access_mode: 'catalog_only'
+        }
+      }, { transaction });
+      await CompanyRegistrationUpload.update({ expires_at: null }, {
+        where: { application_id: application.id, purged_at: null, revoked_at: null },
+        transaction
+      });
       return application;
     });
   },

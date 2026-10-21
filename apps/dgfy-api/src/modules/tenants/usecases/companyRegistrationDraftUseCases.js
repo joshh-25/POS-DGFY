@@ -40,6 +40,11 @@ const internalError = (message, cause) => new DomainError(
   { statusCode: 500, cause }
 );
 
+const AUTO_APPROVAL_ACTOR = Object.freeze({
+  actor_type: 'system',
+  source: 'public_registration'
+});
+
 const cloneJson = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
 const mergeJsonValues = (existingValue, incomingValue) => {
@@ -458,7 +463,9 @@ export const buildRemoveCompanyRegistrationFileUseCase = ({
 export const buildSubmitCompanyRegistrationDraftUseCase = ({
   repository,
   now = () => new Date(),
-  logger
+  logger,
+  autoApproveCompanyRegistrationDraft = null,
+  shouldAutoApprove = () => false
 }) => async ({ draftId, dgfyAccount, body = {}, metadata = {} }) => {
   if (!dgfyAccount?.id) return fail(authError());
 
@@ -539,9 +546,55 @@ export const buildSubmitCompanyRegistrationDraftUseCase = ({
       });
     };
 
-    return repository.transaction
-      ? repository.transaction(submit)
-      : submit(null);
+    const submittedResult = repository.transaction
+      ? await repository.transaction(submit)
+      : await submit(null);
+    if (!submittedResult?.success || !shouldAutoApprove()) return submittedResult;
+
+    if (typeof autoApproveCompanyRegistrationDraft !== 'function') {
+      return fail(new DomainError(
+        DomainErrorCode.INTERNAL_ERROR,
+        'Automatic registration approval is not configured.',
+        { statusCode: 503, details: { error_code: 'REGISTRATION_AUTO_APPROVAL_UNAVAILABLE' } }
+      ));
+    }
+
+    const approvalResult = await autoApproveCompanyRegistrationDraft({
+      draftId,
+      actor: AUTO_APPROVAL_ACTOR
+    });
+    if (!approvalResult?.success) {
+      logger?.error?.('[RegistrationDraft] Automatic approval failed after submission', {
+        draft_id: draftId,
+        error: approvalResult?.error?.message || 'Automatic approval failed.'
+      });
+      return fail(new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'Your registration was saved, but automatic company setup could not start. Please try again later.',
+        { statusCode: 503, details: { error_code: 'REGISTRATION_AUTO_APPROVAL_FAILED', registration_id: draftId } }
+      ));
+    }
+
+    const submittedData = submittedResult.data?.payload?.data || {};
+    const approvalData = approvalResult.data?.payload?.data || {};
+    return ok({
+      statusCode: approvalResult.data?.statusCode || 202,
+      payload: {
+        success: true,
+        data: {
+          registration_id: draftId,
+          application_id: approvalData.application_id || null,
+          tenant_id: approvalData.tenant_id || null,
+          status: 'setting_up_company',
+          review_status: 'approved',
+          provisioning_status: 'in_progress',
+          registration_access_mode: 'catalog_only',
+          materialization_status: approvalData.materialization_status || 'in_progress',
+          submitted_at: submittedData.submitted_at || null
+        },
+        message: 'Your business was approved automatically. We will email your POS onboarding link when it is ready.'
+      }
+    });
   } catch (error) {
     logger?.error?.('[RegistrationDraft] Failed to submit draft', { error: error.message, draftId });
     return toFailure(error, 'Unable to submit the registration for review.');

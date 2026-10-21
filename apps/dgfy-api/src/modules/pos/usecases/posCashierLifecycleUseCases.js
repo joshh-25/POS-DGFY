@@ -341,6 +341,9 @@ export const createPosCashierLifecycleUseCases = ({
             const userId = positiveInt(user?.user_id);
             const shift = await repository.findOpenTerminalShift({ terminalId, locationId: resolvedLocationId, shiftId: resolvedShiftId, transaction, lock: true });
             if (!shift) throw lifecycleError('The register shift is no longer open.', 409, { reason_code: 'POS_OPERATOR_SHIFT_NOT_OPEN' });
+            if (Number(shift.cashier_id) !== userId) {
+                throw lifecycleError('Only the cashier who owns this shift can resume it.', 403, { reason_code: 'POS_SHIFT_OWNER_REQUIRED' });
+            }
             const attendance = await repository.findOpenAttendanceByUser({ userId, locationId: resolvedLocationId, transaction, lock: true });
             if (!attendance) throw lifecycleError('This cashier has no active attendance session to resume.', 409, { reason_code: 'POS_OPERATOR_ATTENDANCE_REQUIRED' });
             const activeBreak = await repository.findOpenBreak({ attendanceSessionId: attendance.employee_attendance_session_id, transaction, lock: true });

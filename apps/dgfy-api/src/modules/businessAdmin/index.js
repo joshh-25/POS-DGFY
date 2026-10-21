@@ -51,6 +51,8 @@ import { buildUpdateBusinessAdminCompanyNameUseCase } from './usecases/businessA
 import { syncStorefrontDiscoveryWithReliability } from '../../services/storefrontDiscoverySyncReliabilityService.js';
 import { publishPosSettingsChange } from '../shared/services/catalogChangeEventBus.js';
 import logger from '../../config/logger.js';
+import { readTenantCapabilities } from '../tenants/usecases/tenantCapabilitySettings.js';
+import tenantConnector from '../../utils/TenantConnector.js';
 
 export const getBusinessAdminOverviewUseCase = buildGetBusinessAdminOverviewUseCase({
     businessAdminOverviewRepository,
@@ -71,6 +73,17 @@ export const getBusinessAdminMultiCompanyOverviewUseCase = buildGetBusinessAdmin
 
 export const getBusinessAdminBootstrapUseCase = buildGetBusinessAdminBootstrapUseCase({
     businessAdminOverviewRepository,
+    tenantCapabilityResolver: async ({ tenant }) => {
+        try {
+            return await readTenantCapabilities({ tenant, tenantConnector });
+        } catch (error) {
+            logger.warn('[BusinessAdmin] Tenant capability bootstrap read failed; using safe defaults', {
+                tenant_id: tenant?.id || null,
+                error: error.message
+            });
+            return { pos_enabled: true, storefront_visible: false, unavailable: true };
+        }
+    },
     workflowCapabilityResolver: async () => {
         const settings = await resolveWorkflowCapabilitySettings();
         return {

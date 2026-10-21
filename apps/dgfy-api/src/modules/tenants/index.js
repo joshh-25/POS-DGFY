@@ -11,7 +11,7 @@ import {
 import { syncStorefrontDiscoveryWithReliability } from '../../services/storefrontDiscoverySyncReliabilityService.js';
 import * as landlordService from '../../services/landlordService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
-import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
+import { getTenantRegistrationApprovalMode, TENANT_REGISTRATION_APPROVAL_MODES } from '../../config/tenantRegistrationApproval.js';
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
 import { companyRegistrationRepository } from './repositories/companyRegistrationRepository.js';
 import { dgfyAccountRepository, dgfyAffiliateRepository } from '../dgfy/index.js';
@@ -91,6 +91,10 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
     emailService,
     idGenerator: uuidv4,
     getTenantRegistrationApprovalMode: () => getTenantRegistrationApprovalMode(process.env, logger),
+    provisionTenant,
+    materializeApprovedCompanyRegistration,
+    createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
+    shouldAutoCreatePayMongoChildAccounts,
     logger
 });
 
@@ -266,11 +270,6 @@ export const removeCompanyRegistrationFileUseCase = buildRemoveCompanyRegistrati
     repository: companyRegistrationDraftRepository,
     logger
 });
-export const submitCompanyRegistrationDraftUseCase = buildSubmitCompanyRegistrationDraftUseCase({
-    repository: companyRegistrationDraftRepository,
-    logger
-});
-
 export const materializeCompanyRegistrationDraftUseCase = buildMaterializeCompanyRegistrationDraftUseCase({
     repository: companyRegistrationDraftRepository,
     tenantConnector,
@@ -282,7 +281,7 @@ export const materializeCompanyRegistrationDraftUseCase = buildMaterializeCompan
     logger
 });
 
-export const approveCompanyRegistrationDraftUseCase = buildApproveCompanyRegistrationDraftUseCase({
+const companyRegistrationDraftApprovalDependencies = {
     repository: companyRegistrationDraftRepository,
     tenantAdminRepository,
     companyRegistrationRepository,
@@ -290,7 +289,24 @@ export const approveCompanyRegistrationDraftUseCase = buildApproveCompanyRegistr
     registrationIndustryRepository,
     provisionTenant,
     materializeCompanyRegistrationDraft: materializeCompanyRegistrationDraftUseCase,
+    emailService,
     logger
+};
+
+export const approveCompanyRegistrationDraftUseCase = buildApproveCompanyRegistrationDraftUseCase(
+    companyRegistrationDraftApprovalDependencies
+);
+
+export const autoApproveCompanyRegistrationDraftUseCase = buildApproveCompanyRegistrationDraftUseCase({
+    ...companyRegistrationDraftApprovalDependencies,
+    allowSystemActor: true
+});
+
+export const submitCompanyRegistrationDraftUseCase = buildSubmitCompanyRegistrationDraftUseCase({
+    repository: companyRegistrationDraftRepository,
+    logger,
+    autoApproveCompanyRegistrationDraft: autoApproveCompanyRegistrationDraftUseCase,
+    shouldAutoApprove: () => getTenantRegistrationApprovalMode(process.env, logger) === TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD
 });
 
 const companyRegistrationUploadReviewUseCases = buildCompanyRegistrationUploadReviewUseCases({

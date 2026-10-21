@@ -2,7 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
-import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
+import { resolveCompanyRegistrationStatusUrl, resolvePosOnboardingUrl } from '../entities/companyRegistrationStatusUrl.js';
 
 const parseTenantSettings = (tenant) => {
     const rawSettings = tenant?.settings;
@@ -36,6 +36,12 @@ const extractStoreTemplateKeyFromTenant = (tenant) => {
     return typeof key === 'string' && key.trim() ? key.trim() : null;
 };
 
+const extractTenantCapabilitiesFromTenant = (tenant) => (
+    parseTenantSettings(tenant)?.registration_access_mode === 'catalog_only'
+        ? { pos_enabled: false }
+        : null
+);
+
 export const buildApproveTenantUseCase = ({
     tenantAdminRepository,
     companyRegistrationRepository,
@@ -66,7 +72,8 @@ export const buildApproveTenantUseCase = ({
                 adminPhone: tenant.admin_phone,
                 adminPasswordHash: tenant.admin_password_hash,
                 workflowMode: extractWorkflowModeFromTenant(tenant),
-                templateKey: extractStoreTemplateKeyFromTenant(tenant)
+                templateKey: extractStoreTemplateKeyFromTenant(tenant),
+                tenantCapabilities: extractTenantCapabilitiesFromTenant(tenant)
             });
             const registrationReview = typeof companyRegistrationRepository.findAdminReview === 'function'
                 ? await companyRegistrationRepository.findAdminReview(tenant.id)
@@ -120,10 +127,11 @@ export const buildApproveTenantUseCase = ({
         let emailSent = false;
         if (emailService?.isEmailConfigured?.()) {
             try {
-                await emailService.sendCompanyApprovedEmail({
+                await emailService.sendCompanyOnboardingEmail({
                     email: tenant.admin_email,
                     companyName: tenant.name,
-                    statusUrl: resolveCompanyRegistrationStatusUrl(application.id)
+                    statusUrl: resolveCompanyRegistrationStatusUrl(application.id),
+                    posUrl: resolvePosOnboardingUrl(tenant.id)
                 });
                 emailSent = true;
                 logger?.info?.(`[TenantApproval] Approval email sent to ${tenant.admin_email}`);
