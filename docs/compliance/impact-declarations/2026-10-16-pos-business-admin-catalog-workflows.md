@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal,business_admin,inventory,settings,tenant_schema
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.14
-verification_evidence: 16 targeted API suites with 244 passing tests, 3 OPIS files with 22 passing tests, 7 shared web-core files with 50 passing tests, changed-source lint, POS/OPIS production builds, architecture checks, repository compliance gate, git diff --check
+verification_evidence: 16 targeted API suites with 244 passing tests, 3 OPIS files with 22 passing tests, 7 shared web-core files with 50 passing tests, changed-source lint, POS/OPIS production builds, architecture checks, repository compliance gate, git diff --check, local landlord plus 17 active tenant schemas verified with tenant_locations.address_details, POS/IMS lint rerun after barcode-save scope fix
 rollback_note: Revert the Business Admin attendance and canonical-name workflows, POS cash reconciliation and catalog/settings synchronization, OPIS presentation, inventory editor workflow, additive audit migration, focused tests, and this declaration together; retain existing tenant, shift, audit, and catalog records for governed reconciliation.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -84,6 +84,16 @@ The shared POS UI batch adds the client-side refresh and settings-invalidation
 coordination needed to consume the tenant-scoped events above, while retaining
 the existing terminal identity, branch scope, and server-authorized mutation
 boundaries.
+
+## Amendment — Tenant-location schema drift and item-save lint repair
+
+The additive `address_details` migration and tenant-schema repair path are part
+of the same POS/terminal and tenant-schema change set. Local verification
+confirmed the landlord schema and all 17 active tenant schemas contain
+`tenant_locations.address_details`, and the POS branch-directory smoke test no
+longer reports the previous unknown-column errors. The POS item-save success
+message now calculates the existing barcode in the same scope used by the save
+operation, removing the `existingPrimaryCode` lint/runtime reference error.
 
 **Live request-time compliance preflight was not executed.** This declaration
 uses the documented local placeholder and must be reconciled by the governed

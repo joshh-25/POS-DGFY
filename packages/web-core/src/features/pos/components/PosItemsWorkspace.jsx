@@ -1543,6 +1543,8 @@ function ItemsWorkspace({
       manualBarcode: editForm.manual_barcode,
       gtin: editForm.gtin
     });
+    const existingPrimaryBarcode = primaryBarcodes[String(editItemId)] || activeEditItem?.primary_barcode || null;
+    const existingPrimaryCode = normalizeBarcodeEntry(existingPrimaryBarcode?.code || '');
 
     if (!name) {
       toast.error('Item name is required.');
@@ -1623,8 +1625,6 @@ function ItemsWorkspace({
           pos_best_seller_mode: editForm.pos_best_seller_mode
         });
         editSaveStage = 'barcode';
-        const existingPrimaryBarcode = primaryBarcodes[String(editItemId)] || activeEditItem?.primary_barcode || null;
-        const existingPrimaryCode = normalizeBarcodeEntry(existingPrimaryBarcode?.code || '');
         await persistPosItemBarcode({
           itemId: editItemId,
           barcodeSelection,
