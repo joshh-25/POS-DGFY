@@ -670,6 +670,22 @@ non-empty explicit legacy `permissions` array takes precedence over it, and is n
 once the staff role is deactivated (`staff_role.is_active: false`). Clients must read `capabilities`,
 never `staff_role.capabilities`, to determine what the user can actually do.
 
+### Tenant staff-role management (`/staff-roles`)
+
+`GET /staff-roles?include_inactive=true` and `GET /staff-roles/:staffRoleId`
+retain the `users:manage` read gate. `POST /staff-roles`,
+`PUT /staff-roles/:staffRoleId`, `PUT /staff-roles/:staffRoleId/status`, and
+`PUT /staff-roles/users/:userId` require a tenant owner or legacy Admin role.
+The role body accepts `name`, `capabilities` (registered slugs), and optional
+`is_active`; status uses `{ "is_active": false }`. Assignment uses
+`{ "staff_role_id": 4 }` or `null` to clear. Assignment and clearing both
+erase `users.permissions` in the same transaction and audit the previous list.
+An inactive role cannot be assigned. The OPIS Team & Access workspace offers
+Warehouse and Delivery as copy-on-create suggestions; each saved role remains
+ordinary and editable. Assign branch grants with
+`PUT /users/:user_id/location-grants` after role assignment. Use
+`GET /users/me/assignments?location_id=<id>` for the assigned-work projection.
+
 ---
 
 ## Items (SKU Master) Endpoints

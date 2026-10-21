@@ -751,6 +751,7 @@ CREATE TABLE users (
     role ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo') DEFAULT 'staff',
     is_active BOOLEAN DEFAULT TRUE,
     permissions JSON,                    -- Granular permission array
+    staff_role_id INT NULL,              -- Optional tenant staff_roles assignment
     is_master_admin BOOLEAN DEFAULT FALSE,
     last_login TIMESTAMP NULL,
 
@@ -790,6 +791,17 @@ CREATE TABLE users (
   - `do` (dispatch order operations)
   - `jo` (job order operations)
 - Role assignment defaults are enforced by backend permission maps (`DEFAULT_ROLE_PERMISSIONS`).
+
+### Tenant Staff Roles (#1182)
+
+`staff_roles` is tenant-local: `staff_role_id` (primary key), unique `name`, JSON
+`capabilities`, `is_active`, nullable `created_by`/`updated_by` user references,
+and `created_at`/`updated_at`. `users.staff_role_id` is a nullable foreign key
+with `ON DELETE SET NULL`. Warehouse and Delivery suggestions create ordinary
+rows here; they do not extend `users.role`. Assigning or clearing a staff role
+sets `users.permissions` to `[]` in the same transaction and records the prior
+permission array in the audit log. Role edits and status changes invalidate
+assigned users' auth cache after commit.
 
 ### 2. Item Folders Table
 

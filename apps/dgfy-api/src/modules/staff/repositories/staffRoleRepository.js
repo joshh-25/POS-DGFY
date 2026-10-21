@@ -20,6 +20,13 @@ export const staffRoleRepository = {
   create(values, query = {}) { return dbStore.get('StaffRole').create(values, { transaction: query.transaction }); },
   update(row, values, query = {}) { return row.update(values, { transaction: query.transaction }); },
   findUserById(userId, query = {}) { return dbStore.get('User').findByPk(userId, options(query)); },
+  findUsersByRoleId(staffRoleId, query = {}) {
+    return dbStore.get('User').findAll({
+      where: { staff_role_id: staffRoleId },
+      attributes: ['user_id'],
+      ...options(query)
+    });
+  },
   listAssignedRuns(userId, query = {}) {
     const DeliveryPersonnel = dbStore.get('DeliveryPersonnel');
     const DeliveryRunPersonnel = dbStore.get('DeliveryRunPersonnel');
