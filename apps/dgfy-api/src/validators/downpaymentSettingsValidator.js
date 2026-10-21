@@ -11,6 +11,7 @@ const updateDownpaymentSettingsSchema = Joi.object({
     // Transport-only optimistic concurrency metadata. The use case strips this before the
     // canonical tenant_downpayment_settings owner receives the update payload.
     expected_updated_at: expectedUpdatedAtSchema,
+    platform_downpayment_allowed: Joi.any(),
     payment_mode: Joi.string().trim().lowercase().valid('full_payment', 'downpayment_required', 'customer_choice').messages({
         'any.only': 'payment_mode must be one of: full_payment, downpayment_required, customer_choice'
     }),

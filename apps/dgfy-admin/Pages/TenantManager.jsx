@@ -119,6 +119,7 @@ const DEFAULT_TENANT_CAPABILITIES = {
     pos_enabled: true,
     storefront_visible: false,
     store_visibility_merchant_editable: true,
+    downpayment_allowed: false,
     customer_access_mode: 'catalog',
     requested_customer_access_mode: 'catalog',
     effective_customer_access_mode: 'catalog',
@@ -526,6 +527,11 @@ const isCustomerAccessCapped = (capabilities = {}) => {
 const getCapabilityImpactPreview = (change = {}) => {
     const patch = change?.patch || {};
     const currentCapabilities = getTenantCapabilities(change?.tenant || {});
+    if (typeof patch.downpayment_allowed === 'boolean') {
+        return { title: 'Tenant impact preview', message: patch.downpayment_allowed
+            ? 'This store may configure downpayment for new checkouts.'
+            : 'New checkouts will take full payment only; in-flight partially paid orders settle normally.' };
+    }
     if (patch.store_visibility_merchant_editable === false) {
         return { title: 'Tenant impact preview', message: 'The merchant will no longer be able to change Storefront / Maps visibility in Settings or onboarding. Platform Admin can still change it.' };
     }
@@ -1762,6 +1768,7 @@ export default function TenantManager() {
             `IMS ${snapshot?.ims_enabled ? 'On' : 'Off'}`,
             `POS ${snapshot?.pos_enabled ? 'On' : 'Off'}`,
             `Storefront ${snapshot?.storefront_visible ? 'On' : 'Off'}`,
+            `Downpayment ${snapshot?.downpayment_allowed === true ? 'On' : 'Off'}`,
             `Merchant visibility editing ${snapshot?.store_visibility_merchant_editable !== false ? 'On' : 'Off'}`,
             modeLabel
         ].join(' / ');
@@ -1787,6 +1794,7 @@ export default function TenantManager() {
                 capabilities.ims_enabled ? 'ims enabled' : 'ims disabled',
                 capabilities.pos_enabled ? 'pos enabled' : 'pos disabled',
                 capabilities.storefront_visible ? 'storefront visible maps' : 'storefront hidden',
+                capabilities.downpayment_allowed === true ? 'downpayment allowed premium' : 'downpayment unavailable',
                 capabilities.store_visibility_merchant_editable !== false ? 'merchant visibility editing allowed' : 'merchant visibility editing locked'
             ]
                 .join(' ')
@@ -2319,6 +2327,18 @@ export default function TenantManager() {
                                                             tenant,
                                                             { storefront_visible: !capabilities.storefront_visible },
                                                             `Storefront / Maps ${capabilities.storefront_visible ? 'Off' : 'On'}`
+                                                        )}
+                                                    />
+                                                    <CapabilityToggle
+                                                        icon={MapPin}
+                                                        label="Downpayment (premium)"
+                                                        description="Allow this store to configure online downpayments"
+                                                        value={capabilities.downpayment_allowed === true}
+                                                        disabled={capabilityDisabled}
+                                                        onClick={() => openCapabilityChange(
+                                                            tenant,
+                                                            { downpayment_allowed: capabilities.downpayment_allowed !== true },
+                                                            `Downpayment ${capabilities.downpayment_allowed === true ? 'Off' : 'On'}`
                                                         )}
                                                     />
                                                     <CapabilityToggle

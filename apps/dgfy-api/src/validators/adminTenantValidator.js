@@ -4,6 +4,7 @@ const CUSTOMER_ACCESS_MODES = ['ghost', 'catalog', 'inquiry', 'transaction'];
 const CUSTOMER_ACCESS_REGISTRATION_STAGES = ['informal', 'partial', 'registered'];
 
 const capabilityPatchSchema = Joi.object({
+    downpayment_allowed: Joi.boolean().strict().optional(),
     ims_enabled: Joi.boolean().strict().optional(),
     pos_enabled: Joi.boolean().strict().optional(),
     storefront_visible: Joi.boolean().strict().optional(),
@@ -13,6 +14,7 @@ const capabilityPatchSchema = Joi.object({
     customer_access_registration_stage: Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_REGISTRATION_STAGES).optional(),
     reason: Joi.string().trim().min(3).max(500).required()
 }).or(
+    'downpayment_allowed',
     'ims_enabled',
     'pos_enabled',
     'storefront_visible',

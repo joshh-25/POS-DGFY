@@ -29,7 +29,7 @@ import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliateP
 // threaded through as an optional constructor dependency, same pattern as tenantRevenueRepository
 // (store/index.js wires the real one; a caller that omits it -- every existing unit test -- gets
 // `undefined`, which the `?.` guards below treat as "no settings, full_payment").
-import { resolveDownpaymentForTotal } from '../../shared/utils/downpaymentPolicy.js';
+import { applyPlatformDownpaymentAllowance, resolveDownpaymentForTotal } from '../../shared/utils/downpaymentPolicy.js';
 import {
     previewVoucherEligibilityUseCase,
     redeemVoucherUseCase,
@@ -2837,11 +2837,11 @@ const resolveCheckoutContext = async ({
     // dbStore.run context) resolves to `null` settings, which resolveDownpaymentForTotal treats as
     // full_payment -- so this addition needs no edits to any of those tests.
     const resolvedTenantIdForDownpayment = resolvedTenantIdForFees;
-    const downpaymentSettings = resolvedTenantIdForDownpayment
+    const downpaymentSettings = applyPlatformDownpaymentAllowance(resolvedTenantIdForDownpayment
         ? await downpaymentSettingsRepository?.getSettings?.(resolvedTenantIdForDownpayment)
-        : null;
+        : null);
     const downpayment = resolveDownpaymentForTotal({
-        settings: downpaymentSettings || null,
+        settings: downpaymentSettings,
         totalAmount,
         // Phase 150 (#866): only consulted by resolveDownpaymentForTotal when the settings row is
         // 'customer_choice' -- a no-op for every existing 'full_payment'/'downpayment_required'
@@ -3114,7 +3114,7 @@ const resolveStorefrontPaymentMode = async ({ downpaymentSettingsRepository, ten
         return 'full_payment';
     }
     try {
-        const settings = await downpaymentSettingsRepository.getSettings(tenantId);
+        const settings = applyPlatformDownpaymentAllowance(await downpaymentSettingsRepository.getSettings(tenantId));
         if (settings?.payment_mode === 'downpayment_required' || settings?.payment_mode === 'customer_choice') {
             return settings.payment_mode;
         }

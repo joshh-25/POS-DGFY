@@ -347,6 +347,20 @@ describe('TenantManager capability controls', () => {
     ));
   }, 15000);
 
+  it('changes the downpayment allowance with a reason and verifies reload', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'Kate Store' });
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+    await user.click(screen.getByRole('button', { name: /Downpayment \(premium\) Off/i }));
+    await screen.findByText('Confirm capability change');
+    mocks.adminServiceMock.getTenants.mockResolvedValue({ data: [withCapabilities(kateTenant, { downpayment_allowed: true })] });
+    await user.type(screen.getByLabelText('Reason'), 'Premium access approved');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+    await waitFor(() => expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith('tenant-kate', { downpayment_allowed: true, reason: 'Premium access approved' }));
+    expect(await screen.findByRole('button', { name: /Downpayment \(premium\) On/i })).toBeTruthy();
+  });
+
   it('refuses to toast success when the fresh read does not reflect the write', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
