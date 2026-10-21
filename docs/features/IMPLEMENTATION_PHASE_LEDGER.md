@@ -30478,6 +30478,8 @@ balance collection are subsequent slices of #1182.
 - The tenant `staff_roles` and `users.staff_role_id` schema and API from #1459
   are present in the current `develop` baseline.
 - No phase-numbering dependency on Phase 522 or other unfinished phases.
+- The next planned #1182 slice (Phase 525, Warehouse route enforcement) depends
+  on this foundation being merged first.
 
 ### Contract and authority
 
@@ -30526,4 +30528,5 @@ Not complete. Record after merge and implementation validation.
 
 ### Next phase number
 
-Phase 525. No explicit dependency.
+Phase 525. Explicit dependency: Phase 524 must merge before Warehouse route
+enforcement begins.
