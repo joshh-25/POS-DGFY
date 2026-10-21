@@ -213,6 +213,33 @@ describe('useFnbCheckoutQuote fulfillment context', () => {
     expect(props.setQuoteNeedsRefresh).toHaveBeenCalledWith(false);
   });
 
+  it('keeps a quote current when the payment rail changes while the request is in flight', async () => {
+    const quoteResponse = deferred();
+    const props = buildProps({
+      fnbPaymentType: 'qrph',
+      requestJson: vi.fn(() => quoteResponse.promise),
+    });
+    const { result, rerender } = renderHook(({ currentProps }) => useFnbCheckoutQuote(currentProps), {
+      initialProps: { currentProps: props },
+    });
+    const requestQuote = result.current.requestQuote;
+    let request;
+    act(() => { request = requestQuote({ silent: true }); });
+
+    rerender({ currentProps: { ...props, fnbPaymentType: 'gcash' } });
+    expect(result.current.requestQuote).toBe(requestQuote);
+    await act(async () => {
+      quoteResponse.resolve({ total_amount: 101 });
+      await request;
+    });
+
+    expect(props.requestJson).toHaveBeenCalledWith('/api/v1/store/cart/quote', expect.objectContaining({
+      body: expect.objectContaining({ payment_type: 'qrph' }),
+    }));
+    expect(props.setQuoteResult).toHaveBeenCalledWith({ total_amount: 101 });
+    expect(props.setQuoteNeedsRefresh).toHaveBeenCalledWith(false);
+  });
+
   it('discards an address-priced quote after the delivery pin changes', async () => {
     const deliveryResponse = deferred();
     const props = buildProps({
