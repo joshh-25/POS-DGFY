@@ -30453,3 +30453,77 @@ Not complete. Record after scoped implementation merges and named validation pas
 ### Next phase number
 
 Phase 524. No explicit dependency.
+
+## Phase 524 - Warehouse and Delivery staff-role foundation (#1182)
+
+### Initiative and release
+
+Scoped fulfillment staff access, current release.
+
+### Objective and scope
+
+Establish tenant staff-role administration in OPIS, with Warehouse and Delivery
+copy-on-create suggestions, distinct registered capability slugs, admin/owner
+write authority, atomic clearing and audit of stored user permissions on role
+assignment, assigned-user cache invalidation on role edits, and tenant schema
+repair coverage. Warehouse loading, Delivery job mutations, POS workspaces, and
+balance collection are subsequent slices of #1182.
+
+### Status
+
+`in_progress` — implementation and validation are underway; merge remains outstanding.
+
+### Dependencies
+
+- The tenant `staff_roles` and `users.staff_role_id` schema and API from #1459
+  are present in the current `develop` baseline.
+- No phase-numbering dependency on Phase 522 or other unfinished phases.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md),
+[ADR 0083](../architecture/adr/0083-courier-cash-custody-and-remittance.md),
+[ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md),
+[API specification](../api/specification.md), and
+[tenant schema](../database/schema.md).
+
+### Implementation targets
+
+Staff-role use cases, route authorization, capability catalog, auth cache,
+tenant schema repair and runtime audit; OPIS Team & Access role creation,
+editing, deactivation, and assignment with branch grants; focused tests and
+documentation.
+
+### Acceptance and validation evidence
+
+- [ ] Admin and owner can manage custom staff roles and assign them to Staff
+  accounts; manager and other non-admin users cannot call any role write route.
+- [ ] Role assignment and clearing atomically empty stored user permissions,
+  audit the previous array, and invalidate the user's auth cache after commit.
+- [ ] Role edit and deactivation invalidate all assigned-user auth cache entries;
+  location-grant edits retain their existing invalidation.
+- [ ] Warehouse and Delivery suggestions copy their capabilities into ordinary
+  editable tenant roles, and OPIS exposes branch grants.
+- [ ] API syntax, OPIS build, capability parity tests, architecture, docs,
+  compliance, tenant-schema registry, and version-floor checks pass.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — verify tenant schema repair and runtime audit report
+  `staff_roles` and `users.staff_role_id` ready before API rollout; owner:
+  Promoter; blocks rollout of scoped staff roles.
+- [ ] operational — create and assign one Warehouse and one Delivery tenant
+  role with branch grants in staging; confirm effective capabilities and no
+  broad POS grants; owner: Verifier; blocks #1182 acceptance.
+
+### Next phase number
+
+Phase 525. No explicit dependency.
