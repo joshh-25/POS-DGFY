@@ -150,7 +150,7 @@ dine-in policy action. Apply the landlord migration before deploying the API.
 Hardening: cover crafted elections, forbidden merchant writes, audit/readback, migration
 reruns, existing-order lifecycle regressions and independent dine-in saves. Run focused
 API/frontend tests, all shared-app builds, architecture, docs and compliance gates.
-STAGING migration/readback and lifecycle proof remain post-merge verification (Phase 524,
+STAGING migration/readback and lifecycle proof remain post-merge verification (Phase 526,
 #2639); #1923 retains its separate live persistence re-verification.
 
 ### 2026-09-25 — POS may settle existing unpaid cash dine-in orders

@@ -11,7 +11,7 @@ This module will keep growing through the epic's later phases (capture, refund/f
 settlement) as their own use cases/controllers land here.
 
 
-## Platform allowance (Phase 524, #2639)
+## Platform allowance (Phase 526, #2639)
 
 The landlord allowance defaults to false and is writable only through Platform Admin's
 reason-required capability action. Merchant GET retains stored settings and reports the

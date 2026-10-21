@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: pos
-last_reviewed: 2026-09-13
+last_reviewed: 2026-10-21
 applies_to: pos_manual_delivery_workflow
 ---
 
@@ -431,6 +431,15 @@ dispatched by that call) is preserved unchanged. The POS shared summary
 (`Sieitzz/dgfy-mobile#177`) must consume `data.warnings`, not `loading_warning`.
 
 ## Permissions and ownership
+
+Tenant staff-role administration lives in OPIS Team & Access. Only the tenant
+owner or legacy Admin may create, edit, deactivate, or assign a staff role.
+Warehouse and Delivery are editable copy-on-create suggestions on the `staff`
+base role; assigning one clears per-user permission overrides. Location grants
+are assigned separately. The registered narrow slugs `delivery_runs:load` and
+`delivery_jobs:act_assigned` do not authorize a route until the corresponding
+warehouse and delivery implementation slices land. `delivery_runs:act` retains
+its existing assigned-run dispatch behavior.
 
 - `pos:view` may read delivery status and assignment details.
 - `pos:transact` may assign a registered delivery person or type a third-party

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-06
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-21
 review_by: 2026-11-06
 applies_to: architecture_decision
 topic: mode_aware_rbac_and_role_presets
@@ -50,6 +50,25 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 - No architecture allowlist exception is introduced.
 
 ## Amendments
+
+### 2026-10-21 — Tenant staff-role foundation for scoped fulfillment (#1182, Phase 524)
+
+Assigning or clearing a tenant `staff_roles` record clears the target user's stored
+`users.permissions` array in the same audited transaction. The audit row retains the
+previous snapshot. Effective permission precedence remains unchanged: a later explicit
+non-empty array still wins, while a cleared array resolves the active staff role or the
+base-role fallback. Role capability and active-status edits invalidate the auth cache for
+all assigned users after commit; location-grant edits continue to invalidate their user.
+
+Only the tenant owner (`is_master_admin`) or legacy `admin` may create, edit,
+activate/deactivate, or assign tenant staff roles. Read access retains its existing
+`users:manage` gate. Warehouse and Delivery are editable tenant role templates for
+`staff`-base accounts, not new legacy roles or mode presets. The distinct capability
+slugs `delivery_runs:load`, `delivery_jobs:act_assigned`, and
+`orders:collect_assigned_balance` are registered for subsequent fulfillment slices;
+registration alone grants no route access. `delivery_runs:act` retains its existing
+meaning. The `STAFF_FULFILLMENT` permission group is visible in the role catalog.
+No architecture allowlist exception is introduced.
 
 ### 2026-09-14 — Deactivated assigned staff roles revoke cashier-base access instead of restoring broad defaults
 
