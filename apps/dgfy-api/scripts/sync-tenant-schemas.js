@@ -71,6 +71,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         })
     }),
     users: Object.freeze({
+        staff_role_id: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `staff_role_id` INT NULL, ADD KEY `users_staff_role_id_idx` (`staff_role_id`), ADD CONSTRAINT `users_staff_role_id_fk` FOREIGN KEY (`staff_role_id`) REFERENCES `staff_roles` (`staff_role_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
         pos_approval_pin_hash: Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_approval_pin_hash` VARCHAR(255) NULL"
         }),
@@ -735,6 +738,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    staff_roles: Object.freeze({
+        sql: "CREATE TABLE `staff_roles` ("
+            + " `staff_role_id` INT NOT NULL AUTO_INCREMENT, `name` VARCHAR(120) NOT NULL,"
+            + " `capabilities` JSON NOT NULL, `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `created_by` INT NULL, `updated_by` INT NULL,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " PRIMARY KEY (`staff_role_id`), UNIQUE KEY `staff_roles_name_unique` (`name`),"
+            + " KEY `staff_roles_active_idx` (`is_active`),"
+            + " CONSTRAINT `staff_roles_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,"
+            + " CONSTRAINT `staff_roles_updated_by_fk` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    }),
     // Phase 388: Business Admin approval metadata is tenant-local. The original migration
     // created this table in the landlord database only, so this registry also repairs tenants
     // that were provisioned before the approval workflow was introduced or restored without it.
@@ -3232,7 +3247,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-15.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-21.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

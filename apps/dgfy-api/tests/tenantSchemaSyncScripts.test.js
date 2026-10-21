@@ -192,7 +192,7 @@ describe('tenant schema sync script contracts', () => {
   it('repairs the tenant-local storefront QR table and records the schema capability version', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.storefront_qr_codes;
 
-    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-15.1');
+    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-21.1');
     expect(table.sql).toContain('CREATE TABLE `storefront_qr_codes`');
     expect(table.sql).toContain('`public_token` VARCHAR(64) NOT NULL');
     expect(table.sql).toContain('UNIQUE KEY `uq_storefront_qr_codes_public_token`');
@@ -201,6 +201,17 @@ describe('tenant schema sync script contracts', () => {
 
     expect(buildTenantSchemaTableRepairSql(['storefront_qr_codes']))
       .toEqual([{ table: 'storefront_qr_codes', sql: table.sql }]);
+  });
+
+  it('repairs tenant staff roles before adding the users assignment foreign key', () => {
+    const staffRoles = REQUIRED_TENANT_SCHEMA_TABLES.staff_roles;
+    const assignment = REQUIRED_TENANT_SCHEMA_COLUMNS.users.staff_role_id;
+
+    expect(staffRoles.sql).toContain('CREATE TABLE `staff_roles`');
+    expect(staffRoles.sql).toContain('`capabilities` JSON NOT NULL');
+    expect(assignment.sql).toContain('REFERENCES `staff_roles` (`staff_role_id`)');
+    expect(buildTenantSchemaTableRepairSql(['staff_roles']))
+      .toEqual([{ table: 'staff_roles', sql: staffRoles.sql }]);
   });
 
   it('normalizes known too-many-keys failures with stable fingerprint', () => {
