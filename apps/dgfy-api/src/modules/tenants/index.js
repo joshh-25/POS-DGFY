@@ -65,6 +65,7 @@ import {
     buildUpdateTenantAffiliateSlotsUseCase
 } from './usecases/updateTenantAffiliateSlotsUseCase.js';
 import { updateSettingsUseCase } from '../settings/index.js';
+import { downpaymentSettingsRepository } from '../downpayment/repositories/downpaymentSettingsRepository.js';
 import { readTenantCapabilities } from './usecases/tenantCapabilitySettings.js';
 import tenantConnector from '../../utils/TenantConnector.js';
 import { getTenantModels } from '../../utils/tenantModelFactory.js';
@@ -167,6 +168,7 @@ export const updateTenantUseCase = buildUpdateTenantUseCase({
 });
 
 export const updateTenantCapabilitiesUseCase = buildUpdateTenantCapabilitiesUseCase({
+    downpaymentSettingsRepository,
     tenantAdminRepository,
     tenantConnector,
     syncStorefrontDiscoveryIndexForTenant,

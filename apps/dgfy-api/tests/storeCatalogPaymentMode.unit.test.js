@@ -35,6 +35,7 @@ const throwingDownpaymentSettingsRepository = () => ({
 
 const downpaymentRequiredSettings = () => ({
     tenant_id: TENANT_ID,
+    platform_downpayment_allowed: true,
     payment_mode: 'downpayment_required',
     downpayment_type: 'percentage',
     downpayment_rate_bps: 2000,
@@ -135,4 +136,12 @@ describe('buildListStoreCatalogUseCase — Phase 142 (#823) tenant payment_mode 
         expect(result.success).toBe(true);
         expect(result.data.payment_mode).toBe('full_payment');
     });
+});
+
+test.each(['downpayment_required', 'customer_choice'])('catalog hides revoked %s', async (payment_mode) => {
+    const useCase = buildListStoreCatalogUseCase({ storeRepository: fakeStoreRepository(), resolveWorkflowCapabilitySettings: resolveWorkflowCapabilitySettingsFixture,
+        downpaymentSettingsRepository: fakeDownpaymentSettingsRepository({ ...downpaymentRequiredSettings(), payment_mode, platform_downpayment_allowed: false }) });
+    const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({ query: { limit: 20 } }));
+    expect(result.success).toBe(true);
+    expect(result.data.payment_mode).toBe('full_payment');
 });

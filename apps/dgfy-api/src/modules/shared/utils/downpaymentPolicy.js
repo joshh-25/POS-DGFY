@@ -95,3 +95,10 @@ export const resolveDownpaymentForTotal = ({ settings, totalAmount, paymentElect
         downpayment_refundable: settings.downpayment_refundable !== false
     };
 };
+
+// New checkout policy only. Existing orders retain their captured payment terms.
+export const applyPlatformDownpaymentAllowance = (settings) => (
+    settings?.platform_downpayment_allowed === true
+        ? settings
+        : { ...settings, payment_mode: 'full_payment' }
+);

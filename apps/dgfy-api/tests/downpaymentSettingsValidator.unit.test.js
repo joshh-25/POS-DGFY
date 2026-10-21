@@ -96,3 +96,11 @@ describe('downpaymentSettingsValidator', () => {
         expect(req.validatedData.expected_updated_at).toBe('2026-09-15T00:00:00.000Z');
     });
 });
+
+test('forwards platform allowance attempts to the explicit authorization rejection', () => {
+    const req = { body: { platform_downpayment_allowed: true } };
+    const next = jest.fn();
+    validateUpdateDownpaymentSettings(req, createRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.validatedData.platform_downpayment_allowed).toBe(true);
+});

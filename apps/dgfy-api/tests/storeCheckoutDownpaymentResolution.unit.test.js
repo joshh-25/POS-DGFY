@@ -59,6 +59,7 @@ const fakeDownpaymentSettingsRepository = (settings) => ({
 
 const downpaymentRequiredSettings = (overrides = {}) => ({
     tenant_id: TENANT_ID,
+    platform_downpayment_allowed: true,
     payment_mode: 'downpayment_required',
     downpayment_type: 'percentage',
     downpayment_rate_bps: 2000, // 20%
@@ -858,6 +859,89 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures 
         expect(sessionAttrs.total_amount_centavos).toBe(50000);
         expect(sessionAttrs.downpayment_refundable).toBeNull();
     });
+    test.each(['downpayment_required', 'customer_choice'])('revoked %s captures the full total despite a crafted election', async (payment_mode) => {
+        const commercePaymentRepository = {
+            findSessionByIdempotency: jest.fn().mockResolvedValue(null),
+            findTenantPaymentAccount: jest.fn().mockResolvedValue({
+                onboarding_status: 'active',
+                qrph_enabled: true,
+                split_enabled: true,
+                charges_enabled: true,
+                wallet_status: 'enabled',
+                wallet_verified_at: new Date('2026-08-01T00:00:00Z'),
+                provider_merchant_id: 'acct_live_fixture'
+            }),
+            createSession: jest.fn((attrs) => Promise.resolve({ session_id: 502, ...attrs })),
+            updateSessionById: jest.fn((sessionId, attrs) => Promise.resolve({ session_id: sessionId, ...attrs }))
+        };
+        const paymongoService = {
+            createHostedCheckoutSession: jest.fn(),
+            createDirectGcashPaymentIntent: jest.fn(),
+            createDirectMayaPaymentIntent: jest.fn(),
+            createQrphPaymentIntent: jest.fn().mockResolvedValue({
+                payment_intent_id: 'pi_fixture_full',
+                checkout_url: 'https://paymongo.example/checkout/pi_fixture_full',
+                qr_code_image_url: null,
+                expires_at: new Date('2026-08-22T00:00:00Z')
+            })
+        };
+        const storeRepository = {
+            findDefaultActiveLocation: jest.fn().mockResolvedValue({
+                location_id: 1,
+                is_open: true,
+                allow_out_of_stock_sales: true
+            }),
+            getSettingsByKeys: jest.fn().mockResolvedValue([
+                ...registeredTransactionSettings(),
+                { setting_key: 'store_delivery_fee', setting_value: '0' },
+                { setting_key: 'pos_open_status', setting_value: 'true' }
+            ]),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Test Item',
+                default_sale_price: 500,
+                sale_price: 500,
+                is_available: true,
+                availability_status: 'in_stock'
+            }])
+        };
+
+        const useCase = buildStoreCheckoutPaymentSessionUseCase({
+            storeRepository,
+            commercePaymentRepository,
+            paymongoService,
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: jest.fn().mockReturnValue([]),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings({ payment_mode, platform_downpayment_allowed: false }))
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'dp-store' }, () => useCase({
+            payload: {
+                store_slug: 'dp-store',
+                payment_type: 'qrph',
+                payment_election: 'downpayment',
+                idempotency_key: 'dp-payment-session-3',
+                customer_name: 'Buyer',
+                customer_email: 'buyer@example.com',
+                customer_phone: '0917',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }],
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: TENANT_ID,
+                    email: 'buyer@example.com',
+                    idempotencyKey: 'dp-payment-session-3'
+                })
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        const sessionAttrs = commercePaymentRepository.createSession.mock.calls[0][0];
+        expect(sessionAttrs.capture_kind).toBe('full');
+        expect(sessionAttrs.order_total_centavos).toBe(50000);
+        expect(sessionAttrs.total_amount_centavos).toBe(50000);
+        expect(sessionAttrs.downpayment_refundable).toBeNull();
+    });
 });
 
 describe('serializePaymentSession — Phase 142 (#823) downpayment fields on the client-facing session payload', () => {
@@ -1017,4 +1101,25 @@ describe('serializePaymentSession — Phase 142 (#823) downpayment fields on the
 
 afterAll(() => {
     delete process.env.STOREFRONT_PAYMENT_RETURN_URL;
+});
+
+describe('revoked platform allowance (#2639)', () => {
+    test.each(['downpayment_required', 'customer_choice'])('%s cannot be elected by a crafted quote', async (payment_mode) => {
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: buildFakeQuoteStoreRepository(),
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings({ payment_mode, platform_downpayment_allowed: false }))
+        });
+        const result = await dbStore.run({ tenantId: TENANT_ID }, () => useCase({ payload: quotePayload({ payment_election: 'downpayment' }) }));
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({ payment_mode: 'full_payment', downpayment_amount: null });
+    });
+    test.each([true, false])('cash ownership is unchanged with allowance %s', async (allowed) => {
+        const storeRepository = buildFakeCheckoutStoreRepository();
+        const useCase = buildStoreCheckoutUseCase({ storeRepository,
+            downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings({ platform_downpayment_allowed: allowed, payment_mode: allowed ? 'full_payment' : 'customer_choice' })) });
+        const result = await useCase({ tenantId: TENANT_ID, payload: withGuestProof(checkoutPayload({ payment_election: 'downpayment' })) });
+        expect(result.success).toBe(true);
+        expect(result.data.totals).toMatchObject({ payment_mode: 'full_payment', downpayment_amount: null });
+        expect(storeRepository.createOnlineTransactionWithLines).toHaveBeenCalledTimes(1);
+    });
 });

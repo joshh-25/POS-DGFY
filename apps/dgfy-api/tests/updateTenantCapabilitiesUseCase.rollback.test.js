@@ -1,5 +1,9 @@
 import { jest } from '@jest/globals';
 
+jest.unstable_mockModule('../src/modules/downpayment/repositories/downpaymentSettingsRepository.js', () => ({
+    downpaymentSettingsRepository: { getSettings: jest.fn(async () => ({ platform_downpayment_allowed: false })) }
+}));
+
 const {
     clearTenantCapabilityCache,
     getCachedCapabilityEnabled

@@ -1,3 +1,4 @@
+import { downpaymentSettingsRepository as defaultDownpaymentSettingsRepository } from '../../downpayment/repositories/downpaymentSettingsRepository.js';
 import dbStore from '../../../utils/dbStore.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import {
@@ -30,6 +31,7 @@ const TENANT_CAPABILITY_READ_KEYS = Object.freeze([
 ]);
 
 const DEFAULT_CAPABILITIES = Object.freeze({
+    downpayment_allowed: false,
     ims_enabled: true,
     pos_enabled: true,
     storefront_visible: false,
@@ -171,10 +173,13 @@ export const buildCustomerAccessCapabilityMetadata = (settings = {}) => {
     };
 };
 
-export const readTenantCapabilities = async ({ tenant, tenantConnector }) => {
+export const readTenantCapabilities = async ({ tenant, tenantConnector, downpaymentSettingsRepository = defaultDownpaymentSettingsRepository }) => {
+    const downpaymentSettings = await downpaymentSettingsRepository.getSettings(tenant.id);
+    const downpayment_allowed = downpaymentSettings?.platform_downpayment_allowed === true;
     if (!tenant?.db_name) {
         return {
             ...DEFAULT_CAPABILITIES,
+            downpayment_allowed,
             storefront_readiness: {
                 has_active_primary_location: false,
                 has_coordinates: false,
@@ -207,6 +212,7 @@ export const readTenantCapabilities = async ({ tenant, tenantConnector }) => {
         const storefront_readiness = await buildStorefrontReadiness();
         return {
             ...capabilities,
+            downpayment_allowed,
             ...customerAccessMetadata,
             storefront_readiness: {
                 ...storefront_readiness,

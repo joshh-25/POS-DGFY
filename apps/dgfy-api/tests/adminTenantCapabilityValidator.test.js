@@ -54,3 +54,13 @@ describe('admin tenant capability validators', () => {
         expect(req.validatedQuery).toEqual({ limit: 25 });
     });
 });
+
+it.each([true, false])('accepts a strict downpayment allowance %s with reason', (downpayment_allowed) => {
+    const { next } = runMiddleware(validateTenantCapabilityPatch, { body: { downpayment_allowed, reason: 'Premium decision' } });
+    expect(next).toHaveBeenCalledTimes(1);
+});
+it.each(['true', 1, null])('rejects non-boolean allowance %s', (downpayment_allowed) => {
+    const { res, next } = runMiddleware(validateTenantCapabilityPatch, { body: { downpayment_allowed, reason: 'Premium decision' } });
+    expect(res.statusCode).toBe(422);
+    expect(next).not.toHaveBeenCalled();
+});
