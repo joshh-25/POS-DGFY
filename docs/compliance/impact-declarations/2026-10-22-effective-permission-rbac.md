@@ -12,8 +12,8 @@ verification_evidence: check-architecture-guardrails,check-controller-boundaries
 rollback_note: Revert the effective-permission dependency helpers, API authorization changes, migration, and related tests together with this declaration.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-22T22:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-20261022-EFFECTIVE-RBAC
+preflight_run_at: 2026-10-22T16:09:55.827Z
+preflight_request_ref: PREFLIGHT-39810787839-2026-10-22-EFFECTIVE-PERMISSION-RBAC
 ---
 
 # Effective Permission Dependencies and RBAC Enforcement

@@ -12,8 +12,8 @@ verification_evidence: Storefront focused tests (12 passed),web-core POS focused
 rollback_note: Revert the status-label mappings, timeline state projection, guidance text, and related documentation together. No schema, order transition, or payment behavior changes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-22T15:15:44Z
-preflight_request_ref: NOT-EXECUTED-2703-READY-FOR-PICKUP-LABEL
+preflight_run_at: 2026-10-22T16:09:55.829Z
+preflight_request_ref: PREFLIGHT-39810787839-2026-10-22-READY-FOR-PICKUP-TIMELINE-LABEL
 ---
 
 # Ready-for-pickup delivery timeline label (#2703)
