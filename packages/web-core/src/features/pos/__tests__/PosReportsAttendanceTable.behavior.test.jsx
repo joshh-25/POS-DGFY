@@ -43,13 +43,13 @@ const rows = [
 describe('POS reports attendance table', () => {
   afterEach(() => cleanup());
 
-  it('renders the prioritized attendance columns without an actions column', () => {
+  it('renders the prioritized attendance columns with the shared view action', () => {
     render(<PosReportsAttendanceTable rows={rows} />);
 
     ['Date', 'Cashier', 'Status', 'Time In', 'Time Out', 'Worked (Hours)'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Sort by Duty/Role' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sort by Break (Hours)' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sort by Late (Minutes)' })).toBeNull();

@@ -29,7 +29,7 @@ describe('POS reports overview table', () => {
     expect(screen.getByRole('columnheader', { name: 'Business Date' }).className).toContain('table-cell');
     expect(screen.getByRole('columnheader', { name: 'Discounts (₱)' }).className).toContain('hidden min-[1024px]:table-cell');
     expect(screen.getByRole('columnheader', { name: 'Refunds/Voids (₱)' }).className).toContain('hidden min-[1024px]:table-cell');
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
     expect(screen.getAllByText('₱978.50').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱23.25').length).toBeGreaterThan(0);

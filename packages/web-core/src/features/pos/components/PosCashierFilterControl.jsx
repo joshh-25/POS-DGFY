@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
@@ -29,6 +29,7 @@ export default function PosCashierFilterControl({
   id = 'pos-cashier-search',
   testIdPrefix = 'pos-cashier',
   optionName = 'pos-cashier',
+  scrollToOptionsOnSearch = true,
   className = ''
 }) {
   const selectedValue = String(value ?? '').trim();
@@ -47,10 +48,23 @@ export default function PosCashierFilterControl({
   const optionsId = `${testIdPrefix}-options`;
   const searchTestId = `${testIdPrefix}-search`;
   const toggleTestId = `${testIdPrefix}-dropdown-toggle`;
+  const optionsPanelRef = useRef(null);
+
+  const scrollOptionsIntoView = useCallback(() => {
+    if (!scrollToOptionsOnSearch) return;
+    const target = optionsPanelRef.current;
+    if (!target || typeof target.scrollIntoView !== 'function') return;
+    target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [scrollToOptionsOnSearch]);
+
+  useEffect(() => {
+    if (expanded) scrollOptionsIntoView();
+  }, [expanded, scrollOptionsIntoView]);
 
   const handleSearchChange = (nextValue) => {
     onSearchChange?.(nextValue);
     onExpandedChange?.(true);
+    scrollOptionsIntoView();
   };
 
   const handleOptionChange = (option) => {
@@ -74,7 +88,10 @@ export default function PosCashierFilterControl({
           id={id}
           type="search"
           value={normalizedSearchValue}
-          onFocus={() => onExpandedChange?.(true)}
+          onFocus={() => {
+            onExpandedChange?.(true);
+            scrollOptionsIntoView();
+          }}
           onChange={(event) => handleSearchChange(event.target.value)}
           placeholder="Search Cashier"
           aria-label="Search Cashier"
@@ -94,7 +111,7 @@ export default function PosCashierFilterControl({
         </button>
       </div>
       {expanded ? (
-        <div className="mt-5 min-w-0" data-testid={`${testIdPrefix}-picker`}>
+        <div ref={optionsPanelRef} className="mt-5 min-w-0" data-testid={`${testIdPrefix}-picker`}>
           <h3 className={fieldLabelClassName}>{optionsLabel}</h3>
           <div
             id={optionsId}

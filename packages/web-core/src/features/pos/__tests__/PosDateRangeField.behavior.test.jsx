@@ -35,6 +35,8 @@ describe('POS date range field', () => {
     fireEvent.click(trigger);
 
     const dialog = screen.getByRole('dialog', { name: 'Select validity dates' });
+    expect(dialog.className).toContain('h-auto');
+    expect(dialog.className.split(/\s+/)).not.toContain('h-[min(90vh,40rem)]');
     expect(screen.queryByRole('group', { name: 'Date presets' })).toBeNull();
     expect(screen.getByTestId('voucher-validity-range-from-summary').textContent).toContain('09/18/2026');
     expect(screen.getByTestId('voucher-validity-range-until-summary').textContent).toContain('09/18/2026');

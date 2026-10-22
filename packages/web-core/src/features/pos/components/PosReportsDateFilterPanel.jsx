@@ -4,6 +4,7 @@ export default function PosReportsDateFilterPanel(props) {
   return (
     <PosDateRangeFilterPanel
       {...props}
+      fitContentHeight
       dialogId="pos-reports-date-dialog"
       titleId="pos-reports-date-title"
       descriptionId="pos-reports-date-description"

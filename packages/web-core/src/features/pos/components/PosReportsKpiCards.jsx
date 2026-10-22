@@ -1,8 +1,15 @@
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, CheckCircle2, Receipt, ShoppingCart, Tag, TrendingUp } from 'lucide-react';
+import { AlertTriangle, BarChart3, Package2, Percent, Receipt, Scale, ShoppingCart, Tag } from 'lucide-react';
+
+const numeric = (value) => {
+  const parsedValue = Number(value);
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+};
 
 const money = (value, currencySymbol = '₱') => {
   const symbol = String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol;
-  return `${symbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const numericValue = numeric(value || 0);
+  const sign = numericValue < 0 ? '-' : '';
+  return `${sign}${symbol}${Math.abs(numericValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const count = (value, fallback = 0) => {
@@ -28,18 +35,6 @@ const isVoidedOrRefunded = (row = {}) => (
   || ['refund_pending', 'partial_refunded', 'refunded'].includes(String(row?.payment_status || '').trim().toLowerCase())
 );
 
-export const calculateKpiDelta = (current, previous) => {
-  const currentValue = Number(current);
-  const previousValue = Number(previous);
-  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue) || previousValue === 0) return null;
-  return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
-};
-
-export const getProfitOnly = (value) => {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
-};
-
 const accents = {
   blue: 'bg-blue-50 text-[#2563EB]',
   green: 'bg-emerald-50 text-emerald-600',
@@ -53,18 +48,10 @@ export function PosReportsKpiCard({
   value,
   Icon,
   accent = 'blue',
-  delta = null,
-  inverse = false,
   footer,
   valueClassName = '',
   className = ''
 }) {
-  const hasDelta = Number.isFinite(delta);
-  const shouldShowFooter = hasDelta || Boolean(footer);
-  const isImprovement = inverse ? delta <= 0 : delta >= 0;
-  const DeltaIcon = isImprovement ? ArrowUpRight : ArrowDownRight;
-  const deltaText = hasDelta ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%` : null;
-
   return (
     <article className={`min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2.5 shadow-[0_2px_10px_rgba(15,23,42,0.05)] sm:px-3 sm:py-3 ${className}`}>
       <div className="flex min-w-0 items-start gap-2 sm:gap-2.5">
@@ -87,16 +74,16 @@ export function PosReportsKpiCard({
 }
 
 export default function PosReportsKpiCards({
+  variant = 'overview',
   summaryCards = {},
   dailySummary = {},
-  comparison = {},
   currencySymbol = '₱',
-  selectedTender = null,
   transactionRows = []
 }) {
   const symbol = String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol;
-  const previous = comparison?.previous || {};
   const monetaryLabel = (label) => `${label} (${symbol})`;
+  const netSales = numeric(dailySummary.net_sales ?? summaryCards.net_sales ?? summaryCards.total_sales ?? 0);
+  const profitLoss = numeric(dailySummary.pos_profit_loss ?? summaryCards.pos_profit_loss ?? 0);
   const hasTransactionStatusEvidence = (Array.isArray(transactionRows) ? transactionRows : [])
     .some((row) => row?.status || row?.payment_status);
   const recordedTransactions = count(
@@ -116,85 +103,91 @@ export default function PosReportsKpiCards({
       ? distinctTransactionCount(transactionRows, isVoidedOrRefunded)
       : Math.max(0, recordedTransactions - completedTransactions)
   );
-  const cards = [
-    {
-      label: monetaryLabel('Total Sales'),
-      value: money(summaryCards.total_sales, symbol),
-      current: summaryCards.total_sales,
-      previous: previous.net_sales,
-      Icon: ShoppingCart,
-      accent: 'blue'
-    },
-    {
-      label: monetaryLabel('Gross Sales'),
-      value: money(summaryCards.gross_sales, symbol),
-      current: summaryCards.gross_sales,
-      previous: previous.gross_sales,
-      Icon: BarChart3,
-      accent: 'blue'
-    },
-    {
-      label: 'Recorded Transactions',
-      value: recordedTransactions.toLocaleString('en-US'),
-      current: recordedTransactions,
-      previous: previous.total_transactions,
-      Icon: Receipt,
-      accent: 'purple'
-    },
-    {
-      label: 'Completed Sales',
-      value: completedTransactions.toLocaleString('en-US'),
-      current: completedTransactions,
-      previous: previous.completed_transactions,
-      Icon: CheckCircle2,
-      accent: 'green'
-    },
-    {
-      label: 'Voided/Refunded',
-      value: voidedRefundedTransactions.toLocaleString('en-US'),
-      current: voidedRefundedTransactions,
-      previous: previous.voided_refunded_transactions,
-      Icon: AlertTriangle,
-      accent: 'red'
-    },
-    {
-      label: monetaryLabel('All Discounts'),
-      value: money(dailySummary.discounts, symbol),
-      current: dailySummary.discounts,
-      previous: previous.discounts,
-      Icon: Tag,
-      accent: 'red',
-      inverse: true
-    },
-    {
-      label: monetaryLabel('Profit'),
-      value: money(getProfitOnly(summaryCards.pos_profit_loss), symbol),
-      current: getProfitOnly(summaryCards.pos_profit_loss),
-      previous: getProfitOnly(previous.pos_profit_loss),
-      Icon: TrendingUp,
-      accent: 'teal',
-      className: 'col-span-2 xl:col-span-1'
-    }
-  ];
+  const cardsByVariant = {
+    overview: [
+      {
+        label: monetaryLabel('Net Sales'),
+        value: money(netSales, symbol),
+        Icon: ShoppingCart,
+        accent: 'blue'
+      },
+      {
+        label: 'Transactions',
+        value: recordedTransactions.toLocaleString('en-US'),
+        Icon: Receipt,
+        accent: 'purple'
+      },
+      {
+        label: monetaryLabel('Discounts'),
+        value: money(dailySummary.discounts, symbol),
+        Icon: Tag,
+        accent: 'red'
+      },
+      {
+        label: 'Voided/Refunded',
+        value: voidedRefundedTransactions.toLocaleString('en-US'),
+        Icon: AlertTriangle,
+        accent: 'red'
+      }
+    ],
+    sales: [
+      {
+        label: monetaryLabel('Gross Sales'),
+        value: money(summaryCards.gross_sales ?? dailySummary.gross_sales, symbol),
+        Icon: BarChart3,
+        accent: 'blue'
+      },
+      {
+        label: monetaryLabel('Discounts'),
+        value: money(dailySummary.discounts, symbol),
+        Icon: Tag,
+        accent: 'red'
+      },
+      {
+        label: monetaryLabel('Net Sales'),
+        value: money(netSales, symbol),
+        Icon: ShoppingCart,
+        accent: 'blue'
+      }
+    ],
+    profit_loss: [
+      {
+        label: monetaryLabel('Net Sales'),
+        value: money(netSales, symbol),
+        Icon: ShoppingCart,
+        accent: 'blue'
+      },
+      {
+        label: monetaryLabel('Cost of Goods Sold'),
+        value: money(dailySummary.cogs ?? summaryCards.cogs, symbol),
+        Icon: Package2,
+        accent: 'purple'
+      },
+      {
+        label: monetaryLabel('POS Profit/Loss'),
+        value: money(profitLoss, symbol),
+        Icon: Scale,
+        accent: profitLoss < 0 ? 'red' : 'teal'
+      },
+      {
+        label: 'Profit Margin',
+        value: `${numeric(dailySummary.profit_margin ?? (netSales > 0 ? (profitLoss / netSales) * 100 : 0)).toFixed(2)}%`,
+        Icon: Percent,
+        accent: profitLoss < 0 ? 'red' : 'green'
+      }
+    ]
+  };
+  const cards = cardsByVariant[variant] || cardsByVariant.overview;
+  const desktopGridColumnsClass = cards.length === 3 ? 'xl:grid-cols-3' : 'xl:grid-cols-4';
 
   return (
-    <div className={`order-1 grid grid-cols-2 gap-2.5 ${selectedTender ? 'xl:grid-cols-8' : 'xl:grid-cols-7'}`}>
+    <div className={`order-1 grid grid-cols-2 gap-2.5 ${desktopGridColumnsClass}`}>
       {cards.map((card) => (
         <PosReportsKpiCard
           key={card.label}
           {...card}
-          delta={calculateKpiDelta(card.current, card.previous)}
         />
       ))}
-      {selectedTender ? (
-        <PosReportsKpiCard
-          label={monetaryLabel(`${selectedTender.payment_label} Collected`)}
-          value={money(selectedTender.amount, symbol)}
-          Icon={Receipt}
-          accent="purple"
-          footer={`${Number(selectedTender.transaction_count || 0).toLocaleString('en-US')} completed transactions; whole-transaction tender, excluding voids/refunds`}
-        />
-      ) : null}
     </div>
   );
 }

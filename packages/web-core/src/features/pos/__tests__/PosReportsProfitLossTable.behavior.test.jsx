@@ -58,7 +58,7 @@ describe('POS reports profit and loss table', () => {
     ['Rank', 'Item', 'Net Sales (₱)', 'Net Profit (₱)', 'Loss (₱)', 'Profit Margin (%)'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('Burger Classic').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱1,417.60').length).toBeGreaterThan(0);
     expect(screen.getAllByText('50.06%').length).toBeGreaterThan(0);
