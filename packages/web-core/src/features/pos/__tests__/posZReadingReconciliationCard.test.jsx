@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import React from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildDailySalesCheckCsv,
   buildDailySalesCheckPrintHtml,
@@ -10,6 +11,15 @@ import {
 import {
   ZReadingReconciliationCard
 } from '../components/PosReportsAnalyticsWorkspace.jsx';
+
+const renderMarkup = (element) => {
+  const { container, unmount } = render(element);
+  const markup = container.innerHTML;
+  unmount();
+  return markup;
+};
+
+afterEach(() => cleanup());
 
 describe('Daily Sales Check reconciliation layout', () => {
   it('exports the selected-day reconciliation summary as safe CSV and printable HTML', () => {
@@ -133,21 +143,22 @@ describe('Daily Sales Check reconciliation layout', () => {
   });
 
   it('shows a compact status header, four metric cards, activity, and reading timestamps', () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMarkup(
       <ZReadingReconciliationCard
         currencySymbol="₱"
         onPrint={() => {}}
         onExport={() => {}}
+        onHistory={() => {}}
         data={{
           status: 'matched',
           business_date: '2026-09-29',
           reading_identifier: 'ZR-20260929-00000001',
           message: 'Report recognized sales match the immutable Z-reading total.',
-          report_recognized_sales: 125.5,
-          z_total_amount: 125.5,
+          report_recognized_sales: 3000,
+          z_total_amount: 3000,
           variance: 0,
-          report_net_sales: 112.5,
-          z_void_transaction_count: 1,
+          report_net_sales: 1234567.89,
+          z_void_transaction_count: 3000,
           z_void_amount: 10,
           report_refunds_voids: 5,
           report_adjustment_amount: 0,
@@ -172,17 +183,25 @@ describe('Daily Sales Check reconciliation layout', () => {
     const outerSectionClass = markup.match(/^<section class="([^"]+)"/)?.[1] || '';
     expect(outerSectionClass.split(/\s+/)).toEqual(['min-w-0', 'max-w-full']);
     expect(markup).toContain('aria-label="Daily Sales Check actions"');
-    expect(markup).toContain('flex w-full flex-col gap-3 min-[360px]:w-auto min-[360px]:flex-row min-[768px]:gap-2');
-    expect(markup).toContain('Print / Save PDF');
-    expect(markup).toContain('Export CSV');
+    expect(markup).toContain('aria-label="View Z-reading history"');
+    expect(markup).toContain('flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0');
+    expect(markup).toContain('aria-label="Print or save Daily Sales Check as PDF"');
+    expect(markup).toContain('min-h-10 h-10 w-10 shrink-0 justify-center');
+    expect(markup).toContain('sr-only min-[1200px]:not-sr-only">Print / Save PDF</span>');
+    expect(markup).toContain('aria-label="Export Daily Sales Check as CSV"');
+    expect(markup).toContain('sr-only min-[1200px]:not-sr-only">Export CSV</span>');
+    expect(markup).toContain('History');
     expect(markup).toContain('role="status"');
     expect(markup).toContain('Z-reading reconciliation');
     expect(markup).toContain('ZR-20260929-00000001');
     expect(markup).toContain('Matched');
-    expect(markup).toContain('₱125.50');
+    expect(markup).toContain('₱3,000.00');
     expect(markup).toContain('₱0.00');
-    expect(markup).toContain('₱112.50');
-    expect(markup.indexOf('Report recognized sales')).toBeLessThan(markup.indexOf('Z-reading total'));
+    expect(markup).toContain('₱1,234,567.89');
+    expect(markup).toContain('3,000 · ₱10.00');
+    expect(markup).toContain('class="sr-only"');
+    expect(markup).toContain('text-[10px] font-semibold leading-4 text-slate-600">Recognized sales</dt>');
+    expect(markup.indexOf('Recognized sales')).toBeLessThan(markup.indexOf('Z-reading total'));
     expect(markup.indexOf('Z-reading total')).toBeLessThan(markup.indexOf('Difference'));
     expect(markup.indexOf('Difference')).toBeLessThan(markup.indexOf('Report net sales'));
     expect(markup).toContain('Different metric; includes line-level discounts/refunds');
@@ -200,15 +219,34 @@ describe('Daily Sales Check reconciliation layout', () => {
     expect(markup).toContain('Cash');
     expect(markup).toContain('GCash');
     expect(markup).toContain('₱45.50 · 1 payment');
+    expect(markup).toContain('Report refunds / voids');
+    expect(markup).toContain('Report adjustments');
     expect(markup).toContain('Additional Activity');
-    expect(markup).toContain('Date &amp; time generated');
+    expect(markup).toContain('class="mt-3 min-w-0" aria-labelledby="daily-sales-additional-activity-heading"');
+    expect(markup).toContain('Generated at');
     expect(markup).toContain('Checked at');
-    expect(markup).toContain('xl:border-l xl:border-slate-200 xl:pl-4');
-    expect(markup).toContain('lg:grid-cols-4');
+    expect(markup).toContain('class="mt-3 grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4"');
+    expect(markup).toContain('text-[clamp(0.75rem,3.8vw,1rem)]');
+    expect(markup).toContain('sm:h-11 sm:w-11');
+    expect(markup).toContain('lg:grid-cols-5');
+    expect(markup).toContain('aria-label="Additional Z-reading activity and timestamps"');
+  });
+
+  it('routes the History shortcut to the supplied existing history handler', () => {
+    const onHistory = vi.fn();
+    render(
+      <ZReadingReconciliationCard
+        data={{ status: 'not_generated', report_recognized_sales: 100, report_net_sales: 95 }}
+        onHistory={onHistory}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'View Z-reading history' }));
+    expect(onHistory).toHaveBeenCalledOnce();
   });
 
   it('does not turn missing snapshot amounts into zero when a reading has not been generated', () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderMarkup(
       <ZReadingReconciliationCard
         currencySymbol="₱"
         data={{
@@ -244,10 +282,10 @@ describe('Daily Sales Check reconciliation layout', () => {
       z_total_amount: 120,
       report_net_sales: 110
     };
-    const varianceMarkup = renderToStaticMarkup(
+    const varianceMarkup = renderMarkup(
       <ZReadingReconciliationCard currencySymbol="₱" data={{ ...base, status: 'variance', variance: 5 }} />
     );
-    const unavailableMarkup = renderToStaticMarkup(
+    const unavailableMarkup = renderMarkup(
       <ZReadingReconciliationCard
         currencySymbol="₱"
         data={{ ...base, status: 'not_comparable', variance: 5, message: 'Clear cashier and terminal filters to compare the full day.' }}

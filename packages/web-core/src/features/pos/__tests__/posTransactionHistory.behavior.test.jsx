@@ -526,6 +526,8 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         fireEvent.click(screen.getByTestId('pos-history-calendar-button'));
 
         const calendarDialog = screen.getByRole('dialog');
+        expect(calendarDialog.className).toContain('h-auto');
+        expect(calendarDialog.className.split(/\s+/)).not.toContain('h-[min(90vh,40rem)]');
         const calendarGrid = within(calendarDialog).getByRole('grid', { name: 'Calendar dates' });
         const calendarDays = within(calendarGrid).getAllByRole('gridcell');
         expect(calendarDays).toHaveLength(42);
@@ -805,8 +807,8 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
             openHistoryDetail
         })} />);
 
-        expect(screen.getByTestId('pos-history-toolbar').className).toContain('flex-nowrap');
-        expect(screen.getByTestId('pos-history-toolbar').className).not.toContain('flex-wrap');
+        expect(screen.getByTestId('pos-history-toolbar').className).toContain('flex-col');
+        expect(screen.getByTestId('pos-history-toolbar').className).not.toContain('flex-nowrap');
         const appliedFilterGroup = screen.getByLabelText('Applied history filters');
         const chipRail = appliedFilterGroup.querySelector('.dgfy-pos-applied-filter-scroll');
         const clearAllButton = within(appliedFilterGroup).getByRole('button', { name: 'Clear all history filters' });
@@ -892,7 +894,7 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(syncButton.textContent).toBe('');
         expect(syncButton.getAttribute('aria-label')).toBe('Sync 1 pending POS record');
         expect(syncButton.getAttribute('title')).toBe('Sync 1 pending POS record');
-        expect(syncButton.className).toContain('w-10');
+        expect(syncButton.className).toContain('w-11');
     });
 
     it('requires a numeric refund passcode before confirming a transaction void', async () => {
@@ -948,6 +950,8 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         })} />);
 
         expect(screen.getByTestId('pos-history-void-approval-button')).toBeTruthy();
+        expect(screen.getByTestId('pos-history-toolbar').className).toContain('flex-nowrap');
+        expect(screen.getByTestId('pos-history-void-approval-row').className).not.toContain('basis-full');
         expect(screen.getByTestId('pos-inline-void-approval-dialog')).toBeTruthy();
         expect(screen.getAllByText('NFS-000007').length).toBeGreaterThanOrEqual(2);
 
@@ -956,6 +960,59 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         await waitFor(() => {
             expect(decideVoidApproval).toHaveBeenCalledWith(approvalRequest, 'approve', '');
         });
+    });
+
+    it('keeps phone search and icon actions together above labeled POS approvals', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true
+        })} />);
+
+        const toolbar = screen.getByTestId('pos-history-toolbar');
+        const primaryActions = screen.getByTestId('pos-history-primary-actions');
+        const approvalRow = screen.getByTestId('pos-history-void-approval-row');
+        const approvalButton = screen.getByTestId('pos-history-void-approval-button');
+
+        expect(toolbar.className).toContain('flex-col');
+        expect(toolbar.className).toContain('min-w-0');
+        expect(primaryActions.className).toContain('w-full');
+        expect(primaryActions.className).toContain('min-w-0');
+        expect(within(primaryActions).getByRole('searchbox', { name: 'Search all transaction fields' })).toBeTruthy();
+        expect(within(primaryActions).getByTestId('pos-history-filter-button')).toBeTruthy();
+        expect(within(primaryActions).getByTestId('pos-history-calendar-button')).toBeTruthy();
+        expect(within(primaryActions).getByTestId('pos-history-sync-button')).toBeTruthy();
+        expect(approvalRow.className).toContain('w-full');
+        expect(approvalRow.className).toContain('justify-end');
+        expect(approvalRow.previousElementSibling).toBe(primaryActions);
+        expect(approvalButton.className).toContain('min-w-[8.5rem]');
+        expect(approvalButton.className).not.toContain('w-11');
+        expect(approvalButton.getAttribute('aria-label')).toBe('Open POS approval requests');
+        expect(approvalButton.textContent).toContain('POS approvals');
+        expect(approvalButton.querySelector('.sr-only')).toBeNull();
+    });
+
+    it('keeps tablet history toolbar actions in one row with icon-only buttons', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 820 });
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true
+        })} />);
+
+        const toolbar = screen.getByTestId('pos-history-toolbar');
+        const primaryActions = screen.getByTestId('pos-history-primary-actions');
+        const approvalRow = screen.getByTestId('pos-history-void-approval-row');
+        const approvalButton = screen.getByTestId('pos-history-void-approval-button');
+
+        expect(toolbar.className).toContain('flex-nowrap');
+        expect(toolbar.className).not.toContain('flex-col');
+        expect(approvalRow.previousElementSibling).toBe(primaryActions);
+        expect(within(primaryActions).getByRole('searchbox', { name: 'Search all transaction fields' })).toBeTruthy();
+        expect(within(primaryActions).getByTestId('pos-history-filter-button').className).toContain('w-11');
+        expect(within(primaryActions).getByTestId('pos-history-calendar-button').className).toContain('w-11');
+        expect(within(primaryActions).getByTestId('pos-history-sync-button').className).toContain('w-11');
+        expect(approvalButton.className).toContain('w-11');
+        expect(approvalButton.querySelector('.sr-only')?.textContent).toBe('POS approvals');
     });
 
     it('disables self-review in the inline POS void approval popup', () => {

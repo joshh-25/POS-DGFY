@@ -1,23 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Download, Filter, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PosAppliedFilterChips from './PosAppliedFilterChips.jsx';
 import PosFilterDialogShell from './PosFilterDialogShell.jsx';
-import { PosFilterDialogFooter, PosFilterDialogHeader } from './PosFilterDialogParts.jsx';
+import { PosFilterChoiceGroup, PosFilterDialogFooter, PosFilterDialogHeader } from './PosFilterDialogParts.jsx';
 import PosFilterCountBadge from './PosFilterCountBadge.jsx';
+import PosCashierFilterControl from './PosCashierFilterControl.jsx';
 import PosSearchField from './PosSearchField.jsx';
-import { POS_FILTER_TRIGGER_HEIGHT_CLASS, POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
+import {
+  POS_FILTER_TRIGGER_HEIGHT_CLASS,
+  POS_TOOLBAR_COMPACT_LABEL_CLASS,
+  POS_TOOLBAR_CONTROL_HEIGHT_CLASS,
+  POS_TOOLBAR_ICON_ACTION_CLASS
+} from './posToolbarSizing.js';
 import { usePosViewportMode } from './PosResponsiveFormDrawer.jsx';
 import usePosReportsPopoverPosition from './usePosReportsPopoverPosition.js';
 
 const EMPTY_FILTERS = { terminalId: '', closedBy: '' };
-const inputClassName = 'mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100';
 
 export default function PosZReadingHistoryToolbar({
   searchQuery = '',
   onSearchQueryChange,
   filters = EMPTY_FILTERS,
   onApplyFilters,
+  terminalOptions = [],
+  cashierOptions = [],
   onRemoveFilter,
   onClearAllFilters,
   activeFilterChips = [],
@@ -33,13 +40,38 @@ export default function PosZReadingHistoryToolbar({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState({ ...EMPTY_FILTERS });
+  const [cashierSearch, setCashierSearch] = useState('');
+  const [cashierPickerOpen, setCashierPickerOpen] = useState(false);
   const viewportMode = usePosViewportMode();
   const isMobileDialog = viewportMode === 'mobile';
-  const position = usePosReportsPopoverPosition({ open, anchorRef: filterButtonRef, maxWidth: 464 });
+  const position = usePosReportsPopoverPosition({ open, anchorRef: filterButtonRef, maxWidth: 464, fitContentHeight: true });
   const activeFilterCount = Number(Boolean(filters.terminalId)) + Number(Boolean(filters.closedBy));
+  const normalizedTerminalOptions = useMemo(() => {
+    const options = (Array.isArray(terminalOptions) ? terminalOptions : [])
+      .filter((option) => option && option.value !== undefined)
+      .map((option) => ({
+        key: option.key || String(option.value || 'all-terminals'),
+        value: String(option.value || ''),
+        label: String(option.label || option.value || 'All terminals')
+      }));
+    return options.length > 0
+      ? options
+      : [{ key: 'all-terminals', value: '', label: 'All terminals' }];
+  }, [terminalOptions]);
+  const normalizedCashierOptions = useMemo(() => (Array.isArray(cashierOptions) ? cashierOptions : [])
+    .filter((option) => option && option.value !== undefined && String(option.value).trim())
+    .map((option) => ({
+      key: option.key || String(option.value),
+      value: String(option.value),
+      label: String(option.label || option.value)
+    })), [cashierOptions]);
 
   useEffect(() => {
-    if (open) setDraft({ ...EMPTY_FILTERS, ...filters });
+    if (open) {
+      setDraft({ ...EMPTY_FILTERS, ...filters });
+      setCashierSearch(String(filters.closedBy || ''));
+      setCashierPickerOpen(Boolean(filters.closedBy));
+    }
   }, [filters, open]);
 
   const applyFilters = () => {
@@ -50,9 +82,15 @@ export default function PosZReadingHistoryToolbar({
     setOpen(false);
   };
 
+  const resetFilters = () => {
+    setDraft({ ...EMPTY_FILTERS });
+    setCashierSearch('');
+    setCashierPickerOpen(false);
+  };
+
   return (
     <div className="min-w-0 space-y-2">
-      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
+      <div className="flex min-w-0 flex-col gap-2 min-[1024px]:flex-row min-[1024px]:items-center min-[1024px]:gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <PosSearchField
             ariaLabel="Search Z-reading history"
@@ -67,7 +105,7 @@ export default function PosZReadingHistoryToolbar({
             <Button
               type="button"
               ref={filterButtonRef}
-              className={`relative ${POS_FILTER_TRIGGER_HEIGHT_CLASS} w-11 min-w-0 shrink-0 justify-center gap-1 rounded-xl bg-[#1A4E8D] px-0 text-[12px] font-extrabold text-white hover:bg-[#143F73] sm:text-[13px] lg:w-auto lg:gap-1.5 lg:px-3`}
+              className={`relative ${POS_FILTER_TRIGGER_HEIGHT_CLASS} ${POS_TOOLBAR_ICON_ACTION_CLASS} gap-1 rounded-xl bg-[#1A4E8D] text-[12px] font-extrabold text-white hover:bg-[#143F73] sm:text-[13px] min-[1024px]:gap-1.5`}
               onClick={() => setOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={open}
@@ -76,14 +114,14 @@ export default function PosZReadingHistoryToolbar({
               title="Filter Z-readings"
             >
               <Filter className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only lg:not-sr-only">Filter</span>
+              <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>Filter</span>
               <PosFilterCountBadge count={activeFilterCount} />
             </Button>
             <Button
               type="button"
               ref={dateFilterButtonRef}
               variant="outline"
-              className={`${POS_FILTER_TRIGGER_HEIGHT_CLASS} w-11 min-w-0 shrink-0 justify-center gap-1 rounded-xl border-[#A9C5EA] px-0 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-[#F5F9FF] sm:text-[13px] lg:w-auto lg:gap-1.5 lg:px-3`}
+              className={`${POS_FILTER_TRIGGER_HEIGHT_CLASS} ${POS_TOOLBAR_ICON_ACTION_CLASS} gap-1 rounded-xl border-[#A9C5EA] text-[12px] font-extrabold text-[#1A4E8D] hover:bg-[#F5F9FF] sm:text-[13px] min-[1024px]:gap-1.5`}
               onClick={onOpenDateFilter}
               aria-haspopup="dialog"
               aria-expanded={dateFilterOpen}
@@ -92,7 +130,7 @@ export default function PosZReadingHistoryToolbar({
               title="Filter by Date"
             >
               <CalendarDays className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only lg:not-sr-only">Filter by Date</span>
+              <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>Filter by Date</span>
             </Button>
           </div>
         </div>
@@ -101,21 +139,21 @@ export default function PosZReadingHistoryToolbar({
           <span aria-hidden="true" className="hidden h-7 w-px shrink-0 bg-slate-300 lg:block" />
           <Button
             type="button"
-            className="min-h-11 min-w-0 flex-1 gap-1.5 rounded-xl bg-slate-900 px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-slate-800 sm:min-h-10 sm:flex-none sm:px-4 sm:text-[13px] lg:min-h-9"
+            className={`min-h-11 gap-1.5 rounded-xl bg-slate-900 text-[12px] font-extrabold text-white shadow-sm hover:bg-slate-800 sm:text-[13px] min-[1024px]:min-h-9 ${POS_TOOLBAR_ICON_ACTION_CLASS}`}
             onClick={onPrint}
             disabled={printDisabled || actionBusy}
           >
             <Printer className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
-            <span>Print / Save PDF</span>
+            <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>Print / Save PDF</span>
           </Button>
           <Button
             type="button"
-            className="min-h-11 min-w-0 flex-1 gap-1.5 rounded-xl bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-[#143F73] sm:min-h-10 sm:flex-none sm:px-4 sm:text-[13px] lg:min-h-9"
+            className={`min-h-11 gap-1.5 rounded-xl bg-[#1A4E8D] text-[12px] font-extrabold text-white shadow-sm hover:bg-[#143F73] sm:text-[13px] min-[1024px]:min-h-9 ${POS_TOOLBAR_ICON_ACTION_CLASS}`}
             onClick={onExport}
             disabled={exportDisabled || actionBusy}
           >
             <Download className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
-            <span>{actionBusy ? 'Preparing…' : 'Export CSV'}</span>
+            <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>{actionBusy ? 'Preparing…' : 'Export CSV'}</span>
           </Button>
         </div>
       </div>
@@ -133,6 +171,7 @@ export default function PosZReadingHistoryToolbar({
         onClose={() => setOpen(false)}
         mode="filters"
         mobile={isMobileDialog}
+        fitContentHeight
         position={position}
         id="pos-z-reading-history-filter-dialog"
         ariaLabelledBy="pos-z-reading-history-filter-title"
@@ -146,34 +185,39 @@ export default function PosZReadingHistoryToolbar({
           onClose={() => setOpen(false)}
           mobile={isMobileDialog}
         />
-        <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-          <label className="block text-[13px] font-semibold text-slate-700" htmlFor="pos-z-reading-filter-terminal">
-            Terminal
-            <input
-              id="pos-z-reading-filter-terminal"
-              data-testid="pos-z-reading-filter-terminal"
-              className={inputClassName}
+        <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto px-4 ${isMobileDialog ? 'py-3' : 'py-4'}`}>
+          <div className="grid min-w-0 gap-4">
+            <PosFilterChoiceGroup
+              label="Terminal"
               value={draft.terminalId}
-              onChange={(event) => setDraft((current) => ({ ...current, terminalId: event.target.value }))}
-              placeholder="For example, COUNTER-01"
-              maxLength={100}
+              options={normalizedTerminalOptions}
+              onChange={(value) => setDraft((current) => ({ ...current, terminalId: String(value || '') }))}
+              testId="pos-z-reading-filter-terminal"
+              compact={!isMobileDialog}
+              mobile={isMobileDialog}
+              groupAriaLabel="Terminal options"
             />
-          </label>
-          <label className="block text-[13px] font-semibold text-slate-700" htmlFor="pos-z-reading-filter-closer">
-            Closed by
-            <input
-              id="pos-z-reading-filter-closer"
-              data-testid="pos-z-reading-filter-closer"
-              className={inputClassName}
+            <PosCashierFilterControl
               value={draft.closedBy}
-              onChange={(event) => setDraft((current) => ({ ...current, closedBy: event.target.value }))}
-              placeholder="Cashier name or email"
-              maxLength={100}
+              searchValue={cashierSearch}
+              options={normalizedCashierOptions}
+              onSearchChange={setCashierSearch}
+              onChange={(value) => setDraft((current) => ({ ...current, closedBy: String(value || '') }))}
+              expanded={cashierPickerOpen}
+              onExpandedChange={setCashierPickerOpen}
+              compact={!isMobileDialog}
+              mobile={isMobileDialog}
+              label="Closed by"
+              optionsLabel="Cashier options"
+              allLabel="All cashiers"
+              id="pos-z-reading-filter-cashier-search"
+              testIdPrefix="pos-z-reading-filter-cashier"
+              optionName="pos-z-reading-filter-cashier"
             />
-          </label>
+          </div>
         </div>
         <PosFilterDialogFooter
-          onReset={() => setDraft({ ...EMPTY_FILTERS })}
+          onReset={resetFilters}
           onApply={applyFilters}
           applyLabel="Apply Filters"
           mobile={isMobileDialog}

@@ -8,7 +8,12 @@ import PosSearchField from './PosSearchField.jsx';
 import { PosFilterChoiceGroup, PosFilterDialogFooter, PosFilterDialogHeader } from './PosFilterDialogParts.jsx';
 import PosFilterDialogShell from './PosFilterDialogShell.jsx';
 import { usePosViewportMode } from './PosResponsiveFormDrawer.jsx';
-import { POS_FILTER_TRIGGER_HEIGHT_CLASS, POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
+import {
+  POS_FILTER_TRIGGER_HEIGHT_CLASS,
+  POS_TOOLBAR_COMPACT_LABEL_CLASS,
+  POS_TOOLBAR_CONTROL_HEIGHT_CLASS,
+  POS_TOOLBAR_ICON_ACTION_CLASS
+} from './posToolbarSizing.js';
 import usePosReportsPopoverPosition from './usePosReportsPopoverPosition.js';
 
 const STATUS_OPTIONS = [
@@ -29,7 +34,8 @@ export default function CashierHistoryFilterToolbar({
   searchQuery = '',
   onSearchQueryChange,
   cashierName = '',
-  actionDisabled = false
+  actionDisabled = false,
+  refreshAction = null
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
@@ -38,7 +44,7 @@ export default function CashierHistoryFilterToolbar({
   const dateFilterButtonRef = useRef(null);
   const viewportMode = usePosViewportMode();
   const isMobileDialog = viewportMode === 'mobile';
-  const position = usePosReportsPopoverPosition({ open: filtersOpen, anchorRef: filterButtonRef, maxWidth: 464 });
+  const position = usePosReportsPopoverPosition({ open: filtersOpen, anchorRef: filterButtonRef, maxWidth: 464, fitContentHeight: true });
   const activeFilterCount = activeFilterChips.length;
 
   const applyStatus = () => {
@@ -52,8 +58,8 @@ export default function CashierHistoryFilterToolbar({
   };
 
   return (
-    <div className="min-w-0 space-y-2">
-      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
+    <div className="min-w-0 space-y-2" data-testid="pos-cashier-history-filter-toolbar">
+      <div className="flex min-w-0 flex-col gap-2 min-[1024px]:flex-row min-[1024px]:items-center min-[1024px]:gap-4" data-testid="pos-cashier-history-toolbar-controls">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <PosSearchField
             ariaLabel="Search cashier history"
@@ -71,7 +77,7 @@ export default function CashierHistoryFilterToolbar({
               type="button"
               ref={filterButtonRef}
               disabled={actionDisabled}
-              className={`relative ${POS_FILTER_TRIGGER_HEIGHT_CLASS} w-11 min-w-0 shrink-0 justify-center gap-1 rounded-xl bg-[#1A4E8D] px-0 text-[12px] font-extrabold text-white hover:bg-[#143F73] sm:text-[13px] lg:w-auto lg:gap-1.5 lg:px-3`}
+              className={`relative ${POS_FILTER_TRIGGER_HEIGHT_CLASS} ${POS_TOOLBAR_ICON_ACTION_CLASS} gap-1 rounded-xl bg-[#1A4E8D] text-[12px] font-extrabold text-white hover:bg-[#143F73] sm:text-[13px] min-[1024px]:gap-1.5`}
               onClick={() => {
                 setStatusDraft(status);
                 setFiltersOpen(true);
@@ -83,7 +89,7 @@ export default function CashierHistoryFilterToolbar({
               title="Filter cashier history"
             >
               <Filter className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only lg:not-sr-only">Filter</span>
+              <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>Filter</span>
               <PosFilterCountBadge count={activeFilterCount} />
             </Button>
             <Button
@@ -91,7 +97,7 @@ export default function CashierHistoryFilterToolbar({
               ref={dateFilterButtonRef}
               variant="outline"
               disabled={actionDisabled}
-              className={`${POS_FILTER_TRIGGER_HEIGHT_CLASS} w-11 min-w-0 shrink-0 justify-center gap-1 rounded-xl border-[#A9C5EA] px-0 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-[#F5F9FF] sm:text-[13px] lg:w-auto lg:gap-1.5 lg:px-3`}
+              className={`${POS_FILTER_TRIGGER_HEIGHT_CLASS} ${POS_TOOLBAR_ICON_ACTION_CLASS} gap-1 rounded-xl border-[#A9C5EA] text-[12px] font-extrabold text-[#1A4E8D] hover:bg-[#F5F9FF] sm:text-[13px] min-[1024px]:gap-1.5`}
               onClick={() => setDateFilterOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={dateFilterOpen}
@@ -100,8 +106,9 @@ export default function CashierHistoryFilterToolbar({
               title="Filter by Date"
             >
               <CalendarDays className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only lg:not-sr-only">Filter by Date</span>
+              <span className={POS_TOOLBAR_COMPACT_LABEL_CLASS}>Filter by Date</span>
             </Button>
+            {refreshAction}
           </div>
         </div>
       </div>
@@ -119,6 +126,7 @@ export default function CashierHistoryFilterToolbar({
         onClose={() => setFiltersOpen(false)}
         mode="filters"
         mobile={isMobileDialog}
+        fitContentHeight
         position={position}
         id="pos-cashier-history-filter-dialog"
         ariaLabelledBy="pos-cashier-history-filter-title"
@@ -171,6 +179,7 @@ export default function CashierHistoryFilterToolbar({
         todayDate={todayDate}
         timeZone="Asia/Manila"
         actionDisabled={actionDisabled}
+        fitContentHeight
       />
     </div>
   );
