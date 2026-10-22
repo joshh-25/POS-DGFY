@@ -131,7 +131,7 @@ describe('POS delivery-completion evidence', () => {
             posTransactionId: 77,
             files: { images: [imageFile(imageOne), imageFile(imageTwo)], signature: [imageFile(signature, 'image/png')] },
             payload: { idempotency_key: 'delivery-evidence-1' },
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
 
         expect(result.success).toBe(true);
@@ -158,7 +158,7 @@ describe('POS delivery-completion evidence', () => {
         const result = await run(() => useCase({
             posTransactionId: 77,
             files: {},
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
 
         expect(result.success).toBe(true);
@@ -176,7 +176,7 @@ describe('POS delivery-completion evidence', () => {
         const request = {
             posTransactionId: 77,
             payload: { idempotency_key: 'delivery-replay-1' },
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         };
 
         const first = await run(() => useCase({ ...request, files: { images: [imageFile(firstPath)] } }));
@@ -198,7 +198,7 @@ describe('POS delivery-completion evidence', () => {
         const request = {
             posTransactionId: 77,
             payload: { idempotency_key: 'delivery-conflict-1' },
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         };
 
         await run(() => useCase({ ...request, files: { images: [imageFile(firstPath)] } }));
@@ -218,7 +218,7 @@ describe('POS delivery-completion evidence', () => {
         const result = await run(() => useCase({
             posTransactionId: 77,
             files: { images: [imageFile(filePath)] },
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
 
         expect(result.success).toBe(false);

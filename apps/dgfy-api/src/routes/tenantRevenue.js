@@ -10,6 +10,7 @@ import { setNoStoreCacheControl } from '../middleware/cachePolicy.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { isAdminLikeRole } from '../config/userRoles.js';
 import { tenantFinancialLimiter } from '../middleware/rateLimiter.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 import {
   approveSettlementBatch,
   approveAdjustment,
@@ -75,7 +76,7 @@ const requireTenantFeePolicyPermission = (permission, message) => (req, res, nex
   const role = String(req.user.role || '').trim().toLowerCase();
   const allowed = req.user.is_master_admin === true
     || isAdminLikeRole(role)
-    || (Array.isArray(req.user.permissions) && req.user.permissions.includes(permission));
+    || isPermissionEffective(req.user.permissions, permission, req.user.is_master_admin === true);
   if (allowed) return next();
   return res.status(403).json({
     success: false,

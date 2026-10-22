@@ -4,7 +4,7 @@ import { checkPermission } from '../src/middleware/auth.js';
 // #1045: checkPermission's 403 previously carried no machine-readable code,
 // which is part of why a stale permission snapshot produced an unclassifiable
 // failure the POS terminal could only render as the generic owner banner.
-const runMiddleware = (req) => {
+const runMiddleware = (req, requiredPermission = 'pos:attendance:view') => {
     const res = {
         statusCode: null,
         body: null,
@@ -18,7 +18,7 @@ const runMiddleware = (req) => {
         }
     };
     let nextCalled = false;
-    checkPermission('pos:attendance:view')(req, res, () => { nextCalled = true; });
+    checkPermission(requiredPermission)(req, res, () => { nextCalled = true; });
     return { res, nextCalled };
 };
 
@@ -43,8 +43,27 @@ describe('checkPermission', () => {
 
     it('allows a user holding the required permission', () => {
         const { nextCalled } = runMiddleware({
-            user: { is_master_admin: false, permissions: ['pos:attendance:view'] }
+            user: { is_master_admin: false, permissions: ['pos:view', 'pos:attendance:view'] }
         });
+
+        expect(nextCalled).toBe(true);
+    });
+
+    it('does not let a child action bypass its disabled parent access', () => {
+        const { nextCalled, res } = runMiddleware(
+            { user: { is_master_admin: false, permissions: ['items:create'] } },
+            'items:create'
+        );
+
+        expect(nextCalled).toBe(false);
+        expect(res.statusCode).toBe(403);
+    });
+
+    it('allows a child action when its parent access is also granted', () => {
+        const { nextCalled } = runMiddleware(
+            { user: { is_master_admin: false, permissions: ['items:view', 'items:create'] } },
+            'items:create'
+        );
 
         expect(nextCalled).toBe(true);
     });

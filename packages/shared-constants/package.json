@@ -57,6 +57,10 @@
       "import": "./src/staffCapabilities.js",
       "default": "./src/staffCapabilities.js"
     },
+    "./permissionDependencies": {
+      "import": "./src/permissionDependencies.js",
+      "default": "./src/permissionDependencies.js"
+    },
     "./coverPhotoTransform": {
       "import": "./src/coverPhotoTransform.js",
       "default": "./src/coverPhotoTransform.js"

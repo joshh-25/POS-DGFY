@@ -189,6 +189,7 @@ const createOrUpdateTenantMasterAdminForAccount = async ({ tenantConnector, getT
             phone_number: normalizePhoneNumber(account.phone),
             role: 'admin',
             permissions: DEFAULT_ROLE_PERMISSIONS.admin || [],
+            permission_mode: 'custom',
             is_active: true,
             is_master_admin: true,
             invitation_status: 'accepted',

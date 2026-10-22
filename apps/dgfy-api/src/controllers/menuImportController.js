@@ -207,7 +207,8 @@ const enqueueGeneratedImages = async ({ rows, importData, req }) => {
         user_id: req.user?.user_id,
         tenant_id: tenantId,
         is_master_admin: req.user?.is_master_admin === true,
-        permissions: resolveEffectivePermissions(req.user)
+        permissions: resolveEffectivePermissions(req.user),
+        permissions_resolved: true
     };
 
     const enqueueResults = await Promise.all(withinCap.map(async ({ row, itemId }) => {

@@ -2318,8 +2318,10 @@ const requireRegisteredTerminalContext = ({ terminalId, policy = {}, operation }
 
 const requirePosPermissionForPairing = (user) => {
     if (user?.is_master_admin === true) return;
-    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
-    if (permissions.includes('pos:view') || permissions.includes('pos:transact')) return;
+    if (
+        hasEffectivePermission(user, 'pos:view')
+        || hasEffectivePermission(user, 'pos:transact')
+    ) return;
     throw new DomainError(
         DomainErrorCode.AUTHORIZATION_FAILED,
         'POS permission is required for terminal pairing.',

@@ -11,6 +11,15 @@ export const getCurrentUser = async () => {
 };
 
 /**
+ * Read server-resolved effective permissions and capability projections used by
+ * POS affordances. The API remains authoritative for every protected request.
+ */
+export const getEffectiveCapabilities = async (params = {}) => {
+  const response = await api.get('/users/me/capabilities', { params });
+  return response.data.data;
+};
+
+/**
  * Update current user's profile (username, email, phone number)
  * @param {Object} profileData - { username?, email?, email_otp_code?, phone_number? }
  * @returns {Promise<Object>} Updated user data with new token if username/email changed
@@ -112,6 +121,11 @@ export const updateUserStatus = async (userId, isActive) => {
 
 export const updateUserPermissions = async (userId, permissions = []) => {
   const response = await api.put(`/users/${userId}/permissions`, { permissions });
+  return response.data.data;
+};
+
+export const resetUserPermissions = async (userId) => {
+  const response = await api.put(`/users/${userId}/permissions/reset`, {});
   return response.data.data;
 };
 

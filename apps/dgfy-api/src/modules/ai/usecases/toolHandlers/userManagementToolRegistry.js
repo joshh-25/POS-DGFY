@@ -82,7 +82,8 @@ export const buildUserManagementToolRegistry = ({
     tempFileService,
     logger,
     permissions,
-    appUrlProvider = () => process.env.APP_URL || 'http://localhost:5173'
+    appUrlProvider = () => process.env.APP_URL || 'http://localhost:5173',
+    invalidateUserAuthCache = () => {}
 }) => {
     const resolveUser = buildResolveUser({ userService });
     const getAvailablePermissions = buildGetAvailablePermissions({ permissions });
@@ -170,13 +171,18 @@ export const buildUserManagementToolRegistry = ({
             const resolvedId = await resolveUser(args);
             const updatedUser = await userService.updateUserPermissionsAI(user.user_id, resolvedId, args.permissions);
 
+            await invalidateUserAuthCache({
+                userId: Number.parseInt(resolvedId, 10) || null,
+                actor: user
+            });
+
             return {
                 success: true,
                 message: `Permissions updated for user ${updatedUser.username}`,
                 details: {
                     User: updatedUser.username,
                     Role: updatedUser.role,
-                    'Permission Count': String(args.permissions.length),
+                    'Permission Count': String(updatedUser.permission_count),
                     Status: 'Updated'
                 },
                 related_entity: {
@@ -188,7 +194,8 @@ export const buildUserManagementToolRegistry = ({
                     id: updatedUser.user_id,
                     username: updatedUser.username,
                     role: updatedUser.role,
-                    permissions: args.permissions
+                    permissions: updatedUser.permissions,
+                    permission_mode: updatedUser.permission_mode
                 }
             };
         },

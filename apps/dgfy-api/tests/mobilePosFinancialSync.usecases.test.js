@@ -199,7 +199,7 @@ describe('mobile POS financial sync contracts', () => {
         };
         const result = await useCase({
             payload: { device_id: 'device-1', entries: [{ local_operation_id: 'refund-31', payload: request }] },
-            user: { user_id: 7, permissions: ['pos:cash_drawer_adjust'] }
+            user: { user_id: 7, permissions: ['pos:view', 'pos:refund', 'pos:shift_access', 'pos:cash_drawer_adjust'] }
         });
 
         expect(result.data.results[0]).toMatchObject({

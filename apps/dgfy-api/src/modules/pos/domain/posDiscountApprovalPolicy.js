@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { resolvePosGlobalPinHash } from './posGlobalPinPolicy.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const POS_DISCOUNT_AUTHORIZATION_PERMISSION = 'pos:discount_authorize';
 
@@ -45,7 +46,7 @@ export const verifyPosDiscountApprover = async ({
     const hasDiscountAuthorization = approver.can_authorize_discounts === true
         || approver.is_master_admin === true
         || ['admin', 'manager'].includes(role)
-        || permissions.includes(POS_DISCOUNT_AUTHORIZATION_PERMISSION);
+        || isPermissionEffective(permissions, POS_DISCOUNT_AUTHORIZATION_PERMISSION, approver.is_master_admin === true);
     if (!hasDiscountAuthorization) {
         approvalError('Selected employee is not authorized to approve POS discounts.', 'DISCOUNT_APPROVER_ROLE_INVALID', 403);
     }

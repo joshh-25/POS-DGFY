@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { resolvePosGlobalPinHash } from './posGlobalPinPolicy.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const POS_REFUND_AUTHORIZATION_PERMISSION = 'pos:discount_authorize';
 const POS_REFUND_PASSCODE_PATTERN = /^[0-9]{4,12}$/;
@@ -28,7 +29,11 @@ const canAuthorizeRefund = (approver) => {
     return approver?.can_authorize_discounts === true
         || approver?.is_master_admin === true
         || ['admin', 'manager'].includes(role)
-        || normalizePermissions(approver?.permissions).includes(POS_REFUND_AUTHORIZATION_PERMISSION);
+        || isPermissionEffective(
+            normalizePermissions(approver?.permissions),
+            POS_REFUND_AUTHORIZATION_PERMISSION,
+            approver?.is_master_admin === true
+        );
 };
 
 /**

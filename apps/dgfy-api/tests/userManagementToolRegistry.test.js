@@ -135,6 +135,42 @@ describe('userManagementToolRegistry', () => {
     });
   });
 
+  it('update_user_permissions invalidates the target auth cache and returns effective permissions', async () => {
+    const updateUserPermissionsAI = jest.fn().mockResolvedValue({
+      user_id: 7,
+      username: 'target-user',
+      role: 'cashier',
+      permissions: ['pos:view'],
+      permission_mode: 'custom',
+      permission_count: 1
+    });
+    const invalidateUserAuthCache = jest.fn();
+
+    const registry = buildUserManagementToolRegistry({
+      userService: {
+        getUserByEmail: jest.fn().mockResolvedValue({ user_id: 7 }),
+        updateUserPermissionsAI
+      },
+      tempFileService: {},
+      logger: { error: jest.fn() },
+      permissions: {},
+      invalidateUserAuthCache
+    });
+
+    const result = await registry.update_user_permissions({
+      args: { email: 'target@example.com', permissions: ['pos:view'] },
+      user: { user_id: 99 }
+    });
+
+    expect(updateUserPermissionsAI).toHaveBeenCalledWith(99, 7, ['pos:view']);
+    expect(invalidateUserAuthCache).toHaveBeenCalledWith({ userId: 7, actor: { user_id: 99 } });
+    expect(result.details['Permission Count']).toBe('1');
+    expect(result.user).toMatchObject({
+      permissions: ['pos:view'],
+      permission_mode: 'custom'
+    });
+  });
+
   it('create_user_invitation includes manual link when email is not configured', async () => {
     const registry = buildUserManagementToolRegistry({
       userService: {

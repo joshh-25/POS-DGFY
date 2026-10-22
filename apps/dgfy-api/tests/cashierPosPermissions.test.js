@@ -14,6 +14,7 @@ describe('cashier POS least-privilege defaults', () => {
       PERMISSIONS.POS.actions.VIEW_ATTENDANCE,
       PERMISSIONS.POS.actions.OPERATE_ATTENDANCE,
       PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT,
+      PERMISSIONS.POS.actions.SHIFT_ACCESS,
       PERMISSIONS.POS.actions.CLOSE_SHIFT_POS,
       PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT
     ]));

@@ -1,5 +1,6 @@
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { listSalesTransactionsUseCase } from '../index.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const timestamp = () => new Date().toISOString();
 const toCsvCell = (value) => {
@@ -28,7 +29,7 @@ const normalizePermissions = (permissions) => {
 
 const includesAnyPermission = (permissions, candidates) => {
   const normalized = normalizePermissions(permissions);
-  return candidates.some((permission) => normalized.includes(permission));
+  return candidates.some((permission) => isPermissionEffective(normalized, permission));
 };
 
 export const listSalesTransactions = async (req, res, next) => {

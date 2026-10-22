@@ -59,7 +59,7 @@ const createBulkPosRepository = ({ items = [], existing = null, readiness = null
         : jest.fn().mockResolvedValue({ item_id: 1, pos_image_url: '/uploads/image.png' })
 });
 
-const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
+const editableUser = { is_master_admin: false, permissions: ['items:view', 'items:edit'] };
 const posOperator = { user_id: 15, is_active: true, permissions: ['pos:view', 'pos:transact'] };
 
 const runWithTenantComplianceContext = (callback) => {

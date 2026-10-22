@@ -9,6 +9,7 @@ import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { getDashboardStats } from './dashboardService.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 /**
  * Build complete context for AI conversation
@@ -185,7 +186,7 @@ export const hasGranularPermission = (user, requiredPermission) => {
 
   // Check if user has the specific permission
   const userPermissions = user.permissions || [];
-  return userPermissions.includes(requiredPermission);
+  return isPermissionEffective(userPermissions, requiredPermission, user.is_master_admin === true);
 };
 
 /**

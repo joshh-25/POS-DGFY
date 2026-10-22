@@ -71,6 +71,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         })
     }),
     users: Object.freeze({
+        permission_mode: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `permission_mode` VARCHAR(16) NOT NULL DEFAULT 'inherit' COMMENT 'Permission source: inherit from role/staff role or custom grants'"
+        }),
         pos_approval_pin_hash: Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_approval_pin_hash` VARCHAR(255) NULL"
         }),
@@ -3232,7 +3235,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-15.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-22.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
@@ -3379,6 +3382,63 @@ export function buildTenantSchemaRepairSql(missingColumns = []) {
             sql: REQUIRED_TENANT_SCHEMA_COLUMNS?.[table]?.[column]?.sql || ''
         }))
         .filter((entry) => entry.sql);
+}
+
+const TENANT_PERMISSION_MODE_SHIFT_GRANTS = new Set([
+    'pos:shift_access',
+    'pos:shift_close',
+    'pos:close_day',
+    'pos:cash_drawer_adjust',
+    'pos:shift_force_close',
+    'pos:fiscal_terminals:manage',
+    'pos:esales:manage',
+    'pos:switch_location',
+    'pos:employees:manage'
+]);
+
+const normalizeTenantUserPermissions = (rawPermissions) => {
+    let permissions = rawPermissions;
+    if (typeof permissions === 'string') {
+        try {
+            permissions = JSON.parse(permissions);
+        } catch {
+            permissions = [];
+        }
+    }
+    if (!Array.isArray(permissions)) return [];
+    return Array.from(new Set(
+        permissions
+            .filter((permission) => typeof permission === 'string')
+            .map((permission) => permission.trim())
+            .filter(Boolean)
+    ));
+};
+
+// The standalone migration runner owns the landlord database, while User is a tenant-local
+// model at runtime. When an older tenant receives the additive permission_mode column, preserve
+// its existing non-empty grants as custom access and repair the POS parent grants introduced by
+// the same RBAC contract. This is idempotent so a repair can be safely retried.
+export async function backfillTenantUserPermissionMode(connection, tenantDb) {
+    const [users] = await queryWithReplacements(
+        connection,
+        `SELECT ${quoteIdentifier('user_id')}, ${quoteIdentifier('permissions')}
+           FROM ${quoteIdentifier(tenantDb)}.${quoteIdentifier('users')}`
+    );
+
+    for (const user of users) {
+        const permissions = normalizeTenantUserPermissions(user.permissions);
+        const hasShiftGrant = permissions.some((permission) => TENANT_PERMISSION_MODE_SHIFT_GRANTS.has(permission));
+        if (hasShiftGrant && !permissions.includes('pos:shift_access')) permissions.push('pos:shift_access');
+        if (hasShiftGrant && !permissions.includes('pos:view')) permissions.push('pos:view');
+
+        await queryWithReplacements(
+            connection,
+            `UPDATE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('users')}
+                SET ${quoteIdentifier('permission_mode')} = ?, ${quoteIdentifier('permissions')} = ?
+              WHERE ${quoteIdentifier('user_id')} = ?`,
+            [permissions.length > 0 ? 'custom' : 'inherit', JSON.stringify(permissions), user.user_id]
+        );
+    }
 }
 
 export async function inspectRequiredTenantSchemaTables(connection, tenantDb) {
@@ -3616,6 +3676,9 @@ export async function reconcileTenantSchema(connection, tenantDb, mode) {
         for (const repair of columnRepairSql) {
             await useTenantDb();
             await connection.query(repair.sql);
+        }
+        if (missingColumns.some((entry) => entry.table === 'users' && entry.column === 'permission_mode')) {
+            await backfillTenantUserPermissionMode(connection, tenantDb);
         }
         if (missingColumns.some((entry) => (
             entry.table === 'item_folders' && entry.column === 'sort_order'

@@ -15,6 +15,7 @@ import {
   REQUIRED_TENANT_SCHEMA_TABLES,
   TENANT_SCHEMA_CAPABILITY_VERSION,
   buildTenantSchemaEnumRepairSql,
+  backfillTenantUserPermissionMode,
   backfillItemFolderSortOrder,
   repairItemFolderCategoryLifecycleSchema,
   repairPosParkedSaleOriginOwnership,
@@ -41,6 +42,40 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions).toHaveProperty('payment_timing');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions.payment_timing.sql)
       .toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
+  });
+
+  it('registers tenant-local permission mode repair for the RBAC contract', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.users.permission_mode.sql)
+      .toContain("`permission_mode` VARCHAR(16) NOT NULL DEFAULT 'inherit'");
+  });
+
+  it('backfills tenant permission mode without dropping explicit grants', async () => {
+    const connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce([[
+          { user_id: 7, permissions: '["pos:shift_close"]' },
+          { user_id: 8, permissions: [] }
+        ], {}])
+        .mockResolvedValue([[], {}])
+    };
+
+    await backfillTenantUserPermissionMode(connection, 'sku_tenant_test');
+
+    expect(connection.query).toHaveBeenNthCalledWith(
+      1,
+      'SELECT `user_id`, `permissions`\n           FROM `sku_tenant_test`.`users`',
+      []
+    );
+    expect(connection.query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE `sku_tenant_test`.`users`\n                SET `permission_mode` = ?, `permissions` = ?\n              WHERE `user_id` = ?',
+      ['custom', '["pos:shift_close","pos:shift_access","pos:view"]', 7]
+    );
+    expect(connection.query).toHaveBeenNthCalledWith(
+      3,
+      'UPDATE `sku_tenant_test`.`users`\n                SET `permission_mode` = ?, `permissions` = ?\n              WHERE `user_id` = ?',
+      ['inherit', '[]', 8]
+    );
   });
 
   it('backfills existing category order deterministically', async () => {
@@ -192,7 +227,7 @@ describe('tenant schema sync script contracts', () => {
   it('repairs the tenant-local storefront QR table and records the schema capability version', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.storefront_qr_codes;
 
-    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-15.1');
+    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-22.1');
     expect(table.sql).toContain('CREATE TABLE `storefront_qr_codes`');
     expect(table.sql).toContain('`public_token` VARCHAR(64) NOT NULL');
     expect(table.sql).toContain('UNIQUE KEY `uq_storefront_qr_codes_public_token`');

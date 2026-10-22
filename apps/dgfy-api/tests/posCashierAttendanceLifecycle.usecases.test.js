@@ -90,7 +90,9 @@ const user = (userId, role = 'cashier') => ({
     username: `cashier-${userId}`,
     email: `cashier-${userId}@example.com`,
     role,
-    permissions: role === 'manager' ? ['pos:attendance:manage'] : ['pos:attendance:operate']
+    permissions: role === 'manager'
+        ? ['pos:attendance:view', 'pos:attendance:manage']
+        : ['pos:attendance:view', 'pos:attendance:operate']
 });
 
 describe('POS cashier attendance and break lifecycle', () => {

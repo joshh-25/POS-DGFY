@@ -214,6 +214,7 @@ export const registerUser = async (userData) => {
     password_hash,
     role,
     permissions: defaultPermissions,
+    permission_mode: 'custom',
     is_active: true
   });
 
@@ -235,6 +236,7 @@ export const registerUser = async (userData) => {
     phone_number: user.phone_number || null,
     role: user.role,
     permissions: resolveEffectivePermissions(user),
+    permission_mode: user.permission_mode || 'inherit',
     is_master_admin: user.is_master_admin || false
   };
 };
@@ -339,6 +341,7 @@ export const loginUser = async (email, password, options = {}) => {
     phone_number: user.phone_number || null,
     role: user.role,
     permissions: resolveEffectivePermissions(user),
+    permission_mode: user.permission_mode || 'inherit',
     is_master_admin: user.is_master_admin || false,
     dgfy_link_status: dgfyLinkStatus.dgfy_link_status,
     legacy_grace_expires_at: dgfyLinkStatus.legacy_grace_expires_at,
