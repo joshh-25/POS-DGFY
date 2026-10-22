@@ -83,7 +83,7 @@ export function FnbTrackingRoutePage({
       placed: isPickup ? 'Your pickup order has been received and is being confirmed by the store.' : "We've received your order and it's being confirmed by the store.",
       confirmed: isPickup ? 'The store has confirmed your order and is preparing it with care.' : 'Your order is confirmed and queued for preparation.',
       preparing: isPickup ? 'Good things take time! Your order is being prepared fresh by our team.' : 'The store is currently preparing your order.',
-      ready_for_rider: 'Your order is ready and waiting for a rider.',
+      ready_for_rider: 'Your order is ready and waiting for the courier to pick it up.',
       out_for_delivery: 'Your rider is on the way with your order.',
       ready_for_pickup: 'Great news! Your order is ready to go. Head to the counter and show your PIN to claim your order.',
       completed: isPickup ? 'Your order has been picked up successfully.' : 'Your order has been delivered successfully.',

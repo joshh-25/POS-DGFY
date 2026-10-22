@@ -29,7 +29,7 @@ export const FULFILLMENT_STATUS_LABELS = Object.freeze({
   confirmed: 'Confirmed',
   preparing: 'Preparing',
   packed: 'Packed',
-  ready_for_rider: 'Waiting for rider',
+  ready_for_rider: 'Ready for pickup',
   ready_for_pickup: 'Ready for pickup',
   out_for_delivery: 'Out for delivery',
   completed: 'Completed',

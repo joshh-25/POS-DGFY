@@ -30945,7 +30945,25 @@ Phase 532. No explicit dependency.
 
 Phase 533. No explicit dependency.
 
-## Phase 533 - OPIS/POS RBAC remediation and button-level enforcement
+## Phase 533 - Direct delivery customer tracking labels (#2703)
+
+- **Initiative / release:** Manual direct delivery Wave 2 / next develop promotion.
+- **Objective / scope:** Label `ready_for_rider` as Ready for pickup across Storefront, API tracking status, and POS; omit Confirmed from customer timelines and keep Order placed active until preparation begins. No status, enum, or server transition changes.
+- **Status:** in_progress.
+- **Dependencies:** None explicit. Phase 528 (#2667) is merged on `develop`; Phase 532 has no dependency that blocks this work.
+- **Acceptance and validation evidence:** #2703; update Storefront timeline contracts, API tracking label assertion, POS fulfillment label assertion, required Storefront/POS builds, API syntax check, compliance check, and app-version floor check in the PR.
+- **Contracts / ADR / implementation:** [ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md), [POS Manual Delivery Workflow](POS_MANUAL_DELIVERY_WORKFLOW.md), [API specification](../api/specification.md), `apps/dgfy-storefront/src/shared/tracking/directDeliveryTimeline.js`, `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`, and `packages/web-core/src/features/pos/components/orderFulfillmentUi.js`.
+
+### Post-merge verification
+
+- [ ] STAGING: verify delivery, pickup, takeout, and dine-in customer timelines omit Confirmed and show the intended active step; blocks #2703 acceptance.
+- [ ] STAGING: verify `ready_for_rider` shows Ready for pickup in Storefront, tracking API, and POS while the courier guidance remains visible; blocks #2703 acceptance.
+
+### Next phase number
+
+Phase 534. No explicit dependency.
+
+## Phase 534 - OPIS/POS RBAC remediation and button-level enforcement
 
 ### Initiative and release
 
@@ -31036,7 +31054,7 @@ Not complete. Set only after authenticated runtime and deployed-environment evid
 - [ ] verify cache invalidation, audit records, and session behavior after permission changes without
       forcing a user back to login unexpectedly.
 
-## Phase 534 - OPIS/POS navigation parity and server-projected Services access
+## Phase 535 - OPIS/POS navigation parity and server-projected Services access
 
 ### Initiative and release
 
@@ -31135,4 +31153,4 @@ Not complete. Set only after the scoped implementation and named validation evid
 
 ### Next phase number
 
-Phase 535. No explicit dependency.
+Phase 536. No explicit dependency.
