@@ -190,7 +190,8 @@ export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({
     inventoryCommandService: inventoryStockCommandService,
     commerceOrderLifecycleUseCase: commerceOrderLifecycleUseCaseLazy,
     voucherRepository,
-    reverseVoucherRedemptionUseCase
+    reverseVoucherRedemptionUseCase,
+    cancelOrderDeliveryJob: storeRepository.cancelDeliveryJobForOrder
 });
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
 export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({

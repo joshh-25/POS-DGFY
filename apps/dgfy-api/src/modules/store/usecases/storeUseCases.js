@@ -6317,9 +6317,11 @@ export const buildCancelStoreOrderUseCase = ({
     // existing test that builds this use case without it keeps its behavior verbatim
     // (same reasoning as commerceOrderLifecycleUseCase/voucherRepository above);
     // store/index.js wires the real command service.
-    inventoryCommandService = null
+    inventoryCommandService = null,
+    cancelOrderDeliveryJob = null,
+    activityRecorder = recordDgfyOrderActivity
 }) => {
-    return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
+    return async ({ trackingPin, tenantId, storeCustomer = null, payload = {}, auditContext = {} }) => {
         let normalizedTrackingPin = null;
         const transaction = await storeRepository.beginTransaction();
 
@@ -6455,9 +6457,54 @@ export const buildCancelStoreOrderUseCase = ({
                 ...(inventoryReversedAt ? { inventory_reversed_at: inventoryReversedAt } : {})
             }, { transaction });
 
+            const actorUsername = normalizedStoreCustomerId
+                ? `store_customer:${normalizedStoreCustomerId}`
+                : 'store_guest';
+            const channel = payload?.channel === 'dgfy_account' ? 'dgfy_account' : 'storefront';
+            if (cancelOrderDeliveryJob) {
+                const cancelledJob = await cancelOrderDeliveryJob(existing.pos_transaction_id, { transaction });
+                if (cancelledJob) {
+                    await storeRepository.createAuditLog({
+                        user_id: null,
+                        actor_username: actorUsername,
+                        entity_type: 'delivery_job',
+                        entity_id: cancelledJob.delivery_job_id,
+                        action: 'UPDATE',
+                        location_id: existing.location_id,
+                        request_id: auditContext.requestId || null,
+                        changes: {
+                            event: 'delivery_job_cancelled_with_order',
+                            pos_transaction_id: existing.pos_transaction_id,
+                            from: cancelledJob.from,
+                            to: 'cancelled',
+                            initiated_by: 'customer',
+                            channel
+                        }
+                    }, { transaction });
+                }
+            }
+            await storeRepository.createAuditLog({
+                user_id: null,
+                actor_username: actorUsername,
+                entity_type: 'pos_transaction',
+                entity_id: existing.pos_transaction_id,
+                action: 'UPDATE',
+                location_id: existing.location_id,
+                request_id: auditContext.requestId || null,
+                changes: {
+                    event: 'online_order_status_changed',
+                    from: existing.fulfillment_status,
+                    to: 'cancelled',
+                    order_method: existing.order_method,
+                    reason: null,
+                    initiated_by: 'customer',
+                    channel
+                }
+            }, { transaction });
+
             const updated = await storeRepository.getOrderByTrackingPin(normalizedTrackingPin, { transaction });
             await transaction.commit();
-            await recordDgfyOrderActivity({
+            await activityRecorder({
                 tenantId: normalizedTenantId,
                 order: updated,
                 storeCustomer

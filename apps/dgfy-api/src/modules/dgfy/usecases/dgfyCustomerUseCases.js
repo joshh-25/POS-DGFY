@@ -1073,7 +1073,11 @@ export const buildTrackDgfyCustomerReferenceUseCase = ({
     }
 };
 
-export const buildCancelDgfyCustomerOrderUseCase = ({ repository = dgfyCustomerRepository } = {}) => async ({ account, reference }) => {
+export const buildCancelDgfyCustomerOrderUseCase = ({
+    repository = dgfyCustomerRepository,
+    withTenantContextFn = withTenantContext,
+    cancelStoreOrder = async (input) => (await import('../../store/index.js')).cancelStoreOrderUseCase(input)
+} = {}) => async ({ account, reference, auditContext = {} }) => {
     try {
         const dgfyAccount = ensureAccount(account);
         const activity = await repository.findActivityForAccount({ dgfyAccountId: dgfyAccount.id, reference });
@@ -1084,7 +1088,7 @@ export const buildCancelDgfyCustomerOrderUseCase = ({ repository = dgfyCustomerR
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Order is not linked to this account.', { statusCode: 403 });
         }
 
-        const updated = await withTenantContext(activity.tenant_id, async () => {
+        const cancelResult = await withTenantContextFn(activity.tenant_id, async () => {
             const PosTransaction = dbStore.get('PosTransaction');
             const row = await PosTransaction.findOne({ where: { tracking_pin: activity.reference } });
             if (!row) {
@@ -1096,22 +1100,26 @@ export const buildCancelDgfyCustomerOrderUseCase = ({ repository = dgfyCustomerR
             if (!['placed', 'confirmed'].includes(row.fulfillment_status)) {
                 throw new DomainError(DomainErrorCode.CONFLICT, 'Order can only be cancelled before preparing.', { statusCode: 409 });
             }
-            await row.update({ fulfillment_status: 'cancelled' });
-            return row.reload();
+            return cancelStoreOrder({
+                trackingPin: activity.reference,
+                tenantId: activity.tenant_id,
+                storeCustomer: {
+                    customer_id: activity.store_customer_id,
+                    dgfy_account_id: dgfyAccount.id,
+                    email: activity.customer_email,
+                    phone: activity.customer_phone
+                },
+                payload: { channel: 'dgfy_account' },
+                auditContext
+            });
         });
-
-        const synced = await recordDgfyOrderActivity({
-            tenantId: activity.tenant_id,
-            order: updated,
-            storeCustomer: {
-                customer_id: activity.store_customer_id,
-                dgfy_account_id: dgfyAccount.id,
-                email: activity.customer_email,
-                phone: activity.customer_phone
-            }
+        if (!cancelResult.success) return cancelResult;
+        const synced = await repository.findActivityForAccount({ dgfyAccountId: dgfyAccount.id, reference });
+        return ok({
+            activity: publicActivity(synced || activity),
+            payment_lifecycle: cancelResult.data?.payment_lifecycle,
+            voucher_reversal: cancelResult.data?.voucher_reversal
         });
-
-        return ok({ activity: publicActivity(synced || activity) });
     } catch (error) {
         return fail(mapError(error, 'Failed to cancel DGFY customer order'));
     }

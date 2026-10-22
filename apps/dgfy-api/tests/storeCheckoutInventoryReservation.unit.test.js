@@ -19,6 +19,7 @@ describe('storefront inventory reservation integration', () => {
     };
     const repository = {
       beginTransaction: jest.fn().mockResolvedValue(transaction),
+      createAuditLog: jest.fn().mockResolvedValue({}),
       findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
       findLocationById: jest.fn().mockResolvedValue({
         location_id: 4,
@@ -114,6 +115,7 @@ describe('storefront inventory reservation integration', () => {
     };
     const repository = {
       beginTransaction: jest.fn().mockResolvedValue(transaction),
+      createAuditLog: jest.fn().mockResolvedValue({}),
       getOrderByTrackingPin: jest.fn()
         .mockResolvedValueOnce(order)
         .mockResolvedValueOnce({ ...order, fulfillment_status: 'cancelled' }),
