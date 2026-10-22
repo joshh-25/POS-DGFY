@@ -24,6 +24,8 @@ import {
     getSettingsWriteFailureMessage
 } from '../utils/settingsWorkspaceModel.js';
 
+import { DOWNPAYMENT_UNAVAILABLE_MESSAGE } from '@/src/utils/tenantCapabilityMessages.js';
+
 const formatDisplayMoney = (value) => `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const noop = () => {};
 
@@ -89,6 +91,7 @@ export default function DownpaymentSettingsPanel({
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState(createDefaultDownpaymentForm());
+    const [downpaymentAllowed, setDownpaymentAllowed] = useState(false);
     const [settingsUpdatedAt, setSettingsUpdatedAt] = useState(null);
     const [validationErrors, setValidationErrors] = useState([]);
     const [sampleTotalPesos, setSampleTotalPesos] = useState('1000');
@@ -185,6 +188,7 @@ export default function DownpaymentSettingsPanel({
         try {
             const settings = await fetchDownpaymentSettings();
             setForm(settingsToForm(settings));
+            setDownpaymentAllowed(settings.platform_downpayment_allowed === true);
             setSettingsUpdatedAt(getSettingsUpdatedAt(settings));
             onDirtyChange(false);
         } catch (err) {
@@ -204,7 +208,7 @@ export default function DownpaymentSettingsPanel({
         onDirtyChange(true);
     };
 
-    const splitConfigurable = isSplitConfigurable(form.payment_mode);
+    const splitConfigurable = downpaymentAllowed && isSplitConfigurable(form.payment_mode);
     const isCustomerChoice = form.payment_mode === 'customer_choice';
     const branchSelectionIsFixed = locked || Boolean(normalizedLocationScopeId);
     const branchSelectionIsUnavailable = dineInPolicyLoading || locationRows.length === 0;
@@ -220,7 +224,7 @@ export default function DownpaymentSettingsPanel({
     const fieldErrorFor = (field) => validationErrors.find((entry) => entry.field === field)?.message;
 
     const handleSave = async () => {
-        if (!canManage) return;
+        if (!canManage || locked || !downpaymentAllowed) return;
         const errors = validateDownpaymentForm(form);
         setValidationErrors(errors);
         if (errors.length > 0) {
@@ -237,6 +241,7 @@ export default function DownpaymentSettingsPanel({
             if (settingsUpdatedAt) payload.expected_updated_at = settingsUpdatedAt;
             const updated = await updateDownpaymentSettings(payload);
             setForm(settingsToForm(updated));
+            setDownpaymentAllowed(updated.platform_downpayment_allowed === true);
             setSettingsUpdatedAt(getSettingsUpdatedAt(updated));
             onDirtyChange(false);
             await onSaved?.();
@@ -279,6 +284,13 @@ export default function DownpaymentSettingsPanel({
 
     return (
         <div id={sectionId} className="space-y-4">
+            {!downpaymentAllowed ? (
+                <div role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                    <h2 className="font-bold">Downpayment unavailable</h2>
+                    <p>{DOWNPAYMENT_UNAVAILABLE_MESSAGE}</p>
+                    {form.payment_mode !== 'full_payment' && <p>New checkouts use full payment. Existing partially paid orders keep their payment terms.</p>}
+                </div>
+            ) : (
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
                 <div className="flex items-start gap-2">
                     <CircleDollarSign className="mt-0.5 h-5 w-5 text-[#1A4E8D]" />
@@ -318,6 +330,7 @@ export default function DownpaymentSettingsPanel({
                 </div>
             </div>
 
+            )}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70" aria-labelledby="dine-in-payment-policy-heading">
                 <div className="flex items-start gap-2">
                     <MapPin className="mt-0.5 h-5 w-5 text-[#1A4E8D]" />
@@ -360,7 +373,7 @@ export default function DownpaymentSettingsPanel({
                     <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3">
                         <div>
                             <span className="text-sm font-bold text-slate-900">Allow Pay in Store for Dine In</span>
-                            <p className="text-xs text-slate-500">When off, Dine In accepts only online full payment or an online downpayment.</p>
+                            <p className="text-xs text-slate-500">{downpaymentAllowed ? 'When off, Dine In accepts only online full payment or an online downpayment.' : 'When off, Dine In accepts only online full payment.'}</p>
                         </div>
                         <Switch
                             aria-label="Allow Pay in Store for Dine In"
@@ -535,7 +548,7 @@ export default function DownpaymentSettingsPanel({
                 </div>
             )}
 
-            {!canManage && (
+            {downpaymentAllowed && !canManage && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                     You can view downpayment settings but can&apos;t change them. Ask an admin for the
                     <code className="mx-1 rounded bg-amber-100 px-1">downpayment:settings</code>
@@ -543,11 +556,11 @@ export default function DownpaymentSettingsPanel({
                 </p>
             )}
 
-            <div className="flex justify-end">
+            {downpaymentAllowed && <div className="flex justify-end">
                 <Button type="button" disabled={locked || !canManage || saving} onClick={handleSave}>
                     <Save className="mr-2 h-4 w-4" /> {saving ? 'Saving…' : 'Save'}
                 </Button>
-            </div>
+            </div>}
         </div>
     );
 }

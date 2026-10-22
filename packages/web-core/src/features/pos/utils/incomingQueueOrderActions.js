@@ -9,7 +9,8 @@ import {
   getNextDeliveryJobStatus,
   getNextStatusActions,
   isManualDeliveryJob,
-  hasCompleteDeliveryAssignment
+  hasCompleteDeliveryAssignment,
+  getDirectDeliveryActionModel
 } from '../components/orderFulfillmentUi.js';
 import { getActiveRunMembership } from './deliveryRunEligibility.js';
 
@@ -87,14 +88,14 @@ export function buildIncomingQueueOrderActions(order = {}, {
   // rather than threaded through `deps`, so card and table can never drift on eligibility.
   const canCollectDineInPayment = order.order_method === 'dine_in'
     && order.payment_status === 'unpaid'
+    && order.payment_timing === 'on_dine_in'
     && order.fulfillment_status === 'ready_for_pickup';
   const canCollectCash = order.order_method !== 'dine_in'
     && order.payment_type === 'cash'
     && order.payment_status === 'unpaid'
     && (
-      (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
-      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
-      || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
+      (order.order_method === 'pickup' && order.payment_timing === 'on_pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'delivery' && order.payment_timing === 'on_delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   const orderBalanceDue = Number(order.balance_due || 0);
   const canSettleBalance = order.payment_status === 'partially_paid'
@@ -111,8 +112,36 @@ export function buildIncomingQueueOrderActions(order = {}, {
   const activeRunMembership = getActiveRunMembership(order);
 
   const buttons = [];
+  const directActions = getDirectDeliveryActionModel(order, {
+    actionLoading, workflowMode, canTransactPos, locked, isOnline, hasActiveShift
+  });
+  if (directActions) {
+    const renderDirectAction = (item, primary = false) => React.createElement(
+      'span', { key: `direct-${item.id}`, className: primary ? 'inline-flex flex-col gap-1' : undefined },
+      React.createElement(Button, {
+        type: 'button', size: 'sm',
+        variant: item.id === 'fail' || item.id === 'reject' ? 'destructive' : primary ? 'default' : 'outline',
+        disabled: Boolean(item.disabledReason),
+        title: item.disabledReason || undefined,
+        onClick: () => {
+          const orderId = order.pos_transaction_id;
+          if (item.id === 'reject' || item.id === 'fail') onRequestRejection(Number(orderId));
+          else if (item.id === 'pickup') handleDeliveryJobStatusChange?.(orderId, 'picked_up');
+          else if (item.id === 'complete') handleIncomingOrderStatusChange?.(orderId, 'delivery_complete');
+          else handleIncomingOrderStatusChange?.(orderId, {
+            confirm: 'confirmed', prepare: 'preparing', ready: 'ready_for_rider', pack: 'packed'
+          }[item.id]);
+        }
+      }, item.label),
+      primary && item.disabledReason
+        ? React.createElement('span', { className: 'text-xs text-amber-700' }, item.disabledReason)
+        : null
+    );
+    if (directActions.primary) buttons.push(renderDirectAction(directActions.primary, true));
+    directActions.secondary.forEach((item) => buttons.push(renderDirectAction(item)));
+  }
 
-  if (canCollectDineInPayment || canCollectCash) {
+  if (!directActions && (canCollectDineInPayment || canCollectCash)) {
     buttons.push(
       React.createElement(
         Button,
@@ -131,7 +160,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
     );
   }
 
-  if (canSettleBalance) {
+  if (!directActions && canSettleBalance) {
     buttons.push(
       React.createElement(
         Button,
@@ -169,7 +198,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
     );
   }
 
-  if (nextDeliveryJobStatus && nextDeliveryJobStatus !== 'assigned' && manualDeliveryJob && hasDeliveryAssignment) {
+  if (!directActions && nextDeliveryJobStatus && nextDeliveryJobStatus !== 'assigned' && manualDeliveryJob && hasDeliveryAssignment) {
     const deliveryJobActionKey = `delivery-job:${nextDeliveryJobStatus}`;
     buttons.push(
       React.createElement(
@@ -188,7 +217,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
     );
   }
 
-  nextActions.forEach((status) => {
+  if (!directActions) nextActions.forEach((status) => {
     // Scoped to `out_for_delivery` only: gating the whole nextActions array would also disable
     // `packed`, deadlocking the run's own DELIVERY_RUN_UNPACKED_MEMBERS dispatch precondition
     // (#1272).

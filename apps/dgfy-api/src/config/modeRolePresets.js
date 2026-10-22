@@ -673,12 +673,12 @@ const MODE_ROLE_PRESETS = Object.freeze({
 // VOUCHERS (#655) is listed alongside SYSTEM in every mode -- vouchers, like tenant settings, are a
 // general merchant-admin capability, not mode-specific the way FNB/HOSPITALITY/SERVICES are.
 const PERMISSION_GROUP_VISIBILITY = Object.freeze({
-  msme: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
-  generic: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
-  food_manufacturing: ['INVENTORY', 'SUPPLIERS', 'ORDERS', 'DISPATCH', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
-  services: ['INVENTORY', 'SUPPLIERS', 'SERVICES', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
-  fnb: ['INVENTORY', 'SUPPLIERS', 'FNB', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
-  hospitality: ['INVENTORY', 'SUPPLIERS', 'HOSPITALITY', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS']
+  msme: ['INVENTORY', 'SUPPLIERS', 'POS', 'STAFF_FULFILLMENT', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  generic: ['INVENTORY', 'SUPPLIERS', 'POS', 'STAFF_FULFILLMENT', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  food_manufacturing: ['INVENTORY', 'SUPPLIERS', 'ORDERS', 'DISPATCH', 'POS', 'STAFF_FULFILLMENT', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  services: ['INVENTORY', 'SUPPLIERS', 'SERVICES', 'POS', 'STAFF_FULFILLMENT', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  fnb: ['INVENTORY', 'SUPPLIERS', 'FNB', 'POS', 'STAFF_FULFILLMENT', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS'],
+  hospitality: ['INVENTORY', 'SUPPLIERS', 'HOSPITALITY', 'POS', 'STAFF_FULFILLMENT', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS']
 });
 
 // Bumped for #1493 (Phase 263): every mode family gained an `*_accounting` preset, and

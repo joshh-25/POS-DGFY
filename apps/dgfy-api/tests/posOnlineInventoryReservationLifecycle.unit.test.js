@@ -38,6 +38,7 @@ const buildUseCase = ({ order, nextStatus, reservationService: reservationServic
     ...(inventoryCommandServiceInput || {})
   };
   const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
     findOpenTerminalShift: jest.fn().mockResolvedValue({
       pos_terminal_shift_id: 9,
       cashier_id: 7,
@@ -264,6 +265,7 @@ describe('POS online confirmation-time inventory issue', () => {
       convertOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'converted' })
     };
     const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
       findOpenTerminalShift: jest.fn().mockResolvedValue({
         pos_terminal_shift_id: 9,
         cashier_id: 7,

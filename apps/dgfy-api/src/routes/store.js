@@ -22,6 +22,7 @@ import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
 import { setReadCacheControl, setNoStoreCacheControl } from '../middleware/cachePolicy.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
+import { requireStorefrontVisible } from '../middleware/requireStorefrontVisible.js';
 import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 import {
     validateStoreRegister,
@@ -86,6 +87,7 @@ router.use(requireTenantContext);
 // the capability real so a Store Profile that can subtract modules has a
 // working off-switch for the whole public storefront surface.
 router.use(requireWorkflowCapability('storefront', 'Online Store'));
+router.use(requireStorefrontVisible());
 const catalogReadCacheControl = setReadCacheControl({
     maxAgeSeconds: 45,
     sMaxAgeSeconds: 45,

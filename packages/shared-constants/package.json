@@ -17,6 +17,10 @@
       "import": "./src/orderMethods.js",
       "default": "./src/orderMethods.js"
     },
+    "./orderFulfillmentStatuses": {
+      "import": "./src/orderFulfillmentStatuses.js",
+      "default": "./src/orderFulfillmentStatuses.js"
+    },
     "./capabilityModules": {
       "import": "./src/capabilityModules.js",
       "default": "./src/capabilityModules.js"
@@ -60,6 +64,10 @@
     "./permissionDependencies": {
       "import": "./src/permissionDependencies.js",
       "default": "./src/permissionDependencies.js"
+    },
+    "./fulfillmentStaffRoleTemplates": {
+      "import": "./src/fulfillmentStaffRoleTemplates.js",
+      "default": "./src/fulfillmentStaffRoleTemplates.js"
     },
     "./coverPhotoTransform": {
       "import": "./src/coverPhotoTransform.js",

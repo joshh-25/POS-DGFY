@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildTenantCapabilityNoticeFromSettings,
-  getStorefrontAccessModeMessage
+  getStorefrontAccessModeMessage,
+  STORE_VISIBILITY_EDIT_LOCKED_MESSAGE
 } from '../tenantCapabilityMessages.js';
 
 describe('tenant capability messages', () => {
+  it('explains who can restore merchant visibility editing', () => {
+    expect(STORE_VISIBILITY_EDIT_LOCKED_MESSAGE).toContain('Platform Admin');
+    expect(STORE_VISIBILITY_EDIT_LOCKED_MESSAGE).toContain('change it');
+  });
   it('builds IMS disabled status from settings payloads', () => {
     expect(buildTenantCapabilityNoticeFromSettings({
       tenant_ims_enabled: { value: false }

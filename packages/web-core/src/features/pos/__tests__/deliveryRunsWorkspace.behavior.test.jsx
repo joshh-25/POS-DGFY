@@ -132,6 +132,59 @@ describe('Delivery Runs tab visibility', () => {
 });
 
 describe('Creating a delivery run', () => {
+  it('adds a newly staffed run to the target picker without remounting the Orders workspace', async () => {
+    let created = false;
+    const run = {
+      delivery_run_id: 501,
+      label: 'Aklan Route',
+      status: 'draft',
+      location_id: 10,
+      scheduled_date: '2026-10-28',
+      notes: '',
+      personnel: [],
+      members: [],
+      member_count: 0
+    };
+    fetchDeliveryRuns.mockImplementation(async () => ({
+      items: created ? [run] : [],
+      pagination: { total: created ? 1 : 0, page: 1, limit: 100 }
+    }));
+    fetchDeliveryRun.mockImplementation(async () => run);
+    createDeliveryRun.mockImplementation(async () => { created = true; return run; });
+    setDeliveryRunPersonnel.mockImplementation(async () => {
+      run.personnel = [{ delivery_run_personnel_id: 1, delivery_personnel_name: 'Rider A', is_accountable: true }];
+      return { run };
+    });
+    const order = {
+      pos_transaction_id: 9001,
+      invoice_number: 'INV-9001',
+      order_method: 'delivery',
+      location_id: 10,
+      fulfillment_status: 'preparing',
+      deliveryJob: { provider: 'manual', status: 'pending_dispatch', delivery_run_id: null }
+    };
+    render(<IncomingQueueWorkspace {...baseProps({
+      queueLocationScopeId: 10,
+      shiftState: { shift: { shift_id: 1, location_id: 10 } },
+      incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
+    })} />);
+    await openDeliveryRunsTab();
+    fireEvent.click(await screen.findByRole('button', { name: /New run/i }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByPlaceholderText(/Afternoon Batch 1/i), { target: { value: 'Aklan Route' } });
+    fireEvent.change(dialog.querySelector('input[type="date"]'), { target: { value: '2026-10-28' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Create run/i }));
+    await waitFor(() => expect(createDeliveryRun).toHaveBeenCalledWith(expect.objectContaining({ location_id: 10 })));
+    await screen.findByText('Run personnel');
+    fireEvent.change(screen.getByPlaceholderText('Pick a registered rider or type a name'), { target: { value: 'Rider A' } });
+    fireEvent.click(screen.getByRole('radio'));
+    fireEvent.click(screen.getByRole('button', { name: /Save personnel/i }));
+    await waitFor(() => expect(setDeliveryRunPersonnel).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('tab', { name: /Active Queue/i }));
+    const picker = await screen.findByLabelText('Target delivery run');
+    await waitFor(() => expect(within(picker).getByRole('option', { name: 'Aklan Route · Oct 28' })).toBeTruthy());
+  });
+
   it('sends the typed label and scheduled date to createDeliveryRun', async () => {
     createDeliveryRun.mockResolvedValue({ delivery_run_id: 501 });
     render(<IncomingQueueWorkspace {...baseProps()} />);

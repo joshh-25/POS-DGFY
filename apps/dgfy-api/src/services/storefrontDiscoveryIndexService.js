@@ -1009,7 +1009,7 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
 // this has no tenant DB to read from — every field comes from the master-admin
 // supplied payload, and there is no Tenant row, tenant_id, or company_token to
 // anchor it to (ADR 0037's Axis 3 "external listing" tier).
-const buildExternalListingSnapshot = (payload = {}) => {
+export const buildExternalListingSnapshot = (payload = {}) => {
     const now = new Date();
     return {
         tenant_id: null,
@@ -1018,6 +1018,9 @@ const buildExternalListingSnapshot = (payload = {}) => {
         entity_type: 'external_listing',
         external_provider: payload.external_provider ? toTrimmedString(payload.external_provider, 60) : null,
         external_reference_id: payload.external_reference_id ? toTrimmedString(payload.external_reference_id, 120) : null,
+        external_record_origin: ['event_seed', 'manual'].includes(payload.external_record_origin)
+            ? payload.external_record_origin
+            : null,
         external_storefront_url: normalizeExternalHttpUrl(payload.external_storefront_url, 500),
         slug: normalizeSlug(payload.slug),
         affiliate_slug: null,
@@ -1072,9 +1075,17 @@ export const upsertExternalStorefrontListing = async ({ slug, payload = {} } = {
     if (existing && existing.entity_type !== 'external_listing') {
         return { status: 'conflict', reason: 'slug_belongs_to_native_store', slug: normalizedSlug };
     }
+    if (existing && existing.external_record_origin) {
+        return { status: 'managed_conflict', reason: 'managed_by_external_discovery_admin', slug: normalizedSlug };
+    }
 
     const snapshot = buildExternalListingSnapshot({ ...payload, slug: normalizedSlug });
-    await StorefrontDiscoveryIndex.destroy({ where: { slug: normalizedSlug, entity_type: 'external_listing' } });
+    const removed = await StorefrontDiscoveryIndex.destroy({
+        where: { slug: normalizedSlug, entity_type: 'external_listing', external_record_origin: null }
+    });
+    if (existing && removed === 0) {
+        return { status: 'managed_conflict', reason: 'managed_by_external_discovery_admin', slug: normalizedSlug };
+    }
     const created = await StorefrontDiscoveryIndex.create(snapshot);
     bumpStorefrontDiscoveryCacheVersion();
     invalidateStorefrontDiscoverySharedSignatureCache();
@@ -1092,8 +1103,13 @@ export const removeExternalStorefrontListing = async ({ slug } = {}) => {
         return { status: 'skipped', reason: 'missing_slug' };
     }
 
+    const existing = await StorefrontDiscoveryIndex.findOne({ where: { slug: normalizedSlug, entity_type: 'external_listing' } });
+    if (existing?.external_record_origin) {
+        return { status: 'managed_conflict', reason: 'managed_by_external_discovery_admin', slug: normalizedSlug };
+    }
+
     const deleted = await StorefrontDiscoveryIndex.destroy({
-        where: { slug: normalizedSlug, entity_type: 'external_listing' }
+        where: { slug: normalizedSlug, entity_type: 'external_listing', external_record_origin: null }
     });
     if (deleted > 0) {
         bumpStorefrontDiscoveryCacheVersion();

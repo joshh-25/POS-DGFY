@@ -9,6 +9,7 @@ import {
 import { storefrontDiscoveryLimiter } from '../middleware/rateLimiter.js';
 import { setReadCacheControl } from '../middleware/cachePolicy.js';
 import { authenticate, requireMasterAdmin } from '../middleware/auth.js';
+import { redirectExternalListing } from '../modules/storefrontDiscovery/controllers/externalRedirectHandlers.js';
 
 const router = express.Router();
 const discoveryListCacheControl = setReadCacheControl({
@@ -28,6 +29,7 @@ const discoveryProfileCacheControl = setReadCacheControl({
 
 router.get('/discovery', storefrontDiscoveryLimiter, discoveryListCacheControl, validateStorefrontDiscoveryQuery, storefrontDiscoveryController.listStorefrontDiscovery);
 router.get('/discovery/map-pins', storefrontDiscoveryLimiter, discoveryListCacheControl, validateStorefrontMapPinsQuery, storefrontDiscoveryController.listStorefrontMapPins);
+router.get('/discovery/external/redirect/:slug', storefrontDiscoveryLimiter, redirectExternalListing);
 
 // Master-admin-only write surface for entity_type: 'external_listing' rows — stores
 // that transact on a different platform. Registered before the /discovery/:slug

@@ -88,6 +88,7 @@ import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
 import BusinessAdminAccountActions from './BusinessAdminAccountActions.jsx';
 import ProcessingFeePolicyEditor from './ProcessingFeePolicyEditor.jsx';
 import CanonicalBusinessNameEditor from './CanonicalBusinessNameEditor.jsx';
+import StaffRolesPanel from './StaffRolesPanel.jsx';
 import {
     BACKOFFICE_NAV_GROUPS,
     BACKOFFICE_SECTION_META,
@@ -2344,6 +2345,7 @@ function BusinessAdminSettingsEditor({
         : baseAllowedTabIds;
     const canViewUsers = isMasterAdmin || sectionCapability?.user_view === true || sectionCapability?.user_edit === true;
     const canEditUsers = isMasterAdmin || sectionCapability?.user_edit === true;
+    const canManageStaffRoles = isMasterAdmin || String(bootstrap?.user?.role || '').toLowerCase() === 'admin';
     const hasEmployeeEditor = sectionCapability?.employee_edit === true
         || sectionCapability?.employee_credit_edit === true;
     const canViewActivity = bootstrap?.access?.capabilities?.view_audit === true;
@@ -2444,6 +2446,7 @@ function BusinessAdminSettingsEditor({
                         onDirtyChange={onDirtyChange}
                     />
                 ) : null}
+                {canManageStaffRoles ? <StaffRolesPanel canManage onSaved={notifySettingsSaved} /> : null}
             </div>
         );
     }

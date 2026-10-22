@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import { ALL_ORDER_METHODS, POS_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
+import { ONLINE_FULFILLMENT_STATUSES } from '../modules/shared/constants/orderFulfillmentStatuses.js';
 
 const ORDER_METHODS = POS_ORDER_METHODS;
 const ORDER_METHOD_FILTERS = ALL_ORDER_METHODS;
@@ -37,7 +38,6 @@ const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer',
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
-const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
 const EXPO_PUSH_TOKEN_PATTERN = /^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_\-+.=:/]{8,236}\]$/;
@@ -1092,9 +1092,28 @@ const updateDeliveryJobStatusSchema = Joi.object({
 const assignDeliveryPersonnelSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     delivery_personnel_id: Joi.number().integer().positive().optional(),
-    delivery_personnel_name: Joi.string().trim().min(1).max(255).optional()
-}).or('delivery_personnel_id', 'delivery_personnel_name')
-    .oxor('delivery_personnel_id', 'delivery_personnel_name');
+    delivery_personnel_name: Joi.string().trim().min(1).max(255).optional(),
+    courier_service: Joi.string().valid('own', 'maxim', 'grabexpress', 'lalamove', 'other').optional(),
+    courier_service_name: Joi.string().trim().max(120).allow('', null).optional(),
+    courier_reference: Joi.string().trim().max(120).allow('', null).optional(),
+    tracking_url: Joi.string().trim().max(1000).allow('', null).optional()
+}).oxor('delivery_personnel_id', 'delivery_personnel_name');
+
+const completeDirectDeliverySchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    terminal_id: Joi.string().trim().min(1).max(100).required(),
+    settlement: Joi.object({
+        amount: Joi.number().positive().precision(4).required(),
+        method: Joi.string().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque').required(),
+        manual_payment_received: Joi.boolean().optional(),
+        payment_reference: Joi.string().trim().max(255).allow('', null).optional()
+    }).optional()
+});
+
+const failDirectDeliverySchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    reason: Joi.string().trim().min(3).max(500).required()
+});
 
 // Phase 225 (#1273/#1081): delivery run CRUD + membership schemas.
 const DELIVERY_RUN_UPDATABLE_STATUSES = ['draft', 'scheduled', 'cancelled'];
@@ -1791,6 +1810,8 @@ export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderS
 export const validateUpdateOnlineOrderDeliveryAddress = validateSchema(updateOnlineOrderDeliveryAddressSchema, 'body', 'validatedData');
 export const validateUpdateDeliveryJobStatus = validateSchema(updateDeliveryJobStatusSchema, 'body', 'validatedData');
 export const validateAssignDeliveryPersonnel = validateSchema(assignDeliveryPersonnelSchema, 'body', 'validatedData');
+export const validateCompleteDirectDelivery = validateSchema(completeDirectDeliverySchema, 'body', 'validatedData');
+export const validateFailDirectDelivery = validateSchema(failDirectDeliverySchema, 'body', 'validatedData');
 export const validateDeliveryRunCreate = validateSchema(createDeliveryRunSchema, 'body', 'validatedData');
 export const validateDeliveryRunUpdate = validateSchema(updateDeliveryRunSchema, 'body', 'validatedData');
 export const validateDeliveryRunIdParam = validateSchema(deliveryRunIdParamSchema, 'params', 'validatedParams');

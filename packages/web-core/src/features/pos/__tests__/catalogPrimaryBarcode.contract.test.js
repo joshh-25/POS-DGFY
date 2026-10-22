@@ -11,7 +11,7 @@ describe('POS item catalog barcode loading', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
 
     expect(workspace).toContain('item?.primary_barcode');
-    expect(workspace).toContain("manufacturer_barcode: { code: barcodeSelection.code, scope: 'pos' }");
+    expect(workspace).toContain("manufacturer_barcode: { code: barcodeSelection.code, scope: catalogOnlyAccess ? 'inventory' : 'pos' }");
     expect(workspace).toContain('persistPosItemBarcode({');
     expect(workspace).not.toContain('listItemBarcodes');
     expect(workspace).not.toContain('Promise.allSettled(normalizedItems.map');

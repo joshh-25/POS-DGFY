@@ -156,6 +156,7 @@ describe('buildStoreCheckoutUseCase — downpayment webhook finalization (#822)'
 
   const downpaymentRequiredSettings = () => ({
     tenant_id: TENANT_ID,
+    platform_downpayment_allowed: true,
     payment_mode: 'downpayment_required',
     downpayment_type: 'percentage',
     downpayment_rate_bps: 2000,

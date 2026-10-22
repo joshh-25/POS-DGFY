@@ -5,6 +5,7 @@ import {
   Plus, Save, Settings2, Star, Store, Trash2, Type, Upload, Users
 } from 'lucide-react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { STORE_VISIBILITY_EDIT_LOCKED_MESSAGE } from '../../../utils/tenantCapabilityMessages.js';
 import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -268,9 +269,9 @@ function StoreSetupSummary({
       <div className="grid gap-3 md:grid-cols-2">
         <StorefrontToggle
           label="Storefront visible"
-          description="Controls public storefront visibility from shared tenant settings."
+          description={storefrontForm.storeVisibilityMerchantEditable === false ? STORE_VISIBILITY_EDIT_LOCKED_MESSAGE : 'Controls public storefront visibility from shared tenant settings.'}
           checked={storefrontForm.storeIsVisible === true}
-          disabled={!canInteract}
+          disabled={!canInteract || storefrontForm.storeVisibilityMerchantEditable === false}
           saving={storefrontBooleanState.store_is_visible === 'saving'}
           status={storefrontBooleanState.store_is_visible}
           onChange={(value) => onToggle?.('storeIsVisible', 'store_is_visible', 'Storefront visibility', value)}
@@ -1479,6 +1480,7 @@ export default function PosStorefrontSettingsPane({
   };
 
   const handleToggle = (field, settingKey, label, value) => {
+    if (settingKey === 'store_is_visible' && storefrontForm.storeVisibilityMerchantEditable === false) return;
     const previousValue = storefrontForm?.[field] === true;
     setStorefrontForm((current) => ({ ...current, [field]: value === true }));
     if (field === 'storeHasNoLocation' && value !== true && !hasActivePrimaryStorefrontLocation) {
@@ -1610,9 +1612,9 @@ export default function PosStorefrontSettingsPane({
         <div className="grid gap-3 md:grid-cols-2">
           <StorefrontToggle
             label="Storefront visible"
-            description="Controls public storefront visibility from shared tenant settings."
+            description={storefrontForm.storeVisibilityMerchantEditable === false ? STORE_VISIBILITY_EDIT_LOCKED_MESSAGE : 'Controls public storefront visibility from shared tenant settings.'}
             checked={storefrontForm.storeIsVisible === true}
-            disabled={!canEdit}
+            disabled={!canEdit || storefrontForm.storeVisibilityMerchantEditable === false}
             saving={storefrontBooleanState.store_is_visible === 'saving'}
             status={storefrontBooleanState.store_is_visible}
             onChange={(value) => handleToggle('storeIsVisible', 'store_is_visible', 'Storefront visibility', value)}

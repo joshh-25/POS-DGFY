@@ -112,6 +112,8 @@ import {
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
+    buildCompleteDirectDeliveryOrderUseCase,
+    buildFailDirectDeliveryOrderUseCase,
     buildUpdateOnlineOrderDeliveryAddressUseCase,
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
@@ -542,10 +544,10 @@ export const getDeliveryCompletionEvidenceSignatureUseCase = buildGetDeliveryCom
 });
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
-export const createDeliveryRunUseCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository });
+export const createDeliveryRunUseCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository, posRepository });
 export const listDeliveryRunsUseCase = buildListDeliveryRunsUseCase({ deliveryRunRepository });
 export const getDeliveryRunUseCase = buildGetDeliveryRunUseCase({ deliveryRunRepository });
-export const updateDeliveryRunUseCase = buildUpdateDeliveryRunUseCase({ deliveryRunRepository });
+export const updateDeliveryRunUseCase = buildUpdateDeliveryRunUseCase({ deliveryRunRepository, posRepository });
 export const setDeliveryRunPersonnelUseCase = buildSetDeliveryRunPersonnelUseCase({ posRepository, deliveryRunRepository });
 export const addDeliveryRunMembersUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
 export const removeDeliveryRunMemberUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
@@ -562,6 +564,14 @@ export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCas
     inventoryReservationService,
     commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
 });
+const directDeliveryDependencies = {
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    inventoryReservationService,
+    commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
+};
+export const completeDirectDeliveryOrderUseCase = buildCompleteDirectDeliveryOrderUseCase(directDeliveryDependencies);
+export const failDirectDeliveryOrderUseCase = buildFailDirectDeliveryOrderUseCase(directDeliveryDependencies);
 export const updateOnlineOrderDeliveryAddressUseCase = buildUpdateOnlineOrderDeliveryAddressUseCase({
     posRepository
 });

@@ -67,6 +67,7 @@ describe('POS terminal view-mode contracts', () => {
   let posSettingsWorkspaceContent = '';
   let terminalLocalControlsContent = '';
   let terminalOperationsPanelsContent = '';
+  let incomingQueueOrderActionsContent = '';
   let incomingQueueOrderListContent = '';
   let posTenantSetupModalContent = '';
   let posReportsAnalyticsWorkspaceContent = '';
@@ -104,6 +105,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
       .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
+    incomingQueueOrderActionsContent = readSourceForContract(incomingQueueOrderActionsPath);
     incomingQueueOrderListContent = readSourceForContract(incomingQueueOrderListPath);
     posTenantSetupModalContent = readSourceForContract(posTenantSetupModalPath);
     posReportsAnalyticsWorkspaceContent = readSourceForContract(posReportsAnalyticsWorkspacePath);
@@ -704,9 +706,10 @@ describe('POS terminal view-mode contracts', () => {
       expect(source).not.toContain('Print failed');
       expect(source).not.toContain('Receipt: <span');
     }
-    // Phase 229 (#1289), §2.7: this content moved into IncomingQueueOrderList.jsx's pure extraction.
+    // Phase 230 (#1288): receipt actions moved into the shared action-builder helper used by
+    // both card and table views.
     expect(incomingQueueOrderListContent).toContain('Payment Status');
-    expect(incomingQueueOrderListContent).toContain('Print Receipt');
+    expect(incomingQueueOrderActionsContent).toContain('Print Receipt');
     expect(terminalSidebarPanelContent).toContain('Payment:');
     expect(terminalSidebarPanelContent).toContain('Print Receipt');
   });
@@ -746,10 +749,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('posHardware.printOrderTicket({');
     expect(terminalPageContent).toContain('printOrder = false');
     expect(terminalPageContent).toContain('await printOnlineOrderKitchenTicket(detail);');
-    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
-    expect(incomingQueueOrderListContent).toContain("utilityActions.includes('print_receipt')");
-    expect(incomingQueueOrderListContent).toContain("{ printOrder: true }");
-    expect(incomingQueueOrderListContent).toContain("'Print Order'");
+    // Phase 230 (#1288): receipt and kitchen actions live in the shared action-builder helper.
+    expect(incomingQueueOrderActionsContent).toContain("utilityActions.includes('print_receipt')");
+    expect(incomingQueueOrderActionsContent).toContain("{ printOrder: true }");
+    expect(incomingQueueOrderActionsContent).toContain("'Print Order'");
     expect(terminalSidebarPanelContent).toContain("utilityActions.includes('print_receipt')");
     expect(terminalSidebarPanelContent).toContain("{ printOrder: true }");
     expect(terminalSidebarPanelContent).toContain("'Print Order'");
@@ -758,11 +761,11 @@ describe('POS terminal view-mode contracts', () => {
   it('guards incoming queue receipt action with opening lock and lifecycle guidance copy', () => {
     expect(terminalPageContent).toContain('const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);');
     expect(terminalPageContent).toContain('if (incomingReceiptOpeningId !== null) return;');
-    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
-    expect(incomingQueueOrderListContent).toContain('Opening...');
-    expect(incomingQueueOrderListContent).toContain('Retry Print');
-    expect(incomingQueueOrderListContent).toContain('Print Receipt');
-    expect(incomingQueueOrderListContent).toContain('Reprint Receipt');
+    // Phase 230 (#1288): receipt lifecycle labels live in the shared action-builder helper.
+    expect(incomingQueueOrderActionsContent).toContain('Opening...');
+    expect(incomingQueueOrderActionsContent).toContain('Retry Print');
+    expect(incomingQueueOrderActionsContent).toContain('Print Receipt');
+    expect(incomingQueueOrderActionsContent).toContain('Reprint Receipt');
     expect(terminalPageContent).toContain('retryPrint = false');
     expect(terminalSidebarPanelContent).toContain('Completed or cancelled online orders move to History/Receipt Preview.');
   });

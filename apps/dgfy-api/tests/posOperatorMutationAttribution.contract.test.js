@@ -24,8 +24,11 @@ describe('Phase 160 POS operator mutation attribution contract', () => {
             "'/transactions/:id/cash-refund'",
             "'/orders/:id/collect-cash'",
             "'/orders/:id/collect-dine-in-cash'",
-            "'/orders/:id/record-payment'"
+            "'/orders/:id/record-payment'",
+            "'/orders/:id/delivery/complete'",
+            "'/orders/:id/delivery/fail'"
         ];
+        expect(routes.split('\n').find((line) => line.includes("'/orders/:id/delivery/fail'"))).toContain('requirePairedTerminal');
         protectedFragments.forEach((fragment) => {
             const routeLine = routes.split('\n').find((line) => line.includes(fragment));
             expect(routeLine).toContain('requireActiveOperatorForMutation');

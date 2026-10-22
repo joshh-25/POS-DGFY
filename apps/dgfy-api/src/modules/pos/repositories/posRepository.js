@@ -39,6 +39,7 @@ import {
 } from '../utils/deliveryProviderBreakdown.js';
 import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
 import { resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
+import { ACTIVE_FULFILLMENT_STATUSES } from '../../shared/constants/orderFulfillmentStatuses.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import {
@@ -1219,6 +1220,9 @@ export const buildTransactionInclude = () => ([
             'loading_marked_at',
             'provider',
             'provider_delivery_id',
+            'courier_service',
+            'courier_service_name',
+            'courier_reference',
             'status',
             'delivery_personnel_id',
             'delivery_personnel_name',
@@ -8419,7 +8423,7 @@ export const posRepository = {
         const where = {
             order_source: 'online_store',
             fulfillment_status: {
-                [Op.in]: ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery']
+                [Op.in]: ACTIVE_FULFILLMENT_STATUSES
             }
         };
         if (locationId) {
@@ -8773,6 +8777,10 @@ export const posRepository = {
         await row.update({
             delivery_personnel_id: payload.delivery_personnel_id ?? null,
             delivery_personnel_name: payload.delivery_personnel_name ?? null,
+            ...(Object.hasOwn(payload, 'courier_service') ? { courier_service: payload.courier_service } : {}),
+            ...(Object.hasOwn(payload, 'courier_service_name') ? { courier_service_name: payload.courier_service_name } : {}),
+            ...(Object.hasOwn(payload, 'courier_reference') ? { courier_reference: payload.courier_reference } : {}),
+            ...(Object.hasOwn(payload, 'tracking_url') ? { tracking_url: payload.tracking_url } : {}),
             assigned_by: payload.assigned_by,
             assigned_shift_id: payload.assigned_shift_id,
             assigned_at: payload.assigned_at,

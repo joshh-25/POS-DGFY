@@ -34,6 +34,7 @@ const InvoiceManager = lazy(() => import('../Pages/InvoiceManager.jsx'));
 const PushDiagnostics = lazy(() => import('../Pages/PushDiagnostics.jsx'));
 const PlatformAdminManager = lazy(() => import('../Pages/PlatformAdminManager.jsx'));
 const StoreTemplateManager = lazy(() => import('../Pages/StoreTemplateManager.jsx'));
+const ExternalDiscoveryManager = lazy(() => import('../Pages/ExternalDiscoveryManager.jsx'));
 
 initBrowserSentry({ surface: 'admin' });
 initBrowserAnalytics({ surface: 'admin' });
@@ -99,6 +100,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route path="push-diagnostics" element={<PushDiagnostics />} />
               <Route path="platform-admins" element={<PlatformAdminManager />} />
               <Route path="store-templates" element={<StoreTemplateManager />} />
+              <Route path="external-discovery" element={<ExternalDiscoveryManager />} />
             </Route>
             <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
             <Route path="*" element={<AdminNotFound />} />

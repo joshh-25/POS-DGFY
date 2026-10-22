@@ -4,6 +4,7 @@ import { TenantDownpaymentSettings } from '../../../models/index.js';
 // row yet resolves identically to one with a freshly-created row -- same convention as
 // dgfyAffiliateRepository.js's own DEFAULT_SETTINGS.
 const DEFAULT_SETTINGS = Object.freeze({
+    platform_downpayment_allowed: false,
     payment_mode: 'full_payment',
     downpayment_type: null,
     downpayment_rate_bps: null,
@@ -48,10 +49,22 @@ const assertExpectedVersion = (row, expectedUpdatedAt) => {
 };
 
 export const downpaymentSettingsRepository = {
-    async getSettings(tenantId) {
-        const row = await TenantDownpaymentSettings.findByPk(tenantId);
+    async getSettings(tenantId, options) {
+        const row = options
+            ? await TenantDownpaymentSettings.findByPk(tenantId, options)
+            : await TenantDownpaymentSettings.findByPk(tenantId);
         if (row) return toPlain(row);
         return { tenant_id: tenantId, ...DEFAULT_SETTINGS };
+    },
+
+    async setPlatformAllowance(tenantId, allowed, { transaction } = {}) {
+        const [row] = await TenantDownpaymentSettings.findOrCreate({
+            where: { tenant_id: tenantId },
+            defaults: { tenant_id: tenantId, ...DEFAULT_SETTINGS },
+            transaction
+        });
+        await row.update({ platform_downpayment_allowed: allowed }, { transaction });
+        return toPlain(await row.reload({ transaction }));
     },
 
     async upsertSettings(tenantId, payload = {}, { expectedUpdatedAt = null } = {}) {

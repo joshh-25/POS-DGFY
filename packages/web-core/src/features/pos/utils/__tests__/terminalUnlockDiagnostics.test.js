@@ -177,7 +177,7 @@ describe('terminal unlock diagnostics', () => {
         code: 'TENANT_CAPABILITY_DISABLED',
         capability: 'tenant_pos_enabled'
       }
-    }))).toContain('POS access is disabled for this company.');
+    }))).toContain('POS operations are disabled for this company.');
   });
 
   it('classifies the optional device bridge separately from login failure', () => {

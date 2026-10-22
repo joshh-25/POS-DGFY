@@ -710,6 +710,7 @@ export const resolvePlatformAdminRoutePolicy = (req) => {
   if (/^\/api\/v1\/admin\/invoices(?:\/|$)/.test(path)) return { permissions: ['admin.invoices'] };
   if (/^\/api\/v1\/admin\/partner-integrations(?:\/|$)/.test(path)) return { permissions: ['admin.partner_integrations'] };
   if (/^\/api\/v1\/admin\/contact-inquiries(?:\/|$)/.test(path)) return { permissions: ['admin.contact_inquiries'] };
+  if (/^\/api\/v1\/admin\/external-discovery(?:\/|$)/.test(path)) return { masterOnly: true };
   if (/^\/api\/v1\/admin\/push-diagnostics(?:\/|$)/.test(path)) return { permissions: ['admin.push_diagnostics'] };
   if (/^\/api\/v1\/admin\/feedback(?:\/|$)/.test(path)) return { permissions: ['admin.feedback'] };
   if (/^\/api\/v1\/admin\/tenants\/pricing(?:\/|$)/.test(path)) return { permissions: ['admin.pricing'] };

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-10
-last_reviewed: 2026-09-14
+last_reviewed: 2026-10-22
 review_by: 2027-01-10
 applies_to: architecture_decision
 topic: manual_delivery_job_foundation
@@ -31,6 +31,52 @@ The initial provider is `manual` and the initial state is `pending_dispatch`. Th
 - Confirm `npm --prefix apps/dgfy-api run doctor:runtime` is healthy and `npm --prefix apps/dgfy-api run check:tenant-schema` completes without failed tenants.
 
 ## Amendments
+
+### 2026-10-22 — Active order visibility and direct failure operator attribution (#2676)
+
+The POS incoming queue and customer active-order views include every non-terminal
+`pos_transactions.fulfillment_status`, including `ready_for_rider`. Their status
+vocabulary derives from the shared fulfillment constant and is checked against
+the model enum. Direct delivery failure now requires terminal pairing and an active
+operator, matching direct completion, so shift ownership and audit attribution work
+on shared terminals. The delivery-job status route retains its narrower assigned-staff
+path without pairing or active-operator middleware. `[default]`
+
+### 2026-10-22 — Direct delivery lifecycle (#2667)
+
+For a manual delivery job outside an active delivery run, the staff-facing POS flow is
+Confirmed → Preparing → Waiting for rider (`ready_for_rider`) → Picked Up
+(`out_for_delivery`) → Delivered (`completed`). Retail may retain its Packed step.
+Assignment is available from Confirmed onward, and a courier company is required
+for early direct assignment. A company can be an in-house rider, Maxim,
+GrabExpress, Lalamove, or an Other name. An in-house rider can be identified by
+an active registry entry or a typed name; a third-party company may be recorded
+before a named rider is known. The complete assignment remains attributed to
+the staff actor, shift, and timestamp. This amends the 2026-08-07
+out-for-delivery-only control and
+the 2026-08-08 selected-person requirement for direct orders. Active run members
+retain their previous assignment and dispatch rules.
+
+Picked Up changes both job and order status in one locked transaction. Delivered
+changes the job to `delivered`, records any remaining payment as a distinct
+payment event, verifies zero balance, and completes the order in one idempotent
+transaction. This answers #908. ADR 0063 clauses 3 and 11 still require terminal,
+cashier, open-shift and atomic zero-balance completion. ADR 0083 clauses 2 and 7
+still separate customer payment recognition from courier custody; no custody or
+remittance record is written by this action.
+
+Failed requires a reason, marks the job `failed` and order `cancelled`, releases
+reservation without restocking issued goods, and invokes the store-origin refund
+path after commit. Staff Reject marks a manual delivery job `cancelled`. These
+rules amend the 2026-08-07 prohibition on POS writing failed/cancelled states.
+
+The public tracking route now includes only customer-safe courier company,
+booking reference, HTTPS link, and explicitly typed rider name, plus a
+store-attributed failure reason. This amends the original Consequences statement
+that tracking routes remain unchanged; registry names and staff identifiers stay
+private. Existing status, payment, and job routes continue accepting legacy
+requests while native clients migrate (dgfy-mobile#439). No courier API, GPS
+tracking, or delivery-run lifecycle change is authorized here. `[default]`
 
 ### 2026-08-07 — POS manual delivery lifecycle control
 
@@ -246,3 +292,13 @@ Dispatch remains warn-only with respect to loading verification. It may dispatch
 `pending`, `not_loaded`, or `exception`, and its response identifies the dispatched orders in those
 categories. Loading confirmation is an operator attestation and is not a dispatch precondition,
 fulfillment transition, payment rule, or provider integration. `[default]`
+
+### 2026-10-22 — Customer cancellation and run/order status audit (#2666)
+
+A customer cancellation through Storefront or the linked DGFY account cancels a tenant-local
+manual delivery job while it is `pending_dispatch` or `assigned`. This is a server-owned customer
+action, not a POS staff transition. It leaves the job's delivery-run membership and personnel
+attribution intact; a cancelled member remains a per-order dispatch failure under the 2026-09-01
+best-effort dispatch rule. The job cancellation and order status change each write an audit row in
+the order transaction. Run create/edit/cancel/un-cancel and staff online-order fulfillment
+transitions likewise write transactional audit rows. `[default]`

@@ -877,6 +877,27 @@ describe('extracted POS Settings workspace', () => {
     }
   });
 
+  it('shows a locked storefront visibility control without issuing a visibility write', async () => {
+    getAllSettings.mockResolvedValue({
+      store_is_visible: { value: false },
+      store_visibility_merchant_editable: { value: false }
+    });
+    render(<PosSettingsWorkspace {...buildProps({
+      initialTab: 'storefront',
+      terminalUser: { ...buildProps().terminalUser, permissions: ['settings:edit'] }
+    })} />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Store Setup', exact: true }));
+    const switches = await screen.findAllByRole('switch', { name: 'Storefront visible', exact: true });
+    expect(switches.length).toBeGreaterThan(0);
+    switches.forEach((toggle) => {
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+      expect(toggle.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(toggle);
+    });
+    expect(screen.getAllByText(/Platform Admin controls storefront visibility/).length).toBeGreaterThan(0);
+    expect(updateSettingByKey).not.toHaveBeenCalledWith('store_is_visible', true);
+  });
+
   it('keeps Store Categories on the existing storefront settings save payload', async () => {
     getAllSettings.mockResolvedValueOnce({
       storefront_categories: { value: ['BBQ', 'Seafood'] }

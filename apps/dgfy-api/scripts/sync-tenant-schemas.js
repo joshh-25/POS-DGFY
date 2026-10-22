@@ -73,6 +73,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     users: Object.freeze({
         permission_mode: Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `permission_mode` VARCHAR(16) NOT NULL DEFAULT 'inherit' COMMENT 'Permission source: inherit from role/staff role or custom grants'"
+          }),
+        staff_role_id: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `staff_role_id` INT NULL, ADD KEY `users_staff_role_id_idx` (`staff_role_id`), ADD CONSTRAINT `users_staff_role_id_fk` FOREIGN KEY (`staff_role_id`) REFERENCES `staff_roles` (`staff_role_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
         }),
         pos_approval_pin_hash: Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_approval_pin_hash` VARCHAR(255) NULL"
@@ -532,6 +535,15 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         })
     }),
     delivery_jobs: Object.freeze({
+        courier_service: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `courier_service` VARCHAR(40) NULL"
+        }),
+        courier_service_name: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `courier_service_name` VARCHAR(120) NULL"
+        }),
+        courier_reference: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `courier_reference` VARCHAR(120) NULL"
+        }),
         delivery_personnel_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_personnel_id` INT NULL"
         }),
@@ -738,6 +750,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    staff_roles: Object.freeze({
+        sql: "CREATE TABLE `staff_roles` ("
+            + " `staff_role_id` INT NOT NULL AUTO_INCREMENT, `name` VARCHAR(120) NOT NULL,"
+            + " `capabilities` JSON NOT NULL, `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `created_by` INT NULL, `updated_by` INT NULL,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " PRIMARY KEY (`staff_role_id`), UNIQUE KEY `staff_roles_name_unique` (`name`),"
+            + " KEY `staff_roles_active_idx` (`is_active`),"
+            + " CONSTRAINT `staff_roles_created_by_fk` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,"
+            + " CONSTRAINT `staff_roles_updated_by_fk` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    }),
     // Phase 388: Business Admin approval metadata is tenant-local. The original migration
     // created this table in the landlord database only, so this registry also repairs tenants
     // that were provisioned before the approval workflow was introduced or restored without it.
@@ -1478,6 +1502,9 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `location_id` int DEFAULT NULL,\n"
             + "  `delivery_personnel_name` varchar(255) DEFAULT NULL,\n"
             + "  `provider` varchar(40) NOT NULL DEFAULT 'manual',\n"
+            + "  `courier_service` varchar(40) DEFAULT NULL,\n"
+            + "  `courier_service_name` varchar(120) DEFAULT NULL,\n"
+            + "  `courier_reference` varchar(120) DEFAULT NULL,\n"
             + "  `provider_delivery_id` varchar(120) DEFAULT NULL,\n"
             + "  `status` enum('pending_dispatch','assigned','picked_up','delivered','failed','cancelled') NOT NULL DEFAULT 'pending_dispatch',\n"
             + "  `tracking_url` varchar(1000) DEFAULT NULL,\n"
@@ -3137,6 +3164,10 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // pos_transactions.order_method = 'appointment'. Presence checks miss this the same way
     // they missed items.category above.
     pos_transactions: Object.freeze({
+        fulfillment_status: Object.freeze({
+            enumValues: Object.freeze(['placed', 'confirmed', 'preparing', 'packed', 'ready_for_rider', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `fulfillment_status` ENUM('placed','confirmed','preparing','packed','ready_for_rider','ready_for_pickup','out_for_delivery','completed','cancelled','rejected') NULL DEFAULT NULL"
+        }),
         // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
         // (#1085), migration 20260830000003.
         payment_type: Object.freeze({

@@ -38,7 +38,8 @@ import {
     ONLINE_ORDER_SOURCE,
     normalizeOnlineFulfillmentStatus,
     validateOnlineOrderTransition,
-    buildOnlineOrderShiftAttributionPayload
+    buildOnlineOrderShiftAttributionPayload,
+    writeOnlineOrderStatusAudit
 } from './posUseCases.js';
 
 const RUN_LOCKED_STATUSES = Object.freeze(['dispatched', 'completed']);
@@ -179,9 +180,10 @@ const personnelIdentityMatches = (deliveryJob, accountableRow) => {
 
 export const buildCreateDeliveryRunUseCase = ({
     deliveryRunRepository,
+    posRepository,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
-    return async ({ payload = {}, user = {} } = {}) => {
+    return async ({ payload = {}, user = {}, auditContext = {} } = {}) => {
         const actorUserId = parsePositiveInt(user?.user_id);
         const label = String(payload?.label || '').trim();
 
@@ -213,12 +215,15 @@ export const buildCreateDeliveryRunUseCase = ({
             }
         }
 
+        let transaction = null;
         try {
+            transaction = await getSequelize().transaction();
             const locationScope = await resolveLocationScope({
                 requestedLocationId: payload?.location_id ?? null,
                 userId: actorUserId,
                 operationLabel: 'Delivery run creation',
-                allowNullWhenUnresolved: true
+                allowNullWhenUnresolved: true,
+                transaction
             });
 
             const run = await deliveryRunRepository.createRun({
@@ -229,10 +234,25 @@ export const buildCreateDeliveryRunUseCase = ({
                 location_id: locationScope.location_id ?? null,
                 notes: payload?.notes ?? null,
                 created_by: actorUserId
-            });
+            }, { transaction });
 
-            return ok(serializeDeliveryRun(run, { members: [] }));
+            const serialized = serializeDeliveryRun(run, { members: [] });
+            await posRepository.createAuditLog({
+                user_id: actorUserId,
+                entity_type: 'delivery_run',
+                entity_id: run.delivery_run_id,
+                action: 'CREATE',
+                location_id: run.location_id,
+                request_id: auditContext.requestId || null,
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null,
+                changes: { event: 'delivery_run_created', after: serialized }
+            }, { transaction });
+            await transaction.commit();
+
+            return ok(serialized);
         } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
             return fail(mapPosUseCaseError(error, 'Failed to create delivery run'));
         }
     };
@@ -344,9 +364,10 @@ export const buildGetDeliveryRunUseCase = ({
 
 export const buildUpdateDeliveryRunUseCase = ({
     deliveryRunRepository,
+    posRepository,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
-    return async ({ deliveryRunId, payload = {}, user = {} } = {}) => {
+    return async ({ deliveryRunId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const runId = parsePositiveInt(deliveryRunId);
         const actorUserId = parsePositiveInt(user?.user_id);
 
@@ -439,6 +460,25 @@ export const buildUpdateDeliveryRunUseCase = ({
             }
 
             const updatedRun = await deliveryRunRepository.updateRun(runId, updatePayload, { transaction });
+            const touchedFields = Object.keys(updatePayload).filter((field) => field !== 'updated_by');
+            const before = Object.fromEntries(touchedFields.map((field) => [field, run[field] ?? null]));
+            const after = Object.fromEntries(touchedFields.map((field) => [field, updatedRun?.[field] ?? updatePayload[field] ?? null]));
+            const event = run.status !== 'cancelled' && updatePayload.status === 'cancelled'
+                ? 'delivery_run_cancelled'
+                : run.status === 'cancelled' && ['draft', 'scheduled'].includes(updatePayload.status)
+                    ? 'delivery_run_uncancelled'
+                    : 'delivery_run_updated';
+            await posRepository.createAuditLog({
+                user_id: actorUserId,
+                entity_type: 'delivery_run',
+                entity_id: runId,
+                action: 'UPDATE',
+                location_id: run.location_id,
+                request_id: auditContext.requestId || null,
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null,
+                changes: { event, before, after }
+            }, { transaction });
             await transaction.commit();
 
             const runDetail = await deliveryRunRepository.getRunDetail(runId);
@@ -1724,6 +1764,18 @@ export const buildDispatchDeliveryRunUseCase = ({
                         await posRepository.updateDeliveryJobByOrderId(orderId, { status: 'assigned' }, {
                             transaction: memberSavepoint,
                             lock: true
+                        });
+                        await writeOnlineOrderStatusAudit({
+                            posRepository,
+                            orderId,
+                            userId: cashierId,
+                            locationId: order.location_id,
+                            shiftId: activeShift?.pos_terminal_shift_id || null,
+                            from: currentStatus,
+                            to: 'out_for_delivery',
+                            orderMethod: order.order_method,
+                            auditContext,
+                            transaction: memberSavepoint
                         });
                     });
                 } catch (writeError) {

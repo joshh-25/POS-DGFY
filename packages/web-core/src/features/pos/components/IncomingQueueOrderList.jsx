@@ -16,9 +16,12 @@ import {
   getIncomingOrderUtilityActions,
   getNextDeliveryJobStatus,
   getNextStatusActions,
+  canAssignDirectDelivery,
+  isDirectDeliveryOrder,
   resolveAppliedVouchers
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
+import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
 import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
@@ -185,252 +188,40 @@ function OrderCard({
   draggable
 }) {
   const orderId = Number(order.pos_transaction_id);
-  const nextActions = getNextStatusActions(order, workflowMode);
-  const nextDeliveryJobStatus = getNextDeliveryJobStatus(order);
-  const utilityActions = getIncomingOrderUtilityActions(order);
   const isDineIn = isDineInOrder(order);
-  const canCollectDineInPayment = isDineIn
-    && order.payment_status === 'unpaid'
-    && order.fulfillment_status === 'ready_for_pickup';
-  const canCollectCash = !isDineIn
-    && order.payment_type === 'cash'
-    && order.payment_status === 'unpaid'
-    && (
-      (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
-      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
-      || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
-    );
-  // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
-  // separate predicate on a disjoint payment_status -- collect-cash owns 'unpaid', this
-  // owns 'partially_paid', so the two buttons can never both appear on one card and the
-  // live COD path's own condition is untouched.
-  const orderBalanceDue = Number(order.balance_due || 0);
-  const canSettleBalance = order.payment_status === 'partially_paid'
-    && orderBalanceDue > 0
-    && (
-      (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
-      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
-      || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
-    );
   const deliveryCoords = parseDeliveryCoords(order);
   const deliveryJob = order.deliveryJob || null;
   const activeRunMembership = getActiveRunMembership(order);
   const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
   const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
   const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
-  // #1492: item-axis and delivery-axis vouchers surface independently, same split every other
-  // consumer of resolveAppliedVouchers uses -- an order can carry either, both, or neither.
   const appliedVouchers = resolveAppliedVouchers(order);
   const itemVoucherCode = appliedVouchers.find((voucher) => voucher.benefit_target !== 'delivery')?.code || null;
   const deliveryVoucherLabel = order?.delivery_fee_waiver_label_snapshot
-    || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code
-    || null;
+    || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code || null;
   const mapLink = deliveryCoords
-    ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
-    : '';
-
+    ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}` : '';
   const bulkAssignEligibility = getRunAssignEligibility(order, {});
   const scheduledDineIn = isScheduledDineInOrder(order);
   const [fallbackScheduleNow] = React.useState(() => Date.now());
   const effectiveScheduleNow = Number.isFinite(Number(scheduleNow)) ? Number(scheduleNow) : fallbackScheduleNow;
   const dineInScheduleState = getDineInScheduleState(order, effectiveScheduleNow);
-
-  // §2.8/§2.10: the same predicate the checkbox already disables on, plus eligibility -- a card
-  // that cannot legally join a run is never a drag source, and drag/checkbox can never disagree.
-  // Called unconditionally regardless of `draggable` (rules of hooks); `disabled` covers the
-  // "drag isn't enabled on this render" case as well.
   const dragBlocked = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
   const dragEnabled = draggable && !dragBlocked && bulkAssignEligibility.eligible;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
-    id: orderId,
-    disabled: !dragEnabled,
-    data: { eligible: bulkAssignEligibility.eligible }
+    id: orderId, disabled: !dragEnabled, data: { eligible: bulkAssignEligibility.eligible }
   });
   const dragStyle = draggable && transform ? {
-    transform: CSS.Translate.toString(transform),
-    zIndex: isDragging ? 50 : undefined
+    transform: CSS.Translate.toString(transform), zIndex: isDragging ? 50 : undefined
   } : undefined;
-  // Review RF-1/RF-3 (#1305): the activator (listeners/attributes, and the touch-action:none that
-  // comes with them) lives on a dedicated grip handle, not the card root -- dnd-kit's own guidance
-  // for a draggable inside a scrollable list, so the rest of the card stays touch-scrollable on the
-  // Falcon 1 tablet. `setNodeRef` stays on the card root (that's the node dnd-kit actually
-  // repositions); `setActivatorNodeRef` + the listeners/attributes move to the handle instead.
   const handleDragProps = dragEnabled ? { ...listeners, ...attributes } : {};
-
-  const buttons = [];
-  if (canCollectDineInPayment || canCollectCash) {
-    buttons.push(
-      <Button
-        key="collect_cash"
-        type="button"
-        size="sm"
-        disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-        onClick={() => handleOpenCashCollection?.(order)}
-      >
-        <Wallet className="mr-2 h-4 w-4 shrink-0" />
-        {order.order_method === 'dine_in'
-          ? 'Checkout'
-          : order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
-      </Button>
-    );
-  }
-  if (canSettleBalance) {
-    buttons.push(
-      <Button
-        key="settle_balance"
-        type="button"
-        size="sm"
-        disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-        onClick={() => handleOpenBalanceSettlement?.(order)}
-      >
-        <Wallet className="mr-2 h-4 w-4 shrink-0" />
-        Settle Balance
-      </Button>
-    );
-  }
-  // Phase 204 (#965): "View proof" -- the smallest place the settled payment is already
-  // displayed, not a full evidence-browser UI. Independent of canSettleBalance: the
-  // balance may already be settled (payment_status moved off 'partially_paid') while the
-  // order is still visible in this queue during fulfillment.
-  if (order.has_payment_proof) {
-    buttons.push(
-      <Button
-        key="view_payment_proof"
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() => handleViewBalancePaymentProof?.(order)}
-      >
-        <Receipt className="mr-2 h-4 w-4 shrink-0" />
-        View Proof
-      </Button>
-    );
-  }
-  if (nextDeliveryJobStatus && nextDeliveryJobStatus !== 'assigned' && manualDeliveryJob && hasDeliveryAssignment) {
-    const deliveryJobActionKey = `delivery-job:${nextDeliveryJobStatus}`;
-    buttons.push(
-      <Button
-        key={deliveryJobActionKey}
-        type="button"
-        size="sm"
-        variant={nextDeliveryJobStatus === 'delivered' ? 'default' : 'outline'}
-        disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-        onClick={() => handleDeliveryJobStatusChange?.(order.pos_transaction_id, nextDeliveryJobStatus)}
-      >
-        <Truck className="mr-2 h-4 w-4 shrink-0" />
-        {actionLoading === deliveryJobActionKey ? 'Saving...' : getDeliveryJobActionLabel(nextDeliveryJobStatus)}
-      </Button>
-    );
-  }
-  nextActions.forEach((status) => {
-    const getStatusIcon = (statusName) => {
-      switch (statusName) {
-      case 'confirmed':
-        return <Check className="mr-2 h-4 w-4 shrink-0" />;
-      case 'rejected':
-        return <Ban className="mr-2 h-4 w-4 shrink-0" />;
-      case 'preparing':
-        return <Clipboard className="mr-2 h-4 w-4 shrink-0" />;
-      case 'packed':
-        return <Package className="mr-2 h-4 w-4 shrink-0" />;
-      case 'ready_for_pickup':
-        return <ShoppingBag className="mr-2 h-4 w-4 shrink-0" />;
-      case 'out_for_delivery':
-        return <Truck className="mr-2 h-4 w-4 shrink-0" />;
-      case 'completed':
-        return <Check className="mr-2 h-4 w-4 shrink-0" />;
-      default:
-        return null;
-      }
-    };
-    // Phase 229 (#1291): once an order is a member of an active (not
-    // completed/cancelled) delivery run, the run's own Dispatch action is the sole
-    // path to out_for_delivery -- the per-order control is withheld here, with an
-    // explanatory tooltip, rather than hidden. Scoped to `out_for_delivery` only:
-    // gating the whole nextActions array would also disable `packed`, deadlocking the
-    // run's own DELIVERY_RUN_UNPACKED_MEMBERS dispatch precondition (#1272).
-    const gatedByActiveRun = status === 'out_for_delivery' && activeRunMembership.inActiveRun;
-    const runGateReason = gatedByActiveRun
-      ? (activeRunMembership.runLabel
-        ? `This order is in delivery run "${activeRunMembership.runLabel}". Dispatch it from the Delivery Runs tab.`
-        : 'This order is in a delivery run. Dispatch it from the Delivery Runs tab.')
-      : null;
-    buttons.push(
-      <Button
-        key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
-        type="button"
-        size="sm"
-        variant={status === 'rejected' ? 'destructive' : 'outline'}
-        disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order)) || gatedByActiveRun}
-        title={runGateReason || undefined}
-        aria-label={runGateReason || undefined}
-        onClick={() => {
-          if (status === 'rejected') {
-            onRequestReject(Number(order.pos_transaction_id));
-            return;
-          }
-          handleIncomingOrderStatusChange?.(order.pos_transaction_id, status);
-        }}
-      >
-        {actionLoading === status ? null : getStatusIcon(status)}
-        {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
-      </Button>
-    );
+  const buttons = buildIncomingQueueOrderActions(order, {
+    actionLoading, workflowMode, canTransactPos, canViewPos, locked, isOnline, hasActiveShift,
+    incomingReceiptOpeningId, handleOpenCashCollection, handleOpenBalanceSettlement,
+    handleViewBalancePaymentProof, handleDeliveryJobStatusChange,
+    handleIncomingOrderStatusChange, handleOpenIncomingOrderReceipt,
+    onRequestRejection: onRequestReject
   });
-  if (utilityActions.includes('print_receipt')) {
-    buttons.push(
-      <Button
-        key="print_receipt"
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-        onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, {
-          printMode: true,
-          retryPrint: order.receipt_print_status === 'failed'
-        })}
-      >
-        <Printer className="mr-2 h-4 w-4 shrink-0" />
-        {incomingReceiptOpeningId === Number(order.pos_transaction_id)
-          ? 'Printing...'
-          : order.receipt_print_status === 'failed'
-            ? 'Retry Print'
-          : order.receipt_print_status === 'printed'
-              ? 'Reprint Receipt'
-              : 'Print Receipt'}
-      </Button>
-    );
-  }
-  if (utilityActions.includes('print_order')) {
-    buttons.push(
-      <Button
-        key="print_order"
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-        onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printOrder: true })}
-      >
-        <Printer className="mr-2 h-4 w-4 shrink-0" />
-        {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Printing...' : 'Print Order'}
-      </Button>
-    );
-  }
-  if (utilityActions.includes('open_order')) {
-    buttons.push(
-      <Button
-        key="open_order"
-        type="button"
-        size="sm"
-        variant="secondary"
-        disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-        onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
-      >
-        <ExternalLink className="mr-2 h-4 w-4 shrink-0" />
-        {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
-      </Button>
-    );
-  }
 
   return (
     <div
@@ -640,7 +431,8 @@ function OrderCard({
               <DeliveryAssignmentControl
                 orderId={order.pos_transaction_id}
                 deliveryJob={deliveryJob}
-                canAssignOrder={order.fulfillment_status === 'out_for_delivery'}
+                directDelivery={isDirectDeliveryOrder(order)}
+                canAssignOrder={order.fulfillment_status === 'out_for_delivery' || canAssignDirectDelivery(order)}
                 deliveryPersonnelState={deliveryPersonnelState}
                 actionLoading={actionLoading}
                 canTransactPos={canTransactPos}

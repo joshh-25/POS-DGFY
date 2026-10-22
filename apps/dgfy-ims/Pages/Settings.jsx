@@ -42,6 +42,7 @@ import { cn } from "../../../packages/web-core/src/lib/utils.js";
 import useStore from '../../../packages/web-core/src/store/useStore.js';
 import * as userService from '../../../packages/web-core/src/services/userService.js';
 import * as settingsService from '../../../packages/web-core/src/services/settingsService.js';
+import { STORE_VISIBILITY_EDIT_LOCKED_MESSAGE } from '../../../packages/web-core/src/utils/tenantCapabilityMessages.js';
 import * as paymentService from '../../../packages/web-core/src/services/paymentService.js';
 import * as tenantLocationService from '../../../packages/web-core/src/services/tenantLocationService.js';
 import {
@@ -1130,6 +1131,7 @@ export default function Settings() {
           storeDeliveryFeeCalc: normalizeDeliveryFeeCalcSettings(systemSettings.store_delivery_fee_calc?.value),
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
           storeIsVisible: systemSettings.store_is_visible?.value === true,
+          storeVisibilityMerchantEditable: systemSettings.store_visibility_merchant_editable?.value !== false,
           storeHasNoLocation: systemSettings.store_has_no_location?.value === true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
@@ -2912,9 +2914,11 @@ export default function Settings() {
                     <Switch
                       aria-label="Show company on DGFY map and public storefront page"
                       checked={settings.storeIsVisible === true}
+                      disabled={settings.storeVisibilityMerchantEditable === false}
                       onCheckedChange={(v) => handleChange('storeIsVisible', v)}
                     />
                   </div>
+                  {settings.storeVisibilityMerchantEditable === false && <p className="text-xs text-amber-700">{STORE_VISIBILITY_EDIT_LOCKED_MESSAGE}</p>}
                   {publicVisibilityMissingPrimary && (
                     <p className="text-xs text-amber-700">
                       Public visibility is on, but this company will not publish until an active primary storefront pin is saved below.
