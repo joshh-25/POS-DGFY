@@ -635,7 +635,7 @@ function IncomingQueueWorkspace({
   // QueueRunAssignBar's target picker via useDeliveryRunOptions, so the two can never disagree
   // about which runs exist.
   const [runFilter, setRunFilter] = React.useState(QUEUE_RUN_FILTER_ALL);
-  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isDeliveryRunMode });
+  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError, reload: reloadDeliveryRuns } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isDeliveryRunMode });
   const runFilterOptions = React.useMemo(
     () => getQueueRunFilterOptions(deliveryRuns, { locationId: queueLocationScopeId }).map((run) => ({
       ...run,
@@ -707,6 +707,10 @@ function IncomingQueueWorkspace({
   // DeliveryRunDropPanel's own picked-run detail refetches when its shown run may have just
   // gained members.
   const [runDropRefreshTick, setRunDropRefreshTick] = React.useState(0);
+
+  React.useEffect(() => {
+    if (activeView === 'active' || activeView === 'split') reloadDeliveryRuns();
+  }, [activeView, reloadDeliveryRuns]);
 
   // Phase 231 (#1290) correctness crux: re-derived against visibleIncomingOrders (the FILTERED
   // list), not sortedIncomingOrders. Without this, an order selected before the run filter was
@@ -1033,9 +1037,14 @@ function IncomingQueueWorkspace({
           hasActiveShift={hasActiveShift}
           isRetailMode={isRetailMode}
           queueLocationScopeId={queueLocationScopeId}
+          activeShiftLocationId={activeShiftLocationId}
           deliveryPersonnelState={deliveryPersonnelState}
           ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
           onRunCountChange={setDeliveryRunCount}
+          onRunsChanged={() => {
+            reloadDeliveryRuns();
+            setRunDropRefreshTick((tick) => tick + 1);
+          }}
         />
       </div>
     );

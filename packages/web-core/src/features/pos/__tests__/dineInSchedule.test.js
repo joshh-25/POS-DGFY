@@ -7,6 +7,7 @@ import {
   getDineInScheduleRemainingSeconds,
   getDineInScheduleState,
   getDineInScheduleStateLabel,
+  getOnlineOrderCashIdempotencyPrefix,
   isDineInOrder,
   getDineInScheduleTimingLabel,
   isScheduledDineInOrder,
@@ -25,6 +26,11 @@ const buildOrder = (overrides = {}) => ({
 });
 
 describe('dine-in schedule helpers', () => {
+  it('selects the cash idempotency prefix from the order method', () => {
+    expect(getOnlineOrderCashIdempotencyPrefix({ order_method: 'dine_in' })).toBe('pos-dine-in-cash');
+    expect(getOnlineOrderCashIdempotencyPrefix({ order_method: 'delivery' })).toBe('pos-delivery-cash');
+    expect(getOnlineOrderCashIdempotencyPrefix({ order_method: 'pickup' })).toBe('pos-pickup-cash');
+  });
   it('only treats valid scheduled dine-in orders as scheduled service work', () => {
     expect(isDineInOrder(buildOrder())).toBe(true);
     expect(isDineInOrder(buildOrder({ order_method: 'pickup' }))).toBe(false);
