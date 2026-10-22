@@ -11,8 +11,8 @@ verification_evidence: 16 targeted API suites with 244 passing tests, 3 OPIS fil
 rollback_note: Revert the Business Admin attendance and canonical-name workflows, POS cash reconciliation and catalog/settings synchronization, OPIS presentation, inventory editor workflow, additive audit migration, focused tests, and this declaration together; retain existing tenant, shift, audit, and catalog records for governed reconciliation.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-16T16:45:00+08:00
-preflight_request_ref: NOT-EXECUTED-UPDATES-POS-BUSINESS-ADMIN-CATALOG
+preflight_run_at: 2026-10-22T06:07:55.727Z
+preflight_request_ref: PREFLIGHT-39731474926-2026-10-16-POS-BUSINESS-ADMIN-CATALOG-WORKFLOWS
 ---
 
 # POS and OPIS business administration, catalog, and terminal workflow updates

@@ -12,8 +12,8 @@ verification_evidence: focused staff-role Jest suites,tenant schema registry Jes
 rollback_note: Revert the API authorization and OPIS role-management changes with the capability catalog and docs. Preserve staff_roles and audit history; restore cleared per-user permissions only through a reviewed administrative action using the audit snapshot.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-21T12:30:12Z
-preflight_request_ref: NOT-EXECUTED-1182-STAFF-ROLE-FOUNDATION
+preflight_run_at: 2026-10-22T06:07:55.730Z
+preflight_request_ref: PREFLIGHT-39731474926-2026-10-21-WAREHOUSE-DELIVERY-STAFF-ROLE-FOUNDATION
 ---
 
 # Warehouse and Delivery staff-role foundation (#1182, Phase 524)

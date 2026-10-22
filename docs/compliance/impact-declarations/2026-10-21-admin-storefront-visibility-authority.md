@@ -12,8 +12,8 @@ verification_evidence: focused API Jest and frontend Vitest suites,API JavaScrip
 rollback_note: Revert the API visibility gate, edit-authority policy and UI, tests, and ADR/API documentation together. Existing tenant settings rows may remain harmlessly unused; no migration or payment record is removed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-21T10:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-21-ADMIN-STOREFRONT-VISIBILITY-AUTHORITY
+preflight_run_at: 2026-10-22T06:07:55.729Z
+preflight_request_ref: PREFLIGHT-39731474926-2026-10-21-ADMIN-STOREFRONT-VISIBILITY-AUTHORITY
 ---
 
 # Platform Admin storefront visibility and merchant edit authority (#2633)
