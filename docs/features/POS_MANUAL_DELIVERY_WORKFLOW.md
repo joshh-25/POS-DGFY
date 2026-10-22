@@ -59,7 +59,7 @@ transitions and routes for native clients and orders already in flight.
 | Cashier | Placed | Confirm | Confirmed | Open shift | Shift closed or inventory issue |
 | Cashier | Confirmed | Start Preparing | Preparing | Open shift | Shift closed |
 | Cashier | Preparing or Packed | Ready | Waiting for rider (`ready_for_rider`) | Delivery order | Wrong order method |
-| Cashier | Confirmed through Waiting for rider | Assign rider | Job assigned | Courier company; in-house requires a person | Courier service or assignment missing |
+| Cashier | Preparing through Waiting for rider | Assign rider (Delivery personnel panel) | Job assigned | Courier company; in-house requires a person | Courier service or assignment missing |
 | Cashier | Waiting for rider | Picked Up | Job `picked_up`, order `out_for_delivery` | Complete assignment | Assignment missing |
 | Cashier | Out for delivery | Delivered | Job `delivered`, order Completed | Terminal, operator, shift; balance settled in same request | Balance or payment missing |
 | Cashier | Confirmed through Out for delivery | Failed | Job `failed`, order Cancelled | Paired terminal, active operator, open shift, and reason of at least 3 characters | Missing authority, reason, or active run |
@@ -70,6 +70,13 @@ reason. It does not offer separate cash collection, job-delivered, and order-
 completed buttons in this direct flow. The old endpoints remain supported for
 native and in-flight compatibility. An existing out-for-delivery order without
 an assignment can still assign a rider, pick up and complete.
+
+The rider is assigned in the Delivery personnel panel only; the action row has
+no separate Assign rider button. The panel accepts an assignment once the order
+is Preparing, so staff can book the courier while the order is prepared or
+after Ready. Until a rider is assigned, Picked Up stays disabled with "Assign a
+rider first". The API still accepts an assignment from Confirmed, for native
+clients.
 
 The courier company is Own, Maxim, GrabExpress, Lalamove, or Other. Other
 requires a name. Booking reference and HTTPS tracking link are optional. A
