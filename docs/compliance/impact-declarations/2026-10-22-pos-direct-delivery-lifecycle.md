@@ -44,8 +44,9 @@ Apply the additive tenant migration before deploying the API. The migration
 widens the fulfillment status ENUM and adds nullable courier fields. Confirm
 terminal pairing, active operator, open shift and `pos:transact` for completion;
 Failed requires `pos:transact` and an open shift. No custody record is written.
-Active Delivery Runs retain their separate controls. The NOT-EXECUTED reference
-is a develop placeholder, not live production preflight evidence. A live
+Generic order-status transitions, including `ready_for_rider`, write their
+tenant audit row. Active Delivery Runs retain their separate controls. The
+NOT-EXECUTED reference is a develop placeholder, not live production preflight evidence. A live
 preflight sweep is required before production promotion.
 
 ## Verification Evidence

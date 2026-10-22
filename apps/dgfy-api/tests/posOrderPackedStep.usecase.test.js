@@ -91,6 +91,18 @@ describe('preparing -> packed online order status (Phase 211, #1180)', () => {
 
         expect(result.success).toBe(true);
         expect(repository.order.fulfillment_status).toBe('ready_for_rider');
+        expect(repository.createAuditLog).toHaveBeenCalledWith(
+            expect.objectContaining({
+                entity_type: 'pos_transaction',
+                entity_id: 77,
+                changes: expect.objectContaining({
+                    event: 'online_order_status_changed',
+                    from: 'preparing',
+                    to: 'ready_for_rider'
+                })
+            }),
+            expect.anything()
+        );
     });
 
     it('rejects Waiting for rider on pickup orders with a stable method code', async () => {
