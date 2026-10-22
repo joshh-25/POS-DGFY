@@ -30604,7 +30604,7 @@ in OPIS. No migration or staff workflow change.
 
 ### Status
 
-`in_progress` — implementation and validation are outstanding.
+`completed` — PR #2672 merged on 2026-10-22; scoped implementation and validation passed.
 
 ### Dependencies
 
@@ -30621,23 +30621,23 @@ Implementation: `apps/dgfy-api/src/modules/{pos,store,dgfy,businessAdmin}`,
 
 ### Acceptance and validation evidence
 
-- Focused API tests cover run and order audits, customer cancellation effects, and legacy
-  in-flight `placed`/`confirmed` orders and draft-run membership.
-- POS and OPIS tests cover picker refresh/labels, cash prefixes, and receipt status history.
-- Required POS, IMS, Storefront, and OPIS builds; API syntax, architecture, docs, compliance,
-  and app-version checks must pass before PR review.
+- Focused API Jest: 17 suites / 306 tests passed, covering run and order audits, customer
+  cancellation effects, and legacy in-flight orders and draft-run membership.
+- IMS-hosted web-core Vitest: 3 files / 32 tests passed; OPIS Vitest: 35 files / 152 tests passed.
+- POS, IMS, Storefront, and OPIS production builds passed. API syntax, architecture, docs,
+  full-diff compliance, and app-version checks passed.
 
 ### Completion date
 
-Not complete; record after merge and implementation validation.
+2026-10-22 — PR #2672 merged; implementation validation passed.
 
 ### Post-merge verification
 
 - [ ] deployment — reproduce create/personnel/save → target-picker refresh and status history
   on STAGING; owner: Verifier; blocks #2649/#2651 acceptance.
-- [ ] operational — run the read-only per-tenant production impact count for account-cancelled
-  paid or issued-stock orders and post it to #2652; owner: Worker with Pat's SSH approval;
-  blocks #2652 acceptance.
+- [ ] operational — Pat runs the read-only per-tenant production impact count for account-cancelled
+  paid or issued-stock orders during promotion, after the PR to main is merged and before the
+  production build/deployment; post the count to #2652; blocks #2652 acceptance.
 - [ ] operational — verify confirmed DGFY-account delivery cancellation restores stock, cancels
   its job, and records refund/forfeit plus audits on STAGING; owner: Verifier; blocks #2652 acceptance.
 
