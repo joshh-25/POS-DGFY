@@ -116,6 +116,12 @@ export const getCurrentAdmin = async () => {
     return response.data;
 };
 
+export const getExternalDiscovery = async () => (await adminApi.get('/admin/external-discovery', requireAdminAuthConfig())).data?.data;
+export const saveExternalRedirectSite = async (siteKey, payload) => (await adminApi.put(`/admin/external-discovery/sites/${encodeURIComponent(siteKey)}`, payload, requireAdminAuthConfig())).data?.data;
+export const saveExternalDiscoveryListing = async (slug, payload) => (await adminApi.put(`/admin/external-discovery/listings/${encodeURIComponent(slug)}`, payload, requireAdminAuthConfig())).data?.data;
+export const removeExternalDiscoveryListing = async (slug) => (await adminApi.delete(`/admin/external-discovery/listings/${encodeURIComponent(slug)}`, requireAdminAuthConfig())).data?.data;
+export const clearTemporaryExternalDiscoveryListings = async () => (await adminApi.post('/admin/external-discovery/temporary/clear', {}, requireAdminAuthConfig())).data?.data;
+
 export const getPin4msProviderConfigStatus = async () => (
     await adminApi.get('/admin/contact-inquiries/pin4ms/config', {
         ...requireAdminAuthConfig(),

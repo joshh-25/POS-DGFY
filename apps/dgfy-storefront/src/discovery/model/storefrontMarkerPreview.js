@@ -1,4 +1,5 @@
 import { getDiscoveryMatchBadges } from './discoveryPresentation.js';
+import { getExternalListingPresentation } from './externalListingPresentation.js';
 
 const trimText = (value, fallback = '') => {
   const normalized = String(value ?? '').trim();
@@ -80,12 +81,13 @@ export const formatMarkerDistance = (distanceKm) => {
 export const buildStoreMarkerPreviewModel = (store = {}, {
   resolveAssetUrl = (value) => value
 } = {}) => {
+  const partner = getExternalListingPresentation(store);
   const matchBadges = getDiscoveryMatchBadges(store, Array.isArray(store?.match_reasons) && store.match_reasons.length > 0);
   const distanceLabel = formatMarkerDistance(store?.distance_km ?? store?.nearest_distance_km);
   const catalogCount = Number(store?.catalog_count);
   const matchingItemCount = Number(store?.matching_item_count);
-  const statusLabel = store?.storefront_open === false || store?.is_open === false ? 'Closed' : 'Open';
-  const branchName = trimText(store?.location_name, trimText(store?.nearest_location_name, trimText(store?.branch_label, 'Storefront location')));
+  const statusLabel = partner ? 'External listing' : (store?.storefront_open === false || store?.is_open === false ? 'Closed' : 'Open');
+  const branchName = partner ? `Opens on ${partner.name}` : trimText(store?.location_name, trimText(store?.nearest_location_name, trimText(store?.branch_label, 'Storefront location')));
   const tenantName = trimText(store?.tenant_name, 'Storefront');
 
   const address = trimText(store?.address_line, 'Address unavailable');
@@ -102,14 +104,15 @@ export const buildStoreMarkerPreviewModel = (store = {}, {
     profileImageUrl: resolveAssetUrl(store?.storefront_profile_image_url) || '',
     statusLabel,
     isOpen: statusLabel === 'Open',
-    branchLabel: store?.is_primary_storefront === true ? 'Primary branch' : trimText(store?.branch_label, 'Branch'),
+    branchLabel: partner ? '' : (store?.is_primary_storefront === true ? 'Primary branch' : trimText(store?.branch_label, 'Branch')),
     locationId: store?.location_id ?? null,
     distanceLabel,
-    catalogLabel: Number.isFinite(catalogCount) && catalogCount > 0 ? `${catalogCount} storefront item(s)` : '',
-    matchingLabel: Number.isFinite(matchingItemCount) && matchingItemCount > 0 ? `${matchingItemCount} matching item(s)` : '',
+    catalogLabel: !partner && Number.isFinite(catalogCount) && catalogCount > 0 ? `${catalogCount} storefront item(s)` : '',
+    matchingLabel: !partner && Number.isFinite(matchingItemCount) && matchingItemCount > 0 ? `${matchingItemCount} matching item(s)` : '',
     matchBadges,
-    isExternalListing: store?.entity_type === 'external_listing',
-    actionLabel: store?.entity_type === 'external_listing' ? 'Visit store' : 'Open storefront'
+    isExternalListing: Boolean(partner),
+    partnerName: partner?.name || '',
+    actionLabel: partner?.action || 'Open storefront'
   };
 };
 
@@ -136,7 +139,7 @@ export const createStoreMarkerPreviewNode = (store = {}, {
   cover.appendChild(coverOverlay);
   const status = document.createElement('span');
   status.textContent = model.statusLabel;
-  status.className = `store-marker-preview-status ${model.isOpen ? 'store-marker-preview-statusOpen' : 'store-marker-preview-statusClosed'}`;
+  status.className = `store-marker-preview-status ${model.isExternalListing ? 'store-marker-preview-statusExternal' : model.isOpen ? 'store-marker-preview-statusOpen' : 'store-marker-preview-statusClosed'}`;
   cover.appendChild(status);
   if (typeof onClose === 'function') {
     const closeButton = document.createElement('button');
@@ -191,7 +194,7 @@ export const createStoreMarkerPreviewNode = (store = {}, {
     badges.className = 'store-marker-preview-badges';
     if (model.isExternalListing) {
       const chip = document.createElement('span');
-      chip.textContent = 'Partner store';
+      chip.textContent = `External · ${model.partnerName}`;
       chip.className = 'store-marker-preview-badge';
       badges.appendChild(chip);
     }
