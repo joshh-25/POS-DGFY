@@ -351,6 +351,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(dgfyLoginHandler).toContain('const authenticatedAccountEmail = String(dgfyPosState.account?.email || \'\').trim().toLowerCase();');
     expect(dgfyLoginHandler).toContain('const continuingAfterCompanyPicker = (');
     expect(dgfyLoginHandler).toContain('authenticatedAccountEmail === normalizedEmail');
+    expect(dgfyLoginHandler).not.toContain('legacyCompanyChoiceRequired');
+    expect(dgfyLoginHandler).not.toContain('setLegacyCompanySelectionOpen(true);');
     expect(dgfyLoginHandler).toContain('token = String(getStoredDgfyToken() || \'\').trim();');
     expect(dgfyLoginHandler).toContain('const loginResult = await loginDgfyAccount({');
     expect(dgfyLoginHandler).toContain('remember_device: formData.rememberDevice === true');
@@ -391,6 +393,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("pathname: '/terminal',");
     expect(terminalPageContent).toContain('search: POS_ONBOARDING_ENTRY_SEARCH');
     expect(terminalPageContent).toContain('setTerminalUnlockModalOpen(true);');
+    const legacyLoginHandlerStart = terminalPageContent.indexOf('const handleLogin = async');
+    const legacyLoginHandlerEnd = terminalPageContent.indexOf('const clearCurrentSaleForSessionEnd = useCallback', legacyLoginHandlerStart);
+    const legacyLoginHandler = terminalPageContent.slice(legacyLoginHandlerStart, legacyLoginHandlerEnd);
+    expect(legacyLoginHandler).toContain('emailCompanyLookup?.status === \'multiple\'');
+    expect(legacyLoginHandler).toContain('setLegacyCompanySelectionOpen(true);');
+    expect(legacyLoginHandler).toContain('await submitLegacyLogin({');
   });
 
   it('blocks sidebar view switching while terminal is locked', () => {
@@ -587,7 +595,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(terminalWorkspaceSidebarContent).toContain('onboardingRestricted = false');
-    expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
+    expect(terminalWorkspaceSidebarContent).toContain("label={posNavLabel('settings', 'Settings')}");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Sales'");

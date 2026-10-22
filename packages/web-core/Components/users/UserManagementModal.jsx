@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Crown,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import api from '../../src/services/api.js';
 import useStore from '../../src/store/useStore.js';
@@ -34,6 +35,7 @@ import {
   requestDgfyBusinessStepUpForTenantSession,
   transferDgfyCompanyOwnershipForTenantSession
 } from '../../src/services/dgfyAuthService.js';
+import { normalizePermissionSelections } from '@sieitzz/shared-constants/permissionDependencies';
 
 // Role hierarchy for permission checks (higher number = higher rank)
 const ROLE_HIERARCHY = { admin: 7, manager: 6, po: 5, do: 5, jo: 5, cashier: 4, staff: 3 };
@@ -75,17 +77,31 @@ const DGFY_LINK_CLASSES = {
 const isInvitationRow = (user) => INVITATION_STATUSES.has(String(user?.invitation_status || '').toLowerCase());
 const isPendingInvitation = (user) => String(user?.invitation_status || '').toLowerCase() === 'pending';
 const parsePermissions = (permissions) => {
-  if (Array.isArray(permissions)) return permissions;
+  if (Array.isArray(permissions)) return normalizePermissionSelections(permissions);
   if (typeof permissions === 'string') {
     try {
       const parsed = JSON.parse(permissions);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? normalizePermissionSelections(parsed) : [];
     } catch {
       return [];
     }
   }
   return [];
 };
+const permissionDraftKey = (permissions) => JSON.stringify(normalizePermissionSelections(permissions).sort());
+const permissionDraftIsDirty = (user, baseline) => Boolean(
+  user
+  && baseline
+  && (
+    user.is_master_admin !== baseline.isMasterAdmin
+    || permissionDraftKey(user.permissions) !== baseline.permissionsKey
+  )
+);
+const confirmAction = (message) => (
+  typeof window === 'undefined'
+  || typeof window.confirm !== 'function'
+  || window.confirm(message)
+);
 const parseLocationIds = (locationIds) => (
   Array.isArray(locationIds)
     ? locationIds.map((id) => Number.parseInt(id, 10)).filter((id) => Number.isInteger(id) && id > 0)
@@ -143,13 +159,16 @@ export default function UserManagementModal({
   onSettingsSaved = () => {},
   locationOptions = null,
   invitationTitle = 'Invite DGFY Account',
-  invitationSubmitLabel = 'Send DGFY Invitation'
+  invitationSubmitLabel = 'Send DGFY Invitation',
+  embedded = false,
+  embeddedCloseLabel = 'Back to Team & Access'
 }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showPermissionMatrix, setShowPermissionMatrix] = useState(false);
+  const [permissionDraftBaseline, setPermissionDraftBaseline] = useState(null);
   const [savingPermissions, setSavingPermissions] = useState(false);
   const [showLocationGrantsModal, setShowLocationGrantsModal] = useState(false);
   const [locationGrantUser, setLocationGrantUser] = useState(null);
@@ -504,18 +523,35 @@ export default function UserManagementModal({
   };
 
   const openPermissionMatrix = (user) => {
+    const draftPermissions = parsePermissions(user.permissions);
     setSelectedUser({
       ...user,
-      permissions: parsePermissions(user.permissions)
+      permissions: draftPermissions
+    });
+    setPermissionDraftBaseline({
+      permissionsKey: permissionDraftKey(draftPermissions),
+      isMasterAdmin: user.is_master_admin === true
     });
     setShowPermissionMatrix(true);
+  };
+
+  const closePermissionMatrix = () => {
+    if (savingPermissions) return;
+    if (
+      permissionDraftIsDirty(selectedUser, permissionDraftBaseline)
+      && !confirmAction('Discard unsaved permission changes?')
+    ) {
+      return;
+    }
+    setShowPermissionMatrix(false);
+    setPermissionDraftBaseline(null);
   };
 
   const handleUpdatePermissions = async (userId, permissions, isMasterAdmin) => {
     setSavingPermissions(true);
     try {
       // Ensure permissions is always an array
-      const permissionsArray = Array.isArray(permissions) ? permissions : [];
+      const permissionsArray = normalizePermissionSelections(permissions);
       await api.put(`/users/${userId}/permissions`, {
         permissions: permissionsArray,
         is_master_admin: isMasterAdmin
@@ -523,11 +559,34 @@ export default function UserManagementModal({
       window.dispatchEvent(new CustomEvent('auth:login'));
       toast.success('Permissions updated successfully');
       setShowPermissionMatrix(false);
+      setPermissionDraftBaseline(null);
       notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Failed to update permissions');
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
+  const handleResetPermissions = async () => {
+    if (!selectedUser || savingPermissions) return;
+    if (!confirmAction('Reset this user to inherited role and staff-role access?')) return;
+    setSavingPermissions(true);
+    try {
+      const updated = await userService.resetUserPermissions(selectedUser.user_id);
+      window.dispatchEvent(new CustomEvent('auth:login'));
+      toast.success('Permissions reset to inherited role access');
+      setShowPermissionMatrix(false);
+      setPermissionDraftBaseline(null);
+      notifySettingsSaved();
+      fetchUsers();
+      if (updated?.permissions) {
+        setSelectedUser((current) => current ? { ...current, permissions: parsePermissions(updated.permissions), permission_mode: updated.permission_mode } : current);
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to reset permissions'));
     } finally {
       setSavingPermissions(false);
     }
@@ -670,7 +729,7 @@ export default function UserManagementModal({
         await Promise.all(
           selectedUserIds.map(userId =>
             api.put(`/users/${userId}/permissions`, {
-              permissions: template.permissions,
+              permissions: normalizePermissionSelections(template.permissions),
               is_master_admin: false
             })
           )
@@ -753,7 +812,7 @@ export default function UserManagementModal({
           }
 
           await api.put(`/users/${userId}/permissions`, {
-            permissions: newPermissions,
+            permissions: normalizePermissionSelections(newPermissions),
             is_master_admin: user.is_master_admin
           });
         })
@@ -819,10 +878,8 @@ export default function UserManagementModal({
     ];
   }, [rolePresets]);
 
-  return (
+  const userManagementContent = (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl max-h-[90vh] flex flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
           {/* Sticky Header */}
           <div className="sticky top-0 z-10 bg-white border-b px-4 py-4 sm:px-6">
             <fieldset disabled={readOnly} className="contents">
@@ -1208,12 +1265,29 @@ export default function UserManagementModal({
                 ? `${selectedUserIds.length} selected`
                 : `${filteredUsers.length} users`}
             </span>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+            <Button variant="outline" onClick={() => onOpenChange?.(false)}>
+              {embedded ? embeddedCloseLabel : 'Close'}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? (
+        <section
+          className="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+          data-testid="user-management-panel"
+        >
+          {userManagementContent}
+        </section>
+      ) : (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl max-h-[90vh] flex flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+            {userManagementContent}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Invite User Modal */}
       <UserInvitationModal
@@ -1291,27 +1365,53 @@ export default function UserManagementModal({
 
       {/* Permission Matrix Dialog */}
       {showPermissionMatrix && selectedUser && (
-        <Dialog open={showPermissionMatrix} onOpenChange={setShowPermissionMatrix}>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
+        <Dialog open={showPermissionMatrix} onOpenChange={(isOpen) => {
+          if (isOpen) return;
+          closePermissionMatrix();
+        }}>
+          <DialogContent className="w-[min(1180px,calc(100vw-2rem))] max-w-none max-h-[92vh] overflow-hidden p-0">
+            <div className="flex min-h-0 max-h-[92vh] flex-col">
+            <DialogHeader className="relative shrink-0 border-b border-slate-100 pr-16">
               <DialogTitle className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-teal-600" />
-                Manage Permissions: {selectedUser.username}
+                Manage POS Button Permissions: {selectedUser.username}
               </DialogTitle>
+              <DialogDescription>
+                Control which POS buttons and functions this user can access.
+              </DialogDescription>
+              <button
+                type="button"
+                onClick={closePermissionMatrix}
+                disabled={savingPermissions}
+                aria-label="Close POS button permissions"
+                className="absolute right-6 top-6 rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </DialogHeader>
-            <PermissionMatrix
-              permissions={selectedUser.permissions || []}
-              isMasterAdmin={selectedUser.is_master_admin}
-              permissionGroups={visiblePermissionGroups}
-              onChange={(newPerms) => {
-                setSelectedUser(prev => ({ ...prev, permissions: newPerms }));
-              }}
-              onMasterAdminChange={(value) => {
-                setSelectedUser(prev => ({ ...prev, is_master_admin: value }));
-              }}
-            />
-            <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowPermissionMatrix(false)}>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+              <PermissionMatrix
+                permissions={selectedUser.permissions || []}
+                isMasterAdmin={selectedUser.is_master_admin}
+                permissionGroups={visiblePermissionGroups}
+                onChange={(newPerms) => {
+                  setSelectedUser(prev => ({ ...prev, permissions: newPerms }));
+                }}
+                onMasterAdminChange={(value) => {
+                  setSelectedUser(prev => ({ ...prev, is_master_admin: value }));
+                }}
+              />
+            </div>
+            <div className="sticky bottom-0 flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-white px-4 py-4 sm:px-6">
+              <Button
+                variant="outline"
+                onClick={handleResetPermissions}
+                disabled={savingPermissions}
+                className="mr-auto border-amber-200 text-amber-700 hover:bg-amber-50"
+              >
+                Reset to Role Access
+              </Button>
+              <Button variant="outline" onClick={closePermissionMatrix} disabled={savingPermissions}>
                 Cancel
               </Button>
               <Button
@@ -1325,6 +1425,7 @@ export default function UserManagementModal({
               >
                 {savingPermissions ? 'Saving...' : 'Save Permissions'}
               </Button>
+            </div>
             </div>
           </DialogContent>
         </Dialog>

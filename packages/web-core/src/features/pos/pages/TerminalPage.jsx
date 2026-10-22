@@ -64,7 +64,7 @@ import {
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
-import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
+import { getAllUsers, getEffectiveCapabilities, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getOnboardingStatus } from '@/services/onboardingService.js';
 import {
@@ -93,6 +93,7 @@ import {
 } from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { isMsmeWorkflowMode } from '../../settings/workflowMode.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog.jsx';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
@@ -572,9 +573,9 @@ const parseUserPermissions = (user) => {
 
 const hasPosAttendanceLifecyclePermission = (user) => {
   if (user?.is_master_admin === true) return true;
-  const permissions = new Set(parseUserPermissions(user));
-  return permissions.has('pos:attendance:view')
-    && permissions.has('pos:attendance:operate');
+  const permissions = parseUserPermissions(user);
+  return isPermissionEffective(permissions, 'pos:attendance:view')
+    && isPermissionEffective(permissions, 'pos:attendance:operate');
 };
 
 export default function TerminalPage() {
@@ -654,6 +655,7 @@ export default function TerminalPage() {
   // drawer or shift dialog over the independent branch selector.
   const userHydrationRequestRef = useRef(0);
   const [terminalUser, setTerminalUser] = useState(null);
+  const [servicesCapabilities, setServicesCapabilities] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
@@ -782,6 +784,10 @@ export default function TerminalPage() {
   // sign-in failures use the floating toast so the login drawer stays clear.
   const [unlockFailure, setUnlockFailure] = useState(null);
   const [resumingExistingShift, setResumingExistingShift] = useState(false);
+  const terminalUnlockHelpersRef = useRef({
+    completeTerminalUnlock: null,
+    reportTerminalFailure: null
+  });
   const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
     const storedReason = readStoredTerminalLockReason();
     if (storedReason === 'admin_reunlock') return 'admin_reunlock';
@@ -1259,20 +1265,20 @@ export default function TerminalPage() {
   const isMasterAdminOperator = terminalUser?.is_master_admin === true;
   const hasPermission = useCallback((permission) => {
     if (!terminalUser) return false;
-    if (terminalUser.is_master_admin) return true;
-    return permissions.includes(permission);
+    return isPermissionEffective(permissions, permission, terminalUser.is_master_admin === true);
   }, [permissions, terminalUser]);
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const tenantPosEnabled = setupFlowState.tenantPosEnabled !== false;
   const catalogOnlyAccess = !tenantPosEnabled;
   const canViewPos = tenantPosEnabled && hasPermission('pos:view');
+  const canViewItems = hasPermission('items:view');
   const canReviewVoidApprovals = POS_VOID_APPROVAL_REVIEW_PERMISSIONS.every((permission) => hasPermission(permission));
   const inlineVoidApprovalEnabled = isInlineVoidApprovalPopupEnabled()
     && canReviewVoidApprovals
     && !isCashierRole;
   const canViewAllCashierHistory = hasPermission('business_admin:branches:view_all');
-  const canTransactPos = tenantPosEnabled && hasPermission('pos:transact');
+  const canTransactPos = tenantPosEnabled && canViewPos && hasPermission('pos:transact');
   const canVoidTransactions = hasPermission('pos:void');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAccessPosOnlySetup = hasPermission('pos:view');
@@ -1284,18 +1290,22 @@ export default function TerminalPage() {
   // holds by default -- no longer grants it. This mirrors routes/vouchers.js's `canManageVouchers`
   // exactly. Mirroring is the whole point: without it a manager keeps seeing the create/edit
   // controls and only discovers the restriction as a 403 on submit.
-  const canManageVouchers = hasPermission('vouchers:manage');
+  const canManageVouchers = hasPermission('vouchers:manage') && hasPermission('vouchers:view');
   // Pricelists (#732) share the VOUCHERS.* permission group with vouchers but are a separate
   // capability, and #1493 restricts vouchers only. routes/pricelists.js still accepts the legacy
   // `settings:edit` arm, so this stays the old dual-gate -- splitting it from canManageVouchers is
   // what keeps managers managing pricelists after #1493. Do not re-merge these two.
-  const canManagePricelists = canManageVouchers || hasPermission('settings:edit');
+  const canManagePricelists = hasPermission('vouchers:view')
+    && (canManageVouchers || hasPermission('settings:edit'));
   // #732: Vouchers/Pricelists moved out of the Settings tab strip to their own top-level nav
   // modes, so view access is no longer implied by "reached SettingsWorkspace at all" -- it needs
   // its own gate here, mirroring routes/pricelists.js's own dual-gate exactly:
   // VOUCHERS.VIEW/VOUCHERS.MANAGE OR the legacy SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS pair.
   // Read access is deliberately unchanged by #1493 -- it restricts management, not visibility.
-  const canViewVouchers = canManagePricelists || hasPermission('vouchers:view') || hasPermission('settings:view');
+  const canViewVouchers = hasPermission('vouchers:view');
+  const canViewReports = hasPermission('reports:view');
+  const canViewAffiliates = hasPermission('affiliates:view');
+  const canManageCategories = hasPermission('categories:manage');
   const hasFnbDiningCapability = Array.isArray(profile?.modules)
     ? profile.modules.includes('fnbDining')
     : workflowMode === 'fnb';
@@ -1313,16 +1323,24 @@ export default function TerminalPage() {
       .filter((mode) => mode !== 'audit' || canViewAudit)
       .filter((mode) => mode !== 'approvals' || (canReviewVoidApprovals && !isCashierRole))
       .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers)
+      .filter((mode) => mode !== 'settings_affiliates' || canViewAffiliates)
+      .filter((mode) => mode !== 'reports' || canViewReports)
+      .filter((mode) => mode !== 'items' || canViewItems || canManageCategories || catalogOnlyAccess)
       .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
       .filter((mode) => mode !== 'terminal_setup' || canAccessPosOnlySetup || canAccessSettingsDirectly);
     if (normalizedRole === 'cashier') {
       return roleScopedModes.filter((mode) => isCashierAllowedViewMode(mode, canVoidTransactions));
     }
     return roleScopedModes;
-  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canReviewVoidApprovals, canViewAudit, canViewVouchers, canVoidTransactions, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canManageCategories, canReviewVoidApprovals, canViewAffiliates, canViewAudit, canViewItems, canViewReports, canViewVouchers, canVoidTransactions, catalogOnlyAccess, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  const activeCheckoutViewModes = useMemo(() => {
+    if (canTransactPos) return CHECKOUT_VIEW_MODES;
+    if (canViewPos || branchViewLocationId) return ['history', 'receipt'];
+    return [];
+  }, [branchViewLocationId, canTransactPos, canViewPos]);
   const activeViewModes = useMemo(
-    () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
-    [activeOperationsViewModes]
+    () => [...activeCheckoutViewModes, ...activeOperationsViewModes],
+    [activeCheckoutViewModes, activeOperationsViewModes]
   );
 
   const activeTerminalRegistry = useMemo(
@@ -1378,6 +1396,10 @@ export default function TerminalPage() {
   }, [activeTerminalId, activeTerminalRegistry, formData.terminalId, registryEnforced]);
   const canViewAttendance = hasPermission('pos:attendance:view');
   const canOperateAttendance = hasPermission('pos:attendance:operate');
+  // Resuming an existing cashier shift is an attendance/operator-lifecycle
+  // action. It must not depend on Sell access, which is a separate POS button
+  // permission and may intentionally be disabled for a read-only operator.
+  const canResumeShift = canViewPos && canViewAttendance && canOperateAttendance;
   const canSwitchPosLocation = hasPermission('pos:switch_location');
   const assignedCashierLocationIds = useMemo(() => new Set(
     (Array.isArray(terminalUser?.location_ids) ? terminalUser.location_ids : [])
@@ -1391,22 +1413,24 @@ export default function TerminalPage() {
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
   const canCloseDay = hasPermission('pos:close_day');
-  const canCreateItems = hasPermission('items:create');
+  const canCreateItems = canViewItems && hasPermission('items:create');
   const canManageServiceCatalog = hasPermission('services:catalog:manage');
-  const canViewFnbModifiers = hasPermission('fnb:menu:view') || hasPermission('items:view') || canViewPos;
-  const canManageFnbModifiers = hasPermission('fnb:menu:manage') || hasPermission('items:edit');
+  const canViewFnbModifiers = hasPermission('fnb:menu:view') || canViewItems || canViewPos;
+  const canManageFnbModifiers = (hasPermission('fnb:menu:manage') || hasPermission('items:edit'))
+    && (hasPermission('fnb:menu:view') || canViewItems || canViewPos);
   const serviceOperationsPermissions = useMemo(() => ({
-    viewBookings: hasPermission('services:bookings:view') || canViewPos,
-    manageBookings: hasPermission('services:bookings:manage') || canTransactPos,
-    viewResources: hasPermission('services:resources:view') || hasPermission('items:view'),
-    manageResources: hasPermission('services:resources:manage') || hasPermission('items:edit'),
-    viewWaitlist: hasPermission('services:waitlist:view') || canViewPos,
-    manageWaitlist: hasPermission('services:waitlist:manage') || canTransactPos,
-    viewReminders: hasPermission('services:reminders:view') || canViewPos,
-    manageReminders: hasPermission('services:reminders:manage') || canTransactPos,
-    viewClients: hasPermission('services:clients:view') || hasPermission('reports:view')
-  }), [canTransactPos, canViewPos, hasPermission]);
-  const canAccessServiceOperations = [
+    viewBookings: servicesCapabilities?.viewBookings === true,
+    manageBookings: servicesCapabilities?.manageBookings === true,
+    viewResources: servicesCapabilities?.viewResources === true,
+    manageResources: servicesCapabilities?.manageResources === true,
+    viewWaitlist: servicesCapabilities?.viewWaitlist === true,
+    manageWaitlist: servicesCapabilities?.manageWaitlist === true,
+    viewReminders: servicesCapabilities?.viewReminders === true,
+    manageReminders: servicesCapabilities?.manageReminders === true,
+    viewClients: servicesCapabilities?.viewClients === true
+  }), [servicesCapabilities]);
+  const canAccessServiceOperations = servicesCapabilities?.canAccess === true && [
+    servicesCapabilities?.viewDashboard,
     serviceOperationsPermissions.viewBookings,
     serviceOperationsPermissions.viewResources,
     serviceOperationsPermissions.viewWaitlist,
@@ -1419,9 +1443,17 @@ export default function TerminalPage() {
     || isMasterAdminOperator
     || canViewBranchLocations
   );
-  const canEditItems = hasPermission('items:edit');
-  const canDeleteItems = !isCashierRole && hasPermission('items:delete');
-  const canManageCategories = hasPermission('categories:manage');
+  const permissionFallbackViewMode = canTransactPos
+    ? 'checkout'
+    : (canViewPos || branchViewLocationId
+      ? 'history'
+      : (canViewItems || canManageCategories || (catalogOnlyAccess && canCreateItems)
+        ? 'items'
+        : (canViewVouchers
+          ? 'settings_vouchers'
+          : (canViewAffiliates ? 'settings_affiliates' : 'settings_profile'))));
+  const canEditItems = canViewItems && hasPermission('items:edit');
+  const canDeleteItems = canViewItems && !isCashierRole && hasPermission('items:delete');
   const canReceiveStockAlerts = !isCashierRole && (
     isMasterAdminOperator
     || canViewAudit
@@ -1566,11 +1598,11 @@ export default function TerminalPage() {
     if (!normalizedView || normalizedView === 'receipt' || !activeViewModes.includes(normalizedView)) return '';
     if (isCashierRole && !isCashierAllowedViewMode(normalizedView, canVoidTransactions)) return '';
     if (normalizedView === 'incoming_queue' && !canViewPos) return '';
-    if (normalizedView === 'items' && !canViewPos && !canManageCategories && !(catalogOnlyAccess && canCreateItems)) return '';
+    if (normalizedView === 'items' && !canViewItems && !canManageCategories && !(catalogOnlyAccess && canCreateItems)) return '';
     if (normalizedView === 'services' && !canAccessServiceOperations) return '';
     if (normalizedView === 'audit' && !canViewAudit) return '';
     return normalizedView;
-  }, [activeViewModes, canAccessServiceOperations, canCreateItems, canManageCategories, canViewAudit, canViewPos, canVoidTransactions, catalogOnlyAccess, isCashierRole]);
+  }, [activeViewModes, canAccessServiceOperations, canCreateItems, canManageCategories, canViewAudit, canViewItems, canViewPos, canVoidTransactions, catalogOnlyAccess, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
     const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep, workflowMode);
@@ -3791,6 +3823,37 @@ export default function TerminalPage() {
     hydrateUser();
   }, [hydrateUser]);
 
+  const loadServicesCapabilities = useCallback(async () => {
+    if (!terminalUser?.user_id || !isOnline || !apiReachable) return null;
+    try {
+      return await getEffectiveCapabilities();
+    } catch {
+      return null;
+    }
+  }, [apiReachable, isOnline, terminalUser?.user_id]);
+
+  const refreshServicesCapabilities = useCallback(async () => {
+    const payload = await loadServicesCapabilities();
+    setServicesCapabilities(payload?.services_capabilities || null);
+    return payload;
+  }, [loadServicesCapabilities]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!terminalUser?.user_id || !isOnline || !apiReachable) {
+      setServicesCapabilities(null);
+      return () => { cancelled = true; };
+    }
+
+    loadServicesCapabilities().then((payload) => {
+      // The service affordance must fail closed when the projection cannot be
+      // refreshed. Protected service APIs remain the final authority.
+      if (!cancelled) setServicesCapabilities(payload?.services_capabilities || null);
+    });
+
+    return () => { cancelled = true; };
+  }, [apiReachable, isOnline, loadServicesCapabilities, terminalUser?.user_id]);
+
   useEffect(() => {
     if (locked) {
       terminalMetaHydratedForSessionRef.current = false;
@@ -3953,10 +4016,9 @@ export default function TerminalPage() {
   useEffect(() => {
     if (!locked || !readStoredTerminalLock()) return;
     const storedLockReason = readStoredTerminalLockReason();
-    // Cashiers must choose the branch card before the terminal shift dialog
-    // appears. The branch selector intentionally remains visible while the
-    // terminal is locked, so lock restoration must not stack the unlock dialog
-    // over that selector.
+    // A locked cashier shift already has its branch, terminal, and shift
+    // context persisted. Restore the direct unlock form instead of requiring
+    // the cashier to select the same branch again.
     if (
       branchSelectorOpen
       && branchSelectorMode === 'cashier'
@@ -5023,6 +5085,13 @@ export default function TerminalPage() {
     return operationalContext;
   };
 
+  // These helpers intentionally remain current without making the branch
+  // selector callback depend on functions recreated by this large component.
+  terminalUnlockHelpersRef.current = {
+    completeTerminalUnlock,
+    reportTerminalFailure
+  };
+
   const handleBranchSelectorOpenShift = useCallback(({ locationId, terminalId } = {}) => {
     const normalizedLocationId = Number.parseInt(locationId, 10);
     const normalizedTerminalId = sanitizeTerminalId(terminalId);
@@ -5090,7 +5159,7 @@ export default function TerminalPage() {
     const normalizedShiftId = Number.parseInt(shiftId, 10);
     const canOperateAssignedCashierBranch = isCashierRole
       && assignedCashierLocationIds.has(normalizedLocationId);
-    if ((!canViewBranchLocations && !canOperateAssignedCashierBranch) || !canTransactPos) {
+    if ((!canViewBranchLocations && !canOperateAssignedCashierBranch) || !canResumeShift) {
       toast.error('Your account is not permitted to resume a POS shift.');
       return false;
     }
@@ -5155,11 +5224,9 @@ export default function TerminalPage() {
     }
 
     // A cashier who just authenticated through the DGFY company picker already
-    // has a verified tenant session. Keep the branch card as the first step,
-    // then open the signed-in Resume Shift dialog so the normal resume handler
-    // can re-establish operator authority without asking for the password again.
-    // The selected shift id is kept as the card's server-provided identity; the
-    // resume endpoint remains authoritative when the dialog is submitted.
+    // has a verified tenant session. The branch card has already supplied the
+    // branch, terminal, and shift identity, so resume it directly instead of
+    // opening a second dialog with the same "Resume Shift" action.
     const signedInCashierResume = isCashierRole
       && cashierUnlockSession?.source === 'dgfy_pos'
       && Number.isInteger(normalizedShiftId)
@@ -5177,17 +5244,87 @@ export default function TerminalPage() {
         openingFloatAmount: '',
         openingNote: ''
       }));
+      setUnlockFailure(null);
       setTerminalUnlockMode('resume_shift');
       setTerminalUnlockRequired(true);
       setBranchSelectorOpen(false);
       branchSelectorContinuationRef.current = null;
-      setTerminalUnlockModalOpen(true);
+      setTerminalUnlockModalOpen(false);
       setDrawerOpen(false);
       setSentryContext({
         terminalId: normalizedTerminalId,
         locationId: normalizedLocationId
       });
-      return true;
+
+      setSubmitting(true);
+      toast.message('Resuming your existing shift…');
+      try {
+        const currentShiftResult = await fetchCurrentTerminalShift({
+          terminal_id: normalizedTerminalId,
+          location_id: normalizedLocationId
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+        const currentShift = currentShiftResult?.shift || null;
+        const currentShiftDecision = resolveActiveShiftResumeDecision({
+          currentShift,
+          terminalRegistry
+        });
+        const currentShiftId = Number(currentShift?.pos_terminal_shift_id || 0);
+        if (currentShiftDecision.mode === 'blocked') {
+          throw new Error(currentShiftDecision.message);
+        }
+        if (
+          currentShiftDecision.mode !== 'resume'
+          || currentShiftDecision.terminalId !== normalizedTerminalId
+          || currentShiftDecision.locationId !== normalizedLocationId
+          || currentShiftId !== normalizedShiftId
+        ) {
+          throw new Error('The selected shift is no longer open. Refresh the branch directory before trying again.');
+        }
+
+        const completeUnlock = terminalUnlockHelpersRef.current.completeTerminalUnlock;
+        if (typeof completeUnlock !== 'function') {
+          throw new Error('The POS terminal resume action is not ready. Refresh POS and try again.');
+        }
+        let operationalContext = await completeUnlock(normalizedTerminalId, {
+          operatingLocationIdOverride: normalizedLocationId,
+          suppressStockAlerts: true
+        });
+        if (!operationalContext?.shift) {
+          operationalContext = await refreshOperationalContext({
+            terminalIdOverride: normalizedTerminalId,
+            operatingLocationIdOverride: normalizedLocationId,
+            suppressGlobalErrors: true,
+            allowWhileLocked: true
+          });
+        }
+        if (!operationalContext?.shift) {
+          throw new Error('The existing shift could not be confirmed. No new shift or opening cash is needed — try again.');
+        }
+        toast.success('Existing cashier shift resumed.');
+        return true;
+      } catch (error) {
+        // Keep the failure retryable. Direct resume must never leave the cashier
+        // unlocked or silently fall back to opening a replacement shift.
+        setStoredTerminalLock(true);
+        setStoredTerminalLockReason('shift_start_required');
+        setLocked(true);
+        setDrawerOpen(false);
+        setTerminalUnlockForm((previous) => ({
+          ...previous,
+          terminalId: normalizedTerminalId,
+          terminalPassword: '',
+          cashierPassword: '',
+          openingFloatAmount: '',
+          openingNote: ''
+        }));
+        setTerminalUnlockMode('resume_shift');
+        setTerminalUnlockRequired(true);
+        setTerminalUnlockModalOpen(true);
+        terminalUnlockHelpersRef.current.reportTerminalFailure?.(error, 'terminal_unlock');
+        return false;
+      } finally {
+        setSubmitting(false);
+      }
     }
 
     if (
@@ -5270,7 +5407,7 @@ export default function TerminalPage() {
     activeShiftId,
     activeTerminalId,
     assignedCashierLocationIds,
-    canTransactPos,
+    canResumeShift,
     canViewBranchLocations,
     cashierUnlockSession?.source,
     cashierResumeContext?.locationId,
@@ -5280,8 +5417,9 @@ export default function TerminalPage() {
     isCashierRole,
     isOnline,
     operatingLocationId,
-    refreshBranchDirectory,
     refreshOperationalContext,
+    terminalRegistry,
+    refreshBranchDirectory,
     terminalRegistryLookup
   ]);
 
@@ -5388,19 +5526,6 @@ export default function TerminalPage() {
       && Boolean(authenticatedAccountEmail)
       && authenticatedAccountEmail === normalizedEmail
     );
-    const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
-    const legacyCompanyChoiceRequired = (
-      entryIntent === 'shift'
-      && !continuingAfterCompanyPicker
-      && emailCompanyLookup?.status === 'multiple'
-      && normalizedEmail === lookupEmail
-      && !String(formData.legacyCompanyToken || '').trim()
-    );
-
-    if (legacyCompanyChoiceRequired) {
-      setLegacyCompanySelectionOpen(true);
-      return;
-    }
 
     setSubmitting(true);
     setUnlockFailure(null);
@@ -6105,13 +6230,8 @@ export default function TerminalPage() {
 
       if (!hasPosAttendanceLifecyclePermission(cashierUser)) {
         clearDgfySession();
-        clearClientSession({
-          reason: 'logout',
-          broadcast: true,
-          emitAuthEvents: true,
-          redirectTo: null
-        });
-        toast.error('This account is not authorized to operate the selected POS register.');
+        setCashierResumeForm({ identifier: '', password: '' });
+        toast.error('This account needs View Attendance and Operate Attendance permissions to resume this POS register.');
         return;
       }
 
@@ -6234,13 +6354,8 @@ export default function TerminalPage() {
 
       if (!hasPosAttendanceLifecyclePermission(cashierUser)) {
         clearDgfySession();
-        clearClientSession({
-          reason: 'logout',
-          broadcast: true,
-          emitAuthEvents: true,
-          redirectTo: null
-        });
-        toast.error('This account is not authorized to operate the selected POS register.');
+        setCashierTakeoverForm({ identifier: '', password: '', pin: '' });
+        toast.error('This account needs View Attendance and Operate Attendance permissions to access this POS register.');
         return;
       }
 
@@ -7017,22 +7132,7 @@ export default function TerminalPage() {
         openingFloatAmount: '',
         openingNote: ''
       });
-      setTerminalUnlockModalOpen(false);
-      openBranchSelector({
-        mode: 'cashier',
-        continuation: 'terminal_unlock',
-        cashierData: {
-          user: terminalUser,
-          locations: locationsState?.locations,
-          terminalRegistry: activeTerminalRegistry,
-          resumeShift: shiftState?.shift || {
-            pos_terminal_shift_id: activeShiftId,
-            cashier_id: activeShiftCashierId,
-            terminal_id: selectedTerminalId,
-            location_id: activeShiftLocationId
-          }
-        }
-      });
+      setTerminalUnlockModalOpen(true);
       setStockAlertSummary({ open: false, almostOutOfStock: [], outOfStock: [] });
       return;
     }
@@ -8459,8 +8559,8 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (nextMode === 'items' && !canViewPos && !canManageCategories && !(catalogOnlyAccess && canCreateItems) && !branchViewReadOnlyNavigation) {
-      toast.error('POS view or category-management permission is required.');
+    if (nextMode === 'items' && !canViewItems && !canManageCategories && !(catalogOnlyAccess && canCreateItems) && !branchViewReadOnlyNavigation) {
+      toast.error('Items view or category-management permission is required.');
       setMobileNavOpen(false);
       return;
     }
@@ -8568,6 +8668,7 @@ export default function TerminalPage() {
     canManageCategories,
     canReviewVoidApprovals,
     canViewAudit,
+    canViewItems,
     canViewPos,
     commitViewModeSelection,
     hydrateTerminalMeta,
@@ -8895,36 +8996,36 @@ export default function TerminalPage() {
 
   useEffect(() => {
     if (posViewMode === 'history' && !canViewPos) {
-      setPosViewMode('checkout');
+      setPosViewMode(permissionFallbackViewMode);
     }
-  }, [canViewPos, posViewMode]);
+  }, [canViewPos, permissionFallbackViewMode, posViewMode]);
 
   useEffect(() => {
     if (!canViewPos && ['incoming_queue'].includes(posViewMode)) {
-      setPosViewMode('checkout');
+      setPosViewMode(permissionFallbackViewMode);
     }
-  }, [canViewPos, posViewMode]);
+  }, [canViewPos, permissionFallbackViewMode, posViewMode]);
 
   useEffect(() => {
-    if (posViewMode === 'items' && !canViewPos && !canManageCategories && !(catalogOnlyAccess && canCreateItems)) {
-      setPosViewMode('checkout');
+    if (posViewMode === 'items' && !canViewItems && !canManageCategories && !(catalogOnlyAccess && canCreateItems)) {
+      setPosViewMode(permissionFallbackViewMode);
     }
-  }, [canCreateItems, canManageCategories, canViewPos, catalogOnlyAccess, posViewMode]);
+  }, [canCreateItems, canManageCategories, canViewItems, catalogOnlyAccess, permissionFallbackViewMode, posViewMode]);
 
   useEffect(() => {
     if (posViewMode === 'services' && !canAccessServiceOperations) {
-      setPosViewMode('checkout');
+      setPosViewMode(permissionFallbackViewMode);
     }
-  }, [canAccessServiceOperations, posViewMode]);
+  }, [canAccessServiceOperations, permissionFallbackViewMode, posViewMode]);
 
   useEffect(() => {
     if (!activeViewModes.includes(posViewMode)) {
-      setPosViewMode('checkout');
+      setPosViewMode(permissionFallbackViewMode);
     }
-  }, [activeViewModes, posViewMode]);
+  }, [activeViewModes, permissionFallbackViewMode, posViewMode]);
 
   const effectiveSidebarCollapsed = isTabletLayout ? true : (isDesktopWide ? sidebarCollapsed : false);
-  const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
+  const isCheckoutWorkspaceMode = activeCheckoutViewModes.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
   const shiftOpeningModalOpen = (
     !drawerOpen
@@ -9282,11 +9383,13 @@ function PosRestorationLoadingScreen() {
           inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}
           onboardingRestricted={setupFlowActive}
           catalogOnlyAccess={catalogOnlyAccess}
+          canViewItems={canViewItems}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}
           canViewFnbModifiers={canViewFnbModifiers}
           canManageFnbModifiers={canManageFnbModifiers}
           serviceOperationsPermissions={serviceOperationsPermissions}
+          onServiceAuthorizationFailure={refreshServicesCapabilities}
           canAccessServiceOperations={canAccessServiceOperations}
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
@@ -9294,6 +9397,8 @@ function PosRestorationLoadingScreen() {
           canManageVouchers={canManageVouchers}
           canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
+          canViewReports={canViewReports}
+          canViewAffiliates={canViewAffiliates}
           canAccessPosOnlySetup={canAccessPosOnlySetup}
           showFnbService={SHOW_FNB_SERVICE_IN_POS_NAVIGATION && canAccessFnbService}
           showIncomingQueue={onlineOrderQueueEnabled}

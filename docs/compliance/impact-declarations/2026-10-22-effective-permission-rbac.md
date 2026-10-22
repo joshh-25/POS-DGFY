@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: pos,terminal,settings,inventory,compliance
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,UNAUTHORIZED
 policy_version: 2026.10.22
-verification_evidence: check-architecture-guardrails,check-controller-boundaries,check-tenant-schema-coverage-staged,git-diff-cached-check
+verification_evidence: check-architecture-guardrails,check-controller-boundaries,check-tenant-schema-coverage-staged,focused-pos-vitest-102-tests,pos-production-build,git-diff-cached-check
 rollback_note: Revert the effective-permission dependency helpers, API authorization changes, migration, and related tests together with this declaration.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -28,6 +28,7 @@ authenticated tenant and operating scope.
 ## Affected Surfaces
 
 - POS terminal, cashier attendance, operator authority, and transaction authorization.
+- POS terminal navigation, button visibility, cashier lock/unlock, and shift-resume flows.
 - Tenant user management, role permissions, and effective-capability projection.
 - Inventory/catalog actions whose access depends on view and management permissions.
 - Tenant provisioning and compliance-sensitive authorization boundaries.
@@ -52,3 +53,5 @@ authenticated tenant and operating scope.
 - API controller-boundary checks passed.
 - Tenant-schema migration coverage passed for the staged migration set.
 - `git diff --cached --check` passed before commit.
+- Focused POS Vitest coverage passed: 4 files, 102 tests.
+- `npm run build` passed in `apps/dgfy-pos`; only existing Vite chunk-placement warnings were emitted.

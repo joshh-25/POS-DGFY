@@ -4,10 +4,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PermissionMatrix from '../PermissionMatrix.jsx';
 
-describe('PermissionMatrix scrolling', () => {
+describe('PermissionMatrix presentation', () => {
   afterEach(() => cleanup());
 
-  it('keeps an expanded permission group scrollable when its contents exceed the panel height', () => {
+  it('renders all functions immediately in the selected button panel', () => {
     render(
       <PermissionMatrix
         permissions={[]}
@@ -24,11 +24,33 @@ describe('PermissionMatrix scrolling', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Point of Sale'));
+    fireEvent.click(screen.getByRole('button', { name: /Other \/ Legacy/ }));
+    expect(screen.getAllByText('Other / Legacy — Point of Sale').length).toBeGreaterThan(0);
+    expect(screen.getByText('Test 1')).toBeTruthy();
+    expect(screen.getByText('Test 24')).toBeTruthy();
+    expect(screen.queryByText('No buttons match your search.')).toBeNull();
+    expect(screen.queryByText('Deselect All')).toBeNull();
+  });
 
-    const contentPanel = screen.getByText('PERMISSION 1').closest('div')?.parentElement;
-    expect(contentPanel?.className).toContain('max-h-96');
-    expect(contentPanel?.className).toContain('overflow-y-auto');
-    expect(contentPanel?.className).not.toContain('overflow-hidden');
+  it('preserves child selections when a parent button is disabled', () => {
+    function Harness() {
+      const [permissions, setPermissions] = React.useState(['items:view', 'items:create']);
+      return (
+        <PermissionMatrix
+          permissions={permissions}
+          onChange={setPermissions}
+          onMasterAdminChange={vi.fn()}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Items/ }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable Items Button' }));
+
+    const addItems = screen.getByRole('checkbox', { name: 'Add Items' });
+    expect(addItems.checked).toBe(true);
+    expect(addItems.disabled).toBe(true);
   });
 });

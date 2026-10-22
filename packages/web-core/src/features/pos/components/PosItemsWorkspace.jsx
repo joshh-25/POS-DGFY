@@ -411,6 +411,7 @@ const resolveItemWorkspacePresentation = (workflowMode = '') => {
 
 function ItemsWorkspace({
   canViewPos,
+  canViewItems = null,
   catalogOnlyAccess = false,
   canCreateItems = false,
   canImportItems = false,
@@ -437,7 +438,9 @@ function ItemsWorkspace({
   onItemCreated = () => {},
   modalOnly = false
 }) {
-  const canViewCatalog = canViewPos || catalogOnlyAccess;
+  const effectiveCanViewItems = canViewItems == null ? canViewPos : canViewItems;
+  const canViewCatalog = effectiveCanViewItems || catalogOnlyAccess;
+  const inventoryOnlyAccess = effectiveCanViewItems && !canViewPos && !catalogOnlyAccess;
   const filterRadioGroupId = React.useId();
   const [items, setItems] = useState([]);
   const [itemsTotal, setItemsTotal] = useState(0);
@@ -636,16 +639,17 @@ function ItemsWorkspace({
         || availableLocations.some((location) => (
           Number(location?.location_id) === scopedLocationId
         )));
-    const catalogOnlyItemsCacheKey = catalogOnlyAccess
+    const catalogOnlyItemsCacheKey = (catalogOnlyAccess || inventoryOnlyAccess)
       ? JSON.stringify({
-        catalogOnly: true,
+        catalogOnly: catalogOnlyAccess,
+        inventoryOnly: inventoryOnlyAccess,
         search: deferredItemsSearch,
         page: itemsPage,
         pageSize: itemsPageSize,
         categoryFilter
       })
       : '';
-    const scopedItemsCacheKey = !catalogOnlyAccess && hasValidOperatingLocation
+    const scopedItemsCacheKey = !catalogOnlyAccess && !inventoryOnlyAccess && hasValidOperatingLocation
       ? JSON.stringify({
         locationId: scopedLocationId,
         search: deferredItemsSearch,
@@ -660,7 +664,7 @@ function ItemsWorkspace({
       ? scopedItemsCache.current.get(itemsCacheKey)
       : null;
 
-    if (!catalogOnlyAccess && (locationsLoading || !hasValidOperatingLocation)) {
+    if (!catalogOnlyAccess && !inventoryOnlyAccess && (locationsLoading || !hasValidOperatingLocation)) {
       if (cachedItems) {
         setItems(cachedItems.items);
         setItemsTotal(cachedItems.total);
@@ -688,7 +692,7 @@ function ItemsWorkspace({
       const catalogFolderId = String(categoryFilter || '').startsWith('folder:')
         ? Number(String(categoryFilter).slice('folder:'.length))
         : null;
-      const data = catalogOnlyAccess
+      const data = catalogOnlyAccess || inventoryOnlyAccess
         ? await getItems({
           search: deferredItemsSearch,
           page: itemsPage,
@@ -729,14 +733,14 @@ function ItemsWorkspace({
         setItems([]);
         setItemsTotal(0);
         setPrimaryBarcodes({});
-        setError(loadError?.response?.data?.message || (catalogOnlyAccess
-          ? 'Failed to load catalog items.'
+        setError(loadError?.response?.data?.message || (catalogOnlyAccess || inventoryOnlyAccess
+          ? 'Failed to load inventory items.'
           : 'Failed to load POS-visible IMS items.'));
       }
     } finally {
       if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [availableLocations, canViewCatalog, canViewPos, catalogOnlyAccess, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locationsLoading, locked, modalOnly, operatingLocationId, stockFilter]);
+  }, [availableLocations, canViewCatalog, canViewPos, catalogOnlyAccess, categoryFilter, deferredItemsSearch, inventoryOnlyAccess, itemsPage, itemsPageSize, loadPrimaryBarcodes, locationsLoading, locked, modalOnly, operatingLocationId, stockFilter]);
 
   useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
   const normalizePosFolders = useCallback((rows = []) => (

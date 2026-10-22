@@ -1972,6 +1972,7 @@ export default function TerminalOperationsWorkspace({
   onTestPrinter = async () => false,
   onSelectTerminal = async () => false,
   canViewPos,
+  canViewItems = null,
   catalogOnlyAccess = false,
   effectiveCapabilities = [],
   canCreateItems = false,
@@ -1979,6 +1980,7 @@ export default function TerminalOperationsWorkspace({
   canViewFnbModifiers = false,
   canManageFnbModifiers = false,
   serviceOperationsPermissions = {},
+  onServiceAuthorizationFailure = async () => null,
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
@@ -2111,7 +2113,8 @@ export default function TerminalOperationsWorkspace({
       : 'p-5';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;
-  const canImportItems = IS_DGFY_POS_SURFACE && (
+  const effectiveCanViewItems = canViewItems == null ? canViewPos : canViewItems;
+  const canImportItems = effectiveCanViewItems && IS_DGFY_POS_SURFACE && (
     terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('items:import')
   );
@@ -2423,6 +2426,7 @@ export default function TerminalOperationsWorkspace({
         <ItemsCatalogWorkspace
           itemsWorkspaceComponent={ItemsWorkspace}
           canViewPos={canViewPos}
+          canViewItems={canViewItems}
           catalogOnlyAccess={catalogOnlyAccess}
           effectiveCapabilities={effectiveCapabilities}
           canCreateItems={isBranchReadOnlyView ? false : canCreateItems}
@@ -2458,6 +2462,7 @@ export default function TerminalOperationsWorkspace({
             <PosServicesOperationsWorkspace
               permissions={serviceOperationsPermissions}
               isOnline={isOnline}
+              onAuthorizationFailure={onServiceAuthorizationFailure}
             />
           </Suspense>
         </div>
@@ -2500,6 +2505,7 @@ export default function TerminalOperationsWorkspace({
     canManageFnbModifiers,
     canViewFnbModifiers,
     serviceOperationsPermissions,
+    onServiceAuthorizationFailure,
     canRecoverStaleShifts,
     adminLocationMonitorState,
     adminTerminalSwitching,

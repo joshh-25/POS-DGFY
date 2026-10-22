@@ -32,7 +32,8 @@ describe('POS catalog-only onboarding access contract', () => {
 
     const itemsWorkspace = read('../components/PosItemsWorkspace.jsx');
     const itemsCatalogWorkspace = read('../components/PosItemsCatalogWorkspace.jsx');
-    expect(itemsCatalogWorkspace).toContain('const canViewCatalog = canViewPos || catalogOnlyAccess;');
+    expect(itemsCatalogWorkspace).toContain('const effectiveCanViewItems = canViewItems == null ? canViewPos : canViewItems;');
+    expect(itemsCatalogWorkspace).toContain('const canViewCatalog = effectiveCanViewItems || catalogOnlyAccess;');
     expect(itemsWorkspace).toContain('catalogOnlyAccess: postCreateCatalogOnlyAccess = false');
     expect(itemsWorkspace).toContain('if (postCreateCatalogOnlyAccess) {');
     expect(itemsWorkspace).toContain("scope: catalogOnlyAccess ? 'inventory' : 'pos'");

@@ -42,7 +42,7 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageDialogLayerSource).toContain("'Unlock POS'");
   });
 
-  it('routes a DGFY-authenticated owner resume through the signed-in shift dialog after branch selection', () => {
+  it('resumes a DGFY-authenticated owner directly after branch selection', () => {
     const resumeStart = terminalPageSource.indexOf(
       'const handleBranchSelectorResumeShift = useCallback(async ({ locationId, terminalId, shiftId } = {}) => {'
     );
@@ -62,9 +62,23 @@ describe('POS terminal pairing contract', () => {
     expect(resumeStart).toBeGreaterThan(-1);
     expect(resumeSource).toContain('const normalizedShiftId = Number.parseInt(shiftId, 10);');
     expect(resumeSource).toContain("cashierUnlockSession?.source === 'dgfy_pos'");
-    expect(resumeSource).toContain("setTerminalUnlockMode('resume_shift')");
-    expect(resumeSource).toContain('setTerminalUnlockModalOpen(true);');
-    expect(resumeSource).toContain('setTerminalUnlockRequired(true);');
+    const signedInResumeStart = resumeSource.indexOf('const signedInCashierResume =');
+    const signedInResumeEnd = resumeSource.indexOf(
+      'if (\n      activeShiftId',
+      signedInResumeStart
+    );
+    const signedInResumeSource = resumeSource.slice(signedInResumeStart, signedInResumeEnd);
+    const directResumeCatchStart = signedInResumeSource.indexOf('} catch (error) {');
+    const directResumeAttemptSource = signedInResumeSource.slice(0, directResumeCatchStart);
+
+    expect(signedInResumeStart).toBeGreaterThan(-1);
+    expect(signedInResumeEnd).toBeGreaterThan(signedInResumeStart);
+    expect(signedInResumeSource).toContain("setTerminalUnlockMode('resume_shift')");
+    expect(signedInResumeSource).toContain('setTerminalUnlockModalOpen(false);');
+    expect(signedInResumeSource).toContain('setSubmitting(true);');
+    expect(signedInResumeSource).toContain('fetchCurrentTerminalShift({');
+    expect(signedInResumeSource).toContain('await completeUnlock(normalizedTerminalId');
+    expect(directResumeAttemptSource).not.toContain('setTerminalUnlockModalOpen(true);');
     expect(resumeSource).toContain('const confirmedShiftId = Number(');
     expect(resumeSource).toContain('normalizedShiftId > 0 && confirmedShiftId !== normalizedShiftId');
     expect(explicitRefreshStart).toBeGreaterThan(-1);
@@ -77,7 +91,36 @@ describe('POS terminal pairing contract', () => {
     expect(stateChangesBeforeExplicitRefresh).not.toContain('setActiveTerminalId(normalizedTerminalId);');
   });
 
+  it('keeps existing shift resume independent from Sell button access', () => {
+    const resumeStart = terminalPageSource.indexOf(
+      'const handleBranchSelectorResumeShift = useCallback(async ({ locationId, terminalId, shiftId } = {}) => {'
+    );
+    const resumeEnd = terminalPageSource.indexOf(
+      'const handleSelectAdminTerminal = async',
+      resumeStart
+    );
+    const resumeSource = terminalPageSource.slice(resumeStart, resumeEnd);
+
+    expect(terminalPageSource).toContain(
+      'const canResumeShift = canViewPos && canViewAttendance && canOperateAttendance;'
+    );
+    expect(resumeSource).toContain('|| !canResumeShift');
+    expect(resumeSource).not.toContain('|| !canTransactPos');
+  });
+
   it('resumes a locked open shift through the DGFY POS session instead of a tenant-local cashier password', () => {
+    const handleLockStart = terminalPageSource.indexOf('const handleLock = async');
+    const handleLockEnd = terminalPageSource.indexOf('const handlePostShiftReturnToLogin', handleLockStart);
+    const handleLockSource = terminalPageSource.slice(handleLockStart, handleLockEnd);
+    const cashierLockStart = handleLockSource.indexOf("setTerminalUnlockMode('cashier_resume');");
+    const cashierLockEnd = handleLockSource.indexOf('setStockAlertSummary', cashierLockStart);
+    const cashierLockSource = handleLockSource.slice(cashierLockStart, cashierLockEnd);
+
+    expect(handleLockStart).toBeGreaterThan(-1);
+    expect(handleLockEnd).toBeGreaterThan(handleLockStart);
+    expect(cashierLockStart).toBeGreaterThan(-1);
+    expect(cashierLockSource).toContain('setTerminalUnlockModalOpen(true);');
+    expect(cashierLockSource).not.toContain('openBranchSelector({');
     expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_resume')");
     expect(terminalPageDialogLayerSource).toContain('cashierTakeoverUnlock ? handleCashierTakeoverSubmit : (cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit)');
     expect(terminalPageDialogLayerSource).toContain('Terminal password is not required.');
@@ -160,6 +203,27 @@ describe('POS terminal pairing contract', () => {
     expect(resumeFlow).toContain('setTerminalUser(cashierUser);');
     expect(resumeFlow).toContain('preserveShiftContext: preservedShiftContext');
     expect(resumeFlow.indexOf('activateDgfyTenantSession(posSession')).toBeLessThan(resumeFlow.indexOf('await completeTerminalUnlock(terminalId'));
+  });
+
+  it('keeps an attendance permission denial inside POS instead of clearing the tenant login', () => {
+    const resumeStart = terminalPageSource.indexOf('const handleCashierResumeSubmit = async (event) => {');
+    const takeoverStart = terminalPageSource.indexOf('const handleCashierTakeoverSubmit = async (event) => {', resumeStart);
+    const takeoverEnd = terminalPageSource.indexOf('const handleTerminalUnlockSubmit = async', takeoverStart);
+    const resumeFlow = terminalPageSource.slice(resumeStart, takeoverStart);
+    const takeoverFlow = terminalPageSource.slice(takeoverStart, takeoverEnd);
+    const resumePermissionStart = resumeFlow.indexOf('if (!hasPosAttendanceLifecyclePermission(cashierUser)) {');
+    const resumePermissionEnd = resumeFlow.indexOf('const expectedCashierId', resumePermissionStart);
+    const takeoverPermissionStart = takeoverFlow.indexOf('if (!hasPosAttendanceLifecyclePermission(cashierUser)) {');
+    const takeoverPermissionEnd = takeoverFlow.indexOf('const preservedShiftContext', takeoverPermissionStart);
+    const resumePermissionFlow = resumeFlow.slice(resumePermissionStart, resumePermissionEnd);
+    const takeoverPermissionFlow = takeoverFlow.slice(takeoverPermissionStart, takeoverPermissionEnd);
+
+    expect(resumePermissionFlow).toContain('setCashierResumeForm({ identifier: \'\', password: \'\' });');
+    expect(resumePermissionFlow).toContain('This account needs View Attendance and Operate Attendance permissions to resume this POS register.');
+    expect(resumePermissionFlow).not.toContain('clearClientSession({');
+    expect(takeoverPermissionFlow).toContain('setCashierTakeoverForm({ identifier: \'\', password: \'\', pin: \'\' });');
+    expect(takeoverPermissionFlow).toContain('This account needs View Attendance and Operate Attendance permissions to access this POS register.');
+    expect(takeoverPermissionFlow).not.toContain('clearClientSession({');
   });
 
   it('keeps a successful cashier close in a secure post-shift Day Close handoff while preserving admin navigation', () => {

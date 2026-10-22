@@ -65,7 +65,12 @@ const toIsoOrNull = (value) => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
-export default function PosServicesOperationsWorkspace({ permissions = {}, isOnline = true, settlementContext = {} }) {
+export default function PosServicesOperationsWorkspace({
+  permissions = {},
+  isOnline = true,
+  settlementContext = {},
+  onAuthorizationFailure = async () => null
+}) {
   const tabs = useMemo(() => [
     ...(permissions.viewBookings ? [{ id: 'today', label: 'Today', icon: CalendarCheck }, { id: 'calendar', label: 'Calendar', icon: Clock }] : []),
     ...(permissions.viewResources ? [{ id: 'team', label: 'Team & Resources', icon: UserRound }] : []),
@@ -98,6 +103,16 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
   const [settlingBookingId, setSettlingBookingId] = useState(null);
   const [settlementResult, setSettlementResult] = useState(null);
 
+  const reportServiceError = useCallback(async (error, fallbackMessage) => {
+    const isForbidden = error?.response?.status === 403;
+    const message = isForbidden
+      ? 'You are not authorized to use Services operations. Permissions were refreshed; retry if the workspace remains open.'
+      : (error?.response?.data?.message || fallbackMessage);
+    setLoadError(message);
+    if (isForbidden) await onAuthorizationFailure(error);
+    toast.error(message);
+  }, [onAuthorizationFailure]);
+
   useEffect(() => {
     if (!tabs.some((tab) => tab.id === activeTab)) setActiveTab(tabs[0]?.id || '');
   }, [activeTab, tabs]);
@@ -129,13 +144,11 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       setClients(Array.isArray(clientData?.clients) ? clientData.clients : []);
       setUsers(Array.isArray(userData) ? userData : Array.isArray(userData?.users) ? userData.users : []);
     } catch (error) {
-      const message = error?.response?.data?.message || 'Unable to load Services operations.';
-      setLoadError(message);
-      toast.error(message);
+      await reportServiceError(error, 'Unable to load Services operations.');
     } finally {
       setLoading(false);
     }
-  }, [isOnline, permissions, tabs.length]);
+  }, [isOnline, permissions, reportServiceError, tabs.length]);
 
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
 
@@ -176,7 +189,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     if (!permissions.manageBookings) return;
     setUpdatingBookingId(bookingId);
     try { await updateServiceBookingStatus(bookingId, { status }); await loadWorkspace(); toast.success('Booking updated.'); }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to update booking.'); }
+    catch (error) { await reportServiceError(error, 'Unable to update booking.'); }
     finally { setUpdatingBookingId(null); }
   };
 
@@ -194,7 +207,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       await loadWorkspace();
       toast.success('Resource created.');
     }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to create resource.'); }
+    catch (error) { await reportServiceError(error, 'Unable to create resource.'); }
     finally { setSaving(''); }
   };
 
@@ -210,7 +223,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     try {
       await createServiceAssignment({ item_id: Number(assignmentForm.item_id), resource_id: assignmentForm.resource_id ? Number(assignmentForm.resource_id) : null, user_id: assignmentForm.user_id ? Number(assignmentForm.user_id) : null, location_id: assignmentForm.location_id ? Number(assignmentForm.location_id) : null });
       setAssignmentForm(emptyAssignment); await loadWorkspace(); toast.success('Assignment created.');
-    } catch (error) { toast.error(error?.response?.data?.message || 'Unable to create assignment.'); }
+    } catch (error) { await reportServiceError(error, 'Unable to create assignment.'); }
     finally { setSaving(''); }
   };
 
@@ -218,7 +231,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     if (!permissions.manageResources || saving) return;
     setSaving(`assignment-${assignmentId}`);
     try { await updateServiceAssignment(assignmentId, { is_active: false }); await loadWorkspace(); toast.success('Assignment removed.'); }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to remove assignment.'); }
+    catch (error) { await reportServiceError(error, 'Unable to remove assignment.'); }
     finally { setSaving(''); }
   };
 
@@ -239,7 +252,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     try {
       await createServiceWaitlistEntry({ service_item_id: Number(waitlistForm.service_item_id), customer_name: waitlistForm.customer_name, customer_email: waitlistForm.customer_email || null, customer_phone: waitlistForm.customer_phone || null, preferred_start_at: preferredStart, preferred_end_at: preferredEnd, notes: waitlistForm.notes || null });
       setWaitlistForm(emptyWaitlist); await loadWorkspace(); toast.success('Waitlist entry added.');
-    } catch (error) { toast.error(error?.response?.data?.message || 'Unable to add waitlist entry.'); }
+    } catch (error) { await reportServiceError(error, 'Unable to add waitlist entry.'); }
     finally { setSaving(''); }
   };
 
@@ -247,7 +260,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     if (!permissions.manageWaitlist || updatingWaitlistId !== null) return;
     setUpdatingWaitlistId(entryId);
     try { await updateServiceWaitlistStatus(entryId, { status }); await loadWorkspace(); toast.success('Waitlist updated.'); }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to update waitlist.'); }
+    catch (error) { await reportServiceError(error, 'Unable to update waitlist.'); }
     finally { setUpdatingWaitlistId(null); }
   };
 
@@ -263,7 +276,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       await loadWorkspace();
       toast.success(action === 'queue-reminders' ? 'Due reminders queued.' : 'Due reminders processed.');
     }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to process reminders.'); }
+    catch (error) { await reportServiceError(error, 'Unable to process reminders.'); }
     finally { setSaving(''); }
   };
 
@@ -298,7 +311,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       await loadWorkspace();
       toast.success(result?.idempotency?.idempotent_replay ? 'Existing settlement loaded.' : 'Booking payment collected.');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Unable to settle booking.');
+      await reportServiceError(error, 'Unable to settle booking.');
     } finally {
       setSettlingBookingId(null);
     }
