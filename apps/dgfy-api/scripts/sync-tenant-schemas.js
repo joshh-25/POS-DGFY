@@ -532,6 +532,15 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         })
     }),
     delivery_jobs: Object.freeze({
+        courier_service: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `courier_service` VARCHAR(40) NULL"
+        }),
+        courier_service_name: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `courier_service_name` VARCHAR(120) NULL"
+        }),
+        courier_reference: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `courier_reference` VARCHAR(120) NULL"
+        }),
         delivery_personnel_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_personnel_id` INT NULL"
         }),
@@ -1490,6 +1499,9 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `location_id` int DEFAULT NULL,\n"
             + "  `delivery_personnel_name` varchar(255) DEFAULT NULL,\n"
             + "  `provider` varchar(40) NOT NULL DEFAULT 'manual',\n"
+            + "  `courier_service` varchar(40) DEFAULT NULL,\n"
+            + "  `courier_service_name` varchar(120) DEFAULT NULL,\n"
+            + "  `courier_reference` varchar(120) DEFAULT NULL,\n"
             + "  `provider_delivery_id` varchar(120) DEFAULT NULL,\n"
             + "  `status` enum('pending_dispatch','assigned','picked_up','delivered','failed','cancelled') NOT NULL DEFAULT 'pending_dispatch',\n"
             + "  `tracking_url` varchar(1000) DEFAULT NULL,\n"
@@ -3149,6 +3161,10 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // pos_transactions.order_method = 'appointment'. Presence checks miss this the same way
     // they missed items.category above.
     pos_transactions: Object.freeze({
+        fulfillment_status: Object.freeze({
+            enumValues: Object.freeze(['placed', 'confirmed', 'preparing', 'packed', 'ready_for_rider', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `fulfillment_status` ENUM('placed','confirmed','preparing','packed','ready_for_rider','ready_for_pickup','out_for_delivery','completed','cancelled','rejected') NULL DEFAULT NULL"
+        }),
         // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
         // (#1085), migration 20260830000003.
         payment_type: Object.freeze({
@@ -3247,7 +3263,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-21.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-22.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
