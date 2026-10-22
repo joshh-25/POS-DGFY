@@ -1,11 +1,6 @@
-export const ACTIVE_CUSTOMER_TRACKING_STATUSES = new Set([
-  'placed',
-  'confirmed',
-  'preparing',
-  'packed',
-  'ready_for_pickup',
-  'out_for_delivery'
-]);
+import { ACTIVE_FULFILLMENT_STATUSES } from '@sieitzz/shared-constants/orderFulfillmentStatuses';
+
+export const ACTIVE_CUSTOMER_TRACKING_STATUSES = new Set(ACTIVE_FULFILLMENT_STATUSES);
 
 export const TERMINAL_CUSTOMER_TRACKING_STATUSES = new Set([
   'completed',

@@ -60,6 +60,8 @@ const mockCollectDineInPaymentUseCase = jest.fn();
 const mockRecordOrderBalancePaymentUseCase = jest.fn();
 const mockAssignDeliveryPersonnelUseCase = jest.fn();
 const mockUpdateDeliveryJobStatusUseCase = jest.fn();
+const mockCompleteDirectDeliveryOrderUseCase = jest.fn();
+const mockFailDirectDeliveryOrderUseCase = jest.fn();
 const mockUpdateOnlineOrderStatusUseCase = jest.fn();
 const mockGetPosDeviceStatusUseCase = jest.fn();
 const mockPrintPosReceiptUseCase = jest.fn();
@@ -154,6 +156,8 @@ const posHandlersBarrelOverrides = {
     recordOrderBalancePaymentUseCase: mockRecordOrderBalancePaymentUseCase,
     assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
+    completeDirectDeliveryOrderUseCase: mockCompleteDirectDeliveryOrderUseCase,
+    failDirectDeliveryOrderUseCase: mockFailDirectDeliveryOrderUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase: mockGetPosDeviceStatusUseCase,
     printPosReceiptUseCase: mockPrintPosReceiptUseCase,
@@ -223,6 +227,8 @@ let collectCashDineInOrder;
 let collectDineInPayment;
 let assignDeliveryPersonnel;
 let updateDeliveryJobStatus;
+let completeDirectDeliveryOrder;
+let failDirectDeliveryOrder;
 let updateOnlineOrderStatus;
 let uploadCatalogImage;
 let requireRegisteredTerminal;
@@ -253,6 +259,8 @@ beforeAll(async () => {
     collectDineInPayment = mod.collectDineInPayment;
     assignDeliveryPersonnel = mod.assignDeliveryPersonnel;
     updateDeliveryJobStatus = mod.updateDeliveryJobStatus;
+    completeDirectDeliveryOrder = mod.completeDirectDeliveryOrder;
+    failDirectDeliveryOrder = mod.failDirectDeliveryOrder;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
     requireRegisteredTerminal = mod.requireRegisteredTerminal;
 });
@@ -274,6 +282,23 @@ describe('posHandlers transport contracts', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockTrackProductUsageFromResult.mockResolvedValue({ created: true });
+    });
+
+    it.each(['complete', 'fail'])('passes the acting operator to direct delivery %s', async (action) => {
+        const useCase = action === 'complete' ? mockCompleteDirectDeliveryOrderUseCase : mockFailDirectDeliveryOrderUseCase;
+        useCase.mockResolvedValue({ success: true, data: { order: { pos_transaction_id: 44 } } });
+        const req = {
+            params: { id: '44' }, validatedParams: { id: 44 },
+            body: {}, validatedData: { idempotency_key: 'shared-operator-44' },
+            user: { user_id: 12 },
+            posActingUser: { user_id: 22, register_shift_owner_user_id: 12 },
+            ip: '127.0.0.1', get: () => 'test-client'
+        };
+        const res = createRes();
+        await (action === 'complete' ? completeDirectDeliveryOrder : failDirectDeliveryOrder)(req, res, jest.fn());
+        expect(useCase).toHaveBeenCalledWith(expect.objectContaining({
+            user: { user_id: 22, register_shift_owner_user_id: 12 }
+        }));
     });
 
     it('listCatalog returns stable success payload', async () => {
@@ -1314,7 +1339,8 @@ describe('posHandlers transport contracts', () => {
             },
             body: {},
             user: { user_id: 4, tenant_id: 'tenant-1' },
-            requestId: 'req-pos-order-status'
+            requestId: 'req-pos-order-status',
+            get: () => 'test-client'
         };
         const res = createRes();
         const next = jest.fn();

@@ -62,7 +62,7 @@ transitions and routes for native clients and orders already in flight.
 | Cashier | Confirmed through Waiting for rider | Assign rider | Job assigned | Courier company; in-house requires a person | Courier service or assignment missing |
 | Cashier | Waiting for rider | Picked Up | Job `picked_up`, order `out_for_delivery` | Complete assignment | Assignment missing |
 | Cashier | Out for delivery | Delivered | Job `delivered`, order Completed | Terminal, operator, shift; balance settled in same request | Balance or payment missing |
-| Cashier | Confirmed through Out for delivery | Failed | Job `failed`, order Cancelled | Reason of at least 3 characters | Missing reason or active run |
+| Cashier | Confirmed through Out for delivery | Failed | Job `failed`, order Cancelled | Paired terminal, active operator, open shift, and reason of at least 3 characters | Missing authority, reason, or active run |
 | Cashier | Placed | Reject | Order Rejected, job Cancelled | Reason of at least 3 characters | Missing reason |
 
 The POS offers one primary action per stage and shows an explicit disabled
