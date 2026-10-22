@@ -118,6 +118,16 @@ beforeEach(() => {
 });
 
 describe('View-mode toggle', () => {
+  it('keeps online-order views in one horizontal mobile rail', () => {
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+
+    const orderViewTabs = screen.getByRole('tablist', { name: 'Online order views' });
+    expect(orderViewTabs.className).toContain('overflow-x-auto');
+    expect(orderViewTabs.className).not.toContain('flex-wrap');
+    expect(orderViewTabs.firstElementChild.className).toContain('flex min-w-max');
+    expect(screen.getByRole('tab', { name: /Active Queue/i }).getAttribute('aria-selected')).toBe('true');
+  });
+
   it('defaults to card view and renders per-order cards', () => {
     render(<IncomingQueueWorkspace {...baseProps()} />);
     expect(screen.getByRole('button', { name: /^Card$/i }).getAttribute('aria-pressed')).toBe('true');

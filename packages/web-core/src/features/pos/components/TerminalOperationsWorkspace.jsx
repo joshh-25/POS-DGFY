@@ -1189,7 +1189,7 @@ function ShiftControlsWorkspace({
     void refreshAdminLocationMonitor?.();
   };
 
-  const renderAdminShiftLocationTabs = (branchTerminalsContent) => {
+  const renderAdminShiftLocationTabs = (branchTerminalsContent, belowSubtabsContent = null) => {
     const isTerminalsTab = adminShiftLocationTab === 'terminals';
     const refreshLoading = isTerminalsTab
       ? Boolean(branchDirectoryState?.loading || (!locked && shiftState?.loading))
@@ -1220,9 +1220,9 @@ function ShiftControlsWorkspace({
               idPrefix="pos-admin-shift-location"
               panelId="pos-admin-shift-location-panel"
               desktopColumns={3}
-              mobileGridColumns={3}
               compactMobile
             />
+            {belowSubtabsContent ? <div className="mt-3">{belowSubtabsContent}</div> : null}
           </div>
           {isTerminalsTab && !canViewBranchLocations ? (
             <div className="flex justify-end">
@@ -1305,21 +1305,22 @@ function ShiftControlsWorkspace({
         const operatingBranchLabel = activeLocations.find(
           (location) => Number(location?.location_id || 0) === Number(operatingLocationId || 0)
         )?.name || 'Unassigned';
+        const closedShiftActionRow = (
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">{closedShiftNotice}</div>
+            <Button
+              type="button"
+              variant="outline"
+              className={`h-10 shrink-0 rounded-lg px-4 text-[13px] font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+              onClick={() => handleTabChange('close_shift')}
+            >
+              Go to Shift Session
+            </Button>
+          </div>
+        );
 
         return (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 flex-1">{closedShiftNotice}</div>
-              <Button
-                type="button"
-                variant="outline"
-                className={`h-10 shrink-0 rounded-lg px-4 text-[13px] font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
-                onClick={() => handleTabChange('close_shift')}
-              >
-                Go to Shift Session
-              </Button>
-            </div>
-            {renderAdminShiftLocationTabs(
+          renderAdminShiftLocationTabs(
               canViewBranchLocations ? (
                 <AdminOpenShiftOverview
                   activeShift={null}
@@ -1339,9 +1340,9 @@ function ShiftControlsWorkspace({
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
                   Branch monitoring isn’t available for this account.
                 </p>
-              )
-            )}
-          </div>
+              ),
+              closedShiftActionRow
+            )
         );
       }
 
@@ -1770,7 +1771,6 @@ function ShiftControlsWorkspace({
             onTabChange={handleTabChange}
             ariaLabel="Shift sections"
             hideScrollbar
-            mobileGridColumns={2}
             idPrefix={shiftTabIdPrefix}
             panelId={shiftPanelId}
           />
@@ -2109,7 +2109,7 @@ export default function TerminalOperationsWorkspace({
       ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-affiliates-workspace-shell'
       : 'p-0'
     : isFullBleedCatalogView
-      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-catalog-workspace-shell'}`
+      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell max-[767px]:pt-0' : ' pos-catalog-workspace-shell'}`
       : 'p-5';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;

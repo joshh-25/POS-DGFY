@@ -25,15 +25,15 @@ vi.mock('../services/deliveryRunService.js', () => ({
   confirmDeliveryRunLoading: vi.fn()
 }));
 
-vi.mock('sonner', () => ({
-  toast: {
+vi.mock('@/src/utils/iminRuntimeFeedback.js', () => ({
+  posToast: {
     error: vi.fn(),
     success: vi.fn(),
     warning: vi.fn()
   }
 }));
 
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const buildOrder = (overrides = {}) => ({
   pos_transaction_id: 9001,

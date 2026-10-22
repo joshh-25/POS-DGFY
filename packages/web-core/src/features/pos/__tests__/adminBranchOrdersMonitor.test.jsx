@@ -31,6 +31,7 @@ describe('AdminBranchOrdersMonitor', () => {
         const table = screen.getByRole('table', { name: 'Active online orders for Tinda Han' });
         const tableRegion = screen.getByRole('region', { name: 'Branch orders table' });
         const mobileView = screen.getByTestId('pos-admin-branch-orders-mobile-view');
+        const pagination = screen.getByRole('navigation', { name: 'Branch orders pagination' });
         const heading = screen.getByRole('heading', { name: 'Active Orders' });
         const headerLayout = screen.getByTestId('pos-admin-branch-monitor-header');
         const refreshButton = within(headerLayout).getByRole('button', { name: 'Refresh branch activity' });
@@ -43,7 +44,9 @@ describe('AdminBranchOrdersMonitor', () => {
         expect(headerLayout.className).toContain('justify-between');
         expect(headerLayout.contains(heading)).toBe(true);
         expect(headerLayout.contains(refreshButton)).toBe(true);
-        expect(heading.className).toContain('text-xl');
+        expect(heading.className).toContain('text-base');
+        expect(heading.className).toContain('leading-5');
+        expect(heading.className).toContain('pos-terminal-section-heading');
         expect(table).toBeTruthy();
         expect(tableRegion).toBeTruthy();
         expect(tableRegion.classList.contains('border')).toBe(true);
@@ -68,6 +71,8 @@ describe('AdminBranchOrdersMonitor', () => {
         expect(tableRegion.className).toContain('overflow-x-auto');
         expect(tableRegion.tabIndex).toBe(0);
         expect(screen.getByText('Scroll horizontally to view all columns.')).toBeTruthy();
+        expect(within(pagination).getByText('Showing 1–1 of 1 orders')).toBeTruthy();
+        expect(within(pagination).getByText('1 of 1')).toBeTruthy();
     });
 
     it('does not create a duplicate refresh action when none is provided', () => {
@@ -101,5 +106,30 @@ describe('AdminBranchOrdersMonitor', () => {
         expect(screen.getByRole('table', { name: 'Active online orders for Tinda Han' })).toBeTruthy();
         expect(within(screen.getByTestId('pos-admin-branch-orders-mobile-view')).getByText('Hendry Sy')).toBeTruthy();
         expect(screen.queryByText('No active online orders for Tinda Han.')).toBeNull();
+    });
+
+    it('paginates the same order slice in the mobile cards and desktop table', () => {
+        const orders = Array.from({ length: 11 }, (_, index) => ({
+            ...order,
+            pos_transaction_id: order.pos_transaction_id + index,
+            customer_name: `Buyer ${index + 1}`,
+            tracking_pin: `ORDER-${index + 1}`
+        }));
+
+        render(<AdminBranchOrdersMonitor orders={orders} branchName="Tinda Han" />);
+
+        const pagination = screen.getByRole('navigation', { name: 'Branch orders pagination' });
+        const mobileView = screen.getByTestId('pos-admin-branch-orders-mobile-view');
+        expect(within(pagination).getByText('Showing 1–10 of 11 orders')).toBeTruthy();
+        expect(within(pagination).getByText('1 of 2')).toBeTruthy();
+        expect(within(mobileView).getByText('Buyer 1')).toBeTruthy();
+        expect(within(mobileView).queryByText('Buyer 11')).toBeNull();
+
+        fireEvent.click(within(pagination).getByRole('button', { name: 'Next branch orders page' }));
+
+        expect(within(pagination).getByText('Showing 11–11 of 11 orders')).toBeTruthy();
+        expect(within(pagination).getByText('2 of 2')).toBeTruthy();
+        expect(within(mobileView).queryByText('Buyer 1')).toBeNull();
+        expect(within(mobileView).getByText('Buyer 11')).toBeTruthy();
     });
 });

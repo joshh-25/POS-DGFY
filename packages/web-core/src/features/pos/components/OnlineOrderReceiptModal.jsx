@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 import { Button } from '@/components/ui/button';
 import {
   DELIVERY_JOB_STATUS_LABELS,
@@ -110,8 +111,8 @@ export default function OnlineOrderReceiptModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="pos-online-order-receipt-dialog flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden border border-slate-200 bg-white p-0 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:w-full print:max-h-none print:w-full print:max-w-[80mm] print:border-none print:shadow-none">
-        <DialogHeader className="border-b border-slate-200 px-4 py-3 print:hidden">
+      <DialogContent className="pos-online-order-receipt-dialog flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:max-h-[calc(100dvh-2rem)] sm:w-full print:max-h-none print:w-full print:max-w-[80mm] print:rounded-none print:border-none print:shadow-none">
+        <DialogHeader className={['rounded-t-2xl px-4 py-3 print:hidden', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-950">
             <Receipt className="h-5 w-5 text-blue-600" />
             Non-Fiscal Order Receipt
@@ -186,7 +187,7 @@ export default function OnlineOrderReceiptModal({
           )}
         </div>
 
-        <DialogFooter className="gap-2 border-t border-slate-200 px-4 py-3 print:hidden sm:justify-between">
+        <DialogFooter className={['gap-2 px-4 py-3 print:hidden sm:justify-between', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={printLoading}>Close</Button>
           <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={onPrint} disabled={loading || !order || printLoading}>
             <Printer className="mr-2 h-4 w-4" />

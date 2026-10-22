@@ -63,6 +63,11 @@ describe('POS Services operations workspace', () => {
     render(<PosServicesOperationsWorkspace permissions={allPermissions} isOnline />);
 
     await waitFor(() => expect(listServiceBookings).toHaveBeenCalled());
+    const serviceTabs = screen.getByRole('tablist', { name: 'Service operations navigation' });
+    expect(serviceTabs.className).toContain('overflow-x-auto');
+    expect(serviceTabs.className).not.toContain('flex-wrap');
+    expect(serviceTabs.className).toContain('min-[1200px]:grid');
+    expect(serviceTabs.style.gridTemplateColumns).toBe('repeat(6, minmax(0, 1fr))');
     expect(screen.getByRole('tab', { name: 'Today' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Calendar' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Team & Resources' })).toBeTruthy();
@@ -122,11 +127,11 @@ describe('POS Services operations workspace', () => {
       'Status for SVC-LATER'
     ]);
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search calendar bookings' }), { target: { value: 'Alpha' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search calendar bookings' }), { target: { value: 'Alpha' } });
     expect(screen.getByText('SVC-SOONER')).toBeTruthy();
     expect(screen.queryByText('SVC-LATER')).toBeNull();
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search calendar bookings' }), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search calendar bookings' }), { target: { value: '' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter calendar by status' }), { target: { value: 'confirmed' } });
     expect(screen.getByText('SVC-LATER')).toBeTruthy();
     expect(screen.queryByText('SVC-SOONER')).toBeNull();

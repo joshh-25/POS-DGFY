@@ -12,6 +12,7 @@ const cashierHistorySource = readSource('../components/CashierHistoryPanel.jsx')
 const branchTerminalsSource = readSource('../components/AdminOpenShiftOverview.jsx');
 const cashDrawerEventSource = readSource('../components/CashDrawerEventForm.jsx');
 const textSizeSource = readSource('../components/PosTextSizeControl.jsx');
+const posStylesSource = readSource('../../../index.css');
 
 const countSharedDropdowns = (source) => (source.match(/<PosDropdownSelect\b/g) || []).length;
 const stripLineComments = (source) => source.replace(/^\s*\/\/.*$/gm, '');
@@ -43,6 +44,15 @@ describe('POS Shift dropdown consistency contract', () => {
         expect(branchTerminalsSource.indexOf('placeholder="Search terminal name or ID..."'))
             .toBeLessThan(branchTerminalsSource.indexOf('label="Refresh branch terminals"'));
         expect(branchTerminalsSource).toContain('dataTestId="pos-admin-shift-location-refresh"');
+    });
+
+    it('sets the Terminals heading to 16px on tablet and desktop while preserving narrow-phone sizing', () => {
+        expect(branchTerminalsSource).toContain(
+            'className="pos-terminal-section-heading text-base font-black leading-5 tracking-tight text-[#0B1647]"'
+        );
+        expect(posStylesSource).toContain('@media screen and (min-width: 640px)');
+        expect(posStylesSource).toContain('.dgfy-pos-shell .pos-terminal-section-heading {');
+        expect(posStylesSource).toContain('font-size: calc(1rem * var(--pos-text-size-scale, 1));');
     });
 
     it('allows popup menus to extend vertically without allowing horizontal overflow', () => {
