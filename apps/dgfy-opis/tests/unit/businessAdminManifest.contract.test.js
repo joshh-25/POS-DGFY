@@ -53,9 +53,9 @@ describe('Back Office canonical manifest contract', () => {
         expect(itemsByGroup.Customers).toEqual(['customers']);
         expect(itemsByGroup.Inventory).toEqual(['catalog', 'inventory', 'suppliers', 'purchase-orders', 'stock-movements', 'recipes']);
         expect(itemsByGroup.Operations).toEqual(['locations', 'shifts', 'attendance', 'expenses', 'fnb', 'services', 'hospitality', 'job-orders', 'dispatch-orders']);
-        expect(itemsByGroup['Team & Access']).toEqual(['team']);
+        expect(itemsByGroup['Team & Access']).toEqual(['team', 'users-roles']);
         expect(itemsByGroup.Reports).toEqual(['reports', 'pos-activity']);
-        expect(itemsByGroup.Settings).toEqual(['notifications', 'fiscal', 'audit', 'approvals', 'onboarding', 'storefront', 'company', 'settings', 'ai-chat']);
+        expect(itemsByGroup.Settings).toEqual(['notifications', 'fiscal', 'audit', 'approvals', 'onboarding', 'storefront', 'qr-codes', 'company', 'settings', 'ai-chat']);
         expect(BACKOFFICE_NAV_GROUPS.find((group) => group.label === 'Overview')?.standalone).toBe(true);
         expect(BACKOFFICE_NAV_GROUPS.filter((group) => group.items.length > 0)).toHaveLength(8);
     });
@@ -80,6 +80,17 @@ describe('Back Office canonical manifest contract', () => {
         });
     });
 
+    it('exposes Users & Roles as a dedicated Team & Access destination', () => {
+        expect(BACKOFFICE_MANIFEST['users-roles']).toMatchObject({
+            id: 'users-roles',
+            key: 'users-roles',
+            group: 'Team & Access',
+            label: 'Users & Roles',
+            route: '/users-roles',
+            icon: expect.anything()
+        });
+    });
+
     it('derives migrated component ownership without a second component registry', () => {
         const migratedKeys = Object.keys(MERCHANT_BACKOFFICE_MODULE_META);
         expect(migratedKeys.sort()).toEqual([
@@ -95,7 +106,8 @@ describe('Back Office canonical manifest contract', () => {
             'sales',
             'reports',
             'ai-chat',
-            'vouchers'
+            'vouchers',
+            'qr-codes'
         ].sort());
         for (const key of migratedKeys) {
             expect(getBackOfficeModuleDefinition(key)?.component).toBeTruthy();
