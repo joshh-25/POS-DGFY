@@ -11,6 +11,7 @@ import {
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
   isManualDeliveryJob,
+  canAssignDirectDelivery,
   isDirectDeliveryOrder,
   getFulfillmentStatusLabel
 } from './orderFulfillmentUi.js';
@@ -1642,8 +1643,7 @@ function IncomingQueueWorkspace({
                           orderId={order.pos_transaction_id}
                           deliveryJob={deliveryJob}
                           directDelivery={isDirectDeliveryOrder(order)}
-                          canAssignOrder={order.fulfillment_status === 'out_for_delivery'
-                            || (isDirectDeliveryOrder(order) && ['confirmed', 'preparing', 'packed', 'ready_for_rider'].includes(order.fulfillment_status))}
+                          canAssignOrder={order.fulfillment_status === 'out_for_delivery' || canAssignDirectDelivery(order)}
                           deliveryPersonnelState={deliveryPersonnelState}
                           actionLoading={actionLoading}
                           canTransactPos={canTransactPos}

@@ -62,7 +62,7 @@ export default function DeliveryAssignmentControl({
   if (!canAssignOrder) {
     return (
       <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        {directDelivery ? 'Assignment is available after the order is confirmed.' : 'Mark the order as Out for Delivery before assigning delivery personnel.'}
+        {directDelivery ? 'Assign a rider after you start preparing the order.' : 'Mark the order as Out for Delivery before assigning delivery personnel.'}
       </p>
     );
   }
@@ -132,7 +132,7 @@ export default function DeliveryAssignmentControl({
           {!validTrackingUrl ? <p className="text-xs text-rose-700">Tracking link must start with HTTPS.</p> : null}
         </div>
       ) : null}
-      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+      <div className="mt-2 flex flex-wrap gap-2">
         <input
           type="text"
           list={registryPersonnel.length > 0 ? datalistId : undefined}
@@ -143,7 +143,7 @@ export default function DeliveryAssignmentControl({
           autoComplete="off"
           onChange={(event) => setSelectedPersonnelName(event.target.value)}
           disabled={locked || !isOnline || !canTransactPos || !hasActiveShift || !canAssignOrder || assignmentSaving}
-          className="h-9 min-w-0 flex-1 rounded-md border border-blue-200 bg-white px-2 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          className="h-9 min-w-[10rem] flex-1 rounded-md border border-blue-200 bg-white px-2 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
         />
         {registryPersonnel.length > 0 ? (
           <datalist id={datalistId}>
@@ -161,7 +161,8 @@ export default function DeliveryAssignmentControl({
               : normalizedPersonnelName ? { name: normalizedPersonnelName } : {}),
             ...(directDelivery ? {
               courier_service: courierService,
-              courier_service_name: courierService === 'other' ? courierServiceName.trim() : null,
+              // Send the name only for Other: the API rejects a null courier_service_name.
+              ...(courierService === 'other' ? { courier_service_name: courierServiceName.trim() } : {}),
               courier_reference: courierReference.trim() || null,
               tracking_url: trackingUrl.trim() || null
             } : {})
