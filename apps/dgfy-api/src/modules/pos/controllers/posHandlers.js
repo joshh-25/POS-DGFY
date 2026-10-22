@@ -2703,7 +2703,7 @@ const handleDirectDeliveryAction = (useCase, message) => async (req, res, next) 
         const result = await useCase({
             posTransactionId: req.validatedParams?.id || req.params.id,
             payload: req.validatedData || req.body,
-            user: req.user,
+            user: posMutationUser(req),
             auditContext: { ipAddress: req.ip, userAgent: req.get('user-agent') }
         });
         return sendUseCaseResult(res, result, {

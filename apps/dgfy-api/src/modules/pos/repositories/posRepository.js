@@ -39,6 +39,7 @@ import {
 } from '../utils/deliveryProviderBreakdown.js';
 import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
 import { resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
+import { ACTIVE_FULFILLMENT_STATUSES } from '../../shared/constants/orderFulfillmentStatuses.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import {
@@ -8422,7 +8423,7 @@ export const posRepository = {
         const where = {
             order_source: 'online_store',
             fulfillment_status: {
-                [Op.in]: ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery']
+                [Op.in]: ACTIVE_FULFILLMENT_STATUSES
             }
         };
         if (locationId) {

@@ -1,9 +1,10 @@
 import Joi from 'joi';
 import { STOREFRONT_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
+import { ONLINE_FULFILLMENT_STATUSES } from '../modules/shared/constants/orderFulfillmentStatuses.js';
 
 const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'grab_pay', 'shopeepay'];
-const FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
+const FULFILLMENT_STATUSES = ONLINE_FULFILLMENT_STATUSES;
 const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;
 
 const checkoutLineSchema = Joi.object({
