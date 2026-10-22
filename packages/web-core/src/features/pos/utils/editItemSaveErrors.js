@@ -22,11 +22,16 @@ export const resolveEditItemSaveError = (error, stage = 'item_details') => {
   const serverMessage = typeof responseData.message === 'string'
     ? responseData.message.trim()
     : '';
+  const validationMessage = status === 422
+    && serverMessage === 'Validation failed'
+    && Array.isArray(responseData.errors)
+    ? responseData.errors.find((detail) => typeof detail?.message === 'string' && detail.message.trim())?.message.trim()
+    : '';
   const isTimeout = error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT';
   const stageMessage = EDIT_ITEM_SAVE_STAGE_MESSAGES[stage] || EDIT_ITEM_SAVE_STAGE_MESSAGES.item_details;
   const message = stage === 'storefront_images' && isTimeout
     ? 'The product image upload did not finish before the server response timed out. Check the item before trying again.'
-    : serverMessage || stageMessage;
+    : validationMessage || serverMessage || stageMessage;
   const reference = requestId ? ` Reference: ${requestId}.` : '';
 
   return {
