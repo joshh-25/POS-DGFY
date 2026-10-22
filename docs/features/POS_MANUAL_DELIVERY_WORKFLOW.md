@@ -14,12 +14,12 @@ external courier provider is integrated. The current provider is `manual`.
 The `pos_transactions` row remains the canonical order and sales record;
 `delivery_jobs` remains the tenant-local delivery-operation record.
 
-Phase 0 records the behavior contract only. It does not change the database,
-API, or POS UI.
+The original foundation and direct-delivery amendment below govern different
+staff flows; delivery runs retain the original path.
 
 ## Required lifecycle
 
-An online delivery order must follow this sequence:
+A legacy or delivery-run order follows this sequence:
 
 ```text
 pending_dispatch -> assigned -> picked_up -> delivered -> completed
@@ -48,6 +48,41 @@ rows with actor, location, request reference when available, and before/after st
 writes the order-status audit in each member's savepoint. The order-center timeline exposes these
 transitions and the OPIS receipt modal renders a read-only status history.
 
+## Direct delivery (Phase 528, #2667)
+
+This path applies to F&B and Retail delivery orders with a manual job outside
+an active run. Retail may pass through Packed. The server retains older
+transitions and routes for native clients and orders already in flight.
+
+| Actor | From | Action | To | Precondition | Block reason |
+| --- | --- | --- | --- | --- | --- |
+| Cashier | Placed | Confirm | Confirmed | Open shift | Shift closed or inventory issue |
+| Cashier | Confirmed | Start Preparing | Preparing | Open shift | Shift closed |
+| Cashier | Preparing or Packed | Ready | Waiting for rider (`ready_for_rider`) | Delivery order | Wrong order method |
+| Cashier | Confirmed through Waiting for rider | Assign rider | Job assigned | Courier company; in-house requires a person | Courier service or assignment missing |
+| Cashier | Waiting for rider | Picked Up | Job `picked_up`, order `out_for_delivery` | Complete assignment | Assignment missing |
+| Cashier | Out for delivery | Delivered | Job `delivered`, order Completed | Terminal, operator, shift; balance settled in same request | Balance or payment missing |
+| Cashier | Confirmed through Out for delivery | Failed | Job `failed`, order Cancelled | Reason of at least 3 characters | Missing reason or active run |
+| Cashier | Placed | Reject | Order Rejected, job Cancelled | Reason of at least 3 characters | Missing reason |
+
+The POS offers one primary action per stage and shows an explicit disabled
+reason. It does not offer separate cash collection, job-delivered, and order-
+completed buttons in this direct flow. The old endpoints remain supported for
+native and in-flight compatibility. An existing out-for-delivery order without
+an assignment can still assign a rider, pick up and complete.
+
+The courier company is Own, Maxim, GrabExpress, Lalamove, or Other. Other
+requires a name. Booking reference and HTTPS tracking link are optional. A
+third-party service can be assigned without a named rider; only a staff-typed
+rider name may appear on the public tracking page. Provider remains `manual`.
+
+The Delivered request records COD cash or a remaining downpayment balance and
+completion atomically. Cashier confirmation is the server-verified handover
+event under ADR 0083; it is distinct from payment recognition, and this route
+does not write a custody record. A missing balance settlement fails closed.
+Failed cancels the order and job, triggers the store-origin refund path for
+captured payments, and never restocks an issued order.
+
 ## Manual delivery assignment contract
 
 A tenant-scoped delivery-person registry exists (Phase 205, #1080; the `delivery_personnel`
@@ -58,9 +93,15 @@ table itself was created earlier, in the Phase 0 migration). Each active person 
 - an active/inactive state; and
 - creation and update audit metadata.
 
-Each delivery job assignment must record:
+Every assignment records its courier company, assignment actor, open shift,
+location, and timestamp. A legacy or delivery-run assignment must also record
+either a selected registered person or a trimmed third-party rider name. A
+direct third-party assignment can be recorded before the rider is known; an
+in-house assignment requires a registered person or typed rider name.
 
-- either the selected delivery-person identifier or a trimmed third-party courier name;
+When a person is known, the assignment records:
+
+- either the selected delivery-person identifier or the typed rider name;
 - the user who assigned the job; and
 - the assignment timestamp.
 
@@ -83,14 +124,18 @@ The backend exposes the following guarded POS operations:
   `is_active: false` is the deactivation operation -- there is no separate
   delete route and no hard delete (`pos:employees:manage`, Phase 205/#1080).
 - `PATCH /pos/orders/:id/delivery-job/assignment` assigns or reassigns an
-  active person before pickup and records the assigning user, open shift, and
-  timestamp.
+  active person or records courier details before pickup. Direct orders allow
+  assignment from Confirmed onward; active run members retain the
+  out-for-delivery gate. Early direct assignments require a courier company;
+  legacy out-for-delivery person-only requests remain valid.
 - `PATCH /pos/orders/:id/delivery-job/status` rejects `assigned`, `picked_up`,
   or `delivered` transitions unless the assignment evidence is complete.
 
-Assignment and lifecycle mutations require `pos:transact`, an online delivery
-order already marked `out_for_delivery`, a `manual` delivery job, and an open
-cashier shift at the order location. The assignment endpoint is idempotency-key
+Assignment and lifecycle mutations require `pos:transact`, a manual online
+delivery job, and an open cashier shift at the order location. Active run members
+and legacy job-status requests retain the `out_for_delivery` requirement. The
+direct flow allows early assignment and moves `ready_for_rider` to
+`out_for_delivery` with Picked Up. The assignment endpoint is idempotency-key
 protected and writes the assignment plus the `pending_dispatch -> assigned`
 transition in one transaction.
 
@@ -351,11 +396,9 @@ dialog states this two-step nature before the operator commits to it, and on an 
 shows a persistent error naming the order and target run and refreshes both runs so the operator
 can see the order is unassigned and retry the add from the target run's own view.
 
-**Bulk-adding orders from the Active Queue is not built yet.** An operator adds an order to a run
-only from that order's own delivery-assignment context, one at a time (unchanged from Phase 225's
-API-only state). Multi-select "add to run" from the Active Queue is Phase 227's job; a run with no
-members shows an honest empty state ("No orders in this run yet. Add orders from the Active
-Queue.") rather than implying bulk-add already exists.
+Bulk-adding orders from the Active Queue was delivered in Phase 227. An operator
+may select eligible orders there and add them to a run together; the per-order
+assignment context remains available.
 
 ### Active Queue delivery-run filter (Phase 231, #1290)
 
@@ -473,14 +516,14 @@ its existing assigned-run dispatch behavior.
 The existing completion guard remains mandatory:
 
 - delivery job status must be `delivered`;
-- a registered delivery person or third-party courier name must be assigned;
+- an in-house person, typed rider name, or third-party courier company must be assigned;
 - delivery confirmation actor and timestamp must exist; and
 - cash-on-delivery orders must contain server-recorded cash evidence before
   completion.
 
-For the implementation phase, delivery confirmation must use the customer's
-tracking PIN or an equivalent server-verified confirmation. A cashier must not
-be able to claim delivery based only on a browser-side status change.
+Direct-delivery completion is a server-verified, terminal-paired, open-shift,
+idempotent cashier action. Its payment and order mutations commit together;
+the browser cannot independently claim delivery by changing local status.
 
 ## Courier cash custody and remittance (ADR 0083, #838)
 

@@ -3504,9 +3504,9 @@ Assign or reassign a registered delivery person or an unregistered third-party c
 ```
 
 **Transition Notes**
-1. The associated online order must already be `out_for_delivery` and have a `manual` delivery job.
+1. A direct delivery order may be Confirmed, Preparing, Packed, Waiting for rider, or Out for delivery. Active run members retain the out-for-delivery gate. The job provider must be `manual`.
 2. The authenticated user must own an open shift at the order location.
-3. Send exactly one of `delivery_personnel_id` (an active registered person) or `delivery_personnel_name` (a trimmed third-party courier name, registration not required).
+3. Send at most one of `delivery_personnel_id` (an active registered person) or `delivery_personnel_name` (a trimmed typed rider name). `courier_service` is one of `own`, `maxim`, `grabexpress`, `lalamove`, `other`; it is required for early direct assignment. `own` requires a registered person or typed name, while a third-party service may be assigned without one. `other` requires `courier_service_name` (120 characters). `courier_reference` is optional (120 characters); `tracking_url` is optional, HTTPS-only (1000 characters). Legacy out-for-delivery person-only requests remain valid.
 4. The assignment atomically records the person or name, assigning user, assigning shift, timestamp, and `pending_dispatch -> assigned` transition.
 5. Assignment can be changed while the job is `pending_dispatch` or `assigned`; it is locked after pickup begins.
 6. Replayed requests with the same idempotency key and payload return the original result without a duplicate audit event.
@@ -3529,6 +3529,8 @@ Update online order fulfillment status from POS terminal operations.
 - `placed`
 - `confirmed`
 - `preparing`
+- `packed`
+- `ready_for_rider`
 - `ready_for_pickup`
 - `out_for_delivery`
 - `completed`
@@ -3537,7 +3539,7 @@ Update online order fulfillment status from POS terminal operations.
 
 **Transition Notes**
 1. Allowed transitions are lifecycle-validated server-side.
-2. Delivery orders must progress to `out_for_delivery` (not `ready_for_pickup`).
+2. Direct delivery orders may progress from Preparing or Packed to `ready_for_rider` (Waiting for rider). The older direct transition to `out_for_delivery` remains accepted for native clients and run dispatch. Delivery orders cannot use `ready_for_pickup`.
 3. Non-delivery orders must use `ready_for_pickup` where applicable.
 4. Successful responses include:
    - `data.idempotent_replay`
@@ -3589,11 +3591,43 @@ Advance the manual delivery job for an online delivery order from the POS queue.
 
 **Transition Notes**
 1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`; assignment must be completed through the assignment endpoint before `assigned`, `picked_up`, or `delivered`.
-2. The associated online order must already be `out_for_delivery`.
+2. A direct order at `ready_for_rider` moves to `out_for_delivery` in the same locked transaction as `picked_up`. Otherwise the associated order must already be `out_for_delivery`. The narrow `delivery_runs:act` path always retains this older requirement.
 3. The delivery job provider must be `manual`; provider-owned jobs are not writable through POS.
 4. Broad operators require an owned open shift and retain shift attribution. Assigned staff with `delivery_runs:act` must be the current direct assignee or a member of the current Delivery Run, hold a grant for the order location, and may act without a shift; their order shift remains unchanged and the audit `shift_id` is `null`.
 5. Successful responses include `data.delivery_job`, `data.status_transition`, `data.idempotent_replay`, and `data.replay_outcome`.
 6. The order completion endpoint still requires `deliveryJob.status=delivered`; marking the job delivered does not complete the order automatically.
+
+### POST /pos/orders/:id/delivery/complete
+
+Complete a direct manual delivery outside an active run. Requires `pos:transact`,
+paired terminal, active operator, and an open shift. Body:
+
+```json
+{
+  "idempotency_key": "delivery-complete-12345678",
+  "terminal_id": "COUNTER-01",
+  "settlement": { "amount": 100.00, "method": "cash" }
+}
+```
+
+`settlement` is omitted for a prepaid order. COD cash must cover the total;
+partially paid orders settle the full remaining balance with a supported cash
+or merchant-owned method. A digital method additionally requires
+`manual_payment_received: true`. Job delivery, payment record and order
+completion are distinct records committed in one transaction under replay key
+`terminal.delivery_order_complete`. A missing settlement returns 409
+`DELIVERY_BALANCE_DUE_OUTSTANDING`. The order must be Out for delivery and the
+job Picked Up or already Delivered; legacy routes remain available.
+
+### POST /pos/orders/:id/delivery/fail
+
+Fail a direct manual delivery outside an active run. Requires `pos:transact` and
+an open shift. Body: `{ "idempotency_key": "delivery-fail-12345678", "reason": "Customer unavailable" }`.
+Allowed from Confirmed through Out for delivery before the job is Delivered.
+One transaction marks the job Failed, the order Cancelled, releases any stock
+reservation without goods-issue reversal, and audits both records. Store-origin
+captured payments enter the refund lifecycle after commit. Replays use
+`terminal.delivery_order_fail` and do not repeat side effects.
 
 ### GET /users/me/assignments
 Return authenticated staff assignments. Existing `orders` and `delivery_runs`
@@ -4793,6 +4827,7 @@ Track online-store order status for public users.
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 For rejected or cancelled orders, the payload includes `refund: null` or the latest refund's `status` (`processing`, `refunded`, or `under_review`), public `reference`, `amount_centavos`, and `updated_at`. The lookup is scoped by tenant and POS transaction. Provider refund IDs, failure details, and provider payloads are never returned. For other fulfillment states, `refund` is `null`.
+Delivery orders additionally include `delivery: { stage, courier_name, courier_reference, tracking_url, rider_name }`. Stage is `waiting_for_rider`, `rider_assigned`, `picked_up`, or `delivered`. Only HTTPS tracking links and explicitly typed rider names are exposed; registered personnel names, staff IDs, provider payloads and internal job IDs stay private. A delivery failed by the store returns `cancellation_reason` and store-attributed cancellation copy.
 **Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
 
 ### PATCH /store/orders/:tracking_pin/cancel
