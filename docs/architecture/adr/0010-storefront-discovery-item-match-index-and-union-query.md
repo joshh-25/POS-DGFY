@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-20
-last_reviewed: 2026-08-20
+last_reviewed: 2026-10-21
 review_by: 2026-10-20
 applies_to: architecture_decision
 topic: storefront_discovery_item_match_index_and_union_query
@@ -173,3 +173,12 @@ The renderer-owned marker contract is amended for production map usability:
 - PR: #765
 
 `status` set to `amended`; `last_reviewed` refreshed to 2026-08-20.
+
+### 2026-10-21 — Storefront publication enforcement and merchant edit authority (#2633)
+
+The 2026-06-07 Platform Admin Storefront / Maps control still writes only
+`store_is_visible`; Off also denies new public commerce API activity under
+[ADR 0017](0017-customer-access-modes-and-inventory-display.md). Platform Admin
+also controls whether merchants may edit this value through the separate
+`store_visibility_merchant_editable` policy, defaulting to editable. Existing
+order access follows ADR 0017's narrow carve-out.

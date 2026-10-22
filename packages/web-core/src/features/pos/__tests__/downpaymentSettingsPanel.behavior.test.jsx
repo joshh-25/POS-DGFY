@@ -25,6 +25,7 @@ vi.mock('@/src/utils/iminRuntimeFeedback.js', () => ({
 }));
 
 const fullPaymentSettings = () => ({
+    platform_downpayment_allowed: true,
     tenant_id: 't-1',
     payment_mode: 'full_payment',
     downpayment_type: null,
@@ -35,6 +36,7 @@ const fullPaymentSettings = () => ({
 });
 
 const downpaymentRequiredSettings = () => ({
+    platform_downpayment_allowed: true,
     tenant_id: 't-1',
     payment_mode: 'downpayment_required',
     downpayment_type: 'percentage',
@@ -137,7 +139,7 @@ describe('DownpaymentSettingsPanel', () => {
         // Defaults to percentage -- Minimum is visible.
         expect(await screen.findByLabelText(/Minimum downpayment/i)).toBeTruthy();
 
-        await user.click(screen.getByText('percentage'));
+        await user.click(screen.getByLabelText('Type'));
         await user.click(await screen.findByText(/Fixed amount/i));
 
         expect(screen.queryByLabelText(/Minimum downpayment/i)).toBeNull();
@@ -153,7 +155,7 @@ describe('DownpaymentSettingsPanel', () => {
 
         await screen.findByText(/Full payment up front/i);
         await user.click(screen.getByText(/Downpayment required/i));
-        await user.click(screen.getByText('percentage'));
+        await user.click(screen.getByLabelText('Type'));
         await user.click(await screen.findByText(/Fixed amount/i));
         await user.type(screen.getByLabelText(/Fixed amount \(₱\)/i), '500');
         await user.click(screen.getByRole('button', { name: /^Save$/i }));
@@ -256,4 +258,21 @@ describe('DownpaymentSettingsPanel', () => {
         expect(branchSelect).toBeTruthy();
         expect(branchSelect.disabled).toBe(false);
     });
+});
+
+it('explains revoked access and still saves the separate dine-in policy', async () => {
+    fetchDownpaymentSettings.mockResolvedValueOnce({ ...downpaymentRequiredSettings(), platform_downpayment_allowed: false });
+    listTenantLocations.mockResolvedValueOnce([{ location_id: 1, name: 'Main', allow_dine_in_pay_at_store: false }]);
+    updateTenantLocationDineInPaymentPolicy.mockResolvedValueOnce({ location_id: 1, allow_dine_in_pay_at_store: true });
+    render(<DownpaymentSettingsPanel terminalUser={adminUser()} locationScopeId={1} locationOptions={[{ location_id: 1, name: 'Main' }]} />);
+    expect(await screen.findByText('Downpayment unavailable')).toBeTruthy();
+    expect(screen.getByText(/DGFY Platform Admin controls access/)).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByLabelText(/Percentage \(%\)/)).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('switch', { name: 'Allow Pay in Store for Dine In' }));
+    await user.click(screen.getByRole('button', { name: /Save Dine-in Policy/ }));
+    await waitFor(() => expect(updateTenantLocationDineInPaymentPolicy).toHaveBeenCalledWith(1, { allow_dine_in_pay_at_store: true }));
+    expect(updateDownpaymentSettings).not.toHaveBeenCalled();
+    cleanup();
 });

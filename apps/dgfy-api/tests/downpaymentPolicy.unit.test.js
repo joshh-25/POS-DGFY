@@ -280,3 +280,13 @@ describe('resolveDownpaymentForTotal -- fixed-mode minimum floor is a no-op (Pha
         expect(result.downpayment_amount).toBe(200);
     });
 });
+
+describe('platform allowance', () => {
+    test.each([false, undefined, null, 'true', 1])('fails closed for %s without mutating stored settings', async (allowed) => {
+        const { applyPlatformDownpaymentAllowance } = await import('../src/modules/shared/utils/downpaymentPolicy.js');
+        const stored = { platform_downpayment_allowed: allowed, payment_mode: 'customer_choice' };
+        expect(applyPlatformDownpaymentAllowance(stored).payment_mode).toBe('full_payment');
+        expect(stored.payment_mode).toBe('customer_choice');
+        expect(applyPlatformDownpaymentAllowance({ ...stored, platform_downpayment_allowed: true }).payment_mode).toBe('customer_choice');
+    });
+});

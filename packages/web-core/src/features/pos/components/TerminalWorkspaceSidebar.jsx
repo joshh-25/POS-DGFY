@@ -80,6 +80,8 @@ export default function TerminalWorkspaceSidebar({
   canViewAudit = false,
   canReviewVoidApprovals = false,
   canAccessPosOnlySetup = false,
+  catalogOnlyAccess = false,
+  canCreateItems = false,
   canViewVouchers = false,
   canManageCategories = false,
   showFnbService = false,
@@ -123,12 +125,13 @@ export default function TerminalWorkspaceSidebar({
     adminLocationMonitorState
   }).length;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
-  const canAccessItemsWorkspace = canViewPos || canManageCategories;
+  const canAccessItemsWorkspace = canViewPos || canManageCategories || (catalogOnlyAccess && canCreateItems);
   const shouldShowPosOnlySetup = canAccessPosOnlySetup
     && !onboardingRestricted
     && settingsTargetViewMode !== 'terminal_setup';
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
   const onboardingCaption = 'Finish onboarding in Settings first';
+  const catalogOnlyDisabledCaption = 'DGFY Admin must enable POS before this page is available';
 
   const companyRows = Array.isArray(accessibleCompanies) ? accessibleCompanies : [];
   const currentCompanyId = String(terminalUser?.company?.id || terminalUser?.tenant_id || '').trim();
@@ -263,6 +266,189 @@ export default function TerminalWorkspaceSidebar({
         )}
 
         <div className={isCollapsed ? 'px-2 py-3' : `px-3 ${showBrand ? 'py-6' : 'pb-6 pt-3'}`}>
+        {catalogOnlyAccess ? (
+          <>
+            {!isCollapsed ? (
+              <div
+                data-testid="pos-catalog-only-banner"
+                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-[11px] leading-4 text-blue-950"
+                role="status"
+              >
+                <p className="font-extrabold">Catalog-only access</p>
+                <p className="mt-1">Add items and categories now. POS onboarding, selling, POS operations, and storefront visibility stay deferred until DGFY Admin enables POS.</p>
+              </div>
+            ) : null}
+            {!isCollapsed && <p className="mt-4 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>}
+            <div className={isCollapsed ? 'mt-2 space-y-2' : 'mt-3 space-y-2'}>
+              <NavButton
+                label="Sell"
+                icon={ShoppingCart}
+                active={sellWorkspaceModes.has(currentViewMode)}
+                onClick={() => onSelectViewMode('checkout')}
+                disabled
+                caption={catalogOnlyDisabledCaption}
+                testId="pos-nav-sell"
+                collapsed={isCollapsed}
+              />
+              {showFnbService && (
+                <NavButton
+                  label="F&amp;B service"
+                  icon={Utensils}
+                  active={currentViewMode === 'fnb_service'}
+                  onClick={() => onSelectViewMode('fnb_service')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-fnb-service"
+                  collapsed={isCollapsed}
+                />
+              )}
+              <NavButton
+                label="History"
+                icon={History}
+                active={currentViewMode === 'history'}
+                onClick={() => onSelectViewMode('history')}
+                disabled
+                caption={catalogOnlyDisabledCaption}
+                testId="pos-nav-history"
+                collapsed={isCollapsed}
+              />
+              {!isCashierRole && (
+                <NavButton
+                  label="Report"
+                  icon={BarChart3}
+                  active={currentViewMode === 'reports'}
+                  onClick={() => onSelectViewMode('reports')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-reports"
+                  collapsed={isCollapsed}
+                />
+              )}
+              <NavButton
+                label="Items"
+                icon={ClipboardList}
+                active={currentViewMode === 'items'}
+                onClick={() => onSelectViewMode('items')}
+                onPrefetch={() => onPrefetchViewMode('items')}
+                disabled={locked || !canAccessItemsWorkspace}
+                caption={locked ? 'Unlock terminal to continue' : (!canAccessItemsWorkspace ? 'POS view or category-management permission required' : 'Add items and categories')}
+                testId="pos-nav-items"
+                collapsed={isCollapsed}
+              />
+              {showServiceOperations && (
+                <NavButton
+                  label="Services"
+                  icon={CalendarCheck}
+                  active={currentViewMode === 'services'}
+                  onClick={() => onSelectViewMode('services')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-services"
+                  collapsed={isCollapsed}
+                />
+              )}
+              {shouldShowIncomingQueue && (
+                <NavButton
+                  label={`Orders (${incomingCount})`}
+                  icon={Truck}
+                  active={currentViewMode === 'incoming_queue'}
+                  onClick={() => onSelectViewMode('incoming_queue')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-orders"
+                  collapsed={isCollapsed}
+                />
+              )}
+              <NavButton
+                label="Shift"
+                icon={ListChecks}
+                active={currentViewMode === 'shift_controls' || currentViewMode === 'close_shift' || currentViewMode === 'cash_drawer'}
+                onClick={() => onSelectViewMode('shift_controls')}
+                disabled
+                caption={catalogOnlyDisabledCaption}
+                testId="pos-nav-shift"
+                collapsed={isCollapsed}
+              />
+            </div>
+
+            <div className={`${isCollapsed ? 'my-3' : 'my-5'} border-t border-slate-200`} />
+            {!isCollapsed && <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Setup</p>}
+            <div className="space-y-2">
+              <NavButton
+                label="Onboarding"
+                icon={Settings}
+                active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
+                onClick={() => onSelectViewMode(settingsTargetViewMode)}
+                onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
+                disabled={locked || !isOnline || isBranchReadOnlyView || catalogOnlyAccess || !onboardingRestricted}
+                caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (catalogOnlyAccess ? 'POS onboarding will be available after DGFY Admin enables POS' : (!onboardingRestricted ? 'Onboarding is already complete' : 'Continue tenant onboarding inside POS')))}
+                testId="pos-nav-onboarding"
+                collapsed={isCollapsed}
+              />
+              {canViewVouchers && !isCashierRole && (
+                <NavButton
+                  label="Vouchers"
+                  icon={Ticket}
+                  active={currentViewMode === 'settings_vouchers'}
+                  onClick={() => onSelectViewMode('settings_vouchers')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-vouchers"
+                  collapsed={isCollapsed}
+                />
+              )}
+              {canViewVouchers && !isCashierRole && (
+                <NavButton
+                  label="Pricelists"
+                  icon={Tags}
+                  active={currentViewMode === 'settings_pricelists'}
+                  onClick={() => onSelectViewMode('settings_pricelists')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-pricelists"
+                  collapsed={isCollapsed}
+                />
+              )}
+              {!isCashierRole && (
+                <NavButton
+                  label="Affiliates"
+                  icon={Percent}
+                  active={currentViewMode === 'settings_affiliates'}
+                  onClick={() => onSelectViewMode('settings_affiliates')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-affiliates"
+                  collapsed={isCollapsed}
+                />
+              )}
+              {canViewAudit && (
+                <NavButton
+                  label="Audit"
+                  icon={ClipboardCheck}
+                  active={currentViewMode === 'audit'}
+                  onClick={() => onSelectViewMode('audit')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-audit"
+                  collapsed={isCollapsed}
+                />
+              )}
+              {canReviewVoidApprovals && !isCashierRole && (
+                <NavButton
+                  label="Approvals"
+                  icon={ShieldCheck}
+                  active={currentViewMode === 'approvals'}
+                  onClick={() => onSelectViewMode('approvals')}
+                  disabled
+                  caption={catalogOnlyDisabledCaption}
+                  testId="pos-nav-approvals"
+                  collapsed={isCollapsed}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <>
         {!isCollapsed && <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>}
         <div className={isCollapsed ? 'space-y-2' : 'mt-3 space-y-2'}>
           <NavButton
@@ -508,6 +694,8 @@ export default function TerminalWorkspaceSidebar({
             />
           )}
         </div>
+          </>
+        )}
 
           <div
           data-testid="pos-sidebar-session-action"

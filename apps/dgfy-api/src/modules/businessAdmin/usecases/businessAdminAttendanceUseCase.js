@@ -72,7 +72,8 @@ const resolveDateRange = (query = {}) => {
 
 export const buildGetBusinessAdminAttendanceUseCase = ({
     businessAdminOverviewRepository,
-    posRepository
+    posRepository,
+    businessAdminShiftHistoryRepository = null
 }) => async ({ query = {}, user = {} } = {}) => {
     const access = resolveBusinessAdminAccess(user);
     if (!access.allowed) {
@@ -118,7 +119,7 @@ export const buildGetBusinessAdminAttendanceUseCase = ({
         );
     }
 
-    const lifecycle = await posRepository.getCashierLifecycleReport({
+    const lifecycleQuery = {
         date_from: dateRange.dateFrom,
         date_to: dateRange.dateTo,
         page: parsePositiveInt(query.page, 1),
@@ -126,13 +127,38 @@ export const buildGetBusinessAdminAttendanceUseCase = ({
         ...(branchId
             ? { location_id: branchId }
             : (access.scope === 'all' ? {} : { location_ids: allowedLocationIds }))
-    });
+    };
+    const [lifecycle, activeShiftsResult] = await Promise.all([
+        posRepository.getCashierLifecycleReport(lifecycleQuery),
+        businessAdminShiftHistoryRepository?.listShifts
+            ? businessAdminShiftHistoryRepository.listShifts({
+                allowedLocationIds,
+                filters: {
+                    page: 1,
+                    limit: 100,
+                    branchId,
+                    terminalId: '',
+                    status: 'open',
+                    search: '',
+                    startAt: null,
+                    endAt: null
+                }
+            })
+            : Promise.resolve({ shifts: [], pagination: { page: 1, limit: 100, total: 0, total_pages: 1 } })
+    ]);
 
     return {
         success: true,
         data: {
             attendance: lifecycle.attendance,
             operators: lifecycle.operators,
+            active_shifts: activeShiftsResult?.shifts || [],
+            active_shifts_pagination: activeShiftsResult?.pagination || {
+                page: 1,
+                limit: 100,
+                total: 0,
+                total_pages: 1
+            },
             filters: {
                 date_from: dateRange.dateFrom,
                 date_to: dateRange.dateTo,
@@ -141,7 +167,8 @@ export const buildGetBusinessAdminAttendanceUseCase = ({
             meta: {
                 timezone: 'Asia/Manila',
                 source: 'pos_cashier_lifecycle_read_model',
-                scope: access.scope
+                scope: access.scope,
+                active_shift_source: 'pos_terminal_shift_read_model'
             }
         }
     };

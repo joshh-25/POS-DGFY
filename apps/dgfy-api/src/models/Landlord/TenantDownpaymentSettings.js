@@ -8,6 +8,11 @@ export default (sequelize) => {
             type: DataTypes.UUID,
             primaryKey: true
         },
+        platform_downpayment_allowed: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
         payment_mode: {
             type: DataTypes.ENUM('full_payment', 'downpayment_required', 'customer_choice'),
             allowNull: false,

@@ -165,6 +165,58 @@ describe('POS branch directory and read-only branch view', () => {
         expect(terminal.current_operator).toEqual({ user_id: 12, display_name: 'main-operator' });
     });
 
+    it('keeps a stale admin-owned shift resumable for the owner', async () => {
+        const fixture = buildFixture({
+            shifts: [{
+                pos_terminal_shift_id: 46,
+                terminal_id: 'MAIN-01',
+                location_id: 1,
+                status: 'open',
+                cashier_id: 7,
+                opened_at: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+                cashier: { user_id: 7, username: 'admin-owner' }
+            }]
+        });
+
+        const result = await fixture.getDirectory({
+            user: { user_id: 7, role: 'admin', permissions: ['pos:branch_view', 'pos:transact'] }
+        });
+        const terminal = result.data.locations[0].terminals[0];
+
+        expect(terminal).toEqual(expect.objectContaining({
+            status: 'stale',
+            can_open: false,
+            can_resume: true,
+            reason_code: null
+        }));
+    });
+
+    it('keeps a stale shift recovery-only for a different cashier', async () => {
+        const fixture = buildFixture({
+            shifts: [{
+                pos_terminal_shift_id: 47,
+                terminal_id: 'MAIN-01',
+                location_id: 1,
+                status: 'open',
+                cashier_id: 99,
+                opened_at: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+                cashier: { user_id: 99, username: 'other-cashier' }
+            }]
+        });
+
+        const result = await fixture.getDirectory({
+            user: { user_id: 7, role: 'admin', permissions: ['pos:branch_view', 'pos:transact'] }
+        });
+        const terminal = result.data.locations[0].terminals[0];
+
+        expect(terminal).toEqual(expect.objectContaining({
+            status: 'stale',
+            can_open: false,
+            can_resume: false,
+            reason_code: 'POS_TERMINAL_STALE_SHIFT'
+        }));
+    });
+
     it('does not borrow a moved terminal shift from another branch', async () => {
         const fixture = buildFixture({
             grants: [{ location_id: 1 }, { location_id: 2 }],

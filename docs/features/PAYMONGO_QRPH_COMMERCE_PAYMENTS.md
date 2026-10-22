@@ -34,6 +34,9 @@ The admin operations slice adds:
   finalization retry.
 - PayMongo refund submission with proportional, tenant-shouldered, and DGFY-shouldered split-refund strategies.
 - Refund attempt storage in `commerce_payment_refunds`, PayMongo `payment.refunded` / `payment.refund.updated` webhook status updates, and tenant order `payment_status` reconciliation through `refund_pending`, `partial_refunded`, or `refunded`.
+- Definitive refund failures are retried automatically against the same refund row with bounded
+  backoff; ambiguous provider responses remain pending for webhook/reconciliation evidence and no
+  cashier, manager, or administrator approval gate is used.
 - Admin payment validators reject malformed payment-session IDs, refund payloads, unsafe status filters, and malformed tenant readiness payloads before use-case execution.
 - Settlement reporting for QR Ph commerce sessions, including gross amount, fixed DGFY 1% split, estimated tenant gross, succeeded/pending refunds, reconciliation variance, provider IDs, and CSV export from Admin > Payments.
 - PayMongo sandbox certification readiness checks for required test keys, webhook signature verification, split payload shape, and explicit child-merchant evidence still required outside the app.

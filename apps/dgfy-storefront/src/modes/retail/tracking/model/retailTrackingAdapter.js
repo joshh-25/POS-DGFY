@@ -1,31 +1,9 @@
-const RETAIL_TRACKING_STATUS_FLOW = Object.freeze({
-  delivery: [
-    { id: 'placed', label: 'Order confirmed' },
-    { id: 'confirmed', label: 'Confirmed by store' },
-    { id: 'preparing', label: 'Preparing' },
-    // Phase 211 (#1180). Retail-only progress step, no committed date/time. An order that skips
-    // `packed` entirely (preparing -> out_for_delivery) still resolves its own activeIndex
-    // correctly via the shared findIndex-based timeline builder below.
-    { id: 'packed', label: 'Packed' },
-    { id: 'out_for_delivery', label: 'Out for delivery' },
-    { id: 'completed', label: 'Delivered' }
-  ],
-  pickup: [
-    { id: 'placed', label: 'Order confirmed' },
-    { id: 'confirmed', label: 'Confirmed by store' },
-    { id: 'preparing', label: 'Preparing' },
-    { id: 'packed', label: 'Packed' },
-    { id: 'ready_for_pickup', label: 'Ready for pickup' },
-    { id: 'completed', label: 'Picked up' }
-  ]
-});
+import { getOrderTrackingFlow, getOrderTrackingTimeline } from '../../../../shared/tracking/directDeliveryTimeline.js';
 
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'rejected']);
 
 export function getTrackingFlowForOrderMethod(orderMethod = 'delivery') {
-  return orderMethod === 'pickup'
-    ? RETAIL_TRACKING_STATUS_FLOW.pickup
-    : RETAIL_TRACKING_STATUS_FLOW.delivery;
+  return getOrderTrackingFlow(orderMethod, true);
 }
 
 export function getCompletedTrackingLabel(orderMethod = 'delivery') {
@@ -66,6 +44,7 @@ export const RetailTrackingAdapter = Object.freeze({
     const statusLabel = String(payload?.status_label || order?.status_label || payload?.status || order?.status || 'Order placed').trim();
     const reference = String(payload?.tracking_pin || order?.tracking_pin || input?.rawReference || '').trim().toUpperCase();
     const orderMethod = String(payload?.order_method || order?.order_method || 'delivery').trim().toLowerCase();
+    const delivery = order?.delivery || payload?.delivery || null;
     const orderItems = Array.isArray(order?.items)
       ? order.items
       : (Array.isArray(payload?.items) ? payload.items : []);
@@ -111,6 +90,8 @@ export const RetailTrackingAdapter = Object.freeze({
       // Phase 210 (#1179). Merchant-attributed copy on a rejected order -- never DGFY's own
       // statement.
       rejectionReason: String(payload?.rejection_reason || order?.rejection_reason || '').trim() || null,
+      cancellationReason: String(payload?.cancellation_reason || order?.cancellation_reason || '').trim() || null,
+      delivery,
       isTerminal: TERMINAL_STATUSES.has(statusCode),
       orderMethod,
       specialInstructions: String(order?.special_instructions || payload?.special_instructions || orderDisplay?.special_instructions || payloadDisplay?.special_instructions || '').trim() || null,
@@ -177,16 +158,7 @@ export const RetailTrackingAdapter = Object.freeze({
         || ''
       ).trim() || null,
       items: itemRows,
-      timeline: getTrackingFlowForOrderMethod(orderMethod).map((step, index, allSteps) => {
-        const activeIndex = Math.max(0, allSteps.findIndex((item) => item.id === statusCode));
-        const isCompleted = index < activeIndex;
-        const isActive = index === activeIndex || (statusCode === 'completed' && index === allSteps.length - 1);
-        return {
-          id: step.id,
-          label: step.label,
-          state: isActive ? 'active' : (isCompleted ? 'done' : 'pending')
-        };
-      }),
+      timeline: getOrderTrackingTimeline(orderMethod, statusCode, delivery, true),
       uiHints: {
         icon: orderMethod === 'pickup' ? 'ShoppingBag' : 'Bike',
         tone: orderMethod === 'pickup' ? 'pickup' : 'delivery',

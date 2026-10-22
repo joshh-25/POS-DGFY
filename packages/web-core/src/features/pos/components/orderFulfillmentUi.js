@@ -29,6 +29,7 @@ export const FULFILLMENT_STATUS_LABELS = Object.freeze({
   confirmed: 'Confirmed',
   preparing: 'Preparing',
   packed: 'Packed',
+  ready_for_rider: 'Waiting for rider',
   ready_for_pickup: 'Ready for pickup',
   out_for_delivery: 'Out for delivery',
   completed: 'Completed',
@@ -88,6 +89,7 @@ export const FULFILLMENT_ACTION_LABELS = Object.freeze({
   packed: 'Mark Packed',
   ready_for_pickup: 'Ready for Pickup',
   out_for_delivery: 'Out for Delivery',
+  ready_for_rider: 'Ready',
   completed: 'Complete'
 });
 
@@ -105,11 +107,59 @@ export const isManualDeliveryJob = (deliveryJob = {}) => (
 );
 
 export const hasCompleteDeliveryAssignment = (deliveryJob = {}) => Boolean(
-  (Number(deliveryJob?.delivery_personnel_id) > 0 || String(deliveryJob?.delivery_personnel_name || '').trim())
+  (['maxim', 'grabexpress', 'lalamove', 'other'].includes(deliveryJob?.courier_service)
+    || Number(deliveryJob?.delivery_personnel_id) > 0 || String(deliveryJob?.delivery_personnel_name || '').trim())
   && Number(deliveryJob?.assigned_by) > 0
   && Number(deliveryJob?.assigned_shift_id) > 0
   && deliveryJob?.assigned_at
 );
+
+export const isDirectDeliveryOrder = (order = {}) => {
+  const job = order?.deliveryJob;
+  if (order?.order_method !== 'delivery' || !job || !isManualDeliveryJob(job)) return false;
+  return !Number(job.delivery_run_id)
+    || ['completed', 'cancelled'].includes(String(job.deliveryRun?.status || '').trim().toLowerCase());
+};
+
+export const getDirectDeliveryActionModel = (order = {}, context = {}) => {
+  if (!isDirectDeliveryOrder(order)) return null;
+  const job = order.deliveryJob;
+  const status = String(order.fulfillment_status || '').trim();
+  const assigned = hasCompleteDeliveryAssignment(job);
+  const jobStatus = String(job.status || '').trim();
+  const baseReason = context.actionLoading ? 'Saving…'
+    : context.locked ? 'Terminal locked'
+      : !context.isOnline ? 'Offline'
+        : !context.canTransactPos ? 'Needs pos:transact'
+          : !context.hasActiveShift ? 'No open shift' : null;
+  const action = (id, label, extraReason = null) => ({ id, label, disabledReason: baseReason || extraReason });
+  let primary = null;
+  let secondary = [];
+  if (status === 'placed') {
+    primary = action('confirm', 'Confirm');
+    secondary = [action('reject', 'Reject')];
+  } else if (status === 'confirmed') {
+    primary = action('prepare', 'Start Preparing');
+    secondary = [action(assigned ? 'change_rider' : 'assign_rider', assigned ? 'Change rider' : 'Assign rider'), action('fail', 'Failed')];
+  } else if (['preparing', 'packed'].includes(status)) {
+    primary = action('ready', 'Ready');
+    secondary = [
+      ...(status === 'preparing' && normalizeWorkflowMode(context.workflowMode) === 'retail' ? [action('pack', 'Mark Packed')] : []),
+      action(assigned ? 'change_rider' : 'assign_rider', assigned ? 'Change rider' : 'Assign rider'),
+      action('fail', 'Failed')
+    ];
+  } else if (status === 'ready_for_rider' || status === 'out_for_delivery') {
+    primary = !assigned ? action('assign_rider', 'Assign rider')
+      : status === 'out_for_delivery' && ['picked_up', 'delivered'].includes(jobStatus)
+        ? action('complete', 'Delivered')
+        : action('pickup', 'Picked Up', assigned ? null : 'Assign a rider first');
+    secondary = [
+      ...(assigned && jobStatus !== 'picked_up' && jobStatus !== 'delivered' ? [action('change_rider', 'Change rider')] : []),
+      action('fail', 'Failed')
+    ];
+  }
+  return { primary, secondary };
+};
 
 const DELIVERY_JOB_TRANSITIONS = Object.freeze({
   pending_dispatch: 'assigned',
@@ -192,6 +242,7 @@ export const getIncomingOrderUtilityActions = (order = {}) => {
     return ['print_order', 'open_order'];
   case 'preparing':
   case 'packed':
+  case 'ready_for_rider':
     return method === 'delivery'
       ? ['print_order', 'open_order']
       : ['print_receipt', 'open_order'];

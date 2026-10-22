@@ -19,7 +19,6 @@ import {
 } from '@/src/features/inventory/utils/stockAllocations.js';
 import { resolveBusinessModeProductDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
-import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx';
 import { toast } from 'sonner';
 
 // Import step components
@@ -35,23 +34,182 @@ import CostFinancialStep from './wizard/CostFinancialStep';
 import QualityControlStep from './wizard/QualityControlStep';
 import RegulatoryComplianceStep from './wizard/RegulatoryComplianceStep';
 import POSSetupStep from './wizard/POSSetupStep';
-import SummaryStep from './wizard/SummaryStep';
+import {
+  ProductBarcodesAndReviewStep,
+  ProductWizardGroupStep
+} from './wizard/ProductWizardGroupedSteps';
+
+const LEGACY_PRODUCT_WIZARD_STEP_KEYS = [
+  'basic_info',
+  'pos_setup',
+  'recipe_ingredients',
+  'yield_loss',
+  'nutrition',
+  'allergens',
+  'physical_properties',
+  'shelf_life',
+  'packaging',
+  'costing',
+  'quality_control',
+  'compliance',
+  'review'
+];
 
 export const PRODUCT_WIZARD_STEP_DEFINITIONS = [
-  { key: 'basic_info', name: 'Basic Info', description: 'Product identity, SKU, category, stock, and VAT setup.', component: BasicInfoStep },
-  { key: 'pos_setup', name: 'POS Setup', description: 'POS visibility, menu image, Storefront visibility, and item images.', component: POSSetupStep },
-  { key: 'recipe_ingredients', name: 'Recipe & Ingredients', description: 'Recipe composition, ingredient quantities, and product components.', component: RecipeFormulationStep },
-  { key: 'yield_loss', name: 'Yield & Loss', description: 'Batch size, yield percentage, and processing loss.', component: YieldManagementStep },
-  { key: 'nutrition', name: 'Nutrition', description: 'Nutrition facts and customer-facing dietary information.', component: NutritionalInfoStep },
-  { key: 'allergens', name: 'Allergens', description: 'Allergen declarations and may-contain warnings.', component: AllergenManagementStep },
-  { key: 'physical_properties', name: 'Properties', description: 'Physical and chemical manufacturing properties.', component: PhysicalPropertiesStep, excludeModes: ['fnb'] },
-  { key: 'shelf_life', name: 'Shelf Life', description: 'Shelf-life, storage, and expiry details.', component: ShelfLifeStep },
-  { key: 'packaging', name: 'Packaging', description: 'Packaging, labeling, and presentation details.', component: PackagingLabelingStep },
-  { key: 'costing', name: 'Costing', description: 'Costs, margin, and customer selling price.', component: CostFinancialStep },
-  { key: 'quality_control', name: 'Quality Control', description: 'Manufacturing quality checks and batch standards.', component: QualityControlStep, excludeModes: ['fnb'] },
-  { key: 'compliance', name: 'Compliance', description: 'Regulatory and compliance references.', component: RegulatoryComplianceStep },
-  { key: 'review', name: 'Review', description: 'Review product setup before saving.', component: SummaryStep },
+  {
+    key: 'basic_info',
+    name: 'Basic Information',
+    description: 'Product identity, category, inventory settings, and VAT setup.',
+    component: ProductWizardGroupStep,
+    sections: [{
+      key: 'basic_info',
+      label: 'Basic Information',
+      description: 'Name, category, SKU, inventory, and VAT setup.',
+      component: BasicInfoStep
+    }],
+    legacyKeys: ['basic_info']
+  },
+  {
+    key: 'pos_selling',
+    name: 'POS & Selling',
+    description: 'POS visibility, selling controls, Storefront visibility, and item images.',
+    component: ProductWizardGroupStep,
+    sections: [{
+      key: 'pos_setup',
+      label: 'POS Setup',
+      description: 'Selling controls, POS visibility, and Storefront settings.',
+      component: POSSetupStep
+    }],
+    legacyKeys: ['pos_setup']
+  },
+  {
+    key: 'inventory_storage',
+    name: 'Inventory & Storage',
+    description: 'Shelf life, storage conditions, packaging, and labeling details.',
+    component: ProductWizardGroupStep,
+    sections: [
+      {
+        key: 'shelf_life',
+        label: 'Shelf Life & Storage',
+        description: 'Expiry, storage conditions, and FIFO settings.',
+        component: ShelfLifeStep
+      },
+      {
+        key: 'packaging',
+        label: 'Packaging & Labels',
+        description: 'Packaging items and labeling details.',
+        component: PackagingLabelingStep
+      }
+    ],
+    legacyKeys: ['shelf_life', 'packaging']
+  },
+  {
+    key: 'recipe_cost_compliance',
+    name: 'Recipe, Cost & Compliance',
+    description: 'Recipe, yield, nutrition, allergens, costing, quality, and compliance details.',
+    component: ProductWizardGroupStep,
+    sections: [
+      {
+        key: 'recipe_ingredients',
+        label: 'Recipe & Ingredients',
+        description: 'Build the recipe and choose ingredient quantities.',
+        component: RecipeFormulationStep
+      },
+      {
+        key: 'yield_loss',
+        label: 'Yield & Loss',
+        description: 'Set batch output and processing loss assumptions.',
+        component: YieldManagementStep
+      },
+      {
+        key: 'nutrition',
+        label: 'Nutrition',
+        description: 'Record nutrition information shown with the product.',
+        component: NutritionalInfoStep
+      },
+      {
+        key: 'allergens',
+        label: 'Allergens',
+        description: 'Identify allergens and cross-contact warnings.',
+        component: AllergenManagementStep
+      },
+      {
+        key: 'physical_properties',
+        label: 'Properties',
+        description: 'Capture physical specifications for manufactured goods.',
+        component: PhysicalPropertiesStep,
+        excludeModes: ['fnb']
+      },
+      {
+        key: 'costing',
+        label: 'Cost & Financial',
+        description: 'Review cost, margin, and financial settings.',
+        component: CostFinancialStep
+      },
+      {
+        key: 'quality_control',
+        label: 'Quality Control',
+        description: 'Define quality checks and acceptance criteria.',
+        component: QualityControlStep,
+        excludeModes: ['fnb']
+      },
+      {
+        key: 'compliance',
+        label: 'Compliance',
+        description: 'Add regulatory and compliance information.',
+        component: RegulatoryComplianceStep
+      }
+    ],
+    legacyKeys: [
+      'recipe_ingredients',
+      'yield_loss',
+      'nutrition',
+      'allergens',
+      'physical_properties',
+      'costing',
+      'quality_control',
+      'compliance'
+    ]
+  },
+  {
+    key: 'barcodes_review',
+    name: 'Barcodes & Review',
+    description: 'Barcode identities, labels, and the final product review.',
+    component: ProductBarcodesAndReviewStep,
+    legacyKeys: ['review']
+  }
 ];
+
+const resolveLegacyProductWizardSteps = (workflowMode) => {
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+  return LEGACY_PRODUCT_WIZARD_STEP_KEYS.filter((key) => (
+    normalizedMode !== 'fnb' || !['physical_properties', 'quality_control'].includes(key)
+  ));
+};
+
+export const resolveProductWizardResumeStep = (metadata, wizardSteps, workflowMode) => {
+  const completedStep = Number(metadata?.last_completed_step);
+  if (!Number.isInteger(completedStep) || completedStep <= 0 || wizardSteps.length === 0) return 1;
+
+  if (Number(metadata?.wizard_version) >= 2) {
+    return Math.min(completedStep + 1, wizardSteps.length);
+  }
+
+  const legacySteps = resolveLegacyProductWizardSteps(workflowMode);
+  const completedLegacyKey = legacySteps[Math.min(completedStep, legacySteps.length) - 1];
+  if (!completedLegacyKey) return 1;
+
+  const groupIndex = wizardSteps.findIndex((definition) => (
+    (definition.legacyKeys || []).includes(completedLegacyKey)
+  ));
+  if (groupIndex < 0) return 1;
+
+  const groupLegacyKeys = (wizardSteps[groupIndex].legacyKeys || [])
+    .filter((key) => legacySteps.includes(key));
+  const groupIsComplete = groupLegacyKeys[groupLegacyKeys.length - 1] === completedLegacyKey;
+  const nextStep = groupIndex + 1 + (groupIsComplete ? 1 : 0);
+  return Math.min(nextStep, wizardSteps.length);
+};
 
 export const resolveProductWizardSteps = (workflowMode = 'manufacturing') => {
   const normalizedMode = normalizeWorkflowMode(workflowMode);
@@ -63,6 +221,43 @@ export const resolveProductWizardSteps = (workflowMode = 'manufacturing') => {
       number: index + 1
     }));
 };
+
+function ProductWizardStepRail({ steps, currentStep, onStepChange }) {
+  return (
+    <nav className="product-wizard-step-rail" aria-label="Product wizard steps">
+      <div className="product-wizard-step-rail__list">
+        {steps.map((wizardStep, index) => {
+          const isActive = wizardStep.number === currentStep;
+          const isCompleted = wizardStep.number < currentStep;
+
+          return (
+            <React.Fragment key={wizardStep.id}>
+              <button
+                type="button"
+                className={`product-wizard-step-rail__step${isActive ? ' product-wizard-step-rail__step--active' : ''}${isCompleted ? ' product-wizard-step-rail__step--completed' : ''}`}
+                onClick={() => onStepChange(wizardStep.number)}
+                aria-current={isActive ? 'step' : undefined}
+                aria-label={`Step ${wizardStep.number}: ${wizardStep.name}`}
+                data-product-wizard-step={wizardStep.key}
+              >
+                <span className="product-wizard-step-rail__number" aria-hidden="true">
+                  {isCompleted ? <Check className="h-4 w-4" /> : wizardStep.number}
+                </span>
+                <span className="product-wizard-step-rail__copy">
+                  <span className="product-wizard-step-rail__label">{wizardStep.name}</span>
+                  <span className="product-wizard-step-rail__description">{wizardStep.description}</span>
+                </span>
+              </button>
+              {index < steps.length - 1 && (
+                <span className={`product-wizard-step-rail__connector${isCompleted ? ' product-wizard-step-rail__connector--completed' : ''}`} aria-hidden="true" />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
 
 const clearFnbManufacturingFields = (payload, workflowMode) => {
   if (normalizeWorkflowMode(workflowMode) !== 'fnb') return payload;
@@ -151,6 +346,7 @@ export default function ProductCreateWizard({
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [savingAction, setSavingAction] = useState(null);
   const savingActionRef = useRef(null);
+  const stepContentRef = useRef(null);
   const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
   const [lastSuggestedSku, setLastSuggestedSku] = useState('');
   const [stockAllocationDraft, setStockAllocationDraft] = useState({});
@@ -188,6 +384,15 @@ export default function ProductCreateWizard({
       setStep(wizardSteps.length);
     }
   }, [step, wizardSteps.length]);
+
+  useEffect(() => {
+    if (!stepContentRef.current) return;
+    if (typeof stepContentRef.current.scrollTo === 'function') {
+      stepContentRef.current.scrollTo({ top: 0, behavior: 'auto' });
+      return;
+    }
+    stepContentRef.current.scrollTop = 0;
+  }, [step]);
 
   const runSaveAction = async (action, operation) => {
     if (savingActionRef.current) return;
@@ -292,7 +497,11 @@ export default function ProductCreateWizard({
 
       // Resume from last completed step if draft
       if (product.status === 'draft' && product.wizard_metadata?.last_completed_step) {
-        const resumeStep = Math.min(product.wizard_metadata.last_completed_step + 1, wizardSteps.length);
+        const resumeStep = resolveProductWizardResumeStep(
+          product.wizard_metadata,
+          wizardSteps,
+          workflowMode
+        );
         setStep(resumeStep);
         setInitialStep(resumeStep);
       } else {
@@ -316,7 +525,7 @@ export default function ProductCreateWizard({
       setSkuManuallyEdited(false);
       setLastSuggestedSku('');
     }
-  }, [modeProductDefaults, product, open, activeLocationsKey, wizardSteps.length]);
+  }, [modeProductDefaults, product, open, activeLocations, activeLocationsKey, workflowMode, wizardSteps, wizardSteps.length]);
 
   useEffect(() => {
     if (!open || skuManuallyEdited) return;
@@ -449,6 +658,7 @@ export default function ProductCreateWizard({
       ...productData,
       status: 'draft',
       wizard_metadata: {
+        wizard_version: 2,
         last_completed_step: step - 1,
         steps_completed: Array.from({ length: step }, (_, i) => i + 1),
         last_saved_at: new Date().toISOString()
@@ -608,24 +818,31 @@ export default function ProductCreateWizard({
     onClose();
   };
 
-  const CurrentStepComponent = wizardSteps[step - 1]?.component || wizardSteps[0].component;
+  const currentWizardStep = wizardSteps[step - 1] || wizardSteps[0];
+  const CurrentStepComponent = currentWizardStep.component;
 
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography" data-catalog-editor="true">
-          <DialogHeader className="flex-shrink-0">
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography product-wizard-dialog" data-catalog-editor="true">
+          <DialogHeader className="flex-shrink-0 product-wizard-header">
             <div className="flex items-start justify-between gap-4">
-              <DialogTitle className="wizard-title flex items-center gap-2">
-                <Package className="w-5 h-5 text-teal-600" />
-                {product ? 'Edit Product' : 'Create New Product'}
-                {isEditingDraft && (
-                  <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200 ml-2">
-                    <FileEdit className="w-3 h-3 mr-1" />
-                    Draft
-                  </Badge>
-                )}
-              </DialogTitle>
+              <div>
+                <DialogTitle className="wizard-title flex items-center gap-2">
+                  <Package className="w-5 h-5 text-teal-600" />
+                  {product ? 'Edit Product' : 'Create New Product'}
+                  {isEditingDraft && (
+                    <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200 ml-2">
+                      <FileEdit className="w-3 h-3 mr-1" />
+                      Draft
+                    </Badge>
+                  )}
+                </DialogTitle>
+                <p className="product-wizard-header-meta">
+                  {productData.name?.trim() || 'Set up a sellable product'}
+                  {productData.sku_code?.trim() ? ` · ${productData.sku_code.trim()}` : ''}
+                </p>
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -646,62 +863,86 @@ export default function ProductCreateWizard({
             )}
           </DialogHeader>
 
-          {/* Progress Bar */}
-          <div className="border-b border-slate-200 py-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-slate-600">
-                Step {step} of {wizardSteps.length}
-              </span>
-              <span className="text-sm text-slate-500">{wizardSteps[step - 1]?.name}</span>
+          <div className="product-wizard-progress" aria-label="Product setup progress">
+            <div className="product-wizard-progress__summary">
+              <span className="product-wizard-progress__eyebrow">Product setup</span>
+              <span className="product-wizard-progress__count">Step {step} of {wizardSteps.length}</span>
             </div>
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div className="product-wizard-progress__track" aria-hidden="true">
               <div
-                className="h-full bg-teal-600 transition-all duration-300"
+                className="product-wizard-progress__value"
                 style={{ width: `${(step / wizardSteps.length) * 100}%` }}
               />
             </div>
-            <WizardStepNavigator
-              steps={wizardSteps}
-              currentStep={step}
-              completedStep={step - 1}
-              onStepChange={setStep}
-              ariaLabel="Product wizard steps"
-              className="mt-2"
-            />
           </div>
 
-          {/* Step Content */}
-          <div className="wizard-step-content flex-1 overflow-y-auto py-4">
-            <CurrentStepComponent
-              data={productData}
-              updateData={updateProductData}
-              onSkuChange={handleSkuChange}
-              items={items}
-              locations={activeLocations}
-              loadingLocations={loadingLocations}
-              stockAllocationDraft={stockAllocationDraft}
-              onStockAllocationChange={handleStockAllocationChange}
-              existingStockByLocation={productLocationStockMap}
-              isEditing={Boolean(product)}
-              productItem={product}
-              posConfig={posConfig}
-              storefrontConfig={storefrontConfig}
-              showStorefrontCatalogControls={showStorefrontCatalogControls}
-              onTogglePosVisibility={onTogglePosVisibility}
-              onTogglePosAlwaysAvailable={onTogglePosAlwaysAvailable}
-              onUploadPosImage={onUploadPosImage}
-              onDeletePosImage={onDeletePosImage}
-              onToggleStorefrontVisibility={onToggleStorefrontVisibility}
-              onToggleStorefrontLocationAvailability={onToggleStorefrontLocationAvailability}
-              onUploadStorefrontImage={onUploadStorefrontImage}
-              onSetPrimaryStorefrontImage={onSetPrimaryStorefrontImage}
-              onDeleteStorefrontImage={onDeleteStorefrontImage}
-              onOpenBulkPosSetup={onOpenBulkPosSetup}
-            />
+          <div className="product-wizard-mobile-nav">
+            <label htmlFor="product-wizard-step-select" className="product-wizard-mobile-nav__label">
+              Current section
+            </label>
+            <select
+              id="product-wizard-step-select"
+              value={step}
+              onChange={(event) => setStep(Number(event.target.value))}
+              className="product-wizard-mobile-nav__select"
+            >
+              {wizardSteps.map((wizardStep) => (
+                <option key={wizardStep.id} value={wizardStep.number}>
+                  {wizardStep.number}. {wizardStep.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="product-wizard-layout">
+            <aside className="product-wizard-sidebar">
+              <ProductWizardStepRail
+                steps={wizardSteps}
+                currentStep={step}
+                onStepChange={setStep}
+              />
+            </aside>
+
+            <main ref={stepContentRef} className="wizard-step-content product-wizard-main">
+              <div className="product-wizard-content-heading">
+                <span className="product-wizard-content-heading__eyebrow">Current section</span>
+                <h2>{currentWizardStep.name}</h2>
+                <p>{currentWizardStep.description}</p>
+              </div>
+              <CurrentStepComponent
+                key={currentWizardStep.key}
+                sections={currentWizardStep.sections}
+                data={productData}
+                updateData={updateProductData}
+                onSkuChange={handleSkuChange}
+                items={items}
+                locations={activeLocations}
+                loadingLocations={loadingLocations}
+                stockAllocationDraft={stockAllocationDraft}
+                onStockAllocationChange={handleStockAllocationChange}
+                existingStockByLocation={productLocationStockMap}
+                isEditing={Boolean(product)}
+                productItem={product}
+                workflowMode={workflowMode}
+                posConfig={posConfig}
+                storefrontConfig={storefrontConfig}
+                showStorefrontCatalogControls={showStorefrontCatalogControls}
+                onTogglePosVisibility={onTogglePosVisibility}
+                onTogglePosAlwaysAvailable={onTogglePosAlwaysAvailable}
+                onUploadPosImage={onUploadPosImage}
+                onDeletePosImage={onDeletePosImage}
+                onToggleStorefrontVisibility={onToggleStorefrontVisibility}
+                onToggleStorefrontLocationAvailability={onToggleStorefrontLocationAvailability}
+                onUploadStorefrontImage={onUploadStorefrontImage}
+                onSetPrimaryStorefrontImage={onSetPrimaryStorefrontImage}
+                onDeleteStorefrontImage={onDeleteStorefrontImage}
+                onOpenBulkPosSetup={onOpenBulkPosSetup}
+              />
+            </main>
           </div>
 
           {/* Navigation */}
-          <DialogFooter className="wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <DialogFooter className="wizard-footer product-wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-h-10 order-2 sm:order-none">
               {step > 1 && (
                 <Button variant="outline" onClick={handleBack} disabled={isSaving} className="w-full sm:w-auto">

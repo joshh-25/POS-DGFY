@@ -10,8 +10,9 @@ export function BusinessRegistrationSubmissionPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const applicationId = String(searchParams.get('application_id') || '').trim();
+  const autoApproved = location.state?.autoApproved === true || searchParams.get('auto_approved') === '1';
   const statusUrl = applicationId
-    ? buildBusinessRegistrationSubmissionPath(applicationId)
+    ? buildBusinessRegistrationSubmissionPath(applicationId, { autoApproved })
     : '';
 
   return (
@@ -26,13 +27,17 @@ export function BusinessRegistrationSubmissionPage() {
           </div>
           <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.2em] text-[#1f5f9f] sm:text-xs">DGFY Business Registration</p>
           <h1 id="business-registration-submission-title" className="mt-3 text-[28px] font-bold leading-tight sm:text-4xl">
-            Registration submitted!
+            {autoApproved ? 'Registration approved!' : 'Registration submitted!'}
           </h1>
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[#667085] sm:text-base">
-            Thanks! We&apos;ve received your business registration and it&apos;s now under review.
+            {autoApproved
+              ? "Your business was approved automatically. We're preparing your POS onboarding access."
+              : 'Thanks! We&apos;ve received your business registration and it&apos;s now under review.'}
           </p>
           <p className="mt-2 text-sm leading-6 text-[#667085] sm:text-base">
-            We&apos;ll email you when your business is approved.
+            {autoApproved
+              ? "We'll email you the POS onboarding link when setup is ready."
+              : "We'll email you when your business is approved."}
           </p>
           {location.state?.uploadWarning ? (
             <div role="status" className="mx-auto mt-5 max-w-lg rounded-2xl border border-[#f5d6a1] bg-[#fff8e8] p-4 text-left text-sm leading-6 text-[#8a5a00]">
@@ -46,9 +51,9 @@ export function BusinessRegistrationSubmissionPage() {
                 <Mail size={19} />
               </span>
               <div>
-                <h2 className="text-sm font-bold text-[#10233f] sm:text-base">We&apos;ll notify you by email</h2>
+                <h2 className="text-sm font-bold text-[#10233f] sm:text-base">{autoApproved ? 'POS onboarding link is on the way' : "We'll notify you by email"}</h2>
                 <p className="mt-1 text-xs leading-5 text-[#667085] sm:text-sm">
-                  Check your email inbox (or spam folder) for updates.
+                  {autoApproved ? 'Check your email inbox (or spam folder) for the link.' : 'Check your email inbox (or spam folder) for updates.'}
                 </p>
               </div>
             </div>

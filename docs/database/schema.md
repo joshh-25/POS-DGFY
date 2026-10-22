@@ -171,7 +171,7 @@ Tenant-local platform capability switches are stored in each tenant database's `
 Company registration, direct company-user registration, and invitation acceptance now require account phone numbers.
 
 Schema contract:
-- `tenants.admin_phone` stores the founder/admin phone number submitted during public company registration. Pending manual-approval tenants keep this value until provisioning; provisioning copies it into the seeded founder/admin user's `users.phone_number`.
+- `tenants.admin_phone` stores the founder/admin phone number submitted during public company registration. Auto-standard registrations keep this value through background provisioning; provisioning copies it into the seeded founder/admin user's `users.phone_number`.
 - `users.phone_number` exists in tenant-local user tables and stores the account contact number for accepted users.
 - Migration `20260514000001-add-phone-number-to-users.cjs` is tenant-aware: it adds `users.phone_number` to the landlord/current database when present and to every active tenant database listed in the landlord `tenants` registry.
 - Migration `20260514000002-add-admin-phone-to-tenants.cjs` adds `tenants.admin_phone` to the landlord registry.
@@ -381,6 +381,7 @@ The tenant-local capability switches themselves remain in each tenant database's
 - `tenant_ims_enabled`
 - `tenant_pos_enabled`
 - `store_is_visible`
+- `store_visibility_merchant_editable` (Platform Admin edit-authority policy; missing row means editable)
 - `customer_access_mode`
 
 ### 2. Tenant Databases (Isolated Contexts)
@@ -750,6 +751,7 @@ CREATE TABLE users (
     role ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo') DEFAULT 'staff',
     is_active BOOLEAN DEFAULT TRUE,
     permissions JSON,                    -- Granular permission array
+    staff_role_id INT NULL,              -- Optional tenant staff_roles assignment
     is_master_admin BOOLEAN DEFAULT FALSE,
     last_login TIMESTAMP NULL,
 
@@ -789,6 +791,17 @@ CREATE TABLE users (
   - `do` (dispatch order operations)
   - `jo` (job order operations)
 - Role assignment defaults are enforced by backend permission maps (`DEFAULT_ROLE_PERMISSIONS`).
+
+### Tenant Staff Roles (#1182)
+
+`staff_roles` is tenant-local: `staff_role_id` (primary key), unique `name`, JSON
+`capabilities`, `is_active`, nullable `created_by`/`updated_by` user references,
+and `created_at`/`updated_at`. `users.staff_role_id` is a nullable foreign key
+with `ON DELETE SET NULL`. Warehouse and Delivery suggestions create ordinary
+rows here; they do not extend `users.role`. Assigning or clearing a staff role
+sets `users.permissions` to `[]` in the same transaction and records the prior
+permission array in the audit log. Role edits and status changes invalidate
+assigned users' auth cache after commit.
 
 ### 2. Item Folders Table
 
@@ -1484,7 +1497,7 @@ Landlord-level payment routing tables support PayMongo QR Ph Storefront payments
 
 - `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, fee-contract metadata, and last sync time.
 - `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, `fee_policy` snapshot (`dgfy_fee_basis=subtotal`, `dgfy_fee_charged_to=customer`, `provider_fee_shoulder=tenant_company`), total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields. **Phase 141 (#822)** adds four columns splitting "the order total" from "the amount actually authorized/captured" — `total_amount_centavos` itself keeps meaning the latter (unchanged): `capture_kind` (`ENUM('full','downpayment')`, `DEFAULT 'full'` so every pre-existing row is correct by construction), `order_total_centavos` (the full order value, backfilled from `total_amount_centavos` for pre-existing rows), `capture_payment_method` (the online rail that paid the captured amount), and `downpayment_refundable` (a policy snapshot at capture time, for Phase 144/#824's refund-vs-forfeiture decision). Migration `20260821000006-add-downpayment-capture-to-commerce-payment-sessions.cjs`.
-- `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
+- `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, bounded retry metadata (`retry_count`, `last_attempt_at`, `next_retry_at`), and requester. The `(status, next_retry_at)` index supports automatic retry claims.
 - Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
 - ADR 0040 adds the landlord-owned tenant financial ledger: `tenant_revenue_fee_policies`, `tenant_revenue_transactions`, `tenant_revenue_ledger_entries`, `tenant_settlement_batches`, `tenant_settlement_batch_items`, `tenant_settlement_batch_ledger_items`, `tenant_payouts`, `tenant_revenue_adjustments`, and `tenant_revenue_reconciliation_records`. Amounts are integer centavos. Fee versions and ledger entries are append-only; later paid-transaction corrections are allocated once to a future settlement through `tenant_settlement_batch_ledger_items`.
 
@@ -1952,6 +1965,7 @@ than `pos_transactions`' tenant-DB peso `DECIMAL(14,4)` columns above.
 ```sql
 CREATE TABLE tenant_downpayment_settings (
     tenant_id CHAR(36) PRIMARY KEY,
+    platform_downpayment_allowed BOOLEAN NOT NULL DEFAULT FALSE,
     payment_mode ENUM('full_payment', 'downpayment_required', 'customer_choice') NOT NULL DEFAULT 'full_payment',
     downpayment_type ENUM('percentage', 'fixed') NULL,
     downpayment_rate_bps INT NULL,
@@ -1964,6 +1978,13 @@ CREATE TABLE tenant_downpayment_settings (
 );
 ```
 
+Phase 526 (#2639) adds the platform-owned `platform_downpayment_allowed` column via
+`20261021000001-add-platform-downpayment-allowed-to-tenant-downpayment-settings.cjs`.
+Only existing non-full-payment rows are grandfathered; missing/new rows are disallowed.
+The migration uses a nullable intermediate state to resume an interrupted backfill and
+never repeats grandfathering after finalization. Apply it before the API; rollback the
+API first before removing the column. No tenant-database schema changes are needed.
+
 `payment_mode` includes `customer_choice` in the schema (Phase 138, #820) and, as
 of Phase 150 (#866), the admin API
 (`apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js`)
@@ -1972,7 +1993,7 @@ at checkout, rather than the merchant fixing one or the other. `allowed_capture_
 `NULL` means "inherit the business-wide capture-method allow-list from #816"
 (not yet built). Downpayment is authorized for every workflow mode (ADR 0070,
 2026-08-21, supersedes ADR 0069's earlier Retail-only gate) — the settings
-write path no longer performs any vertical check; it only re-validates the
+write path requires the platform allowance for non-full modes and re-validates the
 effective (merged) row for internal consistency. `downpayment_required` and
 `customer_choice` both require `downpayment_type` + its matching amount field
 (`downpayment_rate_bps` for `percentage`, `downpayment_fixed_centavos` for

@@ -102,14 +102,19 @@ const ensureRedisTenantSubscription = async (tenantId) => {
     return subscription;
 };
 
-export const publishCatalogChange = async ({ tenantId, reason = 'catalog_changed', itemIds = [] } = {}) => {
+const publishTenantChange = async ({
+    tenantId,
+    type,
+    reason,
+    itemIds = []
+} = {}) => {
     const normalizedTenantId = normalizeTenantId(tenantId);
     if (!normalizedTenantId) return false;
 
     const event = {
-        type: 'pos.catalog.changed',
+        type,
         tenant_id: normalizedTenantId,
-        reason: String(reason || 'catalog_changed').trim().slice(0, 80) || 'catalog_changed',
+        reason: String(reason || 'changed').trim().slice(0, 80) || 'changed',
         item_ids: normalizeItemIds(itemIds),
         emitted_at: new Date().toISOString(),
         origin_instance_id: INSTANCE_ID
@@ -136,6 +141,24 @@ export const publishCatalogChange = async ({ tenantId, reason = 'catalog_changed
     return true;
 };
 
+export const publishCatalogChange = async ({ tenantId, reason = 'catalog_changed', itemIds = [] } = {}) => (
+    publishTenantChange({
+        tenantId,
+        type: 'pos.catalog.changed',
+        reason,
+        itemIds
+    })
+);
+
+export const publishPosSettingsChange = async ({ tenantId, reason = 'settings_changed' } = {}) => (
+    publishTenantChange({
+        tenantId,
+        type: 'pos.settings.changed',
+        reason,
+        itemIds: []
+    })
+);
+
 export const subscribeCatalogChanges = (tenantId, listener) => {
     const normalizedTenantId = normalizeTenantId(tenantId);
     if (!normalizedTenantId || typeof listener !== 'function') return () => {};
@@ -148,5 +171,6 @@ export const subscribeCatalogChanges = (tenantId, listener) => {
 
 export default {
     publishCatalogChange,
+    publishPosSettingsChange,
     subscribeCatalogChanges
 };

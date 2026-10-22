@@ -681,6 +681,9 @@ export const updateSettingsSchema = Joi.object({
   storefront_guest_checkout_enabled: Joi.boolean().optional(),
   storefront_cash_payment_enabled: Joi.boolean().optional(),
   store_is_visible: Joi.boolean().optional(),
+  // Keep the platform policy key through stripUnknown so the use case can
+  // return its explicit 403 instead of silently dropping a tenant write.
+  store_visibility_merchant_editable: Joi.boolean().optional(),
   store_has_no_location: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),

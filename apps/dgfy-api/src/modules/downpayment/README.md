@@ -9,3 +9,13 @@ downpayment amount/type, refundability, allowed capture methods). Governed by AD
 
 This module will keep growing through the epic's later phases (capture, refund/forfeiture, balance
 settlement) as their own use cases/controllers land here.
+
+
+## Platform allowance (Phase 526, #2639)
+
+The landlord allowance defaults to false and is writable only through Platform Admin's
+reason-required capability action. Merchant GET retains stored settings and reports the
+effective mode; merchant PUT rejects allowance writes and non-full modes when disallowed.
+Storefront applies the policy before split resolution and malformed-policy checks.
+Existing orders use captured terms, not this live allowance. Admin writes and audit rows
+share a landlord transaction. Apply the additive migration before API deployment.

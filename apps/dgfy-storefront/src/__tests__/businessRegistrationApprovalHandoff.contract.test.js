@@ -11,11 +11,10 @@ describe('storefront business registration approval handoff', () => {
   it('routes a submitted application to the in-app confirmation page instead of POS', () => {
     const source = fs.readFileSync(sourcePath, 'utf8');
 
-    expect(source).toContain("toast.success('Registration submitted for approval.')");
-    expect(source).toContain('if (registrationData.registration_id)');
-    expect(source).toContain('buildBusinessRegistrationSubmissionPath(registrationData.registration_id)');
-    expect(source).toContain('if (registrationData.application_id)');
-    expect(source).toContain('buildBusinessRegistrationSubmissionPath(registrationData.application_id)');
+    expect(source).toContain("const statusReference = registrationData.application_id || registrationData.registration_id;");
+    expect(source).toContain("toast.success(autoApproved");
+    expect(source).toContain('buildBusinessRegistrationSubmissionPath(statusReference, { autoApproved })');
+    expect(source).toContain('state: autoApproved ? { autoApproved: true } : undefined');
     expect(source).not.toContain('window.location.assign(resolveSkupervisorUrl(`/register-company/status/${registrationData.application_id}`))');
     expect(source).not.toContain('Proceed to POS');
     expect(source).not.toContain('startDgfyTenantSession');

@@ -1,5 +1,10 @@
 import { emitPosHardwareMessage } from './posHardwareMessageBus.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import {
+    getDailySalesCheckCashSummary,
+    getDailySalesCheckVoidActivity,
+    isCashPayment
+} from './posZReadingCashSummary.js';
 
 const PAPER_WIDTH_COLUMNS = Object.freeze({
     '80mm': 42,
@@ -1015,6 +1020,11 @@ const formatZReadingReconciliationStatus = (value) => ({
 const formatOptionalZReadingValue = (value) => (
     value === null || value === undefined ? '-' : formatZReadingValue(value)
 );
+const formatZReadingDeduction = (value) => {
+    if (value === null || value === undefined) return '-';
+    const amount = Number(value || 0);
+    return `${amount > 0 ? '-' : ''}${formatZReadingValue(amount)}`;
+};
 
 export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, paperWidth = '80mm' } = {}) => {
     const {
@@ -1031,6 +1041,23 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, p
     const orderMethods = Array.isArray(summary.order_method_breakdown) ? summary.order_method_breakdown : [];
     const deliveryProviders = parsePaymentBreakdown(summary.delivery_provider_breakdown)
         .filter(hasShiftSummaryValue);
+    const cashSummary = getDailySalesCheckCashSummary({
+        z_payment_breakdown: paymentBreakdown,
+        report_cash_refunds_voids: reconciliation?.report_cash_refunds_voids,
+        report_refunds_voids: reconciliation?.report_refunds_voids
+    });
+    const voidActivity = getDailySalesCheckVoidActivity({
+        report_voided_refunded_transactions: reconciliation?.report_voided_refunded_transactions,
+        z_void_transaction_count: reconciliation?.z_void_transaction_count ?? summary.void_transaction_count,
+        report_refunds_voids: reconciliation?.report_refunds_voids,
+        z_void_amount: reconciliation?.z_void_amount ?? summary.void_amount
+    });
+    const formatVoidActivity = () => {
+        if (!voidActivity.available) return '-';
+        const count = voidActivity.count == null ? '-' : formatShiftSummaryCount(voidActivity.count);
+        const amount = voidActivity.amount == null ? '-' : formatZReadingValue(voidActivity.amount);
+        return `${count} / ${amount}`;
+    };
     const lines = [
         center(safeText(businessSettings?.pos_business_name, 'DGFY')),
         center('Z-READING / CLOSE DAY'),
@@ -1059,18 +1086,27 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {}, p
             pair('Report recognized sales', formatOptionalZReadingValue(reconciliation.report_recognized_sales)),
             pair('Z-reading total', formatOptionalZReadingValue(reconciliation.z_total_amount)),
             pair('Difference', formatOptionalZReadingValue(reconciliation.variance)),
-            pair('Report refunds/voids', formatOptionalZReadingValue(reconciliation.report_refunds_voids)),
-            pair('Report adjustments', formatOptionalZReadingValue(reconciliation.report_adjustment_amount)),
+            pair('Report net sales', formatOptionalZReadingValue(reconciliation.report_net_sales)),
+            ...(cashSummary.available ? [
+                pair('Cash before refunds', formatZReadingValue(cashSummary.cashPaymentsBeforeRefunds)),
+                pair('Cash refunds / voids', formatZReadingDeduction(cashSummary.cashRefundsVoids)),
+                pair('Net cash sales', formatZReadingValue(cashSummary.netCashSales))
+            ] : []),
+            pair('Void/refund activity', formatVoidActivity()),
+            pair('Refunds/voids deducted', formatZReadingDeduction(reconciliation.report_refunds_voids)),
+            pair('Audit adjustments (ref.)', formatOptionalZReadingValue(reconciliation.report_adjustment_amount)),
+            center('Audit adjustments: reference only'),
             ...(reconciliation.evaluated_at ? [pair('Checked', formatZReadingGeneratedAt(reconciliation.evaluated_at))] : [])
         ] : []),
         line(),
-        center('PAYMENT BREAKDOWN')
+        center('PAYMENT BREAKDOWN'),
+        center('PAYMENTS BEFORE REFUNDS/VOIDS')
     ];
     if (paymentBreakdown.length === 0) {
         lines.push(pair('No payments', '0'));
     } else {
         paymentBreakdown.forEach((entry) => {
-            lines.push(pair(`${paymentBreakdownLabel(entry)} (${formatShiftSummaryCount(entry.count)})`, formatZReadingValue(entry.amount)));
+            lines.push(pair(`${isCashPayment(entry) ? 'Cash before refunds' : paymentBreakdownLabel(entry)} (${formatShiftSummaryCount(entry.count)})`, formatZReadingValue(entry.amount)));
         });
     }
     lines.push(line(), center('SALES SOURCE BREAKDOWN'));

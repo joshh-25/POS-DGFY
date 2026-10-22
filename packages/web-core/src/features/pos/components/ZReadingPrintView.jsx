@@ -1,6 +1,11 @@
 import React, { useEffect } from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
+import {
+    getDailySalesCheckCashSummary,
+    getDailySalesCheckVoidActivity,
+    isCashPayment
+} from '../utils/posZReadingCashSummary.js';
 
 const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
@@ -68,6 +73,32 @@ export default function ZReadingPrintView({
     const orderMethods = Array.isArray(summary.order_method_breakdown) ? summary.order_method_breakdown : [];
     const orderSources = Array.isArray(summary.order_source_breakdown) ? summary.order_source_breakdown : [];
     const deliveryProviders = parseDeliveryProviderSummary(summary.delivery_provider_breakdown);
+    const cashSummary = getDailySalesCheckCashSummary({
+        z_payment_breakdown: payments,
+        report_cash_refunds_voids: reconciliation?.report_cash_refunds_voids,
+        report_refunds_voids: reconciliation?.report_refunds_voids
+    });
+    const voidActivity = getDailySalesCheckVoidActivity({
+        report_voided_refunded_transactions: reconciliation?.report_voided_refunded_transactions,
+        z_void_transaction_count: reconciliation?.z_void_transaction_count ?? summary.void_transaction_count,
+        report_refunds_voids: reconciliation?.report_refunds_voids,
+        z_void_amount: reconciliation?.z_void_amount ?? summary.void_amount
+    });
+    const formatDeduction = (value) => {
+        if (value == null) return '-';
+        const amount = Number(value || 0);
+        return `${amount > 0 ? '-' : ''}${displayCurrency}${money(amount)}`;
+    };
+    const formatVoidActivity = () => {
+        if (!voidActivity.available) return '-';
+        const count = voidActivity.count == null
+            ? '-'
+            : Number(voidActivity.count).toLocaleString('en-US');
+        const amount = voidActivity.amount == null
+            ? '-'
+            : `${displayCurrency}${money(voidActivity.amount)}`;
+        return `${count} · ${amount}`;
+    };
     const printFailed = printState === 'failed';
     const reportBusiness = report.business || {};
     const businessName = String(
@@ -122,18 +153,29 @@ export default function ZReadingPrintView({
                         <Row name="Report recognized sales" value={reconciliation.report_recognized_sales == null ? '-' : `${displayCurrency}${money(reconciliation.report_recognized_sales)}`} />
                         <Row name="Z-reading total" value={reconciliation.z_total_amount == null ? '-' : `${displayCurrency}${money(reconciliation.z_total_amount)}`} />
                         <Row name="Difference" value={reconciliation.variance == null ? '-' : `${displayCurrency}${money(reconciliation.variance)}`} strong />
-                        <Row name="Report refunds/voids" value={reconciliation.report_refunds_voids == null ? '-' : `${displayCurrency}${money(reconciliation.report_refunds_voids)}`} />
-                        <Row name="Report adjustments" value={reconciliation.report_adjustment_amount == null ? '-' : `${displayCurrency}${money(reconciliation.report_adjustment_amount)}`} />
+                        <Row name="Report net sales" value={reconciliation.report_net_sales == null ? '-' : `${displayCurrency}${money(reconciliation.report_net_sales)}`} />
+                        {cashSummary.available ? (
+                            <>
+                                <Row name="Cash payments before refunds" value={`${displayCurrency}${money(cashSummary.cashPaymentsBeforeRefunds)}`} />
+                                <Row name="Cash refunds / voids" value={formatDeduction(cashSummary.cashRefundsVoids)} />
+                                <Row name="Net cash sales" value={`${displayCurrency}${money(cashSummary.netCashSales)}`} strong />
+                            </>
+                        ) : null}
+                        <Row name="Void/refund activity" value={formatVoidActivity()} />
+                        <Row name="Refunds / voids deducted from sales" value={formatDeduction(reconciliation.report_refunds_voids)} />
+                        <Row name="Audit adjustment records" value={reconciliation.report_adjustment_amount == null ? '-' : `${displayCurrency}${money(reconciliation.report_adjustment_amount)}`} />
+                        <p className="text-[10px] text-slate-500">Audit adjustment records are reference-only; not an additional deduction.</p>
                         {reconciliation.evaluated_at ? <Row name="Checked" value={formatGeneratedAt(reconciliation.evaluated_at)} /> : null}
                     </section>
                 ) : null}
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
                     <p className="font-black uppercase">Payment method breakdown</p>
+                    <p className="text-[10px] text-slate-500">Payment amounts are before refunds/voids.</p>
                     {payments.length === 0 ? <Row name="No payments" value="0" /> : payments.map((entry) => (
                         <Row
                             key={`${entry.payment_type}-${entry.count}`}
-                            name={`${paymentLabel(entry)} (${Number(entry.count || 0).toLocaleString('en-US')})`}
+                            name={`${isCashPayment(entry) ? 'Cash payments before refunds' : paymentLabel(entry)} (${Number(entry.count || 0).toLocaleString('en-US')})`}
                             value={`${displayCurrency}${money(entry.amount)}`}
                         />
                     ))}

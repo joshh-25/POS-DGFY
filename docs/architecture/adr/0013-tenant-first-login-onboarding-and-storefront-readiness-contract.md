@@ -20,7 +20,12 @@ The product direction requires three connected surfaces:
 2. DGFY POS
 3. SKUpervisor IMS
 
-Tenant registration originally entered onboarding after platform-admin approval. The 2026-05-18 auto-standard provisioning addendum is historical and was superseded by ADR 0022 on 2026-07-28; public company registration again requires Platform Admin approval before provisioning. After that approval, the tenant master admin needs the same deterministic first-login setup flow after the normal login handoff.
+Tenant registration originally entered onboarding after platform-admin approval. The 2026-05-18
+auto-standard provisioning addendum was superseded by ADR 0022 on 2026-07-28; ADR 0022's
+2026-10-16 amendment now restores `auto_standard` as the default with restricted catalog-only
+access. The tenant master admin receives the POS onboarding link after background provisioning and
+needs the same deterministic first-login setup flow, while selling and public Storefront access
+remain capability-gated.
 
 Before this ADR:
 1. Registration + approval lifecycle exists.
@@ -262,3 +267,24 @@ service sends no CORS headers, so a browser-side call is impossible by construct
 3. Hospitality retains a setup step at the same protocol boundary, but its meaning is room setup: the tenant must create an active room type with a positive default rate and at least one room. Hospitality readiness is computed from the canonical room models, not from catalog-item rows.
 4. The POS onboarding modal must not create catalog items or fetch the catalog solely to determine onboarding readiness. Catalog authoring, pricing, stock, and images remain available after onboarding through the canonical catalog-management workflow.
 5. Where earlier sections or the 2026-07-02 POS starter-item addendum require catalog starter creation for non-Hospitality modes, this amendment supersedes that requirement. The backend checklist, POS flow helpers, rendered onboarding modal, and focused API/frontend tests are the authoritative validation surfaces.
+
+### 2026-10-16: Catalog-Only Access After Automatic Registration
+
+ADR 0022's automatic-registration amendment restores `auto_standard` as the default without
+granting unrestricted activation. The emailed POS link is the owner's entry point to POS
+onboarding after background provisioning succeeds. During this restricted state, the owner may
+manage catalog items and categories only; selling, checkout, scanning, and other operational POS
+pages remain unavailable. Storefront visibility remains disabled independently until a Platform
+Admin enables the audited tenant capabilities `pos_enabled` and `storefront_visible`. The link
+contains no company token or tenant session.
+
+For this restricted state, this amendment supersedes clause 7's soft-reminder behavior as follows:
+
+1. POS onboarding remains inside the POS application. While onboarding is incomplete, the tenant
+   master admin may open the onboarding settings steps and the Items/Categories workspace.
+2. POS Sell, checkout, scanning, Orders, History, Reports, Shift, Services, Vouchers, Affiliates,
+   Audit, Approvals, and other operational pages are rendered as disabled navigation and are also
+   rejected by the existing tenant capability guards; UI disabling is not the security boundary.
+3. After onboarding completion, `tenant_pos_enabled=false` still leaves only Items/Categories
+   available until Platform Admin enables the audited POS capability. `store_is_visible=false`
+   continues to keep public Storefront discovery and profile visibility disabled.

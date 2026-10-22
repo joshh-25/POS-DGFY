@@ -28,7 +28,7 @@ import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarou
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveEditItemSaveError } from '../utils/editItemSaveErrors.js';
 import { listFnbModifierGroups, replaceFnbItemModifierGroups } from '@/src/features/fnb/api/fnbApi.js';
-import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
+import { resolveEffectiveItemTaxonomy, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import { POS_HISTORY_PAGE_SIZE_OPTIONS } from '../utils/posHistoryQuery.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
@@ -350,8 +350,9 @@ const formatMoneyInput = (value) => {
   });
 };
 
-const resolveSellablePosItemPreset = (workflowMode = '') => {
-  const taxonomy = resolveModeItemTaxonomy(workflowMode);
+export const resolveSellablePosItemPreset = (workflowMode = '', effectiveCapabilities = []) => {
+  const taxonomy = resolveEffectiveItemTaxonomy(workflowMode, effectiveCapabilities)
+    || resolveModeItemTaxonomy(workflowMode);
   const productPresets = Array.isArray(taxonomy?.presets)
     ? taxonomy.presets.filter((preset) => preset?.category === 'product')
     : [];
@@ -410,6 +411,7 @@ const resolveItemWorkspacePresentation = (workflowMode = '') => {
 
 function ItemsWorkspace({
   canViewPos,
+  catalogOnlyAccess = false,
   canCreateItems = false,
   canImportItems = false,
   canManageServiceCatalog = false,
@@ -420,6 +422,7 @@ function ItemsWorkspace({
   stockFilterPreset = '',
   onStockFilterPresetApplied = () => {},
   workflowMode = '',
+  effectiveCapabilities = [],
   locked,
   isOnline = true,
   onQueueOfflineItemDraft = async () => '',
@@ -434,6 +437,7 @@ function ItemsWorkspace({
   onItemCreated = () => {},
   modalOnly = false
 }) {
+  const canViewCatalog = canViewPos || catalogOnlyAccess;
   const filterRadioGroupId = React.useId();
   const [items, setItems] = useState([]);
   const [itemsTotal, setItemsTotal] = useState(0);
@@ -556,7 +560,10 @@ function ItemsWorkspace({
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
 
-  const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
+  const posItemPreset = useMemo(
+    () => resolveSellablePosItemPreset(workflowMode, effectiveCapabilities),
+    [effectiveCapabilities, workflowMode]
+  );
   const isServicesMode = normalizeWorkflowMode(workflowMode) === 'services';
   const isFnbMode = normalizeWorkflowMode(workflowMode) === 'fnb';
   const itemWorkspacePresentation = useMemo(
@@ -568,10 +575,15 @@ function ItemsWorkspace({
 
   useEffect(() => {
     const normalizedPreset = String(stockFilterPreset || '').trim();
+    if (catalogOnlyAccess) {
+      setStockFilter('all');
+      onStockFilterPresetApplied();
+      return;
+    }
     if (!normalizedPreset) return;
     setStockFilter(normalizedPreset);
     onStockFilterPresetApplied();
-  }, [onStockFilterPresetApplied, stockFilterPreset]);
+  }, [catalogOnlyAccess, onStockFilterPresetApplied, stockFilterPreset]);
 
   const loadPrimaryBarcodes = useCallback((catalogItems = []) => {
     const normalizedItems = Array.isArray(catalogItems)
@@ -604,7 +616,7 @@ function ItemsWorkspace({
       setError('');
       return;
     }
-    if (!canViewPos || locked) {
+    if (!canViewCatalog || locked) {
       itemsLoaded.current = false;
       setItems([]);
       setItemsTotal(0);
@@ -624,7 +636,16 @@ function ItemsWorkspace({
         || availableLocations.some((location) => (
           Number(location?.location_id) === scopedLocationId
         )));
-    const scopedItemsCacheKey = hasValidOperatingLocation
+    const catalogOnlyItemsCacheKey = catalogOnlyAccess
+      ? JSON.stringify({
+        catalogOnly: true,
+        search: deferredItemsSearch,
+        page: itemsPage,
+        pageSize: itemsPageSize,
+        categoryFilter
+      })
+      : '';
+    const scopedItemsCacheKey = !catalogOnlyAccess && hasValidOperatingLocation
       ? JSON.stringify({
         locationId: scopedLocationId,
         search: deferredItemsSearch,
@@ -634,11 +655,12 @@ function ItemsWorkspace({
         stockFilter
       })
       : '';
-    const cachedItems = scopedItemsCacheKey
-      ? scopedItemsCache.current.get(scopedItemsCacheKey)
+    const itemsCacheKey = catalogOnlyItemsCacheKey || scopedItemsCacheKey;
+    const cachedItems = itemsCacheKey
+      ? scopedItemsCache.current.get(itemsCacheKey)
       : null;
 
-    if (locationsLoading || !hasValidOperatingLocation) {
+    if (!catalogOnlyAccess && (locationsLoading || !hasValidOperatingLocation)) {
       if (cachedItems) {
         setItems(cachedItems.items);
         setItemsTotal(cachedItems.total);
@@ -663,21 +685,34 @@ function ItemsWorkspace({
     setLoading(true);
     setError('');
     try {
-      const data = await fetchPosCatalogPage({
-        search: deferredItemsSearch,
-        page: itemsPage,
-        page_size: itemsPageSize,
-        category_filter: categoryFilter,
-        stock_filter: stockFilter,
-        location_id: scopedLocationId
-      });
+      const catalogFolderId = String(categoryFilter || '').startsWith('folder:')
+        ? Number(String(categoryFilter).slice('folder:'.length))
+        : null;
+      const data = catalogOnlyAccess
+        ? await getItems({
+          search: deferredItemsSearch,
+          page: itemsPage,
+          limit: itemsPageSize,
+          ...(Number.isInteger(catalogFolderId) && catalogFolderId > 0
+            ? { folder_id: catalogFolderId }
+            : {})
+        })
+        : await fetchPosCatalogPage({
+          search: deferredItemsSearch,
+          page: itemsPage,
+          page_size: itemsPageSize,
+          category_filter: categoryFilter,
+          stock_filter: stockFilter,
+          location_id: scopedLocationId
+        });
       if (itemsReadSequence.current !== sequence) return;
       const catalogItems = Array.isArray(data?.items) ? data.items : [];
       setItems(catalogItems);
-      setItemsTotal(Number(data?.pagination?.total || 0));
-      scopedItemsCache.current.set(scopedItemsCacheKey, {
+      const totalItems = Number(data?.pagination?.total || 0);
+      setItemsTotal(totalItems);
+      scopedItemsCache.current.set(itemsCacheKey, {
         items: catalogItems,
-        total: Number(data?.pagination?.total || 0)
+        total: totalItems
       });
       itemsLoaded.current = true;
       loadPrimaryBarcodes(catalogItems);
@@ -694,12 +729,14 @@ function ItemsWorkspace({
         setItems([]);
         setItemsTotal(0);
         setPrimaryBarcodes({});
-        setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
+        setError(loadError?.response?.data?.message || (catalogOnlyAccess
+          ? 'Failed to load catalog items.'
+          : 'Failed to load POS-visible IMS items.'));
       }
     } finally {
       if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [availableLocations, canViewPos, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locationsLoading, locked, modalOnly, operatingLocationId, stockFilter]);
+  }, [availableLocations, canViewCatalog, canViewPos, catalogOnlyAccess, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locationsLoading, locked, modalOnly, operatingLocationId, stockFilter]);
 
   useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
   const normalizePosFolders = useCallback((rows = []) => (
@@ -715,7 +752,7 @@ function ItemsWorkspace({
   ), []);
 
   const loadPosFolders = useCallback(async () => {
-    if (!canViewPos && !modalOnly) {
+    if (!canViewCatalog && !modalOnly) {
       setPosFolders([]);
       return [];
     }
@@ -728,24 +765,24 @@ function ItemsWorkspace({
       setPosFolders([]);
       return [];
     }
-  }, [canViewPos, modalOnly, normalizePosFolders]);
+  }, [canViewCatalog, modalOnly, normalizePosFolders]);
 
   useEffect(() => {
     loadItems();
   }, [loadItems]);
 
   useEffect(() => {
-    if (locked || !canViewPos) return undefined;
+    if (locked || !canViewCatalog) return undefined;
     const refreshItems = () => {
       void loadItems();
     };
     const unsubscribeLocal = subscribeToPosCatalogUpdates(refreshItems);
-    const unsubscribeRemote = subscribeToRemotePosCatalogUpdates();
+    const unsubscribeRemote = canViewPos ? subscribeToRemotePosCatalogUpdates() : () => {};
     return () => {
       unsubscribeLocal();
       unsubscribeRemote();
     };
-  }, [canViewPos, loadItems, locked]);
+  }, [canViewCatalog, canViewPos, loadItems, locked]);
 
   useEffect(() => {
     loadPosFolders();
@@ -1328,7 +1365,7 @@ function ItemsWorkspace({
   }), [activeEditItem?.item_id, storefrontSlug]);
   const openEdit = (item) => {
     if (isServiceCatalogItem(item)) {
-      if (canManageServiceCatalog) setEditingServiceItem(item);
+      if (!catalogOnlyAccess && canManageServiceCatalog) setEditingServiceItem(item);
       return;
     }
     const savedFolderId = Number(item?.folder_id || 0);
@@ -1506,6 +1543,8 @@ function ItemsWorkspace({
       manualBarcode: editForm.manual_barcode,
       gtin: editForm.gtin
     });
+    const existingPrimaryBarcode = primaryBarcodes[String(editItemId)] || activeEditItem?.primary_barcode || null;
+    const existingPrimaryCode = normalizeBarcodeEntry(existingPrimaryBarcode?.code || '');
 
     if (!name) {
       toast.error('Item name is required.');
@@ -1579,21 +1618,21 @@ function ItemsWorkspace({
         cost_per_unit: cost,
         senior_pwd_discount_eligible: editForm.senior_pwd_discount_eligible === true
       });
-      editSaveStage = 'pos_catalog';
-      await updatePosCatalogOverride(editItemId, {
-        pos_always_available: editForm.pos_always_available === true,
-        pos_best_seller_mode: editForm.pos_best_seller_mode
-      });
-      editSaveStage = 'barcode';
-      const existingPrimaryBarcode = primaryBarcodes[String(editItemId)] || activeEditItem?.primary_barcode || null;
-      const existingPrimaryCode = normalizeBarcodeEntry(existingPrimaryBarcode?.code || '');
-      await persistPosItemBarcode({
-        itemId: editItemId,
-        barcodeSelection,
-        existingPrimaryBarcode,
-        attachBarcode: attachItemBarcode,
-        updateBarcode: updateItemBarcode
-      });
+      if (!catalogOnlyAccess) {
+        editSaveStage = 'pos_catalog';
+        await updatePosCatalogOverride(editItemId, {
+          pos_always_available: editForm.pos_always_available === true,
+          pos_best_seller_mode: editForm.pos_best_seller_mode
+        });
+        editSaveStage = 'barcode';
+        await persistPosItemBarcode({
+          itemId: editItemId,
+          barcodeSelection,
+          existingPrimaryBarcode,
+          attachBarcode: attachItemBarcode,
+          updateBarcode: updateItemBarcode
+        });
+      }
       editSaveStage = 'refresh';
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
@@ -1869,7 +1908,8 @@ function ItemsWorkspace({
     requestedBarcodeCode = '',
     posAlwaysAvailable,
     posBestSellerMode = 'auto',
-    modifierGroupIds = []
+    modifierGroupIds = [],
+    catalogOnlyAccess: postCreateCatalogOnlyAccess = false
   }) => {
 
     const failedStages = [];
@@ -1925,6 +1965,30 @@ function ItemsWorkspace({
         'Registry image import',
         () => importExternalStorefrontCatalogImage(itemId, externalProductCode)
       );
+    }
+
+    if (postCreateCatalogOnlyAccess) {
+      if (failedStages.length > 0) {
+        setPendingCreateRecovery({
+          itemId,
+          name: itemName,
+          imageFiles,
+          externalProductCode,
+          requestedBarcodeCode: barcodeCode,
+          posAlwaysAvailable,
+          posBestSellerMode,
+          modifierGroupIds,
+          failedStages
+        });
+        const labels = failedStages.map((stage) => stage.label).join(', ');
+        throw new Error(`Item #${itemId} was created, but these post-create steps still need retry: ${labels}.`);
+      }
+
+      // Catalog-only tenants can store item metadata and images, but must not
+      // receive POS visibility, storefront visibility, POS defaults, generated
+      // POS barcodes, or F&B modifier assignments before DGFY Admin enables POS.
+      setPendingCreateRecovery(null);
+      return { barcodeCode };
     }
 
     if (!barcodeCode) {
@@ -1990,7 +2054,7 @@ function ItemsWorkspace({
       ? [selectedCreatePrimaryFile, ...selectedImageFiles.filter((file) => file !== selectedCreatePrimaryFile)]
       : selectedImageFiles;
     const skuCode = String(createForm.sku_code || '').trim();
-    const selectedModifierGroupIds = selectedCreateModifierGroupIds;
+    const selectedModifierGroupIds = catalogOnlyAccess ? [] : selectedCreateModifierGroupIds;
     const typedCategoryName = String(createCategoryInput || '').trim().replace(/\s+/g, ' ');
     const foodCategory = resolveFoodCategorySelection(createForm.pos_category)
       || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(typedCategoryName));
@@ -2063,7 +2127,7 @@ function ItemsWorkspace({
       ...(barcodeSelection.code
         ? barcodeSelection.kind === 'manual'
           ? { internal_barcode: { code: barcodeSelection.code } }
-          : { manufacturer_barcode: { code: barcodeSelection.code, scope: 'pos' } }
+          : { manufacturer_barcode: { code: barcodeSelection.code, scope: catalogOnlyAccess ? 'inventory' : 'pos' } }
         : {}),
       status: 'active'
     };
@@ -2080,7 +2144,7 @@ function ItemsWorkspace({
       try {
         await onQueueOfflineItemDraft({
           ...payload,
-          pos_always_available: createForm.pos_always_available === true
+          ...(catalogOnlyAccess ? {} : { pos_always_available: createForm.pos_always_available === true })
         });
         closeCreate({ force: true });
         toast.success('Offline item draft saved. Press Sync to create it when you are online.');
@@ -2115,13 +2179,14 @@ function ItemsWorkspace({
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
           posBestSellerMode: pendingCreateRecovery.posBestSellerMode,
           modifierGroupIds: pendingCreateRecovery.modifierGroupIds || [],
+          catalogOnlyAccess,
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
           action: 'created',
           warningMessage: `Post-create setup completed for item #${pendingCreateRecovery.itemId}.`
         });
-        toast.success('POS item setup resumed successfully.');
+        toast.success(catalogOnlyAccess ? 'Catalog item setup resumed successfully.' : 'POS item setup resumed successfully.');
         return;
       }
 
@@ -2149,10 +2214,11 @@ function ItemsWorkspace({
         posAlwaysAvailable: createForm.pos_always_available === true,
         posBestSellerMode: createForm.pos_best_seller_mode,
         modifierGroupIds: selectedModifierGroupIds,
+        catalogOnlyAccess,
       });
 
       await finalizeCreatedItem({ barcode: result.barcodeCode, item: createdItem });
-      toast.success('POS item created.');
+      toast.success(catalogOnlyAccess ? 'Catalog item created.' : 'POS item created.');
     } catch (createError) {
       if (pendingCreateRecovery?.itemId || /post-create steps still need retry/i.test(String(createError?.message || ''))) {
         await loadItems().catch(() => {});
@@ -2195,10 +2261,10 @@ function ItemsWorkspace({
     || deleteConfirmItem?.product_folder
     || (deleteConfirmIsService ? 'Service' : 'Uncategorized');
 
-  if (!canViewPos) {
+  if (!canViewCatalog) {
     return (
       <p id={sectionId} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-        You need POS view permission to access SKUpervisor items.
+        You need catalog access permission to access SKUpervisor items.
       </p>
     );
   }
@@ -2344,7 +2410,7 @@ function ItemsWorkspace({
                     </div>
                   </fieldset>
 
-                  <fieldset className="min-w-0">
+                  {!catalogOnlyAccess ? <fieldset className="min-w-0">
                     <legend className="text-[13px] font-semibold text-[#334155]">Stock</legend>
                     <div className="mt-1.5 grid min-w-0 max-w-full grid-cols-4 gap-2">
                       {desktopStockFilterOptions.map(({ value, label }) => {
@@ -2370,12 +2436,12 @@ function ItemsWorkspace({
                         );
                       })}
                     </div>
-                  </fieldset>
+                  </fieldset> : null}
                 </div>
               </div>
 
               <div className="pos-filter-surface-footer flex shrink-0 items-center gap-2 border-t border-slate-200 px-4 py-2.5">
-                {isServicesMode && canManageServiceCatalog ? (
+                {isServicesMode && canManageServiceCatalog && !catalogOnlyAccess ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -2537,7 +2603,7 @@ function ItemsWorkspace({
                     </div>
                   </fieldset>
 
-                  <fieldset className="min-w-0">
+                   {!catalogOnlyAccess ? <fieldset className="min-w-0">
                     <legend className="text-[13px] font-semibold text-[#334155]">Stock Level</legend>
                     <div className="dgfy-pos-history-horizontal-scroll mt-1 flex min-w-0 max-w-full flex-nowrap gap-2 overflow-x-auto overscroll-x-contain scroll-smooth pb-1 touch-pan-x" role="group" aria-label="Stock level options">
                       {[{ value: 'all', label: 'All' }, ...desktopStockFilterOptions].map((option) => {
@@ -2560,7 +2626,7 @@ function ItemsWorkspace({
                         );
                       })}
                     </div>
-                  </fieldset>
+                   </fieldset> : null}
                 </div>
               </div>
 
@@ -2588,7 +2654,7 @@ function ItemsWorkspace({
             </DialogContent>
           </Dialog>
 
-          {isServicesMode && canManageServiceCatalog ? (
+          {isServicesMode && canManageServiceCatalog && !catalogOnlyAccess ? (
             <Button
               type="button"
               variant="outline"
@@ -2669,17 +2735,19 @@ function ItemsWorkspace({
       ) : null}
 
       {loading && filteredItems.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">Loading POS-visible IMS items...</p>
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">{catalogOnlyAccess ? 'Loading catalog items...' : 'Loading POS-visible IMS items...'}</p>
       ) : filteredItems.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center shadow-sm shadow-slate-200/60">
           <ClipboardList className="mx-auto h-10 w-10 text-slate-300" />
           <p className="mt-3 text-base font-black text-[#0F172A]">
-            {hasActiveItemsFilters ? 'No matching items' : 'No POS items found'}
+            {hasActiveItemsFilters ? 'No matching items' : (catalogOnlyAccess ? 'No catalog items found' : 'No POS items found')}
           </p>
           <p className="mt-1 text-sm text-[#64748B]">
             {hasActiveItemsFilters
               ? 'Try changing your search or filters.'
-              : 'Only IMS items with POS visibility enabled appear here.'}
+              : (catalogOnlyAccess
+                ? 'Add catalog items here. POS selling and storefront visibility remain disabled until DGFY Admin enables them.'
+                : 'Only IMS items with POS visibility enabled appear here.')}
           </p>
           {canCreateItems && !hasActiveItemsFilters && (
             <Button
@@ -2689,7 +2757,7 @@ function ItemsWorkspace({
               className="mt-4 h-11 rounded-lg bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]"
             >
               <Plus className="mr-2 h-4 w-4" />
-              Add your first POS item
+              {catalogOnlyAccess ? 'Add your first catalog item' : 'Add your first POS item'}
             </Button>
           )}
         </div>
@@ -2811,7 +2879,7 @@ function ItemsWorkspace({
                   </div>
 
                   <div className="pos-items-reference-mobile-card-actions grid grid-cols-2 gap-4">
-                    {(isServiceItem ? canManageServiceCatalog : canEditItems) && (
+                    {(isServiceItem ? (!catalogOnlyAccess && canManageServiceCatalog) : canEditItems) && (
                       <Button
                         type="button"
                         variant="outline"
@@ -2875,7 +2943,7 @@ function ItemsWorkspace({
             permissions={{
               canDelete: canDeleteItems,
               canEdit: canEditItems,
-              canManageServiceCatalog
+              canManageServiceCatalog: !catalogOnlyAccess && canManageServiceCatalog
             }}
             disabledActions={{
               delete: locked || savingItem || deletingItem || creatingItem,
@@ -2936,7 +3004,9 @@ function ItemsWorkspace({
                   <h2 id="pos-items-create-modal-title" className="text-sm font-black text-white">
                     Product Details
                   </h2>
-                  <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">Edit or configure POS catalog item &amp; storefront sync</p>
+                  <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">
+                    {catalogOnlyAccess ? 'Add a catalog item. POS selling and storefront visibility stay disabled until DGFY Admin enables them.' : 'Edit or configure POS catalog item & storefront sync'}
+                  </p>
                 </div>
               </div>
               <button
@@ -3023,7 +3093,7 @@ function ItemsWorkspace({
                 </div>
                 {externalLookupLoading ? <p className="text-xs text-[#1A4E8D]" role="status">Looking up product details…</p> : null}
                 {externalLookupError ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">{externalLookupError}</p> : null}
-                {manualBarcode ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">Manual barcode selected. The GTIN remains available for product lookup, but the manual code will be saved as the primary POS barcode.</p> : null}
+                {manualBarcode ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">Manual barcode selected. The GTIN remains available for product lookup, but the manual code will be saved as the primary {catalogOnlyAccess ? 'catalog' : 'POS'} barcode.</p> : null}
                 {externalProductLookup?.found ? (
                   <div className="rounded-xl border border-blue-200 bg-white p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -3060,6 +3130,7 @@ function ItemsWorkspace({
               </section>
 
               <div className="pos-items-status-grid mt-4 grid gap-3 md:grid-cols-3">
+                {!catalogOnlyAccess && <>
                 <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-600"><Check className="h-3.5 w-3.5" aria-hidden="true" /></div>
@@ -3074,6 +3145,7 @@ function ItemsWorkspace({
                   </div>
                   <Switch id="pos-items-create-best-seller-mode" checked={createForm.pos_best_seller_mode === 'force'} onCheckedChange={(checked) => setCreateForm((current) => ({ ...current, pos_best_seller_mode: checked ? 'force' : 'never' }))} disabled={creatingItem || postCreateSaving} className={getPosItemStatusSwitchClass(createForm.pos_best_seller_mode === 'force')} />
                 </div>
+                </>}
                 <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-indigo-50 text-indigo-500"><UserRound className="h-3.5 w-3.5" aria-hidden="true" /></div>
@@ -3089,7 +3161,7 @@ function ItemsWorkspace({
                     <div className="flex min-w-0 items-center gap-1">
                       <label className="pos-items-modal-label block">Product Images</label>
                       <StorefrontSectionInfo label="Product Images" panelId="pos-items-create-product-image-info" portal>
-                        <p>The same images will be used for POS and storefront visibility.</p>
+                        <p>{catalogOnlyAccess ? 'Images stay attached to this catalog item. Storefront visibility remains disabled until DGFY Admin enables it.' : 'The same images will be used for POS and storefront visibility.'}</p>
                       </StorefrontSectionInfo>
                     </div>
                     <span className="shrink-0 text-[10px] font-semibold text-[#94A3B8]">
@@ -3327,7 +3399,7 @@ function ItemsWorkspace({
                   </div>
                 </div>
 
-                  <section
+                  {!catalogOnlyAccess && <section
                     className="pos-items-modal-secondary-panel pos-items-create-options-panel min-w-0"
                     style={createItemDetailsHeight ? { '--pos-items-create-options-max-height': `${createItemDetailsHeight}px` } : undefined}
                     aria-labelledby="pos-items-create-options-heading"
@@ -3379,7 +3451,7 @@ function ItemsWorkspace({
                       );
                     })}
                   </div>
-                </section>
+                </section>}
               </div>
             </div>
 
@@ -3445,7 +3517,9 @@ function ItemsWorkspace({
                 </div>
                 <div className="min-w-0">
                   <p id="pos-items-edit-modal-title" className="text-sm font-black text-white">Edit Item</p>
-                  <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">Update the shared POS item details and image used by POS and storefront.</p>
+                  <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">
+                    {catalogOnlyAccess ? 'Update this catalog item. POS selling and storefront visibility stay disabled until DGFY Admin enables them.' : 'Update the shared POS item details and image used by POS and storefront.'}
+                  </p>
                 </div>
               </div>
               <button
@@ -3462,6 +3536,7 @@ function ItemsWorkspace({
             <div className="pos-items-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto bg-white px-4 pb-5 sm:px-5 sm:pb-6">
               <div className="pos-items-status-grid mt-4 grid gap-3 md:grid-cols-3">
                 {/* Toggle Card 1: Always Available */}
+                {!catalogOnlyAccess && <>
                 <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-600">
@@ -3500,6 +3575,7 @@ function ItemsWorkspace({
                     className={getPosItemStatusSwitchClass(editForm.pos_best_seller_mode === 'force')}
                   />
                 </div>
+                </>}
 
                 {/* Toggle Card 3: Senior/PWD Eligible */}
                 <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
@@ -3555,7 +3631,7 @@ function ItemsWorkspace({
                               <div className="flex min-w-0 items-center gap-1">
                                 <label className="pos-items-modal-label block">Product Images</label>
                                 <StorefrontSectionInfo label="Product Images" panelId="pos-items-edit-product-image-info" portal>
-                                  <p>The same images will be used for POS and storefront visibility.</p>
+                                  <p>{catalogOnlyAccess ? 'Images stay attached to this catalog item. Storefront visibility remains disabled until DGFY Admin enables it.' : 'The same images will be used for POS and storefront visibility.'}</p>
                                 </StorefrontSectionInfo>
                               </div>
                               <span className="shrink-0 text-[10px] font-semibold text-[#94A3B8]">{editImageCount} / {STOREFRONT_ITEM_IMAGE_MAX_COUNT}</span>
@@ -4068,7 +4144,9 @@ function ItemsWorkspace({
 
             {/* Main Subtitle */}
             <p className="mt-1.5 text-xs sm:text-sm font-medium text-[#64748B] leading-relaxed">
-              <span className="font-semibold text-slate-800">{savedMessage.name}</span> was {savedMessage.action === 'created' ? 'created in IMS and added to POS.' : 'updated in POS and IMS.'}
+              <span className="font-semibold text-slate-800">{savedMessage.name}</span> was {catalogOnlyAccess
+                ? (savedMessage.action === 'created' ? 'created in the catalog.' : 'updated in the catalog.')
+                : (savedMessage.action === 'created' ? 'created in IMS and added to POS.' : 'updated in POS and IMS.')}
             </p>
 
             {/* Inner Summary Detail Card */}
@@ -4081,7 +4159,9 @@ function ItemsWorkspace({
                 <p className="text-sm font-bold text-[#0F172A] truncate">{savedMessage.name}</p>
                 <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
-                  <span>{savedMessage.action === 'created' ? 'Created in IMS and added to POS' : 'Updated in POS and IMS'}</span>
+                  <span>{catalogOnlyAccess
+                    ? (savedMessage.action === 'created' ? 'Created in catalog' : 'Updated in catalog')
+                    : (savedMessage.action === 'created' ? 'Created in IMS and added to POS' : 'Updated in POS and IMS')}</span>
                 </div>
                 {savedMessage.barcode ? (
                   <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">

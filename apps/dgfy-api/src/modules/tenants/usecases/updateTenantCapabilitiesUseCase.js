@@ -139,6 +139,7 @@ const includesStorefrontPatch = (patch = {}) => (
 
 export const buildUpdateTenantCapabilitiesUseCase = ({
     tenantAdminRepository,
+    downpaymentSettingsRepository,
     tenantConnector,
     syncStorefrontDiscoveryIndexForTenant,
     logger
@@ -163,6 +164,35 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
 
             const reason = requireReason(body?.reason);
             const patch = normalizeTenantCapabilityPatch(body || {});
+            if (Object.prototype.hasOwnProperty.call(body, 'downpayment_allowed')) {
+                if (typeof body.downpayment_allowed !== 'boolean' || Object.keys(patch).length > 0) {
+                    return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED,
+                        'downpayment_allowed must be a boolean and cannot be combined with other capability fields.',
+                        { statusCode: 422 }));
+                }
+                await tenantAdminRepository.transaction(async (transaction) => {
+                    const before = await downpaymentSettingsRepository.getSettings(tenant.id, { transaction, lock: transaction.LOCK.UPDATE });
+                    const after = await downpaymentSettingsRepository.setPlatformAllowance(tenant.id, body.downpayment_allowed, { transaction });
+                    await tenantAdminRepository.createTenantAdminAuditLog({
+                        tenant_id: tenant.id,
+                        action: 'capability_update',
+                        actor_username: String(actor?.username || 'platform_admin').slice(0, 120),
+                        reason,
+                        request_id: metadata?.request_id || null,
+                        ip_address: metadata?.ip_address || null,
+                        user_agent: metadata?.user_agent || null,
+                        before_snapshot: { downpayment_allowed: before.platform_downpayment_allowed === true },
+                        after_snapshot: { downpayment_allowed: after.platform_downpayment_allowed === true },
+                        metadata: { changed_fields: ['downpayment_allowed'], storefront_sync_required: false }
+                    }, { transaction });
+                });
+                const refreshed = await readTenantCapabilities({ tenant, tenantConnector, downpaymentSettingsRepository });
+                return ok({ statusCode: 200, payload: {
+                    success: true,
+                    message: 'Tenant capabilities updated successfully',
+                    data: { tenant_id: tenant.id, capabilities: refreshed }
+                } });
+            }
             const registrationStage = patch.customer_access_registration_stage || null;
             delete patch.customer_access_registration_stage;
             if (Object.keys(patch).length === 0 && !registrationStage) {
@@ -179,6 +209,7 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                 'tenant_ims_enabled',
                 'tenant_pos_enabled',
                 'store_is_visible',
+                'store_visibility_merchant_editable',
                 'customer_access_mode',
                 'platform_max_customer_access_mode',
                 'tenant_onboarding_progress'

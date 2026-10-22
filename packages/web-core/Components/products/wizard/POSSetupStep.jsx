@@ -143,53 +143,57 @@ export default function POSSetupStep({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
-        <h3 className="mb-1 font-semibold text-teal-900">POS Setup</h3>
-        <p className="text-sm text-teal-700">
-          Configure POS visibility. Item images are managed in Storefront Catalog and used by POS terminal cards.
-        </p>
-      </div>
       <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <Label>POS Controls</Label>
             <p className="text-xs text-slate-500">Use wizard-first POS setup to keep item cards compact.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {productItem && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onTogglePosVisibility && onTogglePosVisibility(productItem, !(posConfig?.pos_visible !== false))}
-                disabled={!onTogglePosVisibility}
-              >
-                {posConfig?.pos_visible !== false ? 'Disable in POS' : 'Enable in POS'}
-              </Button>
-            )}
-            {productItem && (
-              <Button
-                type="button"
-                variant={posConfig?.pos_always_available === true ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => onTogglePosAlwaysAvailable && onTogglePosAlwaysAvailable(productItem, posConfig?.pos_always_available !== true)}
-                disabled={!onTogglePosAlwaysAvailable}
-              >
-                {posConfig?.pos_always_available === true ? 'Always Available: On' : 'Always Available: Off'}
-              </Button>
-            )}
-            {onOpenBulkPosSetup && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onOpenBulkPosSetup}
-              >
-                Open Bulk POS Setup
-              </Button>
-            )}
-          </div>
         </div>
+
+        {productItem && (
+          <div className="product-wizard-toggle-list">
+            <div className="product-wizard-toggle-row">
+              <div className="product-wizard-toggle-row__copy">
+                <Label htmlFor="product-pos-visible-toggle">Visible in POS</Label>
+                <p>Show this item on POS terminal cards.</p>
+              </div>
+              <Switch
+                id="product-pos-visible-toggle"
+                checked={posConfig?.pos_visible !== false}
+                onCheckedChange={(checked) => onTogglePosVisibility && onTogglePosVisibility(productItem, checked)}
+                disabled={!onTogglePosVisibility}
+                aria-label={posConfig?.pos_visible !== false ? 'Disable in POS' : 'Enable in POS'}
+              />
+            </div>
+            <div className="product-wizard-toggle-row">
+              <div className="product-wizard-toggle-row__copy">
+                <Label htmlFor="product-pos-always-available-toggle">Always available</Label>
+                <p>Keep this item available even when stock is zero.</p>
+              </div>
+              <Switch
+                id="product-pos-always-available-toggle"
+                checked={posConfig?.pos_always_available === true}
+                onCheckedChange={(checked) => onTogglePosAlwaysAvailable && onTogglePosAlwaysAvailable(productItem, checked)}
+                disabled={!onTogglePosAlwaysAvailable}
+                aria-label={posConfig?.pos_always_available === true ? 'Always Available: On' : 'Always Available: Off'}
+              />
+            </div>
+          </div>
+        )}
+
+        {onOpenBulkPosSetup && (
+          <div className="product-wizard-inline-actions">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onOpenBulkPosSetup}
+            >
+              Open Bulk POS Setup
+            </Button>
+          </div>
+        )}
 
         {missing.length > 0 && (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
@@ -223,15 +227,18 @@ export default function POSSetupStep({
             <p className="text-xs text-slate-500">Customer-facing visibility stays separate while item images are shared with POS.</p>
           </div>
           {productItem && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onToggleStorefrontVisibility && onToggleStorefrontVisibility(productItem, !(storefrontConfig?.storefront_visible !== false))}
-              disabled={!onToggleStorefrontVisibility}
-            >
-              {storefrontConfig?.storefront_visible !== false ? 'Disable in Storefront' : 'Enable in Storefront'}
-            </Button>
+            <div className="product-wizard-toggle-row product-wizard-toggle-row--compact">
+              <div className="product-wizard-toggle-row__copy">
+                <Label htmlFor="product-storefront-visible-toggle">Visible in Storefront</Label>
+              </div>
+              <Switch
+                id="product-storefront-visible-toggle"
+                checked={storefrontConfig?.storefront_visible !== false}
+                onCheckedChange={(checked) => onToggleStorefrontVisibility && onToggleStorefrontVisibility(productItem, checked)}
+                disabled={!onToggleStorefrontVisibility}
+                aria-label={storefrontConfig?.storefront_visible !== false ? 'Disable in Storefront' : 'Enable in Storefront'}
+              />
+            </div>
           )}
         </div>
 
@@ -276,68 +283,79 @@ export default function POSSetupStep({
                 onRemove={(index) => onDeleteStorefrontImage && onDeleteStorefrontImage(productItem, index)}
               />
             ) : (
-              <p className="text-sm text-slate-500">No item image uploaded yet.</p>
+              <div className="product-wizard-image-empty">
+                <p>No item image uploaded yet.</p>
+                <span>Upload up to {STOREFRONT_ITEM_IMAGE_MAX_COUNT} images for POS and Storefront.</span>
+              </div>
             )}
-            <div className="flex flex-wrap gap-2">
-              <label
-                className={`rounded-md border border-slate-300 px-3 py-2 text-sm ${storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT ? 'cursor-not-allowed bg-slate-100 text-slate-400' : 'cursor-pointer bg-white hover:bg-slate-100'}`}
-                aria-disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
-              >
-                Add Item Images
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => {
-                    const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length;
-                    const selectedFiles = Array.from(event.target.files || []);
-                    const files = selectedFiles.slice(0, Math.max(remainingSlots, 0));
-                    if (selectedFiles.length > files.length) {
-                      toast.error(`Only ${Math.max(remainingSlots, 0)} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
-                    }
-                    if (files.length && onUploadStorefrontImage) {
-                      onUploadStorefrontImage(productItem, files);
-                    }
-                    event.target.value = '';
-                  }}
-                  disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
-                />
-              </label>
-              <p className="basis-full text-xs text-slate-500">
+            <div className="product-wizard-image-actions">
+              <p className="product-wizard-image-actions__count">
                 {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(productItem)}
-                disabled={storefrontGallery.length === 0 || !onDeleteStorefrontImage}
-              >
-                Remove All Item Images
-              </Button>
+              <div className="product-wizard-image-actions__buttons">
+                <label
+                  className={`product-wizard-image-upload ${storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT ? 'product-wizard-image-upload--disabled' : ''}`}
+                  aria-disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
+                >
+                  Add Item Images
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length;
+                      const selectedFiles = Array.from(event.target.files || []);
+                      const files = selectedFiles.slice(0, Math.max(remainingSlots, 0));
+                      if (selectedFiles.length > files.length) {
+                        toast.error(`Only ${Math.max(remainingSlots, 0)} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+                      }
+                      if (files.length && onUploadStorefrontImage) {
+                        onUploadStorefrontImage(productItem, files);
+                      }
+                      event.target.value = '';
+                    }}
+                    disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="product-wizard-image-remove-all"
+                  onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(productItem)}
+                  disabled={storefrontGallery.length === 0 || !onDeleteStorefrontImage}
+                >
+                  Remove All Item Images
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">
-              Choose item images now. They will be uploaded after the product is saved.
-            </p>
-            <label className="inline-flex cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
-              Choose Item Images
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(event) => {
-                  handleSelectStorefrontImageFiles(Array.from(event.target.files || []));
-                  event.target.value = '';
-                }}
-              />
-            </label>
-            <p className="text-xs text-slate-500">
-              {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedStorefrontImageFiles.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
-            </p>
+            <div className="product-wizard-image-empty">
+              <p>Choose item images now.</p>
+              <span>They will be uploaded after the product is saved.</span>
+            </div>
+            <div className="product-wizard-image-actions">
+              <p className="product-wizard-image-actions__count">
+                {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedStorefrontImageFiles.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+              </p>
+              <div className="product-wizard-image-actions__buttons">
+                <label className="product-wizard-image-upload">
+                  Choose Item Images
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      handleSelectStorefrontImageFiles(Array.from(event.target.files || []));
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
             <SelectedItemImageCarousel
               files={selectedStorefrontImageFiles}
               itemName={data?.name || 'Product'}

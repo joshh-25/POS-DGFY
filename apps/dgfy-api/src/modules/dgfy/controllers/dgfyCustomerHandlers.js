@@ -187,7 +187,11 @@ export const trackDgfyCustomerReference = async (req, res, next) => {
 
 export const cancelDgfyCustomerOrder = async (req, res, next) => {
     try {
-        return send(res, await cancelDgfyCustomerOrderUseCase({ account: req.dgfyAccount, reference: req.params.reference }), {
+        return send(res, await cancelDgfyCustomerOrderUseCase({
+            account: req.dgfyAccount,
+            reference: req.params.reference,
+            auditContext: { requestId: req.requestId || res.locals?.requestId || null }
+        }), {
             message: 'Order cancelled successfully'
         });
     } catch (error) {

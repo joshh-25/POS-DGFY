@@ -127,12 +127,38 @@ beforeEach(() => {
 });
 
 describe('Run-member fulfillment gate', () => {
-  it('enables "Out for Delivery" for a packed delivery order with no run', async () => {
+  it('requires a failure reason and sends the direct delivery fail action', async () => {
+    const handleIncomingOrderStatusChange = vi.fn().mockResolvedValue(true);
+    render(<IncomingQueueWorkspace {...baseProps({
+      incomingOrdersState: {
+        orders: [buildOrder({ fulfillment_status: 'ready_for_rider' })],
+        accessState: 'allowed', errorMessage: ''
+      },
+      handleIncomingOrderStatusChange
+    })} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Failed' }));
+    expect(await screen.findByText('Mark delivery Failed?')).toBeTruthy();
+    expect(screen.getByText('This cancels the order. Prepaid orders are refunded.')).toBeTruthy();
+    const confirm = screen.getByRole('button', { name: 'Fail delivery' });
+    fireEvent.click(confirm);
+    expect((await screen.findByRole('alert')).textContent).toContain('Failure reason must be at least 3 characters.');
+
+    fireEvent.change(screen.getByPlaceholderText('Explain why this paid order is being rejected.'), {
+      target: { value: 'Customer unavailable' }
+    });
+    fireEvent.click(confirm);
+    await waitFor(() => {
+      expect(handleIncomingOrderStatusChange).toHaveBeenCalledWith(9001, 'delivery_fail', 'Customer unavailable');
+    });
+  });
+
+  it('enables "Ready" for a packed direct delivery order with no run', async () => {
     render(<IncomingQueueWorkspace {...baseProps({
       incomingOrdersState: { orders: [buildOrder()], accessState: 'allowed', errorMessage: '' }
     })} />);
 
-    const button = await screen.findByRole('button', { name: /Out for Delivery/i });
+    const button = await screen.findByRole('button', { name: /^Ready$/i });
     expect(button.disabled).toBe(false);
     expect(button.title).toBe('');
   });
@@ -170,13 +196,13 @@ describe('Run-member fulfillment gate', () => {
     expect(outForDeliveryButton.disabled).toBe(true);
   });
 
-  it('re-enables "Out for Delivery" once the run is cancelled (no dead end)', async () => {
+  it('enables "Ready" once the run is cancelled (no dead end)', async () => {
     const order = withRun(buildOrder({ fulfillment_status: 'packed' }), 'cancelled');
     render(<IncomingQueueWorkspace {...baseProps({
       incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
     })} />);
 
-    const button = await screen.findByRole('button', { name: /Out for Delivery/i });
+    const button = await screen.findByRole('button', { name: /^Ready$/i });
     expect(button.disabled).toBe(false);
   });
 
@@ -236,7 +262,7 @@ describe('Run-member fulfillment gate (split view)', () => {
     expect(screen.queryByRole('button', { name: /delivery run "Morning Run"/i })).toBeNull();
   });
 
-  it('enables "Out for Delivery" for a packed delivery order with no run, in the split view', async () => {
+  it('enables "Ready" for a packed delivery order with no run, in the split view', async () => {
     render(<IncomingQueueWorkspace {...baseProps({
       workflowMode: 'retail',
       incomingOrdersState: { orders: [buildOrder()], accessState: 'allowed', errorMessage: '' }
@@ -244,7 +270,7 @@ describe('Run-member fulfillment gate (split view)', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
 
-    const button = await screen.findByRole('button', { name: /Out for Delivery/i });
+    const button = await screen.findByRole('button', { name: /^Ready$/i });
     expect(button.disabled).toBe(false);
   });
 });

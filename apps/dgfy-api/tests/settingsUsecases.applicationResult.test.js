@@ -270,6 +270,53 @@ describe('settings use-cases application result contract', () => {
     expect(updateSettings).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('rejects a locked bulk visibility change before writing, current=%s', async (current) => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({ settingsRepository: {
+      getSettingsByKeys: jest.fn().mockResolvedValue({
+        store_visibility_merchant_editable: { value: false },
+        store_is_visible: { value: current }
+      }),
+      updateSettings
+    } });
+    const result = await useCase({ settingsData: { store_is_visible: !current }, actorUser: { username: 'merchant' } });
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(403);
+    expect(result.error.details.reason_code).toBe('STORE_VISIBILITY_EDIT_PLATFORM_CONTROLLED');
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tenant policy write on the bulk and single-key settings paths', async () => {
+    const updateSettings = jest.fn();
+    const updateSettingByKey = jest.fn();
+    const settingsRepository = { updateSettings, updateSettingByKey };
+    const bulk = await buildUpdateSettingsUseCase({ settingsRepository })({
+      settingsData: { store_visibility_merchant_editable: true }, actorUser: { username: 'merchant' }
+    });
+    const single = await buildUpdateSettingByKeyUseCase({ settingsRepository })({
+      key: 'store_visibility_merchant_editable', value: true, actorUser: { username: 'merchant' }
+    });
+    expect(bulk.error.statusCode).toBe(403);
+    expect(single.error.statusCode).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('rejects a locked single-key visibility change before writing', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({ settingsRepository: {
+      getSettingsByKeys: jest.fn().mockResolvedValue({
+        store_visibility_merchant_editable: { value: false },
+        store_is_visible: { value: true }
+      }),
+      updateSettingByKey
+    } });
+    const result = await useCase({ key: 'store_is_visible', value: false, actorUser: { username: 'merchant' } });
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
   it('updateSettings rejects a non-master-admin actor setting ops_enabled_capabilities', async () => {
     const updateSettings = jest.fn();
     const useCase = buildUpdateSettingsUseCase({

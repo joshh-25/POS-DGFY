@@ -1,0 +1,112 @@
+import { describe, expect, it, jest } from '@jest/globals';
+import dbStore from '../src/utils/dbStore.js';
+import {
+  buildAssignStaffRoleToUserUseCase,
+  buildSetStaffRoleStatusUseCase,
+  buildUpdateStaffRoleUseCase
+} from '../src/modules/staff/usecases/staffRoleUseCases.js';
+import staffRoleRoutes from '../src/routes/staffRoles.js';
+import { requireTenantAdminRole } from '../src/middleware/auth.js';
+import { resolveEffectivePermissions } from '../src/utils/userPermissions.js';
+
+const context = (work) => {
+  const transaction = {
+    finished: false,
+    commit: jest.fn(async function commit() { this.finished = 'commit'; }),
+    rollback: jest.fn(async function rollback() { this.finished = 'rollback'; })
+  };
+  return dbStore.run({ sequelize: { transaction: async () => transaction }, tenantId: 12 }, () => work(transaction));
+};
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
+const role = (id = 4) => ({ staff_role_id: id, name: 'Warehouse', is_active: true, capabilities: ['orders:pack'] });
+
+describe('staff-role foundation', () => {
+  it('clears a stored override in the assignment transaction and audits the prior snapshot', async () => {
+    const target = {
+      user_id: 7, role: 'staff', permissions: ['pos:transact'],
+      update: jest.fn(async function update(values) { Object.assign(this, values); })
+    };
+    const repository = {
+      findUserById: jest.fn().mockResolvedValue(target),
+      findById: jest.fn().mockResolvedValue(role()),
+      createAuditLog: jest.fn().mockResolvedValue({})
+    };
+    const evict = jest.fn();
+    await context(async (transaction) => {
+      const result = await buildAssignStaffRoleToUserUseCase({ repository, invalidateUserCache: evict })({ userId: 7, staffRoleId: 4, actorUserId: 1 });
+      expect(result.success).toBe(true);
+      expect(target.update).toHaveBeenCalledWith({ staff_role_id: 4, permissions: [] }, { transaction });
+      expect(repository.createAuditLog.mock.calls[0][0].changes).toMatchObject({
+        previous_permissions: ['pos:transact'], permissions: [], permission_overrides_cleared: true
+      });
+      expect(transaction.commit).toHaveBeenCalledTimes(1);
+      expect(evict).not.toHaveBeenCalled();
+      expect(resolveEffectivePermissions({ ...target, staffRole: role() })).toEqual(['orders:pack']);
+      await nextTurn();
+      expect(evict).toHaveBeenCalledWith(12, 7);
+    });
+  });
+
+  it('clearing a staff role also leaves permissions empty', async () => {
+    const target = { user_id: 7, permissions: ['orders:pack'], update: jest.fn() };
+    const repository = { findUserById: jest.fn().mockResolvedValue(target), createAuditLog: jest.fn() };
+    await context(async (transaction) => {
+      const result = await buildAssignStaffRoleToUserUseCase({ repository })({ userId: 7, staffRoleId: null, actorUserId: 1 });
+      expect(result.success).toBe(true);
+      expect(target.update).toHaveBeenCalledWith({ staff_role_id: null, permissions: [] }, { transaction });
+    });
+  });
+
+  it.each([
+    ['edit', buildUpdateStaffRoleUseCase, { staffRoleId: 4, payload: { capabilities: ['orders:pack'] }, actorUserId: 1 }],
+    ['deactivate', buildSetStaffRoleStatusUseCase, { staffRoleId: 4, isActive: false, actorUserId: 1 }]
+  ])('evicts all assigned users after %s commits', async (_name, build, input) => {
+    const repository = {
+      findById: jest.fn().mockResolvedValue(role()),
+      update: jest.fn(async (row, values) => Object.assign(row, values)),
+      findUsersByRoleId: jest.fn().mockResolvedValue([{ user_id: 7 }, { user_id: 8 }]),
+      createAuditLog: jest.fn()
+    };
+    const evict = jest.fn();
+    await context(async (transaction) => {
+      const result = await build({ repository, invalidateUserCache: evict })(input);
+      expect(result.success).toBe(true);
+      expect(repository.findUsersByRoleId).toHaveBeenCalledWith(4, { transaction });
+      expect(evict).not.toHaveBeenCalled();
+      await nextTurn();
+      expect(evict.mock.calls).toEqual([[12, 7], [12, 8]]);
+    });
+  });
+
+  it('puts the tenant-admin guard on every role write route', () => {
+    const writes = staffRoleRoutes.stack
+      .filter((layer) => layer.route && Object.keys(layer.route.methods).some((method) => method !== 'get'));
+    expect(writes).toHaveLength(4);
+    for (const layer of writes) {
+      expect(layer.route.stack.map((entry) => entry.handle)).toContain(requireTenantAdminRole);
+    }
+  });
+
+  it('retains the existing permission gate on role read routes', () => {
+    const reads = staffRoleRoutes.stack
+      .filter((layer) => layer.route && layer.route.methods.get);
+    expect(reads).toHaveLength(2);
+    for (const layer of reads) {
+      expect(layer.route.stack.map((entry) => entry.handle)).not.toContain(requireTenantAdminRole);
+    }
+  });
+
+  it.each([
+    [{ role: 'admin' }, true],
+    [{ role: 'staff', is_master_admin: true }, true],
+    [{ role: 'manager', permissions: ['users:manage'] }, false],
+    [{ role: 'cashier' }, false],
+    [{ role: 'staff', permissions: ['users:manage'] }, false]
+  ])('applies admin/owner write authority to %p', (user, allowed) => {
+    const next = jest.fn();
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+    requireTenantAdminRole({ user }, res, next);
+    if (allowed) expect(next).toHaveBeenCalledTimes(1);
+    else expect(res.status).toHaveBeenCalledWith(403);
+  });
+});

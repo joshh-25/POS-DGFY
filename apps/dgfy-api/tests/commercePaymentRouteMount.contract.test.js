@@ -34,7 +34,7 @@ describe('commerce payment route mount contract', () => {
   it('validates DGLaundry booking payment-session bodies before the controller', () => {
     expect(routeSource).toContain('validateCreateDglaundryBookingPaymentSessionBody');
     expect(routeSource).toContain(
-      "router.post('/dglaundry/booking-groups/payment-sessions', setNoStoreCacheControl, requireTenantContext, optionalStoreCustomer, validateCreateDglaundryBookingPaymentSessionBody, createDglaundryBookingPaymentSession);"
+      "router.post('/dglaundry/booking-groups/payment-sessions', setNoStoreCacheControl, requireTenantContext, requireStorefrontVisible('commerce-payments'), optionalStoreCustomer, validateCreateDglaundryBookingPaymentSessionBody, createDglaundryBookingPaymentSession);"
     );
   });
 });

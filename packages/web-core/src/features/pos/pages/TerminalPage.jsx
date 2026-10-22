@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 // orderFulfillmentUi + dineInScheduleAlerts load on demand (background order
 // enrichment only): they are never on the mount/render path, so the route
 // chunk stays lean. Both chunks load once and are cached for later effects.
-import { isDineInOrder } from '../utils/dineInSchedule.js';
+import { getOnlineOrderCashIdempotencyPrefix, isDineInOrder } from '../utils/dineInSchedule.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -36,6 +36,8 @@ import {
   uploadOrderBalancePaymentProof,
   fetchOrderBalancePaymentProof,
   assignDeliveryPersonnel,
+  completeDeliveryOrder,
+  failDeliveryOrder,
   fetchActiveDeliveryPersonnel,
   updateDeliveryJobStatus,
   updateOnlineOrderStatus,
@@ -202,6 +204,7 @@ import {
 import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { publishPosLocationContext } from '../utils/posLocationContext.js';
+import { subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -301,6 +304,7 @@ const OPERATIONS_VIEW_MODES = [
 ];
 const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup', 'approvals'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
+const CATALOG_ONLY_ALLOWED_VIEW_MODES = new Set(['items', 'settings_profile', 'settings_pos', 'settings_storefront']);
 const POS_MOBILE_DOUBLE_TAP_GUARD_VIEW_MODES = new Set([
   'items',
   'history',
@@ -364,6 +368,19 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+const getDeliveryActionIdempotencyKey = (cacheRef, action, orderId, request, prefix) => {
+  const cacheKey = `${action}:${orderId}`;
+  const fingerprint = JSON.stringify(request);
+  const cached = cacheRef.current.get(cacheKey);
+  if (cached?.fingerprint === fingerprint) return cached.key;
+  const key = createIdempotencyKey(prefix);
+  cacheRef.current.set(cacheKey, { fingerprint, key });
+  return key;
+};
+const clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure = (cacheRef, action, orderId, error) => {
+  const status = Number(error?.response?.status);
+  if (status >= 400 && status < 500) cacheRef.current.delete(`${action}:${orderId}`);
 };
 
 // Short internal correlation code for matching a terminal failure to its
@@ -472,6 +489,12 @@ const readRequestedPosView = (routeSearch = '') => {
 };
 
 const isRetryableTerminalOperationError = isRetryableBackendFailure;
+const readRequestedPosTenantId = (routeSearch = '') => {
+  if (typeof window === 'undefined') return '';
+  const routeTenantId = String(new URLSearchParams(routeSearch).get('tenant_id') || '').trim();
+  if (routeTenantId) return routeTenantId;
+  return String(new URLSearchParams(window.location.search).get('tenant_id') || '').trim();
+};
 
 const SHIFT_LOCATION_CONFLICT_CODES = new Set([
   'POS_OPERATOR_ACTIVE_ELSEWHERE',
@@ -641,6 +664,10 @@ export default function TerminalPage() {
   const [loadingUser, setLoadingUser] = useState(true);
   const [terminalStartupReady, setTerminalStartupReady] = useState(false);
   const initialUserHydrationStartedRef = useRef(false);
+  // Company selection can finish while the initial session hydration request is
+  // still in flight. Keep older hydration responses from reopening the login
+  // drawer or shift dialog over the independent branch selector.
+  const userHydrationRequestRef = useRef(0);
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
@@ -753,7 +780,7 @@ export default function TerminalPage() {
     email: '',
     password: '',
     rememberDevice: false,
-    dgfyTenantId: '',
+    dgfyTenantId: readRequestedPosTenantId(location.search),
     legacyCompanyToken: '',
     terminalId: readInitialTerminalId()
   });
@@ -897,6 +924,11 @@ export default function TerminalPage() {
     loading: false,
     locations: []
   });
+  const [cashierBranchDirectoryState, setCashierBranchDirectoryState] = useState({
+    loading: false,
+    locations: [],
+    errorMessage: ''
+  });
   const [itemsLocationScopeLoading, setItemsLocationScopeLoading] = useState(true);
   const [operatingLocationId, setOperatingLocationId] = useState(null);
   const [viewingLocationId, setViewingLocationId] = useState(null);
@@ -994,13 +1026,29 @@ export default function TerminalPage() {
     loading: false,
     locations: [],
     scope: '',
+    activeShift: null,
     errorMessage: ''
   });
+  const [branchSelectorOpen, setBranchSelectorOpen] = useState(false);
+  const [branchSelectorMode, setBranchSelectorMode] = useState('directory');
+  const branchSelectorContinuationRef = useRef(null);
+  const [cashierBranchSelectionReady, setCashierBranchSelectionReady] = useState(false);
+  const cashierBranchOperationSelectedRef = useRef(false);
   const [branchViewLocationId, setBranchViewLocationId] = useState(null);
   const [branchViewTransitionLocationId, setBranchViewTransitionLocationId] = useState(null);
   const branchViewTransitionLocationIdRef = useRef(null);
   const branchViewReturnModeRef = useRef('shift_controls');
   const [adminTerminalSwitching, setAdminTerminalSwitching] = useState(false);
+  const cashierBranchSelectorCanShowWhileLocked = branchSelectorMode === 'cashier'
+    && branchSelectorContinuationRef.current === 'terminal_unlock';
+
+  useEffect(() => {
+    if ((!locked && !drawerOpen) || !branchSelectorOpen) return;
+    if (cashierBranchSelectorCanShowWhileLocked && !drawerOpen) return;
+    branchSelectorContinuationRef.current = null;
+    setBranchSelectorOpen(false);
+  }, [branchSelectorOpen, cashierBranchSelectorCanShowWhileLocked, drawerOpen, locked]);
+
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
   const [cashCollectionOrder, setCashCollectionOrder] = useState(null);
   const [cashReceivedInput, setCashReceivedInput] = useState('');
@@ -1017,6 +1065,12 @@ export default function TerminalPage() {
   const [balanceSettlementReference, setBalanceSettlementReference] = useState('');
   const [balanceSettlementConfirmed, setBalanceSettlementConfirmed] = useState(false);
   const [balanceSettlementSaving, setBalanceSettlementSaving] = useState(false);
+  const [deliveryCompletionOrder, setDeliveryCompletionOrder] = useState(null);
+  const [deliveryCompletionMethod, setDeliveryCompletionMethod] = useState('cash');
+  const [deliveryCompletionCashInput, setDeliveryCompletionCashInput] = useState('');
+  const [deliveryCompletionConfirmed, setDeliveryCompletionConfirmed] = useState(false);
+  const [deliveryCompletionSaving, setDeliveryCompletionSaving] = useState(false);
+  const deliveryActionReplayKeys = useRef(new Map());
   // Phase 204 (#965): proof-of-payment capture state, reset alongside the rest of the dialog's
   // state in handleOpenBalanceSettlement below so a previous order's file/error never carries
   // over into a new settlement.
@@ -1091,6 +1145,7 @@ export default function TerminalPage() {
   });
   const [setupFlowState, setSetupFlowState] = useState({
     loading: true,
+    tenantPosEnabled: true,
     onboardingState: 'not_started',
     onboardingCompleted: false,
     profileReady: false,
@@ -1230,16 +1285,18 @@ export default function TerminalPage() {
   }, [permissions, terminalUser]);
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
   const isCashierRole = normalizedTerminalRole === 'cashier';
-  const canViewPos = hasPermission('pos:view');
+  const tenantPosEnabled = setupFlowState.tenantPosEnabled !== false;
+  const catalogOnlyAccess = !tenantPosEnabled;
+  const canViewPos = tenantPosEnabled && hasPermission('pos:view');
   const canReviewVoidApprovals = POS_VOID_APPROVAL_REVIEW_PERMISSIONS.every((permission) => hasPermission(permission));
   const inlineVoidApprovalEnabled = isInlineVoidApprovalPopupEnabled()
     && canReviewVoidApprovals
     && !isCashierRole;
   const canViewAllCashierHistory = hasPermission('business_admin:branches:view_all');
-  const canTransactPos = hasPermission('pos:transact');
+  const canTransactPos = tenantPosEnabled && hasPermission('pos:transact');
   const canVoidTransactions = hasPermission('pos:void');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
-  const canAccessPosOnlySetup = canViewPos;
+  const canAccessPosOnlySetup = hasPermission('pos:view');
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
   // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release.
   //
@@ -1343,6 +1400,11 @@ export default function TerminalPage() {
   const canViewAttendance = hasPermission('pos:attendance:view');
   const canOperateAttendance = hasPermission('pos:attendance:operate');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
+  const assignedCashierLocationIds = useMemo(() => new Set(
+    (Array.isArray(terminalUser?.location_ids) ? terminalUser.location_ids : [])
+      .map((locationId) => Number(locationId))
+      .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+  ), [terminalUser?.location_ids]);
   // Branch viewing is intentionally separate from the governed cash/shift switch. A user must
   // receive the dedicated read-only capability; pos:switch_location only authorizes the
   // privileged shift relocation flow.
@@ -1381,6 +1443,12 @@ export default function TerminalPage() {
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = !isCashierRole && hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
+  const canReceiveStockAlerts = !isCashierRole && (
+    isMasterAdminOperator
+    || canViewAudit
+    || canEditItems
+    || canManageCategories
+  );
 
   useEffect(() => {
     if (locked || !isOnline) return undefined;
@@ -1423,7 +1491,11 @@ export default function TerminalPage() {
     setupFlowSearchParams.get(POS_TERMINAL_SETUP_STEP_QUERY_KEY) || POS_TERMINAL_SETUP_STEPS.PROFILE
   ).trim().toLowerCase();
   const starterSetupRequired = isStarterSetupRequired(workflowMode);
+  // Catalog-only tenants may manage their catalog before POS/storefront setup is
+  // enabled. Keep the readiness state intact so the normal onboarding flow can
+  // resume as soon as DGFY Admin enables POS.
   const tenantSetupIncomplete = !setupFlowState.loading
+    && !catalogOnlyAccess
     && !locked
     && terminalUser?.is_master_admin === true
     && !setupFlowState.onboardingCompleted
@@ -1432,6 +1504,7 @@ export default function TerminalPage() {
       || (starterSetupRequired && !setupFlowState.starterItemReady)
       || !setupFlowState.posSetupReady);
   const tenantSetupRequestedOrRequired = !setupFlowState.onboardingCompleted
+    && !catalogOnlyAccess
     && (tenantSetupFlowRequested || tenantSetupIncomplete);
   const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
     requested: tenantSetupRequestedOrRequired,
@@ -1514,11 +1587,11 @@ export default function TerminalPage() {
     if (!normalizedView || normalizedView === 'receipt' || !activeViewModes.includes(normalizedView)) return '';
     if (isCashierRole && !isCashierAllowedViewMode(normalizedView, canVoidTransactions)) return '';
     if (normalizedView === 'incoming_queue' && !canViewPos) return '';
-    if (normalizedView === 'items' && !canViewPos && !canManageCategories) return '';
+    if (normalizedView === 'items' && !canViewPos && !canManageCategories && !(catalogOnlyAccess && canCreateItems)) return '';
     if (normalizedView === 'services' && !canAccessServiceOperations) return '';
     if (normalizedView === 'audit' && !canViewAudit) return '';
     return normalizedView;
-  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewAudit, canViewPos, canVoidTransactions, isCashierRole]);
+  }, [activeViewModes, canAccessServiceOperations, canCreateItems, canManageCategories, canViewAudit, canViewPos, canVoidTransactions, catalogOnlyAccess, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
     const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep, workflowMode);
@@ -1592,11 +1665,18 @@ export default function TerminalPage() {
       const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
       const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
       const starterItemRequirements = resolveStarterItemSetupReadiness([], onboardingPayload, workflowMode);
+      const rawTenantPosEnabled = settingsPayload?.tenant_pos_enabled?.value ?? settingsPayload?.tenant_pos_enabled;
+      const tenantPosEnabled = !(
+        rawTenantPosEnabled === false
+        || rawTenantPosEnabled === 0
+        || (typeof rawTenantPosEnabled === 'string' && ['false', '0', 'no', 'off'].includes(rawTenantPosEnabled.trim().toLowerCase()))
+      );
       const onboardingState = String(
         settingsPayload?.tenant_onboarding_state?.value || 'not_started'
       ).trim().toLowerCase();
       setSetupFlowState((prev) => ({
         loading: silent ? prev.loading : false,
+        tenantPosEnabled,
         onboardingState,
         onboardingCompleted: onboardingState === 'completed',
         profileReady: profileRequirements.ready,
@@ -2275,6 +2355,7 @@ export default function TerminalPage() {
         loading: false,
         locations: Array.isArray(payload?.locations) ? payload.locations : [],
         scope: String(payload?.scope || '').trim(),
+        activeShift: payload?.active_shift || null,
         errorMessage: ''
       };
       setBranchDirectoryState(nextState);
@@ -2290,6 +2371,164 @@ export default function TerminalPage() {
       return null;
     }
   }, [canViewBranchLocations, isOnline, locked]);
+
+  const refreshCashierBranchDirectory = useCallback(async ({
+    silent = false,
+    userOverride = null,
+    locationsOverride = null,
+    terminalRegistryOverride = null,
+    resumeShiftOverride = null
+  } = {}) => {
+    const cashierUser = userOverride || terminalUser;
+    const cashierRole = String(cashierUser?.role || '').trim().toLowerCase();
+    if ((cashierRole !== 'cashier' && !isCashierRole) || !isOnline) {
+      setCashierBranchDirectoryState((previous) => ({
+        ...previous,
+        loading: false,
+        ...(cashierRole === 'cashier' || isCashierRole ? {} : { locations: [], errorMessage: '' })
+      }));
+      return null;
+    }
+
+    const assignedLocationIds = new Set(
+      (Array.isArray(cashierUser?.location_ids) ? cashierUser.location_ids : [])
+        .map((locationId) => Number(locationId))
+        .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+    );
+    const availableLocations = Array.isArray(locationsOverride)
+      ? locationsOverride
+      : (Array.isArray(locationsState?.locations) ? locationsState.locations : []);
+    const availableTerminalRegistry = Array.isArray(terminalRegistryOverride)
+      ? terminalRegistryOverride
+      : activeTerminalRegistry;
+    const assignedLocations = availableLocations
+      .filter((location) => assignedLocationIds.has(Number(location?.location_id || 0)));
+
+    setCashierBranchDirectoryState((previous) => ({
+      ...previous,
+      loading: true,
+      errorMessage: ''
+    }));
+
+    try {
+      const nextLocations = await Promise.all(assignedLocations.map(async (location) => {
+        const locationId = Number(location?.location_id || 0);
+        const registeredTerminals = availableTerminalRegistry.filter(
+          (entry) => Number(entry?.location_id || 0) === locationId
+        );
+        const terminals = await Promise.all(registeredTerminals.map(async (entry) => {
+          const terminalId = sanitizeTerminalId(entry?.terminal_id);
+          if (!terminalId || !locationId) {
+            return {
+              ...entry,
+              status: 'unavailable',
+              can_open: false,
+              can_resume: false,
+              reason_code: 'POS_TERMINAL_CONFIGURATION_INVALID'
+            };
+          }
+
+          const cashierLabel = String(
+            cashierUser?.display_name
+            || cashierUser?.username
+            || cashierUser?.email
+            || ''
+          ).trim() || 'Signed-in cashier';
+          const fallbackShiftTerminalId = sanitizeTerminalId(
+            resumeShiftOverride?.terminal_id || resumeShiftOverride?.terminalId
+          );
+          const fallbackShiftLocationId = Number(
+            resumeShiftOverride?.location_id || resumeShiftOverride?.locationId || 0
+          );
+          const fallbackOwnedShift = resumeShiftOverride
+            && fallbackShiftTerminalId === terminalId
+            && fallbackShiftLocationId === locationId
+            && isShiftOwnedByUser(resumeShiftOverride, cashierUser)
+            ? resumeShiftOverride
+            : null;
+
+          try {
+            const currentShift = await fetchCurrentTerminalShift(
+              { terminal_id: terminalId, location_id: locationId },
+              SUPPRESS_GLOBAL_ERROR_TOAST
+            );
+            const ownedShift = currentShift?.shift || null;
+            const occupancyStatus = String(currentShift?.terminal_occupancy?.status || '').trim();
+            const ownedByCurrentUser = isShiftOwnedByUser(ownedShift, cashierUser)
+              && occupancyStatus !== 'occupied_by_other';
+            const occupiedByOther = occupancyStatus === 'occupied_by_other'
+              || Boolean(ownedShift && !ownedByCurrentUser);
+
+            return {
+              ...entry,
+              status: ownedByCurrentUser ? 'occupied' : (occupiedByOther ? 'occupied' : 'available'),
+              can_open: !ownedByCurrentUser && !occupiedByOther,
+              can_resume: ownedByCurrentUser,
+              reason_code: occupiedByOther ? 'POS_TERMINAL_SHIFT_OCCUPIED' : '',
+              shift: ownedByCurrentUser && ownedShift
+                ? {
+                  ...ownedShift,
+                  cashier: ownedShift.cashier || { display_name: cashierLabel }
+                }
+                : null,
+              current_operator: ownedByCurrentUser
+                ? { display_name: cashierLabel }
+                : null
+            };
+          } catch {
+            // A locked cashier intentionally clears the browser token before
+            // showing branch selection. Keep the active branch card visible
+            // from the tab-local shift snapshot; the resume submit still
+            // re-authenticates and server-validates the shift below.
+            if (fallbackOwnedShift) {
+              return {
+                ...entry,
+                status: 'occupied',
+                can_open: false,
+                can_resume: true,
+                reason_code: '',
+                shift: {
+                  ...fallbackOwnedShift,
+                  cashier: fallbackOwnedShift.cashier || { display_name: cashierLabel }
+                },
+                current_operator: { display_name: cashierLabel }
+              };
+            }
+            return {
+              ...entry,
+              status: 'unavailable',
+              can_open: false,
+              can_resume: false,
+              reason_code: 'POS_TERMINAL_AVAILABILITY_UNAVAILABLE'
+            };
+          }
+        }));
+
+        return {
+          ...location,
+          open_shift_count: terminals.filter((terminal) => terminal?.status === 'occupied' || terminal?.status === 'stale').length,
+          can_view: false,
+          terminals
+        };
+      }));
+      const nextState = {
+        loading: false,
+        locations: nextLocations,
+        errorMessage: ''
+      };
+      setCashierBranchDirectoryState(nextState);
+      return nextState;
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to load your assigned branches.';
+      setCashierBranchDirectoryState((previous) => ({
+        ...previous,
+        loading: false,
+        errorMessage: message
+      }));
+      if (!silent) toast.error(message);
+      return null;
+    }
+  }, [activeTerminalRegistry, isCashierRole, isOnline, locationsState?.locations, terminalUser?.display_name, terminalUser?.email, terminalUser?.location_ids, terminalUser?.role, terminalUser?.username]);
 
   useEffect(() => {
     refreshBranchDirectory({ silent: true });
@@ -2329,6 +2568,135 @@ export default function TerminalPage() {
     return true;
   }, [branchViewLocationId, canViewBranchLocations, commitViewModeSelection, operatingLocationId, posViewMode, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
 
+  const openBranchSelector = useCallback(({
+    mode = 'directory',
+    continuation = null,
+    cashierData = null
+  } = {}) => {
+    branchSelectorContinuationRef.current = continuation;
+    setBranchSelectorMode(mode);
+    // Branch selection is its own entry surface. Never leave the terminal
+    // login/shift dialog stacked underneath it during a company handoff.
+    setTerminalUnlockModalOpen(false);
+    setDrawerOpen(false);
+    setBranchSelectorOpen(true);
+    if (mode === 'cashier') {
+      cashierBranchOperationSelectedRef.current = false;
+      setCashierBranchSelectionReady(false);
+      void refreshCashierBranchDirectory({
+        silent: true,
+        userOverride: cashierData?.user,
+        locationsOverride: cashierData?.locations,
+        terminalRegistryOverride: cashierData?.terminalRegistry,
+        resumeShiftOverride: cashierData?.resumeShift
+      });
+    }
+  }, [refreshCashierBranchDirectory]);
+
+  const continueFromBranchSelector = useCallback(() => {
+    const continuation = branchSelectorContinuationRef.current;
+    if (
+      continuation === 'terminal_unlock'
+      && branchSelectorMode === 'cashier'
+      && !cashierBranchOperationSelectedRef.current
+    ) {
+      setBranchSelectorOpen(true);
+      toast.message('Select a branch before opening a shift.');
+      return;
+    }
+    branchSelectorContinuationRef.current = null;
+    cashierBranchOperationSelectedRef.current = false;
+    setBranchSelectorOpen(false);
+    if (continuation === 'terminal_unlock') {
+      setTerminalUnlockModalOpen(true);
+    }
+  }, [branchSelectorMode]);
+
+  const handleCancelTerminalUnlock = useCallback(() => {
+    setUnlockFailure(null);
+    setSubmitting(false);
+    setTerminalUnlockModalOpen(false);
+    setTerminalUnlockRequired(true);
+    setTerminalUnlockMode('shift_start');
+    setTerminalUnlockForm((previous) => ({
+      ...previous,
+      terminalId: '',
+      terminalPassword: '',
+      cashierEmail: '',
+      cashierPassword: '',
+      openingFloatAmount: '',
+      openingNote: ''
+    }));
+    setCashierUnlockSession((previous) => (
+      previous
+        ? { ...previous, terminalId: '' }
+        : previous
+    ));
+    setFormData((previous) => ({ ...previous, terminalId: '' }));
+    setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
+    setActiveTerminalId('');
+    setOperatingLocationId(null);
+    if (typeof window !== 'undefined') {
+      safeLocalStorageRemove(TERMINAL_ID_STORAGE_KEY);
+    }
+    setLocked(true);
+    setDrawerOpen(false);
+    openBranchSelector({
+      mode: 'cashier',
+      continuation: 'terminal_unlock'
+    });
+  }, [openBranchSelector]);
+
+  const handleBranchSelectorOpenChange = useCallback((open) => {
+    if (open) {
+      setBranchSelectorOpen(true);
+      return;
+    }
+    if (branchSelectorMode === 'cashier' && branchSelectorContinuationRef.current) {
+      continueFromBranchSelector();
+      return;
+    }
+    branchSelectorContinuationRef.current = null;
+    setBranchSelectorOpen(false);
+  }, [branchSelectorMode, continueFromBranchSelector]);
+
+  useEffect(() => {
+    if (
+      !IS_DGFY_POS_SURFACE
+      || !isCashierRole
+      || cashierBranchSelectionReady
+      || locked
+      || loadingUser
+      || drawerOpen
+      || branchSelectorOpen
+      || terminalUnlockModalOpen
+      || terminalUnlockRequired
+      || terminalMeta.loading
+      || itemsLocationScopeLoading
+      || setupFlowActive
+    ) {
+      return;
+    }
+
+    openBranchSelector({
+      mode: 'cashier',
+      continuation: 'terminal_unlock'
+    });
+  }, [
+    branchSelectorOpen,
+    cashierBranchSelectionReady,
+    drawerOpen,
+    isCashierRole,
+    itemsLocationScopeLoading,
+    loadingUser,
+    locked,
+    openBranchSelector,
+    setupFlowActive,
+    terminalMeta.loading,
+    terminalUnlockModalOpen,
+    terminalUnlockRequired
+  ]);
+
   const handleExitBranchView = useCallback(async ({ returnMode = null } = {}) => {
     const previousLocationId = Number.parseInt(branchViewLocationId, 10);
     if (Number.isInteger(previousLocationId) && previousLocationId > 0) {
@@ -2350,7 +2718,23 @@ export default function TerminalPage() {
     const nextMode = returnMode || branchViewReturnModeRef.current || 'shift_controls';
     branchViewReturnModeRef.current = 'shift_controls';
     commitViewModeSelection(nextMode);
-  }, [branchViewLocationId, commitViewModeSelection, operatingLocationId, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
+    // Branch review is independent from shift sessions. Return to the branch
+    // directory after leaving read-only mode so the generic no-shift prompt
+    // cannot take over before the administrator chooses an operating path.
+    if (canViewBranchLocations) {
+      openBranchSelector({ mode: 'directory' });
+      void refreshBranchDirectory({ silent: true });
+    }
+  }, [
+    branchViewLocationId,
+    canViewBranchLocations,
+    commitViewModeSelection,
+    openBranchSelector,
+    operatingLocationId,
+    refreshBranchDirectory,
+    shiftState?.shift?.location_id,
+    shiftState?.shift?.pos_terminal_shift_id
+  ]);
 
   const refreshAdminLocationMonitor = useCallback(async ({ silent = false } = {}) => {
     const requestSequence = adminLocationMonitorRequestSequenceRef.current + 1;
@@ -2957,6 +3341,9 @@ export default function TerminalPage() {
   }, [refreshTerminalOperationQueue]);
 
   const hydrateUser = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+    const hydrationRequestId = userHydrationRequestRef.current + 1;
+    userHydrationRequestRef.current = hydrationRequestId;
+    const isCurrentHydration = () => userHydrationRequestRef.current === hydrationRequestId;
     const dgfyTenantHandoff = consumePosDgfyTenantHandoff();
     const companySwitchHandoff = getFreshPosCompanySwitchHandoff();
     const dgfyTenantId = String(dgfyTenantHandoff?.tenantId || companySwitchHandoff?.tenantId || '').trim();
@@ -3023,6 +3410,7 @@ export default function TerminalPage() {
       const user = await fetchCurrentUser(
         suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
       );
+      if (!isCurrentHydration()) return;
       if (!user) {
         resetSettingsAccessPinState();
         setTerminalUser(null);
@@ -3052,22 +3440,56 @@ export default function TerminalPage() {
       const userPermissions = parseUserPermissions(user);
       const userCanAccessSettings = user?.is_master_admin === true
         || userPermissions.includes('settings:view');
+      const userCanViewBranchLocations = user?.is_master_admin === true
+        || userPermissions.includes('pos:branch_view');
       const userCanViewPos = user?.is_master_admin === true
         || userPermissions.includes('pos:view');
+      const userIsCashier = String(user?.role || '').trim().toLowerCase() === 'cashier';
 
       setTerminalUser(user);
       setDgfyAdminBypassActive(userCanAccessSettings && !storedLockActive);
+
+      if (IS_DGFY_POS_SURFACE && dgfyTenantId && userCanViewBranchLocations) {
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockModalOpen(false);
+        setLocked(false);
+        setDrawerOpen(false);
+        setBranchSelectorMode('directory');
+        setBranchSelectorOpen(true);
+        return;
+      }
+
+      if (IS_DGFY_POS_SURFACE && !dgfyTenantId && userCanViewBranchLocations && !storedLockActive) {
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockModalOpen(false);
+        setLocked(false);
+        setDrawerOpen(false);
+        setBranchSelectorMode('directory');
+        setBranchSelectorOpen(true);
+        return;
+      }
 
       // DGFY Business has already authenticated this cashier, but a fresh
       // company handoff intentionally has no persisted terminal selection.
       // Recreate the same terminal/shift-entry decision used by direct POS
       // login so a cashier is sent to Resume Shift or Open Shift, never left
       // on an unlocked catalog with no way to start work.
-      if (IS_DGFY_POS_SURFACE && dgfyTenantId && !userCanAccessSettings) {
-        const [tenantSettings, currentShiftResult] = await Promise.all([
+      if (IS_DGFY_POS_SURFACE && dgfyTenantId && userIsCashier && !userCanAccessSettings && !userCanViewBranchLocations) {
+        const [tenantSettings, currentShiftResult, tenantLocationRows] = await Promise.all([
           fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST),
-          fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST)
+          fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST),
+          listTenantLocations(
+            { include_inactive: false },
+            SUPPRESS_GLOBAL_ERROR_TOAST
+          )
         ]);
+        if (!isCurrentHydration()) return;
+        const activeTenantLocations = (Array.isArray(tenantLocationRows) ? tenantLocationRows : [])
+          .filter((location) => location?.is_active !== false);
         const tenantRegistry = normalizeTerminalRegistry(tenantSettings?.pos_terminal_registry?.value || []);
         const tenantRegistryModeRaw = String(tenantSettings?.pos_terminal_registry_mode?.value || '')
           .trim()
@@ -3084,6 +3506,10 @@ export default function TerminalPage() {
 
         setTerminalRegistry(tenantRegistry);
         setTerminalRegistryMode(tenantRegistryMode);
+        setLocationsState({
+          loading: false,
+          locations: activeTenantLocations
+        });
 
         if (activeShiftDecision.mode === 'blocked') {
           throw new Error(activeShiftDecision.message);
@@ -3112,7 +3538,15 @@ export default function TerminalPage() {
           setTerminalUnlockRequired(true);
           setLocked(true);
           setDrawerOpen(false);
-          setTerminalUnlockModalOpen(true);
+          openBranchSelector({
+            mode: 'cashier',
+            continuation: 'terminal_unlock',
+            cashierData: {
+              user,
+              locations: activeTenantLocations,
+              terminalRegistry: activeTenantRegistry
+            }
+          });
           return;
         }
 
@@ -3147,7 +3581,15 @@ export default function TerminalPage() {
           setTerminalUnlockRequired(true);
           setLocked(true);
           setDrawerOpen(false);
-          setTerminalUnlockModalOpen(true);
+          openBranchSelector({
+            mode: 'cashier',
+            continuation: 'terminal_unlock',
+            cashierData: {
+              user,
+              locations: activeTenantLocations,
+              terminalRegistry: activeTenantRegistry
+            }
+          });
           return;
         }
       }
@@ -3176,14 +3618,25 @@ export default function TerminalPage() {
           return;
         }
         if (storedReason === 'shift_start_required') {
-          const [currentShiftResult, currentSettings] = await Promise.all([
+          const [currentShiftResult, currentSettings, currentLocationRows] = await Promise.all([
             fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST),
-            fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST)
+            fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST),
+            listTenantLocations(
+              { include_inactive: false },
+              SUPPRESS_GLOBAL_ERROR_TOAST
+            )
           ]);
+          if (!isCurrentHydration()) return;
+          const currentLocations = (Array.isArray(currentLocationRows) ? currentLocationRows : [])
+            .filter((location) => location?.is_active !== false);
           const currentRegistry = normalizeTerminalRegistry(currentSettings?.pos_terminal_registry?.value || []);
           if (currentRegistry.length > 0) {
             setTerminalRegistry(currentRegistry);
           }
+          setLocationsState({
+            loading: false,
+            locations: currentLocations
+          });
           const currentShift = currentShiftResult?.shift || null;
           const currentShiftDecision = resolveActiveShiftResumeDecision({
             currentShift,
@@ -3210,14 +3663,38 @@ export default function TerminalPage() {
             setTerminalUnlockForm((prev) => ({ ...prev, terminalId: currentShiftTerminalId }));
             setTerminalUnlockMode('resume_shift');
             setTerminalUnlockRequired(true);
-            setTerminalUnlockModalOpen(true);
             setDrawerOpen(false);
+            if (userIsCashier) {
+              openBranchSelector({
+                mode: 'cashier',
+                continuation: 'terminal_unlock',
+                cashierData: {
+                  user,
+                  locations: currentLocations,
+                  terminalRegistry: currentRegistry
+                }
+              });
+            } else {
+              setTerminalUnlockModalOpen(true);
+            }
             return;
           }
           setTerminalUnlockMode('shift_start');
           setTerminalUnlockRequired(true);
-          setTerminalUnlockModalOpen(true);
           setDrawerOpen(false);
+          if (userIsCashier) {
+            openBranchSelector({
+              mode: 'cashier',
+              continuation: 'terminal_unlock',
+              cashierData: {
+                user,
+                locations: currentLocations,
+                terminalRegistry: currentRegistry
+              }
+            });
+          } else {
+            setTerminalUnlockModalOpen(true);
+          }
           return;
         }
         setStoredTerminalLockReason(storedReason === 'shift_closed' ? 'shift_closed' : 'full_auth');
@@ -3245,11 +3722,13 @@ export default function TerminalPage() {
       let restoreTerminalRegistry = activeTerminalRegistry;
       if (shouldRestoreStoredTerminal && !terminalMetaHydratedForSessionRef.current) {
         const terminalBootstrap = await hydrateTerminalMeta({ suppressGlobalErrors: true });
+        if (!isCurrentHydration()) return;
         restoreTerminalRegistry = Array.isArray(terminalBootstrap?.registry)
           ? terminalBootstrap.registry.filter((entry) => entry?.is_active !== false)
           : [];
       }
 
+      if (!isCurrentHydration()) return;
       setLocked(false);
       setDrawerOpen(false);
       if (tenantSetupFlowRequested) {
@@ -3294,6 +3773,7 @@ export default function TerminalPage() {
         }
       }
     } catch (error) {
+      if (!isCurrentHydration()) return;
       const message = resolveTerminalLoginErrorMessage(error);
       const { kind, status, requestPath } = classifyTerminalLoginFailure(error);
       const method = String(error?.config?.method || '').toUpperCase() || '';
@@ -3320,6 +3800,7 @@ export default function TerminalPage() {
     activeTerminalRegistry,
     cashierResumeContext?.shiftId,
     hydrateTerminalMeta,
+    openBranchSelector,
     refreshOperationalContext,
     resetSettingsAccessPinState,
     tenantSetupFlowRequested
@@ -3358,6 +3839,13 @@ export default function TerminalPage() {
   useLayoutEffect(() => {
     if (setupFlowState.loading || locked || terminalUser?.is_master_admin !== true) return;
 
+    if (catalogOnlyAccess) {
+      if (tenantSetupFlowRequested) {
+        clearTenantSetupQueryState();
+      }
+      return;
+    }
+
     if (setupFlowState.onboardingCompleted) {
       if (tenantSetupFlowRequested) {
         clearTenantSetupQueryState();
@@ -3382,6 +3870,7 @@ export default function TerminalPage() {
     setupFlowState.loading,
     tenantSetupFlowRequested,
     tenantSetupStep,
+    catalogOnlyAccess,
     terminalUser?.is_master_admin
   ]);
 
@@ -3485,6 +3974,18 @@ export default function TerminalPage() {
   useEffect(() => {
     if (!locked || !readStoredTerminalLock()) return;
     const storedLockReason = readStoredTerminalLockReason();
+    // Cashiers must choose the branch card before the terminal shift dialog
+    // appears. The branch selector intentionally remains visible while the
+    // terminal is locked, so lock restoration must not stack the unlock dialog
+    // over that selector.
+    if (
+      branchSelectorOpen
+      && branchSelectorMode === 'cashier'
+      && branchSelectorContinuationRef.current === 'terminal_unlock'
+    ) {
+      setTerminalUnlockModalOpen(false);
+      return;
+    }
     if (storedLockReason === 'full_auth' || storedLockReason === 'shift_closed') {
       setTerminalUnlockRequired(false);
       setTerminalUnlockModalOpen(false);
@@ -3541,7 +4042,14 @@ export default function TerminalPage() {
     }));
     setTerminalUnlockModalOpen(true);
     setDrawerOpen(false);
-  }, [activeTerminalId, cashierResumeContext?.shiftId, cashierUnlockSession?.activeShift, locked]);
+  }, [
+    activeTerminalId,
+    branchSelectorMode,
+    branchSelectorOpen,
+    cashierResumeContext?.shiftId,
+    cashierUnlockSession?.activeShift,
+    locked
+  ]);
 
   useEffect(() => {
     if (!onlineOrderQueueEnabled) return undefined;
@@ -3630,6 +4138,53 @@ export default function TerminalPage() {
   }, []);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+
+  const branchOperatorState = useMemo(() => {
+    const activeShiftLocationId = Number(shiftState?.shift?.location_id || 0);
+    return {
+      activeShiftId: Number(activeShiftId || 0),
+      activeShiftLocationId,
+      activeShiftLocationName: locationNameLookup.get(activeShiftLocationId) || '',
+      activeShiftTerminalId: sanitizeTerminalId(shiftState?.shift?.terminal_id || activeTerminalId),
+      actionLoading: Boolean(adminTerminalSwitching || shiftActionLoading.open),
+      canOpenShift
+    };
+  }, [activeShiftId, activeTerminalId, adminTerminalSwitching, canOpenShift, locationNameLookup, shiftActionLoading.open, shiftState?.shift?.location_id, shiftState?.shift?.terminal_id]);
+
+  const cashierBranchSelection = useMemo(() => {
+    const activeShift = cashierUnlockSession?.activeShift || shiftState?.shift || null;
+    const locationId = Number(activeShift?.location_id || operatingLocationId || activeTerminalLocationId || 0);
+    const location = (Array.isArray(locationsState?.locations) ? locationsState.locations : []).find(
+      (candidate) => Number(candidate?.location_id || 0) === locationId
+    );
+    const terminalId = sanitizeTerminalId(
+      cashierUnlockSession?.terminalId || activeShift?.terminal_id || activeTerminalId
+    );
+    const terminal = activeTerminalRegistry.find(
+      (entry) => sanitizeTerminalId(entry?.terminal_id) === terminalId
+    );
+    const cashierLabel = String(
+      terminalUser?.display_name
+      || terminalUser?.username
+      || terminalUser?.email
+      || cashierUnlockSession?.email
+      || ''
+    ).trim();
+
+    return {
+      branchName: String(activeShift?.location_name || location?.name || '').trim() || 'Assigned branch',
+      terminalLabel: String(terminal?.label || terminalId || '').trim() || 'Assigned terminal',
+      cashierLabel: cashierLabel || 'Signed-in cashier',
+      hasActiveShift: Boolean(activeShift?.pos_terminal_shift_id || activeShift?.status === 'open'),
+      locationId,
+      terminalId,
+      branches: Array.isArray(cashierBranchDirectoryState?.locations)
+        ? cashierBranchDirectoryState.locations
+        : [],
+      loading: Boolean(cashierBranchDirectoryState?.loading),
+      errorMessage: String(cashierBranchDirectoryState?.errorMessage || '')
+    };
+  }, [activeTerminalId, activeTerminalLocationId, activeTerminalRegistry, cashierBranchDirectoryState, cashierUnlockSession, locationsState?.locations, operatingLocationId, shiftState?.shift, terminalUser]);
 
   useEffect(() => {
     const onSessionExpired = () => {
@@ -4379,7 +4934,11 @@ export default function TerminalPage() {
 
   const completeTerminalUnlock = async (
     selectedTerminalId,
-    { operatingLocationIdOverride = null, preserveShiftContext = null } = {}
+    {
+      operatingLocationIdOverride = null,
+      preserveShiftContext = null,
+      suppressStockAlerts = false
+    } = {}
   ) => {
     blurActiveTerminalEditor();
     if (typeof window !== 'undefined') {
@@ -4478,9 +5037,274 @@ export default function TerminalPage() {
     setDrawerOpen(false);
     setTerminalUnlockModalOpen(false);
     setUnlockFailure(null);
-    await notifyStockAlertsAfterUnlock();
+    setLocked(false);
+    if (!suppressStockAlerts && canReceiveStockAlerts) {
+      void notifyStockAlertsAfterUnlock();
+    }
     return operationalContext;
   };
+
+  const handleBranchSelectorOpenShift = useCallback(({ locationId, terminalId } = {}) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    const normalizedTerminalId = sanitizeTerminalId(terminalId);
+    const canOperateAssignedCashierBranch = isCashierRole
+      && assignedCashierLocationIds.has(normalizedLocationId);
+    if ((!canViewBranchLocations && !canOperateAssignedCashierBranch) || !canOpenShift) {
+      toast.error('Your account is not permitted to open a shift from the branch directory.');
+      return false;
+    }
+    if (activeShiftId) {
+      toast.error('Close your active shift before opening another shift.');
+      return false;
+    }
+    if (!isOnline) {
+      toast.error('Reconnect before opening a shift.');
+      return false;
+    }
+    const registryEntry = terminalRegistryLookup.get(normalizedTerminalId);
+    if (
+      !normalizedTerminalId
+      || !registryEntry
+      || Number(registryEntry.location_id || 0) !== normalizedLocationId
+    ) {
+      toast.error('Select an active terminal assigned to the selected branch.');
+      return false;
+    }
+
+    cashierBranchOperationSelectedRef.current = true;
+    setCashierBranchSelectionReady(true);
+    setStoredTerminalLock(false);
+    setStoredTerminalLockReason('');
+    setLocked(false);
+    setDrawerOpen(false);
+    setActiveTerminalId(normalizedTerminalId);
+    setOperatingLocationId(normalizedLocationId);
+    setFormData((previous) => ({ ...previous, terminalId: normalizedTerminalId }));
+    setTerminalUnlockForm((previous) => ({
+      ...previous,
+      terminalId: normalizedTerminalId
+    }));
+    setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
+    setTerminalUnlockRequired(false);
+    setTerminalUnlockModalOpen(false);
+    setAdminShiftPromptSkipped(false);
+    setSentryContext({
+      terminalId: normalizedTerminalId,
+      locationId: normalizedLocationId
+    });
+    commitViewModeSelection('shift_controls');
+    return true;
+  }, [
+    activeShiftId,
+    assignedCashierLocationIds,
+    canOpenShift,
+    canViewBranchLocations,
+    commitViewModeSelection,
+    isCashierRole,
+    isOnline,
+    terminalRegistryLookup
+  ]);
+
+  const handleBranchSelectorResumeShift = useCallback(async ({ locationId, terminalId, shiftId } = {}) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    const normalizedTerminalId = sanitizeTerminalId(terminalId);
+    const normalizedShiftId = Number.parseInt(shiftId, 10);
+    const canOperateAssignedCashierBranch = isCashierRole
+      && assignedCashierLocationIds.has(normalizedLocationId);
+    if ((!canViewBranchLocations && !canOperateAssignedCashierBranch) || !canTransactPos) {
+      toast.error('Your account is not permitted to resume a POS shift.');
+      return false;
+    }
+    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0 || !normalizedTerminalId) {
+      toast.error('The selected branch shift details are incomplete. Refresh POS and try again.');
+      return false;
+    }
+    if (!isOnline) {
+      toast.error('Reconnect before resuming this shift.');
+      return false;
+    }
+
+    const registryEntry = terminalRegistryLookup.get(normalizedTerminalId);
+    if (
+      !registryEntry
+      || Number(registryEntry.location_id || 0) !== normalizedLocationId
+    ) {
+      toast.error('The selected shift terminal is no longer available in this POS setup. Refresh terminal settings first.');
+      return false;
+    }
+
+    const lockedShiftBranchSelection = branchSelectorContinuationRef.current === 'terminal_unlock'
+      && Boolean(cashierResumeContext?.shiftId);
+    if (lockedShiftBranchSelection) {
+      const lockedShiftLocationId = Number(cashierResumeContext?.locationId || 0);
+      const lockedShiftTerminalId = sanitizeTerminalId(cashierResumeContext?.terminalId);
+      if (
+        lockedShiftLocationId !== normalizedLocationId
+        || lockedShiftTerminalId !== normalizedTerminalId
+      ) {
+        toast.error('Select the branch and terminal that own your existing shift.');
+        return false;
+      }
+
+      cashierBranchOperationSelectedRef.current = true;
+      setCashierBranchSelectionReady(true);
+      setActiveTerminalId(normalizedTerminalId);
+      setOperatingLocationId(normalizedLocationId);
+      setFormData((previous) => ({ ...previous, terminalId: normalizedTerminalId }));
+      setTerminalUnlockForm((previous) => ({
+        ...previous,
+        terminalId: normalizedTerminalId
+      }));
+      setCashierResumeContext((previous) => (previous
+        ? {
+          ...previous,
+          terminalId: normalizedTerminalId,
+          locationId: normalizedLocationId
+        }
+        : previous));
+      setTerminalUnlockMode('cashier_resume');
+      setTerminalUnlockRequired(false);
+      setBranchSelectorOpen(false);
+      branchSelectorContinuationRef.current = null;
+      setTerminalUnlockModalOpen(true);
+      setDrawerOpen(false);
+      setSentryContext({
+        terminalId: normalizedTerminalId,
+        locationId: normalizedLocationId
+      });
+      return true;
+    }
+
+    // A cashier who just authenticated through the DGFY company picker already
+    // has a verified tenant session. Keep the branch card as the first step,
+    // then open the signed-in Resume Shift dialog so the normal resume handler
+    // can re-establish operator authority without asking for the password again.
+    // The selected shift id is kept as the card's server-provided identity; the
+    // resume endpoint remains authoritative when the dialog is submitted.
+    const signedInCashierResume = isCashierRole
+      && cashierUnlockSession?.source === 'dgfy_pos'
+      && Number.isInteger(normalizedShiftId)
+      && normalizedShiftId > 0;
+    if (signedInCashierResume) {
+      cashierBranchOperationSelectedRef.current = true;
+      setCashierBranchSelectionReady(true);
+      setActiveTerminalId(normalizedTerminalId);
+      setOperatingLocationId(normalizedLocationId);
+      setFormData((previous) => ({ ...previous, terminalId: normalizedTerminalId }));
+      setTerminalUnlockForm((previous) => ({
+        ...previous,
+        terminalId: normalizedTerminalId,
+        terminalPassword: '',
+        openingFloatAmount: '',
+        openingNote: ''
+      }));
+      setTerminalUnlockMode('resume_shift');
+      setTerminalUnlockRequired(true);
+      setBranchSelectorOpen(false);
+      branchSelectorContinuationRef.current = null;
+      setTerminalUnlockModalOpen(true);
+      setDrawerOpen(false);
+      setSentryContext({
+        terminalId: normalizedTerminalId,
+        locationId: normalizedLocationId
+      });
+      return true;
+    }
+
+    if (
+      activeShiftId
+      && sanitizeTerminalId(activeTerminalId) === normalizedTerminalId
+      && Number(operatingLocationId || 0) === normalizedLocationId
+    ) {
+      cashierBranchOperationSelectedRef.current = true;
+      setCashierBranchSelectionReady(true);
+      commitViewModeSelection('checkout');
+      setBranchSelectorOpen(false);
+      branchSelectorContinuationRef.current = null;
+      return true;
+    }
+
+    setAdminTerminalSwitching(true);
+    try {
+      setSentryContext({
+        terminalId: normalizedTerminalId,
+        locationId: normalizedLocationId
+      });
+
+      const operationalContext = await refreshOperationalContext({
+        terminalIdOverride: normalizedTerminalId,
+        operatingLocationIdOverride: normalizedLocationId,
+        suppressGlobalErrors: true,
+        allowWhileLocked: true
+      });
+      if (!operationalContext?.shift) {
+        throw new Error('The selected shift is no longer open. Refresh the branch directory before trying again.');
+      }
+      const confirmedShiftId = Number(operationalContext.shift?.pos_terminal_shift_id || 0);
+      if (Number.isInteger(normalizedShiftId) && normalizedShiftId > 0 && confirmedShiftId !== normalizedShiftId) {
+        throw new Error('The selected shift changed before it could be resumed. Refresh the branch directory and try again.');
+      }
+
+      setStoredTerminalLock(false);
+      setStoredTerminalLockReason('');
+      setLocked(false);
+      setDrawerOpen(false);
+      setActiveTerminalId(normalizedTerminalId);
+      setOperatingLocationId(normalizedLocationId);
+      setFormData((previous) => ({ ...previous, terminalId: normalizedTerminalId }));
+      setTerminalUnlockForm((previous) => ({
+        ...previous,
+        terminalId: normalizedTerminalId
+      }));
+      setTerminalUnlockRequired(false);
+      setTerminalUnlockModalOpen(false);
+
+      cashierBranchOperationSelectedRef.current = true;
+      setCashierBranchSelectionReady(true);
+      setAdminShiftPromptSkipped(false);
+      setBranchSelectorOpen(false);
+      branchSelectorContinuationRef.current = null;
+      commitViewModeSelection('checkout');
+      setMobileNavOpen(false);
+      void refreshBranchDirectory({ silent: true });
+      toast.success('Existing shift resumed.');
+      return true;
+    } catch (error) {
+      // A shift can close or be recovered between the directory read and the
+      // resume request. Refresh the independent branch directory so the card
+      // cannot keep offering Resume Shift for a stale snapshot.
+      setStoredTerminalLock(false);
+      setStoredTerminalLockReason('');
+      setLocked(false);
+      setDrawerOpen(false);
+      setActiveTerminalId(normalizedTerminalId);
+      setOperatingLocationId(normalizedLocationId);
+      setTerminalUnlockRequired(false);
+      setTerminalUnlockModalOpen(false);
+      await refreshBranchDirectory({ silent: true });
+      toast.error(error?.response?.data?.message || error?.message || 'Unable to resume this shift.');
+      return false;
+    } finally {
+      setAdminTerminalSwitching(false);
+    }
+  }, [
+    activeShiftId,
+    activeTerminalId,
+    assignedCashierLocationIds,
+    canTransactPos,
+    canViewBranchLocations,
+    cashierUnlockSession?.source,
+    cashierResumeContext?.locationId,
+    cashierResumeContext?.shiftId,
+    cashierResumeContext?.terminalId,
+    commitViewModeSelection,
+    isCashierRole,
+    isOnline,
+    operatingLocationId,
+    refreshBranchDirectory,
+    refreshOperationalContext,
+    terminalRegistryLookup
+  ]);
 
   const handleSelectAdminTerminal = async (selectedTerminalId) => {
     if (!canSwitchPosLocation) {
@@ -4578,8 +5402,13 @@ export default function TerminalPage() {
     const entryIntent = intent === 'day_close' ? 'day_close' : 'shift';
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
-    const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
     const normalizedEmail = email.toLowerCase();
+    const authenticatedAccountEmail = String(dgfyPosState.account?.email || '').trim().toLowerCase();
+    const continuingAfterCompanyPicker = (
+      dgfyPosState.authenticated === true
+      && Boolean(authenticatedAccountEmail)
+      && authenticatedAccountEmail === normalizedEmail
+    );
     const lookupEmail = String(emailCompanyLookup?.email || '').trim().toLowerCase();
     const legacyCompanyChoiceRequired = (
       entryIntent === 'shift'
@@ -4599,17 +5428,65 @@ export default function TerminalPage() {
     try {
       setCashierUnlockSession(null);
       setDgfyAdminBypassActive(false);
-      if (!email || !password) {
-        toast.error('DGFY email and password are required.');
-        return;
+      let token = '';
+      let resolvedAccount = dgfyPosState.account || null;
+
+      if (continuingAfterCompanyPicker) {
+        // The company picker is the second half of the same DGFY login. The
+        // password field is intentionally unmounted at this point, so logging
+        // in again would send an empty password and incorrectly reject valid
+        // credentials. Reuse only the short-lived in-memory DGFY token; the
+        // company and tenant-session endpoints still revalidate it server-side.
+        token = String(getStoredDgfyToken() || '').trim();
+        if (!token) {
+          clearDgfySession();
+          dgfyAccessibleCompaniesRef.current = [];
+          setDgfyPosState({
+            authenticated: false,
+            account: null,
+            companies: [],
+            loadingCompanies: false
+          });
+          setFormData((previous) => ({
+            ...previous,
+            password: '',
+            dgfyTenantId: '',
+            legacyCompanyToken: ''
+          }));
+          toast.error('Your DGFY session expired. Sign in again.');
+          return;
+        }
+      } else {
+        // A fresh identity always reaches the backend password check. Clear
+        // stale company state first so an invalid password cannot leave the
+        // previous authenticated company picker visible.
+        clearDgfySession();
+        dgfyAccessibleCompaniesRef.current = [];
+        setDgfyPosState({
+          authenticated: false,
+          account: null,
+          companies: [],
+          loadingCompanies: false
+        });
+        setFormData((previous) => ({
+          ...previous,
+          dgfyTenantId: '',
+          legacyCompanyToken: ''
+        }));
+
+        if (!email || !password) {
+          toast.error('DGFY email and password are required.');
+          return;
+        }
+
+        const loginResult = await loginDgfyAccount({
+          email,
+          password,
+          remember_device: formData.rememberDevice === true
+        });
+        token = String(loginResult?.token || '').trim();
+        resolvedAccount = loginResult?.account || null;
       }
-      const loginResult = await loginDgfyAccount({
-        email,
-        password,
-        remember_device: formData.rememberDevice === true
-      });
-      const token = loginResult?.token || '';
-      const resolvedAccount = loginResult?.account || null;
       if (!token) {
         toast.error('Unable to start DGFY session. Sign in again.');
         return;
@@ -4632,7 +5509,17 @@ export default function TerminalPage() {
         email,
         lookup: emailCompanyLookup
       });
-      const selectedTenantId = String(formData.dgfyTenantId || '').trim()
+      // A fresh login must not inherit the previous account's company hint.
+      // Only the already-authenticated company-picker continuation may use the
+      // tenant selected in the current picker.
+      const requestedTenantId = continuingAfterCompanyPicker
+        ? String(formData.dgfyTenantId || '').trim()
+        : '';
+      const requestedCompany = emailScopedCompanies.find((company) => (
+        String(company?.tenant_id || '').trim() === requestedTenantId
+      ));
+      const tenantHintMatched = Boolean(requestedCompany);
+      const selectedTenantId = String(requestedCompany?.tenant_id || '').trim()
         || (emailScopedCompanies.length === 1 ? String(emailScopedCompanies[0]?.tenant_id || '') : '');
       if (selectedTenantId) {
         setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
@@ -4655,7 +5542,7 @@ export default function TerminalPage() {
         toast.message('Select the company to continue.');
         return;
       }
-      if (!continuingAfterCompanyPicker) {
+      if (!continuingAfterCompanyPicker && !tenantHintMatched) {
         toast.message('Confirm the company, then continue to POS.');
         return;
       }
@@ -4679,21 +5566,65 @@ export default function TerminalPage() {
       }
 
       const effectiveSelectedTenantUser = selectedTenantUser;
+      // Invalidate the initial POS hydration request before installing the
+      // selected company. Its response may still be using the pre-login
+      // tenant/lock snapshot and must not overwrite this entry decision.
+      userHydrationRequestRef.current += 1;
+      const selectedTenantCatalogOnly = (
+        selectedTenantSession?.tenant_capabilities?.pos_enabled === false
+        || selectedTenantSession?.company?.pos_enabled === false
+      );
+      const { buildTenantSetupStateSnapshot } = await import('../utils/posTenantSetupSnapshot.js');
+      if (selectedTenantCatalogOnly) {
+        const catalogOnlySetupState = buildTenantSetupStateSnapshot({
+          settingsPayload: {
+            tenant_pos_enabled: { value: false }
+          },
+          companyPayload: selectedTenantSession?.company || {},
+          usersPayload: [effectiveSelectedTenantUser],
+          workflowMode
+        });
+        activateDgfyTenantSession(selectedTenantSession, { emitAuthEvent: false });
+        setTerminalUser(effectiveSelectedTenantUser);
+        setDgfyAdminBypassActive(false);
+        setAdminShiftPromptSkipped(true);
+        setSetupFlowState(catalogOnlySetupState);
+        setTerminalRegistry([]);
+        setTerminalRegistryMode('warn');
+        setActiveTerminalId('');
+        setOperatingLocationId(null);
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setLocked(false);
+        setDrawerOpen(false);
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockMode('shift_start');
+        setTerminalUnlockModalOpen(false);
+        setPosViewMode('items');
+        clearTenantSetupQueryState();
+        updatePosViewQuery('items');
+        toast.success('Catalog-only access opened. Add items and categories.');
+        return;
+      }
+
       // Keep the terminal in a non-clearing lock state before installing the
-      // tenant session. The auth:login event can re-run hydrateUser while this
-      // async handoff is still resolving the terminal and active shift.
+      // tenant session. The selected tenant state is installed below, so suppress
+      // auth:login here and prevent hydrateUser from racing this entry decision.
       setStoredTerminalLock(true);
       setStoredTerminalLockReason('shift_start_required');
       setLocked(true);
       setDrawerOpen(false);
       setTerminalUnlockRequired(true);
       setTerminalUnlockMode('shift_start');
-      activateDgfyTenantSession(selectedTenantSession);
+      activateDgfyTenantSession(selectedTenantSession, { emitAuthEvent: false });
       const selectedPermissionList = parseUserPermissions(effectiveSelectedTenantUser);
       const selectedCanCloseDay = effectiveSelectedTenantUser?.is_master_admin === true
         || selectedPermissionList.includes('pos:close_day');
       const selectedCanAccessSettings = effectiveSelectedTenantUser?.is_master_admin === true
         || selectedPermissionList.includes('settings:view');
+      const selectedCanViewBranchLocations = effectiveSelectedTenantUser?.is_master_admin === true
+        || selectedPermissionList.includes('pos:branch_view');
+      const selectedCanAccessBranchDirectory = selectedCanAccessSettings || selectedCanViewBranchLocations;
       const selectedCanViewUsers = effectiveSelectedTenantUser?.is_master_admin === true
         || selectedPermissionList.includes('users:view');
       const [selectedTenantSettings, selectedTenantLocations, selectedOnboardingStatus, selectedCurrentShiftResult] = await Promise.all([
@@ -4713,7 +5644,6 @@ export default function TerminalPage() {
           ? getAllUsers({ include_invitations: true }).catch(() => [])
           : Promise.resolve(effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : [])
       ]);
-      const { buildTenantSetupStateSnapshot } = await import('../utils/posTenantSetupSnapshot.js');
       const selectedWorkflowMode = selectedTenantSettings?.ops_workflow_mode?.value || workflowMode;
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
         settingsPayload: selectedTenantSettings || {},
@@ -4736,6 +5666,11 @@ export default function TerminalPage() {
       });
 
       setTerminalUser(effectiveSelectedTenantUser);
+      setLocationsState({
+        loading: false,
+        locations: (Array.isArray(selectedTenantLocations) ? selectedTenantLocations : [])
+          .filter((location) => location?.is_active !== false)
+      });
       setDgfyAdminBypassActive(selectedCanAccessSettings);
       setAdminShiftPromptSkipped(false);
       setSetupFlowState(selectedTenantSetupState);
@@ -4761,6 +5696,37 @@ export default function TerminalPage() {
       blurActiveTerminalEditor();
       setTerminalStartupReady(false);
       setDrawerOpen(false);
+      if (selectedTenantSetupState.tenantPosEnabled === false) {
+        setLocked(false);
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockMode('shift_start');
+        setTerminalUnlockModalOpen(false);
+        setPosViewMode('items');
+        clearTenantSetupQueryState();
+        updatePosViewQuery('items');
+        toast.success('Catalog-only access opened. Add items and categories.');
+        return;
+      }
+      // Branch selection is an independent admin entry surface. It must be
+      // available even when the selected company still has POS setup work;
+      // viewing a branch remains read-only and does not bypass onboarding or
+      // grant terminal-selling access.
+      if (entryIntent === 'shift' && selectedCanAccessBranchDirectory) {
+        setLocked(false);
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockMode('shift_start');
+        setTerminalUnlockModalOpen(false);
+        setDrawerOpen(false);
+        openBranchSelector({ mode: 'directory' });
+        toast.success(selectedCanAccessSettings
+          ? 'DGFY administrator access opened. Review branches and shifts before operating a terminal.'
+          : 'Branch access opened. Review branches and shifts before operating a terminal.');
+        return;
+      }
       if (
         effectiveSelectedTenantUser?.is_master_admin === true
         && selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE
@@ -4793,6 +5759,17 @@ export default function TerminalPage() {
         }, { replace: true });
         return;
       }
+      if (selectedCanAccessSettings) {
+        setLocked(false);
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockMode('shift_start');
+        setTerminalUnlockModalOpen(false);
+        setDrawerOpen(false);
+        toast.success('DGFY administrator access opened. Review branches and shifts before operating a terminal.');
+        return;
+      }
       if (selectedActiveShift) {
         if (entryIntent === 'day_close') {
           toast.error('Your cashier shift is still open. Resume and close it before generating the Z-reading.');
@@ -4820,8 +5797,21 @@ export default function TerminalPage() {
         setTerminalUnlockForm((prev) => ({ ...prev, terminalId: activeShiftTerminalId }));
         setTerminalUnlockMode('resume_shift');
         setTerminalUnlockRequired(true);
-        setTerminalUnlockModalOpen(true);
         setLocked(true);
+        if (entryIntent === 'shift') {
+          setTerminalUnlockModalOpen(false);
+          openBranchSelector({
+            mode: 'cashier',
+            continuation: 'terminal_unlock',
+            cashierData: {
+              user: effectiveSelectedTenantUser,
+              locations: selectedTenantLocations,
+              terminalRegistry: selectedTenantActiveRegistry
+            }
+          });
+        } else {
+          setTerminalUnlockModalOpen(true);
+        }
         return;
       }
       if (entryIntent === 'day_close') {
@@ -4875,17 +5865,6 @@ export default function TerminalPage() {
         toast.success('Day Close opened without starting a cashier shift.');
         return;
       }
-      if (selectedCanAccessSettings) {
-        setLocked(false);
-        setStoredTerminalLock(false);
-        setStoredTerminalLockReason('');
-        setTerminalUnlockRequired(false);
-        setTerminalUnlockMode('shift_start');
-        setTerminalUnlockModalOpen(false);
-        setDrawerOpen(false);
-        toast.success('DGFY administrator access opened. Open a shift to start selling.');
-        return;
-      }
       const selectedTerminalId = resolvePreferredTerminalId(
         selectedTenantActiveRegistry,
         sanitizeTerminalId(formData.terminalId) || readStoredTerminalId(),
@@ -4929,11 +5908,41 @@ export default function TerminalPage() {
       setTerminalUnlockMode('shift_start');
       setTerminalUnlockRequired(true);
       setLocked(true);
-      setTerminalUnlockModalOpen(true);
+      if (entryIntent === 'shift') {
+        setTerminalUnlockModalOpen(false);
+        openBranchSelector({
+          mode: 'cashier',
+          continuation: 'terminal_unlock',
+          cashierData: {
+            user: effectiveSelectedTenantUser,
+            locations: selectedTenantLocations,
+            terminalRegistry: selectedTenantActiveRegistry
+          }
+        });
+      } else {
+        setTerminalUnlockModalOpen(true);
+      }
     } catch (error) {
       setLocked(true);
       setDrawerOpen(true);
-      setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
+      if (!continuingAfterCompanyPicker || Number(error?.response?.status || 0) === 401) {
+        clearDgfySession();
+        dgfyAccessibleCompaniesRef.current = [];
+        setDgfyPosState({
+          authenticated: false,
+          account: null,
+          companies: [],
+          loadingCompanies: false
+        });
+        setFormData((previous) => ({
+          ...previous,
+          password: '',
+          dgfyTenantId: '',
+          legacyCompanyToken: ''
+        }));
+      } else {
+        setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
+      }
       reportTerminalFailure(error, 'terminal_unlock');
     } finally {
       setSubmitting(false);
@@ -4970,6 +5979,8 @@ export default function TerminalPage() {
       legacyCompanyToken: ''
     }));
     setCashierUnlockSession(null);
+    branchSelectorContinuationRef.current = null;
+    setBranchSelectorOpen(false);
     setDgfyAdminBypassActive(false);
   }, [dgfyPosState.authenticated]);
 
@@ -5165,7 +6176,8 @@ export default function TerminalPage() {
       setTerminalUser(cashierUser);
       await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: cashierResumeContext.locationId,
-        preserveShiftContext: preservedShiftContext
+        preserveShiftContext: preservedShiftContext,
+        suppressStockAlerts: true
       });
       toast.success('Cashier verified. Shift resumed.');
     } catch (error) {
@@ -5295,7 +6307,8 @@ export default function TerminalPage() {
       setTerminalUser(cashierUser);
       await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: locationId,
-        preserveShiftContext: preservedShiftContext
+        preserveShiftContext: preservedShiftContext,
+        suppressStockAlerts: true
       });
       toast.success(entryMode === 'resume'
         ? 'Cashier verified. Shift resumed.'
@@ -5496,11 +6509,18 @@ export default function TerminalPage() {
 
   const handleTerminalUnlockSubmit = async (event) => {
     event.preventDefault();
-    const cashierSessionActive = Boolean(cashierUnlockSession?.email);
+    const authenticatedCashierIdentity = isCashierRole
+      && String(terminalUser?.email || terminalUser?.username || '').trim();
+    const cashierSessionActive = Boolean(cashierUnlockSession?.email || authenticatedCashierIdentity);
     const dgfyCashierSessionActive = cashierUnlockSession?.source === 'dgfy_pos';
-    const selectedTenantId = cashierSessionActive
-      ? String(cashierUnlockSession?.tenantId || '').trim()
-      : await resolveTenantIdForTerminalUnlock();
+    let selectedTenantId = String(
+      cashierUnlockSession?.tenantId
+      || activeTenantId
+      || ''
+    ).trim();
+    if (!selectedTenantId) {
+      selectedTenantId = await resolveTenantIdForTerminalUnlock();
+    }
     const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
     const resumeExistingShift = terminalUnlockMode === 'resume_shift';
     const requiresOpeningCash = terminalUnlockMode === 'shift_start';
@@ -5577,7 +6597,8 @@ export default function TerminalPage() {
 
       const completeConfirmedShiftResume = async ({ terminalId, locationId, activeShift }) => {
         let operationalContext = await completeTerminalUnlock(terminalId, {
-          operatingLocationIdOverride: locationId
+          operatingLocationIdOverride: locationId,
+          suppressStockAlerts: cashierSessionActive
         });
         if (!operationalContext?.shift) {
           operationalContext = await refreshOperationalContext({
@@ -5702,7 +6723,8 @@ export default function TerminalPage() {
       }
 
       await completeTerminalUnlock(selectedTerminalId, {
-        operatingLocationIdOverride: resolvedLocationId
+        operatingLocationIdOverride: resolvedLocationId,
+        suppressStockAlerts: cashierSessionActive
       });
       toast.success(
         requiresOpeningCash
@@ -5907,6 +6929,8 @@ export default function TerminalPage() {
     }
 
     await clearCurrentSaleForSessionEnd();
+    branchSelectorContinuationRef.current = null;
+    setBranchSelectorOpen(false);
 
     if (adminLock) {
       takeoverShiftContextRef.current = null;
@@ -6014,7 +7038,22 @@ export default function TerminalPage() {
         openingFloatAmount: '',
         openingNote: ''
       });
-      setTerminalUnlockModalOpen(true);
+      setTerminalUnlockModalOpen(false);
+      openBranchSelector({
+        mode: 'cashier',
+        continuation: 'terminal_unlock',
+        cashierData: {
+          user: terminalUser,
+          locations: locationsState?.locations,
+          terminalRegistry: activeTerminalRegistry,
+          resumeShift: shiftState?.shift || {
+            pos_terminal_shift_id: activeShiftId,
+            cashier_id: activeShiftCashierId,
+            terminal_id: selectedTerminalId,
+            location_id: activeShiftLocationId
+          }
+        }
+      });
       setStockAlertSummary({ open: false, almostOutOfStock: [], outOfStock: [] });
       return;
     }
@@ -6806,6 +7845,45 @@ export default function TerminalPage() {
     return Boolean(outcome?.success);
   }, [activeTerminalId, posHardware]);
 
+  const submitDeliveryCompletion = async (order, settlement = null) => {
+    const orderId = Number(order?.pos_transaction_id);
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    if (!orderId || !terminalId) {
+      toast.error('An active paired terminal is required to complete delivery.');
+      return false;
+    }
+    setDeliveryCompletionSaving(true);
+    setIncomingOrderActionState((prev) => ({ ...prev, [orderId]: 'delivery_complete' }));
+    try {
+      await completeDeliveryOrder(orderId, {
+        terminal_id: terminalId,
+        idempotency_key: getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, 'complete', orderId,
+          { terminal_id: terminalId, settlement: settlement || null }, 'pos-delivery-complete'
+        ),
+        ...(settlement ? { settlement } : {})
+      });
+      deliveryActionReplayKeys.current.delete(`complete:${orderId}`);
+      toast.success('Delivery completed.');
+      setDeliveryCompletionOrder(null);
+      await refreshIncomingOrders({ silent: true });
+      return true;
+    } catch (error) {
+      clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+        deliveryActionReplayKeys, 'complete', orderId, error
+      );
+      toast.error(error?.response?.data?.message || 'Failed to complete delivery.');
+      return false;
+    } finally {
+      setDeliveryCompletionSaving(false);
+      setIncomingOrderActionState((prev) => {
+        const next = { ...prev };
+        delete next[orderId];
+        return next;
+      });
+    }
+  };
+
   const handleIncomingOrderStatusChange = async (posTransactionId, fulfillmentStatus, reason = null) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before changing an online order.');
@@ -6822,6 +7900,53 @@ export default function TerminalPage() {
     if (!nextStatus) {
       toast.error('Select a valid status update action.');
       return false;
+    }
+    if (nextStatus === 'delivery_complete') {
+      const order = incomingOrdersState.orders.find((item) => Number(item.pos_transaction_id) === normalizedId);
+      if (!order) {
+        toast.error('Refresh the order before completing delivery.');
+        return false;
+      }
+      if (Number(order.balance_due || 0) > 0 || order.payment_status === 'unpaid') {
+        setDeliveryCompletionOrder(order);
+        setDeliveryCompletionMethod('cash');
+        setDeliveryCompletionCashInput(String(Number(order.balance_due || 0) > 0 ? order.balance_due : order.total_amount));
+        setDeliveryCompletionConfirmed(false);
+        return true;
+      }
+      return submitDeliveryCompletion(order);
+    }
+    if (nextStatus === 'delivery_fail') {
+      const failureReason = String(reason || '').trim();
+      if (failureReason.length < 3) {
+        toast.error('Enter a failure reason with at least 3 characters.');
+        return false;
+      }
+      setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: nextStatus }));
+      try {
+        const idempotencyKey = getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, 'fail', normalizedId, { reason: failureReason }, 'pos-delivery-fail'
+        );
+        await failDeliveryOrder(normalizedId, {
+          idempotency_key: idempotencyKey, reason: failureReason
+        });
+        deliveryActionReplayKeys.current.delete(`fail:${normalizedId}`);
+        toast.success('Delivery failed. The order was cancelled.');
+        await refreshIncomingOrders({ silent: true });
+        return true;
+      } catch (error) {
+        clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+          deliveryActionReplayKeys, 'fail', normalizedId, error
+        );
+        toast.error(error?.response?.data?.message || 'Failed to cancel delivery.');
+        return false;
+      } finally {
+        setIncomingOrderActionState((prev) => {
+          const next = { ...prev };
+          delete next[normalizedId];
+          return next;
+        });
+      }
     }
 
     const normalizedReason = String(reason || '').trim();
@@ -6856,7 +7981,7 @@ export default function TerminalPage() {
       } else if (paymentLifecycle?.payment_action === 'refund_pending') {
         toast.success('Order rejected. The PayMongo refund is being processed.');
       } else if (paymentLifecycle?.payment_action === 'refund_failed') {
-        toast.error('Order rejected, but the automatic refund needs admin review.');
+        toast.error('Order rejected. The automatic refund remains pending for payment reconciliation.');
       } else if (paymentLifecycle?.payment_action === 'forfeited') {
         // Phase 144 (#824). Not reachable from this handler today -- only the storefront's own
         // self-service cancel can forfeit, and a store-side reject/cancel always refunds. Mapped
@@ -6907,14 +8032,22 @@ export default function TerminalPage() {
     const actionKey = `delivery-job:${nextStatus}`;
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
     try {
+      const replayAction = `job:${nextStatus}`;
       await updateDeliveryJobStatus(normalizedId, {
         status: nextStatus,
-        idempotency_key: createIdempotencyKey('pos-delivery-job')
+        idempotency_key: getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, replayAction, normalizedId,
+          { status: nextStatus }, 'pos-delivery-job'
+        )
       });
+      deliveryActionReplayKeys.current.delete(`${replayAction}:${normalizedId}`);
       toast.success(nextStatus === 'delivered' ? 'Delivery marked as delivered.' : 'Delivery status updated.');
       await refreshIncomingOrders({ silent: true });
       return true;
     } catch (error) {
+      clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+        deliveryActionReplayKeys, `job:${nextStatus}`, normalizedId, error
+      );
       if (isRetryableTerminalOperationError(error)) {
         toast.error('The delivery job was not changed because the server connection was lost. Reconnect and try again.');
       } else {
@@ -6930,7 +8063,10 @@ export default function TerminalPage() {
     }
   };
 
-  const handleAssignDeliveryPersonnel = async (posTransactionId, { id: deliveryPersonnelId, name: deliveryPersonnelName } = {}) => {
+  const handleAssignDeliveryPersonnel = async (posTransactionId, {
+    id: deliveryPersonnelId, name: deliveryPersonnelName,
+    courier_service, courier_service_name, courier_reference, tracking_url
+  } = {}) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before assigning delivery personnel.');
       return false;
@@ -6940,26 +8076,38 @@ export default function TerminalPage() {
     const normalizedPersonnelId = Number.parseInt(deliveryPersonnelId, 10);
     const hasPersonnelId = Number.isInteger(normalizedPersonnelId) && normalizedPersonnelId > 0;
     const normalizedName = String(deliveryPersonnelName || '').trim();
-    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || (!hasPersonnelId && !normalizedName)) {
+    const thirdPartyCourier = ['maxim', 'grabexpress', 'lalamove', 'other'].includes(courier_service);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0
+      || (!hasPersonnelId && !normalizedName && !thirdPartyCourier)) {
       toast.error('Enter a delivery personnel name before assigning the order.');
       return false;
     }
 
     const actionKey = `delivery-assignment:${normalizedId}`;
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
+    const assignment = {
+      ...(hasPersonnelId
+        ? { delivery_personnel_id: normalizedPersonnelId }
+        : normalizedName ? { delivery_personnel_name: normalizedName } : {}),
+      ...(courier_service ? { courier_service, courier_service_name, courier_reference, tracking_url } : {})
+    };
     try {
       // Exactly one of these two is sent -- the server schema is `.or(...).oxor(...)` and
       // 422s if both are present (Phase 205, #1080).
       await assignDeliveryPersonnel(normalizedId, {
-        ...(hasPersonnelId
-          ? { delivery_personnel_id: normalizedPersonnelId }
-          : { delivery_personnel_name: normalizedName }),
-        idempotency_key: createIdempotencyKey('pos-delivery-assignment')
+        ...assignment,
+        idempotency_key: getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, 'assign', normalizedId, assignment, 'pos-delivery-assignment'
+        )
       });
+      deliveryActionReplayKeys.current.delete(`assign:${normalizedId}`);
       toast.success('Delivery personnel assigned.');
       await refreshIncomingOrders({ silent: true });
       return true;
     } catch (error) {
+      clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+        deliveryActionReplayKeys, 'assign', normalizedId, error
+      );
       if (isRetryableTerminalOperationError(error)) {
         toast.error('The delivery assignment was not saved because the server connection was lost. Reconnect and try again.');
       } else {
@@ -7146,7 +8294,7 @@ export default function TerminalPage() {
         terminal_id: terminalId,
         cash_received: cashReceived,
         idempotency_key: createIdempotencyKey(
-          isDineInOrder ? 'pos-dine-in-cash' : isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash'
+          getOnlineOrderCashIdempotencyPrefix(cashCollectionOrder)
         )
       });
       try {
@@ -7415,6 +8563,15 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
+    const catalogOnlyCanOpenMode = nextMode === 'items'
+      || (setupFlowActive && CATALOG_ONLY_ALLOWED_VIEW_MODES.has(nextMode));
+    if (catalogOnlyAccess && !catalogOnlyCanOpenMode) {
+      toast.message('Catalog-only access is active. DGFY Admin must enable POS before selling or opening other POS pages.');
+      setPosViewMode('items');
+      updatePosViewQuery('items');
+      setMobileNavOpen(false);
+      return;
+    }
     const branchViewReadOnlyNavigation = Boolean(
       branchViewLocationId
       && canViewBranchLocations
@@ -7432,7 +8589,7 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (nextMode === 'items' && !canViewPos && !canManageCategories && !branchViewReadOnlyNavigation) {
+    if (nextMode === 'items' && !canViewPos && !canManageCategories && !(catalogOnlyAccess && canCreateItems) && !branchViewReadOnlyNavigation) {
       toast.error('POS view or category-management permission is required.');
       setMobileNavOpen(false);
       return;
@@ -7462,8 +8619,7 @@ export default function TerminalPage() {
     const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode) || branchViewReadOnlyNavigation;
     const isPinProtectedViewMode = PIN_PROTECTED_VIEW_MODES.has(nextMode);
     if (setupFlowActive && !branchViewReadOnlyNavigation) {
-      const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'items']);
-      if (!allowedSetupModes.has(nextMode)) {
+      if (!CATALOG_ONLY_ALLOWED_VIEW_MODES.has(nextMode)) {
         toast.error(
           tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE
             ? 'Finish tenant onboarding in POS Settings before opening the rest of the POS.'
@@ -7532,11 +8688,13 @@ export default function TerminalPage() {
   }, [
     activeViewModes,
     branchViewLocationId,
+    catalogOnlyAccess,
     canViewBranchLocations,
     canAccessSettingsDirectly,
     canAccessPosOnlySetup,
     canAdminBypassShiftPrompt,
     canAccessServiceOperations,
+    canCreateItems,
     canManageCategories,
     canReviewVoidApprovals,
     canViewAudit,
@@ -7553,7 +8711,8 @@ export default function TerminalPage() {
     settingsAccessPinVerified,
     setupFlowActive,
     tenantSetupDismissedThisSession,
-    tenantSetupStep
+    tenantSetupStep,
+    updatePosViewQuery
   ]);
 
   const handleSettingsAccessPinSubmit = useCallback(async (event) => {
@@ -7693,11 +8852,21 @@ export default function TerminalPage() {
       void refreshScopedSettings();
     });
 
-    // OPIS is served from another origin, so its save cannot arrive through the
-    // same-origin channel. Revalidate when POS regains focus/visibility or reconnects.
+    // OPIS and POS run on different browser origins. The authenticated tenant
+    // SSE stream carries the settings invalidation so an open POS reflects a
+    // business-name change immediately, without waiting for focus or reload.
+    const unsubscribeRemoteSettings = subscribeToRemotePosCatalogUpdates({
+      onSettingsChanged: () => {
+        void refreshScopedSettings();
+      }
+    });
+
+    // Focus/visibility/reconnect revalidation remains the fallback if the cross-origin
+    // settings invalidation stream is unavailable.
     const uninstallFocusRefresh = installCrossAppSettingsRefresh(() => refreshScopedSettings());
     return () => {
       unsubscribeSync();
+      unsubscribeRemoteSettings();
       uninstallFocusRefresh();
     };
   }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);
@@ -7848,6 +9017,13 @@ export default function TerminalPage() {
   }, [locked, refreshTerminalOperationQueue]);
 
   useEffect(() => {
+    if (!catalogOnlyAccess || locked || setupFlowState.loading || posViewMode === 'items') return;
+    if (setupFlowActive && CATALOG_ONLY_ALLOWED_VIEW_MODES.has(posViewMode)) return;
+    setPosViewMode('items');
+    updatePosViewQuery('items');
+  }, [catalogOnlyAccess, locked, posViewMode, setupFlowActive, setupFlowState.loading, updatePosViewQuery]);
+
+  useEffect(() => {
     if (posViewMode === 'history' && !canViewPos) {
       setPosViewMode('checkout');
     }
@@ -7860,10 +9036,10 @@ export default function TerminalPage() {
   }, [canViewPos, posViewMode]);
 
   useEffect(() => {
-    if (posViewMode === 'items' && !canViewPos && !canManageCategories) {
+    if (posViewMode === 'items' && !canViewPos && !canManageCategories && !(catalogOnlyAccess && canCreateItems)) {
       setPosViewMode('checkout');
     }
-  }, [canManageCategories, canViewPos, posViewMode]);
+  }, [canCreateItems, canManageCategories, canViewPos, catalogOnlyAccess, posViewMode]);
 
   useEffect(() => {
     if (posViewMode === 'services' && !canAccessServiceOperations) {
@@ -7882,14 +9058,18 @@ export default function TerminalPage() {
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
   const shiftOpeningModalOpen = (
     !drawerOpen
+    && !branchSelectorOpen
+    && !branchViewLocationId
+    && !branchViewTransitionLocationId
     && !terminalUnlockModalOpen
     && !terminalUnlockRequired
     && !postShiftHandoff
     && requiresOpenShift
     && canViewPos
+    && !isCashierRole
     && !shiftOpenPromptBlockedBySetup
     && !suppressAdminShiftPrompt
-    && (!canAdminBypassShiftPrompt || isMasterAdminOperator)
+    && (!canAdminBypassShiftPrompt || isMasterAdminOperator || canViewBranchLocations)
   );
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
@@ -7917,6 +9097,9 @@ export default function TerminalPage() {
   const cashierTakeoverUnlock = terminalUnlockMode === 'cashier_takeover';
   const adminReauthUnlock = terminalUnlockMode === 'admin_reunlock';
   const signedInShiftResume = terminalUnlockMode === 'resume_shift';
+  const terminalSelectionLocked = isCashierRole
+    && cashierBranchSelectionReady
+    && terminalUnlockMode === 'shift_start';
 
 function PosRestorationLoadingScreen() {
   const [progress, setProgress] = useState(15);
@@ -8026,7 +9209,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(branchSelectorOpen || cashCollectionOrder || balanceSettlementOrder || deliveryCompletionOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary.open || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -8041,11 +9224,27 @@ function PosRestorationLoadingScreen() {
               balanceSettlementOrder,
               balanceSettlementReference,
               balanceSettlementSaving,
+              deliveryCompletionOrder,
+              deliveryCompletionMethod,
+              deliveryCompletionCashInput,
+              deliveryCompletionConfirmed,
+              deliveryCompletionSaving,
+              setDeliveryCompletionOrder,
+              setDeliveryCompletionMethod,
+              setDeliveryCompletionCashInput,
+              setDeliveryCompletionConfirmed,
+              submitDeliveryCompletion,
               balanceProofFile,
               balanceProofUploading,
               balanceProofError,
               balanceProofViewerUrl,
               balanceProofViewerLoading,
+              branchDirectoryState,
+              branchOperatorState,
+              cashierBranchSelectorCanShowWhileLocked,
+              branchSelectorMode,
+              branchSelectorOpen,
+              cashierBranchSelection,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -8069,6 +9268,12 @@ function PosRestorationLoadingScreen() {
               getNextTenantSetupStep,
               getPreviousTenantSetupStep,
               handleAdminReauthSubmit,
+              handleCancelTerminalUnlock,
+              handleBranchSelectorOpenChange,
+              handleBranchSelectorContinue: continueFromBranchSelector,
+              handleBranchSelectorOpenShift,
+              handleBranchSelectorResumeShift,
+              handleBranchSelectorViewBranch: handleViewBranch,
               handleBackToCashierResume,
               handleCashierResumeSubmit,
               handleCashierTakeoverSubmit,
@@ -8107,6 +9312,8 @@ function PosRestorationLoadingScreen() {
               scheduledDineInAlertNow: scheduledDineInNow,
               handleScheduledDineInAlertOpenChange,
               isOnline,
+              locked,
+              drawerOpen,
               isPrinterAvailable: posHardware.isPrinterAvailable,
               legacyLinkState,
               locationNameLookup,
@@ -8121,6 +9328,8 @@ function PosRestorationLoadingScreen() {
               printZReading,
               setZReadingPaperWidth,
               renderUnlockFailurePanel,
+              refreshBranchDirectory,
+              refreshCashierBranchDirectory,
               resumeTenantSetupFlow,
               saveMyDayClosePin,
               setAdminReauthForm,
@@ -8175,6 +9384,7 @@ function PosRestorationLoadingScreen() {
               terminalMeta,
               terminalRegistry,
               terminalUnlockForm,
+              terminalSelectionLocked,
               terminalUnlockModalOpen,
               terminalUnlockMode,
               terminalUnlockRequired,
@@ -8211,6 +9421,7 @@ function PosRestorationLoadingScreen() {
           canReviewVoidApprovals={canReviewVoidApprovals}
           inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}
           onboardingRestricted={setupFlowActive}
+          catalogOnlyAccess={catalogOnlyAccess}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}
           canViewFnbModifiers={canViewFnbModifiers}

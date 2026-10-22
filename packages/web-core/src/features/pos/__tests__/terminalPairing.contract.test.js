@@ -25,10 +25,56 @@ describe('POS terminal pairing contract', () => {
 
   it('opens normal shifts from an active logical terminal without a reusable terminal password', () => {
     expect(terminalPageSource).toContain('const selectedRegistryEntry = terminalRegistryLookup.get(selectedTerminalId);');
-    expect(terminalPageDialogLayerSource).toContain('Authorized DGFY users can open shifts from any logged-in device');
+    expect(terminalPageSource).toMatch(/let selectedTenantId = String\(\s*cashierUnlockSession\?\.tenantId\s*\|\| activeTenantId\s*\|\| ''\s*\)\.trim\(\);/);
+    expect(terminalPageDialogLayerSource).toContain('Choose the counter for this shift.');
+    expect(terminalPageDialogLayerSource).toContain('cashierAlreadyAuthenticated');
+    expect(terminalPageSource).toContain('const terminalSelectionLocked = isCashierRole');
+    expect(terminalPageDialogLayerSource).toContain('terminalSelectionLocked');
+    expect(terminalPageDialogLayerSource).toContain('Selected from your branch card.');
+    expect(terminalPageSource).toContain('const handleCancelTerminalUnlock = useCallback(() => {');
+    expect(terminalPageDialogLayerSource).toContain('handleCancelTerminalUnlock');
+    expect(terminalPageDialogLayerSource).toContain("{cashierResumeUnlock ? 'Back to Login' : 'Cancel'}");
+    expect(terminalPageDialogLayerSource).not.toContain('Authorized DGFY users can open shifts from any logged-in device');
+    expect(terminalPageSource).toContain('const authenticatedCashierIdentity = isCashierRole');
+    expect(terminalPageSource).toContain('cashierUnlockSession?.email || authenticatedCashierIdentity');
     expect(terminalPageSource).not.toContain('This physical POS device must be paired by the company master admin');
     expect(terminalPageSource).not.toContain('terminal_password: terminalPassword');
     expect(terminalPageDialogLayerSource).toContain("'Unlock POS'");
+  });
+
+  it('routes a DGFY-authenticated owner resume through the signed-in shift dialog after branch selection', () => {
+    const resumeStart = terminalPageSource.indexOf(
+      'const handleBranchSelectorResumeShift = useCallback(async ({ locationId, terminalId, shiftId } = {}) => {'
+    );
+    const resumeEnd = terminalPageSource.indexOf(
+      'const handleSelectAdminTerminal = async',
+      resumeStart
+    );
+    const resumeSource = terminalPageSource.slice(resumeStart, resumeEnd);
+    const explicitRefreshStart = resumeSource.indexOf(
+      'const operationalContext = await refreshOperationalContext({'
+    );
+    const explicitRefreshEnd = resumeSource.indexOf(
+      'const confirmedShiftId = Number(',
+      explicitRefreshStart
+    );
+
+    expect(resumeStart).toBeGreaterThan(-1);
+    expect(resumeSource).toContain('const normalizedShiftId = Number.parseInt(shiftId, 10);');
+    expect(resumeSource).toContain("cashierUnlockSession?.source === 'dgfy_pos'");
+    expect(resumeSource).toContain("setTerminalUnlockMode('resume_shift')");
+    expect(resumeSource).toContain('setTerminalUnlockModalOpen(true);');
+    expect(resumeSource).toContain('setTerminalUnlockRequired(true);');
+    expect(resumeSource).toContain('const confirmedShiftId = Number(');
+    expect(resumeSource).toContain('normalizedShiftId > 0 && confirmedShiftId !== normalizedShiftId');
+    expect(explicitRefreshStart).toBeGreaterThan(-1);
+    expect(explicitRefreshEnd).toBeGreaterThan(explicitRefreshStart);
+
+    const normalResumeStart = resumeSource.indexOf('setAdminTerminalSwitching(true);');
+    const stateChangesBeforeExplicitRefresh = resumeSource.slice(normalResumeStart, explicitRefreshStart);
+    expect(normalResumeStart).toBeGreaterThan(-1);
+    expect(stateChangesBeforeExplicitRefresh).not.toContain('setLocked(false);');
+    expect(stateChangesBeforeExplicitRefresh).not.toContain('setActiveTerminalId(normalizedTerminalId);');
   });
 
   it('resumes a locked open shift through the DGFY POS session instead of a tenant-local cashier password', () => {
@@ -44,7 +90,10 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain('authenticatedCashierId !== expectedCashierId');
     expect(terminalPageDialogLayerSource).toContain("!cashierResumeUnlock && terminalUnlockMode === 'shift_start'");
     expect(terminalPageSource).toContain("const signedInShiftResume = terminalUnlockMode === 'resume_shift'");
+    expect(terminalPageDialogLayerSource).toContain("? 'Unlock Shift'");
     expect(terminalPageDialogLayerSource).toContain("? 'Resume Shift'");
+    expect(terminalPageDialogLayerSource).toContain('Locked shift:');
+    expect(terminalPageDialogLayerSource).toContain('Unlocking shift...');
   });
 
   it('uses one cashier sign-in modal to resume the owner or take over as another cashier', () => {

@@ -125,12 +125,12 @@ export const shouldRefreshBusinessAdminSettingsUpdate = ({
 };
 
 // OPIS (issue #2052) lives on another origin, so saves cannot reach the other app through
-// same-origin CustomEvent/localStorage/BroadcastChannel paths. Both apps therefore
-// revalidate their canonical settings when they regain focus/visibility or reconnect
-// after offline state. Duplicate triggers are coalesced behind a minimum interval; the
-// caller owns the actual refresh (scoped hydration that must not change tenant, reset
-// checkout, close a shift, overwrite dirty settings, or silently reprice an active
-// sale). No realtime service and no cross-origin token messaging.
+// same-origin CustomEvent/localStorage/BroadcastChannel paths. The POS also listens to
+// the authenticated tenant settings invalidation stream; focus/visibility/reconnect
+// revalidation remains the bounded fallback. Duplicate triggers are coalesced behind a
+// minimum interval; the caller owns the actual refresh (scoped hydration that must not
+// change tenant, reset checkout, close a shift, overwrite dirty settings, or silently
+// reprice an active sale). No cross-origin token messaging is used.
 export const OPIS_SETTINGS_REFRESH_MIN_INTERVAL_MS = 15000;
 
 export const installCrossAppSettingsRefresh = (

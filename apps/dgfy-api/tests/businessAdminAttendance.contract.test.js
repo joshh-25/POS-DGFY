@@ -66,6 +66,27 @@ describe('Business Admin attendance read model', () => {
         expect(listUserLocationGrantIds).toHaveBeenCalledWith(8);
     });
 
+    it('projects currently open POS shifts separately from the date-bounded attendance records', async () => {
+        const getCashierLifecycleReport = jest.fn().mockResolvedValue(lifecycle);
+        const listShifts = jest.fn().mockResolvedValue({
+            shifts: [{ shift_id: 31, branch_id: 12, status: 'open', cashier_name: 'Cashier' }],
+            pagination: { page: 1, limit: 100, total: 1, total_pages: 1 }
+        });
+        const useCase = buildGetBusinessAdminAttendanceUseCase({
+            businessAdminOverviewRepository: { listUserLocationGrantIds: jest.fn() },
+            businessAdminShiftHistoryRepository: { listShifts },
+            posRepository: { getCashierLifecycleReport }
+        });
+
+        const result = await useCase({ user: ADMIN, query: { branch_id: '12' } });
+
+        expect(result.data.active_shifts).toEqual([{ shift_id: 31, branch_id: 12, status: 'open', cashier_name: 'Cashier' }]);
+        expect(listShifts).toHaveBeenCalledWith(expect.objectContaining({
+            allowedLocationIds: null,
+            filters: expect.objectContaining({ branchId: 12, status: 'open', startAt: null, endAt: null })
+        }));
+    });
+
     it('rejects an assigned manager request for an unauthorized branch before querying POS', async () => {
         const getCashierLifecycleReport = jest.fn();
         const useCase = buildGetBusinessAdminAttendanceUseCase({

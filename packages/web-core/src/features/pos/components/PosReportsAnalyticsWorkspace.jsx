@@ -67,7 +67,9 @@ import {
   buildDailySalesCheckCsv,
   buildDailySalesCheckPrintHtml,
   buildZReadingHistoryCsv,
-  buildZReadingHistoryPrintHtml
+  buildZReadingHistoryPrintHtml,
+  getDailySalesCheckCashSummary,
+  getDailySalesCheckVoidActivity
 } from './posZReadingReconciliationExports.js';
 import PosSubtabNavigation from './PosSubtabNavigation.jsx';
 import PosPageFrame from './PosPageFrame.jsx';
@@ -293,11 +295,14 @@ export const ZReadingReconciliationCard = ({
   const isComparable = status === 'matched' || status === 'variance';
   const hasNumber = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
   const formatAmount = (value) => hasNumber(value) ? money(value, currencySymbol) : '—';
+  const formatDeduction = (value) => hasNumber(value) ? `−${formatAmount(value)}` : '—';
   const formatCount = (value) => hasNumber(value) ? Number(value).toLocaleString('en-US') : '—';
   const hasSavedZReading = data.snapshot_persisted === true;
   const paymentBreakdown = Array.isArray(data.z_payment_breakdown) ? data.z_payment_breakdown : [];
-  const zVoids = hasNumber(data.z_void_transaction_count) || hasNumber(data.z_void_amount)
-    ? `${formatCount(data.z_void_transaction_count)} · ${formatAmount(data.z_void_amount)}`
+  const cashSummary = getDailySalesCheckCashSummary(data);
+  const voidActivity = getDailySalesCheckVoidActivity(data);
+  const voidRefundActivity = voidActivity.available
+    ? `${formatCount(voidActivity.count)} · ${formatAmount(voidActivity.amount)}`
     : '—';
   return (
     <section
@@ -394,20 +399,45 @@ export const ZReadingReconciliationCard = ({
             <h4 id="daily-sales-payment-breakdown-heading" className="text-sm font-bold text-slate-950">Payment breakdown</h4>
             <p className="text-xs text-slate-600">From the saved Z-reading snapshot</p>
           </div>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-600">
+            Payment method amounts are before refunds and voids. Those deductions are shown below and included in net sales.
+          </p>
           {paymentBreakdown.length > 0 ? (
             <dl className="mt-2 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Saved Z-reading payment breakdown">
-              {paymentBreakdown.map((entry) => (
-                <div key={entry.payment_type || entry.payment_label || 'other'} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <dt className="break-words text-xs text-slate-600">{entry.payment_label || String(entry.payment_type || 'Other payment').replace(/_/g, ' ')}</dt>
-                  <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">
-                    {formatAmount(entry.amount)} · {formatCount(entry.count)} {Number(entry.count || 0) === 1 ? 'payment' : 'payments'}
-                  </dd>
-                </div>
-              ))}
+              {paymentBreakdown.map((entry) => {
+                const paymentKey = String(entry.payment_type || entry.payment_label || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+                const label = paymentKey === 'cash'
+                  ? 'Cash payments before refunds'
+                  : entry.payment_label || String(entry.payment_type || 'Other payment').replace(/_/g, ' ');
+                return (
+                  <div key={entry.payment_type || entry.payment_label || 'other'} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <dt className="break-words text-xs text-slate-600">{label}</dt>
+                    <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">
+                      {formatAmount(entry.amount)} · {formatCount(entry.count)} {Number(entry.count || 0) === 1 ? 'payment' : 'payments'}
+                    </dd>
+                  </div>
+                );
+              })}
             </dl>
           ) : (
             <p className="mt-2 text-sm text-slate-600">No payment entries were recorded in this saved Z-reading.</p>
           )}
+          {cashSummary.available ? (
+            <dl className="mt-3 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Cash reconciliation summary">
+              <div className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <dt className="break-words text-xs text-slate-600">Cash payments before refunds</dt>
+                <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{formatAmount(cashSummary.cashPaymentsBeforeRefunds)}</dd>
+              </div>
+              <div className="min-w-0 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2">
+                <dt className="break-words text-xs text-slate-600">Cash refunds / voids</dt>
+                <dd className="mt-1 break-words text-sm font-bold tabular-nums text-rose-700">{formatDeduction(cashSummary.cashRefundsVoids)}</dd>
+              </div>
+              <div className="min-w-0 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+                <dt className="break-words text-xs text-slate-600">Net cash sales</dt>
+                <dd className="mt-1 break-words text-sm font-bold tabular-nums text-emerald-800">{formatAmount(cashSummary.netCashSales)}</dd>
+              </div>
+            </dl>
+          ) : null}
         </section>
       ) : null}
 
@@ -416,16 +446,17 @@ export const ZReadingReconciliationCard = ({
           <h4 id="daily-sales-additional-activity-heading" className="text-sm font-bold text-slate-950">Additional Activity</h4>
           <dl className="mt-2 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="min-w-0">
-              <dt className="text-xs text-slate-600">Z voids</dt>
-              <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{zVoids}</dd>
+              <dt className="text-xs text-slate-600">Void/refund activity</dt>
+              <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{voidRefundActivity}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-xs text-slate-600">Report refunds / voids</dt>
-              <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{formatAmount(data.report_refunds_voids)}</dd>
+              <dt className="text-xs text-slate-600">Refunds / voids deducted from sales</dt>
+              <dd className="mt-1 break-words text-sm font-bold tabular-nums text-rose-700">{formatDeduction(data.report_refunds_voids)}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-xs text-slate-600">Report adjustments</dt>
+              <dt className="text-xs text-slate-600">Audit adjustment records</dt>
               <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{formatAmount(data.report_adjustment_amount)}</dd>
+              <p className="mt-1 text-xs leading-4 text-slate-500">Audit reference; not an additional deduction.</p>
             </div>
           </dl>
         </section>
@@ -879,6 +910,14 @@ function PosReportsAnalyticsWorkspace({
   const profitLoss = reportData?.profit_loss || {};
   const cashierLifecycle = reportData?.cashier_lifecycle || {};
   const zReadingReconciliation = reportData?.z_reading_reconciliation || null;
+  const dailySalesCheckData = dailySalesCheckReport?.z_reading_reconciliation
+    ? {
+      ...dailySalesCheckReport.z_reading_reconciliation,
+      report_payment_breakdown: dailySalesCheckReport.daily_report?.payment_breakdown || [],
+      report_voided_refunded_transactions: dailySalesCheckReport.daily_report?.summary?.voided_refunded_transactions,
+      report_adjustment_rows: dailySalesCheckReport.daily_report?.adjustment_rows || []
+    }
+    : null;
 
   useEffect(() => {
     if (dailySalesCheckDateCustomized) return;
@@ -1206,7 +1245,7 @@ function PosReportsAnalyticsWorkspace({
   };
 
   const handleExportDailySalesCheck = () => {
-    const data = dailySalesCheckReport?.z_reading_reconciliation;
+    const data = dailySalesCheckData;
     const formatOptions = { businessDate: dailySalesCheckDate, currencySymbol, formatMoney: money, formatDateTime: printDateTime };
     const csv = buildDailySalesCheckCsv(data, formatOptions);
     if (!csv) return;
@@ -1219,7 +1258,7 @@ function PosReportsAnalyticsWorkspace({
   };
 
   const handlePrintDailySalesCheck = () => {
-    const data = dailySalesCheckReport?.z_reading_reconciliation;
+    const data = dailySalesCheckData;
     const formatOptions = { businessDate: dailySalesCheckDate, currencySymbol, formatMoney: money, formatDateTime: printDateTime };
     const html = buildDailySalesCheckPrintHtml(data, formatOptions);
     if (typeof window === 'undefined' || !html) return;
@@ -1954,9 +1993,9 @@ function PosReportsAnalyticsWorkspace({
                       </Button>
                     ) : null}
                   </div>
-                ) : dailySalesCheckReport?.z_reading_reconciliation ? (
+                ) : dailySalesCheckData ? (
                   <ZReadingReconciliationCard
-                    data={dailySalesCheckReport.z_reading_reconciliation}
+                    data={dailySalesCheckData}
                     currencySymbol={currencySymbol}
                     title="Z-reading reconciliation"
                     onPrint={handlePrintDailySalesCheck}

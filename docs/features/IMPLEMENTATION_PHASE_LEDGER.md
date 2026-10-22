@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-21
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -30384,3 +30384,529 @@ Not complete. Record after the scoped implementation merges and named validation
 ### Next phase number
 
 Phase 523. No explicit dependency.
+
+## Phase 523 - Platform Admin storefront visibility and merchant edit authority (#2633)
+
+### Initiative and release
+
+Public Storefront publication controls, current release.
+
+### Objective and scope
+
+Enforce tenant `store_is_visible` on new public ecommerce activity, including known-token
+requests, while preserving explicit existing-order operations. Give Platform Admin an
+independent tenant policy for merchant visibility editing; enforce it on Settings and
+onboarding writes and explain it in merchant UI. No new effective publication state
+or tenant schema migration.
+
+### Status
+
+`in_progress` — implementation and validation underway; merge and deployment verification
+remain outstanding.
+
+### Dependencies
+
+- None. Phase 522 is still in progress but has no explicit dependency relationship to this work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md),
+[ADR 0017](../architecture/adr/0017-customer-access-modes-and-inventory-display.md),
+[API specification](../api/specification.md), [schema](../database/schema.md), and
+[Back Office settings ownership](backoffice.md).
+
+### Implementation targets
+
+API public visibility middleware, Platform Admin capability read/write model, tenant
+Settings and onboarding write guards; Admin, OPIS/web-core, and existing IMS merchant
+controls; focused tests and governed docs.
+
+### Acceptance and validation evidence
+
+- [ ] Hidden tenants receive no-store `404 STORE_NOT_VISIBLE` on new public commerce
+  routes, including known-token requests; explicit existing-order routes still work.
+- [ ] Admin visibility Off/On is independent of merchant edit authority and is audited;
+  a policy-only patch does not refresh discovery.
+- [ ] Merchant bulk, single-key, and onboarding writes cannot change visibility when
+  locked; unchanged bulk values remain allowed and policy-key writes are rejected.
+- [ ] Merchant controls show the stored state and explain a locked policy; discovery
+  and direct-alias behavior remains hidden when Off.
+- [ ] Focused API and frontend tests, affected app builds, API JavaScript syntax,
+  architecture and docs checks, compliance declaration, and app-version check.
+
+### Completion date
+
+Not complete. Record after scoped implementation merges and named validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — verify Admin Off/On persistence and known-token/slug responses
+  using a non-production tenant on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] operational — measure shared-cache and cross-process visibility lag after Off;
+  owner: Verifier; blocks Phase 523 operational closure.
+- [ ] operational — re-verify the separate Admin toggle persistence defect under
+  #1923; owner: Verifier; tracked by that issue.
+
+### Next phase number
+
+Phase 526. No explicit dependency.
+
+## Phase 524 - Warehouse and Delivery staff-role foundation (#1182)
+
+### Initiative and release
+
+Scoped fulfillment staff access, current release.
+
+### Objective and scope
+
+Establish tenant staff-role administration in OPIS, with Warehouse and Delivery
+copy-on-create suggestions, distinct registered capability slugs, admin/owner
+write authority, atomic clearing and audit of stored user permissions on role
+assignment, assigned-user cache invalidation on role edits, and tenant schema
+repair coverage. Warehouse loading, Delivery job mutations, POS workspaces, and
+balance collection are subsequent slices of #1182.
+
+### Status
+
+`in_progress` — implementation and validation are underway; merge remains outstanding.
+
+### Dependencies
+
+- The tenant `staff_roles` and `users.staff_role_id` schema and API from #1459
+  are present in the current `develop` baseline.
+- No phase-numbering dependency on Phase 522 or other unfinished phases.
+- The next planned #1182 slice (Phase 525, Warehouse route enforcement) depends
+  on this foundation being merged first.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md),
+[ADR 0083](../architecture/adr/0083-courier-cash-custody-and-remittance.md),
+[ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md),
+[API specification](../api/specification.md), and
+[tenant schema](../database/schema.md).
+
+### Implementation targets
+
+Staff-role use cases, route authorization, capability catalog, auth cache,
+tenant schema repair and runtime audit; OPIS Team & Access role creation,
+editing, deactivation, and assignment with branch grants; focused tests and
+documentation.
+
+### Acceptance and validation evidence
+
+- [ ] Admin and owner can manage custom staff roles and assign them to Staff
+  accounts; manager and other non-admin users cannot call any role write route.
+- [ ] Role assignment and clearing atomically empty stored user permissions,
+  audit the previous array, and invalidate the user's auth cache after commit.
+- [ ] Role edit and deactivation invalidate all assigned-user auth cache entries;
+  location-grant edits retain their existing invalidation.
+- [ ] Warehouse and Delivery suggestions copy their capabilities into ordinary
+  editable tenant roles, and OPIS exposes branch grants.
+- [ ] API syntax, OPIS build, capability parity tests, architecture, docs,
+  compliance, tenant-schema registry, and version-floor checks pass.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — verify tenant schema repair and runtime audit report
+  `staff_roles` and `users.staff_role_id` ready before API rollout; owner:
+  Promoter; blocks rollout of scoped staff roles.
+- [ ] operational — create and assign one Warehouse and one Delivery tenant
+  role with branch grants in staging; confirm effective capabilities and no
+  broad POS grants; owner: Verifier; blocks #1182 acceptance.
+
+### Next phase number
+
+Phase 525. Explicit dependency: Phase 524 must merge before Warehouse route
+enforcement begins.
+
+## Phase 526 - Platform Admin downpayment allowance (#2639)
+
+### Initiative and release
+
+Premium payment controls, current release.
+
+### Objective and scope
+
+Landlord platform-owned allowance, grandfathering, audited Admin control, fail-closed
+new-checkout and merchant-write enforcement, and explanatory POS Payments UI. Preserve
+Cash/COD ownership and existing partially paid order lifecycle.
+
+### Status
+
+`in_progress` — implementation and local validation; merge is outstanding.
+
+### Dependencies
+
+No phase dependency. Apply landlord migration before API deployment.
+
+### Contract and authority
+
+[ADR 0070](../architecture/adr/0070-downpayment-authorization-across-workflow-modes.md),
+[Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[API](../api/specification.md), [schema](../database/schema.md).
+Implementation: `apps/dgfy-api/src/modules/downpayment`, `modules/tenants`,
+`modules/store`, Admin `TenantManager.jsx`, shared POS `DownpaymentSettingsPanel.jsx`.
+
+### Acceptance and validation evidence
+
+- Focused API tests cover merchant denial, effective checkout, persistence/audit,
+  catalog, payment sessions and existing-order settlement/completion/refund regressions.
+- Frontend tests cover Admin reason-required writes and unavailable POS controls with
+  independent dine-in saving. Build all five affected frontend apps.
+- Passed: 209 API tests (20 suites), 12 Admin tests, 20 POS/message tests; all five
+  frontend builds; JavaScript syntax, architecture, docs/ADR, develop unchanged-version
+  and compliance validation gates. Mocked desktop/mobile Admin and POS browser proof
+  passed with no page/console errors. Pat approved the migration and declaration on 2026-10-21 before commit.
+
+### Completion date
+
+Not complete; record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — apply landlord migration before API; verify grandfathering on existing
+  non-full rows and defaults on new tenants; owner: Promoter; blocks API deployment.
+- [ ] operational — verify Admin allow/revoke/reload/audit and merchant/storefront gating
+  on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] operational — verify partially paid delivery, pickup and dine-in settlement and
+  cancellation after revocation; owner: Verifier; blocks issue acceptance.
+- [ ] operational — retain #1923's separate STAGING persistence re-verification.
+
+### Next phase number
+
+Phase 527. No explicit dependency.
+
+## Phase 527 - Delivery flow bug fixes and audit logging (#2666)
+
+### Initiative and release
+
+Delivery Wave 1 / current release.
+
+### Objective and scope
+
+Correct cash-collection key prefixes and delivery-run picker freshness/location/date labels;
+record run and online-order status transitions; route DGFY-account cancellation through the
+Storefront inventory, voucher, payment, and delivery-job lifecycle; expose order status history
+in OPIS. No migration or staff workflow change.
+
+### Status
+
+`completed` — PR #2672 merged on 2026-10-22; scoped implementation and validation passed.
+
+### Dependencies
+
+No explicit phase dependency. This wave can ship independently of later Delivery waves.
+
+### Contract and authority
+
+[ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md),
+[Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[POS manual delivery workflow](POS_MANUAL_DELIVERY_WORKFLOW.md).
+Implementation: `apps/dgfy-api/src/modules/{pos,store,dgfy,businessAdmin}`,
+`packages/web-core/src/features/pos`, and `apps/dgfy-opis/src/features/businessAdmin`.
+
+### Acceptance and validation evidence
+
+- Focused API Jest: 17 suites / 306 tests passed, covering run and order audits, customer
+  cancellation effects, and legacy in-flight orders and draft-run membership.
+- IMS-hosted web-core Vitest: 3 files / 32 tests passed; OPIS Vitest: 35 files / 152 tests passed.
+- POS, IMS, Storefront, and OPIS production builds passed. API syntax, architecture, docs,
+  full-diff compliance, and app-version checks passed.
+- Merged to `develop` in [PR #2672](https://github.com/Sieitzz/dgfy-platform/pull/2672) on
+  2026-10-22; all reported GitHub check-runs completed successfully.
+
+### Completion date
+
+2026-10-22 — PR #2672 merged; implementation validation passed.
+
+### Post-merge verification
+
+- [ ] deployment — reproduce create/personnel/save → target-picker refresh and status history
+  on STAGING; owner: Verifier; blocks #2649/#2651 acceptance.
+- [ ] operational — Pat runs the read-only per-tenant production impact count for account-cancelled
+  paid or issued-stock orders during promotion, after the PR to main is merged and before the
+  production build/deployment; post the count to #2652; blocks #2652 acceptance.
+- [ ] operational — verify confirmed DGFY-account delivery cancellation restores stock, cancels
+  its job, and records refund/forfeit plus audits on STAGING; owner: Verifier; blocks #2652 acceptance.
+
+## Phase 528 - Direct delivery lifecycle (#2667)
+
+### Initiative and release
+
+Direct delivery, current release.
+
+### Objective and scope
+
+Add Waiting for rider, early courier assignment, one-step Delivered settlement
+and completion, Failed cancellation/refund, and customer-safe Storefront tracking
+for direct manual deliveries. Preserve active Delivery Run and native legacy paths.
+
+### Status
+
+`in_progress` — implementation and local validation; merge is outstanding.
+
+### Dependencies
+
+No explicit phase dependency. Phase 527's generic order-status audit is present in the
+`develop` base through merged PR #2672. Unit coverage verifies that `ready_for_rider`
+writes the order-status audit. Apply the additive tenant migration before API deployment.
+Mobile presentation of `ready_for_rider` follows dgfy-mobile#439.
+
+### Contract and authority
+
+[ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md),
+[ADR 0063](../architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md),
+[ADR 0083](../architecture/adr/0083-courier-cash-custody-and-remittance.md),
+[Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[API](../api/specification.md),
+[manual delivery workflow](POS_MANUAL_DELIVERY_WORKFLOW.md).
+Implementation: POS and Storefront apps, `packages/web-core`, POS and Store API
+modules, tenant migration and schema repair registry.
+
+### Acceptance and validation evidence
+
+- Passed: 163 focused API tests across direct completion/failure, assignment,
+  job status, order rejection and readiness, tracking serialization, tenant
+  schema repair, and migration contracts; 11 Storefront tracking tests; 49 POS
+  action, assignment/dialog, queue-view, viewport, and run-gate tests.
+- Passed: syntax checks for 21 changed API and migration JavaScript files; POS,
+  Storefront, IMS, and OPIS production builds; `node scripts/check-app-version-bump.js`
+  with `GITHUB_BASE_REF=develop` and `GITHUB_HEAD_REF=feature/2667-direct-delivery`,
+  `npm run check:compliance`, `npm run check:architecture`, and
+  `npm run lint:docs` (including strict ADR lint); `git diff --check`.
+- Integration database migration and STAGING walkthroughs remain outstanding.
+
+### Completion date
+
+Not complete; record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — apply tenant migration before API deployment; verify all
+  active tenants and restored-tenant schema repair; owner: Promoter; blocks API.
+- [ ] operational — run F&B COD direct Confirm → Delivered with cash and
+  customer tracking on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] operational — run Retail direct downpayment balance settlement and
+  Failed/refund on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] regression — verify active Delivery Run dispatch, assigned staff and
+  legacy out-for-delivery completion remain unchanged; owner: Verifier.
+- [ ] integration — verify `ready_for_rider` appears in the order-status history on
+  STAGING; owner: Verifier. Verify mobile handling under dgfy-mobile#439 when available.
+
+### Next phase number
+
+Phase 529. No explicit dependency.
+
+## Phase 529 - Automatic Catalog-Only Business Registration
+
+### Initiative and release
+
+New Flow for Business Registration, current release.
+
+### Objective and scope
+
+Change public business registration from the current manual-review default to automatic,
+auditable background provisioning with a restricted post-registration experience. A newly
+registered owner receives a POS onboarding link by email, can complete POS onboarding and manage
+catalog items/categories, cannot sell or use operational POS pages, and has no public Storefront
+visibility until Platform Admin enables the corresponding tenant capabilities. Preserve the
+no-company-token/no-registration-session boundary, retryable provisioning, and existing audited
+Tenant Manager capability controls.
+
+### Status
+
+`in_progress` — implementation, focused validation, and repository build/architecture/documentation
+gates are complete in the `codex/updates-pos` worktree; the landlord integration environment and PR
+review remain outstanding.
+
+### Dependencies
+
+ADR 0022's 2026-10-16 amendment and ADR 0013's 2026-10-16 onboarding amendment are the governing
+cross-boundary contracts. Existing `tenant_pos_enabled` and `store_is_visible` capability APIs,
+Tenant Manager controls, authenticated DGFY company selection, and tenant provisioning model-clone
+coverage are required dependencies. No new architecture allowlist exception is introduced.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0013](../architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md),
+[ADR 0022](../architecture/adr/0022-global-dgfy-account-business-registration.md),
+[Tenant Management](TENANT_MANAGEMENT.md), and [API specification](../api/specification.md).
+Classification: `cross-boundary`; this phase changes landlord registration lifecycle, tenant
+capability defaults, email onboarding, POS access gating, OPIS navigation, and active operational
+documentation.
+
+### Implementation targets
+
+[Registration use case](../../apps/dgfy-api/src/modules/tenants/usecases/registerCompanyRequestUseCase.js),
+[registration repository](../../apps/dgfy-api/src/modules/tenants/repositories/companyRegistrationRepository.js),
+[Storefront draft registration use cases](../../apps/dgfy-api/src/modules/tenants/usecases/companyRegistrationDraftUseCases.js),
+[draft materialization/approval use case](../../apps/dgfy-api/src/modules/tenants/usecases/companyRegistrationDraftMaterializationUseCase.js),
+[provisioning service](../../apps/dgfy-api/src/services/tenantProvisioningService.js),
+[onboarding email service](../../apps/dgfy-api/src/services/emailService.js),
+[Storefront registration wizard](../../apps/dgfy-storefront/src/business/pages/StorefrontBusinessGrowPage.jsx),
+[registration status page](../../apps/dgfy-storefront/src/business/pages/BusinessRegistrationSubmissionPage.jsx),
+[POS terminal entry](../../packages/web-core/src/features/pos/TerminalPage.jsx),
+[POS sidebar](../../packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx),
+[OPIS business admin](../../apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx),
+and the existing [Tenant Manager capability controls](../../apps/dgfy-admin/Pages/TenantManager.jsx).
+
+### Acceptance and validation evidence
+
+- [x] `auto_standard` is the default runtime mode and the registration response is `202` with
+      `setting_up_company`, approved/in-progress lifecycle state, and no company token/session.
+- [x] Authenticated Storefront draft submissions use the same automatic approval, background
+      materialization, catalog-only capability defaults, and POS-link email pipeline.
+- [x] Background provisioning seeds `tenant_pos_enabled=false` and `store_is_visible=false`,
+      creates the founder membership, and sends a POS onboarding link after setup.
+- [x] Restricted owners enter onboarding inside POS and can manage items/categories from the
+      beginning of that flow, while checkout, selling, scanning, and other operational POS pages
+      remain disabled; Storefront remains hidden.
+- [x] Tenant Manager capability controls remain the audited enablement path for POS and Storefront.
+- [x] Focused backend, OPIS, POS sidebar, and POS setup-snapshot tests pass.
+- [x] POS, OPIS, Storefront, and IMS builds pass; architecture, docs/ADR, compliance, agent-surface,
+      backend-test-inventory, and whitespace gates pass.
+- [ ] Local landlord integration test completes after the checkout database schema is reconciled;
+      the current local failure is `Unknown column 'is_demo' in 'field list'`, an environment/schema
+      drift condition rather than a confirmed feature failure.
+- [ ] PR review is complete; this phase does not merge or deploy.
+
+### Evidence
+
+Focused validation passed for the automatic registration use case, Storefront draft submission and
+materialization use cases, Storefront approval handoff/status UI, onboarding email template,
+business-admin capability contract, production ecosystem defaults, OPIS catalog-only navigation,
+POS catalog-only/onboarding sidebar behavior, POS view-mode guards, and POS tenant capability parsing.
+The existing `PosSettingsWorkspace.behavior.test.jsx` suite retains one pre-existing profile-draft
+failure outside this phase's implementation. The landlord integration suite is currently blocked by
+the local schema drift noted above.
+
+### Rollback
+
+Set `TENANT_REGISTRATION_APPROVAL_MODE=manual` through the approved operational rollback path and
+redeploy the prior artifact if automatic provisioning must be paused. Reverting the phase removes
+the automatic claim/background provisioning, POS onboarding email link, restricted defaults, and
+catalog-only UI gates; existing tenant capability audit data remains intact.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and the named build, architecture,
+documentation, and environment validation evidence is terminal.
+
+### Post-merge verification
+
+- [ ] deployment — verify the deployed API reports `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`
+      and the registration response remains `202 setting_up_company`.
+- [ ] tenant lifecycle — perform one synthetic registration and verify background provisioning,
+      founder membership, `tenant_pos_enabled=false`, `store_is_visible=false`, and the onboarding
+      email delivery record without using real customer PII.
+- [ ] POS/OPIS — verify the owner can add an item and category, cannot open selling/operational POS
+      pages, and cannot see the public Storefront before Admin enablement.
+- [ ] Platform Admin — enable POS and Storefront independently with an audit reason, then verify
+      only the corresponding surfaces become available.
+- [ ] operations — verify failed email/provisioning attempts remain retryable and no company token
+      or tenant session is exposed by registration.
+
+### Next phase number
+
+Phase 530. No explicit dependency.
+
+## Phase 530 - Automatic PayMongo refund recovery after POS rejection
+
+### Initiative and release
+
+Commerce payment lifecycle reliability; local implementation for the next develop-bound release.
+
+### Objective and scope
+
+Ensure a POS or Storefront rejection of a paid online order never waits for a cashier, manager, or
+administrator approval. Definitive PayMongo refund failures are retried automatically against the
+same landlord refund row with bounded backoff, while ambiguous provider responses remain pending
+for webhook/reconciliation evidence. Permanent or exhausted failures remain settlement-ineligible
+and visible for reconciliation. The scope includes landlord refund persistence, retry worker
+lifecycle, POS/Storefront messaging, migration, tests, and the governing payment documentation.
+
+### Status
+
+`in_progress` — implementation and focused validation are in progress in `codex/updates-pos`.
+
+### Dependencies
+
+ADR 0052 clause 14, the commerce payment refund repository/model, the PayMongo refund service, the
+existing signed refund webhook handler, and the landlord migration runner. No tenant schema change
+or role/approval dependency is introduced.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[Commerce payment flow](commerce-payment-fulfillment-settlement.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+Classification: `cross-boundary`; the provider-refund recovery contract spans POS/Storefront,
+landlord payment state, webhook reconciliation, and settlement eligibility.
+
+### Implementation targets
+
+[Commerce refund use cases](../../apps/dgfy-api/src/modules/commercePayments/usecases/commercePaymentAdminUseCases.js),
+[order lifecycle use case](../../apps/dgfy-api/src/modules/commercePayments/usecases/commerceOrderLifecycleUseCase.js),
+[refund repository](../../apps/dgfy-api/src/modules/commercePayments/repositories/commercePaymentRepository.js),
+[refund model](../../apps/dgfy-api/src/models/Landlord/CommercePaymentRefund.js),
+[refund retry worker](../../apps/dgfy-api/src/workers/commercePaymentRefundRetryWorker.js),
+[POS lifecycle messaging](../../apps/dgfy-api/src/modules/pos/usecases/posUseCases.js),
+[Storefront lifecycle messaging](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+and [POS terminal messaging](../../packages/web-core/src/features/pos/pages/TerminalPage.jsx).
+
+### Acceptance and validation evidence
+
+- [ ] A definitive provider rejection schedules the same refund row with retry metadata and keeps
+      the payment session/order out of settlement.
+- [ ] The worker claims due rows once, retries them with a lease, and records success or terminal
+      exhaustion without creating duplicate local refund rows.
+- [ ] Ambiguous provider failures remain pending and are not blindly retried.
+- [ ] A succeeded refund remains idempotent and still records the existing revenue reversal path.
+- [ ] POS and Storefront messages no longer direct the operator to obtain admin approval.
+- [ ] Targeted backend tests, lint, migration validation, architecture checks, and diff whitespace
+      checks pass.
+
+### Rollback
+
+Set `COMMERCE_PAYMENT_REFUND_RETRY_ENABLED=false` to stop new worker claims while preserving pending
+refund rows for webhook/reconciliation handling. Revert the application and migration only through
+the normal release rollback process; never delete refund rows or alter settled financial entries.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation and named validation evidence are terminal.
+
+### Post-merge verification
+
+- [ ] migration — verify landlord refund retry columns/index exist in the deployed database.
+- [ ] rejection — execute one synthetic paid-order rejection and verify one refund row, automatic
+      retry metadata, `refund_pending`, and no approval task is created.
+- [ ] provider success — verify the refund webhook promotes the row to `succeeded` and settlement
+      remains corrected through immutable ledger entries.
+- [ ] failure recovery — verify a definitive failure is retried and an ambiguous response is held
+      for reconciliation without a duplicate provider request.
+- [ ] operations — confirm worker logs and audit rows identify the retry actor and refund reference.
+
+### Next phase number
+
+Phase 531. No explicit dependency.

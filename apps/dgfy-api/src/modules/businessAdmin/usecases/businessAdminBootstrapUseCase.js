@@ -23,9 +23,15 @@ const defaultWorkflowCapabilityResolver = async () => ({
     }
 });
 
+const defaultTenantCapabilityResolver = async () => ({
+    pos_enabled: true,
+    storefront_visible: false
+});
+
 export const buildGetBusinessAdminBootstrapUseCase = ({
     businessAdminOverviewRepository,
-    workflowCapabilityResolver = defaultWorkflowCapabilityResolver
+    workflowCapabilityResolver = defaultWorkflowCapabilityResolver,
+    tenantCapabilityResolver = defaultTenantCapabilityResolver
 }) => async ({
     user = {},
     tenant = null
@@ -45,6 +51,7 @@ export const buildGetBusinessAdminBootstrapUseCase = ({
         allowedLocationIds: access.scope === 'assigned' ? assignedLocationIds : null
     });
     const workflow = await workflowCapabilityResolver();
+    const tenantCapabilities = await tenantCapabilityResolver({ tenant });
 
     const capabilities = buildBusinessAdminCapabilities(user);
 
@@ -69,7 +76,11 @@ export const buildGetBusinessAdminBootstrapUseCase = ({
             scope: access.scope,
             location_ids: assignedLocationIds,
             capabilities,
-            settings_sections: capabilities.settings_sections
+            settings_sections: capabilities.settings_sections,
+            tenant_capabilities: {
+                pos_enabled: tenantCapabilities?.pos_enabled !== false,
+                storefront_visible: tenantCapabilities?.storefront_visible === true
+            }
         },
         workflow,
         reporting: {

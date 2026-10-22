@@ -1,10 +1,10 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-08
-last_reviewed: 2026-06-27
-review_by: 2027-01-08
+last_reviewed: 2026-10-16
+review_by: 2027-04-16
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
 ---
@@ -39,7 +39,7 @@ Introduce a landlord-scoped DGFY account identity.
 18. Registration copy must preserve the marketplace/platform framing: DGFY is an e-marketplace/platform service provider; the seller owns the product, sets the price, fulfills the order, and remains seller of record; payment is processed through a licensed payment partner; DGFY deducts disclosed fees and remits the seller's net settlement. DGFY must not present the flow as wallet balance, points conversion, cash-out credit, or DGFY reselling merchant goods.
 19. Legal acknowledgement persistence is fail-closed. DGFY account creation, invitation membership mirroring, and account acknowledgement persistence run in one landlord transaction. Company registration checks legal-persistence availability before tenant creation; after confirming there is a signed-in active DGFY account, the landlord tenant row, pending-founder membership when applicable, and acknowledgement persistence run in one landlord transaction before tenant provisioning.
 20. Storefront business-registration handoff must start from a signed-in DGFY account when launched from `dgfy.ph`, create a short-lived one-time `dgfy_handoff` token, then land the authenticated user on the focused business-registration area of `/register-company`. The company form collects only company name and Business Industry as business data; founder contact and credentials remain server-derived from the DGFY account.
-21. Public company registration is mandatory manual review. Submission creates a pending tenant, a pending founder membership, and a landlord-scoped application/attempt record; it must not provision a tenant database, issue a tenant session, or return a company-token capability. The client immediately navigates to the owner-authorized registration status page and must not render a POS action while approval is pending. A tenant-session bridge may run only after an active tenant user and accepted founder membership exist; it is not a registration-time activation bypass.
+21. Public company registration follows the current approval mode. In the default `auto_standard` mode, submission creates the landlord application/attempt record, then the system claims it as approved/in-progress and starts background provisioning; in `manual` mode, the application remains pending until Platform Admin approval. Both modes must not issue a registration-time tenant session or return a company-token capability. The owner uses the status page and, after successful automatic provisioning, the emailed POS onboarding link; authenticated company selection remains the access authority.
 22. Platform admin may manage global DGFY accounts through `/api/v1/dgfy/admin/accounts`. V1 scope is all landlord-scoped DGFY accounts, with name/phone profile edits, suspend/reactivate lifecycle actions, and credential-releasing delete/deidentify.
 23. Platform-admin DGFY profile edits may update first name, optional middle name, last name, and phone. Phone updates clear `phone_verified_at`; phone verification remains deferred. Email changes remain deferred and must not be exposed through platform-admin edit until a dedicated verified email-change or approved admin override design exists.
 24. Platform-admin suspend/reactivate uses `dgfy_accounts.is_active` as the lifecycle source of truth. Suspended accounts cannot log in and existing DGFY sessions fail on the next authenticated DGFY request because account auth reloads the landlord account and checks `is_active`.
@@ -52,11 +52,29 @@ Introduce a landlord-scoped DGFY account identity.
 31. Combined DGFY-plus-company reconciliation may reuse an exact admin-provisioned account and linked tenant only when tenant provisioning is still pending, or when the tenant is active but the linked account still lacks an accepted membership. The active case must skip database reprovisioning and reconcile the tenant-local master-admin profile and accepted membership. Responses after post-commit failure must identify the failed phase and state that the retained partial state is retryable; they must not return generic success.
 32. The authenticated assisted-provisioning transports allow up to 180 seconds for synchronous first-time tenant migration while the global server timeout remains 30 seconds. This route-scoped transport allowance prevents a completed provisioning operation from appearing as a network failure to the Platform Admin UI; it does not relax authentication, validation, or database activation rules.
 
+### Amendment (2026-10-16): Automatic Catalog-Only Registration
+
+This amendment supersedes Decision 21's default manual-review boundary for current public
+registration while preserving the no-token and no-registration-session safeguards:
+
+1. `auto_standard` is the default registration mode. A signed-in DGFY legal registration is
+   atomically claimed as approved and `in_progress`, then provisioned in a background workflow.
+2. The registration endpoint returns `202 Accepted` with `setting_up_company`; it does not return
+   a company token or tenant session. Provisioning failure remains recorded and retryable.
+3. Provisioning seeds `tenant_pos_enabled=false` and `store_is_visible=false`. The founder may
+   complete POS onboarding and manage catalog items and categories, but cannot sell, open
+   operational POS pages, or publish the storefront.
+4. Successful provisioning sends an email containing the POS onboarding link. The link carries
+   only the tenant id; authenticated company selection remains the authority for access.
+5. Tenant Manager may enable `pos_enabled` and `storefront_visible` with the existing audited
+   capability controls. Explicit manual review remains available for rollback and admin-driven
+   exception handling.
+
 ## Consequences
 
 1. Company registration is now a cross-boundary flow covering DGFY identity, tenant provisioning, tenant staff bootstrap, and storefront entry points.
 2. ADR 0006 remains valid: tenant-local store customer records must not be treated as the global account. They become linkable customer records under the global DGFY identity.
-3. ADR 0007 is amended for public registration: tenant mode is no longer selected at registration; new tenants start non-compliant and pending manual approval.
+3. ADR 0007 is amended for public registration: tenant mode is no longer selected at registration; new tenants start non-compliant and in restricted catalog-only access until Platform Admin capability approval.
 4. ADR 0013 is amended: first-login handoff can originate from DGFY account membership instead of direct founder password collection.
 5. ADR 0015 remains the invitation baseline, but DGFY account invitations can be accepted from account notifications without exposing company tokens.
 6. Account-management UI on the registration surface must not nest profile/password forms inside the company registration form; each mutation has its own submit boundary to prevent accidental tenant creation attempts.

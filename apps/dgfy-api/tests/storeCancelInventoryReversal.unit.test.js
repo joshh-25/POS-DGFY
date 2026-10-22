@@ -35,6 +35,7 @@ const build = ({ order = baseOrder(), workflowMode = 'retail', reverseImpl = nul
     const transaction = makeTransaction();
     const storeRepository = {
         beginTransaction: jest.fn().mockResolvedValue(transaction),
+        createAuditLog: jest.fn().mockResolvedValue({}),
         getOrderByTrackingPin: jest.fn()
             .mockResolvedValueOnce(order)
             .mockResolvedValueOnce({ ...order, fulfillment_status: 'cancelled' }),

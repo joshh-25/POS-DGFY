@@ -414,6 +414,14 @@ describe('buildDispatchDeliveryRunUseCase -- fan-out taxonomy', () => {
             506: 'DELIVERY_JOB_ASSIGNMENT_LOCKED',
             507: 'ORDER_STATUS_TRANSITION_INVALID'
         });
+        const statusAudits = harness.state.audit.filter((row) => row.changes?.event === 'online_order_status_changed');
+        expect(statusAudits).toHaveLength(1);
+        expect(statusAudits[0]).toMatchObject({
+            entity_type: 'pos_transaction',
+            entity_id: 501,
+            user_id: 12,
+            changes: { from: 'packed', to: 'out_for_delivery' }
+        });
 
         // Only the one genuine success was written.
         const dispatchedOrder = await harness.posRepository.getOrderByIdForLifecycle(501);

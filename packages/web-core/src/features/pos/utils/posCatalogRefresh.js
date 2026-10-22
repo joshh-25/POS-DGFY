@@ -3,6 +3,7 @@ import { computeUnreachableBackoffMs, isBackendUnreachable } from '@/services/ba
 import { resolveApiBaseUrl } from '@/src/utils/runtimeConfig.js';
 
 const POS_CATALOG_UPDATED_EVENT = 'pos:catalog-updated';
+const POS_SETTINGS_UPDATED_EVENT = 'pos:settings-updated';
 const RECONNECT_DELAY_MIN_MS = 1000;
 const RECONNECT_DELAY_MAX_MS = 15000;
 const UNREACHABLE_RECONNECT_DELAY_MAX_MS = 60000;
@@ -17,6 +18,17 @@ export const subscribeToPosCatalogUpdates = (listener) => {
     if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
     window.addEventListener(POS_CATALOG_UPDATED_EVENT, listener);
     return () => window.removeEventListener(POS_CATALOG_UPDATED_EVENT, listener);
+};
+
+export const notifyPosSettingsUpdated = () => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new Event(POS_SETTINGS_UPDATED_EVENT));
+};
+
+export const subscribeToPosSettingsUpdates = (listener) => {
+    if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
+    window.addEventListener(POS_SETTINGS_UPDATED_EVENT, listener);
+    return () => window.removeEventListener(POS_SETTINGS_UPDATED_EVENT, listener);
 };
 
 export const parsePosCatalogEvent = (record = '') => {
@@ -52,8 +64,13 @@ const getCatalogEventsHeaders = () => {
 
 // EventSource cannot send the bearer/company headers required by the POS API,
 // so the stream uses fetch and parses standard SSE frames. Stream messages are
-// invalidations only; the normal catalog request remains the data authority.
-export const subscribeToRemotePosCatalogUpdates = ({ onConnected } = {}) => {
+// invalidations only; the normal catalog/settings requests remain the data
+// authority.
+export const subscribeToRemotePosCatalogUpdates = ({
+    onConnected,
+    onCatalogChanged,
+    onSettingsChanged
+} = {}) => {
     if (typeof window === 'undefined' || typeof fetch !== 'function' || typeof AbortController === 'undefined') {
         return () => {};
     }
@@ -88,7 +105,14 @@ export const subscribeToRemotePosCatalogUpdates = ({ onConnected } = {}) => {
         }
         if (event === 'pos.catalog.changed') {
             consecutiveReconnectFailures = 0;
+            onCatalogChanged?.();
             notifyPosCatalogUpdated();
+            return;
+        }
+        if (event === 'pos.settings.changed') {
+            consecutiveReconnectFailures = 0;
+            onSettingsChanged?.();
+            notifyPosSettingsUpdated();
         }
     };
 

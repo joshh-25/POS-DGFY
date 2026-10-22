@@ -5,6 +5,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ItemDetailsModal from '../ItemDetailsModal.jsx';
 
+const permissionState = vi.hoisted(() => ({
+  canEdit: vi.fn(() => false)
+}));
+
 vi.mock('../FIFOBatchViewer', () => ({
   default: () => <div data-testid="fifo-batch-viewer">FIFO Batches</div>
 }));
@@ -21,12 +25,14 @@ vi.mock('../details/QualityControlSection', () => ({ default: () => null }));
 vi.mock('../details/RegulatoryComplianceSection', () => ({ default: () => null }));
 
 vi.mock('../../../src/hooks/usePermission', () => ({
-  usePermission: () => ({ canDelete: () => false })
+  usePermission: () => ({ canEdit: permissionState.canEdit, canDelete: () => false })
 }));
 
 afterEach(() => {
   cleanup();
   document.body.style.overflow = 'unset';
+  permissionState.canEdit.mockReset();
+  permissionState.canEdit.mockReturnValue(false);
 });
 
 const baseItem = {
@@ -54,7 +60,7 @@ const fifoItem = {
   opened_shelf_life_days: 7
 };
 
-const renderDetails = (item, { itemEditorMode = false } = {}) => {
+const renderDetails = (item, { itemEditorMode = false, onEdit = undefined } = {}) => {
   const onClose = vi.fn();
 
   render(
@@ -64,6 +70,7 @@ const renderDetails = (item, { itemEditorMode = false } = {}) => {
         open
         onClose={onClose}
         onRefresh={vi.fn()}
+        onEdit={onEdit}
         itemEditorMode={itemEditorMode}
         workflowMode="fnb"
       />
@@ -100,6 +107,17 @@ describe('ItemDetailsModal behavior', () => {
 
     expect(screen.getByRole('button', { name: 'View Movement History' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create Stock Movement' })).toBeTruthy();
+  });
+
+  it('exposes an Edit Item action for authorized Item Editor callers', () => {
+    const onEdit = vi.fn();
+    permissionState.canEdit.mockReturnValue(true);
+
+    renderDetails(baseItem, { itemEditorMode: true, onEdit });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Item' }));
+
+    expect(onEdit).toHaveBeenCalledWith(baseItem);
   });
 
   it('hides FIFO batch and expiry presentation in Item Editor mode', () => {

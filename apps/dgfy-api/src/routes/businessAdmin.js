@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate, requireTenantCapability } from '../middleware/auth.js';
 import * as businessAdminHandlers from '../modules/businessAdmin/controllers/businessAdminHandlers.js';
 import { validatePosTransactionIdParam, validateDecideBusinessAdminApproval } from '../validators/posValidator.js';
+import { validateBusinessAdminEndAttendanceShift, validateUpdateBusinessAdminCompanyName } from '../validators/businessAdminValidator.js';
 import { requireBusinessAdminDashboardEnabled } from '../modules/businessAdmin/middleware/businessAdminRolloutGate.js';
 
 const router = express.Router();
@@ -13,6 +14,10 @@ router.use(requireBusinessAdminDashboardEnabled);
 // depend on POS, including storefront QR management. Keep the POS capability gate on the
 // operational endpoints below instead of blocking the entire OPIS shell.
 router.get('/bootstrap', businessAdminHandlers.getBootstrap);
+
+// Canonical tenant identity is an OPIS/admin concern and must remain available even when
+// POS is disabled for the tenant. The use case still enforces admin-only mutation authority.
+router.patch('/company/name', validateUpdateBusinessAdminCompanyName, businessAdminHandlers.updateCompanyName);
 
 router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
 
@@ -40,6 +45,7 @@ router.get('/inventory/valuation', businessAdminHandlers.getInventoryValuation);
 router.get('/inventory/stock', businessAdminHandlers.listInventoryStock);
 router.get('/workforce', businessAdminHandlers.getWorkforce);
 router.get('/attendance', businessAdminHandlers.getAttendance);
+router.post('/attendance/shifts/:id/end', validatePosTransactionIdParam, validateBusinessAdminEndAttendanceShift, businessAdminHandlers.endAttendanceShift);
 router.get('/fiscal', businessAdminHandlers.getFiscal);
 router.get('/inventory/recipes', businessAdminHandlers.listRecipes);
 router.get('/customers', businessAdminHandlers.listCustomers);

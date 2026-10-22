@@ -515,7 +515,7 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-attendance-contract-copy { display: grid; gap: 2px; min-width: 0; }
 .business-admin-attendance-contract-copy strong { color: #205b78; font-size: 12px; }
 .business-admin-attendance-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
-.business-admin-attendance-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.business-admin-attendance-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .business-admin-attendance-metric { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 16px; }
 .business-admin-attendance-metric-icon {
   width: 38px;
@@ -534,6 +534,47 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-attendance-metric-detail { margin-top: 2px; color: #8da0af; font-size: 11px; line-height: 1.35; }
 .business-admin-attendance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; min-width: 0; }
 .business-admin-attendance-section-card { min-width: 0; overflow: hidden; }
+.business-admin-attendance-duty-table { width: 100%; min-width: 0; }
+.business-admin-attendance-duty-table .business-admin-table-wrap { scrollbar-color: #a9c0cc #f5f9fb; scrollbar-width: thin; }
+.business-admin-attendance-duty-table .business-admin-table-wrap::-webkit-scrollbar { height: 7px; }
+.business-admin-attendance-duty-table .business-admin-table-wrap::-webkit-scrollbar-track { background: #f5f9fb; }
+.business-admin-attendance-duty-table .business-admin-table-wrap::-webkit-scrollbar-thumb { border-radius: 99px; background: #a9c0cc; }
+.business-admin-attendance-duty-table .business-admin-table { min-width: 900px; table-layout: fixed; }
+.business-admin-attendance-duty-table .business-admin-table th,
+.business-admin-attendance-duty-table .business-admin-table td { padding: 12px 14px; vertical-align: middle; }
+.business-admin-attendance-duty-table .business-admin-table th:nth-child(1),
+.business-admin-attendance-duty-table .business-admin-table td:nth-child(1) { width: 20%; }
+.business-admin-attendance-duty-table .business-admin-table th:nth-child(2),
+.business-admin-attendance-duty-table .business-admin-table td:nth-child(2) { width: 20%; }
+.business-admin-attendance-duty-table .business-admin-table th:nth-child(3),
+.business-admin-attendance-duty-table .business-admin-table td:nth-child(3) { width: 9%; }
+.business-admin-attendance-duty-table .business-admin-table th:nth-child(4),
+.business-admin-attendance-duty-table .business-admin-table td:nth-child(4) { width: 16%; }
+.business-admin-attendance-duty-table .business-admin-table th:nth-child(5),
+.business-admin-attendance-duty-table .business-admin-table td:nth-child(5) { width: 13%; }
+.business-admin-attendance-duty-table .business-admin-table th:nth-child(6),
+.business-admin-attendance-duty-table .business-admin-table td:nth-child(6) { width: 9%; }
+.business-admin-attendance-duty-table .business-admin-table th:last-child,
+.business-admin-attendance-duty-table .business-admin-table td:last-child { width: 13%; text-align: right; }
+.business-admin-attendance-duty-mobile { display: none; }
+.business-admin-attendance-table-identity { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.business-admin-attendance-table-identity strong,
+.business-admin-attendance-table-stack strong { overflow: hidden; color: #173e58; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-attendance-table-stack { display: grid; gap: 3px; min-width: 0; }
+.business-admin-attendance-table-stack span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-attendance-table-action { min-height: 32px; padding: 7px 10px; border-radius: 8px; font-size: 11px; white-space: nowrap; }
+.business-admin-attendance-table-action.danger:hover { border-color: #d88d85; background: #fff5f3; color: #a83d35; }
+.business-admin-attendance-read-only { color: #94a3b8; font-size: 11px; font-weight: 800; }
+.business-admin-attendance-duty-card { min-width: 0; border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%); }
+.business-admin-attendance-duty-card-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-attendance-duty-card-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-attendance-duty-card-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-attendance-duty-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-attendance-duty-card-action { display: flex; justify-content: flex-end; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+@media (max-width: 1100px) {
+  .business-admin-attendance-duty-table > .business-admin-table-wrap { display: none; }
+  .business-admin-attendance-duty-mobile { display: grid; gap: 10px; padding: 12px; }
+}
 .business-admin-attendance-count {
   display: inline-flex;
   align-items: center;
@@ -561,15 +602,18 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-attendance-record-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .business-admin-attendance-record-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #eaf5ff; color: #1a4e8d; }
 .business-admin-attendance-record-icon.operator { background: #effcfb; color: #0d8d87; }
+.business-admin-attendance-record-icon.duty { background: #fff4d8; color: #a96800; }
 .business-admin-attendance-record-copy { display: grid; gap: 4px; min-width: 0; }
 .business-admin-attendance-record-copy strong { overflow: hidden; color: #173e58; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .business-admin-attendance-record-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .business-admin-attendance-record-heading > .business-admin-status { flex: 0 0 auto; }
 .business-admin-attendance-record-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
 .business-admin-attendance-record-facts.operator { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.business-admin-attendance-record-facts.duty { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .business-admin-attendance-record-facts div { display: grid; min-width: 0; gap: 4px; }
 .business-admin-attendance-record-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .business-admin-attendance-record-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-attendance-end-button { margin-top: 14px; }
 .business-admin-shifts-workspace { display: grid; gap: 16px; }
 .business-admin-shifts-contract {
   display: flex;
@@ -911,6 +955,8 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-expense-entry-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .business-admin-expense-entry-heading h2 { margin: 4px 0 0; color: #173e58; font-size: 17px; font-weight: 900; }
 .business-admin-expense-form { margin-top: 16px; }
+.business-admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.business-admin-form-field-full { grid-column: 1 / -1; }
 .business-admin-expense-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .business-admin-expense-form-wide { grid-column: span 2; }
 .business-admin-field > span { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
@@ -938,7 +984,45 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-expense-card-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .business-admin-expense-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
 .business-admin-expense-modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(13, 53, 73, .42); }
+.business-admin-attendance-modal-backdrop { z-index: 1000; overscroll-behavior: contain; }
 .business-admin-expense-modal { width: min(520px, 100%); border: 1px solid #d5e5eb; border-radius: 16px; padding: 20px; background: #fff; box-shadow: 0 18px 55px rgba(11, 44, 63, .24); }
+.business-admin-attendance-modal { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; padding: 0; }
+.business-admin-attendance-modal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px 16px; border-bottom: 1px solid #e5eef2; }
+.business-admin-attendance-modal-heading h2 { margin: 3px 0 0; color: #173e58; font-size: 20px; font-weight: 900; letter-spacing: -.02em; }
+.business-admin-attendance-modal-kicker { color: #0d8d87; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.business-admin-attendance-modal-close { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: 0 0 auto; border: 1px solid #d5e2ea; border-radius: 8px; background: #fff; color: #60788b; cursor: pointer; }
+.business-admin-attendance-modal-close:hover { border-color: #a9c0cc; background: #f6fafc; color: #234b64; }
+.business-admin-attendance-modal-close:focus-visible { outline: 3px solid rgba(37, 99, 235, .22); outline-offset: 2px; }
+.business-admin-attendance-modal-copy { margin: 0; padding: 16px 22px 0; color: #60788b; font-size: 12px; line-height: 1.5; }
+.business-admin-expense-modal-record.business-admin-attendance-modal-record { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 22px 0; }
+.business-admin-attendance-modal-record-copy { display: grid; gap: 3px; min-width: 0; }
+.business-admin-attendance-modal-record-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-attendance-cash-reconciliation { margin: 16px 22px 0; border: 1px solid #cfe1ec; border-radius: 12px; background: linear-gradient(145deg, #f8fcff 0%, #f2fbfa 100%); overflow: hidden; }
+.business-admin-attendance-cash-reconciliation-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #dceaf0; color: #1a4e8d; }
+.business-admin-attendance-cash-reconciliation-heading > div { display: grid; gap: 3px; min-width: 0; }
+.business-admin-attendance-cash-reconciliation-heading strong { color: #173e58; font-size: 12px; }
+.business-admin-attendance-cash-reconciliation-heading span { color: #71879a; font-size: 10px; }
+.business-admin-attendance-cash-reconciliation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; padding: 12px 14px; }
+.business-admin-attendance-cash-reconciliation-grid div { display: grid; gap: 3px; min-width: 0; }
+.business-admin-attendance-cash-reconciliation-grid span,
+.business-admin-attendance-cash-reconciliation-total span,
+.business-admin-attendance-cash-variance span { color: #71879a; font-size: 10px; font-weight: 800; }
+.business-admin-attendance-cash-reconciliation-grid strong { color: #234b64; font-size: 12px; font-variant-numeric: tabular-nums; }
+.business-admin-attendance-cash-reconciliation-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #dceaf0; padding: 11px 14px; background: rgba(255, 255, 255, .78); }
+.business-admin-attendance-cash-reconciliation-total strong { color: #0d8d87; font-size: 16px; font-variant-numeric: tabular-nums; }
+.business-admin-attendance-modal-fields { padding: 16px 22px 0; }
+.business-admin-attendance-cash-helper { color: #7890a1; font-size: 10px; line-height: 1.4; }
+.business-admin-attendance-cash-input { appearance: textfield; -moz-appearance: textfield; }
+.business-admin-attendance-cash-input::-webkit-outer-spin-button,
+.business-admin-attendance-cash-input::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; }
+.business-admin-attendance-cash-variance { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 10px; align-self: end; border: 1px solid #e1edf2; border-radius: 8px; padding: 8px 10px; background: #f8fcfc; }
+.business-admin-attendance-cash-variance strong { color: #71879a; font-size: 13px; font-variant-numeric: tabular-nums; }
+.business-admin-attendance-cash-variance strong.balanced { color: #0d8d87; }
+.business-admin-attendance-cash-variance strong.unbalanced { color: #b34b42; }
+.business-admin-attendance-modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; border-top: 1px solid #e1edf2; padding: 14px 22px 20px; }
+.business-admin-attendance-modal-footer > span { max-width: 230px; color: #7890a1; font-size: 11px; line-height: 1.4; }
+.business-admin-attendance-modal-footer-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.business-admin-attendance-modal-footer-actions .business-admin-button { min-height: 36px; }
 .business-admin-expense-modal-copy { margin: 15px 0; color: #60788b; font-size: 12px; line-height: 1.5; }
 .business-admin-expense-modal-record { display: grid; gap: 3px; margin-bottom: 14px; border: 1px solid #e2edf1; border-radius: 10px; padding: 11px 12px; background: #f8fcfc; }
 .business-admin-expense-modal-record strong { color: #173e58; font-size: 13px; }
@@ -1191,7 +1275,6 @@ ul.business-admin-pos-activity-definitions { list-style: disc; padding-left: 20p
 .business-admin-purchase-order-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .business-admin-purchase-order-card .business-admin-purchase-orders-actions { margin-top: 13px; padding-top: 12px; border-top: 1px solid #e7eff3; }
 .business-admin-chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
-.business-admin-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d4e4e9; border-radius: 99px; padding: 5px 9px; color: #3c6472; background: #f5fbfb; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
 .business-admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .business-admin-toolbar .business-admin-search { flex: 1; min-width: 180px; }
 .business-admin-detail-panel { border: 1px solid #cfe3e5; border-radius: 12px; background: #f6fffe; padding: 14px; margin-top: 13px; }
@@ -1483,7 +1566,20 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-attendance-record { padding: 13px; }
   .business-admin-attendance-record-heading { align-items: flex-start; }
   .business-admin-attendance-record-facts,
-  .business-admin-attendance-record-facts.operator { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-attendance-record-facts.operator,
+  .business-admin-attendance-record-facts.duty { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-attendance-modal { max-height: calc(100vh - 24px); }
+  .business-admin-attendance-modal-heading { padding: 16px 17px 14px; }
+  .business-admin-attendance-modal-copy { padding: 14px 17px 0; }
+  .business-admin-expense-modal-record.business-admin-attendance-modal-record { margin-right: 17px; margin-left: 17px; }
+  .business-admin-attendance-cash-reconciliation { margin-right: 17px; margin-left: 17px; }
+  .business-admin-attendance-modal-fields { padding: 14px 17px 0; }
+  .business-admin-attendance-modal-footer { align-items: stretch; flex-direction: column; margin-top: 16px; padding: 13px 17px 17px; }
+  .business-admin-attendance-modal-footer > span { max-width: none; }
+  .business-admin-attendance-modal-footer-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-attendance-modal-footer-actions .business-admin-button { width: 100%; }
+  .business-admin-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-form-field-full { grid-column: auto; }
   .business-admin-shifts-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .business-admin-shifts-metric { gap: 9px; padding: 13px; }
   .business-admin-shifts-metric-icon { width: 32px; height: 32px; border-radius: 10px; }

@@ -43,6 +43,26 @@ describe('Catalog Editor presentation contracts', () => {
     expect(csvImportSource).toContain('Deactivated items are never deleted');
   });
 
+  it('keeps the complete item edit workflow in one modal', () => {
+    const itemFormSource = readWebCoreFile('Components/items/ItemFormModal.jsx');
+    const itemDetailsSource = readWebCoreFile('Components/items/ItemDetailsModal.jsx');
+    const itemsPageSource = readWebCoreFile('src/features/inventory/pages/ItemsPage.jsx');
+
+    expect(itemFormSource).toContain('data-testid="item-editor-basic-info"');
+    expect(itemFormSource).toContain('data-testid="item-editor-stock-inventory"');
+    expect(itemFormSource).toContain('data-testid="item-editor-cost-financial"');
+    expect(itemFormSource).toContain('data-testid="item-editor-shelf-life"');
+    expect(itemFormSource).toContain('data-testid="item-editor-barcodes"');
+    expect(itemFormSource).toContain('<BarcodeManager item={item} />');
+    expect(itemFormSource).toContain('storage_temperature');
+    expect(itemFormSource).toContain('storage_conditions');
+    expect(itemsPageSource).toContain('hideStockControls={itemEditorMode && !editingItem}');
+    expect(itemsPageSource).toContain('hideUnitOfMeasure={itemEditorMode && !editingItem}');
+    expect(itemsPageSource).toContain('onEdit={itemEditorMode ? handleEditFromDetails : undefined}');
+    expect(itemDetailsSource).toContain('onEdit,');
+    expect(itemDetailsSource).toContain('Edit Item');
+  });
+
   it('keeps OPIS Item Editor row-based while preserving categories and channel visibility controls', () => {
     const itemsPageSource = readWebCoreFile('src/features/inventory/pages/ItemsPage.jsx');
     const itemCardSource = readWebCoreFile('Components/items/ItemCard.jsx');
@@ -65,7 +85,7 @@ describe('Catalog Editor presentation contracts', () => {
     expect(itemDetailsSource.match(/\{!itemEditorMode && \(/g)).toHaveLength(4);
   });
 
-  it('uses the POS Add Item workflow in OPIS and hides unit-of-measure controls there', () => {
+  it('uses the POS Add Item workflow in OPIS while keeping the full edit surface for existing items', () => {
     const itemsPageSource = readWebCoreFile('src/features/inventory/pages/ItemsPage.jsx');
     const itemFormSource = readWebCoreFile('Components/items/ItemFormModal.jsx');
     const posWorkspaceSource = readWebCoreFile('src/features/pos/components/TerminalOperationsWorkspace.jsx');
@@ -74,8 +94,8 @@ describe('Catalog Editor presentation contracts', () => {
     expect(itemsPageSource).toContain('const PosItemCreateWorkflow = lazy(() =>');
     expect(itemsPageSource).toContain('if (itemEditorMode)');
     expect(itemsPageSource).toContain('<PosItemCreateWorkflow');
-    expect(itemsPageSource).toContain('hideUnitOfMeasure={itemEditorMode}');
-    expect(itemsPageSource).toContain('hideStockControls={itemEditorMode}');
+    expect(itemsPageSource).toContain('hideUnitOfMeasure={itemEditorMode && !editingItem}');
+    expect(itemsPageSource).toContain('hideStockControls={itemEditorMode && !editingItem}');
     expect(itemsPageSource).toContain('!itemEditorMode && (');
     expect(itemFormSource).toContain('hideUnitOfMeasure = false');
     expect(itemFormSource).toContain('{!hideUnitOfMeasure && (');

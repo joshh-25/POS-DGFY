@@ -1,5 +1,9 @@
 import { jest } from '@jest/globals';
 
+jest.unstable_mockModule('../src/modules/downpayment/repositories/downpaymentSettingsRepository.js', () => ({
+    downpaymentSettingsRepository: { getSettings: jest.fn(async () => ({ platform_downpayment_allowed: false })) }
+}));
+
 // #1093 follow-up (PR #1096 review, RF-1): the platform-admin tenant-capability path
 // (PATCH /admin/tenants/:id/capabilities) is the one write path that can move BOTH
 // customer_access_mode and its ceilings (platform_max_customer_access_mode, registration stage)

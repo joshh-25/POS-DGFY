@@ -6,6 +6,11 @@ import {
   normalizeWorkflowMode
 } from '../../shared/constants/workflowModes.js';
 import { normalizeStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
+import { invalidateTenantCapabilityCache } from '../../shared/utils/tenantCapabilitySettingCache.js';
+import {
+  STORE_VISIBILITY_POLICY_KEY,
+  assertStoredVisibilityChangeAllowed
+} from '../../shared/utils/storeVisibilityEditPolicy.js';
 
 const ONBOARDING_STATE_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_KEY = 'tenant_onboarding_started_at';
@@ -326,6 +331,17 @@ export const onboardingRepository = {
     let responsePayload = null;
 
     await SystemSetting.sequelize.transaction(async (transaction) => {
+      if (safeStepKey === 'primary_location' && Object.prototype.hasOwnProperty.call(normalizedPayload, 'public_storefront_visible')) {
+        const [policy, visibility] = await Promise.all([
+          SystemSetting.findOne({ where: { setting_key: STORE_VISIBILITY_POLICY_KEY }, transaction }),
+          SystemSetting.findOne({ where: { setting_key: STORE_IS_VISIBLE_KEY }, transaction })
+        ]);
+        assertStoredVisibilityChangeAllowed({
+          policyValue: policy?.setting_value,
+          currentValue: visibility?.setting_value,
+          incomingValue: normalizedPayload.public_storefront_visible
+        });
+      }
       const {
         rowMap,
         state,
@@ -429,6 +445,10 @@ export const onboardingRepository = {
         checklist: refreshedChecklist
       });
     });
+
+    if (safeStepKey === 'primary_location' && Object.prototype.hasOwnProperty.call(normalizedPayload, 'public_storefront_visible')) {
+      invalidateTenantCapabilityCache(dbStore.getStore?.()?.tenantId);
+    }
 
     return responsePayload;
   },

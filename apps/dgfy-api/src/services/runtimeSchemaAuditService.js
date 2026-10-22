@@ -91,7 +91,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20261001000001-create-company-registration-uploads.cjs',
     '20261003000001-add-annex-b-item-4-6-evidence-contract.cjs',
     '20261008000001-extend-company-registration-uploads-for-drafts.cjs',
-    '20261013000001-add-pos-item-void-state.cjs'
+    '20261013000001-add-pos-item-void-state.cjs',
+    '20260912000001-create-staff-roles.cjs'
 ]);
 
 export const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -169,6 +170,7 @@ export const REQUIRED_TABLE_COLUMNS = Object.freeze({
     users: [
         'user_id',
         'role',
+        'staff_role_id',
         'is_master_admin',
         'deleted_at',
         'pos_approval_pin_hash',
@@ -178,6 +180,7 @@ export const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'pos_cashier_pin_locked_until',
         'pos_cashier_pin_changed_at'
     ],
+    staff_roles: ['staff_role_id', 'name', 'capabilities', 'is_active', 'created_by', 'updated_by'],
     items: ['item_id', 'vat_type', 'tracking_mode', 'tracking_toggle_available'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active', 'sort_order'],
     // Phase 257 (#1318) — on the tenant-schema crash-loop critical path (#860/#639 class); see ADR 0080.

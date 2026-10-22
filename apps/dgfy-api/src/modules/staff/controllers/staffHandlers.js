@@ -15,8 +15,8 @@ import { invalidateUserCache } from '../../../middleware/auth.js';
 
 const listRoles = buildListStaffRolesUseCase({ repository: staffRoleRepository });
 const createRole = buildCreateStaffRoleUseCase({ repository: staffRoleRepository });
-const updateRole = buildUpdateStaffRoleUseCase({ repository: staffRoleRepository });
-const setRoleStatus = buildSetStaffRoleStatusUseCase({ repository: staffRoleRepository });
+const updateRole = buildUpdateStaffRoleUseCase({ repository: staffRoleRepository, invalidateUserCache });
+const setRoleStatus = buildSetStaffRoleStatusUseCase({ repository: staffRoleRepository, invalidateUserCache });
 const assignRole = buildAssignStaffRoleToUserUseCase({ repository: staffRoleRepository, invalidateUserCache });
 const capabilities = buildGetEffectiveCapabilitiesUseCase();
 const assignments = buildGetStaffAssignmentsUseCase({ repository: staffRoleRepository });

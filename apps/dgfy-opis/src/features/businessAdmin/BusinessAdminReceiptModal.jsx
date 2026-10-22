@@ -161,6 +161,43 @@ const RefundEvidence = ({ refunds }) => {
     );
 };
 
+const STATUS_LABELS = {
+    placed: 'Placed',
+    confirmed: 'Confirmed',
+    preparing: 'Preparing',
+    packed: 'Packed',
+    ready_for_pickup: 'Ready for pickup',
+    out_for_delivery: 'Out for delivery',
+    completed: 'Completed',
+    rejected: 'Rejected',
+    cancelled: 'Cancelled'
+};
+
+const statusLabel = (status) => STATUS_LABELS[status] || String(status || 'Unknown').replace(/_/g, ' ');
+
+const StatusHistory = ({ timeline }) => {
+    const entries = Array.isArray(timeline) ? timeline.filter((entry) => (
+        entry.event === 'status_changed'
+        || (entry.event === 'order_rejected' && !timeline.some((candidate) => (
+            candidate.event === 'status_changed' && candidate.to === 'rejected'
+        )))
+    )) : [];
+    if (entries.length === 0) return null;
+    return (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-800" data-testid="business-admin-receipt-status-history">
+            <strong className="block text-[10px] uppercase tracking-wide">Status history</strong>
+            <ol className="mt-1 space-y-1">
+                {entries.map((entry, index) => (
+                    <li key={`${entry.occurred_at}-${index}`} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                        <span>{entry.from ? `${statusLabel(entry.from)} → ` : ''}{statusLabel(entry.to || 'rejected')}</span>
+                        <span>{entry.actor_name || 'System'} · {entry.occurred_at ? new Date(entry.occurred_at).toLocaleString() : 'Unknown time'}{entry.note ? ` · ${entry.note}` : ''}</span>
+                    </li>
+                ))}
+            </ol>
+        </div>
+    );
+};
+
 export default function BusinessAdminReceiptModal({ order, onClose }) {
     const [receiptSettings, setReceiptSettings] = useState(null);
     const [settingsError, setSettingsError] = useState('');
@@ -242,6 +279,7 @@ export default function BusinessAdminReceiptModal({ order, onClose }) {
                         </div>
                     )}
                     <RefundEvidence refunds={order.refunds} />
+                    <StatusHistory timeline={order.timeline} />
                 </div>
                 <DialogFooter className="shrink-0 border-t border-slate-200 bg-white px-5 py-3">
                     <button type="button" className="business-admin-button primary" onClick={onClose}>Close</button>

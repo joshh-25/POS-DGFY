@@ -26,8 +26,58 @@ import {
 
 const require = createRequire(import.meta.url);
 const itemFolderSortOrderMigration = require('../../dgfy-migration-runner/migrations/20260910000001-add-item-folder-sort-order.cjs');
+const directDeliveryMigration = require('../../dgfy-migration-runner/migrations/20261022000001-add-direct-delivery-courier-fields.cjs');
 
 describe('tenant schema sync script contracts', () => {
+  it('repairs direct delivery courier fields and the waiting-for-rider status', () => {
+    for (const field of ['courier_service', 'courier_service_name', 'courier_reference']) {
+      expect(REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_jobs[field].sql)
+        .toContain(`ADD COLUMN \`${field}\``);
+      expect(REQUIRED_TENANT_SCHEMA_TABLES.delivery_jobs.sql).toContain(`\`${field}\``);
+    }
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transactions.fulfillment_status.enumValues)
+      .toContain('ready_for_rider');
+    expect(buildTenantSchemaEnumRepairSql([{ table: 'pos_transactions', column: 'fulfillment_status' }])[0].sql)
+      .toContain("'ready_for_rider'");
+  });
+
+  it('widens active tenant delivery schema once and keeps reruns idempotent', async () => {
+    const altered = [];
+    const existing = new Set();
+    let enumWidened = false;
+    const query = jest.fn(async (sql, { replacements = [] } = {}) => {
+      if (sql === 'SELECT DATABASE() AS dbName') return [[{ dbName: 'sku_landlord' }], {}];
+      if (sql.startsWith('SELECT DISTINCT db_name FROM tenants')) return [[{ db_name: 'sku_tenant_one' }], {}];
+      if (sql.includes('information_schema.tables')) {
+        const [database, table] = replacements;
+        return [[{ count: table === 'tenants' || database === 'sku_tenant_one' ? 1 : 0 }], {}];
+      }
+      if (sql.includes('information_schema.columns')) {
+        const [, table, column] = replacements;
+        if (table === 'pos_transactions') return [[{
+          columnType: enumWidened ? "enum('placed','packed','ready_for_rider','completed')" : "enum('placed','packed','completed')",
+          isNullable: 'YES', columnDefault: null
+        }], {}];
+        return [existing.has(column) ? [{ columnType: 'varchar(120)' }] : [], {}];
+      }
+      if (sql.startsWith('ALTER TABLE')) {
+        altered.push(sql);
+        const added = sql.match(/ADD COLUMN `([^`]+)`/);
+        if (added) existing.add(added[1]);
+        if (sql.includes('MODIFY COLUMN `fulfillment_status`')) enumWidened = true;
+        return [[], {}];
+      }
+      throw new Error(`Unexpected migration query: ${sql}`);
+    });
+    const queryInterface = { sequelize: { query } };
+
+    await directDeliveryMigration.up(queryInterface);
+    expect(altered).toHaveLength(4);
+    expect(altered.every((sql) => sql.includes('`sku_tenant_one`'))).toBe(true);
+    expect(altered.find((sql) => sql.includes('MODIFY COLUMN'))).toContain("'ready_for_rider'");
+    await directDeliveryMigration.up(queryInterface);
+    expect(altered).toHaveLength(4);
+  });
   it('registers the persisted category display order for every tenant database', () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders).toHaveProperty('sort_order');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders.sort_order.sql)
@@ -192,7 +242,7 @@ describe('tenant schema sync script contracts', () => {
   it('repairs the tenant-local storefront QR table and records the schema capability version', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.storefront_qr_codes;
 
-    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-15.1');
+    expect(TENANT_SCHEMA_CAPABILITY_VERSION).toBe('2026-10-22.1');
     expect(table.sql).toContain('CREATE TABLE `storefront_qr_codes`');
     expect(table.sql).toContain('`public_token` VARCHAR(64) NOT NULL');
     expect(table.sql).toContain('UNIQUE KEY `uq_storefront_qr_codes_public_token`');
@@ -201,6 +251,17 @@ describe('tenant schema sync script contracts', () => {
 
     expect(buildTenantSchemaTableRepairSql(['storefront_qr_codes']))
       .toEqual([{ table: 'storefront_qr_codes', sql: table.sql }]);
+  });
+
+  it('repairs tenant staff roles before adding the users assignment foreign key', () => {
+    const staffRoles = REQUIRED_TENANT_SCHEMA_TABLES.staff_roles;
+    const assignment = REQUIRED_TENANT_SCHEMA_COLUMNS.users.staff_role_id;
+
+    expect(staffRoles.sql).toContain('CREATE TABLE `staff_roles`');
+    expect(staffRoles.sql).toContain('`capabilities` JSON NOT NULL');
+    expect(assignment.sql).toContain('REFERENCES `staff_roles` (`staff_role_id`)');
+    expect(buildTenantSchemaTableRepairSql(['staff_roles']))
+      .toEqual([{ table: 'staff_roles', sql: staffRoles.sql }]);
   });
 
   it('normalizes known too-many-keys failures with stable fingerprint', () => {

@@ -579,7 +579,8 @@ export const cancelOrder = async (req, res, next) => {
             trackingPin: req.validatedParams?.tracking_pin || req.params.tracking_pin,
             tenantId: resolveTenantId(req),
             storeCustomer: resolveStoreCustomer(req),
-            payload: req.validatedData || req.body
+            payload: req.validatedData || req.body,
+            auditContext: { requestId: requestId(req, res) }
         });
 
         return sendUseCaseResult(res, result, {

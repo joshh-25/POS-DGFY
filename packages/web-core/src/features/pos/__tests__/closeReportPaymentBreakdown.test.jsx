@@ -47,7 +47,10 @@ describe('close-report payment breakdown rendering', () => {
                         report_recognized_sales: 1050,
                         z_total_amount: 1050,
                         variance: 0,
+                        report_net_sales: 1030,
                         report_refunds_voids: 20,
+                        report_cash_refunds_voids: 20,
+                        report_voided_refunded_transactions: 1,
                         report_adjustment_amount: 0,
                         evaluated_at: '2026-08-19T12:01:00.000Z'
                     }
@@ -71,8 +74,9 @@ describe('close-report payment breakdown rendering', () => {
         expect(shiftMarkup).toContain('>6</span>');
         expect(shiftMarkup).not.toContain('Maya');
         expect(zReadingMarkup).toContain('Payment method breakdown');
+        expect(zReadingMarkup).toContain('Payment amounts are before refunds/voids.');
         expect(zReadingMarkup).toContain('Maya (0)');
-        expect(zReadingMarkup).toContain('Cash (2)');
+        expect(zReadingMarkup).toContain('Cash payments before refunds (2)');
         expect(zReadingMarkup).toContain('GCash (1)');
         expect(zReadingMarkup).toContain('Card (Credit/Debit) (1)');
         expect(zReadingMarkup).toContain('Employee Credit (1)');
@@ -98,6 +102,12 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingMarkup).toContain('Report reconciliation');
         expect(zReadingMarkup).toContain('MATCHED');
         expect(zReadingMarkup).toContain('Report recognized sales');
+        expect(zReadingMarkup).toContain('Report net sales');
+        expect(zReadingMarkup).toContain('Cash refunds / voids');
+        expect(zReadingMarkup).toContain('-₱20.00');
+        expect(zReadingMarkup).toContain('Net cash sales');
+        expect(zReadingMarkup).toContain('₱180.00');
+        expect(zReadingMarkup).toContain('Audit adjustment records');
         expect(zReadingMarkup).toContain('Checked');
         expect(zReadingMarkup).toContain('Lifetime grand total');
         expect(zReadingMarkup).not.toContain('Lifetime total');
@@ -138,7 +148,10 @@ describe('close-report payment breakdown rendering', () => {
                         report_recognized_sales: 1050,
                         z_total_amount: 1050,
                         variance: 0,
+                        report_net_sales: 1030,
                         report_refunds_voids: 20,
+                        report_cash_refunds_voids: 20,
+                        report_voided_refunded_transactions: 1,
                         report_adjustment_amount: 0,
                         evaluated_at: '2026-08-19T12:01:00.000Z'
                     }
@@ -148,12 +161,13 @@ describe('close-report payment breakdown rendering', () => {
         });
         [shiftText, zReadingText].forEach((text) => {
             expect(text).toContain('Acme Corporation');
-            expect(text).toContain('Cash (2)');
             expect(text).toContain('GCash (1)');
             expect(text).toContain('Card (Credit/Debit) (1)');
             expect(text).toContain('Employee Credit (1)');
             expect(text).toContain('Other (1)');
         });
+        expect(shiftText).toContain('Cash (2)');
+        expect(zReadingText).toContain('Cash before refunds (2)');
         expect(shiftText).toContain('SALES SUMMARY');
         expect(shiftText).toContain('Overall sales');
         expect(shiftText).toContain('705.00');
@@ -177,6 +191,12 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).toContain('REPORT RECONCILIATION');
         expect(zReadingText).toContain('MATCHED');
         expect(zReadingText).toContain('Report recognized');
+        expect(zReadingText).toContain('Report net sales');
+        expect(zReadingText).toContain('Cash refunds / voids');
+        expect(zReadingText).toContain('-PHP 20.00');
+        expect(zReadingText).toContain('Net cash sales');
+        expect(zReadingText).toContain('PHP 180.00');
+        expect(zReadingText).toContain('Audit adjustments');
         expect(zReadingText).toContain('Difference');
         expect(zReadingText).toContain('Checked');
         expect(zReadingText).toContain('Lifetime grand total');

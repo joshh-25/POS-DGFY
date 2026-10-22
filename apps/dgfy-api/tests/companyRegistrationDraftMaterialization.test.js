@@ -58,7 +58,8 @@ const buildDraft = (overrides = {}) => ({
     payload,
     uploads: []
   },
-  legal_terms_snapshot: legalTermsSnapshot,
+  // MySQL JSON columns can be returned as serialized JSON strings in the runtime path.
+  legal_terms_snapshot: JSON.stringify(legalTermsSnapshot),
   ...overrides
 });
 
@@ -76,6 +77,27 @@ const buildTenant = (overrides = {}) => ({
 });
 
 describe('company registration draft materialization', () => {
+  it('rejects the internal system actor unless the auto-approval use case explicitly enables it', async () => {
+    const useCase = buildApproveCompanyRegistrationDraftUseCase({
+      repository: {},
+      tenantAdminRepository: {},
+      companyRegistrationRepository: {},
+      dgfyAccountRepository: {},
+      registrationIndustryRepository: {},
+      provisionTenant: jest.fn(),
+      materializeCompanyRegistrationDraft: jest.fn(),
+      background: false
+    });
+
+    const result = await useCase({
+      draftId,
+      actor: { actor_type: 'system', source: 'public_registration' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(403);
+  });
+
   it('approves a submitted draft once, creates the tenant projection, and materializes asynchronously', async () => {
     const draftPayload = {
       ...payload,
@@ -113,7 +135,11 @@ describe('company registration draft materialization', () => {
       deleted_at: null
     };
     const companyRegistrationRepository = {
-      createApprovedProjection: jest.fn().mockResolvedValue({ id: '44444444-4444-4444-8444-444444444444' }),
+      createApprovedProjection: jest.fn().mockResolvedValue({
+        id: '44444444-4444-4444-8444-444444444444',
+        onboardingEmailDelivery: { id: 'delivery-1', status: 'queued' }
+      }),
+      updateEmailDelivery: jest.fn().mockResolvedValue(undefined),
       markProvisioningOutcome: jest.fn().mockResolvedValue(undefined)
     };
     const dgfyAccountRepository = {
@@ -129,6 +155,10 @@ describe('company registration draft materialization', () => {
       menuUploadIds: []
     });
     const provisionTenant = jest.fn().mockResolvedValue({ admin_user_id: 9 });
+    const emailService = {
+      isEmailConfigured: jest.fn().mockReturnValue(true),
+      sendCompanyOnboardingEmail: jest.fn().mockResolvedValue({ messageId: 'provider-1' })
+    };
     const useCase = buildApproveCompanyRegistrationDraftUseCase({
       repository,
       tenantAdminRepository,
@@ -137,6 +167,7 @@ describe('company registration draft materialization', () => {
       registrationIndustryRepository: { findByKey: jest.fn().mockResolvedValue(null) },
       provisionTenant,
       materializeCompanyRegistrationDraft: materialize,
+      emailService,
       idGenerator: () => tenantId,
       now: () => new Date('2026-09-26T01:00:00.000Z'),
       background: false
@@ -170,13 +201,23 @@ describe('company registration draft materialization', () => {
       tenantId,
       dbName: tenant.db_name,
       workflowMode: 'fnb',
-      templateKey: 'fnb_full_service'
+      templateKey: 'fnb_full_service',
+      tenantCapabilities: { pos_enabled: false }
     }));
     expect(materialize).toHaveBeenCalledWith({ draft: approvedDraft, tenant });
     expect(companyRegistrationRepository.markProvisioningOutcome).toHaveBeenCalledWith(expect.objectContaining({
       tenantId,
       succeeded: true
     }));
+    expect(emailService.sendCompanyOnboardingEmail).toHaveBeenCalledWith(expect.objectContaining({
+      email: tenant.admin_email,
+      companyName: tenant.name,
+      posUrl: expect.stringContaining(tenantId)
+    }));
+    expect(companyRegistrationRepository.updateEmailDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'delivery-1' }),
+      expect.objectContaining({ status: 'sent_to_provider', provider_message_id: 'provider-1' })
+    );
   });
 
   it('returns an idempotent success without creating a second tenant after completion', async () => {
@@ -328,7 +369,7 @@ describe('company registration draft materialization', () => {
     expect(settingRows.get('storefront_tagline').setting_value).toBe('Fresh every day');
     expect(settingRows.get('storefront_hours').data_type).toBe('json');
     expect(settingRows.has('registration_business_type')).toBe(false);
-    expect(settingRows.get('store_is_visible').setting_value).toBe('true');
+    expect(settingRows.get('store_is_visible').setting_value).toBe('false');
     expect(repository.updateUploadMaterializationStates).toHaveBeenCalledWith(expect.objectContaining({
       draftId,
       menuUploadIds: ['menu-1']

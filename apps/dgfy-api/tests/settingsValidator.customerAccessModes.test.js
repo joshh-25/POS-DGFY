@@ -9,6 +9,14 @@ const createRes = () => {
 };
 
 describe('settings validator customer access modes', () => {
+  it('retains the platform visibility policy key for the use-case authorization guard', () => {
+    const req = { body: { store_visibility_merchant_editable: false } };
+    const res = createRes();
+    const next = jest.fn();
+    validateUpdateSettings(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.validatedData.store_visibility_merchant_editable).toBe(false);
+  });
   it('accepts customer access and inventory display settings', () => {
     const req = {
       body: {

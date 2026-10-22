@@ -1,4 +1,8 @@
-import { publishCatalogChange, subscribeCatalogChanges } from '../src/modules/shared/services/catalogChangeEventBus.js';
+import {
+    publishCatalogChange,
+    publishPosSettingsChange,
+    subscribeCatalogChanges
+} from '../src/modules/shared/services/catalogChangeEventBus.js';
 
 describe('catalog change event bus', () => {
     test('delivers a sanitized change event only to the matching tenant', async () => {
@@ -32,6 +36,26 @@ describe('catalog change event bus', () => {
 
         await expect(publishCatalogChange({ reason: 'item_updated', itemIds: [1] })).resolves.toBe(false);
         expect(events).toHaveLength(0);
+
+        unsubscribe();
+    });
+
+    test('publishes a tenant-scoped POS settings invalidation', async () => {
+        const events = [];
+        const unsubscribe = subscribeCatalogChanges('tenant-settings', (event) => events.push(event));
+
+        await publishPosSettingsChange({
+            tenantId: 'tenant-settings',
+            reason: 'business_name_updated'
+        });
+
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+            type: 'pos.settings.changed',
+            tenant_id: 'tenant-settings',
+            reason: 'business_name_updated',
+            item_ids: []
+        });
 
         unsubscribe();
     });

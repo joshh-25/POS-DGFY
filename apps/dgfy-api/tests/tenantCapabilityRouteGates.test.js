@@ -15,6 +15,7 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
 }));
 
 const { checkAnyPermission, requireTenantCapability } = await import('../src/middleware/auth.js');
+const { requireStorefrontVisible, isExistingOrderRoute } = await import('../src/middleware/requireStorefrontVisible.js');
 
 const buildSystemSetting = (value) => {
     let currentValue = value;
@@ -148,5 +149,59 @@ describe('tenant capability route gates', () => {
         currentStore = {};
         const noSettingsApp = buildCapabilityApp();
         expect((await request(noSettingsApp).get('/capability-probe')).status).toBe(200);
+    });
+});
+
+describe('public storefront visibility gate', () => {
+    beforeEach(() => {
+        currentStore = {};
+        clearTenantCapabilityCache();
+    });
+
+    const appFor = (surface = 'store') => {
+        const app = express();
+        app.use((req, _res, next) => { req.tenant = { id: 'tenant-1' }; next(); });
+        app.use(requireStorefrontVisible(surface));
+        app.use((_req, res) => res.status(200).json({ success: true }));
+        app.use((_error, _req, res, _next) => res.status(503).json({ success: false }));
+        return app;
+    };
+
+    it.each(['false', '0', 'off'])('denies new commerce for hidden value %s with no-store', async (value) => {
+        currentStore = { SystemSetting: buildSystemSetting(value) };
+        const response = await request(appFor()).get('/catalog').set('X-Company-Token', 'known-token');
+        expect(response.status).toBe(404);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body.code).toBe('STORE_NOT_VISIBLE');
+    });
+
+    it.each([undefined, 'unparseable', 'true'])('keeps legacy visible value %s accessible', async (value) => {
+        currentStore = { SystemSetting: buildSystemSetting(value) };
+        expect((await request(appFor()).get('/catalog')).status).toBe(200);
+    });
+
+    it('fails closed when the model or database is unavailable', async () => {
+        expect((await request(appFor()).get('/catalog')).status).toBe(503);
+        currentStore = { SystemSetting: { findOne: jest.fn().mockRejectedValue(new Error('db down')) } };
+        expect((await request(appFor()).get('/catalog')).status).toBe(503);
+    });
+
+    it('keeps existing-order operations available while denying new routes across public surfaces', async () => {
+        currentStore = { SystemSetting: buildSystemSetting('false') };
+        for (const [method, path] of [
+            ['get', '/track/1234'], ['post', '/track/1234/push-tokens'],
+            ['patch', '/orders/1234/cancel'], ['get', '/orders'],
+            ['get', '/checkout/payment-sessions/1234'], ['post', '/auth/login'],
+            ['get', '/services/bookings/REF'], ['get', '/laundry/orders/REF'],
+            ['post', '/laundry/orders/REF/cancel']
+        ]) expect((await request(appFor())[method](path)).status).toBe(200);
+        for (const [surface, method, path] of [
+            ['store', 'get', '/catalog'], ['store', 'post', '/checkout'],
+            ['store', 'post', '/services/bookings'], ['store', 'post', '/laundry/orders'],
+            ['store', 'post', '/inventory/push'], ['hospitality', 'post', '/bookings'],
+            ['commerce-payments', 'post', '/dglaundry/booking-groups/payment-sessions']
+        ]) expect((await request(appFor(surface))[method](path)).status).toBe(404);
+        expect(isExistingOrderRoute('hospitality', 'GET', '/bookings/REF')).toBe(true);
+        expect(isExistingOrderRoute('hospitality', 'POST', '/bookings/REF/claim')).toBe(true);
     });
 });

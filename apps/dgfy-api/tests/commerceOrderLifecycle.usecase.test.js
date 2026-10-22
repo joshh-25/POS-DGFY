@@ -102,6 +102,31 @@ describe('commerce order payment lifecycle', () => {
     });
     expect(fixture.createCommercePaymentRefundUseCase).not.toHaveBeenCalled();
   });
+
+  it('does not submit a second refund after a prior terminal failure', async () => {
+    const failedRefund = {
+      refund_id: 9,
+      status: 'failed',
+      failure_code: 'PROVIDER_REFUND_RETRY_EXHAUSTED'
+    };
+    const fixture = build({ refunds: [failedRefund] });
+
+    const result = await fixture.useCase({
+      tenantId: session.tenant_id,
+      posTransactionId: session.pos_transaction_id,
+      fulfillmentStatus: 'rejected',
+      actor: 'pos_user:8'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      payment_action: 'refund_failed',
+      idempotent_replay: true,
+      reconciliation_required: true,
+      refund: failedRefund
+    });
+    expect(fixture.createCommercePaymentRefundUseCase).not.toHaveBeenCalled();
+  });
 });
 
 // --- Phase 144 (#824): refund-vs-forfeiture, and the downpayment-amount pin -------------------
