@@ -12,8 +12,8 @@ verification_evidence: 21 focused POS hydration tests,POS production build,app-v
 rollback_note: Revert the POS hydration and same-shift navigation changes with this declaration. No API, schema, migration, payment, tenant permission, or persisted shift data changes are included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-22T10:48:55Z
-preflight_request_ref: NOT-EXECUTED-2688-POS-REFRESH-BRANCH-DIALOG
+preflight_run_at: 2026-10-22T12:23:56.314Z
+preflight_request_ref: PREFLIGHT-39776720585-2026-10-22-POS-BACKGROUND-REFRESH-BRANCH-DIALOG
 ---
 
 # POS background refresh and same-shift navigation (#2688)
