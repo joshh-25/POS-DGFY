@@ -85,7 +85,7 @@ describe('DownpaymentSettingsPanel', () => {
         render(<DownpaymentSettingsPanel terminalUser={adminUser()} sectionId="s" />);
 
         await screen.findByText(/Full payment up front/i);
-        await user.click(screen.getByText(/Downpayment required/i));
+        await user.click(screen.getByRole('radio', { name: /Downpayment required/i }));
         await user.click(screen.getByRole('button', { name: /^Save$/i }));
 
         expect(updateDownpaymentSettings).not.toHaveBeenCalled();
@@ -139,8 +139,8 @@ describe('DownpaymentSettingsPanel', () => {
         // Defaults to percentage -- Minimum is visible.
         expect(await screen.findByLabelText(/Minimum downpayment/i)).toBeTruthy();
 
-        await user.click(screen.getByLabelText('Type'));
-        await user.click(await screen.findByText(/Fixed amount/i));
+        await user.click(screen.getByRole('button', { name: 'Downpayment type' }));
+        await user.click(await screen.findByRole('option', { name: 'Fixed amount' }));
 
         expect(screen.queryByLabelText(/Minimum downpayment/i)).toBeNull();
     });
@@ -154,9 +154,9 @@ describe('DownpaymentSettingsPanel', () => {
         render(<DownpaymentSettingsPanel terminalUser={adminUser()} sectionId="s" />);
 
         await screen.findByText(/Full payment up front/i);
-        await user.click(screen.getByText(/Downpayment required/i));
-        await user.click(screen.getByLabelText('Type'));
-        await user.click(await screen.findByText(/Fixed amount/i));
+        await user.click(screen.getByRole('radio', { name: /Downpayment required/i }));
+        await user.click(screen.getByRole('button', { name: 'Downpayment type' }));
+        await user.click(await screen.findByRole('option', { name: 'Fixed amount' }));
         await user.type(screen.getByLabelText(/Fixed amount \(₱\)/i), '500');
         await user.click(screen.getByRole('button', { name: /^Save$/i }));
 

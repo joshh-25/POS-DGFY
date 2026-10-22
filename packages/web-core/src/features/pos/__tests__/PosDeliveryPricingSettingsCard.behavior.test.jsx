@@ -84,7 +84,7 @@ describe('PosDeliveryPricingSettingsCard', () => {
     render(<PosDeliveryPricingSettingsCard terminalUser={adminUser()} sectionId="s" />);
 
     await screen.findByDisplayValue('75');
-    await user.click(screen.getByText('fixed'));
+    await user.click(screen.getByRole('button', { name: 'Delivery Fee Mode' }));
     await user.click(screen.getByText(/Calculated \(distance-based\)/i));
 
     expect(await screen.findByText(/Customers pay the minimum fee plus distance increments/i)).toBeTruthy();
@@ -112,7 +112,7 @@ describe('PosDeliveryPricingSettingsCard', () => {
     render(<PosDeliveryPricingSettingsCard terminalUser={adminUser()} sectionId="s" />);
 
     await screen.findByDisplayValue('75');
-    await user.click(screen.getByText('fixed'));
+    await user.click(screen.getByRole('button', { name: 'Delivery Fee Mode' }));
     await user.click(screen.getByText(/Calculated \(distance-based\)/i));
     await user.type(screen.getByLabelText(/Minimum Fee/i), '50');
 

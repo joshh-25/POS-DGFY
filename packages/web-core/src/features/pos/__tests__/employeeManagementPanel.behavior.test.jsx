@@ -189,9 +189,7 @@ describe('EmployeeManagementPanel', () => {
   it('keeps the focused mobile field visible when the keyboard changes the visual viewport', async () => {
     const originalMatchMedia = window.matchMedia;
     const originalVisualViewport = Object.getOwnPropertyDescriptor(window, 'visualViewport');
-    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
     const viewportListeners = {};
-    const scrollIntoView = vi.fn();
 
     window.matchMedia = vi.fn((query) => {
       const matches = query === '(max-width: 767px)';
@@ -212,32 +210,29 @@ describe('EmployeeManagementPanel', () => {
         removeEventListener: vi.fn()
       }
     });
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      writable: true,
-      value: scrollIntoView
-    });
-
     try {
       render(<EmployeeManagementPanel />);
       fireEvent.click(await screen.findByRole('button', { name: 'Add Employee' }));
 
       const drawer = screen.getByRole('dialog', { name: 'Add Employee' });
+      const scrollContainer = drawer.querySelector('.overflow-y-auto');
       const employeeCode = within(drawer).getByLabelText('Employee code *');
       const fullName = within(drawer).getByLabelText('Full name *');
       expect(document.activeElement).not.toBe(employeeCode);
       expect(fullName.className).toContain('text-[16px]');
+      expect(scrollContainer).toBeTruthy();
+
+      scrollContainer.getBoundingClientRect = vi.fn(() => ({ top: 100, bottom: 200 }));
+      fullName.getBoundingClientRect = vi.fn(() => ({ top: 220, bottom: 260 }));
 
       fireEvent.focus(fullName);
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'nearest', behavior: 'auto' }));
+      await waitFor(() => expect(scrollContainer.scrollTop).toBeGreaterThan(0));
       viewportListeners.resize();
       expect(drawer.parentElement.style.maxHeight).toBe('712px');
     } finally {
       window.matchMedia = originalMatchMedia;
       if (originalVisualViewport) Object.defineProperty(window, 'visualViewport', originalVisualViewport);
       else delete window.visualViewport;
-      if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
-      else delete HTMLElement.prototype.scrollIntoView;
     }
   });
 

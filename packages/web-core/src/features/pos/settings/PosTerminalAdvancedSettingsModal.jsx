@@ -1,6 +1,7 @@
 import { AlertCircle, ChevronDown, Percent, Save, ShieldCheck, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
@@ -100,8 +101,8 @@ export default function PosTerminalAdvancedSettingsModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange} overlayClassName="bg-black/30 backdrop-blur-none">
-      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
-        <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
+        <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <DialogTitle className="text-[16px] font-extrabold text-[#0F172A]">Advanced Terminal Settings</DialogTitle>
@@ -125,7 +126,7 @@ export default function PosTerminalAdvancedSettingsModal({
           <TerminalPolicyFields values={values} locked={locked} saving={saving} onChange={onChange} />
         </div>
 
-        <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:px-6 sm:pt-4">
+        <DialogFooter className={['px-5 py-4 sm:px-6 sm:pt-4', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button
             type="button"
             variant="outline"

@@ -86,7 +86,7 @@ describe('PricelistManagementPanel -- edit-items modal presentation', () => {
     expect(modal).toBeTruthy();
     expect(modal?.className).toContain('sm:h-[min(52rem,calc(100dvh-6rem))]');
     expect(modal?.className).not.toContain('sm:h-auto');
-    expect(document.querySelector('.pos-pricelist-items-modal-header')?.className).toContain('bg-[#1A4E8D]');
+    expect(document.querySelector('.pos-pricelist-items-modal-header')?.className).toContain('bg-[#EFF6FF]');
     expect(screen.getByTestId('pos-pricelist-items-table')).toBeTruthy();
 
     const closeButton = screen.getByRole('button', { name: 'Close Edit Pricelist Items' });

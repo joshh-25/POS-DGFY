@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { STOREFRONT_TYPOGRAPHY, StorefrontEmptyState, StorefrontSectionHeader } from './StorefrontSectionPrimitives.jsx';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 
 export const MAX_STOREFRONT_CATEGORIES = 10;
 
@@ -24,9 +25,9 @@ function CategoryNameDialog({ mode, open, value, onChange, onClose, onSubmit }) 
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }} overlayClassName="bg-black/30 backdrop-blur-none">
-      <DialogContent aria-labelledby="storefront-category-dialog-title" aria-describedby="storefront-category-dialog-description" className="w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
+      <DialogContent aria-labelledby="storefront-category-dialog-title" aria-describedby="storefront-category-dialog-description" className="w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
         <form onSubmit={(event) => { event.preventDefault(); if (normalizedValue) onSubmit(normalizedValue); }}>
-          <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+          <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
             <DialogTitle id="storefront-category-dialog-title" className="text-[16px] font-extrabold text-[#0F172A]">{editing ? 'Edit Category' : 'Add Category'}</DialogTitle>
             <DialogDescription id="storefront-category-dialog-description" className="mt-1 text-[12px] leading-5 text-[#64748B]">
               {editing ? 'Update the category name customers see on your storefront.' : 'Add a category to help customers browse your products.'}
@@ -44,7 +45,7 @@ function CategoryNameDialog({ mode, open, value, onChange, onClose, onSubmit }) 
               className="h-9 rounded-lg border-slate-200 text-[13px] text-[#0F172A]"
             />
           </div>
-          <DialogFooter className="flex-row items-center gap-2 border-t border-slate-100 px-5 py-4 sm:justify-end sm:px-6">
+          <DialogFooter className={['flex-row items-center gap-2 px-5 py-4 sm:justify-end sm:px-6', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
             <Button type="button" variant="outline" onClick={onClose} className="min-h-9 min-w-0 flex-1 text-[13px] font-bold sm:flex-none sm:text-[14px]">Cancel</Button>
             <Button type="submit" disabled={!normalizedValue} className="min-h-9 min-w-0 flex-1 bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] sm:flex-none sm:text-[14px]">
               {editing ? 'Save Changes' : 'Add Category'}
