@@ -1,6 +1,5 @@
 const base = [
   { id: 'placed', label: 'Order placed' },
-  { id: 'confirmed', label: 'Confirmed' },
   { id: 'preparing', label: 'Preparing' }
 ];
 
@@ -21,7 +20,7 @@ export function getOrderTrackingFlow(orderMethod = 'delivery', retail = false) {
   ];
   return [
     ...base, ...packing,
-    { id: 'ready_for_rider', label: 'Waiting for rider' },
+    { id: 'ready_for_rider', label: 'Ready for pickup' },
     { id: 'rider_assigned', label: 'Rider assigned' },
     { id: 'picked_up', label: 'Picked up' },
     { id: 'completed', label: 'Delivered' }
@@ -38,6 +37,7 @@ export function getOrderTrackingTimeline(orderMethod, status, delivery = null, r
       .map((step) => ({ ...step, state: step.id === current ? 'active' : 'pending' }));
   }
   let active = current;
+  if (current === 'confirmed') active = 'placed';
   if (current === 'packed' && !retail) active = 'preparing';
   if (method === 'delivery') {
     if (current === 'ready_for_rider' && delivery?.stage === 'rider_assigned') active = 'rider_assigned';

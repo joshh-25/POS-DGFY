@@ -109,7 +109,7 @@ export function SimpleTrackingRoutePage({
         placed: 'We received your product order and it is being confirmed by the store.',
         confirmed: 'The store confirmed your order and is preparing it.',
         preparing: 'Your products are being prepared for dispatch or pickup.',
-        ready_for_rider: 'Your order is ready and waiting for a rider.',
+        ready_for_rider: 'Your order is ready and waiting for the courier to pick it up.',
         out_for_delivery: 'Your order is on the way to you.',
         ready_for_pickup: 'Your order is ready for pickup. Please show your order PIN at the store.',
         completed: isPickup ? 'Your order has been picked up successfully.' : 'Your order has been delivered successfully.'
