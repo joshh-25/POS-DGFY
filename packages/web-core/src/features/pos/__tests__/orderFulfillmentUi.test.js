@@ -12,10 +12,16 @@ import {
   getDirectDeliveryActionModel,
   canAssignDirectDelivery,
   ORDER_METHOD_LABELS,
-  PAYMENT_TYPE_LABELS
+  PAYMENT_TYPE_LABELS,
+  FULFILLMENT_STATUS_LABELS
 } from '../components/orderFulfillmentUi.js';
 
 describe('orderFulfillmentUi queue action mapping', () => {
+  it('uses the customer-facing ready-for-rider status label while keeping the action label', () => {
+    expect(FULFILLMENT_STATUS_LABELS.ready_for_rider).toBe('Ready for pickup');
+    expect(getFulfillmentActionLabel('ready_for_rider')).toBe('Ready');
+  });
+
   it('maps every direct-delivery stage to one primary action with explicit secondary actions', () => {
     const base = {
       order_method: 'delivery',

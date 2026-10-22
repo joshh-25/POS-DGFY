@@ -55,7 +55,6 @@ describe('F&B storefront tracking contract', () => {
     ]);
     expect(result.normalized.timeline.map((step) => step.id)).toEqual([
       'placed',
-      'confirmed',
       'preparing',
       'ready_for_rider',
       'rider_assigned',
