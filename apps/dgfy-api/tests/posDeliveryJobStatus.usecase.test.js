@@ -87,6 +87,27 @@ const updateStatus = (repository, status, idempotencyKey = null, dependencies = 
 };
 
 describe('POS manual delivery job status', () => {
+    it('moves a directly assigned Waiting for rider order to Out for delivery with Picked Up', async () => {
+        const repository = buildRepository({
+            fulfillment_status: 'ready_for_rider',
+            deliveryJob: {
+                courier_service: 'lalamove',
+                status: 'assigned',
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: new Date('2026-10-22T10:00:00.000Z')
+            }
+        });
+
+        const result = await updateStatus(repository, 'picked_up', 'direct-ready-pickup-001');
+
+        expect(result.success).toBe(true);
+        expect(repository.order.fulfillment_status).toBe('out_for_delivery');
+        expect(repository.deliveryJob.status).toBe('picked_up');
+        expect(repository.audit[0].changes).toMatchObject({
+            previous_order_status: 'ready_for_rider', order_status: 'out_for_delivery'
+        });
+    });
     it('advances the manual delivery lifecycle and records an idempotent replay', async () => {
         const repository = buildRepository({
             deliveryJob: {

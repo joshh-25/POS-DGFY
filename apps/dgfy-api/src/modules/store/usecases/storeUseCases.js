@@ -150,6 +150,7 @@ const FULFILLMENT_STATUSES = [
     'confirmed',
     'preparing',
     'packed',
+    'ready_for_rider',
     'ready_for_pickup',
     'out_for_delivery',
     'completed',
@@ -279,6 +280,7 @@ const toStatusLabel = (status) => {
     case 'confirmed': return 'Confirmed by store';
     case 'preparing': return 'Preparing';
     case 'packed': return 'Packed';
+    case 'ready_for_rider': return 'Waiting for rider';
     case 'ready_for_pickup': return 'Ready for pickup';
     case 'out_for_delivery': return 'Out for delivery';
     case 'completed': return 'Completed';
@@ -478,9 +480,37 @@ const serializeOrderForCustomer = (order) => ({
         : []
 });
 
+const serializePublicDelivery = (order) => {
+    if (order?.order_method !== 'delivery') return null;
+    const job = order?.deliveryJob || {};
+    const hasRegisteredRider = Number.isInteger(Number(job.delivery_personnel_id))
+        && Number(job.delivery_personnel_id) > 0;
+    const courierService = job.courier_service || (hasRegisteredRider ? 'own' : null);
+    const courierName = courierService === 'other'
+        ? String(job.courier_service_name || '').trim() || null
+        : ({ own: 'Own rider', maxim: 'Maxim', grabexpress: 'GrabExpress', lalamove: 'Lalamove' }[courierService] || null);
+    const assigned = Boolean(job.assigned_at || ['assigned', 'picked_up', 'delivered'].includes(job.status));
+    const stage = job.status === 'delivered' || order.fulfillment_status === 'completed'
+        ? 'delivered'
+        : job.status === 'picked_up' || order.fulfillment_status === 'out_for_delivery'
+            ? 'picked_up'
+            : assigned ? 'rider_assigned' : 'waiting_for_rider';
+    const trackingUrl = String(job.tracking_url || '').trim();
+    return {
+        stage,
+        courier_name: assigned ? courierName : null,
+        courier_reference: assigned ? String(job.courier_reference || '').trim() || null : null,
+        tracking_url: assigned && /^https:\/\/[^\s/]+(?:\/[^\s]*)?$/i.test(trackingUrl) ? trackingUrl : null,
+        rider_name: assigned ? String(job.delivery_personnel_name || '').trim() || null : null
+    };
+};
+
 const serializeOrderForPublicTracking = (order) => {
     return {
         ...serializeOrderBase(order),
+        ...(order?.order_method === 'delivery' ? { delivery: serializePublicDelivery(order) } : {}),
+        ...(order?.fulfillment_status === 'cancelled' && order?.deliveryJob?.status === 'failed'
+            ? { cancellation_reason: String(order.deliveryJob.failure_reason || '').trim() || null } : {}),
         // The public tracking summary shows VAT only as an informational amount already included
         // in item prices. Reuse the persisted value; this projection does not recalculate tax.
         vat_amount: order?.vat_amount ?? null,
@@ -6103,6 +6133,8 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository, commercePaymentRe
             // Phase 210 (#1179). Gated on `rejected` so a reason can never leak on a non-rejected
             // order (defensive: the column is only ever written on reject anyway).
             const rejectionReason = String(order?.rejection_reason || '').trim();
+            const cancellationReason = cancelled && order?.deliveryJob?.status === 'failed'
+                ? String(order.deliveryJob.failure_reason || '').trim() || null : null;
             const reviewInvites = order.fulfillment_status === 'completed'
                 ? await issueReviewInvitesForOrder({
                     tenantId,
@@ -6122,9 +6154,11 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository, commercePaymentRe
                         ? `This order was not accepted by the store: ${rejectionReason}`
                         : 'This order was not accepted by the store.')
                     : cancelled
-                        ? 'This order was cancelled.'
+                        ? (cancellationReason ? `The store cancelled this order: ${cancellationReason}` : 'This order was cancelled.')
                         : 'Tracking information loaded successfully.',
                 rejection_reason: rejected ? (rejectionReason || null) : null,
+                cancellation_reason: cancellationReason,
+                ...(order.order_method === 'delivery' ? { delivery: serializePublicDelivery(order) } : {}),
                 refund,
                 order: serializeOrderForPublicTracking(order),
                 review_invites: reviewInvites

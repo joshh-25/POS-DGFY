@@ -81,6 +81,32 @@ const updateStatus = (repository, { fulfillmentStatus, idempotencyKey, userId = 
 };
 
 describe('preparing -> packed online order status (Phase 211, #1180)', () => {
+    it('allows delivery orders to move to Waiting for rider', async () => {
+        const repository = buildRepository({ fulfillment_status: 'preparing', order_method: 'delivery' });
+
+        const result = await updateStatus(repository, {
+            fulfillmentStatus: 'ready_for_rider',
+            idempotencyKey: 'rider-ready-1'
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.order.fulfillment_status).toBe('ready_for_rider');
+    });
+
+    it('rejects Waiting for rider on pickup orders with a stable method code', async () => {
+        const repository = buildRepository({ fulfillment_status: 'preparing', order_method: 'pickup' });
+
+        const result = await updateStatus(repository, {
+            fulfillmentStatus: 'ready_for_rider',
+            idempotencyKey: 'pickup-rider-ready-1'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error?.statusCode).toBe(409);
+        expect(result.error?.details?.order_lifecycle?.reason_code).toBe('ORDER_METHOD_DELIVERY_REQUIRED');
+        expect(repository.order.fulfillment_status).toBe('preparing');
+    });
+
     it('persists packed_at/packed_by and does not touch accepted_*/rejected_*', async () => {
         const repository = buildRepository({ fulfillment_status: 'preparing' });
 

@@ -63,6 +63,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
             'confirmed',
             'preparing',
             'packed',
+            'ready_for_rider',
             'ready_for_pickup',
             'out_for_delivery',
             'completed',

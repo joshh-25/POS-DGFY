@@ -1853,7 +1853,18 @@ export const storeRepository = {
         const PosTransaction = dbStore.get('PosTransaction');
         const row = await PosTransaction.findOne({
             where: { tracking_pin: trackingPin },
-            include: buildOrderInclude(),
+            include: [
+                ...buildOrderInclude(),
+                {
+                    model: dbStore.get('DeliveryJob'),
+                    as: 'deliveryJob',
+                    required: false,
+                    attributes: [
+                        'status', 'courier_service', 'courier_service_name', 'courier_reference',
+                        'tracking_url', 'delivery_personnel_name', 'failure_reason', 'assigned_at'
+                    ]
+                }
+            ],
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
