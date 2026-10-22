@@ -30678,12 +30678,13 @@ modules, tenant migration and schema repair registry.
 
 ### Acceptance and validation evidence
 
-- Passed: 162 focused API tests across direct completion/failure, assignment,
+- Passed: 163 focused API tests across direct completion/failure, assignment,
   job status, order rejection and readiness, tracking serialization, tenant
   schema repair, and migration contracts; 11 Storefront tracking tests; 49 POS
   action, assignment/dialog, queue-view, viewport, and run-gate tests.
 - Passed: syntax checks for 21 changed API and migration JavaScript files; POS,
-  Storefront, IMS, and OPIS production builds; `node scripts/check-app-version-bump.js`,
+  Storefront, IMS, and OPIS production builds; `node scripts/check-app-version-bump.js`
+  with `GITHUB_BASE_REF=develop` and `GITHUB_HEAD_REF=feature/2667-direct-delivery`,
   `npm run check:compliance`, `npm run check:architecture`, and
   `npm run lint:docs` (including strict ADR lint); `git diff --check`.
 - Integration database migration and STAGING walkthroughs remain outstanding.

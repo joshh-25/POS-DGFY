@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal,payments
 reason_codes_impacted: DELIVERY_BALANCE_DUE_OUTSTANDING,DELIVERY_SETTLEMENT_INVALID,DELIVERY_FAILURE_REASON_REQUIRED,DIRECT_DELIVERY_ORDER_REQUIRED,DELIVERY_COURIER_SERVICE_REQUIRED,DELIVERY_COURIER_DETAILS_INVALID,DELIVERY_TRACKING_URL_INVALID
 policy_version: 2026.10.16
-verification_evidence: 162 focused API tests,11 Storefront tests,49 POS tests,changed JavaScript syntax checks,POS Storefront IMS OPIS production builds,node scripts/check-app-version-bump.js,npm run check:compliance,npm run check:architecture,npm run lint:docs
+verification_evidence: 163 focused API tests,11 Storefront tests,49 POS tests,changed JavaScript syntax checks,POS Storefront IMS OPIS production builds,GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feature/2667-direct-delivery node scripts/check-app-version-bump.js,npm run check:compliance,npm run check:architecture,npm run lint:docs
 rollback_note: Roll back API and POS UI together. Keep the widened tenant ENUM and nullable courier fields; do not narrow the ENUM while waiting-for-rider orders may exist. Existing payment and delivery records remain readable by legacy routes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -51,8 +51,8 @@ preflight sweep is required before production promotion.
 
 ## Verification Evidence
 
-Passed: 162 focused API tests, 11 Storefront tests and 49 POS tests; changed
+Passed: 163 focused API tests, 11 Storefront tests and 49 POS tests; changed
 JavaScript syntax checks; POS, Storefront, IMS and OPIS production builds;
 unchanged-version, compliance, architecture, docs and ADR gates. Migration
 execution and STAGING workflow verification remain post-merge checks in
-Phase 527.
+Phase 528.
