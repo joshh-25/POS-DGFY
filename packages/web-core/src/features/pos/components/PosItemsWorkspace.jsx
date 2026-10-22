@@ -26,6 +26,7 @@ import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.
 import { updateStorefrontCatalogOverride, importExternalStorefrontCatalogImage, queueStorefrontCatalogImage, queueStorefrontCatalogImages, getStorefrontCatalogImageUploadStatus, updateStorefrontCatalogGallery, deleteStorefrontCatalogImage, generateStorefrontCatalogImage } from '@/services/storefrontCatalogService.js';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
+import { getItemPriceLimitError } from '@/src/features/inventory/itemPriceLimits.js';
 import { resolveEditItemSaveError } from '../utils/editItemSaveErrors.js';
 import { listFnbModifierGroups, replaceFnbItemModifierGroups } from '@/src/features/fnb/api/fnbApi.js';
 import { resolveEffectiveItemTaxonomy, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
@@ -1558,6 +1559,11 @@ function ItemsWorkspace({
       toast.error('Cost price is required.');
       return;
     }
+    const priceLimitError = getItemPriceLimitError({ price, cost });
+    if (priceLimitError) {
+      toast.error(priceLimitError);
+      return;
+    }
     if (price <= cost) {
       toast.error('Selling price must be greater than cost.');
       return;
@@ -2075,6 +2081,11 @@ function ItemsWorkspace({
       toast.error('Cost price is required.');
       return;
     }
+    const priceLimitError = getItemPriceLimitError({ price, cost });
+    if (priceLimitError) {
+      toast.error(priceLimitError);
+      return;
+    }
     if (price <= cost) {
       toast.error('Selling price must be greater than cost.');
       return;
@@ -2224,7 +2235,11 @@ function ItemsWorkspace({
         await loadItems().catch(() => {});
         toast.warning(createError.message);
       } else {
-        toast.error(createError?.response?.data?.message || createError?.message || 'Failed to create item.');
+        const isGenericValidationFailure = Number(createError?.response?.status) === 422
+          && createError?.response?.data?.message === 'Validation failed';
+        toast.error(isGenericValidationFailure
+          ? resolveEditItemSaveError(createError).message
+          : createError?.response?.data?.message || createError?.message || 'Failed to create item.');
       }
     } finally {
       setPostCreateSaving(false);
