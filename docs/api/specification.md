@@ -3504,7 +3504,7 @@ Assign or reassign a registered delivery person or an unregistered third-party c
 ```
 
 **Transition Notes**
-1. A direct delivery order may be Confirmed, Preparing, Packed, Waiting for rider, or Out for delivery. Active run members retain the out-for-delivery gate. The job provider must be `manual`.
+1. A direct delivery order may be Confirmed, Preparing, Packed, Ready for pickup, or Out for delivery. Active run members retain the out-for-delivery gate. The job provider must be `manual`.
 2. The authenticated user must own an open shift at the order location.
 3. Send at most one of `delivery_personnel_id` (an active registered person) or `delivery_personnel_name` (a trimmed typed rider name). `courier_service` is one of `own`, `maxim`, `grabexpress`, `lalamove`, `other`; it is required for early direct assignment. `own` requires a registered person or typed name, while a third-party service may be assigned without one. `other` requires `courier_service_name` (120 characters). `courier_reference` is optional (120 characters); `tracking_url` is optional, HTTPS-only (1000 characters). Legacy out-for-delivery person-only requests remain valid.
 4. The assignment atomically records the person or name, assigning user, assigning shift, timestamp, and `pending_dispatch -> assigned` transition.
@@ -3539,7 +3539,7 @@ Update online order fulfillment status from POS terminal operations.
 
 **Transition Notes**
 1. Allowed transitions are lifecycle-validated server-side.
-2. Direct delivery orders may progress from Preparing or Packed to `ready_for_rider` (Waiting for rider). The older direct transition to `out_for_delivery` remains accepted for native clients and run dispatch. Delivery orders cannot use `ready_for_pickup`.
+2. Direct delivery orders may progress from Preparing or Packed to `ready_for_rider` (Ready for pickup). The older direct transition to `out_for_delivery` remains accepted for native clients and run dispatch. Delivery orders cannot use `ready_for_pickup`.
 3. Non-delivery orders must use `ready_for_pickup` where applicable.
 4. Successful responses include:
    - `data.idempotent_replay`

@@ -58,9 +58,9 @@ transitions and routes for native clients and orders already in flight.
 | --- | --- | --- | --- | --- | --- |
 | Cashier | Placed | Confirm | Confirmed | Open shift | Shift closed or inventory issue |
 | Cashier | Confirmed | Start Preparing | Preparing | Open shift | Shift closed |
-| Cashier | Preparing or Packed | Ready | Waiting for rider (`ready_for_rider`) | Delivery order | Wrong order method |
-| Cashier | Preparing through Waiting for rider | Assign rider (Delivery personnel panel) | Job assigned | Courier company; in-house requires a person | Courier service or assignment missing |
-| Cashier | Waiting for rider | Picked Up | Job `picked_up`, order `out_for_delivery` | Complete assignment | Assignment missing |
+| Cashier | Preparing or Packed | Ready | Ready for pickup (`ready_for_rider`) | Delivery order | Wrong order method |
+| Cashier | Preparing through Ready for pickup | Assign rider (Delivery personnel panel) | Job assigned | Courier company; in-house requires a person | Courier service or assignment missing |
+| Cashier | Ready for pickup | Picked Up | Job `picked_up`, order `out_for_delivery` | Complete assignment | Assignment missing |
 | Cashier | Out for delivery | Delivered | Job `delivered`, order Completed | Terminal, operator, shift; balance settled in same request | Balance or payment missing |
 | Cashier | Confirmed through Out for delivery | Failed | Job `failed`, order Cancelled | Paired terminal, active operator, open shift, and reason of at least 3 characters | Missing authority, reason, or active run |
 | Cashier | Placed | Reject | Order Rejected, job Cancelled | Reason of at least 3 characters | Missing reason |
