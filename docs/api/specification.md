@@ -4017,6 +4017,24 @@ Response:
 }
 ```
 
+### External discovery links and Platform Admin configuration
+
+Newly managed `external_listing` rows return `storefront_url: "/e/{slug}"` from discovery and map-pins reads. `external_provider` identifies Proventus, Eytitu, Mapviu, or Synqcore; `external_reference_id` and `external_record_origin` are internal and are not returned to public callers. Previously curated external rows with an `external_storefront_url` keep their existing direct URL.
+
+`GET /storefront/discovery/external/redirect/:slug` is public and uncached. It responds with HTTP 302 to the configured partner URL. A client sending `Accept: application/json` receives `{ "success": true, "data": { "destination": "https://..." } }` instead. Missing/hidden records, disabled sites, or invalid destinations return 404. The Storefront `/e/:slug` page navigates directly to this endpoint, so cross-origin API deployments do not require a new CORS allowance. No client-provided destination URL is accepted.
+
+The master Platform Admin routes below require the cookie-backed Platform Admin session and CSRF protection for writes:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /admin/external-discovery` | List four partner configurations and external pins for management |
+| `PUT /admin/external-discovery/sites/:siteKey` | Set an approved HTTPS `url_template` with exactly one `{id}` slot and `enabled` boolean |
+| `PUT /admin/external-discovery/listings/:slug` | Create or update an external pin by stable DGFY slug, `external_provider`, `external_reference_id`, title, real coordinates, `external_record_origin` (`event_seed` or `manual`), and optional public fields |
+| `DELETE /admin/external-discovery/listings/:slug` | Remove one external pin |
+| `POST /admin/external-discovery/temporary/clear` | Remove only the four partners' `event_seed` pins |
+
+The source JSON contract and import endpoint are pending actual exports under #2629; these Admin writes are for the interim static pins. See [the foundation contract](../features/EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md).
+
 ### GET /storefront/discovery/:slug
 Resolve one storefront profile by tenant slug for public storefront entry.
 
