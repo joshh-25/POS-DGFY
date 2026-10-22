@@ -1,10 +1,10 @@
 ---
 status: draft_pr
 owner: DGFY POS and OPIS
-last_reviewed: 2026-10-16
+last_reviewed: 2026-10-22
 declaration_id: 2026-10-16-pos-business-admin-catalog-workflows
-classification: major
-surfaces: pos,terminal,business_admin,inventory,settings,tenant_schema
+classification: regulatory
+surfaces: pos,terminal,business_admin,inventory,settings,tenant_schema,payments,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.10.14
 verification_evidence: 16 targeted API suites with 244 passing tests, 3 OPIS files with 22 passing tests, 7 shared web-core files with 50 passing tests, changed-source lint, POS/OPIS production builds, architecture checks, repository compliance gate, git diff --check, local landlord plus 17 active tenant schemas verified with tenant_locations.address_details, POS/IMS lint rerun after barcode-save scope fix
@@ -19,9 +19,9 @@ preflight_request_ref: NOT-EXECUTED-UPDATES-POS-BUSINESS-ADMIN-CATALOG
 
 ## Compliance Impact Classification
 
-Major because the batch changes shared POS terminal and inventory paths, adds
+Regulatory because the batch changes shared POS terminal and inventory paths, adds
 Business Admin attendance and canonical business-name mutations, and extends
-tenant audit-schema compatibility. The server remains authoritative for
+tenant audit-schema compatibility and commerce refund-retry behavior. The server remains authoritative for
 branch scope, permissions, shift ownership, cash reconciliation, and tenant
 identity; the client does not gain a new financial or authorization bypass.
 
@@ -37,6 +37,10 @@ identity; the client does not gain a new financial or authorization bypass.
   presentation plus terminal settings synchronization.
 - `tenant_schema` — additive support for the `business_name_update` audit
   action enum value; no existing tenant records are rewritten by the migration.
+- `payments` — bounded commerce-payment refund retry state and operational
+  recovery remain server-authorized and append-only.
+- `compliance` — registration, tenant-admin audit, and governed preflight
+  evidence remain covered by the platform compliance boundary.
 
 ## Compliance Preconditions
 
