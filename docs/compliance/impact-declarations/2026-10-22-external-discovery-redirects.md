@@ -24,7 +24,7 @@ Regulatory is the computed floor because `apps/dgfy-admin/src/services/adminServ
 
 ## Affected Surfaces
 
-- `settings`, `compliance` — Platform Admin management of partner destination templates and external pin metadata, with audited writes.
+- `settings`, `compliance` — Platform Admin management in **External Map Pins** of partner destination templates and external pin metadata, with audited writes through the new Admin service methods.
 - `pos` — classification triggered by the shared auth middleware path only; the change adds a master-only Admin route and does not change POS route authorization.
 - Public Storefront discovery — external partner pins and a server-resolved outbound redirect; no DGFY booking, checkout, dispatch, or application submission.
 
