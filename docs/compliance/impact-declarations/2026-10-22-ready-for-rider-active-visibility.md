@@ -12,8 +12,8 @@ verification_evidence: Focused API and Storefront regression suites,JavaScript s
 rollback_note: Revert the shared status lists and direct-delivery route contract together. No schema or historical payment rows change; previously written audit rows remain immutable.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-22T06:21:27Z
-preflight_request_ref: NOT-EXECUTED-2026-10-22-READY-FOR-RIDER-ACTIVE-VISIBILITY
+preflight_run_at: 2026-10-22T06:51:31.139Z
+preflight_request_ref: PREFLIGHT-39736006664-2026-10-22-READY-FOR-RIDER-ACTIVE-VISIBILITY
 ---
 
 # Ready-for-rider active visibility and delivery action corrections (#2676)
