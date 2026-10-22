@@ -15,7 +15,8 @@ describe('POS Items location-scoped catalog contract', () => {
 
     expect(itemsWorkspace).not.toContain('getItems({ limit: 1000 })');
     expect(itemsWorkspace).not.toContain('loadLegacyItems');
-    expect(optionsWorkspace).not.toContain("from '@/services/itemService.js'");
+    expect(optionsWorkspace).toContain("import { getFolders } from '@/services/itemService.js';");
+    expect(optionsWorkspace).toContain('getFolders(),');
     expect(optionsWorkspace).not.toContain('fetchPosCatalog({ limit: 500 })');
   });
 
@@ -26,7 +27,9 @@ describe('POS Items location-scoped catalog contract', () => {
     expect(itemsWorkspace).toContain('fetchPosCatalogPage({');
     expect(itemsWorkspace).toContain('location_id: scopedLocationId');
     expect(itemsWorkspace).toContain('scopedItemsCache');
-    expect(optionsWorkspace).toContain('fetchPosCatalog({ limit: 500, location_id: scopedLocationId })');
+    expect(optionsWorkspace).toContain('fetchPosCatalogPage({');
+    expect(optionsWorkspace).toContain('page_size: itemPageSize');
+    expect(optionsWorkspace).toContain('location_id: scopedLocationId');
     expect(optionsWorkspace).toContain('scopedCatalogCache');
   });
 

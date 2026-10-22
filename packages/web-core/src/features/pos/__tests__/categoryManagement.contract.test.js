@@ -59,7 +59,7 @@ describe('POS category management contract', () => {
     const categorySource = fs.readFileSync(categoryWorkspacePath, 'utf8');
 
     expect(catalogSource).toContain('canManageCategories={canManageCategories}');
-    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
+    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', mobileLabel: 'Category', icon: Tags }");
     expect(source).toContain('itemsWorkspaceComponent={ItemsWorkspace}');
     expect(categorySource).toContain('Move assigned items to');
     expect(categorySource).toContain('replacementFolderId');
@@ -72,11 +72,13 @@ describe('POS category management contract', () => {
     const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
 
     expect(catalogSource).toContain('export default function ItemsCatalogWorkspace');
-    expect(catalogSource).toContain('aria-label="Items workspace navigation"');
-    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
+    expect(catalogSource).toContain('ariaLabel="Items workspace navigation"');
+    expect(catalogSource).toContain("import PosLineTabNavigation from './PosLineTabNavigation.jsx';");
+    expect(catalogSource).toContain("import { POS_MOBILE_STICKY_TAB_ROW_CLASS } from './PosPageSpacing.js';");
+    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', mobileLabel: 'Category', icon: Tags }");
     expect(catalogSource).toContain("const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);");
     expect(catalogSource).toContain("transition: 'transform 150ms ease, opacity 150ms ease'");
-    expect(catalogSource).toContain('onKeyDown={(event) => handleTabKeyDown(event, tab.id)}');
+    expect(catalogSource).toContain('<PosLineTabNavigation');
     expect(source).toContain('<ItemsCatalogWorkspace');
     expect(source).not.toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(source).not.toContain('<CategoryManagementWorkspace');
@@ -86,8 +88,11 @@ describe('POS category management contract', () => {
     const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
 
     expect(catalogSource).toContain('className="pos-items-catalog-workspace flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden"');
-    expect(catalogSource).toContain('className="pos-items-mobile-tab-strip -mx-1 overflow-x-auto border-b border-slate-200"');
-    expect(catalogSource).toContain('className="pos-items-mobile-tab-list -mb-px flex min-w-max items-end gap-3 px-1');
+    expect(catalogSource).toContain('data-testid="pos-items-sticky-tabs"');
+    expect(catalogSource).toContain('className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS} max-[767px]:mb-3`}');
+    expect(catalogSource).toContain('hideScrollbar');
+    expect(catalogSource).not.toContain('pos-items-mobile-tab-strip');
+    expect(catalogSource).not.toContain('pos-items-mobile-tab-list');
     expect(catalogSource).toContain('dgfy-pos-scroll-region min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y');
     expect(catalogSource).toContain("visibleTab === 'categories'");
     expect(catalogSource).toContain("visibleTab === 'fnb-modifiers'");
@@ -99,26 +104,24 @@ describe('POS category management contract', () => {
     const workspaceSource = fs.readFileSync(itemOptionsWorkspacePath, 'utf8');
     const managerSource = fs.readFileSync(itemOptionsManagerPath, 'utf8');
 
-    expect(workspaceSource).toContain('grid min-h-0 min-w-0 flex-1 items-stretch gap-3 overflow-hidden lg:grid-cols-2');
-    expect(workspaceSource).toContain('dgfy-pos-scroll-region min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain pr-1 touch-pan-y');
-    expect(workspaceSource).toContain('dgfy-pos-scroll-region mt-3 max-h-48 space-y-1 overflow-y-auto pr-1');
-    expect(workspaceSource).toContain('rounded-xl border border-slate-200 bg-white p-3');
-    expect(workspaceSource).toContain('PosSearchField id={`${selectorId}-search`}');
-    expect(workspaceSource).toContain('inputClassName="h-9"');
-    expect(workspaceSource).toContain('grid min-w-0 grid-cols-2 gap-2');
-    expect(managerSource).toContain('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm');
-    expect(managerSource).toContain('dgfy-pos-scroll-region mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain');
-    expect(managerSource).toContain('dgfy-pos-scroll-region max-h-[32rem] min-w-0 space-y-2 overflow-y-auto pr-1');
-    expect(managerSource).toContain('text-[10px] font-bold uppercase tracking-wide');
+    expect(workspaceSource).toContain('grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3');
+    expect(workspaceSource).toContain('dgfy-pos-scroll-region max-h-48 space-y-1 overflow-y-auto pr-1');
+    expect(managerSource).toContain('rounded-xl border border-slate-200 bg-white p-3');
+    expect(managerSource).toContain('ariaLabel="Search option groups"');
+    expect(managerSource).toContain('inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}');
+    expect(managerSource).toContain('grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]');
+    expect(managerSource).toContain('pos-items-options-manager relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden');
+    expect(managerSource).toContain('dgfy-pos-scroll-region mt-3 min-h-0 flex-1 overflow-auto');
     expect(managerSource).toContain('h-9 shrink-0 items-center');
-    expect(managerSource).toContain('border-t border-slate-200');
+    expect(workspaceSource).toContain('dgfy-pos-scroll-region max-h-48 space-y-1 overflow-y-auto pr-1');
+    expect(workspaceSource).toContain('space-y-1 border-t border-slate-200 pt-2');
   });
 
   it('labels the F&B modifier tab clearly and uses a list-plus icon', () => {
     const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
 
     expect(catalogSource).toContain("import { CalendarDays, ClipboardList, ListPlus, SlidersHorizontal, Tags } from 'lucide-react';");
-    expect(catalogSource).toContain("{ id: 'fnb-modifiers', label: 'Item Options & Modifiers', icon: ListPlus }");
+    expect(catalogSource).toContain("{ id: 'fnb-modifiers', label: 'Item Options & Modifiers', mobileLabel: 'Options', icon: ListPlus }");
   });
 
   it('uses styled listbox controls instead of browser-native select menus', () => {
@@ -127,7 +130,6 @@ describe('POS category management contract', () => {
     const terminalOperationsSource = fs.readFileSync(itemsWorkspacePath, 'utf8');
     const selectSource = fs.readFileSync(itemOptionsSelectPath, 'utf8');
 
-    expect(workspaceSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
     expect(managerSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
     expect(workspaceSource).not.toContain('<select');
     expect(managerSource).not.toContain('<select');
