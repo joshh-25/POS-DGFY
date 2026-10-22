@@ -7,7 +7,8 @@ export function getSimpleTrackingFlowForOrderMethod(orderMethod = 'delivery') {
 }
 
 export function getSimpleCompletedTrackingLabel(orderMethod = 'delivery') {
-  return getSimpleTrackingFlowForOrderMethod(orderMethod).at(-1).label;
+  const flow = getSimpleTrackingFlowForOrderMethod(orderMethod);
+  return flow[flow.length - 1].label;
 }
 
 function isTrackingPin(value = '') {
