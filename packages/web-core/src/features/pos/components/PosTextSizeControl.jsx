@@ -13,7 +13,7 @@ const POS_TEXT_SIZE_LABELS = Object.freeze({
     'extra-large': 'Extra large (130%)'
 });
 
-const POS_TEXT_SIZE_TRIGGER_CLASS_NAME = 'inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#A5C8F8] bg-white text-[#1A4E8D] shadow-none transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
+const POS_TEXT_SIZE_TRIGGER_CLASS_NAME = 'dgfy-pos-header-action-trigger inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#A5C8F8] bg-white text-[#1A4E8D] shadow-none transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
 const POS_TEXT_SIZE_MENU_CLASS_NAME = 'absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 ring-1 ring-slate-900/5';
 
 export default function PosTextSizeControl({
