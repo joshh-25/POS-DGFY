@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import { ALL_ORDER_METHODS, POS_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
+import { ONLINE_FULFILLMENT_STATUSES } from '../modules/shared/constants/orderFulfillmentStatuses.js';
 
 const ORDER_METHODS = POS_ORDER_METHODS;
 const ORDER_METHOD_FILTERS = ALL_ORDER_METHODS;
@@ -37,7 +38,6 @@ const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer',
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
-const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_rider', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
 const EXPO_PUSH_TOKEN_PATTERN = /^(?:ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_\-+.=:/]{8,236}\]$/;
@@ -1104,7 +1104,7 @@ const completeDirectDeliverySchema = Joi.object({
     terminal_id: Joi.string().trim().min(1).max(100).required(),
     settlement: Joi.object({
         amount: Joi.number().positive().precision(4).required(),
-        method: Joi.string().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit').required(),
+        method: Joi.string().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque').required(),
         manual_payment_received: Joi.boolean().optional(),
         payment_reference: Joi.string().trim().max(255).allow('', null).optional()
     }).optional()

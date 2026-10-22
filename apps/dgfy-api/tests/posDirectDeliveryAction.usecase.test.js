@@ -46,14 +46,14 @@ const makeRepository = (overrides = {}) => {
   };
 };
 
-const call = (useCase, payload) => dbStore.run({
+const call = (useCase, payload, user = { user_id: 12 }) => dbStore.run({
   tenantId: 'direct-delivery-test',
   sequelize: { transaction: async () => ({
     finished: false,
     commit: async function commit() { this.finished = true; },
     rollback: async function rollback() { this.finished = true; }
   }) }
-}, () => useCase({ posTransactionId: 44, payload, user: { user_id: 12 } }));
+}, () => useCase({ posTransactionId: 44, payload, user }));
 
 const dependencies = (repository, extras = {}) => ({
   posRepository: repository,
@@ -161,6 +161,20 @@ describe('direct delivery completion and failure', () => {
     expect(effects.commerceOrderLifecycleUseCase).toHaveBeenCalledWith(
       expect.objectContaining({ fulfillmentStatus: 'cancelled', rejectionReason: 'Customer unavailable' })
     );
+  });
+
+  it.each(['complete', 'fail'])('attributes %s to the active shared-terminal operator', async (action) => {
+    const repository = makeRepository();
+    const useCase = action === 'complete'
+      ? buildCompleteDirectDeliveryOrderUseCase(dependencies(repository))
+      : buildFailDirectDeliveryOrderUseCase(dependencies(repository));
+    const payload = action === 'complete'
+      ? { terminal_id: 'COUNTER-01', idempotency_key: 'shared-complete-44' }
+      : { idempotency_key: 'shared-fail-44', reason: 'Customer unavailable' };
+    const result = await call(useCase, payload, { user_id: 22, register_shift_owner_user_id: 12 });
+    expect(result.success).toBe(true);
+    expect(repository.findOpenTerminalShift).toHaveBeenCalledWith(expect.objectContaining({ cashierId: 12 }), expect.any(Object));
+    expect(repository.audit).toEqual(expect.arrayContaining([expect.objectContaining({ user_id: 22 })]));
   });
 
   it('blocks failure for active run members', async () => {

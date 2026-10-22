@@ -30907,6 +30907,21 @@ Not complete. Set only after the scoped implementation and named validation evid
       for reconciliation without a duplicate provider request.
 - [ ] operations — confirm worker logs and audit rows identify the retry actor and refund reference.
 
+## Phase 531 - Ready-for-rider active visibility and direct delivery corrections
+
+- **Initiative / release:** Manual direct delivery Wave 2 / next develop promotion.
+- **Objective / scope:** Keep `ready_for_rider` in POS and customer active views; align direct failure operator authority and delivery settlement validation.
+- **Status:** in_progress.
+- **Dependencies:** None explicit. Phase 528 (#2667) is merged on `develop`.
+- **Acceptance and validation evidence:** #2676; shared fulfillment enum guard, API and Storefront regression tests, architecture and compliance checks in the PR.
+- **Contracts / ADR / implementation:** [ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md), [API specification](../api/specification.md), `packages/shared-constants/src/orderFulfillmentStatuses.js`, `apps/dgfy-api/src/routes/pos.js`.
+
+### Post-merge verification
+
+- [ ] STAGING: direct delivery at Ready appears in the POS incoming queue and Storefront account in-progress list.
+- [ ] STAGING: failing a direct delivery on a shared terminal records the active operator.
+- [ ] Confirm dgfy-mobile sends `x-pos-terminal-id` on direct delivery failure.
+
 ### Next phase number
 
-Phase 531. No explicit dependency.
+Phase 532. No explicit dependency.

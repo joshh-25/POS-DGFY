@@ -17,6 +17,10 @@
       "import": "./src/orderMethods.js",
       "default": "./src/orderMethods.js"
     },
+    "./orderFulfillmentStatuses": {
+      "import": "./src/orderFulfillmentStatuses.js",
+      "default": "./src/orderFulfillmentStatuses.js"
+    },
     "./capabilityModules": {
       "import": "./src/capabilityModules.js",
       "default": "./src/capabilityModules.js"

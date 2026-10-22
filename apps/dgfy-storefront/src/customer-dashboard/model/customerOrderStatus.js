@@ -1,10 +1,7 @@
+import { ACTIVE_FULFILLMENT_STATUSES } from '@sieitzz/shared-constants/orderFulfillmentStatuses';
+
 export const ACTIVE_CUSTOMER_ORDER_STATUSES = new Set([
-  'placed',
-  'confirmed',
-  'preparing',
-  'packed',
-  'ready_for_pickup',
-  'out_for_delivery',
+  ...ACTIVE_FULFILLMENT_STATUSES,
   'in_progress',
   'scheduled'
 ]);

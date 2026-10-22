@@ -108,6 +108,7 @@ import {
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { resolvePaymentTiming } from '../../shared/utils/paymentTimingPolicy.js';
 import { STOREFRONT_ORDER_METHODS, ORDER_METHOD_LOCATION_SUPPORT_KEYS } from '../../shared/constants/orderMethods.js';
+import { ONLINE_FULFILLMENT_STATUSES } from '../../shared/constants/orderFulfillmentStatuses.js';
 import {
     buildCustomerProcessingFeeBreakdown,
     calculateCustomerProcessingFee,
@@ -145,18 +146,7 @@ const MAX_TRACKING_PIN_ATTEMPTS = 20;
 const TRACKING_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const TRACKING_FAILURE_ALERT_THRESHOLD = Number.parseInt(process.env.STORE_TRACKING_ALERT_THRESHOLD, 10) || 5;
 const VAT_RATE = 0.12;
-const FULFILLMENT_STATUSES = [
-    'placed',
-    'confirmed',
-    'preparing',
-    'packed',
-    'ready_for_rider',
-    'ready_for_pickup',
-    'out_for_delivery',
-    'completed',
-    'cancelled',
-    'rejected'
-];
+const FULFILLMENT_STATUSES = ONLINE_FULFILLMENT_STATUSES;
 const trackingFailureCounters = new Map();
 
 const parsePositiveInt = (value) => {

@@ -37,6 +37,7 @@ import {
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import { formatReportDateTime } from '../../shared/utils/reportTimezone.js';
 import { POS_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
+import { ONLINE_FULFILLMENT_STATUSES } from '../../shared/constants/orderFulfillmentStatuses.js';
 import {
     normalizeBarcodeValue,
     parseBarcodeStructuredPayload
@@ -120,18 +121,6 @@ const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
 const ORDER_METHODS = POS_ORDER_METHODS;
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 export const ONLINE_ORDER_SOURCE = 'online_store';
-const ONLINE_FULFILLMENT_STATUSES = [
-    'placed',
-    'confirmed',
-    'preparing',
-    'packed',
-    'ready_for_rider',
-    'ready_for_pickup',
-    'out_for_delivery',
-    'completed',
-    'cancelled',
-    'rejected'
-];
 const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     placed: ['confirmed', 'rejected'],
     // Phase 210 (#1179). A merchant who has already accepted an order can still discover it is
