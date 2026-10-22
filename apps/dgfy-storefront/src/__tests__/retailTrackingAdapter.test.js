@@ -13,7 +13,7 @@ import { simpleTrackingAdapter } from '../modes/simple/tracking/model/simpleTrac
 describe('Retail tracking adapter -- Packed step (Phase 211, #1180)', () => {
   it('includes the Packed step for both delivery and pickup flows', () => {
     expect(getTrackingFlowForOrderMethod('delivery').map((step) => step.id))
-      .toEqual(['placed', 'confirmed', 'preparing', 'packed', 'out_for_delivery', 'completed']);
+      .toEqual(['placed', 'confirmed', 'preparing', 'packed', 'ready_for_rider', 'rider_assigned', 'picked_up', 'completed']);
     expect(getTrackingFlowForOrderMethod('pickup').map((step) => step.id))
       .toEqual(['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'completed']);
   });
@@ -31,7 +31,7 @@ describe('Retail tracking adapter -- Packed step (Phase 211, #1180)', () => {
 
     const packedStep = normalized.timeline.find((step) => step.id === 'packed');
     const preparingStep = normalized.timeline.find((step) => step.id === 'preparing');
-    const handoffStep = normalized.timeline.find((step) => step.id === 'out_for_delivery');
+    const handoffStep = normalized.timeline.find((step) => step.id === 'picked_up');
 
     expect(packedStep.state).toBe('active');
     expect(preparingStep.state).toBe('done');
@@ -50,7 +50,7 @@ describe('Retail tracking adapter -- Packed step (Phase 211, #1180)', () => {
     }, { rawReference: 'SK-AB12CD', storeSlug: 'retail-store' });
 
     const packedStep = normalized.timeline.find((step) => step.id === 'packed');
-    const handoffStep = normalized.timeline.find((step) => step.id === 'out_for_delivery');
+    const handoffStep = normalized.timeline.find((step) => step.id === 'picked_up');
 
     // `packed` simply renders as `done` -- the order's own activeIndex still resolves against
     // `out_for_delivery`'s position in the flow, unaffected by having skipped `packed`.

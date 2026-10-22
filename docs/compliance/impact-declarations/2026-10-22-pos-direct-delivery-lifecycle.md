@@ -35,7 +35,8 @@ remain in force under ADR 0063 and ADR 0083.
 - Payments: COD cash collection and captured-downpayment balance settlement
   in the completion transaction; store-origin cancellation refund on failure.
 - Public tracking: customer-safe courier details, delivery stage and the
-  store-attributed cancellation reason.
+  store-attributed cancellation reason. F&B, Retail and Simple tracking views
+  display the courier and rider details returned by the public tracking API.
 
 ## Compliance Preconditions
 
