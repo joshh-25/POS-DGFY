@@ -35,6 +35,10 @@ export default (sequelize) => {
             type: DataTypes.STRING(120),
             allowNull: true
         },
+        external_record_origin: {
+            type: DataTypes.STRING(24),
+            allowNull: true
+        },
         external_storefront_url: {
             type: DataTypes.STRING(500),
             allowNull: true
