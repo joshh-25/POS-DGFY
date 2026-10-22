@@ -1,5 +1,6 @@
 import { normalizeBusinessMode, renderBusinessModePinSpriteSvg, renderClusterPinSpriteSvg } from './businessModePins.js';
 import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
+import { getExternalListingPresentation } from './externalListingPresentation.js';
 
 export const DISCOVERY_PIN_SOURCE_ID = 'dgfy-discovery-pins';
 export const DISCOVERY_USER_SOURCE_ID = 'dgfy-discovery-user-location';
@@ -206,7 +207,8 @@ export const buildDiscoveryPinLayerModel = ({
     const markerKey = isCluster
       ? coordinateKey
       : getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
-    const mode = singleStore?.workflow_mode || singleStore?.business_mode || 'food_manufacturing';
+    const mode = getExternalListingPresentation(singleStore)?.pinMode
+      || singleStore?.workflow_mode || singleStore?.business_mode || 'food_manufacturing';
     const iconId = getDiscoveryPinIconId({
       type: isCluster ? 'cluster' : 'store',
       mode,

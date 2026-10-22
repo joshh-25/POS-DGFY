@@ -2,6 +2,8 @@ import Joi from 'joi';
 import { hasValidGtinCheckDigit } from '../modules/shared/utils/barcodePolicy.js';
 import { TRACKING_MODE } from '../modules/shared/utils/stockBearingPolicy.js';
 
+const MAX_ITEM_PRICE = 999999.9999;
+
 // recipe_derived is reserved (frozen recipe engine - no producibility
 // projection is being built) and deliberately not settable via the item
 // write path. external_ims became settable in Phase 9, but only structurally
@@ -118,10 +120,14 @@ export const createItemSchema = Joi.object({
     'string.max': 'Unit of measure must not exceed 50 characters',
     'any.required': 'Unit of measure is required'
   }),
-  cost_per_unit: Joi.number().min(0).allow(null).messages({
-    'number.min': 'Cost per unit must be 0 or greater'
+  cost_per_unit: Joi.number().min(0).max(MAX_ITEM_PRICE).allow(null).messages({
+    'number.min': 'Cost per unit must be 0 or greater',
+    'number.max': 'Cost per unit must not exceed ₱999,999.9999.'
   }),
-  default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
+  default_sale_price: Joi.number().min(0).precision(4).max(MAX_ITEM_PRICE).allow(null).optional().messages({
+    'number.min': 'Selling price must be 0 or greater.',
+    'number.max': 'Selling price must not exceed ₱999,999.9999.'
+  }),
   vat_type: Joi.when('category', {
     is: 'product',
     then: Joi.when('product_type', {
@@ -256,8 +262,14 @@ export const createItemDraftSchema = Joi.object({
   min_threshold: Joi.number().min(0).allow(null, ''),
   purchase_allowance: Joi.number().min(0).allow(null, ''),
   unit_of_measure: Joi.string().min(1).max(50).allow(null, ''),
-  cost_per_unit: Joi.number().min(0).allow(null, ''),
-  default_sale_price: Joi.number().min(0).precision(4).allow(null, '').optional(),
+  cost_per_unit: Joi.number().min(0).max(MAX_ITEM_PRICE).allow(null, '').messages({
+    'number.min': 'Cost per unit must be 0 or greater.',
+    'number.max': 'Cost per unit must not exceed ₱999,999.9999.'
+  }),
+  default_sale_price: Joi.number().min(0).precision(4).max(MAX_ITEM_PRICE).allow(null, '').optional().messages({
+    'number.min': 'Selling price must be 0 or greater.',
+    'number.max': 'Selling price must not exceed ₱999,999.9999.'
+  }),
   vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null, ''),
   senior_pwd_discount_eligible: Joi.boolean().default(false),
   labor_cost: Joi.number().min(0).allow(null, ''),
@@ -373,8 +385,14 @@ export const updateItemSchema = Joi.object({
   min_threshold: Joi.number().min(0).allow(null),
   purchase_allowance: Joi.number().min(0).allow(null),
   unit_of_measure: Joi.string().min(1).max(50),
-  cost_per_unit: Joi.number().min(0).allow(null),
-  default_sale_price: Joi.number().min(0).precision(4).allow(null).optional(),
+  cost_per_unit: Joi.number().min(0).max(MAX_ITEM_PRICE).allow(null).messages({
+    'number.min': 'Cost per unit must be 0 or greater.',
+    'number.max': 'Cost per unit must not exceed ₱999,999.9999.'
+  }),
+  default_sale_price: Joi.number().min(0).precision(4).max(MAX_ITEM_PRICE).allow(null).optional().messages({
+    'number.min': 'Selling price must be 0 or greater.',
+    'number.max': 'Selling price must not exceed ₱999,999.9999.'
+  }),
   vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').allow(null),
   senior_pwd_discount_eligible: Joi.boolean(),
   labor_cost: Joi.number().min(0).allow(null, ''),

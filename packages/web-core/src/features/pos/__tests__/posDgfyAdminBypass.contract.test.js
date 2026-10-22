@@ -74,7 +74,7 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain('selectedCanAccessBranchDirectory');
     expect(terminalPageSource).toContain("openBranchSelector({ mode: 'directory' })");
     expect(terminalPageSource).toContain('Review branches and shifts before operating a terminal.');
-    expect(terminalPageSource).toContain('if (IS_DGFY_POS_SURFACE && !dgfyTenantId && userCanViewBranchLocations && !storedLockActive) {');
+    expect(terminalPageSource).toContain('if (shouldOpenBranchDirectoryOnHydrate({');
   });
 
   it('keeps branch selection and read-only branch view above the shift-opening prompt', () => {

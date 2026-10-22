@@ -30925,3 +30925,22 @@ Not complete. Set only after the scoped implementation and named validation evid
 ### Next phase number
 
 Phase 532. No explicit dependency.
+
+## Phase 532 - External discovery redirect foundation
+
+- **Initiative / release:** Sieitz external listing MVP / next develop promotion.
+- **Objective / scope:** Prepare distinct external map pins, stable DGFY links resolved through master Admin partner templates, and selective cleanup of temporary event records. No source JSON has arrived; import and live API integration remain open under #2629.
+- **Status:** in_progress.
+- **Dependencies:** None explicit. Real source export and approved destination URLs are required for #2629 import and operational proof, not for this foundation.
+- **Acceptance and validation evidence:** #2629; Admin and Storefront builds; focused redirect and pin tests; API syntax, architecture, migration, and documentation checks in the implementing PR.
+- **Contracts / ADR / implementation:** [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md), `apps/dgfy-api/src/modules/storefrontDiscovery`, `apps/dgfy-migration-runner/migrations/20261022000002-create-external-redirect-sites.cjs`.
+
+### Post-merge verification
+
+- [ ] deployment (#2629): verify landlord migration and all three app surfaces in the deployed environment; blocks enabling public external pins.
+- [ ] provider (#2629): obtain approved real destination templates and source IDs; blocks claiming any partner integrated.
+- [ ] operational (#2629): verify partner popup, `/e/{slug}` redirect, template update, disable behavior, and event-only cleanup on desktop and mobile; blocks MVP acceptance.
+
+### Next phase number
+
+Phase 533. No explicit dependency.

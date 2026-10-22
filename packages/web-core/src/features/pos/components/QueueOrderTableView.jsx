@@ -5,7 +5,7 @@ import {
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
   getFulfillmentStatusLabel,
-  isDirectDeliveryOrder
+  canAssignDirectDelivery
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
@@ -201,8 +201,7 @@ export default function QueueOrderTableView({
                     locked={locked}
                     isOnline={isOnline}
                   />
-                  {isDirectDeliveryOrder(order)
-                    && ['confirmed', 'preparing', 'packed', 'ready_for_rider', 'out_for_delivery'].includes(order.fulfillment_status) ? (
+                  {canAssignDirectDelivery(order) ? (
                     <DeliveryAssignmentControl
                       orderId={orderId} deliveryJob={deliveryJob} directDelivery
                       canAssignOrder deliveryPersonnelState={deliveryPersonnelState}

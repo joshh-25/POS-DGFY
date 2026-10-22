@@ -169,6 +169,10 @@
   background: #b45309;
 }
 
+.store-marker-preview-statusExternal {
+  background: #475569;
+}
+
 .store-marker-preview-body {
   padding: 8px;
   display: grid;

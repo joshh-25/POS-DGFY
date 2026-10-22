@@ -27,6 +27,7 @@ import { getFolders, listItemFolders, replaceItemFolders } from '@/services/item
 import { readSourceForContract } from './readSourceForContract.js';
 
 const updateItemMock = vi.hoisted(() => vi.fn());
+const toastError = vi.hoisted(() => vi.fn());
 
 vi.mock('@/hooks/useItems.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -68,6 +69,14 @@ vi.mock('@/services/itemService.js', async (importOriginal) => {
   };
 });
 
+vi.mock('@/src/utils/iminRuntimeFeedback.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    posToast: { ...actual.posToast, error: toastError }
+  };
+});
+
 const buildProps = (overrides = {}) => ({
   viewMode: 'items',
   workflowMode: 'fnb',
@@ -102,6 +111,12 @@ const openEditAndGetSection = async () => {
   return section;
 };
 
+const getEditItemInput = (label) => {
+  const dialog = screen.getByRole('dialog');
+  const labelElement = within(dialog).getByText(label, { exact: false });
+  return labelElement.closest('.space-y-1')?.querySelector('input');
+};
+
 // Stages a primary-category selection via the edit modal's own
 // EditableFoodCategoryCombobox, WITHOUT saving the item -- exactly the
 // "not yet saved" state RF-1 is about. Scoped to the combobox's own listbox
@@ -122,6 +137,39 @@ afterEach(() => {
 });
 
 describe('POS edit-item modal: Additional Categories (#1318)', () => {
+  it('blocks an item edit above the persisted price ceiling before sending a request', async () => {
+    render(<TerminalOperationsWorkspace {...buildProps({ canManageCategories: true })} />);
+    await openEditAndGetSection();
+
+    const priceInput = getEditItemInput('Selling Price');
+    expect(priceInput).toBeTruthy();
+    fireEvent.focus(priceInput);
+    fireEvent.change(priceInput, { target: { value: '1000000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(
+      'Selling price must not exceed ₱999,999.9999.'
+    ));
+    expect(updateItemMock).not.toHaveBeenCalled();
+  });
+
+  it('allows the largest two-decimal value accepted by the existing POS item editor', async () => {
+    updateItemMock.mockRejectedValueOnce(new Error('Stop after confirming the request payload.'));
+    render(<TerminalOperationsWorkspace {...buildProps({ canManageCategories: true })} />);
+    await openEditAndGetSection();
+
+    const priceInput = getEditItemInput('Selling Price');
+    expect(priceInput).toBeTruthy();
+    fireEvent.focus(priceInput);
+    fireEvent.change(priceInput, { target: { value: '999999.99' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }));
+
+    await waitFor(() => expect(updateItemMock).toHaveBeenCalledTimes(1));
+    expect(updateItemMock.mock.calls[0][1]).toEqual(expect.objectContaining({
+      default_sale_price: 999999.99
+    }));
+  });
+
   it('keeps categories in one readable column for longer names', async () => {
     const longCategoryName = 'Seasonal Favorites and Limited-Time Specials';
     getFolders.mockResolvedValueOnce([

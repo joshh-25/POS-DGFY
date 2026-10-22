@@ -1094,7 +1094,7 @@ const assignDeliveryPersonnelSchema = Joi.object({
     delivery_personnel_id: Joi.number().integer().positive().optional(),
     delivery_personnel_name: Joi.string().trim().min(1).max(255).optional(),
     courier_service: Joi.string().valid('own', 'maxim', 'grabexpress', 'lalamove', 'other').optional(),
-    courier_service_name: Joi.string().trim().min(1).max(120).optional(),
+    courier_service_name: Joi.string().trim().max(120).allow('', null).optional(),
     courier_reference: Joi.string().trim().max(120).allow('', null).optional(),
     tracking_url: Joi.string().trim().max(1000).allow('', null).optional()
 }).oxor('delivery_personnel_id', 'delivery_personnel_name');
