@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-10
-last_reviewed: 2026-09-14
+last_reviewed: 2026-10-22
 review_by: 2027-01-10
 applies_to: architecture_decision
 topic: manual_delivery_job_foundation
@@ -246,3 +246,13 @@ Dispatch remains warn-only with respect to loading verification. It may dispatch
 `pending`, `not_loaded`, or `exception`, and its response identifies the dispatched orders in those
 categories. Loading confirmation is an operator attestation and is not a dispatch precondition,
 fulfillment transition, payment rule, or provider integration. `[default]`
+
+### 2026-10-22 — Customer cancellation and run/order status audit (#2666)
+
+A customer cancellation through Storefront or the linked DGFY account cancels a tenant-local
+manual delivery job while it is `pending_dispatch` or `assigned`. This is a server-owned customer
+action, not a POS staff transition. It leaves the job's delivery-run membership and personnel
+attribution intact; a cancelled member remains a per-order dispatch failure under the 2026-09-01
+best-effort dispatch rule. The job cancellation and order status change each write an audit row in
+the order transaction. Run create/edit/cancel/un-cancel and staff online-order fulfillment
+transitions likewise write transactional audit rows. `[default]`

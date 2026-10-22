@@ -1310,6 +1310,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildStoreCheckoutUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
                     {
                         item_id: 11,
@@ -1661,6 +1662,7 @@ describe('store use-cases application result contract', () => {
             revenueSharingEnabled: false,
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -1818,6 +1820,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildStoreCheckoutUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -1930,6 +1933,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildStoreCheckoutUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
                     {
                         item_id: 11,
@@ -2003,6 +2007,7 @@ describe('store use-cases application result contract', () => {
             revenueSharingEnabled: false,
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -2100,6 +2105,7 @@ describe('store use-cases application result contract', () => {
             revenueSharingEnabled: false,
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -2398,6 +2404,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildCancelStoreOrderUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 getOrderByTrackingPin: jest.fn().mockResolvedValue({
                     pos_transaction_id: 91,
                     tracking_pin: 'SK-A1B2',
@@ -2446,6 +2453,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildCancelStoreOrderUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 getOrderByTrackingPin,
                 updateOrderByTrackingPin: jest.fn().mockResolvedValue(updated)
             }
@@ -2479,6 +2487,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildCancelStoreOrderUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 getOrderByTrackingPin: jest.fn().mockResolvedValue({
                     pos_transaction_id: 101,
                     tracking_pin: 'SK-A1B2',

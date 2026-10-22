@@ -55,6 +55,7 @@ const buildRepository = (seed = {}) => {
 
     return {
         order,
+        createAuditLog: jest.fn().mockResolvedValue({}),
         findOpenTerminalShift: jest.fn().mockResolvedValue({
             pos_terminal_shift_id: 9,
             terminal_id: 'COUNTER-01',

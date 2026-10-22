@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 // orderFulfillmentUi + dineInScheduleAlerts load on demand (background order
 // enrichment only): they are never on the mount/render path, so the route
 // chunk stays lean. Both chunks load once and are cached for later effects.
-import { isDineInOrder } from '../utils/dineInSchedule.js';
+import { getOnlineOrderCashIdempotencyPrefix, isDineInOrder } from '../utils/dineInSchedule.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -7146,7 +7146,7 @@ export default function TerminalPage() {
         terminal_id: terminalId,
         cash_received: cashReceived,
         idempotency_key: createIdempotencyKey(
-          isDineInOrder ? 'pos-dine-in-cash' : isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash'
+          getOnlineOrderCashIdempotencyPrefix(cashCollectionOrder)
         )
       });
       try {

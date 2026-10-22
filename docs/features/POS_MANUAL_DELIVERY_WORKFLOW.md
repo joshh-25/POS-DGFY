@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: pos
-last_reviewed: 2026-10-21
+last_reviewed: 2026-10-22
 applies_to: pos_manual_delivery_workflow
 ---
 
@@ -35,6 +35,18 @@ pending_dispatch -> assigned -> picked_up -> delivered -> completed
 
 The backend remains authoritative for every transition. The POS must never
 skip directly from `pending_dispatch` to `delivered` or `completed`.
+
+A customer may cancel a `placed` or `confirmed` order through Storefront or the linked DGFY
+account. The shared cancellation path releases reserved stock, reverses any confirmation-time
+goods issue and voucher redemption, and invokes the customer payment refund/forfeit lifecycle.
+For a manual delivery job still `pending_dispatch` or `assigned`, it also sets the job to
+`cancelled` in the same tenant transaction. The job stays in its delivery run with its personnel
+fields intact; dispatch reports it as a per-order failure. Pickup orders have no delivery job.
+
+Delivery run create/edit/cancel/un-cancel and online-order fulfillment transitions append audit
+rows with actor, location, request reference when available, and before/after status. Dispatch
+writes the order-status audit in each member's savepoint. The order-center timeline exposes these
+transitions and the OPIS receipt modal renders a read-only status history.
 
 ## Manual delivery assignment contract
 

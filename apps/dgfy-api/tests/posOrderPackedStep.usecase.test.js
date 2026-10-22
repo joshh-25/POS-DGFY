@@ -36,6 +36,7 @@ const buildRepository = (seed = {}) => {
     const replays = new Map();
     return {
         order,
+        createAuditLog: jest.fn().mockResolvedValue({}),
         async findOperationReplayByKey({ operationKey, idempotencyKey }) {
             return replays.get(`${operationKey}:${idempotencyKey}`) || null;
         },

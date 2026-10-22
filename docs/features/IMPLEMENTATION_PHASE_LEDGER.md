@@ -30588,3 +30588,59 @@ Not complete; record after merge and implementation validation.
 ### Next phase number
 
 Phase 527. No explicit dependency.
+
+## Phase 527 - Delivery flow bug fixes and audit logging (#2666)
+
+### Initiative and release
+
+Delivery Wave 1 / current release.
+
+### Objective and scope
+
+Correct cash-collection key prefixes and delivery-run picker freshness/location/date labels;
+record run and online-order status transitions; route DGFY-account cancellation through the
+Storefront inventory, voucher, payment, and delivery-job lifecycle; expose order status history
+in OPIS. No migration or staff workflow change.
+
+### Status
+
+`in_progress` — implementation and validation are outstanding.
+
+### Dependencies
+
+No explicit phase dependency. This wave can ship independently of later Delivery waves.
+
+### Contract and authority
+
+[ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md),
+[Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[POS manual delivery workflow](POS_MANUAL_DELIVERY_WORKFLOW.md).
+Implementation: `apps/dgfy-api/src/modules/{pos,store,dgfy,businessAdmin}`,
+`packages/web-core/src/features/pos`, and `apps/dgfy-opis/src/features/businessAdmin`.
+
+### Acceptance and validation evidence
+
+- Focused API tests cover run and order audits, customer cancellation effects, and legacy
+  in-flight `placed`/`confirmed` orders and draft-run membership.
+- POS and OPIS tests cover picker refresh/labels, cash prefixes, and receipt status history.
+- Required POS, IMS, Storefront, and OPIS builds; API syntax, architecture, docs, compliance,
+  and app-version checks must pass before PR review.
+
+### Completion date
+
+Not complete; record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — reproduce create/personnel/save → target-picker refresh and status history
+  on STAGING; owner: Verifier; blocks #2649/#2651 acceptance.
+- [ ] operational — run the read-only per-tenant production impact count for account-cancelled
+  paid or issued-stock orders and post it to #2652; owner: Worker with Pat's SSH approval;
+  blocks #2652 acceptance.
+- [ ] operational — verify confirmed DGFY-account delivery cancellation restores stock, cancels
+  its job, and records refund/forfeit plus audits on STAGING; owner: Verifier; blocks #2652 acceptance.
+
+### Next phase number
+
+Phase 528. No explicit dependency.

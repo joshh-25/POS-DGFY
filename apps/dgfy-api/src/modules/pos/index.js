@@ -542,10 +542,10 @@ export const getDeliveryCompletionEvidenceSignatureUseCase = buildGetDeliveryCom
 });
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
-export const createDeliveryRunUseCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository });
+export const createDeliveryRunUseCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository, posRepository });
 export const listDeliveryRunsUseCase = buildListDeliveryRunsUseCase({ deliveryRunRepository });
 export const getDeliveryRunUseCase = buildGetDeliveryRunUseCase({ deliveryRunRepository });
-export const updateDeliveryRunUseCase = buildUpdateDeliveryRunUseCase({ deliveryRunRepository });
+export const updateDeliveryRunUseCase = buildUpdateDeliveryRunUseCase({ deliveryRunRepository, posRepository });
 export const setDeliveryRunPersonnelUseCase = buildSetDeliveryRunPersonnelUseCase({ posRepository, deliveryRunRepository });
 export const addDeliveryRunMembersUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
 export const removeDeliveryRunMemberUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });

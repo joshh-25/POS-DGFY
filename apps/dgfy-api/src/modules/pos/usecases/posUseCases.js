@@ -14681,6 +14681,23 @@ export const buildUpdateDeliveryJobStatusUseCase = ({
     };
 };
 
+export const writeOnlineOrderStatusAudit = async ({
+    posRepository, orderId, userId, locationId, shiftId, from, to, orderMethod,
+    reason = null, auditContext = {}, transaction
+}) => posRepository.createAuditLog({
+    user_id: userId,
+    entity_type: 'pos_transaction',
+    entity_id: orderId,
+    action: 'UPDATE',
+    location_id: locationId || null,
+    shift_id: shiftId || null,
+    reason,
+    request_id: auditContext.requestId || null,
+    ip_address: auditContext.ipAddress || null,
+    user_agent: auditContext.userAgent || null,
+    changes: { event: 'online_order_status_changed', from, to, order_method: orderMethod, reason }
+}, { transaction });
+
 export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
@@ -14691,7 +14708,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
-    return async ({ posTransactionId, payload, user }) => {
+    return async ({ posTransactionId, payload, user, auditContext = {} }) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         if (!normalizedTransactionId) {
             return fail(new DomainError(
@@ -15002,6 +15019,22 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             const updated = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
                 transaction
             });
+
+            if (currentStatus !== targetStatus) {
+                await writeOnlineOrderStatusAudit({
+                    posRepository,
+                    orderId: normalizedTransactionId,
+                    userId: actingUserId,
+                    locationId: existing.location_id,
+                    shiftId: activeShift?.pos_terminal_shift_id || null,
+                    from: currentStatus,
+                    to: targetStatus,
+                    orderMethod: existing.order_method,
+                    reason: payload?.reason || null,
+                    auditContext,
+                    transaction
+                });
+            }
 
             await transaction.commit();
             const currentTenantId = dbStore.getStore()?.tenantId || null;

@@ -25,10 +25,11 @@ const ORDER = {
   fulfillment_status: 'placed'
 };
 
-const build = ({ lifecycleResult = ok({ tracked: true, payment_action: 'forfeited' }), lifecycleImpl = null } = {}) => {
+const build = ({ lifecycleResult = ok({ tracked: true, payment_action: 'forfeited' }), lifecycleImpl = null, cancelOrderDeliveryJob = null } = {}) => {
   const transaction = makeTransaction();
   const storeRepository = {
     beginTransaction: jest.fn().mockResolvedValue(transaction),
+    createAuditLog: jest.fn().mockResolvedValue({}),
     getOrderByTrackingPin: jest.fn()
       .mockResolvedValueOnce(ORDER)
       .mockResolvedValueOnce({ ...ORDER, fulfillment_status: 'cancelled' }),
@@ -40,7 +41,8 @@ const build = ({ lifecycleResult = ok({ tracked: true, payment_action: 'forfeite
   const useCase = buildCancelStoreOrderUseCase({
     storeRepository,
     inventoryReservationService: { releaseOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'released' }) },
-    commerceOrderLifecycleUseCase
+    commerceOrderLifecycleUseCase,
+    cancelOrderDeliveryJob
   });
   return { useCase, transaction, storeRepository, commerceOrderLifecycleUseCase };
 };
@@ -54,6 +56,30 @@ const run = (fixture, overrides = {}) => fixture.useCase({
 });
 
 describe('customer cancellation payment lifecycle (Phase 144, #824)', () => {
+  it('cancels an eligible delivery job and audits both job and order before commit', async () => {
+    const cancelOrderDeliveryJob = jest.fn().mockResolvedValue({ delivery_job_id: 77, from: 'pending_dispatch', to: 'cancelled' });
+    const fixture = build({ cancelOrderDeliveryJob });
+    const result = await run(fixture);
+    expect(result.success).toBe(true);
+    expect(cancelOrderDeliveryJob).toHaveBeenCalledWith(903, { transaction: fixture.transaction });
+    expect(fixture.storeRepository.createAuditLog).toHaveBeenCalledTimes(2);
+    expect(fixture.storeRepository.createAuditLog.mock.calls.map(([row]) => row.changes.event)).toEqual([
+      'delivery_job_cancelled_with_order', 'online_order_status_changed'
+    ]);
+    expect(fixture.storeRepository.createAuditLog.mock.invocationCallOrder[1])
+      .toBeLessThan(fixture.transaction.commit.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps pickup cancellation free of a delivery-job audit', async () => {
+    const cancelOrderDeliveryJob = jest.fn().mockResolvedValue(null);
+    const fixture = build({ cancelOrderDeliveryJob });
+    const result = await run(fixture);
+    expect(result.success).toBe(true);
+    expect(fixture.storeRepository.createAuditLog).toHaveBeenCalledTimes(1);
+    expect(fixture.storeRepository.createAuditLog.mock.calls[0][0].changes.event)
+      .toBe('online_order_status_changed');
+  });
+
   // The whole point of the origin split: this endpoint is the ONLY caller that may forfeit a
   // non-refundable downpayment. A store-side cancel through POS always refunds.
   it('invokes the payment lifecycle with initiatedBy: customer', async () => {
@@ -152,6 +178,7 @@ describe('customer cancellation payment lifecycle (Phase 144, #824)', () => {
     const useCase = buildCancelStoreOrderUseCase({
       storeRepository: {
         beginTransaction: jest.fn().mockResolvedValue(transaction),
+        createAuditLog: jest.fn().mockResolvedValue({}),
         getOrderByTrackingPin: jest.fn()
           .mockResolvedValueOnce(ORDER)
           .mockResolvedValueOnce({ ...ORDER, fulfillment_status: 'cancelled' }),

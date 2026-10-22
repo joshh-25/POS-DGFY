@@ -55,7 +55,7 @@ describe('Back Office canonical manifest contract', () => {
         expect(itemsByGroup.Operations).toEqual(['locations', 'shifts', 'attendance', 'expenses', 'fnb', 'services', 'hospitality', 'job-orders', 'dispatch-orders']);
         expect(itemsByGroup['Team & Access']).toEqual(['team']);
         expect(itemsByGroup.Reports).toEqual(['reports', 'pos-activity']);
-        expect(itemsByGroup.Settings).toEqual(['notifications', 'fiscal', 'audit', 'approvals', 'onboarding', 'storefront', 'company', 'settings', 'ai-chat']);
+        expect(itemsByGroup.Settings).toEqual(['notifications', 'fiscal', 'audit', 'approvals', 'onboarding', 'storefront', 'qr-codes', 'company', 'settings', 'ai-chat']);
         expect(BACKOFFICE_NAV_GROUPS.find((group) => group.label === 'Overview')?.standalone).toBe(true);
         expect(BACKOFFICE_NAV_GROUPS.filter((group) => group.items.length > 0)).toHaveLength(8);
     });
@@ -95,6 +95,7 @@ describe('Back Office canonical manifest contract', () => {
             'sales',
             'reports',
             'ai-chat',
+            'qr-codes',
             'vouchers'
         ].sort());
         for (const key of migratedKeys) {

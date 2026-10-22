@@ -838,7 +838,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         expect(posRepository.counters.shiftCreates).toBe(2);
         expect(posRepository.counters.cashEventsCreated).toBe(1);
         expect(posRepository.counters.shiftCloses).toBe(1);
-        expect(posRepository.counters.auditLogsCreated).toBe(3);
+        expect(posRepository.counters.auditLogsCreated).toBe(4);
         expect(posRepository.counters.orderUpdates).toBe(1);
         // Operator-authority lifecycle work opens its own transaction in addition to
         // the four idempotent POS operations exercised above.
