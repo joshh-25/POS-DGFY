@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { buildSyncMobilePosItemsUseCase } from '../src/modules/pos/usecases/mobilePosUseCases.js';
 
 const MASTER_ADMIN_USER = { user_id: 1, is_master_admin: true, permissions: [] };
-const MANAGER_USER = { user_id: 2, is_master_admin: false, permissions: ['items:create', 'items:edit', 'items:delete'] };
+const MANAGER_USER = { user_id: 2, is_master_admin: false, permissions: ['items:view', 'items:create', 'items:edit', 'items:delete'] };
 const STAFF_USER = { user_id: 3, is_master_admin: false, permissions: ['items:view'] };
 
 const buildDeps = (overrides = {}) => ({

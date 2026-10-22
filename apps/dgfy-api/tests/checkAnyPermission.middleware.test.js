@@ -18,7 +18,7 @@ describe('checkAnyPermission middleware', () => {
   it('allows a user with the mode-native permission', async () => {
     const req = {
       user: {
-        permissions: ['services:bookings:manage'],
+        permissions: ['services:dashboard:view', 'services:bookings:manage'],
         is_master_admin: false
       }
     };
@@ -39,7 +39,7 @@ describe('checkAnyPermission middleware', () => {
         user_id: 42,
         username: 'legacy-cashier',
         tenant_id: 'tenant-1',
-        permissions: ['pos:transact'],
+        permissions: ['pos:view', 'pos:transact'],
         is_master_admin: false
       },
       method: 'POST',
@@ -76,7 +76,7 @@ describe('checkAnyPermission middleware', () => {
     const req = {
       user: {
         user_id: 42,
-        permissions: ['pos:transact'],
+        permissions: ['pos:view', 'pos:transact'],
         is_master_admin: false
       }
     };

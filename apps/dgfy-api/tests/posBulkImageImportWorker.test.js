@@ -29,7 +29,7 @@ const buildHarness = async ({ currentVersions = [true, true], existing = null } 
         deferFile: jest.fn(),
         isCurrentVersion: jest.fn(async () => currentVersions[Math.min(versionIndex++, currentVersions.length - 1)]),
         readInternal: jest.fn(async () => ({
-            actor: { tenant_id: task.tenantId, user_id: '7', permissions: ['items:edit'] },
+            actor: { tenant_id: task.tenantId, user_id: '7', permissions: ['items:view', 'items:edit'] },
             files: [{ ...record, status: finished[0]?.result?.status || 'processing' }]
         })),
         finishFile: jest.fn(async (payload) => { finished.push(payload); return true; })

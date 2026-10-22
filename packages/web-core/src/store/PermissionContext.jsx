@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { getCurrentUser } from '../services/authService';
 import { getAccessToken, refreshBrowserSession } from '../services/browserSession.js';
 import { shouldRefreshBrowserSessionForPath } from '../services/publicRoutePolicy.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const PermissionContext = createContext(null);
 
@@ -106,9 +107,8 @@ export const PermissionProvider = ({ children }) => {
 
     // Check if user has specific permission
     const can = (permission) => {
-        if (isMasterAdmin) return true;
         if (!permissions) return false;
-        return permissions.includes(permission);
+        return isPermissionEffective(permissions, permission, isMasterAdmin);
     };
 
     // Convenience helpers for common permission patterns

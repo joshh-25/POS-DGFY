@@ -946,14 +946,14 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalPageSource).toContain('pinEnabled = refreshedMeta?.settingsAccessPinEnabled === true;');
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('items')}");
-    expect(sidebarSource).toContain("disabled={locked || onboardingRestricted || !canViewPos}");
+    expect(sidebarSource).toContain('{canViewPos && (');
     expect(sidebarSource).toContain('Daily totals, popular items, and transactions');
   });
 
   it('requires explicit item-edit permission while always hiding cashier item deletion', () => {
-    expect(terminalPageSource).toContain("const canEditItems = hasPermission('items:edit');");
+    expect(terminalPageSource).toContain("const canEditItems = canViewItems && hasPermission('items:edit');");
     expect(terminalPageSource).not.toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
-    expect(terminalPageSource).toContain("const canDeleteItems = !isCashierRole && hasPermission('items:delete');");
+    expect(terminalPageSource).toContain("const canDeleteItems = canViewItems && !isCashierRole && hasPermission('items:delete');");
     expect(itemsWorkspaceSource).toContain('{canDeleteItems && (');
   });
 });

@@ -2892,7 +2892,7 @@ describe('POS checkout F&B contracts', () => {
             user: {
                 user_id: 12,
                 role: 'cashier',
-                permissions: ['pos:cash_drawer_adjust']
+                permissions: ['pos:view', 'pos:shift_access', 'pos:refund', 'pos:cash_drawer_adjust']
             },
             approvalExecution: approvedVoidExecution(17901, 12)
         }));
@@ -3075,7 +3075,7 @@ describe('POS checkout F&B contracts', () => {
             user: {
                 user_id: 12,
                 role: 'cashier',
-                permissions: ['pos:cash_drawer_adjust']
+                permissions: ['pos:view', 'pos:shift_access', 'pos:refund', 'pos:cash_drawer_adjust']
             },
             approvalExecution: approvedVoidExecution(17903, 12)
         });

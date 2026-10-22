@@ -690,10 +690,10 @@ const withMobileOperatingScope = createMobilePosOperatingScopeWrapper({ reposito
 export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase: withMobileOperatingScope(checkoutPosUseCase, ['pos:transact']), posRepository });
 export const syncMobilePosVoidsUseCase = buildSyncMobilePosVoidsUseCase({ voidPosTransactionUseCase: withMobileOperatingScope(voidPosTransactionUseCase, ['pos:void']) });
 export const syncMobilePosRefundsUseCase = buildSyncMobilePosRefundsUseCase({
-    cashRefundPosTransactionUseCase: withMobileOperatingScope(cashRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER]),
-    externalRefundPosTransactionUseCase: withMobileOperatingScope(externalRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]),
-    providerRefundPosTransactionUseCase: withMobileOperatingScope(providerRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]),
-    splitAllocationReversalUseCase: withMobileOperatingScope(splitAllocationReversalUseCase, [], [[PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]])
+    cashRefundPosTransactionUseCase: withMobileOperatingScope(cashRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.REFUND_TRANSACTION, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER]),
+    externalRefundPosTransactionUseCase: withMobileOperatingScope(externalRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.REFUND_TRANSACTION, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]),
+    providerRefundPosTransactionUseCase: withMobileOperatingScope(providerRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.REFUND_TRANSACTION, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]),
+    splitAllocationReversalUseCase: withMobileOperatingScope(splitAllocationReversalUseCase, [PERMISSIONS.POS.actions.REFUND_TRANSACTION], [[PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]])
 });
 export const syncMobilePosOrderActionsUseCase = buildSyncMobilePosOrderActionsUseCase({
     updateOnlineOrderStatusUseCase,

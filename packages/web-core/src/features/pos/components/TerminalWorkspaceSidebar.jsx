@@ -22,9 +22,14 @@ import {
 import { Button } from '../../../../Components/ui/button.jsx';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { resolvePosIncomingOrders } from '../utils/incomingOrderCount.js';
+import { getPosNavigationDefinition } from '../config/posNavigationDefinitions.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
+const posNavLabel = (id, fallback) => {
+  const definition = getPosNavigationDefinition(id);
+  return definition?.navLabels?.[id] || definition?.label || fallback;
+};
 
 const NavButton = ({
   active = false,
@@ -35,6 +40,7 @@ const NavButton = ({
   disabled = false,
   caption = '',
   testId = '',
+  navId = '',
   collapsed = false
 }) => (
   <button
@@ -47,6 +53,7 @@ const NavButton = ({
     title={collapsed ? label : undefined}
     aria-label={collapsed ? label : undefined}
     data-testid={testId || undefined}
+    data-pos-nav-id={navId || undefined}
     className={`flex min-w-0 w-full transition ${collapsed
       ? 'h-11 items-center justify-center rounded-xl border px-0'
       : 'items-start gap-2.5 rounded-lg border px-2.5 py-2.5 text-left'} ${
@@ -77,6 +84,10 @@ export default function TerminalWorkspaceSidebar({
   currentViewMode = 'checkout',
   isMsmeMode = false,
   canViewPos = false,
+  canTransactPos = null,
+  canViewItems = null,
+  canViewReports = null,
+  canViewAffiliates = null,
   canViewAudit = false,
   canReviewVoidApprovals = false,
   canAccessPosOnlySetup = false,
@@ -90,6 +101,8 @@ export default function TerminalWorkspaceSidebar({
   canAccessServiceOperations = false,
   allowAdminNavigationWithoutShift = false,
   canAdjustCashDrawer = false,
+  canSwitchPosLocation = false,
+  canCloseShift = null,
   canCloseDay = false,
   shiftState = { shift: null },
   incomingOrdersState = { orders: [] },
@@ -115,6 +128,11 @@ export default function TerminalWorkspaceSidebar({
   const hasActiveShift = Boolean(shiftState?.shift);
   const isBranchReadOnlyView = Boolean(branchViewLocationId);
   const isAdminBranchMonitor = isBranchReadOnlyView || (!hasActiveShift && canViewAdminLocationMonitor);
+  const effectiveCanTransactPos = canTransactPos == null ? canViewPos : canTransactPos;
+  const effectiveCanViewItems = canViewItems == null ? canViewPos : canViewItems;
+  const effectiveCanViewReports = canViewReports == null ? canViewPos : canViewReports;
+  const effectiveCanViewAffiliates = canViewAffiliates == null ? canViewPos : canViewAffiliates;
+  const effectiveCanCloseShift = canCloseShift == null ? canViewPos : canCloseShift;
   const incomingCount = resolvePosIncomingOrders({
     showIncomingQueue,
     canViewPos,
@@ -125,7 +143,7 @@ export default function TerminalWorkspaceSidebar({
     adminLocationMonitorState
   }).length;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
-  const canAccessItemsWorkspace = canViewPos || canManageCategories || (catalogOnlyAccess && canCreateItems);
+  const canAccessItemsWorkspace = effectiveCanViewItems || canManageCategories || (catalogOnlyAccess && canCreateItems);
   const shouldShowPosOnlySetup = canAccessPosOnlySetup
     && !onboardingRestricted
     && settingsTargetViewMode !== 'terminal_setup';
@@ -281,51 +299,55 @@ export default function TerminalWorkspaceSidebar({
             {!isCollapsed && <p className="mt-4 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>}
             <div className={isCollapsed ? 'mt-2 space-y-2' : 'mt-3 space-y-2'}>
               <NavButton
-                label="Sell"
+                label={posNavLabel('sell', 'Sell')}
                 icon={ShoppingCart}
                 active={sellWorkspaceModes.has(currentViewMode)}
                 onClick={() => onSelectViewMode('checkout')}
                 disabled
                 caption={catalogOnlyDisabledCaption}
                 testId="pos-nav-sell"
+                navId="sell"
                 collapsed={isCollapsed}
               />
               {showFnbService && (
                 <NavButton
-                  label="F&amp;B service"
+                  label={posNavLabel('fnb-service', 'F&B service')}
                   icon={Utensils}
                   active={currentViewMode === 'fnb_service'}
                   onClick={() => onSelectViewMode('fnb_service')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-fnb-service"
+                  navId="fnb-service"
                   collapsed={isCollapsed}
                 />
               )}
               <NavButton
-                label="History"
+                label={posNavLabel('history', 'History')}
                 icon={History}
                 active={currentViewMode === 'history'}
                 onClick={() => onSelectViewMode('history')}
                 disabled
                 caption={catalogOnlyDisabledCaption}
                 testId="pos-nav-history"
+                navId="history"
                 collapsed={isCollapsed}
               />
               {!isCashierRole && (
                 <NavButton
-                  label="Report"
+                  label={posNavLabel('reports', 'Report')}
                   icon={BarChart3}
                   active={currentViewMode === 'reports'}
                   onClick={() => onSelectViewMode('reports')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-reports"
+                  navId="reports"
                   collapsed={isCollapsed}
                 />
               )}
               <NavButton
-                label="Items"
+                label={posNavLabel('items', 'Items')}
                 icon={ClipboardList}
                 active={currentViewMode === 'items'}
                 onClick={() => onSelectViewMode('items')}
@@ -333,40 +355,44 @@ export default function TerminalWorkspaceSidebar({
                 disabled={locked || !canAccessItemsWorkspace}
                 caption={locked ? 'Unlock terminal to continue' : (!canAccessItemsWorkspace ? 'POS view or category-management permission required' : 'Add items and categories')}
                 testId="pos-nav-items"
+                navId="items"
                 collapsed={isCollapsed}
               />
               {showServiceOperations && (
                 <NavButton
-                  label="Services"
+                  label={posNavLabel('services', 'Services')}
                   icon={CalendarCheck}
                   active={currentViewMode === 'services'}
                   onClick={() => onSelectViewMode('services')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-services"
+                  navId="services"
                   collapsed={isCollapsed}
                 />
               )}
               {shouldShowIncomingQueue && (
                 <NavButton
-                  label={`Orders (${incomingCount})`}
+                  label={`${posNavLabel('orders', 'Orders')} (${incomingCount})`}
                   icon={Truck}
                   active={currentViewMode === 'incoming_queue'}
                   onClick={() => onSelectViewMode('incoming_queue')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-orders"
+                  navId="orders"
                   collapsed={isCollapsed}
                 />
               )}
               <NavButton
-                label="Shift"
+                label={posNavLabel('shift', 'Shift')}
                 icon={ListChecks}
                 active={currentViewMode === 'shift_controls' || currentViewMode === 'close_shift' || currentViewMode === 'cash_drawer'}
                 onClick={() => onSelectViewMode('shift_controls')}
                 disabled
                 caption={catalogOnlyDisabledCaption}
                 testId="pos-nav-shift"
+                navId="shift"
                 collapsed={isCollapsed}
               />
             </div>
@@ -375,7 +401,7 @@ export default function TerminalWorkspaceSidebar({
             {!isCollapsed && <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Setup</p>}
             <div className="space-y-2">
               <NavButton
-                label="Onboarding"
+                label={posNavLabel('onboarding', 'Onboarding')}
                 icon={Settings}
                 active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
                 onClick={() => onSelectViewMode(settingsTargetViewMode)}
@@ -383,65 +409,71 @@ export default function TerminalWorkspaceSidebar({
                 disabled={locked || !isOnline || isBranchReadOnlyView || catalogOnlyAccess || !onboardingRestricted}
                 caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (catalogOnlyAccess ? 'POS onboarding will be available after DGFY Admin enables POS' : (!onboardingRestricted ? 'Onboarding is already complete' : 'Continue tenant onboarding inside POS')))}
                 testId="pos-nav-onboarding"
+                navId="onboarding"
                 collapsed={isCollapsed}
               />
               {canViewVouchers && !isCashierRole && (
                 <NavButton
-                  label="Vouchers"
+                  label={posNavLabel('vouchers', 'Vouchers')}
                   icon={Ticket}
                   active={currentViewMode === 'settings_vouchers'}
                   onClick={() => onSelectViewMode('settings_vouchers')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-vouchers"
+                  navId="vouchers"
                   collapsed={isCollapsed}
                 />
               )}
               {canViewVouchers && !isCashierRole && (
                 <NavButton
-                  label="Pricelists"
+                  label={posNavLabel('pricelists', 'Pricelists')}
                   icon={Tags}
                   active={currentViewMode === 'settings_pricelists'}
                   onClick={() => onSelectViewMode('settings_pricelists')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-pricelists"
+                  navId="pricelists"
                   collapsed={isCollapsed}
                 />
               )}
               {!isCashierRole && (
                 <NavButton
-                  label="Affiliates"
+                  label={posNavLabel('affiliates', 'Affiliates')}
                   icon={Percent}
                   active={currentViewMode === 'settings_affiliates'}
                   onClick={() => onSelectViewMode('settings_affiliates')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-affiliates"
+                  navId="affiliates"
                   collapsed={isCollapsed}
                 />
               )}
               {canViewAudit && (
                 <NavButton
-                  label="Audit"
+                  label={posNavLabel('audit', 'Audit')}
                   icon={ClipboardCheck}
                   active={currentViewMode === 'audit'}
                   onClick={() => onSelectViewMode('audit')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-audit"
+                  navId="audit"
                   collapsed={isCollapsed}
                 />
               )}
               {canReviewVoidApprovals && !isCashierRole && (
                 <NavButton
-                  label="Approvals"
+                  label={posNavLabel('approvals', 'Approvals')}
                   icon={ShieldCheck}
                   active={currentViewMode === 'approvals'}
                   onClick={() => onSelectViewMode('approvals')}
                   disabled
                   caption={catalogOnlyDisabledCaption}
                   testId="pos-nav-approvals"
+                  navId="approvals"
                   collapsed={isCollapsed}
                 />
               )}
@@ -451,19 +483,23 @@ export default function TerminalWorkspaceSidebar({
           <>
         {!isCollapsed && <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>}
         <div className={isCollapsed ? 'space-y-2' : 'mt-3 space-y-2'}>
-          <NavButton
-            label="Sell"
-            icon={ShoppingCart}
-            active={sellWorkspaceModes.has(currentViewMode)}
-            onClick={() => onSelectViewMode('checkout')}
-            onPrefetch={() => onPrefetchViewMode('checkout')}
-            disabled={locked || onboardingRestricted || isBranchReadOnlyView || !navigationShiftReady}
-            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (isBranchReadOnlyView ? 'Exit branch view to sell or manage the cart' : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened'))))}
-            collapsed={isCollapsed}
-          />
+          {effectiveCanTransactPos && (
+            <NavButton
+            label={posNavLabel('sell', 'Sell')}
+              icon={ShoppingCart}
+              active={sellWorkspaceModes.has(currentViewMode)}
+              onClick={() => onSelectViewMode('checkout')}
+              onPrefetch={() => onPrefetchViewMode('checkout')}
+              disabled={locked || onboardingRestricted || isBranchReadOnlyView || !navigationShiftReady}
+              caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (isBranchReadOnlyView ? 'Exit branch view to sell or manage the cart' : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened'))))}
+              testId="pos-nav-sell"
+              navId="sell"
+              collapsed={isCollapsed}
+            />
+          )}
           {showFnbService && (
             <NavButton
-              label="F&amp;B service"
+            label={posNavLabel('fnb-service', 'F&B service')}
               icon={Utensils}
               active={currentViewMode === 'fnb_service'}
               onClick={() => onSelectViewMode('fnb_service')}
@@ -471,69 +507,75 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || onboardingRestricted || isBranchReadOnlyView || !navigationShiftReady}
               caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (isBranchReadOnlyView ? 'Exit branch view to operate F&B service' : (!navigationShiftReady ? 'Open shift first to continue' : 'Open checks, tables, and kitchen tickets')))}
               testId="pos-nav-fnb-service"
+              navId="fnb-service"
               collapsed={isCollapsed}
             />
           )}
-          <NavButton
-            label="History"
-            icon={History}
-            active={currentViewMode === 'history'}
-            onClick={() => onSelectViewMode('history')}
-            onPrefetch={() => onPrefetchViewMode('history')}
-            disabled={locked || onboardingRestricted || !canViewPos}
-            caption={
-              locked
-                ? 'Unlock terminal to continue'
-                : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Invoice lookups and audit trail' : 'Admin review available without an active shift')))
-            }
-            testId="pos-nav-history"
-            collapsed={isCollapsed}
-          />
-          {!isCashierRole && (
+          {canViewPos && (
             <NavButton
-              label="Report"
+            label={posNavLabel('history', 'History')}
+              icon={History}
+              active={currentViewMode === 'history'}
+              onClick={() => onSelectViewMode('history')}
+              onPrefetch={() => onPrefetchViewMode('history')}
+              disabled={locked || onboardingRestricted}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (onboardingRestricted ? onboardingCaption : (hasActiveShift ? 'Invoice lookups and audit trail' : 'Admin review available without an active shift'))
+              }
+              testId="pos-nav-history"
+              navId="history"
+              collapsed={isCollapsed}
+            />
+          )}
+          {!isCashierRole && effectiveCanViewReports && (
+            <NavButton
+            label={posNavLabel('reports', 'Report')}
               icon={BarChart3}
               active={currentViewMode === 'reports'}
               onClick={() => onSelectViewMode('reports')}
               onPrefetch={() => onPrefetchViewMode('reports')}
-              disabled={locked || onboardingRestricted || !canViewPos}
+              disabled={locked || onboardingRestricted}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                : (!isOnline ? 'Cached offline estimate only' : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions')))
+                  : (!isOnline ? 'Cached offline estimate only' : (onboardingRestricted ? onboardingCaption : 'Daily totals, popular items, and transactions'))
               }
               testId="pos-nav-reports"
+              navId="reports"
               collapsed={isCollapsed}
             />
           )}
-          <NavButton
-            label="Items"
-            icon={ClipboardList}
-            active={currentViewMode === 'items'}
-            onClick={() => onSelectViewMode('items')}
-            onPrefetch={() => onPrefetchViewMode('items')}
-            disabled={locked || onboardingRestricted || !canAccessItemsWorkspace}
-            caption={
-              locked
-                ? 'Unlock terminal to continue'
-                : (onboardingRestricted
-                  ? onboardingCaption
-                  : (!canAccessItemsWorkspace
-                    ? 'POS view or category-management permission required'
-                    : (!canViewPos
+          {canAccessItemsWorkspace && (
+            <NavButton
+            label={posNavLabel('items', 'Items')}
+              icon={ClipboardList}
+              active={currentViewMode === 'items'}
+              onClick={() => onSelectViewMode('items')}
+              onPrefetch={() => onPrefetchViewMode('items')}
+              disabled={locked || onboardingRestricted}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (onboardingRestricted
+                    ? onboardingCaption
+                    : (!effectiveCanViewItems
                       ? (isOnline ? 'Manage item categories' : 'Reconnect to manage item categories')
                       : (!isOnline
                         ? 'Offline item drafts will sync manually'
                         : (!navigationShiftReady
                           ? 'Protected by POS access PIN'
-                          : (isCashierRole ? 'View store items only' : 'Manage items and categories'))))))
-            }
-            testId="pos-nav-items"
-            collapsed={isCollapsed}
-          />
-          {showServiceOperations && (
+                          : (isCashierRole ? 'View store items only' : 'Manage items and categories')))))
+              }
+              testId="pos-nav-items"
+              navId="items"
+              collapsed={isCollapsed}
+            />
+          )}
+          {showServiceOperations && canAccessServiceOperations && (
             <NavButton
-              label="Services"
+            label={posNavLabel('services', 'Services')}
               icon={CalendarCheck}
               active={currentViewMode === 'services'}
               onClick={() => onSelectViewMode('services')}
@@ -552,11 +594,12 @@ export default function TerminalWorkspaceSidebar({
                         : 'Appointments, resources, waitlist, reminders, and clients')))
               }
               testId="pos-nav-services"
+              navId="services"
             />
           )}
-          {shouldShowIncomingQueue && (
+          {shouldShowIncomingQueue && (canViewPos || isAdminBranchMonitor) && (
             <NavButton
-              label={`Orders (${incomingCount})`}
+            label={`${posNavLabel('orders', 'Orders')} (${incomingCount})`}
               icon={Truck}
               active={currentViewMode === 'incoming_queue'}
               onClick={() => onSelectViewMode('incoming_queue')}
@@ -568,25 +611,30 @@ export default function TerminalWorkspaceSidebar({
                  : (!isOnline ? 'Available online only' : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!hasActiveShift ? 'Read-only branch orders; open a shift to process orders' : 'Accept, reject, and progress branch orders'))))
                }
                collapsed={isCollapsed}
+             navId="orders"
              />
            )}
-          <NavButton
-            label="Shift"
-            icon={ListChecks}
-            active={currentViewMode === 'shift_controls' || currentViewMode === 'close_shift' || currentViewMode === 'cash_drawer'}
-            onClick={() => onSelectViewMode('shift_controls')}
-            onPrefetch={() => onPrefetchViewMode('shift_controls')}
-            disabled={locked || onboardingRestricted}
-            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? (allowAdminNavigationWithoutShift ? 'Open or close shifts in admin navigation mode' : 'Open shift to unlock POS selling') : 'Open, monitor, and close the active shift'))}
-            collapsed={isCollapsed}
-          />
+          {(effectiveCanTransactPos || effectiveCanCloseShift || canAdjustCashDrawer || canSwitchPosLocation || canViewAdminLocationMonitor) && (
+            <NavButton
+              label={posNavLabel('shift', 'Shift')}
+              icon={ListChecks}
+              active={currentViewMode === 'shift_controls' || currentViewMode === 'close_shift' || currentViewMode === 'cash_drawer'}
+              onClick={() => onSelectViewMode('shift_controls')}
+              onPrefetch={() => onPrefetchViewMode('shift_controls')}
+              disabled={locked || onboardingRestricted}
+              caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? (allowAdminNavigationWithoutShift ? 'Open or close shifts in admin navigation mode' : 'Open shift to unlock POS selling') : 'Open, monitor, and close the active shift'))}
+              testId="pos-nav-shift"
+              navId="shift"
+              collapsed={isCollapsed}
+            />
+          )}
         </div>
 
         <div className={`${isCollapsed ? 'my-3' : 'my-5'} border-t border-slate-200`} />
         {!isCollapsed && <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>}
         <div className="space-y-2">
           <NavButton
-            label="Settings"
+            label={posNavLabel('settings', 'Settings')}
             icon={Settings}
             active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)
               || (currentViewMode === 'terminal_setup' && settingsTargetViewMode === 'terminal_setup')}
@@ -595,11 +643,12 @@ export default function TerminalWorkspaceSidebar({
             disabled={locked || !isOnline || isBranchReadOnlyView}
             caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change settings' : 'Profile, POS setup, and storefront tools'))}
             testId="pos-nav-settings"
+            navId="settings"
             collapsed={isCollapsed}
           />
           {shouldShowPosOnlySetup && (
             <NavButton
-              label="Terminal setup"
+              label={posNavLabel('terminal-setup', 'Terminal setup')}
               icon={Settings2}
               active={currentViewMode === 'terminal_setup'}
               onClick={() => onSelectViewMode('terminal_setup')}
@@ -607,6 +656,7 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change terminal settings' : 'Queue scope and local sound; device, printer, and terminal controls'))}
               testId="pos-nav-terminal-setup"
+              navId="terminal-setup"
               collapsed={isCollapsed}
             />
           )}
@@ -619,7 +669,7 @@ export default function TerminalWorkspaceSidebar({
               guaranteed to reject on click. */}
           {canViewVouchers && !isCashierRole && (
             <NavButton
-              label="Vouchers"
+              label={posNavLabel('vouchers', 'Vouchers')}
               icon={Ticket}
               active={currentViewMode === 'settings_vouchers'}
               onClick={() => onSelectViewMode('settings_vouchers')}
@@ -631,12 +681,13 @@ export default function TerminalWorkspaceSidebar({
                   : (!isOnline ? 'Available online only' : 'Create and manage vouchers, codes, and redemption rules')
               }
               testId="pos-nav-vouchers"
+              navId="vouchers"
               collapsed={isCollapsed}
             />
           )}
           {canViewVouchers && !isCashierRole && (
             <NavButton
-              label="Pricelists"
+              label={posNavLabel('pricelists', 'Pricelists')}
               icon={Tags}
               active={currentViewMode === 'settings_pricelists'}
               onClick={() => onSelectViewMode('settings_pricelists')}
@@ -648,12 +699,13 @@ export default function TerminalWorkspaceSidebar({
                   : (!isOnline ? 'Available online only' : 'Set per-item fixed prices for wholesale/B2B-via-B2C vouchers')
               }
               testId="pos-nav-pricelists"
+              navId="pricelists"
               collapsed={isCollapsed}
             />
           )}
-          {!isCashierRole && (
+          {!isCashierRole && effectiveCanViewAffiliates && (
             <NavButton
-              label="Affiliates"
+              label={posNavLabel('affiliates', 'Affiliates')}
               icon={Percent}
               active={currentViewMode === 'settings_affiliates'}
               onClick={() => onSelectViewMode('settings_affiliates')}
@@ -664,12 +716,13 @@ export default function TerminalWorkspaceSidebar({
                   : (!isOnline ? 'Available online only' : 'Enroll affiliates, set commission rates, and review earnings')
               }
               testId="pos-nav-affiliates"
+              navId="affiliates"
               collapsed={isCollapsed}
             />
           )}
           {canViewAudit && (
             <NavButton
-              label="Audit"
+              label={posNavLabel('audit', 'Audit')}
               icon={ClipboardCheck}
               active={currentViewMode === 'audit'}
               onClick={() => onSelectViewMode('audit')}
@@ -677,12 +730,13 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to open the tenant audit log' : 'Admin-only activity log for POS and account changes'))}
               testId="pos-nav-audit"
+              navId="audit"
               collapsed={isCollapsed}
             />
           )}
           {canReviewVoidApprovals && !isCashierRole && (
             <NavButton
-              label="Approvals"
+              label={posNavLabel('approvals', 'Approvals')}
               icon={ShieldCheck}
               active={currentViewMode === 'approvals'}
               onClick={() => onSelectViewMode('approvals')}
@@ -690,6 +744,7 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to review approvals' : 'Review POS void and parked-sale requests'))}
               testId="pos-nav-approvals"
+              navId="approvals"
               collapsed={isCollapsed}
             />
           )}

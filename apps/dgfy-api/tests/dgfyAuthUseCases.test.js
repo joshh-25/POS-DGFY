@@ -2037,7 +2037,7 @@ describe('dgfyAuthUseCases', () => {
             createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
                 user_id: 9,
                 role: 'admin',
-                permissions: ['pos:transact'],
+                permissions: ['pos:view', 'pos:transact'],
                 company: { id: 'tenant-pos', token: 'secret-pos-token' }
             }),
             validateTerminalPolicy
@@ -2053,7 +2053,7 @@ describe('dgfyAuthUseCases', () => {
         expect(validateTerminalPolicy).toHaveBeenCalledWith(expect.objectContaining({
             tenantUserId: 9,
             userRole: 'admin',
-            permissions: ['pos:transact']
+            permissions: ['pos:view', 'pos:transact']
         }));
         expect(validateTerminalPolicy.mock.calls[0][0]).not.toHaveProperty('isTenantOwner');
     });
@@ -2085,7 +2085,7 @@ describe('dgfyAuthUseCases', () => {
                 user_id: 9,
                 role: 'admin',
                 is_master_admin: false,
-                permissions: ['pos:transact'],
+                permissions: ['pos:view', 'pos:transact'],
                 company: { id: 'tenant-pos', token: 'secret-pos-token' }
             }),
             validateTerminalPolicy

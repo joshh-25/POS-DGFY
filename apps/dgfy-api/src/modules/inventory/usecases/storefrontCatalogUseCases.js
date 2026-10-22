@@ -12,7 +12,7 @@ import {
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import logger from '../../../config/logger.js';
-import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
+import { hasEffectivePermission, resolveEffectivePermissions } from '../../../utils/userPermissions.js';
 import { requireItemImageGenerationConfig } from '../../../config/itemImageFeature.js';
 import { OPTIMIZATION_VERSION_V2 } from '../contracts/imageLifecycleContract.js';
 
@@ -30,9 +30,7 @@ const parsePositiveInt = (value) => {
 };
 
 const hasPermission = (user, permission) => {
-  if (user?.is_master_admin === true) return true;
-  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
-  return permissions.includes(permission);
+  return hasEffectivePermission(user, permission);
 };
 
 const toSerializable = (value) => (
@@ -77,7 +75,8 @@ const buildGenerationUser = (user) => ({
   user_id: user?.user_id,
   tenant_id: user?.tenant_id,
   is_master_admin: user?.is_master_admin === true,
-  permissions: resolveEffectivePermissions(user)
+  permissions: resolveEffectivePermissions(user),
+  permissions_resolved: true
 });
 
 const normalizeBulkItemIds = (itemIds) => {

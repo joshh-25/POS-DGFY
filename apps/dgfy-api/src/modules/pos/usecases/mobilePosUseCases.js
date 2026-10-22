@@ -591,6 +591,9 @@ export const buildSyncMobilePosRefundsUseCase = ({
     splitAllocationReversalUseCase
 }) => {
     const canReplayWorkflow = (user, workflow) => {
+        if (!hasEffectivePermission(user, PERMISSIONS.POS.actions.REFUND_TRANSACTION)) {
+            return false;
+        }
         if (workflow === 'cash') {
             return hasEffectivePermission(user, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER);
         }

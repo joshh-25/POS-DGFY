@@ -27,6 +27,7 @@ jest.unstable_mockModule('../src/modules/users/index.js', () => ({
   updateUserRoleUseCase: jest.fn(),
   updateUserStatusUseCase: mockUpdateUserStatusUseCase,
   updateUserPermissionsUseCase: jest.fn(),
+  resetUserPermissionsUseCase: jest.fn(),
   updatePosApprovalPinUseCase: jest.fn(),
   updatePosDayClosePinUseCase: jest.fn(),
   updateOwnPosDayClosePinUseCase: jest.fn(),

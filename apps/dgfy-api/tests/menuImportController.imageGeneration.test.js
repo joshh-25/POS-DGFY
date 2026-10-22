@@ -60,7 +60,7 @@ const buildReqRes = (rows, userOverrides = {}) => {
         user: {
             user_id: 1,
             tenant_id: 'tenant-1',
-            permissions: ['items:import', 'items:edit'],
+            permissions: ['items:view', 'items:import', 'items:edit'],
             is_master_admin: false,
             ...userOverrides
         }

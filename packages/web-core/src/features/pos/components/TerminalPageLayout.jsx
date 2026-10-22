@@ -177,6 +177,9 @@ export default function TerminalPageLayout({
     isDesktopWide,
     isTabletLayout = false,
     canViewPos,
+    canViewItems = null,
+    canViewReports = null,
+    canViewAffiliates = null,
     canViewAttendance = false,
     canOperateAttendance = false,
     canViewAudit = false,
@@ -190,6 +193,7 @@ export default function TerminalPageLayout({
     showFnbService = false,
     canManageFnbModifiers = false,
     serviceOperationsPermissions = {},
+    onServiceAuthorizationFailure = async () => null,
     canAccessServiceOperations = false,
     canEditItems = false,
     canDeleteItems = false,
@@ -409,6 +413,7 @@ export default function TerminalPageLayout({
     ? (branchViewLocationId || viewingLocationId || operatingLocationId)
     : operatingLocationId;
   const workspaceCanViewPos = canViewPos || (isBranchReadOnlyView && canViewBranchLocations);
+  const workspaceCanViewItems = canViewItems || (isBranchReadOnlyView && canViewBranchLocations);
   const workspaceCanTransactPos = isBranchReadOnlyView ? false : canTransactPos;
   const workspaceCanOpenShift = isBranchReadOnlyView ? false : canOpenShift;
   const workspaceCanCloseShift = isBranchReadOnlyView ? false : canCloseShift;
@@ -951,6 +956,10 @@ export default function TerminalPageLayout({
               terminalUser={terminalUser}
               currentViewMode={posViewMode}
               canViewPos={workspaceCanViewPos}
+              canTransactPos={workspaceCanTransactPos}
+              canViewItems={workspaceCanViewItems}
+              canViewReports={canViewReports}
+              canViewAffiliates={canViewAffiliates}
               canViewAudit={canViewAudit}
               canReviewVoidApprovals={canReviewVoidApprovals}
               canAccessPosOnlySetup={canAccessPosOnlySetup}
@@ -965,6 +974,7 @@ export default function TerminalPageLayout({
               onboardingRestricted={onboardingRestricted}
               allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
               canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
+              canCloseShift={workspaceCanCloseShift}
               canCloseDay={workspaceCanCloseDay}
               shiftState={shiftState}
               incomingOrdersState={incomingOrdersState}
@@ -1224,6 +1234,10 @@ export default function TerminalPageLayout({
                 terminalUser={terminalUser}
                 currentViewMode={posViewMode}
                 canViewPos={workspaceCanViewPos}
+              canTransactPos={workspaceCanTransactPos}
+              canViewItems={workspaceCanViewItems}
+              canViewReports={canViewReports}
+              canViewAffiliates={canViewAffiliates}
                 catalogOnlyAccess={catalogOnlyAccess}
                 canCreateItems={canCreateItems}
                 canViewAudit={canViewAudit}
@@ -1236,8 +1250,9 @@ export default function TerminalPageLayout({
                 showIncomingQueue={showIncomingQueue}
                 canAccessServiceOperations={canAccessServiceOperations}
                 allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
-              canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
-              canCloseDay={workspaceCanCloseDay}
+                canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
+                canCloseShift={workspaceCanCloseShift}
+                canCloseDay={workspaceCanCloseDay}
                 shiftState={shiftState}
                 incomingOrdersState={incomingOrdersState}
                 adminLocationMonitorState={adminLocationMonitorState}
@@ -1435,6 +1450,7 @@ export default function TerminalPageLayout({
                 settingsRefreshKey={settingsRefreshKey}
                 employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
                 canViewPos={workspaceCanViewPos}
+                canViewItems={workspaceCanViewItems}
                 catalogOnlyAccess={catalogOnlyAccess}
                 effectiveCapabilities={effectiveCapabilities}
                 canCreateItems={canCreateItems}
@@ -1442,6 +1458,7 @@ export default function TerminalPageLayout({
                 canViewFnbModifiers={canViewFnbModifiers}
                 canManageFnbModifiers={canManageFnbModifiers}
                 serviceOperationsPermissions={serviceOperationsPermissions}
+                onServiceAuthorizationFailure={onServiceAuthorizationFailure}
                 canEditItems={canEditItems}
                 canDeleteItems={canDeleteItems}
                 canManageCategories={canManageCategories}

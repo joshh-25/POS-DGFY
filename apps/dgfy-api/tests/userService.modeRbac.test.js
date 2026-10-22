@@ -152,7 +152,7 @@ describe('userService mode-aware RBAC persistence', () => {
     }));
   });
 
-  it('returns effective staff-role permissions after an explicit permission update', async () => {
+  it('keeps an explicit empty permission update as deny-all instead of restoring staff-role access', async () => {
     const admin = createUser({
       user_id: 1,
       username: 'admin',
@@ -177,8 +177,9 @@ describe('userService mode-aware RBAC persistence', () => {
     const result = await updateUserPermissions(1, 2, [], false);
 
     expect(User.findOne).toHaveBeenCalled();
-    expect(target.update).toHaveBeenCalledWith({ permissions: [], is_master_admin: false });
-    expect(result.permissions).toEqual(['pos:discount_authorize']);
+    expect(target.update).toHaveBeenCalledWith({ permissions: [], permission_mode: 'custom', is_master_admin: false });
+    expect(result.permissions).toEqual([]);
+    expect(result.permission_mode).toBe('custom');
   });
 
   it('keeps approval PIN configuration blocked for users without discount authorization', async () => {

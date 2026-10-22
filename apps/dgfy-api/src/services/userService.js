@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import dbStore from '../utils/dbStore.js';
 import { hashPassword, comparePassword, generateToken, generateRefreshToken } from './authService.js';
 import * as landlordService from './landlordService.js';
-import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { DEFAULT_ROLE_PERMISSIONS, getAllPermissions } from '../config/permissions.js';
 import { ROLE_HIERARCHY, USER_ROLES, isAdminLikeRole } from '../config/userRoles.js';
 import {
   describeUserRolePreset,
@@ -22,13 +22,29 @@ import logger from '../config/logger.js';
 import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSAGE } from '../utils/phoneNumber.js';
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
 import { buildLegacyDgfyLinkStatus } from './dgfyLegacyAccessPolicy.js';
-import { hasEffectivePermission, resolveEffectivePermissions } from '../utils/userPermissions.js';
+import {
+  hasEffectivePermission,
+  normalizePermissionArray,
+  normalizePermissionMode,
+  PERMISSION_MODES,
+  resolveEffectivePermissions
+} from '../utils/userPermissions.js';
 import {
   hasConfiguredPosGlobalPin,
   hasConfiguredPosPinForAction
 } from '../modules/pos/domain/posGlobalPinPolicy.js';
 
 const hasPermission = hasEffectivePermission;
+const KNOWN_PERMISSION_KEYS = new Set(getAllPermissions());
+
+const normalizePermissionWrite = (permissions) => {
+  const normalized = normalizePermissionArray(permissions);
+  const unknown = normalized.filter((permission) => !KNOWN_PERMISSION_KEYS.has(permission));
+  if (unknown.length > 0) {
+    throw createError(`Unknown permission key: ${unknown[0]}`, 422);
+  }
+  return normalized;
+};
 const isEnabledFlag = (value) => (
   value === true
   || value === 1
@@ -75,6 +91,7 @@ const buildUserPayload = (user, workflowMode, extra = {}) => ({
   role: user.role,
   staff_role_id: user.staff_role_id || null,
   role_preset_key: user.role_preset_key || null,
+  permission_mode: normalizePermissionMode(user.permission_mode),
   ...serializeRolePresetMetadata(user, workflowMode),
   ...extra
 });
@@ -89,7 +106,8 @@ const resolveRoleAssignment = (roleData = {}, workflowMode = DEFAULT_WORKFLOW_MO
     return {
       role: preset.role,
       rolePresetKey: preset.key,
-      permissions: preset.permissions,
+      permissions: normalizePermissionWrite(preset.permissions),
+      permissionMode: PERMISSION_MODES.CUSTOM,
       preset
     };
   }
@@ -102,7 +120,8 @@ const resolveRoleAssignment = (roleData = {}, workflowMode = DEFAULT_WORKFLOW_MO
   return {
     role: normalizedRole,
     rolePresetKey: null,
-    permissions: DEFAULT_ROLE_PERMISSIONS[normalizedRole] || [],
+    permissions: normalizePermissionWrite(DEFAULT_ROLE_PERMISSIONS[normalizedRole] || []),
+    permissionMode: PERMISSION_MODES.CUSTOM,
     preset: null
   };
 };
@@ -870,7 +889,8 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
   const updateData = {
     role: assignment.role,
     role_preset_key: assignment.rolePresetKey,
-    permissions: assignment.permissions
+    permissions: assignment.permissions,
+    permission_mode: assignment.permissionMode
   };
 
   // Reset master admin flag if demoting from admin
@@ -906,7 +926,7 @@ export const updateUserRole = async (adminUserId, targetUserId, roleData) => {
 
   return buildUserPayload(targetUser, workflowMode, {
     is_active: targetUser.is_active,
-    permissions: targetUser.permissions,
+    permissions: resolveEffectivePermissions(targetUser),
     is_master_admin: targetUser.is_master_admin
   });
 };
@@ -1113,7 +1133,11 @@ export const updateUserPermissions = async (adminUserId, targetUserId, permissio
     // Optional safety check: allow it for now, but UI should warn
   }
 
-  const updateData = { permissions };
+  const normalizedPermissions = normalizePermissionWrite(permissions);
+  const updateData = {
+    permissions: normalizedPermissions,
+    permission_mode: PERMISSION_MODES.CUSTOM
+  };
   if (typeof isMaster === 'boolean') {
     updateData.is_master_admin = isMaster;
   }
@@ -1123,6 +1147,31 @@ export const updateUserPermissions = async (adminUserId, targetUserId, permissio
   return {
     user_id: targetUser.user_id,
     permissions: resolveEffectivePermissions(targetUser),
+    permission_mode: targetUser.permission_mode,
+    is_master_admin: targetUser.is_master_admin
+  };
+};
+
+export const resetUserPermissionsToInherited = async (adminUserId, targetUserId) => {
+  const User = dbStore.get('User');
+  const adminUser = await findVisibleUserById(User, adminUserId);
+  if (!adminUser || !adminUser.is_master_admin) {
+    throw createError('Only Master Admins can manage permissions', 403);
+  }
+
+  const targetUser = await findVisibleUserById(User, targetUserId);
+  if (!targetUser) throw notFoundError('Target user not found');
+  assertAcceptedUserEditable(targetUser, 'reset permissions');
+
+  await targetUser.update({
+    permissions: [],
+    permission_mode: PERMISSION_MODES.INHERIT
+  });
+
+  return {
+    user_id: targetUser.user_id,
+    permissions: resolveEffectivePermissions(targetUser),
+    permission_mode: targetUser.permission_mode,
     is_master_admin: targetUser.is_master_admin
   };
 };
@@ -1778,6 +1827,7 @@ export const createLocalCashier = async (adminUserId, cashierData = {}) => {
       role: 'cashier',
       role_preset_key: null,
       permissions: DEFAULT_ROLE_PERMISSIONS.cashier,
+      permission_mode: PERMISSION_MODES.CUSTOM,
       is_active: true,
       is_master_admin: false,
       invitation_token: null,
@@ -1995,6 +2045,7 @@ export const provisionCashierFromGmail = async (adminUserId, cashierData = {}) =
       role: 'cashier',
       role_preset_key: null,
       permissions: DEFAULT_ROLE_PERMISSIONS.cashier,
+      permission_mode: PERMISSION_MODES.CUSTOM,
       is_active: true,
       is_master_admin: false,
       invitation_token: null,
@@ -2161,6 +2212,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
     role,
     role_preset_key: assignment.rolePresetKey,
     permissions: assignment.permissions,
+    permission_mode: assignment.permissionMode,
     is_active: false,
     invitation_token: tokenHash,
     invitation_expires_at: expiresAt,
@@ -2403,7 +2455,7 @@ export const acceptInvitation = async (token, userData) => {
 
   const workflowMode = await readCurrentWorkflowMode();
   return buildUserPayload(user, workflowMode, {
-    permissions: user.permissions,
+    permissions: resolveEffectivePermissions(user),
     is_master_admin: user.is_master_admin,
     token: authToken,
     refreshToken,
@@ -2738,7 +2790,11 @@ export const updateUserPermissionsAI = async (adminUserId, targetUserId, permiss
     throw createError('Permissions must be an array', 400);
   }
 
-  await targetUser.update({ permissions });
+  const normalizedPermissions = normalizePermissionWrite(permissions);
+  await targetUser.update({
+    permissions: normalizedPermissions,
+    permission_mode: PERMISSION_MODES.CUSTOM
+  });
   await targetUser.reload();
 
   return {
@@ -2746,8 +2802,9 @@ export const updateUserPermissionsAI = async (adminUserId, targetUserId, permiss
     username: targetUser.username,
     email: targetUser.email,
     role: targetUser.role,
-    permissions: targetUser.permissions,
-    permission_count: targetUser.permissions?.length || 0,
+    permissions: resolveEffectivePermissions(targetUser),
+    permission_mode: targetUser.permission_mode,
+    permission_count: resolveEffectivePermissions(targetUser).length,
     is_master_admin: targetUser.is_master_admin
   };
 };

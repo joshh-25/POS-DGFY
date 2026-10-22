@@ -14,8 +14,8 @@ const { buildGenerateItemImageUseCase, buildBulkGenerateItemImageUseCase } = awa
     '../src/modules/inventory/usecases/storefrontCatalogUseCases.js'
 );
 
-const editableUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:edit'] };
-const nonEditableUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:import'] };
+const editableUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:view', 'items:edit'] };
+const nonEditableUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:view', 'items:import'] };
 
 describe('buildGenerateItemImageUseCase (#197)', () => {
     it('rejects a non-positive-integer itemId', async () => {
@@ -48,7 +48,8 @@ describe('buildGenerateItemImageUseCase (#197)', () => {
                 user_id: 9,
                 tenant_id: 'tenant-1',
                 is_master_admin: false,
-                permissions: expect.arrayContaining(['items:edit'])
+                permissions: expect.arrayContaining(['items:edit']),
+                permissions_resolved: true
             }
         });
     });

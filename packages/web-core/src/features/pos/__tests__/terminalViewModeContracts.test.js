@@ -67,6 +67,7 @@ describe('POS terminal view-mode contracts', () => {
   let posSettingsWorkspaceContent = '';
   let terminalLocalControlsContent = '';
   let terminalOperationsPanelsContent = '';
+  let incomingQueueOrderActionsContent = '';
   let incomingQueueOrderListContent = '';
   let posTenantSetupModalContent = '';
   let posReportsAnalyticsWorkspaceContent = '';
@@ -104,6 +105,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
       .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
+    incomingQueueOrderActionsContent = readSourceForContract(incomingQueueOrderActionsPath);
     incomingQueueOrderListContent = readSourceForContract(incomingQueueOrderListPath);
     posTenantSetupModalContent = readSourceForContract(posTenantSetupModalPath);
     posReportsAnalyticsWorkspaceContent = readSourceForContract(posReportsAnalyticsWorkspacePath);
@@ -351,6 +353,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(dgfyLoginHandler).toContain('const authenticatedAccountEmail = String(dgfyPosState.account?.email || \'\').trim().toLowerCase();');
     expect(dgfyLoginHandler).toContain('const continuingAfterCompanyPicker = (');
     expect(dgfyLoginHandler).toContain('authenticatedAccountEmail === normalizedEmail');
+    expect(dgfyLoginHandler).not.toContain('legacyCompanyChoiceRequired');
+    expect(dgfyLoginHandler).not.toContain('setLegacyCompanySelectionOpen(true);');
     expect(dgfyLoginHandler).toContain('token = String(getStoredDgfyToken() || \'\').trim();');
     expect(dgfyLoginHandler).toContain('const loginResult = await loginDgfyAccount({');
     expect(dgfyLoginHandler).toContain('remember_device: formData.rememberDevice === true');
@@ -391,6 +395,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("pathname: '/terminal',");
     expect(terminalPageContent).toContain('search: POS_ONBOARDING_ENTRY_SEARCH');
     expect(terminalPageContent).toContain('setTerminalUnlockModalOpen(true);');
+    const legacyLoginHandlerStart = terminalPageContent.indexOf('const handleLogin = async');
+    const legacyLoginHandlerEnd = terminalPageContent.indexOf('const clearCurrentSaleForSessionEnd = useCallback', legacyLoginHandlerStart);
+    const legacyLoginHandler = terminalPageContent.slice(legacyLoginHandlerStart, legacyLoginHandlerEnd);
+    expect(legacyLoginHandler).toContain('emailCompanyLookup?.status === \'multiple\'');
+    expect(legacyLoginHandler).toContain('setLegacyCompanySelectionOpen(true);');
+    expect(legacyLoginHandler).toContain('await submitLegacyLogin({');
   });
 
   it('blocks sidebar view switching while terminal is locked', () => {
@@ -587,7 +597,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(terminalWorkspaceSidebarContent).toContain('onboardingRestricted = false');
-    expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
+    expect(terminalWorkspaceSidebarContent).toContain("label={posNavLabel('settings', 'Settings')}");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Sales'");
@@ -696,9 +706,10 @@ describe('POS terminal view-mode contracts', () => {
       expect(source).not.toContain('Print failed');
       expect(source).not.toContain('Receipt: <span');
     }
-    // Phase 229 (#1289), §2.7: this content moved into IncomingQueueOrderList.jsx's pure extraction.
+    // Phase 230 (#1288): receipt actions moved into the shared action-builder helper used by
+    // both card and table views.
     expect(incomingQueueOrderListContent).toContain('Payment Status');
-    expect(incomingQueueOrderListContent).toContain('Print Receipt');
+    expect(incomingQueueOrderActionsContent).toContain('Print Receipt');
     expect(terminalSidebarPanelContent).toContain('Payment:');
     expect(terminalSidebarPanelContent).toContain('Print Receipt');
   });
@@ -738,10 +749,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('posHardware.printOrderTicket({');
     expect(terminalPageContent).toContain('printOrder = false');
     expect(terminalPageContent).toContain('await printOnlineOrderKitchenTicket(detail);');
-    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
-    expect(incomingQueueOrderListContent).toContain("utilityActions.includes('print_receipt')");
-    expect(incomingQueueOrderListContent).toContain("{ printOrder: true }");
-    expect(incomingQueueOrderListContent).toContain("'Print Order'");
+    // Phase 230 (#1288): receipt and kitchen actions live in the shared action-builder helper.
+    expect(incomingQueueOrderActionsContent).toContain("utilityActions.includes('print_receipt')");
+    expect(incomingQueueOrderActionsContent).toContain("{ printOrder: true }");
+    expect(incomingQueueOrderActionsContent).toContain("'Print Order'");
     expect(terminalSidebarPanelContent).toContain("utilityActions.includes('print_receipt')");
     expect(terminalSidebarPanelContent).toContain("{ printOrder: true }");
     expect(terminalSidebarPanelContent).toContain("'Print Order'");
@@ -750,11 +761,11 @@ describe('POS terminal view-mode contracts', () => {
   it('guards incoming queue receipt action with opening lock and lifecycle guidance copy', () => {
     expect(terminalPageContent).toContain('const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);');
     expect(terminalPageContent).toContain('if (incomingReceiptOpeningId !== null) return;');
-    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
-    expect(incomingQueueOrderListContent).toContain('Opening...');
-    expect(incomingQueueOrderListContent).toContain('Retry Print');
-    expect(incomingQueueOrderListContent).toContain('Print Receipt');
-    expect(incomingQueueOrderListContent).toContain('Reprint Receipt');
+    // Phase 230 (#1288): receipt lifecycle labels live in the shared action-builder helper.
+    expect(incomingQueueOrderActionsContent).toContain('Opening...');
+    expect(incomingQueueOrderActionsContent).toContain('Retry Print');
+    expect(incomingQueueOrderActionsContent).toContain('Print Receipt');
+    expect(incomingQueueOrderActionsContent).toContain('Reprint Receipt');
     expect(terminalPageContent).toContain('retryPrint = false');
     expect(terminalSidebarPanelContent).toContain('Completed or cancelled online orders move to History/Receipt Preview.');
   });

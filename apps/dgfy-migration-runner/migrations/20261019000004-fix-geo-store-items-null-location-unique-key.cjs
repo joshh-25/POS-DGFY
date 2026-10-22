@@ -77,7 +77,7 @@ module.exports = {
             await queryInterface.sequelize.query(`
                 ALTER TABLE ${TABLE_NAME}
                 ADD COLUMN ${LOCATION_KEY_COLUMN} BIGINT UNSIGNED
-                GENERATED ALWAYS AS (IFNULL(location_id, 0)) STORED NOT NULL
+                GENERATED ALWAYS AS (IFNULL(location_id, 0)) STORED
             `);
             columns = await queryInterface.describeTable(TABLE_NAME);
         }

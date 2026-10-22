@@ -1,6 +1,7 @@
 import dbStore from '../../../utils/dbStore.js';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError } from '../../shared/contracts/domainErrors.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 
 const POS_CASHIER_ATTENDANCE_FEATURE_KEY = 'pos_cashier_attendance_lifecycle_v1';
 
@@ -36,17 +37,6 @@ const attendanceError = (code, message, statusCode, details = {}, cause = undefi
         ...(cause ? { cause } : {})
     }
 );
-
-const parseUserPermissions = (user) => {
-    if (Array.isArray(user?.permissions)) return user.permissions;
-    if (typeof user?.permissions !== 'string') return [];
-    try {
-        const parsed = JSON.parse(user.permissions);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-};
 
 const assertActor = async (repository, user, transaction) => {
     const userId = positiveInt(user?.user_id);
@@ -535,10 +525,9 @@ const buildCorrectAttendance = (dependencies = {}) => {
         const key = ensureIdempotencyKey(payload);
         const reason = normalizeReason(payload.reason);
         if (reason.length < 8) throw attendanceError(POS_ATTENDANCE_ERROR_CODES.INVALID_TRANSITION, 'A correction reason of at least 8 characters is required.', 422);
-        const permissions = parseUserPermissions(user);
         const canManage = user?.is_master_admin === true
             || ['admin', 'manager'].includes(String(user?.role || '').trim().toLowerCase())
-            || permissions.includes('pos:attendance:manage');
+            || hasEffectivePermission(user, 'pos:attendance:manage');
         if (!canManage) throw attendanceError(POS_ATTENDANCE_ERROR_CODES.USER_UNAVAILABLE, 'Manager permission is required for attendance corrections.', 403);
         return await executeTransaction(async (transaction) => {
             const actorUserId = await assertActor(repository, user, transaction);

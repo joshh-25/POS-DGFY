@@ -13,6 +13,7 @@ import {
   validateUpdateUserRole,
   validateUpdateUserStatus,
   validateUpdateUserPermissions,
+  validateResetUserPermissions,
   validateUpdatePosApprovalPin,
   validateUpdatePosDayClosePin,
   validateUpdateOwnPosDayClosePin,
@@ -40,6 +41,7 @@ router.get('/', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_US
 router.get('/role-catalog', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_USERS), userController.getRoleCatalog);
 router.put('/:user_id/role', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserRole, userController.updateUserRole);
 router.put('/:user_id/status', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserStatus, userController.updateUserStatus);
+router.put('/:user_id/permissions/reset', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateResetUserPermissions, userController.resetUserPermissions);
 router.put('/:user_id/permissions', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserPermissions, userController.updateUserPermissions);
 router.put('/:user_id/pos-approval-pin', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdatePosApprovalPin, userController.updatePosApprovalPin);
 router.put('/:user_id/pos-day-close-pin', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdatePosDayClosePin, userController.updatePosDayClosePin);

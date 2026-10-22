@@ -8,6 +8,7 @@ import {
 } from '../../shared/utils/dgfyLegalTerms.js';
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNumber.js';
 import { getModeRolePreset, getRoleCatalogMode } from '../../../config/modeRolePresets.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const JWT_EXPIRY = process.env.DGFY_JWT_EXPIRY || process.env.JWT_EXPIRY || '24h';
 const HANDOFF_JWT_EXPIRY = process.env.DGFY_HANDOFF_JWT_EXPIRY || '2m';
@@ -1681,7 +1682,9 @@ export const buildStartDgfyTenantSessionUseCase = ({
             const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
             const role = String(session?.role || '').trim().toLowerCase();
             const hasAllowedRole = isEnabledFlag(session?.is_master_admin) || role === 'cashier' || role === 'admin';
-            if (!hasAllowedRole || (!permissions.includes('pos:view') && !permissions.includes('pos:transact'))) {
+            const hasPosView = isPermissionEffective(permissions, 'pos:view', isEnabledFlag(session?.is_master_admin));
+            const hasPosTransact = isPermissionEffective(permissions, 'pos:transact', isEnabledFlag(session?.is_master_admin));
+            if (!hasAllowedRole || (!hasPosView && !hasPosTransact)) {
                 throw new DomainError(
                     DomainErrorCode.AUTHORIZATION_FAILED,
                     'This DGFY account does not have POS access for the selected company.',
@@ -1777,7 +1780,9 @@ export const buildStartDgfyPosSessionUseCase = ({
                 { statusCode: 403 }
             );
         }
-        if (!permissions.includes('pos:view') && !permissions.includes('pos:transact')) {
+        const hasPosView = isPermissionEffective(permissions, 'pos:view', isMasterAdmin);
+        const hasPosTransact = isPermissionEffective(permissions, 'pos:transact', isMasterAdmin);
+        if (!hasPosView && !hasPosTransact) {
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'This DGFY account does not have POS access for the selected company.', { statusCode: 403 });
         }
         const terminalPolicy = typeof validateTerminalPolicy === 'function'

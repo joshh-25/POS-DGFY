@@ -3,6 +3,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
 import dbStore from '../../../utils/dbStore.js';
 import { plain } from '../repositories/staffRoleRepository.js';
+import { buildResolvedServicesCapabilities } from '../../shared/domain/servicesCapabilities.js';
 
 const map = (error, fallback) => error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, fallback, { statusCode: 500 });
 const positive = (value) => { if (value == null || value === '') return null; const n = Number.parseInt(value, 10); if (!Number.isInteger(n) || n <= 0) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'location_id must be a positive integer', { statusCode: 422 }); return n; };
@@ -19,7 +20,12 @@ export const buildGetEffectiveCapabilitiesUseCase = () => async ({ user, locatio
     // #1901: capabilities is the single authoritative effective-permission set used by backend
     // authorization. staff_role.capabilities is informational raw role data only and is not
     // necessarily included in capabilities; clients must read capabilities for access decisions.
-    return ok({ capabilities: resolveEffectivePermissions(user), location_id: normalizedLocationId, staff_role: user.staffRole ? plain(user.staffRole) : null });
+    return ok({
+      capabilities: resolveEffectivePermissions(user),
+      services_capabilities: await buildResolvedServicesCapabilities(user),
+      location_id: normalizedLocationId,
+      staff_role: user.staffRole ? plain(user.staffRole) : null
+    });
   } catch (error) { return fail(map(error, 'Failed to load effective capabilities')); }
 };
 export const buildGetStaffAssignmentsUseCase = ({ repository }) => async ({ user, locationId } = {}) => {

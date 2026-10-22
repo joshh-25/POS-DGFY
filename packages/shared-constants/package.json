@@ -61,6 +61,10 @@
       "import": "./src/staffCapabilities.js",
       "default": "./src/staffCapabilities.js"
     },
+    "./permissionDependencies": {
+      "import": "./src/permissionDependencies.js",
+      "default": "./src/permissionDependencies.js"
+    },
     "./fulfillmentStaffRoleTemplates": {
       "import": "./src/fulfillmentStaffRoleTemplates.js",
       "default": "./src/fulfillmentStaffRoleTemplates.js"

@@ -13,7 +13,7 @@ import {
     buildUpdateBulkStorefrontCatalogOverridesUseCase
 } from '../src/modules/inventory/usecases/storefrontCatalogUseCases.js';
 
-const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
+const editableUser = { is_master_admin: false, permissions: ['items:view', 'items:edit'] };
 const PNG_BYTES = Buffer.from([
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
     0x00, 0x00, 0x00, 0x0D
@@ -174,7 +174,7 @@ describe('storefront catalog use cases', () => {
         await expect(useCase({
             itemId: 82,
             payload: { location_availability: [{ location_id: 2, storefront_available: false }] },
-            user: { user_id: 17, is_master_admin: false, permissions: ['items:edit'] }
+            user: { user_id: 17, is_master_admin: false, permissions: ['items:view', 'items:edit'] }
         })).rejects.toMatchObject({ statusCode: 403 });
         expect(assertLocationAccess).toHaveBeenCalledWith({
             userId: 17,

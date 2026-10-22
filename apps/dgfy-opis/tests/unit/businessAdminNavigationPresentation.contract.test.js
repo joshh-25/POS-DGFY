@@ -37,7 +37,8 @@ describe('Business Admin navigation presentation contract', () => {
   });
 
   it('preserves semantic route state and avoids animating filter-driven rerenders', () => {
-    expect(businessAdminPage).toContain("aria-current={activeSection === item.key ? 'page' : undefined}");
+    expect(businessAdminPage).toContain("const activeNavigationKey = usersRolesShortcut ? 'users-roles' : activeSection;");
+    expect(businessAdminPage).toContain("aria-current={isActive ? 'page' : undefined}");
     expect(businessAdminPage).toContain("const workspaceTransitionKey = activeSection === 'settings'");
     expect(businessAdminPage).toContain(": activeSection;");
     expect(businessAdminPage).not.toContain('key={location.search}');

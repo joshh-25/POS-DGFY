@@ -1,4 +1,17 @@
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
+
+export const PERMISSION_MODES = Object.freeze({
+  INHERIT: 'inherit',
+  CUSTOM: 'custom'
+});
+
+export const normalizePermissionMode = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === PERMISSION_MODES.CUSTOM
+    ? PERMISSION_MODES.CUSTOM
+    : PERMISSION_MODES.INHERIT;
+};
 
 export const normalizePermissionArray = (rawPermissions) => {
   let normalized = rawPermissions;
@@ -26,10 +39,37 @@ export const normalizePermissionArray = (rawPermissions) => {
 
 export const resolveEffectivePermissions = (user) => {
   const explicitPermissions = normalizePermissionArray(user?.permissions);
+
+  // authenticate() already resolves the database row before attaching req.user.
+  // Treat that array as authoritative, including an intentional empty custom set;
+  // resolving it a second time would silently restore role defaults.
+  if (user?.permissions_resolved === true) {
+    return explicitPermissions;
+  }
+
   const staffRolePermissions = normalizePermissionArray(user?.staffRole?.capabilities);
   const role = String(user?.role || 'staff').trim().toLowerCase();
   const hasAssignedStaffRole = user?.staffRole != null;
   const staffRoleActive = user?.staffRole?.is_active === true;
+
+  // New rows have an explicit mode. `custom` is authoritative even when the
+  // stored array is empty; `inherit` intentionally ignores the stored array.
+  if (normalizePermissionMode(user?.permission_mode) === PERMISSION_MODES.CUSTOM) {
+    return explicitPermissions.filter((permission) => (
+      role === 'cashier' ? permission !== 'items:delete' : true
+    ));
+  }
+
+  if (user?.permission_mode === PERMISSION_MODES.INHERIT) {
+    if (staffRoleActive) return staffRolePermissions;
+    if (role === 'cashier' && hasAssignedStaffRole && !staffRoleActive) {
+      const viewOnlyDefaults = DEFAULT_ROLE_PERMISSIONS.staff || [];
+      return Array.from(new Set(viewOnlyDefaults))
+        .filter((permission) => permission !== 'items:delete');
+    }
+    const inherited = DEFAULT_ROLE_PERMISSIONS[role];
+    return Array.isArray(inherited) ? [...inherited] : [];
+  }
 
   // A tenant-assigned staff role is its own explicit role system. The legacy cashier floor/ceiling
   // applies only when resolution falls through to the compatibility cashier role.
@@ -61,5 +101,5 @@ export const resolveEffectivePermissions = (user) => {
 
 export const hasEffectivePermission = (user, permission) => (
   user?.is_master_admin === true
-  || resolveEffectivePermissions(user).includes(permission)
+  || isPermissionEffective(resolveEffectivePermissions(user), permission)
 );

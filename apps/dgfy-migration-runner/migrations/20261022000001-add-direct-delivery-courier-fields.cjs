@@ -55,9 +55,14 @@ module.exports = {
       if (!/^enum\(/i.test(String(info.columnType)) || !values.length) throw new Error('Unexpected fulfillment_status column type');
       const position = values.indexOf('packed');
       values.splice(position < 0 ? values.length : position + 1, 0, 'ready_for_rider');
-      const defaultClause = info.columnDefault == null
-        ? (info.isNullable === 'YES' ? 'DEFAULT NULL' : '')
-        : `DEFAULT '${String(info.columnDefault).replace(/'/g, "''")}'`;
+      // MariaDB can expose an absent nullable default as the literal string "NULL"
+      // through information_schema. Treat that sentinel as no explicit default;
+      // emitting DEFAULT 'NULL' is invalid for this enum column.
+      const normalizedDefault = String(info.columnDefault ?? '').trim().toUpperCase();
+      const hasExplicitDefault = info.columnDefault != null && normalizedDefault !== 'NULL';
+      const defaultClause = hasExplicitDefault
+        ? `DEFAULT '${String(info.columnDefault).replace(/'/g, "''")}'`
+        : (info.isNullable === 'YES' ? 'DEFAULT NULL' : '');
       await queryInterface.sequelize.query(
         `ALTER TABLE ${quote(database)}.\`pos_transactions\` MODIFY COLUMN \`fulfillment_status\` ENUM(${values.map((value) => `'${value.replace(/'/g, "''")}'`).join(',')}) ${info.isNullable === 'YES' ? 'NULL' : 'NOT NULL'} ${defaultClause}`);
     }

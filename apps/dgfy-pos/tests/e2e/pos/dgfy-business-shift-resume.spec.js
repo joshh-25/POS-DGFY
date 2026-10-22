@@ -290,14 +290,13 @@ async function reachResumeShiftScreen({ context, page }) {
   await newPosPage.waitForLoadState('domcontentloaded');
 
   await expect(newPosPage.getByRole('heading', { name: 'POS Catalog' })).toBeVisible();
-  await expect(newPosPage.getByRole('heading', { name: 'Resume Shift', exact: true })).toBeVisible();
+  const branchSelectorDialog = newPosPage.getByTestId('pos-branch-selector-dialog');
+  await expect(branchSelectorDialog).toBeVisible();
+  await expect(branchSelectorDialog.getByRole('button', { name: 'Resume Shift', exact: true })).toBeVisible();
+  await expect(newPosPage.getByRole('heading', { name: 'Resume Shift', exact: true })).toHaveCount(0);
   await expect(newPosPage.getByRole('heading', { name: 'Open Shift', exact: true })).toHaveCount(0);
-  await expect(newPosPage.getByText(
-    'Your active shift was found. Resume the same terminal, cart, totals, and cashier session.',
-    { exact: true }
-  )).toBeVisible();
 
-  return { newPosPage, trackers, diagnostics };
+  return { newPosPage, branchSelectorDialog, trackers, diagnostics };
 }
 
 test.describe('DGFY Business active-shift handoff', () => {
@@ -305,15 +304,12 @@ test.describe('DGFY Business active-shift handoff', () => {
     test.skip(!hasTestCredentials, 'E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD are required.');
     test.skip(!companyName, 'E2E_TEST_COMPANY_NAME is required.');
 
-    const { newPosPage, trackers, diagnostics } = await reachResumeShiftScreen({ context, page });
+    const { newPosPage, branchSelectorDialog, trackers, diagnostics } = await reachResumeShiftScreen({ context, page });
 
     try {
-      const resumeShiftDialog = newPosPage.getByRole('dialog').filter({
-        has: newPosPage.getByRole('heading', { name: 'Resume Shift', exact: true })
-      });
       const currentShiftGetsBeforeResume = trackers.currentShiftGets.length;
-      await resumeShiftDialog.getByRole('button', { name: 'Resume Shift', exact: true }).click();
-      await expect(resumeShiftDialog).toHaveCount(0);
+      await branchSelectorDialog.getByRole('button', { name: 'Resume Shift', exact: true }).click();
+      await expect(branchSelectorDialog).toHaveCount(0);
       await expect(newPosPage.getByRole('heading', { name: 'Open Shift', exact: true })).toHaveCount(0);
 
       // #2129: the cashier must land on usable checkout with the original
@@ -356,13 +352,15 @@ test.describe('DGFY Business active-shift handoff', () => {
     test.skip(!hasTestCredentials, 'E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD are required.');
     test.skip(!companyName, 'E2E_TEST_COMPANY_NAME is required.');
 
-    const { newPosPage, trackers, diagnostics } = await reachResumeShiftScreen({ context, page });
+    const { newPosPage, branchSelectorDialog, trackers, diagnostics } = await reachResumeShiftScreen({ context, page });
 
     try {
       trackers.currentShiftState.mode = 'failure';
+      await branchSelectorDialog.getByRole('button', { name: 'Resume Shift', exact: true }).click();
       const resumeShiftDialog = newPosPage.getByRole('dialog').filter({
         has: newPosPage.getByRole('heading', { name: 'Resume Shift', exact: true })
       });
+      await expect(resumeShiftDialog).toBeVisible();
       await resumeShiftDialog.getByRole('button', { name: 'Resume Shift', exact: true }).click();
 
       // The failed confirmation must restore the retryable resume prompt: no

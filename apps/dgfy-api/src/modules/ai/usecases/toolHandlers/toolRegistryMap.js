@@ -33,6 +33,7 @@ import { buildPurchaseOrderToolRegistry } from './purchaseOrderToolRegistry.js';
 import { buildItemToolRegistry } from './itemToolRegistry.js';
 import { buildSupplierToolRegistry } from './supplierToolRegistry.js';
 import { buildCsvTransferToolRegistry } from './csvTransferToolRegistry.js';
+import { invalidateUserAuthCache } from '../../../../middleware/auth.js';
 
 const storageAndGroupingToolRegistry = buildStorageAndGroupingToolRegistry({
   fileManagementService,
@@ -50,7 +51,12 @@ const userManagementToolRegistry = buildUserManagementToolRegistry({
   logger,
   permissions: PERMISSIONS,
   appUrlProvider: () => process.env.APP_URL || 'http://localhost:5173',
-  companyTokenProvider: () => dbStore.getStore()?.tenantToken
+  companyTokenProvider: () => dbStore.getStore()?.tenantToken,
+  invalidateUserAuthCache: ({ userId }) => invalidateUserAuthCache({
+    tenantId: dbStore.getStore()?.tenantId,
+    companyToken: dbStore.getStore()?.tenantToken,
+    userId
+  })
 });
 
 const aiSettingsService = {

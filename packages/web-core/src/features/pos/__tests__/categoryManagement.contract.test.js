@@ -158,14 +158,14 @@ describe('POS category management contract', () => {
     );
 
     expect(terminalPageSource).toContain("const canManageCategories = hasPermission('categories:manage');");
-    expect(terminalPageSource).toContain("normalizedView === 'items' && !canViewPos && !canManageCategories");
+    expect(terminalPageSource).toContain("normalizedView === 'items' && !canViewItems && !canManageCategories");
     expect(layoutSource).toContain('canManageCategories={canManageCategories}');
     expect(layoutSource.match(/onQueueOfflineItemDraft=\{onQueueOfflineItemDraft\}/g)).toHaveLength(2);
-    expect(sidebarSource).toContain('const canAccessItemsWorkspace = canViewPos || canManageCategories || (catalogOnlyAccess && canCreateItems);');
+    expect(sidebarSource).toContain('const canAccessItemsWorkspace = effectiveCanViewItems || canManageCategories || (catalogOnlyAccess && canCreateItems);');
     expect(historyBlock).toContain('disabled\n                caption={catalogOnlyDisabledCaption}');
     expect(itemsBlock).toContain('disabled={locked || !canAccessItemsWorkspace}');
-    expect(sidebarSource).toContain('disabled={locked || onboardingRestricted || !canViewPos}');
-    expect(sidebarSource).toContain('disabled={locked || onboardingRestricted || !canAccessItemsWorkspace}');
+    expect(sidebarSource).toContain('canViewPos && (');
+    expect(sidebarSource).toContain('{canAccessItemsWorkspace && (');
     expect(catalogSource).toContain('Category management is available online only.');
   });
 
