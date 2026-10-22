@@ -74,6 +74,7 @@ import {
   shouldRefreshBusinessAdminSettingsUpdate,
   subscribeToBusinessAdminSettingsUpdates
 } from '../utils/businessAdminSettingsSync.js';
+import { shouldOpenBranchDirectoryOnHydrate } from '../utils/posBranchDirectoryEntry.js';
 import api, {
   getBackendReachabilitySnapshot,
   isTerminalOffline,
@@ -3340,7 +3341,7 @@ export default function TerminalPage() {
     toast.success('Queued operation marked as manually resolved.');
   }, [refreshTerminalOperationQueue]);
 
-  const hydrateUser = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+  const hydrateUser = useCallback(async ({ suppressGlobalErrors = false, background = false } = {}) => {
     const hydrationRequestId = userHydrationRequestRef.current + 1;
     userHydrationRequestRef.current = hydrationRequestId;
     const isCurrentHydration = () => userHydrationRequestRef.current === hydrationRequestId;
@@ -3461,7 +3462,13 @@ export default function TerminalPage() {
         return;
       }
 
-      if (IS_DGFY_POS_SURFACE && !dgfyTenantId && userCanViewBranchLocations && !storedLockActive) {
+      if (shouldOpenBranchDirectoryOnHydrate({
+        isDgfyPosSurface: IS_DGFY_POS_SURFACE,
+        dgfyTenantId,
+        canViewBranchLocations: userCanViewBranchLocations,
+        storedLockActive,
+        background
+      })) {
         setStoredTerminalLock(false);
         setStoredTerminalLockReason('');
         setTerminalUnlockRequired(false);
@@ -3805,6 +3812,11 @@ export default function TerminalPage() {
     resetSettingsAccessPinState,
     tenantSetupFlowRequested
   ]);
+
+  const refreshTerminalUserInBackground = useCallback(
+    (opts = {}) => hydrateUser({ ...opts, background: true }),
+    [hydrateUser]
+  );
 
   useEffect(() => {
     if (initialUserHydrationStartedRef.current) return;
@@ -5218,7 +5230,6 @@ export default function TerminalPage() {
     ) {
       cashierBranchOperationSelectedRef.current = true;
       setCashierBranchSelectionReady(true);
-      commitViewModeSelection('checkout');
       setBranchSelectorOpen(false);
       branchSelectorContinuationRef.current = null;
       return true;
@@ -8819,11 +8830,11 @@ export default function TerminalPage() {
     // Re-read the canonical permission and terminal snapshot when OPIS or another
     // same-origin settings surface changes it. The refresh is scoped and must not
     // change tenant, reset checkout, close a shift, overwrite dirty settings, or
-    // silently reprice an active sale.
+    // silently reprice an active sale. Its hydrateUser call runs as background.
     const refreshScopedSettings = () => {
       setSettingsRefreshKey((previous) => previous + 1);
       const refreshTasks = [
-        hydrateUser({ suppressGlobalErrors: true }),
+        hydrateUser({ suppressGlobalErrors: true, background: true }),
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
         hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
         refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
@@ -9581,7 +9592,7 @@ function PosRestorationLoadingScreen() {
           onQueueOfflineOperation={enqueueTerminalOperationIntent}
           onManualUniversalSync={handleManualUniversalSync}
           manualSyncPolicy={manualSyncPolicy}
-          refreshTerminalUser={hydrateUser}
+          refreshTerminalUser={refreshTerminalUserInBackground}
           refreshTerminalMeta={hydrateTerminalMeta}
           queuedTerminalOperationCount={queueSummary.pending}
           queuedTerminalBlockedCount={queueSummary.blocked}
