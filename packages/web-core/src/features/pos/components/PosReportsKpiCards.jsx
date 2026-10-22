@@ -48,7 +48,6 @@ export function PosReportsKpiCard({
   value,
   Icon,
   accent = 'blue',
-  footer,
   valueClassName = '',
   className = ''
 }) {
@@ -61,12 +60,6 @@ export function PosReportsKpiCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[10px] font-semibold leading-tight text-slate-500">{label}</p>
           <p className={`mt-1 min-w-0 break-words text-[clamp(0.6875rem,3.5vw,0.8125rem)] font-black leading-tight tracking-tight text-[#102A56] sm:truncate sm:text-[18px] sm:leading-none ${valueClassName}`}>{value}</p>
-          {shouldShowFooter ? (
-            <div className={`mt-1 flex min-h-4 min-w-0 items-start gap-1 text-[10px] font-bold leading-tight sm:mt-2 sm:items-center sm:leading-none ${hasDelta ? (isImprovement ? 'text-emerald-600' : 'text-rose-500') : 'text-slate-400'}`}>
-              {hasDelta ? <DeltaIcon className="h-3 w-3 shrink-0" strokeWidth={2.75} aria-hidden="true" /> : null}
-              <span className="min-w-0 break-words">{footer || `${deltaText} vs previous period`}</span>
-            </div>
-          ) : null}
         </div>
       </div>
     </article>
