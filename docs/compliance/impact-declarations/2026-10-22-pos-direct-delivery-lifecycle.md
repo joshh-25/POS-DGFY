@@ -29,7 +29,9 @@ remain in force under ADR 0063 and ADR 0083.
 ## Affected Surfaces
 
 - POS and terminal: rider assignment, Waiting for rider, pickup, Delivered and
-  Failed actions for direct deliveries outside an active Delivery Run.
+  Failed actions for direct deliveries outside an active Delivery Run. The
+  terminal submits delivery completion and failure through their dedicated API
+  actions.
 - Payments: COD cash collection and captured-downpayment balance settlement
   in the completion transaction; store-origin cancellation refund on failure.
 - Public tracking: customer-safe courier details, delivery stage and the

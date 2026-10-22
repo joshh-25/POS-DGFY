@@ -1006,6 +1006,18 @@ export const assignDeliveryPersonnel = async (posTransactionId, payload = {}) =>
     return response.data?.data;
 };
 
+export const completeDeliveryOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/delivery/complete`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const failDeliveryOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/delivery/fail`, payload);
+    return response.data?.data;
+};
+
 const unsupportedFiscalEndpointError = (operation) => {
     const error = new Error(`${operation} is not available in the current backend runtime.`);
     error.code = 'POS_FISCAL_ENDPOINT_UNAVAILABLE';
@@ -1151,6 +1163,8 @@ export default {
     fetchOrderPackingEvidenceImage,
     updateDeliveryJobStatus,
     assignDeliveryPersonnel,
+    completeDeliveryOrder,
+    failDeliveryOrder,
     updateOnlineOrderStatus,
     updateOnlineOrderDeliveryAddress,
     fetchFiscalTerminalRegistrations,

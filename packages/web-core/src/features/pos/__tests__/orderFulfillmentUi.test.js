@@ -9,11 +9,43 @@ import {
   getNextDeliveryJobStatus,
   isManualDeliveryJob,
   getFulfillmentStatusLabel,
+  getDirectDeliveryActionModel,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS
 } from '../components/orderFulfillmentUi.js';
 
 describe('orderFulfillmentUi queue action mapping', () => {
+  it('maps every direct-delivery stage to one primary action with explicit secondary actions', () => {
+    const base = {
+      order_method: 'delivery',
+      deliveryJob: { provider: 'manual', status: 'pending_dispatch' }
+    };
+    const context = { canTransactPos: true, hasActiveShift: true, isOnline: true };
+    const cases = [
+      ['placed', 'Confirm', ['Reject']],
+      ['confirmed', 'Start Preparing', ['Assign rider', 'Failed']],
+      ['preparing', 'Ready', ['Assign rider', 'Failed']],
+      ['packed', 'Ready', ['Assign rider', 'Failed']],
+      ['ready_for_rider', 'Assign rider', ['Failed']],
+      ['out_for_delivery', 'Assign rider', ['Failed']]
+    ];
+    cases.forEach(([status, primary, secondary]) => {
+      const model = getDirectDeliveryActionModel({ ...base, fulfillment_status: status }, context);
+      expect(model.primary.label).toBe(primary);
+      expect(model.secondary.map((item) => item.label)).toEqual(secondary);
+    });
+    const assigned = {
+      ...base, fulfillment_status: 'out_for_delivery',
+      deliveryJob: {
+        provider: 'manual', status: 'picked_up', courier_service: 'lalamove',
+        assigned_by: 7, assigned_shift_id: 8, assigned_at: '2026-10-22T00:00:00Z'
+      }
+    };
+    expect(getDirectDeliveryActionModel(assigned, context).primary.label).toBe('Delivered');
+    expect(getDirectDeliveryActionModel(assigned, { ...context, isOnline: false }).primary.disabledReason).toBe('Offline');
+    expect(getDirectDeliveryActionModel(assigned, { ...context, hasActiveShift: false }).primary.disabledReason).toBe('No open shift');
+    expect(getDirectDeliveryActionModel(assigned, { ...context, canTransactPos: false }).primary.disabledReason).toBe('Needs pos:transact');
+  });
   it('keeps the initial and confirmed actions focused on the next useful step', () => {
     expect(getIncomingOrderUtilityActions({
       fulfillment_status: 'placed',
