@@ -3623,8 +3623,8 @@ job Picked Up or already Delivered; legacy routes remain available.
 
 ### POST /pos/orders/:id/delivery/fail
 
-Fail a direct manual delivery outside an active run. Requires `pos:transact` and
-an open shift. Body: `{ "idempotency_key": "delivery-fail-12345678", "reason": "Customer unavailable" }`.
+Fail a direct manual delivery outside an active run. Requires `pos:transact`,
+a paired terminal, an active operator, and an open shift. Body: `{ "idempotency_key": "delivery-fail-12345678", "reason": "Customer unavailable" }`.
 Allowed from Confirmed through Out for delivery before the job is Delivered.
 One transaction marks the job Failed, the order Cancelled, releases any stock
 reservation without goods-issue reversal, and audits both records. Store-origin

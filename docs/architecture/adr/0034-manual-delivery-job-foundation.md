@@ -32,6 +32,16 @@ The initial provider is `manual` and the initial state is `pending_dispatch`. Th
 
 ## Amendments
 
+### 2026-10-22 — Active order visibility and direct failure operator attribution (#2676)
+
+The POS incoming queue and customer active-order views include every non-terminal
+`pos_transactions.fulfillment_status`, including `ready_for_rider`. Their status
+vocabulary derives from the shared fulfillment constant and is checked against
+the model enum. Direct delivery failure now requires terminal pairing and an active
+operator, matching direct completion, so shift ownership and audit attribution work
+on shared terminals. The delivery-job status route retains its narrower assigned-staff
+path without pairing or active-operator middleware. `[default]`
+
 ### 2026-10-22 — Direct delivery lifecycle (#2667)
 
 For a manual delivery job outside an active delivery run, the staff-facing POS flow is
