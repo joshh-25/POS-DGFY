@@ -126,10 +126,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
         onClick: () => {
           const orderId = order.pos_transaction_id;
           if (item.id === 'reject' || item.id === 'fail') onRequestRejection(Number(orderId));
-          else if (item.id === 'assign_rider' || item.id === 'change_rider') {
-            document.getElementById(`delivery-assignment-${orderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            document.querySelector(`#delivery-assignment-${orderId} input`)?.focus();
-          } else if (item.id === 'pickup') handleDeliveryJobStatusChange?.(orderId, 'picked_up');
+          else if (item.id === 'pickup') handleDeliveryJobStatusChange?.(orderId, 'picked_up');
           else if (item.id === 'complete') handleIncomingOrderStatusChange?.(orderId, 'delivery_complete');
           else handleIncomingOrderStatusChange?.(orderId, {
             confirm: 'confirmed', prepare: 'preparing', ready: 'ready_for_rider', pack: 'packed'

@@ -16,6 +16,7 @@ import {
   getIncomingOrderUtilityActions,
   getNextDeliveryJobStatus,
   getNextStatusActions,
+  canAssignDirectDelivery,
   isDirectDeliveryOrder,
   resolveAppliedVouchers
 } from './orderFulfillmentUi.js';
@@ -431,8 +432,7 @@ function OrderCard({
                 orderId={order.pos_transaction_id}
                 deliveryJob={deliveryJob}
                 directDelivery={isDirectDeliveryOrder(order)}
-                canAssignOrder={order.fulfillment_status === 'out_for_delivery'
-                  || (isDirectDeliveryOrder(order) && ['confirmed', 'preparing', 'packed', 'ready_for_rider'].includes(order.fulfillment_status))}
+                canAssignOrder={order.fulfillment_status === 'out_for_delivery' || canAssignDirectDelivery(order)}
                 deliveryPersonnelState={deliveryPersonnelState}
                 actionLoading={actionLoading}
                 canTransactPos={canTransactPos}

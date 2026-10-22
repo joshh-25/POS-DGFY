@@ -31,6 +31,8 @@ describe('direct delivery controls', () => {
 
     expect(onAssign).toHaveBeenCalledWith(44, expect.objectContaining({ courier_service: 'lalamove' }));
     expect(onAssign.mock.calls[0][1]).not.toHaveProperty('name');
+    // The API rejects a null courier_service_name, so it is only sent for Other.
+    expect(onAssign.mock.calls[0][1]).not.toHaveProperty('courier_service_name');
   });
 
   it('requires an Other courier name and HTTPS tracking links', () => {
@@ -43,6 +45,17 @@ describe('direct delivery controls', () => {
     expect(assign.disabled).toBe(false);
     fireEvent.change(screen.getByLabelText('Courier tracking link'), { target: { value: 'http://example.com/track' } });
     expect(assign.disabled).toBe(true);
+  });
+
+  it('sends the courier name for Other', () => {
+    const onAssign = vi.fn();
+    render(<DeliveryAssignmentControl {...baseAssignmentProps} onAssign={onAssign} />);
+    fireEvent.click(screen.getByLabelText('Other'));
+    fireEvent.change(screen.getByLabelText('Other courier company'), { target: { value: 'City Courier' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Assign rider' }));
+    expect(onAssign).toHaveBeenCalledWith(44, expect.objectContaining({
+      courier_service: 'other', courier_service_name: 'City Courier'
+    }));
   });
 
   it('maps an existing registered rider without courier metadata to Own', () => {

@@ -121,6 +121,15 @@ export const isDirectDeliveryOrder = (order = {}) => {
     || ['completed', 'cancelled'].includes(String(job.deliveryRun?.status || '').trim().toLowerCase());
 };
 
+// The rider is booked in the Delivery personnel panel once preparation has started; the queue
+// action row carries no separate Assign rider button so there is exactly one assign control.
+export const DIRECT_DELIVERY_ASSIGNABLE_STATUSES = Object.freeze([
+  'preparing', 'packed', 'ready_for_rider', 'out_for_delivery'
+]);
+
+export const canAssignDirectDelivery = (order = {}) => isDirectDeliveryOrder(order)
+  && DIRECT_DELIVERY_ASSIGNABLE_STATUSES.includes(String(order?.fulfillment_status || '').trim());
+
 export const getDirectDeliveryActionModel = (order = {}, context = {}) => {
   if (!isDirectDeliveryOrder(order)) return null;
   const job = order.deliveryJob;
@@ -140,23 +149,18 @@ export const getDirectDeliveryActionModel = (order = {}, context = {}) => {
     secondary = [action('reject', 'Reject')];
   } else if (status === 'confirmed') {
     primary = action('prepare', 'Start Preparing');
-    secondary = [action(assigned ? 'change_rider' : 'assign_rider', assigned ? 'Change rider' : 'Assign rider'), action('fail', 'Failed')];
+    secondary = [action('fail', 'Failed')];
   } else if (['preparing', 'packed'].includes(status)) {
     primary = action('ready', 'Ready');
     secondary = [
       ...(status === 'preparing' && normalizeWorkflowMode(context.workflowMode) === 'retail' ? [action('pack', 'Mark Packed')] : []),
-      action(assigned ? 'change_rider' : 'assign_rider', assigned ? 'Change rider' : 'Assign rider'),
       action('fail', 'Failed')
     ];
   } else if (status === 'ready_for_rider' || status === 'out_for_delivery') {
-    primary = !assigned ? action('assign_rider', 'Assign rider')
-      : status === 'out_for_delivery' && ['picked_up', 'delivered'].includes(jobStatus)
-        ? action('complete', 'Delivered')
-        : action('pickup', 'Picked Up', assigned ? null : 'Assign a rider first');
-    secondary = [
-      ...(assigned && jobStatus !== 'picked_up' && jobStatus !== 'delivered' ? [action('change_rider', 'Change rider')] : []),
-      action('fail', 'Failed')
-    ];
+    primary = status === 'out_for_delivery' && ['picked_up', 'delivered'].includes(jobStatus)
+      ? action('complete', 'Delivered')
+      : action('pickup', 'Picked Up', assigned ? null : 'Assign a rider first');
+    secondary = [action('fail', 'Failed')];
   }
   return { primary, secondary };
 };
