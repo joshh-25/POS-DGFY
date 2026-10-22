@@ -12,8 +12,8 @@ verification_evidence: 163 focused API tests,11 Storefront tests,49 POS tests,ch
 rollback_note: Roll back API and POS UI together. Keep the widened tenant ENUM and nullable courier fields; do not narrow the ENUM while waiting-for-rider orders may exist. Existing payment and delivery records remain readable by legacy routes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-22T03:52:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-22-POS-DIRECT-DELIVERY-LIFECYCLE
+preflight_run_at: 2026-10-22T06:07:55.730Z
+preflight_request_ref: PREFLIGHT-39731474926-2026-10-22-POS-DIRECT-DELIVERY-LIFECYCLE
 ---
 
 # Direct delivery lifecycle (#2667)

@@ -12,8 +12,8 @@ verification_evidence: Focused API and frontend regression tests and required bu
 rollback_note: Revert the shared cancellation, transactional audit, picker, and receipt-history changes together. No schema migration or historical row rewrite is introduced; audit rows already written remain immutable.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-22T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2666-DELIVERY-WAVE1-CANCEL-AUDIT
+preflight_run_at: 2026-10-22T06:07:55.730Z
+preflight_request_ref: PREFLIGHT-39731474926-2026-10-22-DELIVERY-WAVE1-CANCEL-AUDIT
 ---
 
 # Delivery Wave 1 cancellation and audit (#2666)

@@ -12,8 +12,8 @@ verification_evidence: focused API Jest and Admin/POS Vitest suites,JavaScript s
 rollback_note: Roll back API and UI before removing the landlord allowance column. Existing order and payment records are unchanged. Removing the policy restores prior merchant self-service behavior; do not run migration down while the new API is deployed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-21T15:20:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-21-PLATFORM-DOWNPAYMENT-ALLOWANCE
+preflight_run_at: 2026-10-22T06:07:55.730Z
+preflight_request_ref: PREFLIGHT-39731474926-2026-10-21-PLATFORM-DOWNPAYMENT-ALLOWANCE
 ---
 
 # Platform-owned downpayment allowance (#2639)
