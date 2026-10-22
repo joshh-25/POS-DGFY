@@ -12,8 +12,8 @@ verification_evidence: Focused API Jest and Storefront Vitest suites,Admin and S
 rollback_note: Revert the Admin, API, and Storefront code together. Leave the additive landlord table and origin column in place if configured destinations or pins exist; an explicit data-preserving migration plan is required before dropping them.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-22T11:33:26.000Z
-preflight_request_ref: NOT-EXECUTED-2026-10-22-EXTERNAL-DISCOVERY-REDIRECTS
+preflight_run_at: 2026-10-22T12:23:56.311Z
+preflight_request_ref: PREFLIGHT-39776720585-2026-10-22-EXTERNAL-DISCOVERY-REDIRECTS
 ---
 
 # External discovery redirects (#2629)
