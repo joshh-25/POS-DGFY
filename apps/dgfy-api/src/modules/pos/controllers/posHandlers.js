@@ -79,6 +79,8 @@ import {
     assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
+    completeDirectDeliveryOrderUseCase,
+    failDirectDeliveryOrderUseCase,
     updateOnlineOrderDeliveryAddressUseCase,
     getPosDeviceStatusUseCase,
     testPosPrinterUseCase,
@@ -2691,6 +2693,29 @@ export const assignDeliveryPersonnel = async (req, res, next) => {
     }
 };
 
+const handleDirectDeliveryAction = (useCase, message) => async (req, res, next) => {
+    try {
+        const result = await useCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: { ipAddress: req.ip, userAgent: req.get('user-agent') }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, message, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const completeDirectDeliveryOrder = handleDirectDeliveryAction(
+    completeDirectDeliveryOrderUseCase, 'Delivery completed successfully.');
+export const failDirectDeliveryOrder = handleDirectDeliveryAction(
+    failDirectDeliveryOrderUseCase, 'Delivery failed and order cancelled.');
+
 export const updateDeliveryJobStatus = async (req, res, next) => {
     try {
         const result = await updateDeliveryJobStatusUseCase({
@@ -3398,6 +3423,8 @@ export default {
     listIncomingOnlineOrders,
     listActiveDeliveryPersonnel,
     assignDeliveryPersonnel,
+    completeDirectDeliveryOrder,
+    failDirectDeliveryOrder,
     updateOnlineOrderStatus,
     updateOnlineOrderDeliveryAddress,
     getDeviceStatus,

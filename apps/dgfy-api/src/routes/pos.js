@@ -79,6 +79,8 @@ import {
     validateDeliveryCompletionEvidenceImageParams,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
+    validateCompleteDirectDelivery,
+    validateFailDirectDelivery,
     validateShiftIdParam,
     validateOpenTerminalShift,
     validateAttendanceMutation,
@@ -486,6 +488,8 @@ router.get(
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
+router.post('/orders/:id/delivery/complete', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCompleteDirectDelivery, posController.requireActiveOperatorForMutation, posController.completeDirectDeliveryOrder);
+router.post('/orders/:id/delivery/fail', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateFailDirectDelivery, posController.failDirectDeliveryOrder);
 // #1462: delivery evidence is a delivery-job action, not a terminal-hardware action. Staff may
 // attach it through the assigned-run capability; POS operators retain the broad transact path.
 router.post(

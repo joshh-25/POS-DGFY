@@ -112,6 +112,8 @@ import {
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
+    buildCompleteDirectDeliveryOrderUseCase,
+    buildFailDirectDeliveryOrderUseCase,
     buildUpdateOnlineOrderDeliveryAddressUseCase,
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
@@ -562,6 +564,14 @@ export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCas
     inventoryReservationService,
     commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
 });
+const directDeliveryDependencies = {
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    inventoryReservationService,
+    commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
+};
+export const completeDirectDeliveryOrderUseCase = buildCompleteDirectDeliveryOrderUseCase(directDeliveryDependencies);
+export const failDirectDeliveryOrderUseCase = buildFailDirectDeliveryOrderUseCase(directDeliveryDependencies);
 export const updateOnlineOrderDeliveryAddressUseCase = buildUpdateOnlineOrderDeliveryAddressUseCase({
     posRepository
 });

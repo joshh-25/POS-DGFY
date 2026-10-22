@@ -30626,6 +30626,8 @@ Implementation: `apps/dgfy-api/src/modules/{pos,store,dgfy,businessAdmin}`,
 - IMS-hosted web-core Vitest: 3 files / 32 tests passed; OPIS Vitest: 35 files / 152 tests passed.
 - POS, IMS, Storefront, and OPIS production builds passed. API syntax, architecture, docs,
   full-diff compliance, and app-version checks passed.
+- Merged to `develop` in [PR #2672](https://github.com/Sieitzz/dgfy-platform/pull/2672) on
+  2026-10-22; all reported GitHub check-runs completed successfully.
 
 ### Completion date
 
@@ -30641,6 +30643,71 @@ Implementation: `apps/dgfy-api/src/modules/{pos,store,dgfy,businessAdmin}`,
 - [ ] operational — verify confirmed DGFY-account delivery cancellation restores stock, cancels
   its job, and records refund/forfeit plus audits on STAGING; owner: Verifier; blocks #2652 acceptance.
 
+## Phase 528 - Direct delivery lifecycle (#2667)
+
+### Initiative and release
+
+Direct delivery, current release.
+
+### Objective and scope
+
+Add Waiting for rider, early courier assignment, one-step Delivered settlement
+and completion, Failed cancellation/refund, and customer-safe Storefront tracking
+for direct manual deliveries. Preserve active Delivery Run and native legacy paths.
+
+### Status
+
+`in_progress` — implementation and local validation; merge is outstanding.
+
+### Dependencies
+
+No explicit phase dependency. Phase 527's generic order-status audit is present in the
+`develop` base through merged PR #2672. Unit coverage verifies that `ready_for_rider`
+writes the order-status audit. Apply the additive tenant migration before API deployment.
+Mobile presentation of `ready_for_rider` follows dgfy-mobile#439.
+
+### Contract and authority
+
+[ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md),
+[ADR 0063](../architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md),
+[ADR 0083](../architecture/adr/0083-courier-cash-custody-and-remittance.md),
+[Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[API](../api/specification.md),
+[manual delivery workflow](POS_MANUAL_DELIVERY_WORKFLOW.md).
+Implementation: POS and Storefront apps, `packages/web-core`, POS and Store API
+modules, tenant migration and schema repair registry.
+
+### Acceptance and validation evidence
+
+- Passed: 163 focused API tests across direct completion/failure, assignment,
+  job status, order rejection and readiness, tracking serialization, tenant
+  schema repair, and migration contracts; 11 Storefront tracking tests; 49 POS
+  action, assignment/dialog, queue-view, viewport, and run-gate tests.
+- Passed: syntax checks for 21 changed API and migration JavaScript files; POS,
+  Storefront, IMS, and OPIS production builds; `node scripts/check-app-version-bump.js`
+  with `GITHUB_BASE_REF=develop` and `GITHUB_HEAD_REF=feature/2667-direct-delivery`,
+  `npm run check:compliance`, `npm run check:architecture`, and
+  `npm run lint:docs` (including strict ADR lint); `git diff --check`.
+- Integration database migration and STAGING walkthroughs remain outstanding.
+
+### Completion date
+
+Not complete; record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] deployment — apply tenant migration before API deployment; verify all
+  active tenants and restored-tenant schema repair; owner: Promoter; blocks API.
+- [ ] operational — run F&B COD direct Confirm → Delivered with cash and
+  customer tracking on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] operational — run Retail direct downpayment balance settlement and
+  Failed/refund on STAGING; owner: Verifier; blocks issue acceptance.
+- [ ] regression — verify active Delivery Run dispatch, assigned staff and
+  legacy out-for-delivery completion remain unchanged; owner: Verifier.
+- [ ] integration — verify `ready_for_rider` appears in the order-status history on
+  STAGING; owner: Verifier. Verify mobile handling under dgfy-mobile#439 when available.
+
 ### Next phase number
 
-Phase 528. No explicit dependency.
+Phase 529. No explicit dependency.
