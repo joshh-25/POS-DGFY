@@ -16,6 +16,7 @@ export function PosFilterChoiceGroup({
   onChange,
   testId,
   compact = false,
+  compactGridClassName = '',
   mobile = false,
   scrollable = false,
   groupAriaLabel,
@@ -26,7 +27,7 @@ export function PosFilterChoiceGroup({
 }) {
   const headingId = `${testId || slugify(label)}-heading`;
   const optionGroupClassName = compact
-    ? 'mt-1.5 grid min-w-0 max-w-full grid-cols-4 gap-2'
+    ? `mt-1.5 grid min-w-0 max-w-full grid-cols-4 gap-2 ${compactGridClassName}`.trim()
     : mobile
       ? 'dgfy-pos-history-horizontal-scroll mt-1 flex min-w-0 max-w-full flex-nowrap gap-2 overflow-x-auto overscroll-x-contain scroll-smooth pb-1 touch-pan-x'
       : scrollable

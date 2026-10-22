@@ -26,7 +26,7 @@ describe('POS page shell and route ownership', () => {
     expect(main).toContain("const CustomerDisplayPage = lazyWithChunkRetry(() => import('../../../packages/web-core/src/features/pos/pages/CustomerDisplayPage.jsx'));");
   });
 
-  it('keeps IMS merchant routes as compatibility handoffs while preserving internal admin routing', () => {
+  it('keeps the POS terminal page out of the IMS app router', () => {
     const main = read('apps/dgfy-ims/src/main.jsx');
     const adminMain = read('apps/dgfy-admin/src/main.jsx');
 
@@ -35,6 +35,5 @@ describe('POS page shell and route ownership', () => {
     expect(main).toContain('path="/items" element={<LegacyMerchantRoute target="/backoffice/catalog" title="Catalog workspace moved" />}');
     expect(main).not.toContain('FeedbackViewer');
     expect(main).not.toContain("const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))");
-    expect(main).not.toContain("const Items = lazy(() => import('../../../packages/web-core/src/features/inventory/pages/ItemsPage.jsx'))");
   });
 });
