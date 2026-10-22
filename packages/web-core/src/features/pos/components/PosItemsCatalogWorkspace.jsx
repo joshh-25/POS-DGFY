@@ -12,6 +12,7 @@ const PosServiceOptionsWorkspace = lazyWithChunkRetry(() => import('./PosService
 export default function ItemsCatalogWorkspace({
   itemsWorkspaceComponent: ItemsWorkspaceComponent,
   canViewPos = false,
+  canViewItems = null,
   catalogOnlyAccess = false,
   effectiveCapabilities = [],
   canManageCategories = false,
@@ -29,7 +30,8 @@ export default function ItemsCatalogWorkspace({
   sectionId,
   ...itemsWorkspaceProps
 }) {
-  const canViewCatalog = canViewPos || catalogOnlyAccess;
+  const effectiveCanViewItems = canViewItems == null ? canViewPos : canViewItems;
+  const canViewCatalog = effectiveCanViewItems || catalogOnlyAccess;
   const availableTabs = useMemo(() => [
     ...(canViewCatalog ? [{ id: 'items', label: 'Items', icon: ClipboardList }] : []),
     ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : []),
@@ -243,6 +245,7 @@ export default function ItemsCatalogWorkspace({
           <ItemsWorkspaceComponent
             {...itemsWorkspaceProps}
             canViewPos={canViewPos}
+            canViewItems={effectiveCanViewItems}
             catalogOnlyAccess={catalogOnlyAccess}
             effectiveCapabilities={effectiveCapabilities}
             canManageCategories={canManageCategories}

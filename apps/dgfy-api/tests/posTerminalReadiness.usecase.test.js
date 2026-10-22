@@ -370,7 +370,7 @@ describe('POS terminal readiness context', () => {
         user_id: 12,
         is_master_admin: false,
         role: 'cashier',
-        permissions: ['pos:view', 'pos:switch_location']
+        permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location']
       }
     });
 

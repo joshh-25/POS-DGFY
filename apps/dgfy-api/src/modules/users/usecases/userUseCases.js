@@ -238,6 +238,30 @@ export const buildUpdateUserPermissionsUseCase = ({ userService }) => {
   };
 };
 
+export const buildResetUserPermissionsUseCase = ({ userService }) => {
+  return async ({ adminUserId, targetUserId }) => {
+    const normalizedAdminUserId = parsePositiveInt(adminUserId);
+    const normalizedTargetUserId = parsePositiveInt(targetUserId);
+    if (!normalizedAdminUserId || !normalizedTargetUserId) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'adminUserId and targetUserId must be positive integers',
+        { statusCode: 400 }
+      ));
+    }
+
+    try {
+      const data = await userService.resetUserPermissionsToInherited(
+        normalizedAdminUserId,
+        normalizedTargetUserId
+      );
+      return ok(data);
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to reset user permissions'));
+    }
+  };
+};
+
 export const buildUpdatePosApprovalPinUseCase = ({ userService }) => {
   return async ({ adminUserId, targetUserId, pin, clear }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);

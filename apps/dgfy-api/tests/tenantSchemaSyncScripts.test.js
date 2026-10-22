@@ -15,6 +15,7 @@ import {
   REQUIRED_TENANT_SCHEMA_TABLES,
   TENANT_SCHEMA_CAPABILITY_VERSION,
   buildTenantSchemaEnumRepairSql,
+  backfillTenantUserPermissionMode,
   backfillItemFolderSortOrder,
   repairItemFolderCategoryLifecycleSchema,
   repairPosParkedSaleOriginOwnership,
@@ -56,7 +57,7 @@ describe('tenant schema sync script contracts', () => {
         const [, table, column] = replacements;
         if (table === 'pos_transactions') return [[{
           columnType: enumWidened ? "enum('placed','packed','ready_for_rider','completed')" : "enum('placed','packed','completed')",
-          isNullable: 'YES', columnDefault: null
+          isNullable: 'YES', columnDefault: 'NULL'
         }], {}];
         return [existing.has(column) ? [{ columnType: 'varchar(120)' }] : [], {}];
       }
@@ -74,7 +75,10 @@ describe('tenant schema sync script contracts', () => {
     await directDeliveryMigration.up(queryInterface);
     expect(altered).toHaveLength(4);
     expect(altered.every((sql) => sql.includes('`sku_tenant_one`'))).toBe(true);
-    expect(altered.find((sql) => sql.includes('MODIFY COLUMN'))).toContain("'ready_for_rider'");
+    const enumAlter = altered.find((sql) => sql.includes('MODIFY COLUMN'));
+    expect(enumAlter).toContain("'ready_for_rider'");
+    expect(enumAlter).toContain('DEFAULT NULL');
+    expect(enumAlter).not.toContain("DEFAULT 'NULL'");
     await directDeliveryMigration.up(queryInterface);
     expect(altered).toHaveLength(4);
   });
@@ -91,6 +95,40 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions).toHaveProperty('payment_timing');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions.payment_timing.sql)
       .toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
+  });
+
+  it('registers tenant-local permission mode repair for the RBAC contract', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.users.permission_mode.sql)
+      .toContain("`permission_mode` VARCHAR(16) NOT NULL DEFAULT 'inherit'");
+  });
+
+  it('backfills tenant permission mode without dropping explicit grants', async () => {
+    const connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce([[
+          { user_id: 7, permissions: '["pos:shift_close"]' },
+          { user_id: 8, permissions: [] }
+        ], {}])
+        .mockResolvedValue([[], {}])
+    };
+
+    await backfillTenantUserPermissionMode(connection, 'sku_tenant_test');
+
+    expect(connection.query).toHaveBeenNthCalledWith(
+      1,
+      'SELECT `user_id`, `permissions`\n           FROM `sku_tenant_test`.`users`',
+      []
+    );
+    expect(connection.query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE `sku_tenant_test`.`users`\n                SET `permission_mode` = ?, `permissions` = ?\n              WHERE `user_id` = ?',
+      ['custom', '["pos:shift_close","pos:shift_access","pos:view"]', 7]
+    );
+    expect(connection.query).toHaveBeenNthCalledWith(
+      3,
+      'UPDATE `sku_tenant_test`.`users`\n                SET `permission_mode` = ?, `permissions` = ?\n              WHERE `user_id` = ?',
+      ['inherit', '[]', 8]
+    );
   });
 
   it('backfills existing category order deterministically', async () => {

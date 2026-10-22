@@ -10,7 +10,7 @@ const { buildGenerateItemImageUseCase, buildBulkGenerateItemImageUseCase } = awa
     '../src/modules/inventory/usecases/storefrontCatalogUseCases.js'
 );
 
-const editableUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:edit'] };
+const editableUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:view', 'items:edit'] };
 
 describe('generate-image use cases with ITEM_IMAGE_GENERATION_ENABLED unset (#197)', () => {
     it('buildGenerateItemImageUseCase rejects before touching the repository', async () => {

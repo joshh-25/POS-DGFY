@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import { USER_ROLES } from '../config/userRoles.js';
+import { getAllPermissions } from '../config/permissions.js';
 import { PHONE_NUMBER_PATTERN } from '../utils/phoneNumber.js';
 import { isEmailOtpEnforcementEnabled } from '../config/emailOtp.js';
 
@@ -327,15 +328,21 @@ export const validateUpdateOwnPosDayClosePin = (req, res, next) => {
 
 // Schema for updating user permissions (Master Admin only)
 export const updateUserPermissionsSchema = Joi.object({
-  permissions: Joi.array().items(Joi.string()).required().messages({
+  permissions: Joi.array().items(Joi.string().trim().valid(...getAllPermissions())).required().messages({
     'array.base': 'Permissions must be an array',
     'any.required': 'Permissions array is required',
-    'string.base': 'Permission items must be strings'
+    'string.base': 'Permission items must be strings',
+    'any.only': 'Permissions must use a known permission key'
+  }),
+  permission_mode: Joi.string().valid('custom').optional().default('custom').messages({
+    'any.only': 'Permission updates must use custom mode; use the reset endpoint to inherit'
   }),
   is_master_admin: Joi.boolean().strict().optional().messages({
     'boolean.base': 'is_master_admin must be a boolean'
   })
 });
+
+export const resetUserPermissionsSchema = Joi.object().max(0).default({});
 
 /**
  * Middleware to validate user permission update request (Master Admin only)
@@ -358,6 +365,21 @@ export const validateUpdateUserPermissions = (req, res, next) => {
     });
   }
 
+  req.validatedData = value;
+  next();
+};
+
+export const validateResetUserPermissions = (req, res, next) => {
+  const { error, value } = resetUserPermissionsSchema.validate(req.body || {}, { abortEarly: false });
+  if (error) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: error.details.map((detail) => ({ field: detail.path[0], message: detail.message })),
+      timestamp: new Date().toISOString()
+    });
+  }
   req.validatedData = value;
   next();
 };

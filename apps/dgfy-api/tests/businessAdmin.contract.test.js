@@ -74,6 +74,8 @@ describe('Business Admin contracts', () => {
         const capabilities = buildBusinessAdminSettingsCapabilities({
             role: 'manager',
             permissions: [
+                PERMISSIONS.POS.actions.VIEW_POS,
+                PERMISSIONS.POS.actions.SHIFT_ACCESS,
                 PERMISSIONS.POS.actions.MANAGE_EMPLOYEES,
                 PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT
             ]

@@ -100,6 +100,7 @@ export const PERMISSION_GROUPS = {
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
             RESOLVE_DELIVERY_RUN_VARIANCE: "pos:delivery_run_variance_resolve",
             CLOSE_SHIFT_POS: "pos:shift_close",
+            SHIFT_ACCESS: "pos:shift_access",
             CLOSE_DAY_POS: "pos:close_day",
             REPRINT_POS_RECEIPT: "pos:reprint",
             VOID_POS_TRANSACTION: "pos:void",

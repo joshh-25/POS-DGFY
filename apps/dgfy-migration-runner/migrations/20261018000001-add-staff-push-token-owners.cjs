@@ -27,7 +27,7 @@ const replaceOwnerCheck = async (queryInterface, Sequelize, { staffOwners = true
 
   if (current) {
     await queryInterface.sequelize.query(
-      'ALTER TABLE `push_device_tokens` DROP CHECK `chk_push_device_tokens_owner`'
+      'ALTER TABLE `push_device_tokens` DROP CONSTRAINT `chk_push_device_tokens_owner`'
     );
   }
 

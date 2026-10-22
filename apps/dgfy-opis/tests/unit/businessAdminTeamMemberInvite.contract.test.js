@@ -22,10 +22,16 @@ describe('Business Admin team member invitation contract', () => {
     it('keeps one canonical team-management workflow', () => {
         expect(businessAdminPage).toContain('Manage team');
         expect(businessAdminPage).toContain('Manage users &amp; roles');
+        expect(businessAdminPage).toContain("const usersRolesShortcut = pathInfo.usersRolesShortcut === true;");
+        expect(businessAdminPage).toContain('function BusinessAdminUsersRolesWorkspace');
+        expect(businessAdminPage).toContain('data-testid="business-admin-users-roles-workspace"');
+        expect(businessAdminPage).toContain('embedded');
         expect(businessAdminPage).toContain('<UserManagementModal');
-        expect(businessAdminPage).toContain('locationOptions={invitationLocations}');
+        expect(businessAdminPage).toContain('locationOptions={locationOptions}');
         expect(businessAdminPage).toContain('invitationTitle="Add team member"');
         expect(businessAdminPage).toContain('invitationSubmitLabel="Send invitation"');
+        expect(businessAdminPage).toContain("buildBackOfficeModulePath(rootPath, 'users-roles')");
+        expect(businessAdminPage).toContain('<GuardedLink');
         expect(businessAdminPage).not.toContain('function BusinessAdminMemberInviteModal');
         expect(businessAdminPage).not.toContain('memberInviteOpen');
     });
@@ -35,6 +41,8 @@ describe('Business Admin team member invitation contract', () => {
         expect(userManagementModal).toContain('locationOptions={locationOptions}');
         expect(userManagementModal).toContain('title={invitationTitle}');
         expect(userManagementModal).toContain('submitLabel={invitationSubmitLabel}');
+        expect(userManagementModal).toContain('embeddedCloseLabel');
+        expect(userManagementModal).toContain('data-testid="user-management-panel"');
         expect(userManagementModal).toContain('getRoleCatalog()');
         expect(userManagementModal).toContain('updateUserStatus');
         expect(userManagementModal).toContain('api.put(`/users/${userId}/permissions`');

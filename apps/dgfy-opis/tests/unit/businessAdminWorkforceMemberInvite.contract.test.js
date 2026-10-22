@@ -19,7 +19,7 @@ describe('Business Admin workforce member invitation contract', () => {
         expect(businessAdminPage).toContain('function WorkforceWorkspace({ data, bootstrap, teamCapability, onManageTeam })');
         expect(businessAdminPage).toContain('title="Workforce activity"');
         expect(businessAdminPage).toContain('Manage team');
-        expect(businessAdminPage).toContain("buildBusinessAdminSettingsPath(rootPath, 'team')");
+        expect(businessAdminPage).toContain("buildBackOfficeModulePath(rootPath, 'users-roles')");
         expect(businessAdminPage).toContain('teamCapability={settingsCapabilities.team}');
         const workforceStart = businessAdminPage.indexOf('function WorkforceWorkspace');
         const settingsStart = businessAdminPage.indexOf('function BusinessAdminSettingsEditor');

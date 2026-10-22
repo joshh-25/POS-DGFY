@@ -81,7 +81,7 @@ const updateStatus = (repository, { fulfillmentStatus, idempotencyKey, userId = 
 };
 
 describe('preparing -> packed online order status (Phase 211, #1180)', () => {
-    it('allows delivery orders to move to Waiting for rider', async () => {
+    it('allows delivery orders to move to Ready for pickup', async () => {
         const repository = buildRepository({ fulfillment_status: 'preparing', order_method: 'delivery' });
 
         const result = await updateStatus(repository, {
@@ -105,7 +105,7 @@ describe('preparing -> packed online order status (Phase 211, #1180)', () => {
         );
     });
 
-    it('rejects Waiting for rider on pickup orders with a stable method code', async () => {
+    it('rejects Ready for pickup on pickup orders with a stable method code', async () => {
         const repository = buildRepository({ fulfillment_status: 'preparing', order_method: 'pickup' });
 
         const result = await updateStatus(repository, {

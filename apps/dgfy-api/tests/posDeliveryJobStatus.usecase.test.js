@@ -87,7 +87,7 @@ const updateStatus = (repository, status, idempotencyKey = null, dependencies = 
 };
 
 describe('POS manual delivery job status', () => {
-    it('moves a directly assigned Waiting for rider order to Out for delivery with Picked Up', async () => {
+    it('moves a directly assigned Ready for pickup order to Out for delivery with Picked Up', async () => {
         const repository = buildRepository({
             fulfillment_status: 'ready_for_rider',
             deliveryJob: {

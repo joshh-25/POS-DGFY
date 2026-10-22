@@ -30944,3 +30944,213 @@ Phase 532. No explicit dependency.
 ### Next phase number
 
 Phase 533. No explicit dependency.
+
+## Phase 533 - Direct delivery customer tracking labels (#2703)
+
+- **Initiative / release:** Manual direct delivery Wave 2 / next develop promotion.
+- **Objective / scope:** Label `ready_for_rider` as Ready for pickup across Storefront, API tracking status, and POS; omit Confirmed from customer timelines and keep Order placed active until preparation begins. No status, enum, or server transition changes.
+- **Status:** in_progress.
+- **Dependencies:** None explicit. Phase 528 (#2667) is merged on `develop`; Phase 532 has no dependency that blocks this work.
+- **Acceptance and validation evidence:** #2703; update Storefront timeline contracts, API tracking label assertion, POS fulfillment label assertion, required Storefront/POS builds, API syntax check, compliance check, and app-version floor check in the PR.
+- **Contracts / ADR / implementation:** [ADR 0034](../architecture/adr/0034-manual-delivery-job-foundation.md), [POS Manual Delivery Workflow](POS_MANUAL_DELIVERY_WORKFLOW.md), [API specification](../api/specification.md), `apps/dgfy-storefront/src/shared/tracking/directDeliveryTimeline.js`, `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`, and `packages/web-core/src/features/pos/components/orderFulfillmentUi.js`.
+
+### Post-merge verification
+
+- [ ] STAGING: verify delivery, pickup, takeout, and dine-in customer timelines omit Confirmed and show the intended active step; blocks #2703 acceptance.
+- [ ] STAGING: verify `ready_for_rider` shows Ready for pickup in Storefront, tracking API, and POS while the courier guidance remains visible; blocks #2703 acceptance.
+
+### Next phase number
+
+Phase 534. No explicit dependency.
+
+## Phase 534 - OPIS/POS RBAC remediation and button-level enforcement
+
+### Initiative and release
+
+Role-based access-control remediation for the POS, OPIS, and shared web-core surfaces; local
+implementation for the next develop-bound release.
+
+### Objective and scope
+
+Close the verified RBAC gaps identified by the OPIS/POS audit: distinguish inherited role access
+from an intentional custom deny-all set, make parent/child permissions effective and synchronized,
+unify refund authority across execution paths, harden OPIS high-risk and expense visibility, and
+preserve the existing cache invalidation and audit behavior. The scope includes the landlord
+permission-mode migration, user-management reset-to-inherit flow, shared permission dependencies,
+POS button visibility/enforcement, refund route/use-case guards, OPIS capability projection, tests,
+and local migration verification.
+
+### Status
+
+`in_progress` — implementation, focused validation, and local migration are complete; authenticated
+runtime and deployed-environment verification remain open.
+
+### Dependencies
+
+The approved `OPIS_POS_RBAC_REMEDIATION_PLAN.md`, the updated RBAC audit, the shared permission
+catalog, POS/OPIS authorization middleware and use cases, the landlord migration runner, and the
+existing user-management and capability-cache contracts. No new tenant schema migration is added.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[permission-mode migration](../../apps/dgfy-migration-runner/migrations/20261022000001-add-permission-mode-to-users.cjs),
+[backend permission resolver](../../apps/dgfy-api/src/utils/userPermissions.js),
+[shared permission dependencies](../../packages/shared-constants/src/permissionDependencies.js),
+and [OPIS business-admin page](../../apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx).
+Classification: `cross-boundary`; the contract spans landlord user state, API authorization,
+shared POS capabilities, OPIS presentation, and local database migration state.
+
+### Acceptance and validation evidence
+
+- [x] `inherit` and `custom` permission modes are explicit; custom empty permissions remain
+      deny-all, while inherited users resolve active role/staff-role access.
+- [x] Permission writes validate known keys, support reset-to-inherit, preserve cache invalidation,
+      and migrate legacy explicit/empty permission rows.
+- [x] Parent/child dependencies are shared across backend and frontend; effective counts and POS
+      button visibility respect required parent access.
+- [x] Refund execution paths require the parent refund authority plus the relevant tender or void
+      authority; mobile replay follows the same contract.
+- [x] OPIS expense visibility fails closed and high-risk approval controls require the same effective
+      authority and scope checks as the backend decision use case.
+- [x] Local migration runner completed successfully through
+      `20261022000001-add-permission-mode-to-users.cjs`; migration status reports all migrations up.
+- [x] Focused backend validation: 27 suites, 417 tests passed.
+- [x] Focused OPIS validation: 6 files, 41 tests passed; shared web-core validation: 6 files,
+      112 tests passed.
+- [x] POS, OPIS, and Storefront production builds passed; architecture guardrails, controller
+      boundaries, tenant-schema coverage, and `git diff --check` passed.
+- [ ] Authenticated browser/API verification is still required for deny-all, inherited access,
+      reset-to-inherit, refund denial, and OPIS high-risk/expense behavior in a deployed-like
+      environment.
+- [ ] PR review and deployment are complete; this phase does not merge or deploy.
+
+### Known verification boundary
+
+The broad backend test command still reaches legacy database-heavy suites that require a separately
+reconciled local tenant schema; those suites report missing historical migrations/columns and are
+not evidence of an RBAC contract failure. The audit's runtime certification remains open until
+authenticated API/database and deployment checks are executed.
+
+### Rollback
+
+Revert the application and permission-mode migration through the normal release rollback process.
+Before rollback, preserve the migration and audit records; do not delete user permission rows.
+Existing role-based access remains the fallback only when the explicit migration state is restored.
+
+### Completion date
+
+Not complete. Set only after authenticated runtime and deployed-environment evidence is terminal.
+
+### Post-merge verification
+
+- [ ] create one inherited cashier and one custom deny-all cashier; verify effective API permissions
+      and UI button visibility for both.
+- [ ] grant a child permission without its parent; verify the child is ineffective until the parent
+      is granted, and verify the matrix count reflects effective access.
+- [ ] verify refund routes reject missing parent/tender authority and allow only the intended grants.
+- [ ] verify OPIS expense and high-risk approval controls match backend capability decisions.
+- [ ] verify cache invalidation, audit records, and session behavior after permission changes without
+      forcing a user back to login unexpectedly.
+
+## Phase 535 - OPIS/POS navigation parity and server-projected Services access
+
+### Initiative and release
+
+Navigation and button-permission remediation across the OPIS permission editor, POS terminal shell,
+Services capability projection, and OPIS destination access gates; local implementation for the next
+develop-bound release.
+
+### Objective and scope
+
+Make POS navigation names and permission-editor entries derive from one shared registry, preserve
+legacy grants without presenting fictional buttons, model shared/composite destinations honestly,
+remove the misleading Shift master toggle, and expose Services access from the API's effective
+workflow and permission policy. Consolidate OPIS Users & Roles as the canonical workforce editor,
+make manifest capability selectors fail closed for navigation and direct routes, and surface a
+not-authorized state when a Services API returns 403.
+
+### Status
+
+`in_progress` — implementation is complete locally; focused tests, affected builds, and authenticated
+runtime verification remain open until the final validation pass.
+
+### Dependencies
+
+The approved `OPIS_POS_NAVIGATION_DUPLICATION_AUDIT.md` and
+`OPIS_POS_NAVIGATION_REMEDIATION_SPEC.md`, ADRs 0020, 0016, 0031, 0087, and 0039, the shared
+permission catalog, POS route/use-case guards, OPIS business-admin manifest, and the effective
+capabilities endpoint. No new tenant schema migration is introduced.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[POS navigation registry](../../packages/web-core/src/features/pos/config/posNavigationDefinitions.js),
+[POS permission matrix](../../packages/web-core/Components/users/PermissionMatrix.jsx),
+[Services capability projection](../../apps/dgfy-api/src/modules/shared/domain/servicesCapabilities.js),
+and [OPIS business-admin page](../../apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx).
+Classification: `cross-boundary`; the contract spans shared frontend navigation, POS authorization,
+API capability projection, and OPIS route discoverability.
+
+### Implementation targets
+
+- Shared POS navigation/permission definitions consumed by the terminal sidebar and PermissionMatrix.
+- Separate dedicated, shared, composite, server-capability, role-gated, and legacy permission models.
+- API-projected `services_capabilities` on the authenticated effective-capabilities response, honoring
+  workflow enablement and the production-disabled generic fallback switch.
+- OPIS manifest selectors for expenses, team/users-roles, audit, and approvals with fail-closed
+  navigation and direct-route access checks.
+- Canonical `/users-roles` workforce route and guarded Settings > Team handoff.
+- Services 403 refresh and explicit not-authorized feedback.
+
+### Acceptance and validation evidence
+
+- [x] POS sidebar and PermissionMatrix consume the shared navigation registry; inactive F&B service
+      remains intentionally hidden and unmapped permissions remain under Other / Legacy.
+- [x] Shift is represented as action-based access without a separate misleading master toggle;
+      shared Vouchers/Pricelists grants are labeled as shared.
+- [x] Permission counts distinguish configured child grants from effective child access and the
+      visible revoke action preserves hidden/legacy permissions.
+- [x] Services access is projected by the API and the frontend no longer infers it from unrelated
+      POS/inventory grants; production fallback remains governed by the existing config switch.
+- [x] OPIS Users & Roles is canonical; Settings > Team and Workforce hand off through guarded links,
+      while capability-selected navigation and direct destinations fail closed.
+- [x] Services 403 responses refresh effective capabilities and show an explicit not-authorized state.
+- [x] Focused API/OPIS/web-core tests, affected frontend builds, architecture checks, and diff
+      whitespace checks pass after the final validation run.
+- [ ] Authenticated browser/API verification confirms role changes, Services fallback off/on behavior,
+      OPIS direct-route denial, and no session logout during capability refresh.
+- [ ] PR review and deployment are complete; this phase does not merge or deploy.
+
+### Known verification boundary
+
+Static contracts and pure capability projection tests can prove mapping and fail-closed behavior, but
+they cannot certify deployed database settings, authenticated API responses, or a real browser session.
+Those checks remain an explicit post-implementation boundary.
+
+### Rollback
+
+Revert the application changes through the normal release rollback process. Keep the existing RBAC
+permission-mode migration and grants intact; do not delete legacy permission rows or split the shared
+Vouchers/Pricelists grant without a separate backend migration and compatibility plan.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation and named validation evidence are terminal.
+
+### Post-merge verification
+
+- [ ] Open PermissionMatrix for a legacy role and verify canonical POS labels, effective counts, and
+      preserved Other / Legacy grants.
+- [ ] Verify a user with only generic POS/inventory/report grants cannot see Services when fallback is
+      off, and receives the permitted projection only when the approved non-production fallback is on.
+- [ ] Verify a revoked Services grant produces a 403 refresh and not-authorized message without logging
+      the user out.
+- [ ] Verify OPIS Team & access links to Users & Roles and direct capability-denied destinations fail
+      closed without exposing protected data.
+
+### Next phase number
+
+Phase 536. No explicit dependency.

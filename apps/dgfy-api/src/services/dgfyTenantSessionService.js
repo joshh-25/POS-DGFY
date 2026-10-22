@@ -12,6 +12,7 @@ import {
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import { resolveEffectivePermissions } from '../utils/userPermissions.js';
 import { updateOwnPosDayClosePinForVerifiedDgfyAccount } from './userService.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const isEnabledFlag = (value) => (
   value === true
@@ -144,7 +145,7 @@ export const createTenantSessionForDgfyAccount = async ({
       // Keep the legacy response field for older POS clients. The canonical
       // global PIN is valid for day close as well.
       pos_day_close_pin_configured: Boolean(String(user.pos_cashier_pin_hash || user.pos_day_close_pin_hash || '').trim()),
-      can_configure_pos_global_pin: isMasterAdmin || permissions.includes('pos:transact'),
+      can_configure_pos_global_pin: isPermissionEffective(permissions, 'pos:transact', isMasterAdmin),
       is_master_admin: isMasterAdmin,
       onboarding,
       token,

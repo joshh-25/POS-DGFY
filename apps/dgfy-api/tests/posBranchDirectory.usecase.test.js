@@ -60,7 +60,7 @@ describe('POS branch directory and read-only branch view', () => {
         const fixture = buildFixture();
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:switch_location', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location', 'pos:transact'] }
         });
 
         expect(result.success).toBe(false);
@@ -91,7 +91,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
 
         expect(result.success).toBe(true);
@@ -120,7 +120,7 @@ describe('POS branch directory and read-only branch view', () => {
             user: {
                 user_id: 7,
                 role: 'admin',
-                permissions: ['pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
+                permissions: ['pos:view', 'pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
             }
         });
 
@@ -152,7 +152,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
         const terminal = result.data.locations[0].terminals[0];
 
@@ -179,7 +179,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'admin', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'admin', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
         const terminal = result.data.locations[0].terminals[0];
 
@@ -205,7 +205,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'admin', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'admin', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
         const terminal = result.data.locations[0].terminals[0];
 
@@ -246,7 +246,7 @@ describe('POS branch directory and read-only branch view', () => {
             user: {
                 user_id: 7,
                 role: 'admin',
-                permissions: ['pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
+                permissions: ['pos:view', 'pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
             }
         });
 
@@ -282,7 +282,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
         const terminal = result.data.locations[0].terminals[0];
 

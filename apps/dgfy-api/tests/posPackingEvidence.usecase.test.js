@@ -109,7 +109,7 @@ describe('POS packing evidence attachments', () => {
         const result = await run(async () => useCase({
             posTransactionId: 77,
             files: [await validFile()],
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
 
         expect(result.success).toBe(true);
@@ -152,7 +152,7 @@ describe('POS packing evidence attachments', () => {
         const result = await run(async () => useCase({
             posTransactionId: 77,
             files: [await validFile('retry.jpg')],
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
 
         expect(result.success).toBe(true);
@@ -210,7 +210,7 @@ describe('POS packing evidence attachments', () => {
         const unpacked = await run(async () => useCase({
             posTransactionId: 77,
             files: [await validFile('unpacked.jpg')],
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
         expect(unpacked.success).toBe(false);
         expect(unpacked.error.statusCode).toBe(409);
@@ -229,7 +229,7 @@ describe('POS packing evidence attachments', () => {
         const seventh = await run(async () => useCase({
             posTransactionId: 77,
             files: [await validFile('seventh.jpg')],
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
         expect(seventh.success).toBe(false);
         expect(seventh.error.statusCode).toBe(409);
@@ -248,7 +248,7 @@ describe('POS packing evidence attachments', () => {
         const result = await run(async () => useCase({
             posTransactionId: 77,
             files: [{ path: filePath, mimetype: 'image/jpeg', size: 8 }],
-            user: { user_id: 12, permissions: ['pos:transact'] }
+            user: { user_id: 12, permissions: ['pos:view', 'pos:transact'] }
         }));
 
         expect(result.success).toBe(false);

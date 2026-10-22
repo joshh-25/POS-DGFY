@@ -2243,6 +2243,7 @@ describe('store use-cases application result contract', () => {
 
         const assigned = await useCase({ trackingPin: order.tracking_pin, tenantId });
         expect(assigned.success).toBe(true);
+        expect(assigned.data.order.status_label).toBe('Ready for pickup');
         expect(assigned.data.delivery).toEqual({
             stage: 'rider_assigned', courier_name: 'City Courier', courier_reference: 'BOOK-90',
             tracking_url: 'https://courier.example/90', rider_name: null

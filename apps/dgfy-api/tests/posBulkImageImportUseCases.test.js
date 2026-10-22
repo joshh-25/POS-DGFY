@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import { createPosBulkImageImportUseCases } from '../src/modules/pos/usecases/posBulkImageImportUseCases.js';
 
-const user = Object.freeze({ tenant_id: 'tenant-a', user_id: 'user-a', permissions: ['items:edit'] });
+const user = Object.freeze({ tenant_id: 'tenant-a', user_id: 'user-a', permissions: ['items:view', 'items:edit'] });
 
 describe('POS bulk image import feature disabling', () => {
     const originalFlag = process.env.POS_BULK_IMAGE_IMPORT_ENABLED;

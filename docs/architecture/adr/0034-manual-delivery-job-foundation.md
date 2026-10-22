@@ -42,6 +42,14 @@ operator, matching direct completion, so shift ownership and audit attribution w
 on shared terminals. The delivery-job status route retains its narrower assigned-staff
 path without pairing or active-operator middleware. `[default]`
 
+### 2026-10-22 — ready_for_rider label (#2703)
+
+The `ready_for_rider` status is labelled “Ready for pickup” in the Storefront
+timeline, API `status_label`, and POS fulfillment status. Customer order
+timelines omit Confirmed; while an order is `confirmed`, Order placed remains
+the active timeline step until preparation begins. This changes presentation
+only; status codes and server transitions remain unchanged. `[default]`
+
 ### 2026-10-22 — Direct delivery lifecycle (#2667)
 
 For a manual delivery job outside an active delivery run, the staff-facing POS flow is

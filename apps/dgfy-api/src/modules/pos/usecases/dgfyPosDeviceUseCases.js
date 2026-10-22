@@ -1,5 +1,6 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 import { mapPosUseCaseError } from './posUseCaseError.js';
 
 const normalizedTenantId = (value) => String(value || '').trim();
@@ -12,7 +13,9 @@ const assertPosAccess = (session) => {
     const role = String(session?.role || '').trim().toLowerCase();
     const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
     const allowedRole = session?.is_master_admin === true || role === 'admin' || role === 'cashier';
-    if (!allowedRole || (!permissions.includes('pos:view') && !permissions.includes('pos:transact'))) {
+    const hasPosView = isPermissionEffective(permissions, 'pos:view', session?.is_master_admin === true);
+    const hasPosTransact = isPermissionEffective(permissions, 'pos:transact', session?.is_master_admin === true);
+    if (!allowedRole || (!hasPosView && !hasPosTransact)) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,
             'This DGFY account does not have POS access for the selected company.',

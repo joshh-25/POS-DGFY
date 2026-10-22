@@ -46,7 +46,7 @@ describe('Phase 355 tenant-user operating scope', () => {
         await expect(guard(scope)).resolves.toMatchObject({ user_id: 1 });
     });
     test('switching permission never substitutes for a revoked branch grant', async () => {
-        const { guard, repository } = fixture({ user: { user_id: 1, is_active: true, permissions: ['pos:switch_location'] } });
+        const { guard, repository } = fixture({ user: { user_id: 1, is_active: true, permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location'] } });
         repository.findUserLocationGrant.mockResolvedValue(null);
         await expect(guard(scope)).rejects.toMatchObject({ statusCode: 403, details: { reason_code: 'POS_OPERATOR_LOCATION_GRANT_REQUIRED' } });
     });

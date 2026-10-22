@@ -62,6 +62,11 @@ describe('OPIS routes (issue #2052)', () => {
       activeSection: 'settings',
       settingsSection: 'team'
     });
+    expect(parseBusinessAdminPath('/users-roles', '/')).toMatchObject({
+      activeSection: 'settings',
+      settingsSection: 'team',
+      usersRolesShortcut: true
+    });
   });
 
   it('preserves /receive/:token handling with authorization intact', () => {
@@ -128,9 +133,21 @@ describe('OPIS shell visibility', () => {
     expect(isBusinessAdminNavigationVisible({ key: 'onboarding' })).toBe(false);
     expect(isBusinessAdminNavigationVisible({ key: 'qr-codes' })).toBe(true);
     expect(isBusinessAdminNavigationVisible({ key: 'settings' })).toBe(true);
+    expect(isBusinessAdminNavigationVisible({ key: 'users-roles' })).toBe(true);
+    expect(isBusinessAdminNavigationVisible({ key: 'users-roles' }, { usersRolesVisible: false })).toBe(false);
+    expect(isBusinessAdminNavigationVisible(BACKOFFICE_MANIFEST.team, {
+      settingsCapabilities: { team: { user_view: true } }
+    })).toBe(true);
+    expect(isBusinessAdminNavigationVisible(BACKOFFICE_MANIFEST.team, {
+      settingsCapabilities: { team: { user_view: false } }
+    })).toBe(false);
+    expect(isBusinessAdminNavigationVisible({ key: 'new-unknown', metadata: { accessSelector: { type: 'unknown' } } })).toBe(false);
     expect(isBusinessAdminNavigationVisible({ key: 'catalog' }, { catalogOnlyAccess: true })).toBe(true);
     expect(isBusinessAdminNavigationVisible({ key: 'orders' }, { catalogOnlyAccess: true })).toBe(false);
-    expect(businessAdminPageSource).toContain('isBusinessAdminNavigationVisible(item, { catalogOnlyAccess })');
+    expect(businessAdminPageSource).toContain('isBusinessAdminNavigationVisible(item, {');
+    expect(businessAdminPageSource).toContain('capabilities: bootstrap.access?.capabilities || {}');
+    expect(businessAdminPageSource).toContain('settingsCapabilities');
+    expect(businessAdminPageSource).toContain("activeSection === 'settings' && settingsSection === 'team'");
     expect(businessAdminPageSource).not.toContain('BUSINESS_ADMIN_UI_VISIBILITY.showAdminChip');
     expect(businessAdminPageSource).not.toContain('BUSINESS_ADMIN_UI_VISIBILITY.showRefresh');
     expect(businessAdminPageSource).not.toContain('BUSINESS_ADMIN_UI_VISIBILITY.showSwitchLocation');

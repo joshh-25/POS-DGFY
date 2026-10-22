@@ -270,7 +270,7 @@ const toStatusLabel = (status) => {
     case 'confirmed': return 'Confirmed by store';
     case 'preparing': return 'Preparing';
     case 'packed': return 'Packed';
-    case 'ready_for_rider': return 'Waiting for rider';
+    case 'ready_for_rider': return 'Ready for pickup';
     case 'ready_for_pickup': return 'Ready for pickup';
     case 'out_for_delivery': return 'Out for delivery';
     case 'completed': return 'Completed';

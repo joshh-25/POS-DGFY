@@ -13,9 +13,9 @@ import { simpleTrackingAdapter } from '../modes/simple/tracking/model/simpleTrac
 describe('Retail tracking adapter -- Packed step (Phase 211, #1180)', () => {
   it('includes the Packed step for both delivery and pickup flows', () => {
     expect(getTrackingFlowForOrderMethod('delivery').map((step) => step.id))
-      .toEqual(['placed', 'confirmed', 'preparing', 'packed', 'ready_for_rider', 'rider_assigned', 'picked_up', 'completed']);
+      .toEqual(['placed', 'preparing', 'packed', 'ready_for_rider', 'rider_assigned', 'picked_up', 'completed']);
     expect(getTrackingFlowForOrderMethod('pickup').map((step) => step.id))
-      .toEqual(['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'completed']);
+      .toEqual(['placed', 'preparing', 'packed', 'ready_for_pickup', 'completed']);
   });
 
   it('resolves activeIndex correctly for a packed delivery order', () => {
