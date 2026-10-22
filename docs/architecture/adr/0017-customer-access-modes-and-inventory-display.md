@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-03
-last_reviewed: 2026-09-10
+last_reviewed: 2026-10-21
 review_by: 2026-11-10
 applies_to: architecture_decision
 topic: customer_access_modes_and_inventory_display
@@ -337,7 +337,6 @@ continues to send a bare `image` field until that separate, later phase ships a 
 optional fields.
 
 `status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
-(already 2026-09-06, unchanged from the amendment immediately above).
 
 ## Amendments (2026-09-09)
 
@@ -467,3 +466,44 @@ the token ladder.
 
 `status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
 (2026-09-10).
+
+## Amendments (2026-10-21) — Platform Admin storefront visibility authority (#2633)
+
+`store_is_visible` remains the single effective publication state. When false, the public
+Storefront, hospitality, and DGLaundry payment-session APIs deny new catalog, location,
+quote, checkout, reservation, booking, registration, address, follow, and inventory-push
+activity with `404 STORE_NOT_VISIBLE`, including requests with a known company token,
+slug, or custom domain. Missing or malformed visibility rows retain the discovery
+service's legacy visible default. Customer Access Mode, location, and readiness checks
+continue applying after visibility is restored.
+
+Existing-order access remains available while hidden: tracking and push tokens,
+order history/claim/cancel, customer login and session read, existing payment-session
+read/cancel/test reconciliation, existing services and hospitality booking
+read/claim, and existing laundry order read/update/cancel and payment-session
+read/cancel. PayMongo webhooks, signed DGLaundry events, and admin refunds remain
+outside the public gate. New public routes fail closed until their purpose is
+reviewed against this carve-out. The exact method/path allowlist is in
+`apps/dgfy-api/src/middleware/requireStorefrontVisible.js`.
+
+The visibility gate applies when a shopper starts a new quote, checkout, booking,
+or payment session. A payment session created before visibility is turned off may
+still complete through its existing provider page and callback; that in-flight
+payment is accepted as the tenant's last order. It does not reopen the Storefront
+or permit another order. Merchant POS and in-store operations are outside this
+public gate and remain available.
+
+The 2026-06-06 merchant opt-in statement is now subject to Platform Admin's
+`store_visibility_merchant_editable` tenant policy. Its missing-row default is
+editable. A locked policy rejects changed merchant visibility writes from Settings
+and onboarding, including attempts that would desynchronize onboarding progress;
+an unchanged bulk value remains a no-op. Platform Admin can always set visibility.
+
+Denials are `no-store`. Already cached catalog responses have `s-maxage=45`,
+`stale-while-revalidate=90`, and `stale-if-error=180`: a shared cache may
+serve stale catalog content for up to 135 seconds during revalidation or
+225 seconds if the origin errors, depending on cache implementation. Other
+API processes can lag a settings change by up to 15 seconds and custom-domain
+resolution by up to 30 seconds. Stricter shutdown timing requires a separate
+cross-process and shared-cache invalidation design.
+(already 2026-09-06, unchanged from the amendment immediately above).

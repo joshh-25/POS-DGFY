@@ -32,9 +32,10 @@ const defaultErrorPayload = (req, res, failure) => ({
     timestamp: timestamp()
 });
 
-const buildAuditContext = (req) => ({
+const buildAuditContext = (req, res) => ({
     ipAddress: req.ip,
-    userAgent: req.get('user-agent')
+    userAgent: req.get('user-agent'),
+    requestId: requestId(req, res)
 });
 
 export const createDeliveryRun = async (req, res, next) => {
@@ -42,7 +43,7 @@ export const createDeliveryRun = async (req, res, next) => {
         const result = await createDeliveryRunUseCase({
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 201,
@@ -106,7 +107,8 @@ export const updateDeliveryRun = async (req, res, next) => {
         const result = await updateDeliveryRunUseCase({
             deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
             payload: req.validatedData || req.body,
-            user: req.user
+            user: req.user,
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -129,7 +131,7 @@ export const setDeliveryRunPersonnel = async (req, res, next) => {
             deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -152,7 +154,7 @@ export const addDeliveryRunMembers = async (req, res, next) => {
             deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -175,7 +177,7 @@ export const dispatchDeliveryRun = async (req, res, next) => {
             deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -198,7 +200,7 @@ export const removeDeliveryRunMember = async (req, res, next) => {
             deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
             posTransactionId: req.validatedParams?.posTransactionId || req.params.posTransactionId,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -222,7 +224,7 @@ export const updateDeliveryRunMemberLoading = async (req, res, next) => {
             posTransactionId: req.validatedParams?.posTransactionId || req.params.posTransactionId,
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -245,7 +247,7 @@ export const confirmDeliveryRunLoading = async (req, res, next) => {
             deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -268,7 +270,7 @@ export const createDeliveryRunRemittance = async (req, res, next) => {
             deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 201,
@@ -336,7 +338,7 @@ export const resolveDeliveryRunRemittanceVariance = async (req, res, next) => {
             varianceId: req.validatedParams?.varianceId || req.params.varianceId,
             payload: req.validatedData || req.body,
             user: req.user,
-            auditContext: buildAuditContext(req)
+            auditContext: buildAuditContext(req, res)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,

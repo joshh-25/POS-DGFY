@@ -381,6 +381,7 @@ The tenant-local capability switches themselves remain in each tenant database's
 - `tenant_ims_enabled`
 - `tenant_pos_enabled`
 - `store_is_visible`
+- `store_visibility_merchant_editable` (Platform Admin edit-authority policy; missing row means editable)
 - `customer_access_mode`
 
 ### 2. Tenant Databases (Isolated Contexts)
@@ -750,6 +751,7 @@ CREATE TABLE users (
     role ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo') DEFAULT 'staff',
     is_active BOOLEAN DEFAULT TRUE,
     permissions JSON,                    -- Granular permission array
+    staff_role_id INT NULL,              -- Optional tenant staff_roles assignment
     is_master_admin BOOLEAN DEFAULT FALSE,
     last_login TIMESTAMP NULL,
 
@@ -789,6 +791,17 @@ CREATE TABLE users (
   - `do` (dispatch order operations)
   - `jo` (job order operations)
 - Role assignment defaults are enforced by backend permission maps (`DEFAULT_ROLE_PERMISSIONS`).
+
+### Tenant Staff Roles (#1182)
+
+`staff_roles` is tenant-local: `staff_role_id` (primary key), unique `name`, JSON
+`capabilities`, `is_active`, nullable `created_by`/`updated_by` user references,
+and `created_at`/`updated_at`. `users.staff_role_id` is a nullable foreign key
+with `ON DELETE SET NULL`. Warehouse and Delivery suggestions create ordinary
+rows here; they do not extend `users.role`. Assigning or clearing a staff role
+sets `users.permissions` to `[]` in the same transaction and records the prior
+permission array in the audit log. Role edits and status changes invalidate
+assigned users' auth cache after commit.
 
 ### 2. Item Folders Table
 
@@ -1952,6 +1965,7 @@ than `pos_transactions`' tenant-DB peso `DECIMAL(14,4)` columns above.
 ```sql
 CREATE TABLE tenant_downpayment_settings (
     tenant_id CHAR(36) PRIMARY KEY,
+    platform_downpayment_allowed BOOLEAN NOT NULL DEFAULT FALSE,
     payment_mode ENUM('full_payment', 'downpayment_required', 'customer_choice') NOT NULL DEFAULT 'full_payment',
     downpayment_type ENUM('percentage', 'fixed') NULL,
     downpayment_rate_bps INT NULL,
@@ -1964,6 +1978,13 @@ CREATE TABLE tenant_downpayment_settings (
 );
 ```
 
+Phase 526 (#2639) adds the platform-owned `platform_downpayment_allowed` column via
+`20261021000001-add-platform-downpayment-allowed-to-tenant-downpayment-settings.cjs`.
+Only existing non-full-payment rows are grandfathered; missing/new rows are disallowed.
+The migration uses a nullable intermediate state to resume an interrupted backfill and
+never repeats grandfathering after finalization. Apply it before the API; rollback the
+API first before removing the column. No tenant-database schema changes are needed.
+
 `payment_mode` includes `customer_choice` in the schema (Phase 138, #820) and, as
 of Phase 150 (#866), the admin API
 (`apps/dgfy-api/src/modules/downpayment/usecases/downpaymentSettingsUseCases.js`)
@@ -1972,7 +1993,7 @@ at checkout, rather than the merchant fixing one or the other. `allowed_capture_
 `NULL` means "inherit the business-wide capture-method allow-list from #816"
 (not yet built). Downpayment is authorized for every workflow mode (ADR 0070,
 2026-08-21, supersedes ADR 0069's earlier Retail-only gate) — the settings
-write path no longer performs any vertical check; it only re-validates the
+write path requires the platform allowance for non-full modes and re-validates the
 effective (merged) row for internal consistency. `downpayment_required` and
 `customer_choice` both require `downpayment_type` + its matching amount field
 (`downpayment_rate_bps` for `percentage`, `downpayment_fixed_centavos` for

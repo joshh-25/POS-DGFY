@@ -6,6 +6,15 @@ const get = (path, params = {}) => api.get(path, { params }).then(unwrap);
 
 export const businessAdminApi = {
     bootstrap: () => get('/business-admin/bootstrap'),
+    staffRoles: () => get('/staff-roles', { include_inactive: true }),
+    roleCatalog: () => get('/users/role-catalog'),
+    users: () => get('/users'),
+    userLocationGrants: (userId) => get(`/users/${encodeURIComponent(userId)}/location-grants`),
+    createStaffRole: (body) => api.post('/staff-roles', body).then(unwrap),
+    updateStaffRole: (id, body) => api.put(`/staff-roles/${encodeURIComponent(id)}`, body).then(unwrap),
+    setStaffRoleStatus: (id, isActive) => api.put(`/staff-roles/${encodeURIComponent(id)}/status`, { is_active: isActive }).then(unwrap),
+    assignStaffRole: (userId, staffRoleId) => api.put(`/staff-roles/users/${encodeURIComponent(userId)}`, { staff_role_id: staffRoleId }).then(unwrap),
+    updateUserLocationGrants: (userId, locationIds) => api.put(`/users/${encodeURIComponent(userId)}/location-grants`, { location_ids: locationIds }).then(unwrap),
     company: () => get('/business-admin/company'),
     updateCompanyName: (body) => api.patch('/business-admin/company/name', body).then(unwrap),
     overview: (params) => get('/business-admin/overview', params),

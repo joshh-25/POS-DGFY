@@ -141,6 +141,13 @@ export function useCheckoutSubmission({
   writeSavedCustomerDetails
 }) {
   const effectiveServiceOrderMethod = String(serviceFlowMethod || serviceOrderMethod || '').trim().toLowerCase();
+  const quoteFailureMessage = (error, fallback) => {
+    const violation = extractStockViolation(error);
+    return violation
+      ? buildStockExceededMessage(violation)
+      : normalizeStorefrontErrorMessage(error, fallback);
+  };
+
   const handleQuote = async () => {
     if (!selectedStore) return;
     setQuoteError('');
@@ -158,14 +165,7 @@ export function useCheckoutSubmission({
     try {
       await requestQuote();
     } catch (error) {
-      const violation = extractStockViolation(error);
-      if (violation) {
-        const message = buildStockExceededMessage(violation);
-        setQuoteError(message);
-        toast.error(message);
-        return;
-      }
-      const message = normalizeStorefrontErrorMessage(error, 'Unable to compute quote.');
+      const message = quoteFailureMessage(error, 'Unable to compute quote.');
       setQuoteError(message);
       toast.error(message);
     }
@@ -229,11 +229,31 @@ export function useCheckoutSubmission({
       // two reason codes) now also serves Simple/Retail, neither of which has an explicit "Quote"
       // button -- their totals quote automatically in the background on cart change. The block
       // itself is correct (a downpayment store's split is server-only and must be known before
-      // Place Order), just rare and self-resolving; the message says so instead of directing the
-      // shopper to a button that doesn't exist on those two modes.
-      const message = 'Updating your order total -- please wait a moment and try again.';
-      setCheckoutError(message);
-      toast.error(message);
+      // Place Order). Recover it here instead of leaving the shopper blocked without a Quote
+      // button; the refreshed amount still needs the shopper's confirmation before submission.
+      setQuoteError('');
+      setCheckoutLoading(true);
+      try {
+        const refreshedQuote = await requestQuote({ silent: true });
+        if (!refreshedQuote) {
+          const message = 'We could not confirm the updated order total. Please try again before placing your order.';
+          setQuoteError(message);
+          setCheckoutError(message);
+          toast.error(message);
+          return;
+        }
+        toast.success('Order total updated. Review it and tap Place Order again.');
+      } catch (error) {
+        const message = quoteFailureMessage(
+          error,
+          'Unable to update your order total. Review your cart and try again.'
+        );
+        setQuoteError(message);
+        setCheckoutError(message);
+        toast.error(message);
+      } finally {
+        setCheckoutLoading(false);
+      }
       return;
     }
     if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'downpayment_zero_total') {

@@ -29,7 +29,7 @@ import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliateP
 // threaded through as an optional constructor dependency, same pattern as tenantRevenueRepository
 // (store/index.js wires the real one; a caller that omits it -- every existing unit test -- gets
 // `undefined`, which the `?.` guards below treat as "no settings, full_payment").
-import { resolveDownpaymentForTotal } from '../../shared/utils/downpaymentPolicy.js';
+import { applyPlatformDownpaymentAllowance, resolveDownpaymentForTotal } from '../../shared/utils/downpaymentPolicy.js';
 import {
     previewVoucherEligibilityUseCase,
     redeemVoucherUseCase,
@@ -150,6 +150,7 @@ const FULFILLMENT_STATUSES = [
     'confirmed',
     'preparing',
     'packed',
+    'ready_for_rider',
     'ready_for_pickup',
     'out_for_delivery',
     'completed',
@@ -279,6 +280,7 @@ const toStatusLabel = (status) => {
     case 'confirmed': return 'Confirmed by store';
     case 'preparing': return 'Preparing';
     case 'packed': return 'Packed';
+    case 'ready_for_rider': return 'Waiting for rider';
     case 'ready_for_pickup': return 'Ready for pickup';
     case 'out_for_delivery': return 'Out for delivery';
     case 'completed': return 'Completed';
@@ -478,9 +480,37 @@ const serializeOrderForCustomer = (order) => ({
         : []
 });
 
+const serializePublicDelivery = (order) => {
+    if (order?.order_method !== 'delivery') return null;
+    const job = order?.deliveryJob || {};
+    const hasRegisteredRider = Number.isInteger(Number(job.delivery_personnel_id))
+        && Number(job.delivery_personnel_id) > 0;
+    const courierService = job.courier_service || (hasRegisteredRider ? 'own' : null);
+    const courierName = courierService === 'other'
+        ? String(job.courier_service_name || '').trim() || null
+        : ({ own: 'Own rider', maxim: 'Maxim', grabexpress: 'GrabExpress', lalamove: 'Lalamove' }[courierService] || null);
+    const assigned = Boolean(job.assigned_at || ['assigned', 'picked_up', 'delivered'].includes(job.status));
+    const stage = job.status === 'delivered' || order.fulfillment_status === 'completed'
+        ? 'delivered'
+        : job.status === 'picked_up' || order.fulfillment_status === 'out_for_delivery'
+            ? 'picked_up'
+            : assigned ? 'rider_assigned' : 'waiting_for_rider';
+    const trackingUrl = String(job.tracking_url || '').trim();
+    return {
+        stage,
+        courier_name: assigned ? courierName : null,
+        courier_reference: assigned ? String(job.courier_reference || '').trim() || null : null,
+        tracking_url: assigned && /^https:\/\/[^\s/]+(?:\/[^\s]*)?$/i.test(trackingUrl) ? trackingUrl : null,
+        rider_name: assigned ? String(job.delivery_personnel_name || '').trim() || null : null
+    };
+};
+
 const serializeOrderForPublicTracking = (order) => {
     return {
         ...serializeOrderBase(order),
+        ...(order?.order_method === 'delivery' ? { delivery: serializePublicDelivery(order) } : {}),
+        ...(order?.fulfillment_status === 'cancelled' && order?.deliveryJob?.status === 'failed'
+            ? { cancellation_reason: String(order.deliveryJob.failure_reason || '').trim() || null } : {}),
         // The public tracking summary shows VAT only as an informational amount already included
         // in item prices. Reuse the persisted value; this projection does not recalculate tax.
         vat_amount: order?.vat_amount ?? null,
@@ -2837,11 +2867,11 @@ const resolveCheckoutContext = async ({
     // dbStore.run context) resolves to `null` settings, which resolveDownpaymentForTotal treats as
     // full_payment -- so this addition needs no edits to any of those tests.
     const resolvedTenantIdForDownpayment = resolvedTenantIdForFees;
-    const downpaymentSettings = resolvedTenantIdForDownpayment
+    const downpaymentSettings = applyPlatformDownpaymentAllowance(resolvedTenantIdForDownpayment
         ? await downpaymentSettingsRepository?.getSettings?.(resolvedTenantIdForDownpayment)
-        : null;
+        : null);
     const downpayment = resolveDownpaymentForTotal({
-        settings: downpaymentSettings || null,
+        settings: downpaymentSettings,
         totalAmount,
         // Phase 150 (#866): only consulted by resolveDownpaymentForTotal when the settings row is
         // 'customer_choice' -- a no-op for every existing 'full_payment'/'downpayment_required'
@@ -3114,7 +3144,7 @@ const resolveStorefrontPaymentMode = async ({ downpaymentSettingsRepository, ten
         return 'full_payment';
     }
     try {
-        const settings = await downpaymentSettingsRepository.getSettings(tenantId);
+        const settings = applyPlatformDownpaymentAllowance(await downpaymentSettingsRepository.getSettings(tenantId));
         if (settings?.payment_mode === 'downpayment_required' || settings?.payment_mode === 'customer_choice') {
             return settings.payment_mode;
         }
@@ -6103,6 +6133,8 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository, commercePaymentRe
             // Phase 210 (#1179). Gated on `rejected` so a reason can never leak on a non-rejected
             // order (defensive: the column is only ever written on reject anyway).
             const rejectionReason = String(order?.rejection_reason || '').trim();
+            const cancellationReason = cancelled && order?.deliveryJob?.status === 'failed'
+                ? String(order.deliveryJob.failure_reason || '').trim() || null : null;
             const reviewInvites = order.fulfillment_status === 'completed'
                 ? await issueReviewInvitesForOrder({
                     tenantId,
@@ -6122,9 +6154,11 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository, commercePaymentRe
                         ? `This order was not accepted by the store: ${rejectionReason}`
                         : 'This order was not accepted by the store.')
                     : cancelled
-                        ? 'This order was cancelled.'
+                        ? (cancellationReason ? `The store cancelled this order: ${cancellationReason}` : 'This order was cancelled.')
                         : 'Tracking information loaded successfully.',
                 rejection_reason: rejected ? (rejectionReason || null) : null,
+                cancellation_reason: cancellationReason,
+                ...(order.order_method === 'delivery' ? { delivery: serializePublicDelivery(order) } : {}),
                 refund,
                 order: serializeOrderForPublicTracking(order),
                 review_invites: reviewInvites
@@ -6317,9 +6351,11 @@ export const buildCancelStoreOrderUseCase = ({
     // existing test that builds this use case without it keeps its behavior verbatim
     // (same reasoning as commerceOrderLifecycleUseCase/voucherRepository above);
     // store/index.js wires the real command service.
-    inventoryCommandService = null
+    inventoryCommandService = null,
+    cancelOrderDeliveryJob = null,
+    activityRecorder = recordDgfyOrderActivity
 }) => {
-    return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
+    return async ({ trackingPin, tenantId, storeCustomer = null, payload = {}, auditContext = {} }) => {
         let normalizedTrackingPin = null;
         const transaction = await storeRepository.beginTransaction();
 
@@ -6455,9 +6491,54 @@ export const buildCancelStoreOrderUseCase = ({
                 ...(inventoryReversedAt ? { inventory_reversed_at: inventoryReversedAt } : {})
             }, { transaction });
 
+            const actorUsername = normalizedStoreCustomerId
+                ? `store_customer:${normalizedStoreCustomerId}`
+                : 'store_guest';
+            const channel = payload?.channel === 'dgfy_account' ? 'dgfy_account' : 'storefront';
+            if (cancelOrderDeliveryJob) {
+                const cancelledJob = await cancelOrderDeliveryJob(existing.pos_transaction_id, { transaction });
+                if (cancelledJob) {
+                    await storeRepository.createAuditLog({
+                        user_id: null,
+                        actor_username: actorUsername,
+                        entity_type: 'delivery_job',
+                        entity_id: cancelledJob.delivery_job_id,
+                        action: 'UPDATE',
+                        location_id: existing.location_id,
+                        request_id: auditContext.requestId || null,
+                        changes: {
+                            event: 'delivery_job_cancelled_with_order',
+                            pos_transaction_id: existing.pos_transaction_id,
+                            from: cancelledJob.from,
+                            to: 'cancelled',
+                            initiated_by: 'customer',
+                            channel
+                        }
+                    }, { transaction });
+                }
+            }
+            await storeRepository.createAuditLog({
+                user_id: null,
+                actor_username: actorUsername,
+                entity_type: 'pos_transaction',
+                entity_id: existing.pos_transaction_id,
+                action: 'UPDATE',
+                location_id: existing.location_id,
+                request_id: auditContext.requestId || null,
+                changes: {
+                    event: 'online_order_status_changed',
+                    from: existing.fulfillment_status,
+                    to: 'cancelled',
+                    order_method: existing.order_method,
+                    reason: null,
+                    initiated_by: 'customer',
+                    channel
+                }
+            }, { transaction });
+
             const updated = await storeRepository.getOrderByTrackingPin(normalizedTrackingPin, { transaction });
             await transaction.commit();
-            await recordDgfyOrderActivity({
+            await activityRecorder({
                 tenantId: normalizedTenantId,
                 order: updated,
                 storeCustomer

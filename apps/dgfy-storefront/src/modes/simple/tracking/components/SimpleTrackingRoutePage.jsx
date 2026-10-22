@@ -17,6 +17,8 @@ import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../../shar
 import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';
 import { StorefrontTrackingStatusCard } from '../../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
 import { StorefrontTrackingTimeline } from '../../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
+import { StorefrontCourierDetails } from '../../../../shared/components/tracking/StorefrontCourierDetails.jsx';
+import { getOrderTrackingTimeline } from '../../../../shared/tracking/directDeliveryTimeline.js';
 import { TRACKING_MAP_HEIGHT } from '../../../../tracking/trackingMapSizing.js';
 
 function SimpleTrackingLoadingState({ selectedTrackingPin }) {
@@ -64,8 +66,9 @@ export function SimpleTrackingRoutePage({
 
     const orderMethod = String(trackingResult.order_method || 'delivery').trim().toLowerCase();
     const status = String(trackingResult.status || '').trim().toLowerCase();
-    const steps = getTrackingFlowForOrderMethod(orderMethod);
-    const activeStepIndex = Math.max(0, steps.findIndex((step) => step.id === status));
+    const steps = Array.isArray(trackingResult.timeline) ? trackingResult.timeline
+      : getOrderTrackingTimeline(orderMethod, status, trackingResult.delivery, false);
+    const activeStepIndex = Math.max(0, steps.findIndex((step) => step.state === 'active'));
     const isPickup = orderMethod === 'pickup';
     const locations = Array.isArray(storeLocations) ? storeLocations : [];
     const selectedLocation = locations.find((location) => Number(location.location_id) === Number(selectedLocationId))
@@ -76,7 +79,7 @@ export function SimpleTrackingRoutePage({
     const completed = status === 'completed';
     const statusLabel = completed
       ? getCompletedTrackingLabel(orderMethod)
-      : (trackingResult.status_label || trackingResult.status || 'Order confirmed');
+      : (trackingResult.status_label || trackingResult.status || 'Order placed');
     const deliveryAddress = String(
       trackingResult.deliveryAddress
       || trackingResult.raw?.data?.order?.delivery_address
@@ -97,12 +100,16 @@ export function SimpleTrackingRoutePage({
     // Phase 210 (#1179). Merchant-attributed copy, only ever shown for a rejected order --
     // never DGFY's own statement.
     const rejectionReason = String(trackingResult.rejectionReason || trackingResult.rejection_reason || '').trim();
-    const guidance = status === 'rejected' && rejectionReason
+    const cancellationReason = String(trackingResult.cancellationReason || trackingResult.cancellation_reason || '').trim();
+    const guidance = status === 'cancelled' && cancellationReason
+      ? `The store cancelled this order: ${cancellationReason}`
+      : status === 'rejected' && rejectionReason
       ? `The store could not accept this order: ${rejectionReason}`
       : ({
         placed: 'We received your product order and it is being confirmed by the store.',
         confirmed: 'The store confirmed your order and is preparing it.',
         preparing: 'Your products are being prepared for dispatch or pickup.',
+        ready_for_rider: 'Your order is ready and waiting for a rider.',
         out_for_delivery: 'Your order is on the way to you.',
         ready_for_pickup: 'Your order is ready for pickup. Please show your order PIN at the store.',
         completed: isPickup ? 'Your order has been picked up successfully.' : 'Your order has been delivered successfully.'
@@ -192,6 +199,8 @@ export function SimpleTrackingRoutePage({
               bodyFont={servicesBodyFont}
             />
           </div>
+
+          <StorefrontCourierDetails delivery={trackingResult.delivery} />
 
           <div data-tracking-slot="map" style={{ order: getTrackingFlowOrder('map') }}>
           <TrackingRouteMap

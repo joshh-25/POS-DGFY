@@ -3,6 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { Truck } from 'lucide-react';
 import { fetchDeliveryRun, fetchDeliveryRuns } from '../services/deliveryRunService.js';
 import { getEligibleRunTargets } from '../utils/deliveryRunEligibility.js';
+import { formatRunPickerOptionLabel } from '../utils/deliveryRunLabels.js';
 import DeliveryRunMembersList from './DeliveryRunMembersList.jsx';
 
 const getErrorMessage = (error, fallback) => error?.response?.data?.message || fallback;
@@ -56,6 +57,13 @@ export default function DeliveryRunDropPanel({
   React.useEffect(() => {
     loadRuns();
   }, [loadRuns]);
+
+  const previousRunsRefreshSignalRef = React.useRef(refreshSignal);
+  React.useEffect(() => {
+    if (previousRunsRefreshSignalRef.current === refreshSignal) return;
+    previousRunsRefreshSignalRef.current = refreshSignal;
+    loadRuns();
+  }, [refreshSignal, loadRuns]);
 
   const eligibleRunTargets = React.useMemo(
     () => getEligibleRunTargets(runsState.items, { locationId: activeShiftLocationId }),
@@ -130,7 +138,7 @@ export default function DeliveryRunDropPanel({
                 : 'Choose a run'}
           </option>
           {eligibleRunTargets.map((run) => (
-            <option key={run.delivery_run_id} value={run.delivery_run_id}>{run.label}</option>
+            <option key={run.delivery_run_id} value={run.delivery_run_id}>{formatRunPickerOptionLabel(run)}</option>
           ))}
         </select>
       </label>

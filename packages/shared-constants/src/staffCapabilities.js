@@ -32,7 +32,8 @@ export const STAFF_CAPABILITIES = Object.freeze([
   'stock:view', 'stock:adjust', 'batches:view', 'batches:edit', 'reports:view', 'reports:export',
   'ai:chat', 'ai:action', 'settings:view', 'settings:edit', 'settings:storefront_branding_edit',
   'categories:manage', 'users:manage', 'users:view', 'users:delete', 'audit:view',
-  'orders:pack', 'orders:view_assigned', 'delivery_runs:view_assigned', 'delivery_runs:act'
+  'orders:pack', 'orders:view_assigned', 'delivery_runs:view_assigned', 'delivery_runs:act',
+  'delivery_runs:load', 'delivery_jobs:act_assigned', 'orders:collect_assigned_balance'
 ]);
 
 export const STAFF_CAPABILITY_DEPRECATED = Object.freeze({});

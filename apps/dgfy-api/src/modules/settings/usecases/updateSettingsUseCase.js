@@ -30,6 +30,7 @@ import {
     assertTerminalCashierAssignments
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
+import { assertStoreVisibilityEditAuthorized } from './storeVisibilityEditAuthority.js';
 import { assertPublicStorefrontHandlePatch } from './publicStorefrontHandlePolicy.js';
 import {
     POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
@@ -77,7 +78,8 @@ const CAPABILITY_CACHE_SENSITIVE_KEYS = Object.freeze([
     WORKFLOW_MODE_SETTING_KEY,
     ENABLED_CAPABILITIES_SETTING_KEY,
     DISABLED_CAPABILITIES_SETTING_KEY,
-    STORE_PROFILE_READ_SETTING_KEY
+    STORE_PROFILE_READ_SETTING_KEY,
+    'store_is_visible'
 ]);
 
 const clearCapabilityCachesIfTouched = async (settingsData) => {
@@ -444,6 +446,7 @@ export const buildUpdateSettingsUseCase = ({
         }
 
         try {
+            await assertStoreVisibilityEditAuthorized({ settingsRepository, settingsData });
             const posMetadataReview = await extractTenantReviewedPosReceiptChanges({
                 settingsRepository,
                 settingsData,

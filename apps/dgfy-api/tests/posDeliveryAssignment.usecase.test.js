@@ -134,6 +134,7 @@ describe('POS delivery personnel assignment', () => {
         expect(first.data.delivery_job).toMatchObject({
             status: 'assigned',
             delivery_personnel_id: 21,
+            courier_service: 'own',
             assigned_by: 12,
             assigned_shift_id: 9
         });
@@ -231,7 +232,7 @@ describe('POS delivery personnel assignment', () => {
         expect(repository.deliveryJob.status).toBe('pending_dispatch');
     });
 
-    it('rejects assignment before the order is out for delivery', async () => {
+    it('requires courier service for an early direct assignment', async () => {
         const repository = buildAssignmentRepository({
             order: { fulfillment_status: 'preparing' }
         });
@@ -247,9 +248,66 @@ describe('POS delivery personnel assignment', () => {
         }));
 
         expect(result.success).toBe(false);
-        expect(result.error.details.reason_code).toBe('DELIVERY_ORDER_OUT_FOR_DELIVERY_REQUIRED');
+        expect(result.error.details.reason_code).toBe('DELIVERY_COURIER_SERVICE_REQUIRED');
         expect(repository.deliveryJob.status).toBe('pending_dispatch');
         expect(repository.audit).toHaveLength(0);
+    });
+
+    it.each(['confirmed', 'preparing', 'ready_for_rider'])(
+        'assigns a third-party courier without a person at %s', async (fulfillmentStatus) => {
+            const repository = buildAssignmentRepository({ order: { fulfillment_status: fulfillmentStatus } });
+            const useCase = buildAssignDeliveryPersonnelUseCase({ posRepository: repository });
+            const result = await run(() => useCase({
+                posTransactionId: 44,
+                payload: {
+                    courier_service: 'lalamove',
+                    courier_reference: 'BOOK-44',
+                    tracking_url: 'https://example.com/track/44',
+                    idempotency_key: `early-${fulfillmentStatus}-44`
+                },
+                user: { user_id: 12 }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(result.data.delivery_job).toMatchObject({
+                status: 'assigned', courier_service: 'lalamove', courier_reference: 'BOOK-44',
+                tracking_url: 'https://example.com/track/44', delivery_personnel_id: null
+            });
+        }
+    );
+
+    it.each([
+        [{ courier_service: 'other' }, 'DELIVERY_COURIER_DETAILS_INVALID'],
+        [{ courier_service: 'lalamove', tracking_url: 'http://example.com/track' }, 'DELIVERY_TRACKING_URL_INVALID']
+    ])('rejects invalid courier details %o', async (details, expectedReason) => {
+        const repository = buildAssignmentRepository({ order: { fulfillment_status: 'confirmed' } });
+        const useCase = buildAssignDeliveryPersonnelUseCase({ posRepository: repository });
+        const result = await run(() => useCase({
+            posTransactionId: 44,
+            payload: { ...details, idempotency_key: 'invalid-courier-001' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code || result.error.code).toBe(expectedReason);
+    });
+
+    it('allows a typed rider name for the own courier service', async () => {
+        const repository = buildAssignmentRepository({ order: { fulfillment_status: 'confirmed' } });
+        const useCase = buildAssignDeliveryPersonnelUseCase({ posRepository: repository });
+        const result = await run(() => useCase({
+            posTransactionId: 44,
+            payload: {
+                courier_service: 'own', delivery_personnel_name: 'Typed rider',
+                idempotency_key: 'own-typed-rider-001'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.delivery_job).toMatchObject({
+            courier_service: 'own', delivery_personnel_name: 'Typed rider', status: 'assigned'
+        });
     });
 
     it('rejects assignment for provider-owned delivery jobs', async () => {

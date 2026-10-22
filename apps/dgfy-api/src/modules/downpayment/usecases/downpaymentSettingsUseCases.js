@@ -2,6 +2,14 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { downpaymentSettingsRepository } from '../repositories/downpaymentSettingsRepository.js';
 
+import { applyPlatformDownpaymentAllowance } from '../../shared/utils/downpaymentPolicy.js';
+
+const presentSettings = (settings) => ({
+    ...settings,
+    platform_downpayment_allowed: settings?.platform_downpayment_allowed === true,
+    effective_payment_mode: applyPlatformDownpaymentAllowance(settings).payment_mode
+});
+
 const PAYMENT_MODE_VALUES = new Set(['full_payment', 'downpayment_required', 'customer_choice']);
 const DOWNPAYMENT_TYPE_VALUES = new Set(['percentage', 'fixed']);
 const MAX_RATE_BPS = 10000; // 100.00%
@@ -64,7 +72,7 @@ export const buildGetDownpaymentSettingsUseCase = ({ repository = downpaymentSet
     async ({ tenantId }) => {
         try {
             const tenant = ensureTenantId(tenantId);
-            return ok({ settings: await repository.getSettings(tenant) });
+            return ok({ settings: presentSettings(await repository.getSettings(tenant)) });
         } catch (error) {
             return fail(mapError(error, 'Failed to load downpayment settings'));
         }
@@ -77,6 +85,12 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
     async ({ tenantId, body = {} }) => {
         try {
             const tenant = ensureTenantId(tenantId);
+            if (Object.prototype.hasOwnProperty.call(body, 'platform_downpayment_allowed')) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only DGFY Platform Admin can change downpayment access.', {
+                    statusCode: 403,
+                    details: { reason_code: 'DOWNPAYMENT_ALLOWANCE_PLATFORM_CONTROLLED' }
+                });
+            }
             const current = await repository.getSettings(tenant);
             assertExpectedVersion(current, body.expected_updated_at);
             const updates = {};
@@ -132,6 +146,12 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
             // mode). ADR 0070 records the un-lifted reservation in its Consequences; this PR's dated
             // amendment there is the paper trail for the lift.
             const effectivePaymentMode = updates.payment_mode ?? current.payment_mode;
+            if (current.platform_downpayment_allowed !== true && effectivePaymentMode !== 'full_payment') {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Downpayment is not available for this store.', {
+                    statusCode: 403,
+                    details: { reason_code: 'DOWNPAYMENT_NOT_ALLOWED_BY_PLATFORM' }
+                });
+            }
 
             // ADR 0070 clause 7 ([binding]): downpayment is authorized for every workflow mode
             // (ADR 0070 supersedes ADR 0069's Retail-only gate that used to live here -- see ADR
@@ -182,7 +202,7 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
             const settings = body.expected_updated_at
                 ? await repository.upsertSettings(tenant, updates, { expectedUpdatedAt: body.expected_updated_at })
                 : await repository.upsertSettings(tenant, updates);
-            return ok({ settings });
+            return ok({ settings: presentSettings(settings) });
         } catch (error) {
             return fail(mapError(error, 'Failed to update downpayment settings'));
         }

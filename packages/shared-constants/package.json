@@ -57,6 +57,10 @@
       "import": "./src/staffCapabilities.js",
       "default": "./src/staffCapabilities.js"
     },
+    "./fulfillmentStaffRoleTemplates": {
+      "import": "./src/fulfillmentStaffRoleTemplates.js",
+      "default": "./src/fulfillmentStaffRoleTemplates.js"
+    },
     "./coverPhotoTransform": {
       "import": "./src/coverPhotoTransform.js",
       "default": "./src/coverPhotoTransform.js"

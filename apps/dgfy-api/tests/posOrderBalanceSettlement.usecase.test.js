@@ -108,10 +108,10 @@ describe('POS downpayment balance settlement', () => {
         expect(repository.audit).toHaveLength(1);
     });
 
-    it('settles a dine-in balance when the order is ready to serve', async () => {
+    it.each(['pickup', 'dine_in'])('settles a revoked tenant %s balance at handover', async (method) => {
         const repository = buildRepository({
-            order_method: 'dine_in',
-            payment_timing: 'on_dine_in',
+            order_method: method,
+            payment_timing: method === 'dine_in' ? 'on_dine_in' : 'on_pickup',
             fulfillment_status: 'ready_for_pickup'
         });
         const useCase = buildRecordOrderBalancePaymentUseCase({ posRepository: repository });
@@ -334,4 +334,14 @@ describe('POS downpayment balance settlement', () => {
         expect(repository.order.payment_status).toBe('partially_paid');
         expect(repository.ledger).toHaveLength(0);
     });
+});
+
+// Revoking a tenant's allowance must never change captured order terms.
+const { downpaymentSettingsRepository: revokedSettingsRepository } = await import('../src/modules/downpayment/repositories/downpaymentSettingsRepository.js');
+beforeEach(() => {
+    jest.spyOn(revokedSettingsRepository, 'getSettings').mockResolvedValue({ platform_downpayment_allowed: false, payment_mode: 'full_payment' });
+});
+afterEach(() => {
+    expect(revokedSettingsRepository.getSettings).not.toHaveBeenCalled();
+    revokedSettingsRepository.getSettings.mockRestore();
 });

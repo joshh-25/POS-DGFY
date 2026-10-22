@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-09-23
+last_reviewed: 2026-10-22
 applies_to: downpayment_checkout
 topic: downpayment_partial_payment_checkout
 ---
@@ -158,6 +158,35 @@ branch, i.e. `develop` @ `178255e95` plus this phase's own docs-only changes), v
   faked. Disclosed as a gap, not silently dropped; desktop coverage across every changed screen in
   this epic is otherwise complete.
 - **Not staging**: as stated above, this ran against the local-test stack, not `origin/staging`.
+
+### Follow-up: payment-rail quote invalidation (#2644, 2026-10-22)
+
+The checkout quote is independent of the selected payment rail. The API validates that the chosen
+method is permitted, but the method does not affect the order total or downpayment split. Storefront
+quote invalidation and auto-sync identity therefore exclude the rail; the quote payload still sends
+`payment_type` for server validation. `paymentElection` remains part of both invalidation and sync
+identity because electing downpayment at a `customer_choice` store changes the server-resolved split.
+An in-flight F&B quote also remains valid when only the rail changes. If checkout encounters a
+missing or stale quote, it refreshes once and asks the shopper to review the updated total and submit
+again; it never submits automatically after a refresh.
+
+**Result: PASS.** A local Chrome Playwright run used deterministic API route mocks against the
+Storefront dev server. Ten desktop/mobile cases covered Retail, Simple, and F&B downpayment stores,
+a `customer_choice` store after electing downpayment, and a `full_payment` store switching through
+online rails to Cash. In each downpayment case, the quote's PHP 1.00 due-now amount and PHP 99.00
+balance remained visible after the QR Ph → GCash → QR Ph → GCash sequence. No extra quote was
+requested, and the resulting payment-session request used `payment_type: 'gcash'`. The full-payment
+case made no quote request and the checkout request used `payment_type: 'cash'`. All ten cases had no console
+errors or unmocked API requests.
+
+F&B shared the same invalidation path and was therefore affected; its manual Quote action made a
+stale quote recoverable, while Retail and Simple had no equivalent action. The rendered F&B cases
+now preserve the quote and submit with GCash on desktop and mobile. F&B mobile labels its sticky
+submit action “Place Order” while desktop uses “Pay downpayment”; the mobile action still creates
+the selected GCash downpayment session.
+
+This is local route-mocked evidence only. A real STAGING/PayMongo payment and provider callback were
+not exercised; deployed verification remains with the QA handoff after merge.
 
 ## 6. Residual risks
 

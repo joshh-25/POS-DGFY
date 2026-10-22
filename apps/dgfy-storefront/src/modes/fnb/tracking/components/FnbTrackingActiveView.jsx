@@ -17,6 +17,7 @@ import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../../shar
 import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';
 import { StorefrontTrackingStatusCard } from '../../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
 import { StorefrontTrackingTimeline } from '../../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
+import { StorefrontCourierDetails } from '../../../../shared/components/tracking/StorefrontCourierDetails.jsx';
 import { TRACKING_MAP_HEIGHT } from '../../../../tracking/trackingMapSizing.js';
 
 export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, mapProps, viewModel }) {
@@ -50,7 +51,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
   };
   const { TILING_SERVER, tileTransformRequest, TrackingRouteMap } = mapProps;
   const statusTitle = isPickup
-    ? (activeStatus === 'placed' ? 'Order Confirmed!' : activeStatus === 'confirmed' ? 'Confirmed by Store!' : activeStatus === 'preparing' ? 'Preparing Your Order ✨' : activeStatus === 'ready_for_pickup' ? 'Your Order is Ready for Pickup! 🎉' : 'Pickup Completed!')
+    ? (activeStatus === 'placed' ? 'Order placed' : activeStatus === 'confirmed' ? 'Confirmed by Store!' : activeStatus === 'preparing' ? 'Preparing Your Order ✨' : activeStatus === 'ready_for_pickup' ? 'Your Order is Ready for Pickup! 🎉' : 'Pickup Completed!')
     : finalStatusLabel;
   const statusIcon = isPickup
     ? (activeStatus === 'confirmed' ? <Store size={24} strokeWidth={2.5} /> : activeStatus === 'preparing' ? <ChefHat size={24} strokeWidth={2.5} /> : <Check size={24} strokeWidth={2.5} />)
@@ -95,6 +96,8 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
                             )}
                           />
                         </div>
+
+                        <StorefrontCourierDetails delivery={trackingResult.delivery} />
 
                         {/* Map Section */}
                         <div data-tracking-slot="map" style={{ order: getTrackingFlowOrder('map') }}>

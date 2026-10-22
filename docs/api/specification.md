@@ -670,6 +670,22 @@ non-empty explicit legacy `permissions` array takes precedence over it, and is n
 once the staff role is deactivated (`staff_role.is_active: false`). Clients must read `capabilities`,
 never `staff_role.capabilities`, to determine what the user can actually do.
 
+### Tenant staff-role management (`/staff-roles`)
+
+`GET /staff-roles?include_inactive=true` and `GET /staff-roles/:staffRoleId`
+retain the `users:manage` read gate. `POST /staff-roles`,
+`PUT /staff-roles/:staffRoleId`, `PUT /staff-roles/:staffRoleId/status`, and
+`PUT /staff-roles/users/:userId` require a tenant owner or legacy Admin role.
+The role body accepts `name`, `capabilities` (registered slugs), and optional
+`is_active`; status uses `{ "is_active": false }`. Assignment uses
+`{ "staff_role_id": 4 }` or `null` to clear. Assignment and clearing both
+erase `users.permissions` in the same transaction and audit the previous list.
+An inactive role cannot be assigned. The OPIS Team & Access workspace offers
+Warehouse and Delivery as copy-on-create suggestions; each saved role remains
+ordinary and editable. Assign branch grants with
+`PUT /users/:user_id/location-grants` after role assignment. Use
+`GET /users/me/assignments?location_id=<id>` for the assigned-work projection.
+
 ---
 
 ## Items (SKU Master) Endpoints
@@ -3488,9 +3504,9 @@ Assign or reassign a registered delivery person or an unregistered third-party c
 ```
 
 **Transition Notes**
-1. The associated online order must already be `out_for_delivery` and have a `manual` delivery job.
+1. A direct delivery order may be Confirmed, Preparing, Packed, Waiting for rider, or Out for delivery. Active run members retain the out-for-delivery gate. The job provider must be `manual`.
 2. The authenticated user must own an open shift at the order location.
-3. Send exactly one of `delivery_personnel_id` (an active registered person) or `delivery_personnel_name` (a trimmed third-party courier name, registration not required).
+3. Send at most one of `delivery_personnel_id` (an active registered person) or `delivery_personnel_name` (a trimmed typed rider name). `courier_service` is one of `own`, `maxim`, `grabexpress`, `lalamove`, `other`; it is required for early direct assignment. `own` requires a registered person or typed name, while a third-party service may be assigned without one. `other` requires `courier_service_name` (120 characters). `courier_reference` is optional (120 characters); `tracking_url` is optional, HTTPS-only (1000 characters). Legacy out-for-delivery person-only requests remain valid.
 4. The assignment atomically records the person or name, assigning user, assigning shift, timestamp, and `pending_dispatch -> assigned` transition.
 5. Assignment can be changed while the job is `pending_dispatch` or `assigned`; it is locked after pickup begins.
 6. Replayed requests with the same idempotency key and payload return the original result without a duplicate audit event.
@@ -3513,6 +3529,8 @@ Update online order fulfillment status from POS terminal operations.
 - `placed`
 - `confirmed`
 - `preparing`
+- `packed`
+- `ready_for_rider`
 - `ready_for_pickup`
 - `out_for_delivery`
 - `completed`
@@ -3521,7 +3539,7 @@ Update online order fulfillment status from POS terminal operations.
 
 **Transition Notes**
 1. Allowed transitions are lifecycle-validated server-side.
-2. Delivery orders must progress to `out_for_delivery` (not `ready_for_pickup`).
+2. Direct delivery orders may progress from Preparing or Packed to `ready_for_rider` (Waiting for rider). The older direct transition to `out_for_delivery` remains accepted for native clients and run dispatch. Delivery orders cannot use `ready_for_pickup`.
 3. Non-delivery orders must use `ready_for_pickup` where applicable.
 4. Successful responses include:
    - `data.idempotent_replay`
@@ -3575,11 +3593,43 @@ Advance the manual delivery job for an online delivery order from the POS queue.
 
 **Transition Notes**
 1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`; assignment must be completed through the assignment endpoint before `assigned`, `picked_up`, or `delivered`.
-2. The associated online order must already be `out_for_delivery`.
+2. A direct order at `ready_for_rider` moves to `out_for_delivery` in the same locked transaction as `picked_up`. Otherwise the associated order must already be `out_for_delivery`. The narrow `delivery_runs:act` path always retains this older requirement.
 3. The delivery job provider must be `manual`; provider-owned jobs are not writable through POS.
 4. Broad operators require an owned open shift and retain shift attribution. Assigned staff with `delivery_runs:act` must be the current direct assignee or a member of the current Delivery Run, hold a grant for the order location, and may act without a shift; their order shift remains unchanged and the audit `shift_id` is `null`.
 5. Successful responses include `data.delivery_job`, `data.status_transition`, `data.idempotent_replay`, and `data.replay_outcome`.
 6. The order completion endpoint still requires `deliveryJob.status=delivered`; marking the job delivered does not complete the order automatically.
+
+### POST /pos/orders/:id/delivery/complete
+
+Complete a direct manual delivery outside an active run. Requires `pos:transact`,
+paired terminal, active operator, and an open shift. Body:
+
+```json
+{
+  "idempotency_key": "delivery-complete-12345678",
+  "terminal_id": "COUNTER-01",
+  "settlement": { "amount": 100.00, "method": "cash" }
+}
+```
+
+`settlement` is omitted for a prepaid order. COD cash must cover the total;
+partially paid orders settle the full remaining balance with a supported cash
+or merchant-owned method. A digital method additionally requires
+`manual_payment_received: true`. Job delivery, payment record and order
+completion are distinct records committed in one transaction under replay key
+`terminal.delivery_order_complete`. A missing settlement returns 409
+`DELIVERY_BALANCE_DUE_OUTSTANDING`. The order must be Out for delivery and the
+job Picked Up or already Delivered; legacy routes remain available.
+
+### POST /pos/orders/:id/delivery/fail
+
+Fail a direct manual delivery outside an active run. Requires `pos:transact` and
+an open shift. Body: `{ "idempotency_key": "delivery-fail-12345678", "reason": "Customer unavailable" }`.
+Allowed from Confirmed through Out for delivery before the job is Delivered.
+One transaction marks the job Failed, the order Cancelled, releases any stock
+reservation without goods-issue reversal, and audits both records. Store-origin
+captured payments enter the refund lifecycle after commit. Replays use
+`terminal.delivery_order_fail` and do not repeat side effects.
 
 ### GET /users/me/assignments
 Return authenticated staff assignments. Existing `orders` and `delivery_runs`
@@ -4150,6 +4200,28 @@ Resolve a public Storefront QR/deep-link barcode value.
 
 **Rules**
 - Storefront QR uses Storefront visibility only (`storefront_visible` and service storefront metadata), never POS visibility.
+
+**Tenant storefront publication gate (#2633).** `store_is_visible=false` returns
+`404 {"success":false,"code":"STORE_NOT_VISIBLE"}` with `Cache-Control: no-store`
+for new public Storefront, hospitality, and DGLaundry booking-payment activity,
+including requests with a previously known company token, slug, or custom domain.
+This covers catalog, locations, quotes, checkout, new bookings/reservations,
+registration, address/follow actions, and inventory push. Missing or invalid
+setting rows retain the legacy visible default. Existing-order routes remain
+available by explicit method/path carve-out: tracking and push tokens, login/me,
+order history/claim/cancel, payment-session read/cancel/test reconciliation,
+service and hospitality booking read/claim, and laundry order read/update/cancel
+plus payment-session read/cancel. The exact allowlist is in
+`apps/dgfy-api/src/middleware/requireStorefrontVisible.js`. PayMongo webhooks,
+signed DGLaundry events, and admin refunds remain outside this gate. Already
+cached catalog responses have `s-maxage=45`, `stale-while-revalidate=90`,
+and `stale-if-error=180` (potentially 135 seconds of stale service during
+revalidation or 225 seconds if the origin errors); other API processes can
+lag by up to 15 seconds, and custom-domain resolution by up to 30 seconds.
+An existing payment session created before Off may finish through its provider
+page and callback as the tenant's last accepted order. New quote, checkout, and
+payment-session creation requests are denied after Off. Merchant POS and other
+in-store operations are unaffected.
 - `ghost` mode blocks item detail exposure. `catalog` exposes item detail only. `inquiry` exposes item detail plus contact affordance. `transaction` allows cart/checkout handoff subject to stock, location, compliance, and payment gates.
 - Service booking QR payloads such as `SERVICE_BOOKING:<reference>` resolve to booking/ticket context and redact customer contact fields unless an authenticated/claim flow permits disclosure. They do not hand off to cart.
 - Public QR responses do not expose `cost_per_unit` or raw `current_stock`; they use the same `inventory_display` contract as `/store/catalog`.
@@ -4758,6 +4830,7 @@ Track online-store order status for public users.
 **Caching Contract**: `Cache-Control: private, max-age=5, s-maxage=5, stale-while-revalidate=10, stale-if-error=20`
 **Response Contract**: Valid tracking PIN returns `200` with explicit status payload.
 For rejected or cancelled orders, the payload includes `refund: null` or the latest refund's `status` (`processing`, `refunded`, or `under_review`), public `reference`, `amount_centavos`, and `updated_at`. The lookup is scoped by tenant and POS transaction. Provider refund IDs, failure details, and provider payloads are never returned. For other fulfillment states, `refund` is `null`.
+Delivery orders additionally include `delivery: { stage, courier_name, courier_reference, tracking_url, rider_name }`. Stage is `waiting_for_rider`, `rider_assigned`, `picked_up`, or `delivered`. Only HTTPS tracking links and explicitly typed rider names are exposed; registered personnel names, staff IDs, provider payloads and internal job IDs stay private. A delivery failed by the store returns `cancellation_reason` and store-attributed cancellation copy.
 **Rate Limit Contract**: Public reads use a dedicated IP + store context + normalized tracking-PIN bucket sized for state-aware 10-20 second visible polling. Claim and cancellation mutations remain on the stricter Store tracking mutation limiter. `429` responses include `Retry-After` and `retryAfterSeconds`; clients must retain the last successful status, disable manual retry during cooldown, show customer-friendly countdown copy, and delay the next request for at least that duration.
 
 ### PATCH /store/orders/:tracking_pin/cancel
@@ -6699,7 +6772,7 @@ List all tenant registrations with their status.
 - Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
 - `effective_plan`: authoritative plan value to render and use for admin presentation. Pending and active tenants return `premium` even if a historical stored `plan` value is still `standard`.
 - `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
-- `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, and `customer_access_mode=catalog`.
+- `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, `store_visibility_merchant_editable=true`, and `customer_access_mode=catalog`.
 - `capabilities.storefront_readiness`: indicates whether public Storefront visibility can publish through an active primary storefront location with valid coordinates.
 - `registration_action`: authoritative next action for a pending tenant's linked public registration. `approve` is returned only for `pending/not_started`; `retry` is returned for failed provisioning or an approved `in_progress` attempt older than the existing ten-minute retry window; `setting_up` and `reconcile` are non-actionable states. The approval and retry endpoints remain authoritative and continue to enforce these transitions atomically.
 
@@ -6712,6 +6785,7 @@ Update platform-admin capability controls for an active tenant.
   "ims_enabled": true,
   "pos_enabled": false,
   "storefront_visible": true,
+  "store_visibility_merchant_editable": false,
   "customer_access_mode": "inquiry",
   "platform_max_customer_access_mode": "transaction",
   "customer_access_registration_stage": "registered",
@@ -6720,7 +6794,8 @@ Update platform-admin capability controls for an active tenant.
 ```
 
 **Validation**
-- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
+- `downpayment_allowed` is a platform-owned strict boolean persisted in the landlord database. Submit it alone with `reason`; combining it with any other capability returns 422. Its audit row includes actor, reason, timestamp and `changed_fields: [downpayment_allowed]`. Capability reads include it even when the tenant database is not provisioned; missing landlord rows default to false.
+- At least one of `downpayment_allowed`, `ims_enabled`, `pos_enabled`, `storefront_visible`, `store_visibility_merchant_editable`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
 - Boolean fields must be JSON booleans, not strings.
 - `customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
 - `platform_max_customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
@@ -7312,6 +7387,7 @@ Persist onboarding progress for a step (idempotent).
 
 For `primary_location`, the payload may include:
 - `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must either save a real active primary location for map publication or set `store_has_no_location=true` for a searchable/profile-only storefront.
+- If Platform Admin has set `store_visibility_merchant_editable=false`, changing `public_storefront_visible` returns 403 with `reason_code: STORE_VISIBILITY_EDIT_PLATFORM_CONTROLLED`. The same rule applies to `PUT /settings` and `PUT /settings/:key`; an unchanged visibility value in a bulk save is allowed. Tenant writes of `store_visibility_merchant_editable` itself are always rejected.
 - `store_has_no_location` (`boolean`, strict JSON boolean): when paired with `public_storefront_visible=true`, the tenant can be searched and opened by slug but public map pins, embedded maps, directions links, and public branch-location responses remain disabled.
 - `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
 - `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.
@@ -7526,3 +7602,22 @@ newest first, capped at 1000 rows. Filters: `type`, `search` (description or URL
 
 Requires Platform Admin `admin.feedback`. Returns `{ success: true, data: { total, bugs,
 ideas, latest } }`; `latest` is a feedback row or `null`.
+
+
+## Downpayment settings — platform allowance (Phase 526, #2639)
+
+`GET /api/v1/downpayment/settings` retains stored merchant settings and adds
+`platform_downpayment_allowed` (boolean) and `effective_payment_mode`. If allowance is
+missing/false, the effective mode is `full_payment` even when stored `payment_mode`
+is `downpayment_required` or `customer_choice`.
+
+`PUT /api/v1/downpayment/settings` keeps tenant permission checks and fixed writable
+fields. Tenant attempts to write `platform_downpayment_allowed` return 403
+`AUTHORIZATION_FAILED`, reason `DOWNPAYMENT_ALLOWANCE_PLATFORM_CONTROLLED`. A disallowed
+tenant whose merged row would remain non-full receives 403 with reason
+`DOWNPAYMENT_NOT_ALLOWED_BY_PLATFORM`, including partial writes on a revoked row.
+Saving `full_payment` remains allowed. Existing version conflicts still return 409.
+
+The same effective policy governs public catalog, quote, checkout and payment sessions;
+crafted `payment_election: downpayment` cannot bypass it. Cash/COD ownership and existing
+partially paid order settlement/completion/refund terms are unchanged.

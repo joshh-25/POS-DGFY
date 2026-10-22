@@ -31,7 +31,8 @@ describe('buildIncomingQueueOrderActions delivery handoff print action (#1319)',
       order_method: 'dine_in',
       fulfillment_status: 'ready_for_pickup',
       payment_type: 'gcash',
-      payment_status: 'unpaid'
+      payment_status: 'unpaid',
+      payment_timing: 'on_dine_in'
     }, {
       canTransactPos: true,
       isOnline: true,

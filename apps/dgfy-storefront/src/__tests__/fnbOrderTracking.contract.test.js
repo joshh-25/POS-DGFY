@@ -57,14 +57,16 @@ describe('F&B storefront tracking contract', () => {
       'placed',
       'confirmed',
       'preparing',
-      'out_for_delivery',
+      'ready_for_rider',
+      'rider_assigned',
+      'picked_up',
       'completed'
     ]);
   });
 
   it('keeps pickup and delivery tracking flows distinct', () => {
     expect(getTrackingFlowForOrderMethod('pickup').map((step) => step.id)).toContain('ready_for_pickup');
-    expect(getTrackingFlowForOrderMethod('delivery').map((step) => step.id)).toContain('out_for_delivery');
+    expect(getTrackingFlowForOrderMethod('delivery').map((step) => step.id)).toContain('picked_up');
   });
 
   it('extracts tracking map pins from tracking payloads with store fallbacks', () => {

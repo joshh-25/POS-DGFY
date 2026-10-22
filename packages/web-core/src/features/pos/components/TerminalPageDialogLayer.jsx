@@ -13,6 +13,7 @@ import {
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { isStarterSetupRequired } from '../utils/setupFlow.js';
 import BalanceSettlementDialog from './BalanceSettlementDialog.jsx';
+import DeliveryCompletionDialog from './DeliveryCompletionDialog.jsx';
 import ScheduledDineInAlertDialog from './ScheduledDineInAlertDialog.jsx';
 import ShiftCloseSummaryPrintView from './ShiftCloseSummaryPrintView.jsx';
 import ZReadingPrintView from './ZReadingPrintView.jsx';
@@ -37,6 +38,16 @@ export default function TerminalPageDialogLayer({ model }) {
     balanceSettlementOrder,
     balanceSettlementReference,
     balanceSettlementSaving,
+    deliveryCompletionOrder,
+    deliveryCompletionMethod,
+    deliveryCompletionCashInput,
+    deliveryCompletionConfirmed,
+    deliveryCompletionSaving,
+    setDeliveryCompletionOrder,
+    setDeliveryCompletionMethod,
+    setDeliveryCompletionCashInput,
+    setDeliveryCompletionConfirmed,
+    submitDeliveryCompletion,
     balanceProofFile,
     balanceProofUploading,
     balanceProofError,
@@ -295,6 +306,18 @@ export default function TerminalPageDialogLayer({ model }) {
           onProofFileChange={setBalanceProofFile}
           proofUploading={balanceProofUploading}
           proofError={balanceProofError}
+        />
+        <DeliveryCompletionDialog
+          order={deliveryCompletionOrder}
+          method={deliveryCompletionMethod}
+          cashInput={deliveryCompletionCashInput}
+          confirmed={deliveryCompletionConfirmed}
+          saving={deliveryCompletionSaving}
+          onOpenChange={(open) => { if (!open) setDeliveryCompletionOrder(null); }}
+          onMethodChange={setDeliveryCompletionMethod}
+          onCashInputChange={setDeliveryCompletionCashInput}
+          onConfirmedChange={setDeliveryCompletionConfirmed}
+          onSubmit={(settlement) => submitDeliveryCompletion(deliveryCompletionOrder, settlement)}
         />
         {/* Phase 204 (#965): the "View proof" affordance -- a minimal viewer, not a full
             evidence-browser UI. The blob URL is owned by TerminalPage.jsx and revoked on close. */}

@@ -319,6 +319,48 @@ describe('TenantManager capability controls', () => {
     });
   }, 15000);
 
+  it('audits a merchant visibility edit lock without disabling the Admin visibility control', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'Kate Store' });
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+    await user.click(screen.getByRole('button', { name: /Merchant can edit storefront visibility On/i }));
+    await screen.findByText('Confirm capability change');
+    mocks.adminServiceMock.getTenants.mockResolvedValue({
+      data: [kusinaTenant, withCapabilities(kateTenant, { store_visibility_merchant_editable: false })]
+    });
+    await user.type(screen.getByLabelText('Reason'), 'Platform manages this tenant visibility');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+    await waitFor(() => expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith(
+      'tenant-kate',
+      { store_visibility_merchant_editable: false, reason: 'Platform manages this tenant visibility' }
+    ));
+    expect(await screen.findByRole('button', { name: /Storefront \/ Maps Off/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Storefront \/ Maps Off/i }).disabled).toBe(false);
+    await user.click(screen.getByRole('button', { name: /Storefront \/ Maps Off/i }));
+    await screen.findByText('Confirm capability change');
+    await user.type(screen.getByLabelText('Reason'), 'Admin is publishing this store');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+    await waitFor(() => expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith(
+      'tenant-kate',
+      { storefront_visible: true, reason: 'Admin is publishing this store' }
+    ));
+  }, 15000);
+
+  it('changes the downpayment allowance with a reason and verifies reload', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'Kate Store' });
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+    await user.click(screen.getByRole('button', { name: /Downpayment \(premium\) Off/i }));
+    await screen.findByText('Confirm capability change');
+    mocks.adminServiceMock.getTenants.mockResolvedValue({ data: [withCapabilities(kateTenant, { downpayment_allowed: true })] });
+    await user.type(screen.getByLabelText('Reason'), 'Premium access approved');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+    await waitFor(() => expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith('tenant-kate', { downpayment_allowed: true, reason: 'Premium access approved' }));
+    expect(await screen.findByRole('button', { name: /Downpayment \(premium\) On/i })).toBeTruthy();
+  });
+
   it('refuses to toast success when the fresh read does not reflect the write', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><TenantManager /></MemoryRouter>);

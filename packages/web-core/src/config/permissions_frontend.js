@@ -83,7 +83,10 @@ export const PERMISSION_GROUPS = {
             PACK_ASSIGNED_ORDERS: "orders:pack",
             VIEW_ASSIGNED_ORDERS: "orders:view_assigned",
             VIEW_ASSIGNED_DELIVERY_RUNS: "delivery_runs:view_assigned",
-            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act"
+            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act",
+            LOAD_DELIVERY_RUNS: "delivery_runs:load",
+            ACT_ASSIGNED_DELIVERY_JOBS: "delivery_jobs:act_assigned",
+            COLLECT_ASSIGNED_BALANCE: "orders:collect_assigned_balance"
         }
     },
     POS: {

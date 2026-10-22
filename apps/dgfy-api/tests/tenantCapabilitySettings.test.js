@@ -10,6 +10,7 @@ describe('tenant capability settings helpers', () => {
             ims_enabled: true,
             pos_enabled: true,
             storefront_visible: false,
+            store_visibility_merchant_editable: true,
             customer_access_mode: 'catalog',
             platform_max_customer_access_mode: 'transaction'
         });
@@ -26,6 +27,7 @@ describe('tenant capability settings helpers', () => {
             ims_enabled: false,
             pos_enabled: true,
             storefront_visible: true,
+            store_visibility_merchant_editable: true,
             customer_access_mode: 'transaction',
             platform_max_customer_access_mode: 'inquiry'
         });

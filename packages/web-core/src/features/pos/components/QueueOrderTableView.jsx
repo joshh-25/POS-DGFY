@@ -4,8 +4,10 @@ import {
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
-  getFulfillmentStatusLabel
+  getFulfillmentStatusLabel,
+  isDirectDeliveryOrder
 } from './orderFulfillmentUi.js';
+import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
 import {
@@ -55,6 +57,8 @@ export default function QueueOrderTableView({
   handleDeliveryJobStatusChange = () => {},
   handleIncomingOrderStatusChange = () => {},
   handleOpenIncomingOrderReceipt = () => {},
+  deliveryPersonnelState = {},
+  handleAssignDeliveryPersonnel = () => {},
   onRequestRejection = () => {},
   scheduleNow = null
 }) {
@@ -197,6 +201,16 @@ export default function QueueOrderTableView({
                     locked={locked}
                     isOnline={isOnline}
                   />
+                  {isDirectDeliveryOrder(order)
+                    && ['confirmed', 'preparing', 'packed', 'ready_for_rider', 'out_for_delivery'].includes(order.fulfillment_status) ? (
+                    <DeliveryAssignmentControl
+                      orderId={orderId} deliveryJob={deliveryJob} directDelivery
+                      canAssignOrder deliveryPersonnelState={deliveryPersonnelState}
+                      actionLoading={actionLoading} canTransactPos={canTransactPos}
+                      locked={locked} isOnline={isOnline} hasActiveShift={hasActiveShift}
+                      onAssign={handleAssignDeliveryPersonnel}
+                    />
+                  ) : null}
                   {!canTransactPos && (
                     <p className="mt-2 text-[11px] text-slate-500">Needs POS transact permission.</p>
                   )}

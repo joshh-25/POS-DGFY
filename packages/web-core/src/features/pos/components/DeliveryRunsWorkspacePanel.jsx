@@ -21,6 +21,7 @@ import DeliveryRunMembersList from './DeliveryRunMembersList.jsx';
 import DeliveryRunDispatchSummary from './DeliveryRunDispatchSummary.jsx';
 import DeliveryRunSummary from './DeliveryRunSummary.jsx';
 import { getDeliveryRunDispatchReasonMessage } from '../utils/deliveryRunDispatchReasons.js';
+import { formatRunScheduleLabel } from '../utils/deliveryRunLabels.js';
 
 // Phase 226 (#1273). Self-contained master/detail panel over Phase 225's delivery-run API,
 // modeled on DeliveryPersonnelManagementPanel.jsx / EmployeeCreditManagementPanel.jsx: panel-local
@@ -38,15 +39,6 @@ const RUN_STATUS_LABELS = Object.freeze({
 });
 
 const LOCKED_RUN_STATUSES = new Set(['dispatched', 'completed']);
-
-// Phase 260 (#1489): scheduled_date/scheduled_date_end is a range now, not a single point in
-// time. No end date (or an end equal to the start) still displays as a single-day run.
-const formatRunScheduleLabel = (run) => {
-  if (!run.scheduled_date) return 'No schedule set';
-  const start = String(run.scheduled_date).slice(0, 10);
-  const end = run.scheduled_date_end ? String(run.scheduled_date_end).slice(0, 10) : null;
-  return end && end !== start ? `${start} → ${end}` : start;
-};
 
 // Phase 228 (#1273/#1271). Distinct from LOCKED_RUN_STATUSES above -- `dispatched` is deliberately
 // absent here, matching buildDispatchDeliveryRunUseCase's own RUN_DISPATCH_BLOCKED_STATUSES: the
@@ -72,10 +64,12 @@ export default function DeliveryRunsWorkspacePanel({
   isOnline = true,
   hasActiveShift = false,
   queueLocationScopeId = null,
+  activeShiftLocationId = null,
   isRetailMode = true,
   deliveryPersonnelState = { loading: false, personnel: [], accessState: 'not_required' },
   ensureDeliveryPersonnelLoaded = () => {},
-  onRunCountChange = () => {}
+  onRunCountChange = () => {},
+  onRunsChanged = () => {}
 }) {
   const [runsState, setRunsState] = React.useState({
     loading: false,
@@ -190,6 +184,11 @@ export default function DeliveryRunsWorkspacePanel({
     if (selectedRunId) await loadRunDetail(selectedRunId);
   };
 
+  const refreshAfterMutation = async () => {
+    await refreshAll();
+    onRunsChanged();
+  };
+
   const openCreateForm = () => {
     setFormRun(null);
     setFormOpen(true);
@@ -211,11 +210,15 @@ export default function DeliveryRunsWorkspacePanel({
         await updateDeliveryRun(formRun.delivery_run_id, payload);
         toast.success('Delivery run updated.');
       } else {
-        const created = await createDeliveryRun(payload);
+        const locationId = activeShiftLocationId || queueLocationScopeId;
+        const created = await createDeliveryRun({
+          ...payload,
+          ...(locationId ? { location_id: Number(locationId) } : {})
+        });
         toast.success('Delivery run created.');
         if (created?.delivery_run_id) setSelectedRunId(created.delivery_run_id);
       }
-      await refreshAll();
+      await refreshAfterMutation();
       return true;
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to save delivery run.'));
@@ -255,7 +258,7 @@ export default function DeliveryRunsWorkspacePanel({
       });
       toast.success('Run personnel saved.');
       personnelSubmitRef.current = { key: null, signature: null };
-      await refreshAll();
+      await refreshAfterMutation();
       return true;
     } catch (error) {
       // F-3 fix (Phase 227, #1273): `error_code` is the DomainErrorCode ('CONFLICT'), not the
@@ -284,7 +287,7 @@ export default function DeliveryRunsWorkspacePanel({
     try {
       await removeDeliveryRunMember(run.delivery_run_id, posTransactionId);
       toast.success('Order removed from run.');
-      await refreshAll();
+      await refreshAfterMutation();
       return true;
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to remove order from run.'));
@@ -346,7 +349,7 @@ export default function DeliveryRunsWorkspacePanel({
       });
       toast.success('Order moved to the new run.');
       moveAddSubmitRef.current = { key: null, posTransactionId: null, targetRunId: null };
-      await refreshAll();
+      await refreshAfterMutation();
       return true;
     } catch (error) {
       // Phase 226 (#1273) plan §6: the DELETE leg already succeeded here -- the order is now in
@@ -357,7 +360,7 @@ export default function DeliveryRunsWorkspacePanel({
         `Order #${posTransactionId} was removed from the run but could not be added to the target run. It is currently in no run -- retry adding it from the target run.`,
         { duration: Infinity }
       );
-      await refreshAll();
+      await refreshAfterMutation();
       return false;
     } finally {
       setSavingKey('');
@@ -386,7 +389,7 @@ export default function DeliveryRunsWorkspacePanel({
       });
       toast.success(`Order #${posTransactionId} loading status saved.`);
       loadingSubmitRef.current = { key: null, signature: null };
-      await refreshAll();
+      await refreshAfterMutation();
       return true;
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to save loading status.'));
@@ -416,7 +419,7 @@ export default function DeliveryRunsWorkspacePanel({
       });
       toast.success('Run loading confirmation recorded.');
       loadingConfirmSubmitRef.current = { key: null, signature: null };
-      await refreshAll();
+      await refreshAfterMutation();
       return result || true;
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to confirm run loading.'));
@@ -461,7 +464,7 @@ export default function DeliveryRunsWorkspacePanel({
         toast.success(`Dispatched ${dispatchedCount} order(s)${skippedCount > 0 ? `, ${skippedCount} already dispatched` : ''}.`);
       }
       dispatchSubmitRef.current = { key: null, signature: null };
-      await refreshAll();
+      await refreshAfterMutation();
       return true;
     } catch (error) {
       // Same reason_code-under-`errors` pattern as F-3 (Phase 227): the actual reason lives under

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 // orderFulfillmentUi + dineInScheduleAlerts load on demand (background order
 // enrichment only): they are never on the mount/render path, so the route
 // chunk stays lean. Both chunks load once and are cached for later effects.
-import { isDineInOrder } from '../utils/dineInSchedule.js';
+import { getOnlineOrderCashIdempotencyPrefix, isDineInOrder } from '../utils/dineInSchedule.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -36,6 +36,8 @@ import {
   uploadOrderBalancePaymentProof,
   fetchOrderBalancePaymentProof,
   assignDeliveryPersonnel,
+  completeDeliveryOrder,
+  failDeliveryOrder,
   fetchActiveDeliveryPersonnel,
   updateDeliveryJobStatus,
   updateOnlineOrderStatus,
@@ -366,6 +368,19 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+const getDeliveryActionIdempotencyKey = (cacheRef, action, orderId, request, prefix) => {
+  const cacheKey = `${action}:${orderId}`;
+  const fingerprint = JSON.stringify(request);
+  const cached = cacheRef.current.get(cacheKey);
+  if (cached?.fingerprint === fingerprint) return cached.key;
+  const key = createIdempotencyKey(prefix);
+  cacheRef.current.set(cacheKey, { fingerprint, key });
+  return key;
+};
+const clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure = (cacheRef, action, orderId, error) => {
+  const status = Number(error?.response?.status);
+  if (status >= 400 && status < 500) cacheRef.current.delete(`${action}:${orderId}`);
 };
 
 // Short internal correlation code for matching a terminal failure to its
@@ -1050,6 +1065,12 @@ export default function TerminalPage() {
   const [balanceSettlementReference, setBalanceSettlementReference] = useState('');
   const [balanceSettlementConfirmed, setBalanceSettlementConfirmed] = useState(false);
   const [balanceSettlementSaving, setBalanceSettlementSaving] = useState(false);
+  const [deliveryCompletionOrder, setDeliveryCompletionOrder] = useState(null);
+  const [deliveryCompletionMethod, setDeliveryCompletionMethod] = useState('cash');
+  const [deliveryCompletionCashInput, setDeliveryCompletionCashInput] = useState('');
+  const [deliveryCompletionConfirmed, setDeliveryCompletionConfirmed] = useState(false);
+  const [deliveryCompletionSaving, setDeliveryCompletionSaving] = useState(false);
+  const deliveryActionReplayKeys = useRef(new Map());
   // Phase 204 (#965): proof-of-payment capture state, reset alongside the rest of the dialog's
   // state in handleOpenBalanceSettlement below so a previous order's file/error never carries
   // over into a new settlement.
@@ -7824,6 +7845,45 @@ export default function TerminalPage() {
     return Boolean(outcome?.success);
   }, [activeTerminalId, posHardware]);
 
+  const submitDeliveryCompletion = async (order, settlement = null) => {
+    const orderId = Number(order?.pos_transaction_id);
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    if (!orderId || !terminalId) {
+      toast.error('An active paired terminal is required to complete delivery.');
+      return false;
+    }
+    setDeliveryCompletionSaving(true);
+    setIncomingOrderActionState((prev) => ({ ...prev, [orderId]: 'delivery_complete' }));
+    try {
+      await completeDeliveryOrder(orderId, {
+        terminal_id: terminalId,
+        idempotency_key: getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, 'complete', orderId,
+          { terminal_id: terminalId, settlement: settlement || null }, 'pos-delivery-complete'
+        ),
+        ...(settlement ? { settlement } : {})
+      });
+      deliveryActionReplayKeys.current.delete(`complete:${orderId}`);
+      toast.success('Delivery completed.');
+      setDeliveryCompletionOrder(null);
+      await refreshIncomingOrders({ silent: true });
+      return true;
+    } catch (error) {
+      clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+        deliveryActionReplayKeys, 'complete', orderId, error
+      );
+      toast.error(error?.response?.data?.message || 'Failed to complete delivery.');
+      return false;
+    } finally {
+      setDeliveryCompletionSaving(false);
+      setIncomingOrderActionState((prev) => {
+        const next = { ...prev };
+        delete next[orderId];
+        return next;
+      });
+    }
+  };
+
   const handleIncomingOrderStatusChange = async (posTransactionId, fulfillmentStatus, reason = null) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before changing an online order.');
@@ -7840,6 +7900,53 @@ export default function TerminalPage() {
     if (!nextStatus) {
       toast.error('Select a valid status update action.');
       return false;
+    }
+    if (nextStatus === 'delivery_complete') {
+      const order = incomingOrdersState.orders.find((item) => Number(item.pos_transaction_id) === normalizedId);
+      if (!order) {
+        toast.error('Refresh the order before completing delivery.');
+        return false;
+      }
+      if (Number(order.balance_due || 0) > 0 || order.payment_status === 'unpaid') {
+        setDeliveryCompletionOrder(order);
+        setDeliveryCompletionMethod('cash');
+        setDeliveryCompletionCashInput(String(Number(order.balance_due || 0) > 0 ? order.balance_due : order.total_amount));
+        setDeliveryCompletionConfirmed(false);
+        return true;
+      }
+      return submitDeliveryCompletion(order);
+    }
+    if (nextStatus === 'delivery_fail') {
+      const failureReason = String(reason || '').trim();
+      if (failureReason.length < 3) {
+        toast.error('Enter a failure reason with at least 3 characters.');
+        return false;
+      }
+      setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: nextStatus }));
+      try {
+        const idempotencyKey = getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, 'fail', normalizedId, { reason: failureReason }, 'pos-delivery-fail'
+        );
+        await failDeliveryOrder(normalizedId, {
+          idempotency_key: idempotencyKey, reason: failureReason
+        });
+        deliveryActionReplayKeys.current.delete(`fail:${normalizedId}`);
+        toast.success('Delivery failed. The order was cancelled.');
+        await refreshIncomingOrders({ silent: true });
+        return true;
+      } catch (error) {
+        clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+          deliveryActionReplayKeys, 'fail', normalizedId, error
+        );
+        toast.error(error?.response?.data?.message || 'Failed to cancel delivery.');
+        return false;
+      } finally {
+        setIncomingOrderActionState((prev) => {
+          const next = { ...prev };
+          delete next[normalizedId];
+          return next;
+        });
+      }
     }
 
     const normalizedReason = String(reason || '').trim();
@@ -7925,14 +8032,22 @@ export default function TerminalPage() {
     const actionKey = `delivery-job:${nextStatus}`;
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
     try {
+      const replayAction = `job:${nextStatus}`;
       await updateDeliveryJobStatus(normalizedId, {
         status: nextStatus,
-        idempotency_key: createIdempotencyKey('pos-delivery-job')
+        idempotency_key: getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, replayAction, normalizedId,
+          { status: nextStatus }, 'pos-delivery-job'
+        )
       });
+      deliveryActionReplayKeys.current.delete(`${replayAction}:${normalizedId}`);
       toast.success(nextStatus === 'delivered' ? 'Delivery marked as delivered.' : 'Delivery status updated.');
       await refreshIncomingOrders({ silent: true });
       return true;
     } catch (error) {
+      clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+        deliveryActionReplayKeys, `job:${nextStatus}`, normalizedId, error
+      );
       if (isRetryableTerminalOperationError(error)) {
         toast.error('The delivery job was not changed because the server connection was lost. Reconnect and try again.');
       } else {
@@ -7948,7 +8063,10 @@ export default function TerminalPage() {
     }
   };
 
-  const handleAssignDeliveryPersonnel = async (posTransactionId, { id: deliveryPersonnelId, name: deliveryPersonnelName } = {}) => {
+  const handleAssignDeliveryPersonnel = async (posTransactionId, {
+    id: deliveryPersonnelId, name: deliveryPersonnelName,
+    courier_service, courier_service_name, courier_reference, tracking_url
+  } = {}) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before assigning delivery personnel.');
       return false;
@@ -7958,26 +8076,38 @@ export default function TerminalPage() {
     const normalizedPersonnelId = Number.parseInt(deliveryPersonnelId, 10);
     const hasPersonnelId = Number.isInteger(normalizedPersonnelId) && normalizedPersonnelId > 0;
     const normalizedName = String(deliveryPersonnelName || '').trim();
-    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || (!hasPersonnelId && !normalizedName)) {
+    const thirdPartyCourier = ['maxim', 'grabexpress', 'lalamove', 'other'].includes(courier_service);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0
+      || (!hasPersonnelId && !normalizedName && !thirdPartyCourier)) {
       toast.error('Enter a delivery personnel name before assigning the order.');
       return false;
     }
 
     const actionKey = `delivery-assignment:${normalizedId}`;
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
+    const assignment = {
+      ...(hasPersonnelId
+        ? { delivery_personnel_id: normalizedPersonnelId }
+        : normalizedName ? { delivery_personnel_name: normalizedName } : {}),
+      ...(courier_service ? { courier_service, courier_service_name, courier_reference, tracking_url } : {})
+    };
     try {
       // Exactly one of these two is sent -- the server schema is `.or(...).oxor(...)` and
       // 422s if both are present (Phase 205, #1080).
       await assignDeliveryPersonnel(normalizedId, {
-        ...(hasPersonnelId
-          ? { delivery_personnel_id: normalizedPersonnelId }
-          : { delivery_personnel_name: normalizedName }),
-        idempotency_key: createIdempotencyKey('pos-delivery-assignment')
+        ...assignment,
+        idempotency_key: getDeliveryActionIdempotencyKey(
+          deliveryActionReplayKeys, 'assign', normalizedId, assignment, 'pos-delivery-assignment'
+        )
       });
+      deliveryActionReplayKeys.current.delete(`assign:${normalizedId}`);
       toast.success('Delivery personnel assigned.');
       await refreshIncomingOrders({ silent: true });
       return true;
     } catch (error) {
+      clearDeliveryActionIdempotencyKeyAfterDefinitiveFailure(
+        deliveryActionReplayKeys, 'assign', normalizedId, error
+      );
       if (isRetryableTerminalOperationError(error)) {
         toast.error('The delivery assignment was not saved because the server connection was lost. Reconnect and try again.');
       } else {
@@ -8164,7 +8294,7 @@ export default function TerminalPage() {
         terminal_id: terminalId,
         cash_received: cashReceived,
         idempotency_key: createIdempotencyKey(
-          isDineInOrder ? 'pos-dine-in-cash' : isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash'
+          getOnlineOrderCashIdempotencyPrefix(cashCollectionOrder)
         )
       });
       try {
@@ -9079,7 +9209,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(branchSelectorOpen || cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary.open || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(branchSelectorOpen || cashCollectionOrder || balanceSettlementOrder || deliveryCompletionOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary.open || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -9094,6 +9224,16 @@ function PosRestorationLoadingScreen() {
               balanceSettlementOrder,
               balanceSettlementReference,
               balanceSettlementSaving,
+              deliveryCompletionOrder,
+              deliveryCompletionMethod,
+              deliveryCompletionCashInput,
+              deliveryCompletionConfirmed,
+              deliveryCompletionSaving,
+              setDeliveryCompletionOrder,
+              setDeliveryCompletionMethod,
+              setDeliveryCompletionCashInput,
+              setDeliveryCompletionConfirmed,
+              submitDeliveryCompletion,
               balanceProofFile,
               balanceProofUploading,
               balanceProofError,

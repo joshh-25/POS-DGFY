@@ -1,4 +1,14 @@
 import { jest } from '@jest/globals';
+const allowanceRows = new Map();
+const downpaymentSettingsRepository = {
+    getSettings: jest.fn(async (id) => ({ platform_downpayment_allowed: allowanceRows.get(id) === true })),
+    setPlatformAllowance: jest.fn(async (id, allowed) => {
+        allowanceRows.set(id, allowed);
+        return { platform_downpayment_allowed: allowed };
+    })
+};
+jest.unstable_mockModule('../src/modules/downpayment/repositories/downpaymentSettingsRepository.js', () => ({ downpaymentSettingsRepository }));
+
 
 // Issue #1923: prove the capability-write contract end to end at the use-case
 // level with the REAL read path (`readTenantCapabilities`) instead of only
@@ -130,6 +140,15 @@ describe('tenant capability write durability and read-back (#1923)', () => {
         tenantAdminRepository = {
             findTenantById: jest.fn(async (id) => tenantRows[id] ?? null),
             listTenants: jest.fn(async () => [tenantRows['tenant-a'], tenantRows['tenant-b']]),
+            transaction: async (callback) => {
+                const before = new Map(allowanceRows);
+                try { return await callback({ LOCK: { UPDATE: 'UPDATE' } }); }
+                catch (error) {
+                    allowanceRows.clear();
+                    for (const [id, value] of before) allowanceRows.set(id, value);
+                    throw error;
+                }
+            },
             createTenantAdminAuditLog: jest.fn()
         };
         tenantConnector = {
@@ -141,9 +160,55 @@ describe('tenant capability write durability and read-back (#1923)', () => {
 
     const buildUpdateUseCase = () => buildUpdateTenantCapabilitiesUseCase({
         tenantAdminRepository,
+        downpaymentSettingsRepository,
         tenantConnector,
         syncStorefrontDiscoveryIndexForTenant,
         logger: { error: jest.fn() }
+    });
+
+    it.each([true, false])('persists landlord allowance %s with audit and readback', async (allowed) => {
+        const result = await buildUpdateUseCase()({ id: 'tenant-a', body: { downpayment_allowed: allowed, reason: 'Premium access decision' }, actor: { username: 'pat' } });
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data.capabilities.downpayment_allowed).toBe(allowed);
+        expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            actor_username: 'pat', reason: 'Premium access decision',
+            after_snapshot: { downpayment_allowed: allowed },
+            metadata: { changed_fields: ['downpayment_allowed'], storefront_sync_required: false }
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(syncStorefrontDiscoveryIndexForTenant).not.toHaveBeenCalled();
+        const unavailable = await readTenantCapabilities({ tenant: { id: 'tenant-a' }, tenantConnector });
+        expect(unavailable).toMatchObject({ unavailable: true, downpayment_allowed: allowed });
+    });
+    it('rolls back the allowance when audit persistence fails', async () => {
+        allowanceRows.set('tenant-a', false);
+        tenantAdminRepository.createTenantAdminAuditLog.mockRejectedValueOnce(new Error('audit unavailable'));
+        const result = await buildUpdateUseCase()({ id: 'tenant-a', body: { downpayment_allowed: true, reason: 'Premium access decision' } });
+        expect(result.success).toBe(false);
+        expect(allowanceRows.get('tenant-a')).toBe(false);
+    });
+
+    it('rejects mixed capability and allowance patches before any write', async () => {
+        const result = await buildUpdateUseCase()({ id: 'tenant-a', body: { downpayment_allowed: true, pos_enabled: false, reason: 'Mixed patch test' } });
+        expect(result.error.statusCode).toBe(422);
+        expect(downpaymentSettingsRepository.setPlatformAllowance).not.toHaveBeenCalled();
+        expect(tenantAdminRepository.createTenantAdminAuditLog).not.toHaveBeenCalled();
+    });
+
+    it('persists and audits policy-only changes without syncing discovery', async () => {
+        const result = await buildUpdateUseCase()({
+            id: 'tenant-a',
+            body: { reason: 'Platform manages publication', store_visibility_merchant_editable: false },
+            actor: { username: 'platform_admin' }
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data.capabilities.store_visibility_merchant_editable).toBe(false);
+        expect(syncStorefrontDiscoveryIndexForTenant).not.toHaveBeenCalled();
+        expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            before_snapshot: expect.objectContaining({ store_visibility_merchant_editable: true }),
+            after_snapshot: expect.objectContaining({ store_visibility_merchant_editable: false })
+        }));
+        const readBack = await readTenantCapabilities({ tenant: tenantRows['tenant-a'], tenantConnector });
+        expect(readBack.store_visibility_merchant_editable).toBe(false);
     });
 
     it('returns the persisted storefront visibility and registration stage in the write response', async () => {

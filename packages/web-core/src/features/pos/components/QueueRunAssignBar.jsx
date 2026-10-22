@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatRunPickerOptionLabel } from '../utils/deliveryRunLabels.js';
 import { toast } from 'sonner';
 import { CheckSquare, Truck, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -128,7 +129,7 @@ export default function QueueRunAssignBar({
                   : 'Choose a run'}
             </option>
             {eligibleRunTargets.map((run) => (
-              <option key={run.delivery_run_id} value={run.delivery_run_id}>{run.label}</option>
+              <option key={run.delivery_run_id} value={run.delivery_run_id}>{formatRunPickerOptionLabel(run)}</option>
             ))}
           </select>
         </label>

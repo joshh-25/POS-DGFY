@@ -18,6 +18,7 @@ import {
 const TENANT_ID = 'tenant-1';
 
 const DEFAULT_SETTINGS = Object.freeze({
+    platform_downpayment_allowed: true,
     payment_mode: 'full_payment',
     downpayment_type: null,
     downpayment_rate_bps: null,
@@ -234,5 +235,26 @@ describe('buildUpdateDownpaymentSettingsUseCase', () => {
         expect(result.error.statusCode).toBe(409);
         expect(result.error.code).toBe('CONFLICT');
         expect(upsertSettings).not.toHaveBeenCalled();
+    });
+});
+
+describe('platform downpayment allowance (#2639)', () => {
+    test.each(['downpayment_required', 'customer_choice'])('disallowed tenant cannot save %s', async (payment_mode) => {
+        const repository = makeFakeRepository({ tenant_id: TENANT_ID, platform_downpayment_allowed: false });
+        const result = await buildUpdateDownpaymentSettingsUseCase({ repository })({ tenantId: TENANT_ID, body: { payment_mode } });
+        expect(result.error).toMatchObject({ statusCode: 403, details: { reason_code: 'DOWNPAYMENT_NOT_ALLOWED_BY_PLATFORM' } });
+        expect((await repository.getSettings(TENANT_ID)).payment_mode).toBe('full_payment');
+    });
+    test('revoked stored mode is retained on GET but effective mode is full; partial writes reject and full payment succeeds', async () => {
+        const repository = makeFakeRepository({ tenant_id: TENANT_ID, platform_downpayment_allowed: false, payment_mode: 'customer_choice' });
+        const read = await buildGetDownpaymentSettingsUseCase({ repository })({ tenantId: TENANT_ID });
+        expect(read.data.settings).toMatchObject({ payment_mode: 'customer_choice', effective_payment_mode: 'full_payment', platform_downpayment_allowed: false });
+        const update = buildUpdateDownpaymentSettingsUseCase({ repository });
+        expect((await update({ tenantId: TENANT_ID, body: { downpayment_refundable: false } })).error.statusCode).toBe(403);
+        expect((await update({ tenantId: TENANT_ID, body: { payment_mode: 'full_payment' } })).success).toBe(true);
+    });
+    test.each([true, false, null, 'true'])('tenant cannot write allowance %s', async (value) => {
+        const result = await buildUpdateDownpaymentSettingsUseCase({ repository: makeFakeRepository() })({ tenantId: TENANT_ID, body: { platform_downpayment_allowed: value } });
+        expect(result.error).toMatchObject({ statusCode: 403, details: { reason_code: 'DOWNPAYMENT_ALLOWANCE_PLATFORM_CONTROLLED' } });
     });
 });
