@@ -102,3 +102,14 @@ operation, removing the `existingPrimaryCode` lint/runtime reference error.
 **Live request-time compliance preflight was not executed.** This declaration
 uses the documented local placeholder and must be reconciled by the governed
 preflight process before promotion.
+
+## Amendment — Develop sync and test-assertion alignment
+
+This branch was merged with `origin/develop` (`ec155082d`) to resolve conflicts;
+the merge adds no compliance-sensitive behavior beyond what each side's own
+declarations already cover. Three shared web-core test assertions that pinned
+pre-change behavior were aligned with this declaration's behavior: the
+`tenant_pos_enabled` capability copy ("POS operations are disabled for this
+company", with catalog items and categories still manageable) and the catalog
+barcode scope (`catalogOnlyAccess ? 'inventory' : 'pos'`). Classification,
+surfaces, and preflight status above are unchanged.
