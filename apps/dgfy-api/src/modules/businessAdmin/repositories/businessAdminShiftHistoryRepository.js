@@ -1,6 +1,11 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { businessAdminShiftActivityRepository } from './businessAdminShiftActivityRepository.js';
+import { buildFinanciallyRecognizedSalesWhere } from '../../shared/utils/financialRecognition.js';
+import {
+    buildExpectedPosCashAmount,
+    getPosCashPaymentAmountFromTransaction
+} from '../../pos/domain/posCashReconciliation.js';
 
 const OVERDUE_SHIFT_MS = 12 * 60 * 60 * 1000;
 
@@ -9,6 +14,8 @@ const toNumber = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 
 const shiftIncludes = () => {
     const User = dbStore.get('User');
@@ -44,6 +51,7 @@ const buildWhere = ({ allowedLocationIds = null, filters = {} } = {}) => {
 
 const normalizeShifts = async (rows) => {
     const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
+    const PosTransaction = dbStore.get('PosTransaction');
     const shifts = rows.map(toPlain);
     const shiftIds = shifts.map((shift) => Number(shift.pos_terminal_shift_id)).filter(Number.isInteger);
     const activityByShift = await businessAdminShiftActivityRepository.getByShiftIds(shiftIds);
@@ -56,7 +64,17 @@ const normalizeShifts = async (rows) => {
             raw: true
         })
         : [];
+    const recognizedSales = PosTransaction && shiftIds.length > 0
+        ? await PosTransaction.findAll({
+            where: buildFinanciallyRecognizedSalesWhere({
+                shift_id: { [Op.in]: shiftIds }
+            }),
+            attributes: ['shift_id', 'payment_type', 'total_amount', 'payment_breakdown'],
+            raw: true
+        })
+        : [];
     const cashEventsByShift = new Map(shiftIds.map((shiftId) => [shiftId, []]));
+    const cashSalesByShift = new Map(shiftIds.map((shiftId) => [shiftId, 0]));
     cashEvents.forEach((event) => {
         const shiftEvents = cashEventsByShift.get(Number(event.pos_terminal_shift_id));
         if (!shiftEvents) return;
@@ -69,10 +87,20 @@ const normalizeShifts = async (rows) => {
             created_at: event.created_at || null
         });
     });
+    recognizedSales.forEach((sale) => {
+        const shiftId = Number(sale.shift_id);
+        if (!cashSalesByShift.has(shiftId)) return;
+        cashSalesByShift.set(
+            shiftId,
+            round4(cashSalesByShift.get(shiftId) + getPosCashPaymentAmountFromTransaction(sale))
+        );
+    });
 
     return shifts.map((shift) => {
         const activity = activityByShift.get(Number(shift.pos_terminal_shift_id)) || {};
-        const drawerEvents = cashEventsByShift.get(Number(shift.pos_terminal_shift_id)) || [];
+        const shiftId = Number(shift.pos_terminal_shift_id);
+        const drawerEvents = cashEventsByShift.get(shiftId) || [];
+        const cashSalesAmount = cashSalesByShift.get(shiftId) || 0;
         const cashInAmount = drawerEvents
             .filter((event) => ['cash_in', 'opening_adjustment'].includes(event.event_type))
             .reduce((total, event) => total + event.amount, 0);
@@ -95,11 +123,16 @@ const normalizeShifts = async (rows) => {
             opened_at: shift.opened_at,
             closed_at: shift.closed_at || null,
             opening_cash_amount: toNumber(shift.opening_float_amount),
+            cash_sales_amount: cashSalesAmount,
             cash_in_amount: cashInAmount,
             cash_out_amount: cashOutAmount,
             cash_drawer_event_count: drawerEvents.length,
             cash_drawer_events: drawerEvents,
-            expected_cash_amount: toNumber(shift.expected_cash_amount),
+            expected_cash_amount: buildExpectedPosCashAmount({
+                openingFloatAmount: shift.opening_float_amount,
+                cashSalesAmount,
+                cashEvents: drawerEvents
+            }),
             closing_cash_amount: shift.closing_cash_amount == null ? null : toNumber(shift.closing_cash_amount),
             cash_variance_amount: shift.cash_variance_amount == null ? null : toNumber(shift.cash_variance_amount),
             closing_note: shift.closing_note || null,

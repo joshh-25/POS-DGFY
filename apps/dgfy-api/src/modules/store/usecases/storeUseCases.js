@@ -6578,7 +6578,7 @@ export const buildCancelStoreOrderUseCase = ({
                         tracked: true,
                         payment_action: 'refund_failed',
                         failure_reason: lifecycleResult.error?.message
-                            || 'The payment lifecycle action requires administrator review.'
+                            || 'The order was cancelled, but the automatic refund remains pending for payment reconciliation.'
                     };
                 if (!lifecycleResult.success) {
                     logger.error('[StoreUseCases] Commerce payment lifecycle failed after customer cancellation', {

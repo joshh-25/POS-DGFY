@@ -357,7 +357,8 @@ export default function PosSettingsWorkspace({
   onTestPrinter = async () => false,
   onSelectTerminal = async () => false,
   workspacePaneRef = null,
-  processingFeePane = null
+  processingFeePane = null,
+  profileSettingsHeader = null
   // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
   // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
   // here.
@@ -634,6 +635,7 @@ export default function PosSettingsWorkspace({
   const showTeamAccessEditor = !isScopedSettingsEditor || editorSection === 'team';
   const showTerminalOnlyControlsEditor = showTerminalOnlyControlsPane
     && (editorSection === 'terminal_setup' || editorSection === 'registers');
+  const showBusinessNameEditor = settingsSurface !== 'business-admin';
   const resolvedInitialTab = visibleSettingsTabs.some((tab) => tab.id === initialTab)
     ? initialTab
     : (visibleSettingsTabs[0]?.id || 'pos_setup');
@@ -2098,6 +2100,7 @@ export default function PosSettingsWorkspace({
     queueLocationScopeId,
     editorSection, visibleSectionIds: visibleSetupSectionIds,
     showReceiptMetadataEditor,
+    showBusinessNameEditor,
     showTerminalRegistryEditor: showTerminalRegistrySection,
     showTerminalOnlyControls: showTerminalOnlyControlsEditor,
     terminalIdOptions,
@@ -2187,19 +2190,22 @@ export default function PosSettingsWorkspace({
     }
     if (renderedTab === 'profile') {
       return (
-        <PosProfileSettingsPane
-          terminalUser={terminalUser}
-          companyInfo={companyInfo}
-          profileForm={profileForm}
-          setProfileForm={setProfileForm}
-          profileEmailBaseline={profileFormBaseline?.email ?? terminalUser?.email ?? ''}
-          locked={locked}
-          loading={loading}
-          savingTab={savingTab}
-          onSave={handleProfileSave}
-          onRequestEmailOtp={handleRequestProfileEmailOtp}
-          onChangePassword={handlePasswordChange}
-        />
+        <div className="grid min-w-0 gap-5">
+          {profileSettingsHeader}
+          <PosProfileSettingsPane
+            terminalUser={terminalUser}
+            companyInfo={companyInfo}
+            profileForm={profileForm}
+            setProfileForm={setProfileForm}
+            profileEmailBaseline={profileFormBaseline?.email ?? terminalUser?.email ?? ''}
+            locked={locked}
+            loading={loading}
+            savingTab={savingTab}
+            onSave={handleProfileSave}
+            onRequestEmailOtp={handleRequestProfileEmailOtp}
+            onChangePassword={handlePasswordChange}
+          />
+        </div>
       );
     }
     if (renderedTab === 'storefront') return <PosStorefrontSettingsPane {...storefrontPaneProps} />;

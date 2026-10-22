@@ -1,4 +1,16 @@
 import { formatDeliveryProviderSummaryLabel, parseDeliveryProviderSummary } from '../utils/posDeliveryProviders.js';
+import {
+  getDailySalesCheckCashSummary,
+  getDailySalesCheckVoidActivity,
+  isCashPayment,
+  isFiniteAmount
+} from '../utils/posZReadingCashSummary.js';
+
+export {
+  getDailySalesCheckCashSummary,
+  getDailySalesCheckVoidActivity,
+  isCashPayment
+} from '../utils/posZReadingCashSummary.js';
 
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -24,14 +36,15 @@ const getDailySalesCheckRows = (data, {
       : status === 'not_generated'
         ? 'Not generated'
         : 'Comparison unavailable';
-  const hasNumber = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
-  const formatAmount = (value) => hasNumber(value) && typeof formatMoney === 'function'
+  const formatAmount = (value) => isFiniteAmount(value) && typeof formatMoney === 'function'
     ? formatMoney(value, currencySymbol)
     : '—';
-  const formatCount = (value) => hasNumber(value) ? Number(value).toLocaleString('en-US') : '—';
-  const hasZVoidActivity = hasNumber(data.z_void_transaction_count) || hasNumber(data.z_void_amount);
-  const zVoids = hasZVoidActivity
-    ? `${formatCount(data.z_void_transaction_count)} · ${formatAmount(data.z_void_amount)}`
+  const formatCount = (value) => isFiniteAmount(value) ? Number(value).toLocaleString('en-US') : '—';
+  const formatDeduction = (value) => isFiniteAmount(value) ? `−${formatAmount(value)}` : '—';
+  const cashSummary = getDailySalesCheckCashSummary(data);
+  const voidActivity = getDailySalesCheckVoidActivity(data);
+  const voidRefundActivity = voidActivity.available
+    ? `${formatCount(voidActivity.count)} · ${formatAmount(voidActivity.amount)}`
     : '—';
   const paymentBreakdown = Array.isArray(data.z_payment_breakdown) ? data.z_payment_breakdown : [];
   const formatTimestamp = (value) => value && typeof formatDateTime === 'function' ? formatDateTime(value) : '—';
@@ -48,20 +61,29 @@ const getDailySalesCheckRows = (data, {
     ['Z-reading total', formatAmount(data.z_total_amount)],
     ['Difference', isComparable ? formatAmount(data.variance) : '—'],
     ['Report net sales', formatAmount(data.report_net_sales)],
-    ['Z voids', zVoids],
-    ['Report refunds / voids', formatAmount(data.report_refunds_voids)],
-    ['Report adjustments', formatAmount(data.report_adjustment_amount)],
+    ...(cashSummary.available ? [
+      ['Cash payments before refunds', formatAmount(cashSummary.cashPaymentsBeforeRefunds)],
+      ['Cash refunds / voids', formatDeduction(cashSummary.cashRefundsVoids)],
+      ['Net cash sales', formatAmount(cashSummary.netCashSales)]
+    ] : []),
+    ['Void/refund activity', voidRefundActivity],
+    ['Refunds / voids deducted from sales', formatDeduction(data.report_refunds_voids)],
+    ['Audit adjustment records', formatAmount(data.report_adjustment_amount)],
+    ['Audit adjustment note', 'Audit reference; not an additional deduction.'],
     ['Date & time generated', formatTimestamp(data.generated_at)],
     ['Checked at', formatTimestamp(data.evaluated_at)]
   );
 
   if (data.snapshot_persisted === true) {
     rows.push(['Payment breakdown (saved Z-reading)', '']);
+    rows.push(['Payment breakdown note', 'Payment method amounts are before refunds/voids. See Net cash sales for cash after refunds.']);
     if (paymentBreakdown.length === 0) {
       rows.push(['Payments', 'No payment entries recorded']);
     } else {
       paymentBreakdown.forEach((entry) => {
-        const label = entry.payment_label || String(entry.payment_type || 'Other payment').replace(/_/g, ' ');
+        const label = isCashPayment(entry)
+          ? 'Cash payments before refunds'
+          : entry.payment_label || String(entry.payment_type || 'Other payment').replace(/_/g, ' ');
         const count = formatCount(entry.count);
         rows.push([label, `${formatAmount(entry.amount)} · ${count} ${Number(entry.count || 0) === 1 ? 'payment' : 'payments'}`]);
       });

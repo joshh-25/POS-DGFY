@@ -151,15 +151,15 @@ Current admin surfaces include:
 Tenant registration approval is controlled by:
 
 ```env
-TENANT_REGISTRATION_APPROVAL_MODE=manual
+TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
 ```
 
 Allowed values:
 
 | Value | Behavior |
 |---|---|
-| `manual` | Required. Public registrations remain pending until a Platform Admin approves them; only approval may start provisioning. |
-| `auto_standard` | Legacy compatibility value only. Current public-registration use cases still enforce manual review and must not use this value as an activation bypass. |
+| `auto_standard` | Default. Public registrations are auto-approved into background provisioning, then receive a POS onboarding link. New tenants can manage catalog items/categories only; selling and Storefront visibility remain disabled until Platform Admin capability enablement. |
+| `manual` | Explicit rollback/admin-review mode. Public registrations remain pending until a Platform Admin approves them; approval may start provisioning. |
 
 ## Customer Access And Storefront Admin Notes
 
@@ -258,7 +258,7 @@ Before going live:
 2. Replace `admin@test.com` with a real operator-controlled admin account.
 3. Create a backup admin account.
 4. Document who has admin access.
-5. Set `TENANT_REGISTRATION_APPROVAL_MODE` intentionally.
+5. Set `TENANT_REGISTRATION_APPROVAL_MODE` intentionally; keep `auto_standard` for the normal restricted-registration flow and use `manual` only for an explicit rollback/admin-review window.
 6. Keep Customer Access Mode enforcement on unless an explicit rollback is required.
 7. Choose the correct hosting profile env example.
 8. Run docs, architecture, migration, runtime doctor, targeted smoke checks, and the item-detail FIFO behavior tests when inventory UI changed.

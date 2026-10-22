@@ -895,10 +895,15 @@ export const streamCatalogEvents = async (req, res, next) => {
 
         writeCatalogEvent(res, 'connected', { connected: true, emitted_at: timestamp() });
         const unsubscribe = subscribeCatalogChanges(tenantId, (event) => {
-            writeCatalogEvent(res, 'pos.catalog.changed', {
+            const payload = {
                 reason: event?.reason || 'catalog_changed',
                 emitted_at: event?.emitted_at || timestamp()
-            });
+            };
+            if (event?.type === 'pos.settings.changed') {
+                writeCatalogEvent(res, 'pos.settings.changed', payload);
+                return;
+            }
+            writeCatalogEvent(res, 'pos.catalog.changed', payload);
         });
         const heartbeat = setInterval(() => {
             writeCatalogEvent(res, 'heartbeat', { emitted_at: timestamp() });

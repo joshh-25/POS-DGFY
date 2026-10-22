@@ -15,6 +15,7 @@ describe('POS catalog event transport contract', () => {
         const handlers = read('src/modules/pos/controllers/posHandlers.js');
         expect(handlers).toContain('subscribeCatalogChanges(tenantId');
         expect(handlers).toContain("writeCatalogEvent(res, 'pos.catalog.changed'");
+        expect(handlers).toContain("writeCatalogEvent(res, 'pos.settings.changed'");
         expect(handlers).toContain('reason: event?.reason');
         expect(handlers).toContain('emitted_at: event?.emitted_at');
         expect(handlers).not.toContain('item_ids: event?.item_ids');

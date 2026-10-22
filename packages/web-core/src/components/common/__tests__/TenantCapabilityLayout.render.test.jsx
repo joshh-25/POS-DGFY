@@ -104,12 +104,12 @@ describe('Layout tenant capability status', () => {
     );
 
     await screen.findByText('Platform admin changed your permissions');
-    expect(screen.getByText(/POS access is disabled for this company/)).toBeTruthy();
+    expect(screen.getByText(/POS operations are disabled for this company/)).toBeTruthy();
     expect(mocks.settingsService.getAllSettings).toHaveBeenCalledWith({ force: true });
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     await waitFor(() => {
-      expect(screen.queryByText(/POS access is disabled for this company/)).toBeNull();
+      expect(screen.queryByText(/POS operations are disabled for this company/)).toBeNull();
     });
   });
 
@@ -122,7 +122,7 @@ describe('Layout tenant capability status', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText(/POS access is disabled for this company/);
+    await screen.findByText(/POS operations are disabled for this company/);
 
     window.dispatchEvent(new CustomEvent('tenant:capability-blocked', {
       detail: {

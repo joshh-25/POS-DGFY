@@ -161,9 +161,11 @@ describe('POS category management contract', () => {
     expect(terminalPageSource).toContain("normalizedView === 'items' && !canViewPos && !canManageCategories");
     expect(layoutSource).toContain('canManageCategories={canManageCategories}');
     expect(layoutSource.match(/onQueueOfflineItemDraft=\{onQueueOfflineItemDraft\}/g)).toHaveLength(2);
-    expect(sidebarSource).toContain('const canAccessItemsWorkspace = canViewPos || canManageCategories;');
-    expect(historyBlock).toContain('disabled={locked || onboardingRestricted || !canViewPos}');
-    expect(itemsBlock).toContain('disabled={locked || onboardingRestricted || !canAccessItemsWorkspace}');
+    expect(sidebarSource).toContain('const canAccessItemsWorkspace = canViewPos || canManageCategories || (catalogOnlyAccess && canCreateItems);');
+    expect(historyBlock).toContain('disabled\n                caption={catalogOnlyDisabledCaption}');
+    expect(itemsBlock).toContain('disabled={locked || !canAccessItemsWorkspace}');
+    expect(sidebarSource).toContain('disabled={locked || onboardingRestricted || !canViewPos}');
+    expect(sidebarSource).toContain('disabled={locked || onboardingRestricted || !canAccessItemsWorkspace}');
     expect(catalogSource).toContain('Category management is available online only.');
   });
 

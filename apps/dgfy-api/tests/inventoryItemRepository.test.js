@@ -2301,6 +2301,65 @@ describe('inventory itemRepository', () => {
     expect(result).toEqual({ item_id: 16, name: 'Flour' });
   });
 
+  it('persists shelf-life storage details for active non-product items', async () => {
+    const updateSpy = jest.fn().mockResolvedValue(true);
+    const itemRecord = {
+      item_id: 517,
+      sku_code: 'SUP-517',
+      current_stock: 0,
+      fifo_enabled: true,
+      status: 'active',
+      category: 'supplies',
+      wizard_metadata: null,
+      update: updateSpy
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const ItemShelfLife = {
+      upsert: jest.fn().mockResolvedValue([itemRecord, true])
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 517, name: 'Cleaning Wipes' });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-shelf-life-supplies' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemShelfLife') return ItemShelfLife;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.updateItem(517, {
+      status: 'active',
+      category: 'supplies',
+      shelf_life: {
+        duration_days: 30,
+        opened_shelf_life_days: 14,
+        storage_temperature: 'ambient',
+        storage_conditions: 'Keep sealed and dry'
+      }
+    }, 7);
+
+    expect(ItemShelfLife.upsert).toHaveBeenCalledWith({
+      item_id: 517,
+      duration_days: 30,
+      opened_shelf_life_days: 14,
+      storage_temperature: 'ambient',
+      storage_conditions: 'Keep sealed and dry'
+    }, { transaction });
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+  });
+
   it('clears manufacturing-only side-table rows when updating an F&B product with empty wizard fields', async () => {
     inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
       ops_workflow_mode: { value: 'fnb' }

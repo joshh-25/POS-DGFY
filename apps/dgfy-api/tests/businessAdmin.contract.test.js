@@ -118,6 +118,39 @@ describe('Business Admin contracts', () => {
         });
     });
 
+    it('projects restricted tenant capabilities without removing catalog bootstrap access', async () => {
+        const tenantCapabilityResolver = jest.fn().mockResolvedValue({
+            pos_enabled: false,
+            storefront_visible: false
+        });
+        const useCase = buildGetBusinessAdminBootstrapUseCase({
+            businessAdminOverviewRepository: {
+                listUserLocationGrantIds: jest.fn().mockResolvedValue([]),
+                listActiveLocations: jest.fn().mockResolvedValue([])
+            },
+            tenantCapabilityResolver
+        });
+
+        const result = await useCase({
+            user: {
+                user_id: 8,
+                username: 'owner',
+                role: 'admin',
+                permissions: [PERMISSIONS.BUSINESS_ADMIN.actions.ACCESS]
+            },
+            tenant: { id: TENANT_ID, name: 'Catalog-only Business' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(tenantCapabilityResolver).toHaveBeenCalledWith({
+            tenant: { id: TENANT_ID, name: 'Catalog-only Business' }
+        });
+        expect(result.data.access.tenant_capabilities).toEqual({
+            pos_enabled: false,
+            storefront_visible: false
+        });
+    });
+
     it('projects stored payment sessions and refund summaries into reconciliation data', async () => {
         const commercePaymentRepository = {
             findTenantPaymentAccount: jest.fn().mockResolvedValue({

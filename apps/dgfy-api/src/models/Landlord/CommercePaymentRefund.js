@@ -98,6 +98,19 @@ export default (sequelize) => sequelize.define('CommercePaymentRefund', {
     type: DataTypes.STRING(500),
     allowNull: true
   },
+  retry_count: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  last_attempt_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  next_retry_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
   requested_by: {
     type: DataTypes.STRING(120),
     allowNull: true
@@ -122,6 +135,7 @@ export default (sequelize) => sequelize.define('CommercePaymentRefund', {
     { fields: ['retry_of_refund_id'] },
     { fields: ['tenant_id'] },
     { fields: ['provider_refund_id'] },
-    { fields: ['status'] }
+    { fields: ['status'] },
+    { fields: ['status', 'next_retry_at'] }
   ]
 });

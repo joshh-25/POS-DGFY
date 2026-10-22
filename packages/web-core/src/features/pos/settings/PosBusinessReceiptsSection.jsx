@@ -15,7 +15,7 @@ const POS_METADATA_FIELDS = [
 ];
 
 export default function PosBusinessReceiptsSection({
-  locked, loading, posForm, setPosForm
+  locked, loading, posForm, setPosForm, showBusinessNameEditor = true
 }) {
   const [isMetadataSetupOpen, setIsMetadataSetupOpen] = useState(false);
   const hasMetadata = POS_METADATA_FIELDS.some((field) => String(posForm?.[field] || '').trim());
@@ -75,7 +75,7 @@ export default function PosBusinessReceiptsSection({
             <>
             <div className="mt-4 grid gap-3 sm:gap-4 md:grid-cols-2">
               {/* Row 1: Registered Name beside Business Name */}
-              <div className="grid gap-1.5">
+              <div className={`grid gap-1.5 ${showBusinessNameEditor ? '' : 'md:col-span-2'}`}>
                 <Label className="text-[12px] font-bold text-slate-700">Registered Name</Label>
                 <div className="relative flex items-center">
                   <UserRound className="absolute left-3 h-4 w-4 text-[#1A4E8D]" />
@@ -88,19 +88,28 @@ export default function PosBusinessReceiptsSection({
                   />
                 </div>
               </div>
-              <div className="grid gap-1.5">
-                <Label className="text-[12px] font-bold text-slate-700">Business Name</Label>
-                <div className="relative flex items-center">
-                  <Store className="absolute left-3 h-4 w-4 text-[#1A4E8D]" />
-                  <Input
-                    className="h-9 pl-10 rounded-xl border-slate-200 text-[13px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
-                    value={posForm.businessName}
-                    placeholder="e.g. Tinda Han Store"
-                    onChange={(event) => setPosForm((current) => ({ ...current, businessName: event.target.value }))}
-                    disabled={locked || loading}
-                  />
+              {showBusinessNameEditor ? (
+                <div className="grid gap-1.5">
+                  <Label className="text-[12px] font-bold text-slate-700">Receipt business name</Label>
+                  <div className="relative flex items-center">
+                    <Store className="absolute left-3 h-4 w-4 text-[#1A4E8D]" />
+                    <Input
+                      className="h-9 pl-10 rounded-xl border-slate-200 text-[13px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
+                      value={posForm.businessName}
+                      placeholder="e.g. Tinda Han Store"
+                      onChange={(event) => setPosForm((current) => ({ ...current, businessName: event.target.value }))}
+                      disabled={locked || loading}
+                    />
+                  </div>
+                  <p className="text-[11px] leading-4 text-slate-500">
+                    Used on POS and IMS receipts. The canonical business identity is managed in OPIS Profile Setting.
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2.5 text-[11px] leading-4 text-[#1A4E8D] md:col-span-2">
+                  The canonical business name is managed in Profile Setting. Receipt and fiscal fields below remain POS setup metadata.
+                </div>
+              )}
 
               {/* Row 2: Business Style beside Taxpayer Type */}
               <div className="grid gap-1.5">

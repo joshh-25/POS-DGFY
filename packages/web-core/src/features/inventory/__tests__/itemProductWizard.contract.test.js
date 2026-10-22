@@ -84,13 +84,13 @@ describe('Item/Product wizard contracts', () => {
     const indexCssSource = readFrontendFile('src/index.css');
 
     expect(itemFormSource).toContain('wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0');
-    expect(productWizardSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography"');
+    expect(productWizardSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography product-wizard-dialog"');
     expect(itemFormSource).toContain('DialogHeader className="flex-shrink-0"');
-    expect(productWizardSource).toContain('DialogHeader className="flex-shrink-0"');
+    expect(productWizardSource).toContain('DialogHeader className="flex-shrink-0 product-wizard-header"');
     expect(itemFormSource).toContain('wizard-step-content flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6');
-    expect(productWizardSource).toContain('wizard-step-content flex-1 overflow-y-auto py-4');
+    expect(productWizardSource).toContain('wizard-step-content product-wizard-main');
     expect(itemFormSource).toContain('wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
-    expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
+    expect(productWizardSource).toContain('wizard-footer product-wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
     expect(indexCssSource).toContain('width: min(95vw, 1100px) !important;');
     expect(indexCssSource).toContain('max-width: min(95vw, 1100px) !important;');
     expect(indexCssSource).toContain('height: 90vh;');
@@ -248,11 +248,12 @@ describe('Item/Product wizard contracts', () => {
     const supplierImportSource = readFrontendFile('Components/suppliers/SupplierImportModal.jsx');
     const onboardingSource = readFrontendFile('src/features/onboarding/components/OnboardingSetupModal.jsx');
 
-    [productWizardSource, poWizardSource, csvImportSource, supplierImportSource, onboardingSource].forEach((source) => {
+    [poWizardSource, csvImportSource, supplierImportSource, onboardingSource].forEach((source) => {
       expect(source).toContain('WizardStepNavigator');
     });
 
-    expect(productWizardSource).toContain('ariaLabel="Product wizard steps"');
+    expect(productWizardSource).toContain('product-wizard-step-rail');
+    expect(productWizardSource).toContain('aria-label="Product wizard steps"');
     expect(poWizardSource).toContain('ariaLabel="Purchase order wizard steps"');
     expect(csvImportSource).toContain('ariaLabel="CSV import steps"');
     expect(supplierImportSource).toContain('ariaLabel="Supplier import steps"');
@@ -287,7 +288,7 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).toContain('if (savingActionRef.current) return;');
     expect(productWizardSource).toContain('if (savingActionRef.current) return;');
 
-    expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
+    expect(productWizardSource).toContain('wizard-footer product-wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
     expect(productWizardSource).toContain('order-1 flex flex-col gap-2 sm:order-none sm:flex-row sm:flex-wrap sm:justify-end');
     expect(productWizardSource).toContain('className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto"');
     expect(productWizardSource).toContain('className="order-3 w-full sm:order-none sm:w-auto"');

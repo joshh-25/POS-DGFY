@@ -19,6 +19,14 @@ describe('parsePosCatalogEvent', () => {
         expect(parsePosCatalogEvent('event: pos.catalog.changed\ndata: invalid-json'))
             .toEqual({ event: 'pos.catalog.changed', data: null });
     });
+
+    test('parses a POS settings invalidation frame', () => {
+        expect(parsePosCatalogEvent('event: pos.settings.changed\ndata: {"reason":"business_name_updated"}'))
+            .toEqual({
+                event: 'pos.settings.changed',
+                data: { reason: 'business_name_updated' }
+            });
+    });
 });
 
 describe('remote POS catalog stream recovery', () => {

@@ -183,6 +183,7 @@ export default function TerminalPageLayout({
     canReviewVoidApprovals = false,
     inlineVoidApprovalEnabled = false,
     onboardingRestricted = false,
+    catalogOnlyAccess = false,
     canCreateItems = false,
     canManageServiceCatalog = false,
     canViewFnbModifiers = false,
@@ -674,10 +675,10 @@ export default function TerminalPageLayout({
     && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
   const isCustomerDisplaySettingsMode = CUSTOMER_DISPLAY_SETTINGS_VIEW_MODES.has(posViewMode);
-  const shouldMountCheckoutTerminal = isCheckoutWorkspaceMode
+  const shouldMountCheckoutTerminal = !catalogOnlyAccess && (isCheckoutWorkspaceMode
     || receiptRequestId !== null
     || receiptReturnViewMode !== null
-    || isCustomerDisplaySettingsMode;
+    || isCustomerDisplaySettingsMode);
   const isAffiliateWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_affiliates';
   const isVoucherManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_vouchers';
   const isPricelistManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_pricelists';
@@ -953,6 +954,8 @@ export default function TerminalPageLayout({
               canViewAudit={canViewAudit}
               canReviewVoidApprovals={canReviewVoidApprovals}
               canAccessPosOnlySetup={canAccessPosOnlySetup}
+              catalogOnlyAccess={catalogOnlyAccess}
+              canCreateItems={canCreateItems}
               canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
               showFnbService={showFnbService}
@@ -1221,6 +1224,8 @@ export default function TerminalPageLayout({
                 terminalUser={terminalUser}
                 currentViewMode={posViewMode}
                 canViewPos={workspaceCanViewPos}
+                catalogOnlyAccess={catalogOnlyAccess}
+                canCreateItems={canCreateItems}
                 canViewAudit={canViewAudit}
                 canReviewVoidApprovals={canReviewVoidApprovals}
                 canAccessPosOnlySetup={canAccessPosOnlySetup}
@@ -1430,6 +1435,8 @@ export default function TerminalPageLayout({
                 settingsRefreshKey={settingsRefreshKey}
                 employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
                 canViewPos={workspaceCanViewPos}
+                catalogOnlyAccess={catalogOnlyAccess}
+                effectiveCapabilities={effectiveCapabilities}
                 canCreateItems={canCreateItems}
                 canManageServiceCatalog={canManageServiceCatalog}
                 canViewFnbModifiers={canViewFnbModifiers}

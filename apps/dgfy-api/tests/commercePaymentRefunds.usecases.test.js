@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
-  buildCreateCommercePaymentRefundUseCase
+  buildCreateCommercePaymentRefundUseCase,
+  buildRetryCommercePaymentRefundUseCase
 } from '../src/modules/commercePayments/usecases/commercePaymentAdminUseCases.js';
 import {
   buildHandlePayMongoCommerceWebhookUseCase
@@ -94,6 +95,56 @@ describe('commerce payment refund use-cases', () => {
     expect(commercePaymentRepository.updateSessionById).toHaveBeenCalledWith(baseSession.session_id, {
       status: 'refund_pending'
     }, expect.anything());
+  });
+
+  it('retries the existing refund row without creating a second local refund', async () => {
+    const scheduledRefund = {
+      refund_id: 20,
+      public_reference: 'CRF-ABC123DEF4',
+      payment_session_id: baseSession.session_id,
+      provider_payment_id: baseSession.provider_payment_id,
+      amount_centavos: 10000,
+      currency: 'PHP',
+      reason: 'requested_by_customer',
+      notes: 'POS rejected order',
+      refund_strategy: 'proportional',
+      split_refund_payload: null,
+      status: 'pending',
+      failure_code: 'PROVIDER_REFUND_RETRY_SCHEDULED',
+      retry_count: 1
+    };
+    const commercePaymentRepository = buildRepository({
+      findRefundById: jest.fn().mockResolvedValue(scheduledRefund)
+    });
+    const paymongoService = {
+      createRefund: jest.fn().mockResolvedValue({
+        id: 'ref_retry_pending',
+        attributes: { status: 'pending' }
+      })
+    };
+    const createUseCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository,
+      paymongoService
+    });
+    const retryUseCase = buildRetryCommercePaymentRefundUseCase({
+      commercePaymentRepository,
+      createCommercePaymentRefundUseCase: createUseCase
+    });
+
+    const result = await retryUseCase({ refundId: scheduledRefund.refund_id });
+
+    expect(result.success).toBe(true);
+    expect(commercePaymentRepository.createRefund).not.toHaveBeenCalled();
+    expect(paymongoService.createRefund).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 10000,
+      paymentId: baseSession.provider_payment_id,
+      reason: scheduledRefund.reason,
+      notes: scheduledRefund.notes
+    }));
+    expect(result.data.refund).toEqual(expect.objectContaining({
+      provider_refund_id: 'ref_retry_pending',
+      status: 'pending'
+    }));
   });
 
   it('keeps an ambiguous provider failure pending for reconciliation instead of retrying blindly', async () => {
@@ -403,7 +454,7 @@ describe('tenant order-payment ledger mirroring (Phase 144, #824)', () => {
     }));
   });
 
-  it('records a failed refund row when the provider rejects outright', async () => {
+  it('schedules an automatic retry when the provider rejects without a permanent error code', async () => {
     const repository = buildRepository({
       findSessionByPublicReference: jest.fn().mockResolvedValue(downpaymentSession),
       findSessionBySessionId: jest.fn().mockResolvedValue(downpaymentSession)
@@ -425,9 +476,58 @@ describe('tenant order-payment ledger mirroring (Phase 144, #824)', () => {
     });
 
     expect(result.success).toBe(true);
+    expect(result.data).toEqual(expect.objectContaining({
+      retryable: true,
+      automatic_retry_scheduled: true
+    }));
+    expect(writeOrderPaymentLedgerEntry).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'refund',
+      status: 'pending'
+    }));
+    expect(repository.updateRefundById).toHaveBeenCalledWith(20, expect.objectContaining({
+      status: 'pending',
+      failure_code: 'PROVIDER_REFUND_RETRY_SCHEDULED',
+      retry_count: 1,
+      next_retry_at: expect.any(Date)
+    }));
+  });
+
+  it('keeps a permanent provider rejection failed without creating an approval gate', async () => {
+    const repository = buildRepository({
+      findSessionByPublicReference: jest.fn().mockResolvedValue(downpaymentSession),
+      findSessionBySessionId: jest.fn().mockResolvedValue(downpaymentSession)
+    });
+    const writeOrderPaymentLedgerEntry = jest.fn().mockResolvedValue({ written: true, entryId: 73 });
+    const providerError = new Error('Refund not allowed');
+    providerError.response = {
+      status: 422,
+      data: { errors: [{ code: 'payment_not_refundable', detail: 'Refund not allowed' }] }
+    };
+    const useCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository: repository,
+      paymongoService: { createRefund: jest.fn().mockRejectedValue(providerError) },
+      writeOrderPaymentLedgerEntry
+    });
+
+    const result = await useCase({
+      paymentSessionId: downpaymentSession.public_reference,
+      payload: { amount_centavos: 20000, refund_strategy: 'proportional' },
+      actor: 'pos_user:8'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(expect.objectContaining({
+      retryable: false,
+      automatic_retry_scheduled: false
+    }));
     expect(writeOrderPaymentLedgerEntry).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'refund',
       status: 'failed'
+    }));
+    expect(repository.updateRefundById).toHaveBeenCalledWith(20, expect.objectContaining({
+      status: 'failed',
+      failure_code: 'PROVIDER_REFUND_FAILED',
+      next_retry_at: null
     }));
   });
 

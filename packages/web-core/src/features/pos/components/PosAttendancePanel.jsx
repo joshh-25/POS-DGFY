@@ -369,7 +369,7 @@ export default function PosAttendancePanel({
                 </select>
               </label>
               <label className="text-[11px] font-bold text-slate-700">
-                Global POS PIN
+                Cashier PIN
                 <input
                   type="password"
                   inputMode="numeric"
@@ -377,7 +377,7 @@ export default function PosAttendancePanel({
                   value={operatorForm.pin}
                   onChange={(event) => setOperatorForm((previous) => ({ ...previous, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))}
                   className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-2 text-xs font-semibold"
-                  aria-label="Global POS PIN"
+                  aria-label="Cashier PIN"
                 />
               </label>
               <label className="text-[11px] font-bold text-slate-700">

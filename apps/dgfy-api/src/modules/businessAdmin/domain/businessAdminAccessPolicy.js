@@ -5,6 +5,8 @@ const isAdminLikeUser = (user = {}) => (
     || String(user?.role || '').trim().toLowerCase() === 'admin'
 );
 
+export const canEditBusinessIdentity = (user = {}) => isAdminLikeUser(user);
+
 const canUsePermission = (user, permission) => (
     isAdminLikeUser(user) || userHasBusinessAdminPermission(user, permission)
 );

@@ -239,6 +239,43 @@ export const commercePaymentRepository = {
     }).then(toPlain);
   },
 
+  async claimDueCommercePaymentRefundRetry({
+    now = new Date(),
+    leaseUntil = new Date(new Date(now).getTime() + 10 * 60 * 1000),
+    maxAttempts = 5
+  } = {}) {
+    const transaction = await db.sequelize.transaction();
+    try {
+      const row = await db.CommercePaymentRefund.findOne({
+        where: {
+          status: 'pending',
+          failure_code: 'PROVIDER_REFUND_RETRY_SCHEDULED',
+          provider_refund_id: null,
+          retry_count: { [Op.lte]: maxAttempts },
+          next_retry_at: { [Op.lte]: now }
+        },
+        order: [['next_retry_at', 'ASC'], ['refund_id', 'ASC']],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+        skipLocked: true
+      });
+      if (!row) {
+        await transaction.commit();
+        return null;
+      }
+
+      await row.update({
+        last_attempt_at: now,
+        next_retry_at: leaseUntil
+      }, { transaction });
+      await transaction.commit();
+      return toPlain(row);
+    } catch (error) {
+      if (!transaction.finished) await transaction.rollback();
+      throw error;
+    }
+  },
+
   listRefundsBySession(paymentSessionId, options = {}) {
     return db.CommercePaymentRefund.findAll({
       where: { payment_session_id: paymentSessionId },

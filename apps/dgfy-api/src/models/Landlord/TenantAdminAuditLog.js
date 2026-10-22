@@ -27,7 +27,8 @@ export default (sequelize) => {
                 'admin_force_assign_owner',
                 'affiliate_slots_update',
                 'force_delete_registration_history',
-                'registration_upload_download'
+                'registration_upload_download',
+                'business_name_update'
             ),
             allowNull: false
         },

@@ -17,6 +17,7 @@ import DeliveryCompletionDialog from './DeliveryCompletionDialog.jsx';
 import ScheduledDineInAlertDialog from './ScheduledDineInAlertDialog.jsx';
 import ShiftCloseSummaryPrintView from './ShiftCloseSummaryPrintView.jsx';
 import ZReadingPrintView from './ZReadingPrintView.jsx';
+import PosBranchSelectorDialog from './PosBranchSelectorDialog.jsx';
 
 const PosTenantSetupModal = lazyWithChunkRetry(() => import('./PosTenantSetupModal.jsx'));
 const PosHardwareMessageModal = lazyWithChunkRetry(() => import('./PosHardwareMessageModal.jsx'));
@@ -52,6 +53,12 @@ export default function TerminalPageDialogLayer({ model }) {
     balanceProofError,
     balanceProofViewerUrl,
     balanceProofViewerLoading,
+    branchDirectoryState,
+    branchOperatorState,
+    cashierBranchSelectorCanShowWhileLocked,
+    branchSelectorMode,
+    branchSelectorOpen,
+    cashierBranchSelection,
     setBalanceProofFile,
     handleCloseBalancePaymentProofViewer,
     canAdminBypassShiftPrompt,
@@ -77,6 +84,12 @@ export default function TerminalPageDialogLayer({ model }) {
     getNextTenantSetupStep,
     getPreviousTenantSetupStep,
     handleAdminReauthSubmit,
+    handleCancelTerminalUnlock,
+    handleBranchSelectorOpenChange,
+    handleBranchSelectorContinue,
+    handleBranchSelectorOpenShift,
+    handleBranchSelectorResumeShift,
+    handleBranchSelectorViewBranch,
     handleBackToCashierResume,
     handleCashierResumeSubmit,
     handleCashierTakeoverSubmit,
@@ -114,6 +127,8 @@ export default function TerminalPageDialogLayer({ model }) {
     scheduledDineInAlertNow,
     handleScheduledDineInAlertOpenChange,
     isOnline,
+    locked,
+    drawerOpen,
     isPrinterAvailable,
     legacyLinkState,
     locationNameLookup,
@@ -127,6 +142,8 @@ export default function TerminalPageDialogLayer({ model }) {
     printClosedShiftSummary,
     printZReading,
     renderUnlockFailurePanel,
+    refreshBranchDirectory,
+    refreshCashierBranchDirectory,
     resumeTenantSetupFlow,
     saveMyDayClosePin,
     setAdminReauthForm,
@@ -180,6 +197,7 @@ export default function TerminalPageDialogLayer({ model }) {
     terminalMeta,
     terminalRegistry,
     terminalUnlockForm,
+    terminalSelectionLocked,
     terminalUnlockModalOpen,
     terminalUnlockMode,
     terminalUnlockRequired,
@@ -197,6 +215,7 @@ export default function TerminalPageDialogLayer({ model }) {
 
   const starterSetupRequired = isStarterSetupRequired(workflowMode);
 
+  const terminalUserRole = String(terminalUser?.role || '').trim().toLowerCase();
   const currentCashierLabel = String(
     cashierUnlockSession?.username
     || cashierUnlockSession?.email
@@ -204,9 +223,38 @@ export default function TerminalPageDialogLayer({ model }) {
     || terminalUser?.email
     || ''
   ).trim();
+  const cashierAlreadyAuthenticated = Boolean(
+    cashierUnlockSession?.email
+    || (terminalUserRole === 'cashier' && currentCashierLabel)
+  );
+  const selectedTerminalId = String(terminalUnlockForm?.terminalId || '').trim();
+  const selectedTerminalEntry = activeTerminalRegistry.find(
+    (entry) => String(entry?.terminal_id || '').trim() === selectedTerminalId
+  );
+  const selectedTerminalLabel = selectedTerminalEntry
+    ? `${selectedTerminalEntry.label || selectedTerminalEntry.terminal_id}${locationNameLookup.get(Number(selectedTerminalEntry.location_id || 0)) ? ` (${selectedTerminalEntry.terminal_id}) - ${locationNameLookup.get(Number(selectedTerminalEntry.location_id || 0))}` : ` (${selectedTerminalEntry.terminal_id})`}`
+    : selectedTerminalId || 'Selected terminal';
 
   return (
     <>
+      <PosBranchSelectorDialog
+        open={branchSelectorOpen && !drawerOpen && (!locked || cashierBranchSelectorCanShowWhileLocked)}
+        mode={branchSelectorMode}
+        branchDirectoryState={branchDirectoryState}
+        operatorState={branchOperatorState}
+        cashierRegister={cashierBranchSelection}
+        isOnline={isOnline}
+        onOpenChange={handleBranchSelectorOpenChange}
+        onViewBranch={handleBranchSelectorViewBranch}
+        onOpenShift={handleBranchSelectorOpenShift}
+        onResumeShift={handleBranchSelectorResumeShift}
+        onContinue={handleBranchSelectorContinue}
+        onRefresh={() => void (
+          branchSelectorMode === 'cashier'
+            ? refreshCashierBranchDirectory?.()
+            : refreshBranchDirectory?.()
+        )}
+      />
 <Dialog open={Boolean(cashCollectionOrder)} onOpenChange={(open) => { if (!open && !cashCollectionSaving) setCashCollectionOrder(null); }}>
           <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
             <DialogHeader>
@@ -307,8 +355,10 @@ export default function TerminalPageDialogLayer({ model }) {
                     ? 'Admin Unlock'
                     : cashierTakeoverUnlock
                       ? 'Cashier Sign In'
-                      : cashierResumeUnlock || signedInShiftResume
-                      ? 'Resume Shift'
+                      : cashierResumeUnlock
+                        ? 'Unlock Shift'
+                        : signedInShiftResume
+                          ? 'Resume Shift'
                       : terminalUnlockMode === 'relock'
                         ? 'Unlock Terminal'
                         : 'Open Shift'}
@@ -321,14 +371,16 @@ export default function TerminalPageDialogLayer({ model }) {
                         ? 'Verify the POS account to continue this checkout. Your cart and payment details will stay open.'
                         : 'Sign in to resume or take over this register. The existing shift and opening cash remain unchanged.'
                       : cashierResumeUnlock
-                      ? 'Enter the DGFY cashier credentials for the open shift. Terminal password is not required.'
+                      ? 'Sign in once to unlock this shift. The branch, terminal, and opening cash remain unchanged. Terminal password is not required.'
                       : signedInShiftResume
                         ? 'Your active shift was found. Resume the same terminal, cart, totals, and cashier session.'
                       : terminalUnlockMode === 'relock'
                         ? 'Reauthenticate the current DGFY operator to resume this terminal.'
-                        : cashierUnlockSession?.email
-                          ? 'Choose the registered POS terminal and start the cashier shift from this logged-in device.'
-                          : 'Choose the registered POS terminal, sign in the cashier, and start the shift from this logged-in device.'}
+                        : terminalSelectionLocked
+                          ? 'Confirm opening cash for this terminal.'
+                        : cashierAlreadyAuthenticated
+                          ? 'Choose a terminal and opening cash.'
+                          : 'Choose a terminal and sign in the cashier.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 px-5 py-5">
@@ -430,7 +482,7 @@ export default function TerminalPageDialogLayer({ model }) {
                 ) : cashierResumeUnlock ? (
                   <>
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1A4E8D]">
-                      Open shift: {cashierResumeContext?.cashierEmail || cashierResumeContext?.cashierUsername || 'Current cashier'}
+                      Locked shift: {cashierResumeContext?.cashierEmail || cashierResumeContext?.cashierUsername || 'Current cashier'}
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-resume-identifier" className="text-xs font-extrabold text-[#0F172A]">
@@ -479,9 +531,20 @@ export default function TerminalPageDialogLayer({ model }) {
                   <>
                     <div className="grid gap-2">
                       <Label htmlFor="terminal-unlock-terminal-id" className="text-xs font-extrabold text-[#0F172A]">
-                        Terminal ID
+                        {activeTerminalRegistry.length > 0 ? 'Terminal' : 'Terminal ID'}
                       </Label>
-                      {activeTerminalRegistry.length > 0 ? (
+                      {terminalSelectionLocked ? (
+                        <div
+                          id="terminal-unlock-terminal-id"
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5"
+                          role="status"
+                        >
+                          <p className="text-sm font-extrabold text-emerald-950">{selectedTerminalLabel}</p>
+                          <p className="mt-1 text-[11px] font-medium text-emerald-700">
+                            Selected from your branch card.
+                          </p>
+                        </div>
+                      ) : activeTerminalRegistry.length > 0 ? (
                         <>
                           <select
                             id="terminal-unlock-terminal-id"
@@ -502,7 +565,7 @@ export default function TerminalPageDialogLayer({ model }) {
                           </select>
                           {activeTerminalRegistry.length > 1 ? (
                             <p className="text-[11px] font-medium text-[#64748B]">
-                              {activeTerminalRegistry.length} registered terminals available. A location may have multiple counters; choose the counter you are operating.
+                              Choose the counter for this shift.
                             </p>
                           ) : null}
                         </>
@@ -526,20 +589,23 @@ export default function TerminalPageDialogLayer({ model }) {
                           </datalist>
                         </>
                       )}
-                      <p className="text-[11px] text-[#64748B]">
-                        Enter the registered terminal ID from POS Setup &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-                      Authorized DGFY users can open shifts from any logged-in device when the selected terminal is active and assigned to their allowed location.
+                      {activeTerminalRegistry.length === 0 ? (
+                        <p className="text-[11px] text-[#64748B]">
+                          Enter the registered terminal ID.
+                        </p>
+                      ) : null}
                     </div>
                   </>
                 )}
                 {!adminReauthUnlock && !cashierResumeUnlock && terminalUnlockMode === 'shift_start' ? (
                   <>
-                    {cashierUnlockSession?.email ? (
-                      <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1A4E8D]">
-                        Cashier signed in: {cashierUnlockSession.email}
+                    {cashierAlreadyAuthenticated ? (
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Cashier</p>
+                          <p className="truncate text-sm font-semibold text-emerald-950">{currentCashierLabel || 'Signed-in cashier'}</p>
+                        </div>
+                        <span className="shrink-0 text-[11px] font-bold text-emerald-700">Signed in</span>
                       </div>
                     ) : (
                       <>
@@ -592,31 +658,33 @@ export default function TerminalPageDialogLayer({ model }) {
                         required
                       />
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="terminal-unlock-opening-note" className="text-xs font-extrabold text-[#0F172A]">
-                        Opening Note
-                      </Label>
-                      <Input
-                        id="terminal-unlock-opening-note"
-                        value={terminalUnlockForm.openingNote}
-                        onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingNote: event.target.value }))}
-                        placeholder="Optional"
-                        disabled={submitting}
-                      />
-                    </div>
+                    <details className="rounded-lg border border-slate-200">
+                      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-bold text-[#1A4E8D]">
+                        Add opening note <span className="font-medium text-slate-500">(optional)</span>
+                      </summary>
+                      <div className="px-3 pb-3">
+                        <Input
+                          id="terminal-unlock-opening-note"
+                          value={terminalUnlockForm.openingNote}
+                          onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingNote: event.target.value }))}
+                          placeholder="Optional note"
+                          disabled={submitting}
+                        />
+                      </div>
+                    </details>
                   </>
                 ) : null}
                 {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
-                {((cashierUnlockSession?.email && terminalUnlockMode === 'shift_start') || cashierResumeUnlock) && (
+                {((cashierAlreadyAuthenticated && terminalUnlockMode === 'shift_start') || cashierResumeUnlock) && (
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => handleLock({ forceLogin: true })}
+                    onClick={cashierResumeUnlock ? () => handleLock({ forceLogin: true }) : handleCancelTerminalUnlock}
                     disabled={submitting || shiftActionLoading.open}
                   >
-                    Back to Login
+                    {cashierResumeUnlock ? 'Back to Login' : 'Cancel'}
                   </Button>
                 )}
                 {cashierTakeoverUnlock && cashierResumeContext?.returnToResumeAllowed && (
@@ -649,15 +717,19 @@ export default function TerminalPageDialogLayer({ model }) {
                       ? 'Checking admin...'
                       : cashierTakeoverUnlock
                         ? (cashierResumeContext?.returnToCheckout ? 'Verifying account...' : 'Signing in cashier...')
-                      : cashierResumeUnlock || signedInShiftResume
-                        ? 'Resuming shift...'
+                      : cashierResumeUnlock
+                        ? 'Unlocking shift...'
+                        : signedInShiftResume
+                          ? 'Resuming shift...'
                         : 'Opening shift...')
                     : (adminReauthUnlock
                       ? 'Unlock as Admin'
                       : cashierTakeoverUnlock
                         ? (cashierResumeContext?.returnToCheckout ? 'Verify & Return to Checkout' : 'Continue to POS')
-                      : cashierResumeUnlock || signedInShiftResume
-                        ? 'Resume Shift'
+                      : cashierResumeUnlock
+                        ? 'Unlock Shift'
+                        : signedInShiftResume
+                          ? 'Resume Shift'
                         : terminalUnlockMode === 'relock'
                           ? 'Unlock POS'
                           : 'Open Shift')}

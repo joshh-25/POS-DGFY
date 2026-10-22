@@ -1,4 +1,4 @@
-import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminCustomerUseCase, createBusinessAdminExpenseUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, exportBusinessAdminReportUseCase, getBusinessAdminAttendanceUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCompanyUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminEJournalEvidenceUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminPosActivityAnalyticsUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminEvidenceCatalogUseCase, listBusinessAdminExpensesUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase, voidBusinessAdminExpenseUseCase } from '../index.js';
+import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminCustomerUseCase, createBusinessAdminExpenseUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, endBusinessAdminAttendanceShiftUseCase, exportBusinessAdminReportUseCase, getBusinessAdminAttendanceUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCompanyUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminEJournalEvidenceUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminPosActivityAnalyticsUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminEvidenceCatalogUseCase, listBusinessAdminExpensesUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase, updateBusinessAdminCompanyNameUseCase, voidBusinessAdminExpenseUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
 const timestamp = () => new Date().toISOString();
@@ -49,6 +49,29 @@ export const getCompany = async (req, res, next) => {
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
+export const updateCompanyName = async (req, res, next) => {
+    try {
+        const result = await updateBusinessAdminCompanyNameUseCase({
+            body: req.validatedData || req.body,
+            user: req.user,
+            tenant: req.tenant,
+            auditContext: auditContext(req, res)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.changed
+                    ? 'Business name updated successfully.'
+                    : 'Business name is already current.',
+                timestamp: timestamp()
+            }),
             errorPayloadResolver: (failure) => errorPayload(req, res, failure)
         });
     } catch (error) { next(error); }
@@ -201,6 +224,26 @@ export const getAttendance = async (req, res, next) => {
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
+export const endAttendanceShift = async (req, res, next) => {
+    try {
+        const result = await endBusinessAdminAttendanceShiftUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            body: req.validatedData || req.body,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cashier shift ended and X-reading recorded successfully.',
+                timestamp: timestamp()
+            }),
             errorPayloadResolver: (failure) => errorPayload(req, res, failure)
         });
     } catch (error) { next(error); }
@@ -486,6 +529,7 @@ export default {
     listInventoryStock,
     getWorkforce,
     getAttendance,
+    endAttendanceShift,
     getFiscal,
     listOrders,
     getOrderDetail,

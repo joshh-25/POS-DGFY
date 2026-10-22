@@ -55,8 +55,9 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 - Duplicate rejection calls reuse an existing succeeded or pending refund.
 - A refund API failure does not undo the POS rejection.
 - Definite refund failures stay excluded from settlement, raise an immediate
-  operator alert, and remain unchanged until an administrator explicitly retries
-  or resolves them.
+  operator alert, and remain excluded from settlement. Retryable provider failures are
+  automatically retried against the same local refund row with bounded backoff; permanent or
+  exhausted failures remain available for reconciliation.
 - Platform Admin Payment Operations lists attempts across sessions and offers Retry
   only for an eligible latest attempt with no other active refund. The administrator
   must provide a reason and confirm the session, order, amount, and original reference;
@@ -70,6 +71,9 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 - Public tracking exposes only the latest refund's customer-safe status, reference,
   amount, and update time. Provider IDs, failure details, and provider payloads
   remain private.
+- Ambiguous provider responses remain pending for webhook/reconciliation evidence and are never
+  blindly replayed. Permanent or exhausted failures stay excluded from settlement and are surfaced
+  as reconciliation exceptions rather than approval requests.
 - Already scheduled or paid settlements are held or corrected through immutable
   carry-forward entries; posted financial records are never deleted.
 

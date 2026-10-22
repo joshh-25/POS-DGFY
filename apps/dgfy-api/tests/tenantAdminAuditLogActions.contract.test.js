@@ -14,6 +14,7 @@ describe('tenant admin audit log action contract', () => {
     const provisioningMigration = readFileSync(path.join(migrationRunnerMigrationsDir, '20260625000001-add-platform-admin-assisted-provisioning.cjs'), 'utf8');
     const affiliateSlotsMigration = readFileSync(path.join(migrationRunnerMigrationsDir, '20260831000001-extend-tenant-admin-audit-actions-affiliate-slots.cjs'), 'utf8');
     const forceDeleteMigration = readFileSync(path.join(migrationRunnerMigrationsDir, '20260920000001-extend-tenant-admin-audit-actions-force-delete-registration-history.cjs'), 'utf8');
+    const businessNameMigration = readFileSync(path.join(migrationRunnerMigrationsDir, '20261015000001-extend-tenant-admin-audit-actions-business-name.cjs'), 'utf8');
 
     expect(model).toContain("'pos_metadata_update'");
     expect(model).toContain("'admin_create_tenant'");
@@ -21,10 +22,12 @@ describe('tenant admin audit log action contract', () => {
     expect(model).toContain("'admin_force_assign_owner'");
     expect(model).toContain("'affiliate_slots_update'");
     expect(model).toContain("'force_delete_registration_history'");
+    expect(model).toContain("'business_name_update'");
     expect(migration).toContain("'pos_metadata_update'");
     expect(provisioningMigration).toContain("'admin_create_tenant'");
     expect(provisioningMigration).toContain("'admin_force_assign_owner'");
     expect(affiliateSlotsMigration).toContain("'affiliate_slots_update'");
     expect(forceDeleteMigration).toContain("'force_delete_registration_history'");
+    expect(businessNameMigration).toContain("'business_name_update'");
   });
 });

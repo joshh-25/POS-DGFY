@@ -449,8 +449,21 @@ export const getCashierCredentialTemplate = ({
  * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, statusUrl }) => {
-  const continueUrl = appendUtm(statusUrl || `${appUrl}/register-company`, 'company_approved');
+export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, statusUrl, posUrl = '' }) => {
+  const continueUrl = appendUtm(posUrl || statusUrl || `${appUrl}/register-company`, posUrl ? 'company_onboarding' : 'company_approved');
+  const safeContinueUrl = escapeHtml(continueUrl || '');
+  const safeStatusUrl = escapeHtml(statusUrl || '');
+  const onboardingSection = posUrl ? `
+              <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <h3 style="margin: 0 0 12px; color: #1d4ed8; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+                  Next step: POS onboarding
+                </h3>
+                <p style="margin: 0 0 12px; color: #1e3a8a; font-size: 14px;">
+                  Open POS onboarding to finish your business setup. You can add items and categories now; selling and storefront visibility remain disabled until DGFY Admin enables them.
+                </p>
+                ${statusUrl ? `<p style="margin: 0; color: #1e3a8a; font-size: 13px;"><a href="${safeStatusUrl}" style="color: #1d4ed8;">View registration status</a></p>` : ''}
+              </div>
+  ` : '';
 
   return `
 <!DOCTYPE html>
@@ -507,10 +520,12 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, st
                 </table>
               </div>
 
+              ${onboardingSection}
+
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <a href="${continueUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
-                  View company status
+                <a href="${safeContinueUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
+                  ${posUrl ? 'Open POS onboarding' : 'View company status'}
                 </a>
               </div>
 

@@ -343,6 +343,7 @@ const transferTenantIdentityToDgfyAccount = async ({
  */
 export const getCurrentUser = async (userId) => {
   const User = dbStore.get('User');
+  const UserLocationGrant = dbStore.get('UserLocationGrant');
   const user = await findVisibleUserById(User, userId, {
     attributes: ['user_id', 'username', 'email', 'phone_number', 'role', 'role_preset_key', 'staff_role_id', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
   });
@@ -377,6 +378,19 @@ export const getCurrentUser = async (userId) => {
   }
 
   const workflowMode = await readCurrentWorkflowMode();
+  const locationGrants = UserLocationGrant?.findAll
+    ? await UserLocationGrant.findAll({
+      where: { user_id: user.user_id },
+      attributes: ['location_id']
+    }).catch((error) => {
+      logger.warn('[UserService] Failed to load location grants for current user profile', {
+        user_id: user.user_id || null,
+        tenant_id: dbStore.getStore()?.tenantId || null,
+        error: error.message
+      });
+      return [];
+    })
+    : [];
   const dgfyLinkStatus = await buildLegacyDgfyLinkStatus({
     tenantId,
     user
@@ -387,6 +401,11 @@ export const getCurrentUser = async (userId) => {
     created_at: user.created_at,
     permissions: resolveEffectivePermissions(user),
     is_master_admin: user.is_master_admin,
+    location_ids: Array.from(new Set(
+      locationGrants
+        .map((grant) => Number(grant?.location_id))
+        .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+    )),
     ...dgfyLinkStatus,
     company: {
       id: tenantId || null,

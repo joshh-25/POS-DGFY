@@ -30711,3 +30711,202 @@ Not complete; record after merge and implementation validation.
 ### Next phase number
 
 Phase 529. No explicit dependency.
+
+## Phase 529 - Automatic Catalog-Only Business Registration
+
+### Initiative and release
+
+New Flow for Business Registration, current release.
+
+### Objective and scope
+
+Change public business registration from the current manual-review default to automatic,
+auditable background provisioning with a restricted post-registration experience. A newly
+registered owner receives a POS onboarding link by email, can complete POS onboarding and manage
+catalog items/categories, cannot sell or use operational POS pages, and has no public Storefront
+visibility until Platform Admin enables the corresponding tenant capabilities. Preserve the
+no-company-token/no-registration-session boundary, retryable provisioning, and existing audited
+Tenant Manager capability controls.
+
+### Status
+
+`in_progress` — implementation, focused validation, and repository build/architecture/documentation
+gates are complete in the `codex/updates-pos` worktree; the landlord integration environment and PR
+review remain outstanding.
+
+### Dependencies
+
+ADR 0022's 2026-10-16 amendment and ADR 0013's 2026-10-16 onboarding amendment are the governing
+cross-boundary contracts. Existing `tenant_pos_enabled` and `store_is_visible` capability APIs,
+Tenant Manager controls, authenticated DGFY company selection, and tenant provisioning model-clone
+coverage are required dependencies. No new architecture allowlist exception is introduced.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md),
+[ADR 0013](../architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md),
+[ADR 0022](../architecture/adr/0022-global-dgfy-account-business-registration.md),
+[Tenant Management](TENANT_MANAGEMENT.md), and [API specification](../api/specification.md).
+Classification: `cross-boundary`; this phase changes landlord registration lifecycle, tenant
+capability defaults, email onboarding, POS access gating, OPIS navigation, and active operational
+documentation.
+
+### Implementation targets
+
+[Registration use case](../../apps/dgfy-api/src/modules/tenants/usecases/registerCompanyRequestUseCase.js),
+[registration repository](../../apps/dgfy-api/src/modules/tenants/repositories/companyRegistrationRepository.js),
+[Storefront draft registration use cases](../../apps/dgfy-api/src/modules/tenants/usecases/companyRegistrationDraftUseCases.js),
+[draft materialization/approval use case](../../apps/dgfy-api/src/modules/tenants/usecases/companyRegistrationDraftMaterializationUseCase.js),
+[provisioning service](../../apps/dgfy-api/src/services/tenantProvisioningService.js),
+[onboarding email service](../../apps/dgfy-api/src/services/emailService.js),
+[Storefront registration wizard](../../apps/dgfy-storefront/src/business/pages/StorefrontBusinessGrowPage.jsx),
+[registration status page](../../apps/dgfy-storefront/src/business/pages/BusinessRegistrationSubmissionPage.jsx),
+[POS terminal entry](../../packages/web-core/src/features/pos/TerminalPage.jsx),
+[POS sidebar](../../packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx),
+[OPIS business admin](../../apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx),
+and the existing [Tenant Manager capability controls](../../apps/dgfy-admin/Pages/TenantManager.jsx).
+
+### Acceptance and validation evidence
+
+- [x] `auto_standard` is the default runtime mode and the registration response is `202` with
+      `setting_up_company`, approved/in-progress lifecycle state, and no company token/session.
+- [x] Authenticated Storefront draft submissions use the same automatic approval, background
+      materialization, catalog-only capability defaults, and POS-link email pipeline.
+- [x] Background provisioning seeds `tenant_pos_enabled=false` and `store_is_visible=false`,
+      creates the founder membership, and sends a POS onboarding link after setup.
+- [x] Restricted owners enter onboarding inside POS and can manage items/categories from the
+      beginning of that flow, while checkout, selling, scanning, and other operational POS pages
+      remain disabled; Storefront remains hidden.
+- [x] Tenant Manager capability controls remain the audited enablement path for POS and Storefront.
+- [x] Focused backend, OPIS, POS sidebar, and POS setup-snapshot tests pass.
+- [x] POS, OPIS, Storefront, and IMS builds pass; architecture, docs/ADR, compliance, agent-surface,
+      backend-test-inventory, and whitespace gates pass.
+- [ ] Local landlord integration test completes after the checkout database schema is reconciled;
+      the current local failure is `Unknown column 'is_demo' in 'field list'`, an environment/schema
+      drift condition rather than a confirmed feature failure.
+- [ ] PR review is complete; this phase does not merge or deploy.
+
+### Evidence
+
+Focused validation passed for the automatic registration use case, Storefront draft submission and
+materialization use cases, Storefront approval handoff/status UI, onboarding email template,
+business-admin capability contract, production ecosystem defaults, OPIS catalog-only navigation,
+POS catalog-only/onboarding sidebar behavior, POS view-mode guards, and POS tenant capability parsing.
+The existing `PosSettingsWorkspace.behavior.test.jsx` suite retains one pre-existing profile-draft
+failure outside this phase's implementation. The landlord integration suite is currently blocked by
+the local schema drift noted above.
+
+### Rollback
+
+Set `TENANT_REGISTRATION_APPROVAL_MODE=manual` through the approved operational rollback path and
+redeploy the prior artifact if automatic provisioning must be paused. Reverting the phase removes
+the automatic claim/background provisioning, POS onboarding email link, restricted defaults, and
+catalog-only UI gates; existing tenant capability audit data remains intact.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation is merged and the named build, architecture,
+documentation, and environment validation evidence is terminal.
+
+### Post-merge verification
+
+- [ ] deployment — verify the deployed API reports `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`
+      and the registration response remains `202 setting_up_company`.
+- [ ] tenant lifecycle — perform one synthetic registration and verify background provisioning,
+      founder membership, `tenant_pos_enabled=false`, `store_is_visible=false`, and the onboarding
+      email delivery record without using real customer PII.
+- [ ] POS/OPIS — verify the owner can add an item and category, cannot open selling/operational POS
+      pages, and cannot see the public Storefront before Admin enablement.
+- [ ] Platform Admin — enable POS and Storefront independently with an audit reason, then verify
+      only the corresponding surfaces become available.
+- [ ] operations — verify failed email/provisioning attempts remain retryable and no company token
+      or tenant session is exposed by registration.
+
+### Next phase number
+
+Phase 530. No explicit dependency.
+
+## Phase 530 - Automatic PayMongo refund recovery after POS rejection
+
+### Initiative and release
+
+Commerce payment lifecycle reliability; local implementation for the next develop-bound release.
+
+### Objective and scope
+
+Ensure a POS or Storefront rejection of a paid online order never waits for a cashier, manager, or
+administrator approval. Definitive PayMongo refund failures are retried automatically against the
+same landlord refund row with bounded backoff, while ambiguous provider responses remain pending
+for webhook/reconciliation evidence. Permanent or exhausted failures remain settlement-ineligible
+and visible for reconciliation. The scope includes landlord refund persistence, retry worker
+lifecycle, POS/Storefront messaging, migration, tests, and the governing payment documentation.
+
+### Status
+
+`in_progress` — implementation and focused validation are in progress in `codex/updates-pos`.
+
+### Dependencies
+
+ADR 0052 clause 14, the commerce payment refund repository/model, the PayMongo refund service, the
+existing signed refund webhook handler, and the landlord migration runner. No tenant schema change
+or role/approval dependency is introduced.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md),
+[Commerce payment flow](commerce-payment-fulfillment-settlement.md),
+[API specification](../api/specification.md), and [database schema](../database/schema.md).
+Classification: `cross-boundary`; the provider-refund recovery contract spans POS/Storefront,
+landlord payment state, webhook reconciliation, and settlement eligibility.
+
+### Implementation targets
+
+[Commerce refund use cases](../../apps/dgfy-api/src/modules/commercePayments/usecases/commercePaymentAdminUseCases.js),
+[order lifecycle use case](../../apps/dgfy-api/src/modules/commercePayments/usecases/commerceOrderLifecycleUseCase.js),
+[refund repository](../../apps/dgfy-api/src/modules/commercePayments/repositories/commercePaymentRepository.js),
+[refund model](../../apps/dgfy-api/src/models/Landlord/CommercePaymentRefund.js),
+[refund retry worker](../../apps/dgfy-api/src/workers/commercePaymentRefundRetryWorker.js),
+[POS lifecycle messaging](../../apps/dgfy-api/src/modules/pos/usecases/posUseCases.js),
+[Storefront lifecycle messaging](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js),
+and [POS terminal messaging](../../packages/web-core/src/features/pos/pages/TerminalPage.jsx).
+
+### Acceptance and validation evidence
+
+- [ ] A definitive provider rejection schedules the same refund row with retry metadata and keeps
+      the payment session/order out of settlement.
+- [ ] The worker claims due rows once, retries them with a lease, and records success or terminal
+      exhaustion without creating duplicate local refund rows.
+- [ ] Ambiguous provider failures remain pending and are not blindly retried.
+- [ ] A succeeded refund remains idempotent and still records the existing revenue reversal path.
+- [ ] POS and Storefront messages no longer direct the operator to obtain admin approval.
+- [ ] Targeted backend tests, lint, migration validation, architecture checks, and diff whitespace
+      checks pass.
+
+### Rollback
+
+Set `COMMERCE_PAYMENT_REFUND_RETRY_ENABLED=false` to stop new worker claims while preserving pending
+refund rows for webhook/reconciliation handling. Revert the application and migration only through
+the normal release rollback process; never delete refund rows or alter settled financial entries.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation and named validation evidence are terminal.
+
+### Post-merge verification
+
+- [ ] migration — verify landlord refund retry columns/index exist in the deployed database.
+- [ ] rejection — execute one synthetic paid-order rejection and verify one refund row, automatic
+      retry metadata, `refund_pending`, and no approval task is created.
+- [ ] provider success — verify the refund webhook promotes the row to `succeeded` and settlement
+      remains corrected through immutable ledger entries.
+- [ ] failure recovery — verify a definitive failure is retried and an ambiguous response is held
+      for reconciliation without a duplicate provider request.
+- [ ] operations — confirm worker logs and audit rows identify the retry actor and refund reference.
+
+### Next phase number
+
+Phase 531. No explicit dependency.

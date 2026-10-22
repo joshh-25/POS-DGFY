@@ -475,6 +475,23 @@ export const sendCompanyApprovedEmail = async ({ email, companyName, statusUrl }
   });
 };
 
+export const sendCompanyOnboardingEmail = async ({ email, companyName, statusUrl, posUrl }) => {
+  const appUrl = getAppUrl();
+  const html = getCompanyApprovedTemplate({
+    companyName,
+    adminEmail: email,
+    statusUrl,
+    posUrl,
+    appUrl
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `Your company "${companyName}" is ready for POS onboarding`,
+    html
+  });
+};
+
 export const sendCompanySubmissionReceivedEmail = async ({ email, companyName, statusUrl }) => sendEmail({
   to: email,
   subject: `Registration received: ${companyName}`,
@@ -718,6 +735,7 @@ export default {
   sendCashierCredentialEmail,
   sendCompanySubmissionReceivedEmail,
   sendCompanyApprovedEmail,
+  sendCompanyOnboardingEmail,
   sendCompanyRejectedEmail,
   sendEmailOtpCode,
   sendSubscriptionExpiringEmail,

@@ -249,6 +249,73 @@ describe('company registration draft use cases', () => {
     expect(submittedPayload.business).not.toHaveProperty('business_type');
   });
 
+  it('auto-approves a valid submission and returns the provisioned POS handoff references', async () => {
+    const submitted = draft({
+      status: 'pending_review',
+      current_step: 3,
+      optimistic_version: 2,
+      draft_payload: completePayload,
+      submitted_at: new Date('2026-09-26T02:00:00.000Z')
+    });
+    const repository = {
+      transaction: jest.fn(async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } })),
+      findOwnedForUpdate: jest.fn().mockResolvedValue(draft({
+        current_step: 3,
+        draft_payload: completePayload
+      })),
+      listActiveUploads: jest.fn().mockResolvedValue([]),
+      submitDraft: jest.fn().mockResolvedValue(submitted)
+    };
+    const autoApproveCompanyRegistrationDraft = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        statusCode: 202,
+        payload: {
+          data: {
+            draft_id: submitted.id,
+            tenant_id: '66666666-6666-4666-8666-666666666666',
+            application_id: '77777777-7777-4777-8777-777777777777',
+            materialization_status: 'in_progress'
+          }
+        }
+      }
+    });
+    const useCase = buildSubmitCompanyRegistrationDraftUseCase({
+      repository,
+      autoApproveCompanyRegistrationDraft,
+      shouldAutoApprove: () => true,
+      now: () => new Date('2026-09-26T02:00:00.000Z')
+    });
+
+    const result = await useCase({
+      draftId: submitted.id,
+      dgfyAccount: account,
+      body: {
+        version: 1,
+        accepted_company_terms: true,
+        accepted_marketplace_terms: true,
+        company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+        marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.payload.data).toEqual(expect.objectContaining({
+      registration_id: submitted.id,
+      application_id: '77777777-7777-4777-8777-777777777777',
+      tenant_id: '66666666-6666-4666-8666-666666666666',
+      status: 'setting_up_company',
+      review_status: 'approved',
+      provisioning_status: 'in_progress',
+      registration_access_mode: 'catalog_only'
+    }));
+    expect(autoApproveCompanyRegistrationDraft).toHaveBeenCalledWith({
+      draftId: submitted.id,
+      actor: { actor_type: 'system', source: 'public_registration' }
+    });
+    expect(result.data.payload.message).toMatch(/approved automatically/i);
+  });
+
   it('persists a validated upload through the private storage adapter', async () => {
     const savedUpload = {
       id: '55555555-5555-4555-8555-555555555555',

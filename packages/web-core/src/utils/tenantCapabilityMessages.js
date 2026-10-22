@@ -3,7 +3,7 @@ export const STORE_VISIBILITY_EDIT_LOCKED_MESSAGE = 'Platform Admin controls sto
 
 export const TENANT_CAPABILITY_MESSAGES = Object.freeze({
   tenant_ims_enabled: 'IMS access is disabled for this company. Inventory, purchases, settings, reports, and related workspace tools are unavailable until platform admin enables IMS again.',
-  tenant_pos_enabled: 'POS access is disabled for this company. Catalog, checkout, scanning, and POS transactions are unavailable until platform admin enables POS again.',
+  tenant_pos_enabled: 'POS operations are disabled for this company. You can manage catalog items and categories, but checkout, scanning, and POS transactions remain unavailable until platform admin enables POS again.',
   store_is_visible: 'Storefront and map visibility are disabled for this company. Customers cannot browse or place new orders until Storefront / Maps is turned on again.'
 });
 

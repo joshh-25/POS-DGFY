@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-10-20T07:45:35.499Z",
-  "totalFiles": 878,
+  "generatedAt": "2026-10-21T11:04:45.290Z",
+  "totalFiles": 885,
   "byClassification": {
-    "keep": 810,
+    "keep": 817,
     "delete": 23,
     "consolidate": 37,
     "trim": 3,
@@ -10,7 +10,7 @@
   },
   "bySuffix": {
     "migration": 55,
-    "(none)": 300,
+    "(none)": 304,
     "middleware": 14,
     "handler": 1,
     "transport": 46,
@@ -19,8 +19,9 @@
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
+    "onboardingEmail": 1,
     "storeTemplateKey": 1,
-    "usecase": 72,
+    "usecase": 74,
     "contract": 50,
     "ratelimit.e2e": 1,
     "hardening": 1,
@@ -1317,17 +1318,17 @@
     },
     {
       "path": "tests/adminTenantLifecycle.integration.test.js",
-      "lines": 480,
+      "lines": 487,
       "caseCount": 9,
       "describeTitles": [
         "Admin Tenant Lifecycle Integration - Parity"
       ],
-      "expectCount": 50,
-      "expectResCount": 25,
+      "expectCount": 53,
+      "expectResCount": 28,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
-      "maxMockStubCount": 8,
+      "maxMockStubCount": 9,
       "isSupertest": true,
       "isSnapshot": false,
       "onDbManifest": true,
@@ -2332,6 +2333,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: asyncCrashRecovery)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/approveTenantUseCase.onboardingEmail.test.js",
+      "lines": 69,
+      "caseCount": 1,
+      "describeTitles": [
+        "approveTenantUseCase POS onboarding email"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "onboardingEmail",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: onboardingEmail)",
       "rule": "R5-default",
       "findings": []
     },
@@ -3480,14 +3514,14 @@
     },
     {
       "path": "tests/businessAdmin.contract.test.js",
-      "lines": 216,
-      "caseCount": 8,
+      "lines": 249,
+      "caseCount": 9,
       "describeTitles": [
         "Business Admin contracts"
       ],
-      "expectCount": 18,
+      "expectCount": 21,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 2,
+      "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -3553,14 +3587,14 @@
     },
     {
       "path": "tests/businessAdminAttendance.contract.test.js",
-      "lines": 102,
-      "caseCount": 4,
+      "lines": 123,
+      "caseCount": 5,
       "describeTitles": [
         "Business Admin attendance read model"
       ],
-      "expectCount": 13,
+      "expectCount": 15,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 5,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -3590,14 +3624,14 @@
     },
     {
       "path": "tests/businessAdminBootstrapCapability.route.test.js",
-      "lines": 78,
-      "caseCount": 2,
+      "lines": 94,
+      "caseCount": 3,
       "describeTitles": [
         "Business Admin bootstrap capability boundary"
       ],
-      "expectCount": 6,
-      "expectResCount": 4,
-      "toHaveBeenCalledCount": 2,
+      "expectCount": 8,
+      "expectResCount": 5,
+      "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 1,
@@ -3618,6 +3652,72 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: route)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCompanyName.usecase.test.js",
+      "lines": 188,
+      "caseCount": 6,
+      "describeTitles": [
+        "business admin canonical company name use case"
+      ],
+      "expectCount": 23,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 9,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCompanyRepository.test.js",
+      "lines": 133,
+      "caseCount": 3,
+      "describeTitles": [
+        "business admin company repository"
+      ],
+      "expectCount": 10,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -3685,6 +3785,39 @@
         "live": [
           "docs/testing/test-cost-inventory.json"
         ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminEndAttendanceShift.usecase.test.js",
+      "lines": 114,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin end attendance shift"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
         "historical": [],
         "hardcoded": []
       },
@@ -4127,6 +4260,39 @@
       "findings": []
     },
     {
+      "path": "tests/businessAdminShiftHistoryRepository.test.js",
+      "lines": 117,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin shift cash projection"
+      ],
+      "expectCount": 2,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/cachePolicy.middleware.test.js",
       "lines": 103,
       "caseCount": 5,
@@ -4361,12 +4527,12 @@
     },
     {
       "path": "tests/catalogChangeEventBus.test.js",
-      "lines": 39,
-      "caseCount": 2,
+      "lines": 63,
+      "caseCount": 3,
       "describeTitles": [
         "catalog change event bus"
       ],
-      "expectCount": 5,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -4698,15 +4864,15 @@
     },
     {
       "path": "tests/commerceOrderLifecycle.usecase.test.js",
-      "lines": 314,
-      "caseCount": 12,
+      "lines": 339,
+      "caseCount": 13,
       "describeTitles": [
         "commerce order payment lifecycle",
         "downpayment refund vs forfeiture (Phase 144, #824)"
       ],
-      "expectCount": 44,
+      "expectCount": 47,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 18,
+      "toHaveBeenCalledCount": 19,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -4820,16 +4986,49 @@
       "findings": []
     },
     {
+      "path": "tests/commercePaymentRefundRetryWorker.test.js",
+      "lines": 54,
+      "caseCount": 2,
+      "describeTitles": [
+        "commerce payment refund retry worker"
+      ],
+      "expectCount": 5,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/commercePaymentRefunds.usecases.test.js",
-      "lines": 434,
-      "caseCount": 10,
+      "lines": 603,
+      "caseCount": 14,
       "describeTitles": [
         "commerce payment refund use-cases",
         "tenant order-payment ledger mirroring (Phase 144, #824)"
       ],
-      "expectCount": 30,
+      "expectCount": 48,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 15,
+      "toHaveBeenCalledCount": 24,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -4869,12 +5068,12 @@
     },
     {
       "path": "tests/commercePaymentRouteMount.contract.test.js",
-      "lines": 33,
-      "caseCount": 4,
+      "lines": 41,
+      "caseCount": 5,
       "describeTitles": [
         "commerce payment route mount contract"
       ],
-      "expectCount": 6,
+      "expectCount": 9,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 2,
@@ -4990,12 +5189,12 @@
     },
     {
       "path": "tests/commercePaymentValidator.test.js",
-      "lines": 179,
-      "caseCount": 10,
+      "lines": 245,
+      "caseCount": 13,
       "describeTitles": [
         "commerce payment validators"
       ],
-      "expectCount": 30,
+      "expectCount": 45,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -5099,14 +5298,15 @@
     },
     {
       "path": "tests/commerceRefundRetry.usecase.test.js",
-      "lines": 123,
-      "caseCount": 4,
+      "lines": 309,
+      "caseCount": 11,
       "describeTitles": [
-        "commerce refund retry"
+        "commerce refund retry",
+        "commerce admin refund list use case"
       ],
-      "expectCount": 17,
+      "expectCount": 57,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 6,
+      "toHaveBeenCalledCount": 12,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5272,14 +5472,14 @@
     },
     {
       "path": "tests/companyRegistrationDraftMaterialization.test.js",
-      "lines": 338,
-      "caseCount": 4,
+      "lines": 379,
+      "caseCount": 5,
       "describeTitles": [
         "company registration draft materialization"
       ],
-      "expectCount": 23,
+      "expectCount": 27,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 11,
+      "toHaveBeenCalledCount": 13,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5305,14 +5505,14 @@
     },
     {
       "path": "tests/companyRegistrationDraftUseCases.test.js",
-      "lines": 523,
-      "caseCount": 10,
+      "lines": 590,
+      "caseCount": 11,
       "describeTitles": [
         "company registration draft use cases"
       ],
-      "expectCount": 38,
+      "expectCount": 42,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 17,
+      "toHaveBeenCalledCount": 18,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -9537,14 +9737,14 @@
     },
     {
       "path": "tests/dgfyTenantSessionService.test.js",
-      "lines": 100,
-      "caseCount": 1,
+      "lines": 147,
+      "caseCount": 2,
       "describeTitles": [
         "DGFY tenant session authority normalization"
       ],
-      "expectCount": 5,
+      "expectCount": 9,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 1,
@@ -10812,12 +11012,12 @@
     },
     {
       "path": "tests/emailTemplates.companyApproved.test.js",
-      "lines": 21,
-      "caseCount": 1,
+      "lines": 36,
+      "caseCount": 2,
       "describeTitles": [
         "company approval email template"
       ],
-      "expectCount": 7,
+      "expectCount": 11,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -13964,14 +14164,14 @@
     },
     {
       "path": "tests/inventoryItemRepository.test.js",
-      "lines": 3647,
-      "caseCount": 82,
+      "lines": 3706,
+      "caseCount": 83,
       "describeTitles": [
         "inventory itemRepository"
       ],
-      "expectCount": 308,
+      "expectCount": 311,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 150,
+      "toHaveBeenCalledCount": 153,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -14868,14 +15068,14 @@
     },
     {
       "path": "tests/listTenants.usecase.test.js",
-      "lines": 141,
-      "caseCount": 3,
+      "lines": 177,
+      "caseCount": 4,
       "describeTitles": [
         "listTenants usecase eligibility enrichment"
       ],
-      "expectCount": 13,
+      "expectCount": 16,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
+      "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17796,12 +17996,12 @@
     },
     {
       "path": "tests/posBranchDirectory.usecase.test.js",
-      "lines": 291,
-      "caseCount": 9,
+      "lines": 343,
+      "caseCount": 11,
       "describeTitles": [
         "POS branch directory and read-only branch view"
       ],
-      "expectCount": 32,
+      "expectCount": 34,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
@@ -17961,6 +18161,39 @@
         "live": [
           "docs/testing/test-cost-inventory.json"
         ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posCashReconciliation.test.js",
+      "lines": 47,
+      "caseCount": 2,
+      "describeTitles": [
+        "POS cash reconciliation helpers"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
         "historical": [],
         "hardcoded": []
       },
@@ -18367,12 +18600,12 @@
     },
     {
       "path": "tests/posCashierLifecycle.usecases.test.js",
-      "lines": 434,
-      "caseCount": 11,
+      "lines": 523,
+      "caseCount": 13,
       "describeTitles": [
         "POS automatic cashier shift lifecycle"
       ],
-      "expectCount": 43,
+      "expectCount": 55,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
@@ -18626,12 +18859,12 @@
     },
     {
       "path": "tests/posCatalogEvents.transport.test.js",
-      "lines": 23,
+      "lines": 24,
       "caseCount": 2,
       "describeTitles": [
         "POS catalog event transport contract"
       ],
-      "expectCount": 6,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 1,
@@ -21100,7 +21333,7 @@
     },
     {
       "path": "tests/posReports.repository.test.js",
-      "lines": 2241,
+      "lines": 2249,
       "caseCount": 35,
       "describeTitles": [
         "posRepository reports analytics"
@@ -21521,12 +21754,12 @@
     },
     {
       "path": "tests/posShiftAuthorizationPolicy.test.js",
-      "lines": 101,
-      "caseCount": 6,
+      "lines": 115,
+      "caseCount": 7,
       "describeTitles": [
         "POS shift authorization policy"
       ],
-      "expectCount": 6,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -24610,14 +24843,14 @@
     },
     {
       "path": "tests/registerCompanyRequestUseCase.autoApproval.test.js",
-      "lines": 99,
-      "caseCount": 6,
+      "lines": 161,
+      "caseCount": 7,
       "describeTitles": [
-        "registerCompanyRequestUseCase mandatory manual review"
+        "registerCompanyRequestUseCase registration approval modes"
       ],
-      "expectCount": 24,
+      "expectCount": 33,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 10,
+      "toHaveBeenCalledCount": 16,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -30626,15 +30859,15 @@
     },
     {
       "path": "tests/tenantAdminAuditLogActions.contract.test.js",
-      "lines": 31,
+      "lines": 34,
       "caseCount": 1,
       "describeTitles": [
         "tenant admin audit log action contract"
       ],
-      "expectCount": 11,
+      "expectCount": 13,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 5,
+      "readFileSyncCount": 6,
       "textRatio": 1,
       "maxMockStubCount": 0,
       "isSupertest": false,

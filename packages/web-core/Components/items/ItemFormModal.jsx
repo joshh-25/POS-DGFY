@@ -28,6 +28,7 @@ import { createSupplier, getSuppliers } from '@/services/supplierService.js';
 import { useLocations } from '@/hooks/useLocations.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
+import BarcodeManager from '@/components/items/BarcodeManager';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import {
   buildStockAllocationDraft,
@@ -84,6 +85,7 @@ const MSME_VISIBLE_UPDATE_FIELDS = Object.freeze([
   'fifo_enabled',
   'shelf_life_days',
   'opened_shelf_life_days',
+  'shelf_life',
   'product_folder',
   'packaging_specs'
 ]);
@@ -153,9 +155,28 @@ const normalizePackagingSpecs = (value) => {
   return hasAnyValue ? normalized : null;
 };
 
+const normalizeShelfLife = (value, fallbacks = {}) => {
+  const source = isPlainObject(value) ? value : {};
+  return {
+    duration_days: source.duration_days ?? fallbacks.duration_days ?? '',
+    opened_shelf_life_days: source.opened_shelf_life_days ?? fallbacks.opened_shelf_life_days ?? '',
+    storage_temperature: String(source.storage_temperature || ''),
+    storage_conditions: String(source.storage_conditions || '')
+  };
+};
+
 const normalizeMsmeFieldValue = (field, value) => {
   if (field === 'packaging_specs') {
     return normalizePackagingSpecs(value);
+  }
+  if (field === 'shelf_life') {
+    const normalized = normalizeShelfLife(value);
+    return {
+      duration_days: toNumberOrNull(normalized.duration_days),
+      opened_shelf_life_days: toNumberOrNull(normalized.opened_shelf_life_days),
+      storage_temperature: normalized.storage_temperature || null,
+      storage_conditions: normalized.storage_conditions || null
+    };
   }
   if (field === 'fifo_enabled') {
     return value === true;
@@ -174,11 +195,20 @@ const normalizeMsmeFieldValue = (field, value) => {
 };
 
 const areEquivalentMsmeValues = (field, left, right) => {
-  if (field === 'packaging_specs') {
+  if (field === 'packaging_specs' || field === 'shelf_life') {
     return JSON.stringify(left) === JSON.stringify(right);
   }
   return left === right;
 };
+
+const ItemEditorSectionHeader = ({ title, description }) => (
+  <div className="flex items-start gap-3 border-b border-slate-200 pb-3">
+    <div>
+      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <p className="mt-1 text-xs text-slate-500">{description}</p>
+    </div>
+  </div>
+);
 
 export const buildMsmeVisibleUpdatePatch = ({ payload, originalItem }) => {
   const safePayload = isPlainObject(payload) ? payload : {};
@@ -250,6 +280,12 @@ export default function ItemFormModal({
     fifo_enabled: true,
     shelf_life_days: '',
     opened_shelf_life_days: '',
+    shelf_life: {
+      duration_days: '',
+      opened_shelf_life_days: '',
+      storage_temperature: '',
+      storage_conditions: ''
+    },
     product_folder: '',
     ingredients: [],
     packaging_specs: {
@@ -584,6 +620,10 @@ export default function ItemFormModal({
       const initialLocationStock = initialLocationId && stockByLocation.has(initialLocationId)
         ? stockByLocation.get(initialLocationId)
         : (activeLocations.length > 1 ? 0 : parseNum(item.current_stock, 0));
+      const initialShelfLife = normalizeShelfLife(item.shelf_life, {
+        duration_days: item.shelf_life_days,
+        opened_shelf_life_days: item.opened_shelf_life_days
+      });
 
       const initialData = {
         sku_code: item.sku_code || '',
@@ -608,6 +648,7 @@ export default function ItemFormModal({
         fifo_enabled: item.fifo_enabled || false,
         shelf_life_days: item.shelf_life_days ?? '',
         opened_shelf_life_days: item.opened_shelf_life_days ?? '',
+        shelf_life: initialShelfLife,
         ingredients: item.ingredients || [],
         supplier_links: Array.isArray(item.suppliers) ? item.suppliers.map((supplier) => ({
           supplier_id: supplier.supplier_id ? String(supplier.supplier_id) : '',
@@ -711,6 +752,12 @@ export default function ItemFormModal({
         fifo_enabled: modeItemDefaults.fifo_enabled !== false,
         shelf_life_days: '',
         opened_shelf_life_days: '',
+        shelf_life: {
+          duration_days: '',
+          opened_shelf_life_days: '',
+          storage_temperature: '',
+          storage_conditions: ''
+        },
         product_folder: '',
         ingredients: [],
         packaging_specs: {
@@ -1111,6 +1158,21 @@ export default function ItemFormModal({
     }));
   };
 
+  const handleShelfLifeChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      shelf_life: { ...normalizeShelfLife(prev.shelf_life), [field]: value }
+    }));
+  };
+
+  const handleShelfLifeFieldChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+      shelf_life: { ...normalizeShelfLife(prev.shelf_life), [field]: value }
+    }));
+  };
+
   const addIngredient = () => {
     setFormData(prev => ({
       ...prev,
@@ -1255,6 +1317,17 @@ export default function ItemFormModal({
       return isNaN(num) ? null : num;
     };
 
+    const shelfLifePayload = {
+      duration_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.shelf_life_days) : null,
+      opened_shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.opened_shelf_life_days) : null,
+      storage_temperature: cleanedData.fifo_enabled
+        ? (cleanedData.shelf_life?.storage_temperature || null)
+        : null,
+      storage_conditions: cleanedData.fifo_enabled
+        ? (cleanedData.shelf_life?.storage_conditions || null)
+        : null
+    };
+
     let categoryForSave = cleanedData.category || 'raw_material';
     if (
       msmeMode
@@ -1289,6 +1362,7 @@ export default function ItemFormModal({
       production_notes: cleanedData.production_notes || null,
       shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.shelf_life_days) : null,
       opened_shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.opened_shelf_life_days) : null,
+      shelf_life: shelfLifePayload,
       status: isDraft ? 'draft' : 'active',
       ...(!item && externalBarcode
         ? useInternalBarcode
@@ -1366,7 +1440,11 @@ export default function ItemFormModal({
         payload: validFields,
         originalItem: {
           ...item,
-          current_stock: stockBaseline
+          current_stock: stockBaseline,
+          shelf_life: normalizeShelfLife(item.shelf_life, {
+            duration_days: item.shelf_life_days,
+            opened_shelf_life_days: item.opened_shelf_life_days
+          })
         }
       })
       : validFields;
@@ -1614,7 +1692,11 @@ export default function ItemFormModal({
                 )}
               </section>
             )}
-            {/* Basic Info */}
+            <section data-testid="item-editor-basic-info" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+              <ItemEditorSectionHeader
+                title="Basic Information"
+                description="Edit the item name, SKU, category, unit, and description in one place."
+              />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Item Name</Label>
@@ -1813,7 +1895,13 @@ export default function ItemFormModal({
                 rows={3}
               />
             </div>
+            </section>
 
+            <section data-testid="item-editor-cost-financial" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+              <ItemEditorSectionHeader
+                title="Cost & Financial"
+                description="Manage cost, selling price, margin, VAT, and discount eligibility."
+              />
             {financialPolicy.is_pure_service && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
@@ -1915,6 +2003,15 @@ export default function ItemFormModal({
                   disabled={isSaving}
                 />
               </div>
+            </div>
+            </section>
+
+            <section data-testid="item-editor-stock-inventory" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+              <ItemEditorSectionHeader
+                title="Stock & Inventory"
+                description="Manage capacity, branch stock additions, and the system-calculated reorder values."
+              />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
               <div className="space-y-2 lg:col-span-6">
                 <Label htmlFor="capacity">Max Capacity</Label>
                 <div className="relative">
@@ -1994,6 +2091,7 @@ export default function ItemFormModal({
                 <p className="font-semibold text-slate-900">{formData.purchase_allowance ?? 'Auto'} {formData.unit_of_measure}</p>
               </div>
             </div>
+            </section>
 
             <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2332,6 +2430,16 @@ export default function ItemFormModal({
             </div>
             )}
 
+            {item && (
+              <section data-testid="item-editor-barcodes" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+                <ItemEditorSectionHeader
+                  title="Barcodes & Labels"
+                  description="Attach, generate, set primary, deactivate, and print the item barcodes without leaving Edit Item."
+                />
+                <BarcodeManager item={item} />
+              </section>
+            )}
+
             {msmeMode && (
               <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2415,8 +2523,13 @@ export default function ItemFormModal({
               </div>
             )}
 
-            {/* FIFO Tracking Option - Available for all physically trackable items */}
+            {/* Shelf Life & Storage - available for all physically trackable items */}
             {!isStockExemptItem && (formData.category === 'raw_material' || formData.category === 'product' || formData.category === 'packaging' || formData.category === 'supplies') && (
+              <section data-testid="item-editor-shelf-life" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+                <ItemEditorSectionHeader
+                  title="Shelf Life & Storage"
+                  description="Configure FIFO tracking, expiry windows, storage temperature, and handling conditions."
+                />
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3 flex-1">
@@ -2455,7 +2568,7 @@ export default function ItemFormModal({
                           type="number"
                           min="1"
                           value={formData.shelf_life_days}
-                          onChange={(e) => handleChange('shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
+                          onChange={(e) => handleShelfLifeFieldChange('shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
                           placeholder="Leave blank if no expiry"
                           className="bg-white"
                         />
@@ -2470,16 +2583,52 @@ export default function ItemFormModal({
                           type="number"
                           min="1"
                           value={formData.opened_shelf_life_days}
-                          onChange={(e) => handleChange('opened_shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
+                          onChange={(e) => handleShelfLifeFieldChange('opened_shelf_life_days', e.target.value === '' ? '' : parseInt(e.target.value) || '')}
                           placeholder="Leave blank if no expiry"
                           className="bg-white"
                         />
                         <p className="text-xs text-slate-500">Days after opening</p>
                       </div>
                     </div>
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="storage_temperature" className="text-sm font-medium text-slate-700">
+                          Storage Temperature
+                        </Label>
+                        <Select
+                          value={formData.shelf_life?.storage_temperature || ''}
+                          onValueChange={(value) => handleShelfLifeChange('storage_temperature', value)}
+                        >
+                          <SelectTrigger id="storage_temperature" className="bg-white">
+                            <SelectValue placeholder="Select storage temperature" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="frozen">Frozen</SelectItem>
+                            <SelectItem value="refrigerated">Refrigerated</SelectItem>
+                            <SelectItem value="cool">Cool</SelectItem>
+                            <SelectItem value="room">Room temperature</SelectItem>
+                            <SelectItem value="ambient">Ambient</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="storage_conditions" className="text-sm font-medium text-slate-700">
+                          Storage Conditions
+                        </Label>
+                        <Textarea
+                          id="storage_conditions"
+                          value={formData.shelf_life?.storage_conditions || ''}
+                          onChange={(event) => handleShelfLifeChange('storage_conditions', event.target.value)}
+                          placeholder="e.g., Keep sealed and dry"
+                          rows={3}
+                          className="bg-white"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
+              </section>
             )}
 
             {/* Packaging Specs */}

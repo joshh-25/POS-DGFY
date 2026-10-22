@@ -137,4 +137,40 @@ describe('listTenants usecase eligibility enrichment', () => {
             })
         ]));
     });
+
+    it('uses the tenant database for capability reads without exposing it in the admin payload', async () => {
+        const tenantAdminRepository = {
+            listTenants: jest.fn().mockResolvedValue([{
+                id: 'active-tenant',
+                name: 'Active Tenant',
+                status: 'active',
+                db_name: 'sku_tenant_active'
+            }])
+        };
+        const readTenantCapabilities = jest.fn().mockResolvedValue({
+            ims_enabled: true,
+            pos_enabled: false,
+            storefront_visible: false
+        });
+
+        const useCase = buildListTenantsUseCase({
+            tenantAdminRepository,
+            tenantConnector: {},
+            readTenantCapabilities,
+            logger: { error: jest.fn() }
+        });
+
+        const result = await useCase({ status: 'active' });
+        const tenant = result.data.payload.data[0];
+
+        expect(readTenantCapabilities).toHaveBeenCalledWith({
+            tenant: expect.objectContaining({
+                id: 'active-tenant',
+                db_name: 'sku_tenant_active'
+            }),
+            tenantConnector: {}
+        });
+        expect(tenant).not.toHaveProperty('db_name');
+        expect(tenant.capabilities).toEqual(expect.objectContaining({ pos_enabled: false }));
+    });
 });

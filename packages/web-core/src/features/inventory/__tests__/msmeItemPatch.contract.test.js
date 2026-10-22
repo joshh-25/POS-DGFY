@@ -123,6 +123,37 @@ describe('MSME item update payload contract', () => {
     });
   });
 
+  it('includes changed shelf-life storage details when visible in MSME', () => {
+    const originalItem = {
+      shelf_life: {
+        duration_days: 7,
+        opened_shelf_life_days: 3,
+        storage_temperature: 'refrigerated',
+        storage_conditions: 'Keep sealed'
+      }
+    };
+
+    const payload = {
+      shelf_life: {
+        duration_days: '14',
+        opened_shelf_life_days: '5',
+        storage_temperature: 'frozen',
+        storage_conditions: 'Keep below -18C'
+      }
+    };
+
+    const patch = buildMsmeVisibleUpdatePatch({ payload, originalItem });
+
+    expect(patch).toEqual({
+      shelf_life: {
+        duration_days: 14,
+        opened_shelf_life_days: 5,
+        storage_temperature: 'frozen',
+        storage_conditions: 'Keep below -18C'
+      }
+    });
+  });
+
   it('includes default_sale_price changes for MSME edit payloads', () => {
     const originalItem = {
       cost_per_unit: 10,

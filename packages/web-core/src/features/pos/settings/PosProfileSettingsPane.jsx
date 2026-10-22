@@ -328,7 +328,7 @@ export default function PosProfileSettingsPane({
               </p>
             </div>
           </div>
-          <div className="flex w-full sm:w-auto">
+          <div className="flex min-h-10 w-full items-center justify-end sm:min-h-11 sm:w-auto sm:min-w-24">
             {!isEditing && canEdit ? (
               <Button
                 type="button"
@@ -346,64 +346,69 @@ export default function PosProfileSettingsPane({
             ) : null}
           </div>
         </div>
-        <div className="rounded-2xl border border-[#DDE8F5] bg-white px-4 sm:px-5">
-          <div className={isEditing ? 'grid gap-3 py-4 sm:gap-4 sm:py-5 md:grid-cols-2' : ''}>
-            {PROFILE_FIELDS.map((field) => (
-              <ProfileField
-                key={field.key}
-                field={field}
-                value={profileForm?.[field.key]}
-                editing={isEditing}
-                onChange={updateField}
-                disabled={!canEdit || saving}
-              />
-            ))}
-          </div>
-          {isEditing && emailChanged ? (
-            <div className="mb-4 rounded-xl border border-[#DDE8F5] bg-[#F7FAFE] p-3.5 sm:p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div className="min-w-0">
-                  <Label htmlFor="pos-profile-email-otp" className="text-[12px] font-bold text-slate-700">
-                    Email verification code
-                  </Label>
-                  <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                    Verify the new email before saving this profile.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 shrink-0 gap-1.5 rounded-lg border-[#1A4E8D] px-3 text-[12px] font-bold text-[#1A4E8D] hover:bg-[#EEF5FF]"
-                  onClick={requestEmailOtp}
-                  disabled={!canEdit || saving || requestingEmailOtp || !emailIsValid}
-                >
-                  <Send className="h-3.5 w-3.5" aria-hidden="true" />
-                  {requestingEmailOtp ? 'Sending...' : emailOtpTarget && otpMatchesCurrentEmail ? 'Resend code' : 'Send code'}
-                </Button>
-              </div>
-              <div className="mt-3 relative flex items-center">
-                <Mail className="absolute left-3 h-4 w-4 text-slate-400" aria-hidden="true" />
-                <Input
-                  id="pos-profile-email-otp"
-                  className="h-9 rounded-xl border-slate-200 pl-10 text-[13px] font-medium tracking-[0.22em] text-[#0F172A] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
-                  value={emailOtpCode}
-                  onChange={(event) => setEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
+        <div className="overflow-hidden rounded-2xl border border-[#DDE8F5] bg-white px-4 transition-[border-color,box-shadow] duration-200 ease-out motion-reduce:transition-none sm:px-5">
+          <div
+            key={isEditing ? 'pos-profile-editing' : 'pos-profile-summary'}
+            className="pos-profile-edit-surface-enter"
+          >
+            <div className={isEditing ? 'grid gap-3 py-4 sm:gap-4 sm:py-5 md:grid-cols-2' : ''}>
+              {PROFILE_FIELDS.map((field) => (
+                <ProfileField
+                  key={field.key}
+                  field={field}
+                  value={profileForm?.[field.key]}
+                  editing={isEditing}
+                  onChange={updateField}
                   disabled={!canEdit || saving}
-                  aria-describedby="pos-profile-email-otp-status"
                 />
-              </div>
-              <p id="pos-profile-email-otp-status" className="mt-2 flex items-center gap-1 text-[12px] text-slate-500" aria-live="polite">
-                {emailOtpStatus === 'Verification code entered.' ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> : null}
-                {emailOtpStatus}
-              </p>
+              ))}
             </div>
-          ) : null}
+            {isEditing && emailChanged ? (
+              <div className="pos-profile-edit-actions-enter mb-4 rounded-xl border border-[#DDE8F5] bg-[#F7FAFE] p-3.5 sm:p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="min-w-0">
+                    <Label htmlFor="pos-profile-email-otp" className="text-[12px] font-bold text-slate-700">
+                      Email verification code
+                    </Label>
+                    <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                      Verify the new email before saving this profile.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 shrink-0 gap-1.5 rounded-lg border-[#1A4E8D] px-3 text-[12px] font-bold text-[#1A4E8D] hover:bg-[#EEF5FF]"
+                    onClick={requestEmailOtp}
+                    disabled={!canEdit || saving || requestingEmailOtp || !emailIsValid}
+                  >
+                    <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                    {requestingEmailOtp ? 'Sending...' : emailOtpTarget && otpMatchesCurrentEmail ? 'Resend code' : 'Send code'}
+                  </Button>
+                </div>
+                <div className="relative mt-3 flex items-center">
+                  <Mail className="absolute left-3 h-4 w-4 text-slate-400" aria-hidden="true" />
+                  <Input
+                    id="pos-profile-email-otp"
+                    className="h-9 rounded-xl border-slate-200 pl-10 text-[13px] font-medium tracking-[0.22em] text-[#0F172A] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
+                    value={emailOtpCode}
+                    onChange={(event) => setEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    disabled={!canEdit || saving}
+                    aria-describedby="pos-profile-email-otp-status"
+                  />
+                </div>
+                <p id="pos-profile-email-otp-status" className="mt-2 flex items-center gap-1 text-[12px] text-slate-500" aria-live="polite">
+                  {emailOtpStatus === 'Verification code entered.' ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> : null}
+                  {emailOtpStatus}
+                </p>
+              </div>
+            ) : null}
+          </div>
         </div>
         {isEditing ? (
-          <div className="mt-4 flex flex-row justify-end gap-2">
+          <div className="pos-profile-edit-actions-enter mt-4 flex flex-row justify-end gap-2">
             <Button
               type="button"
               variant="outline"
