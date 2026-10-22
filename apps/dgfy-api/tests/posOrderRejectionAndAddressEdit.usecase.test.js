@@ -36,6 +36,7 @@ const buildRepository = (seed = {}) => {
     return {
         order,
         addressChanges,
+        createAuditLog: jest.fn().mockResolvedValue({}),
         async findOperationReplayByKey({ operationKey, idempotencyKey }) {
             return replays.get(`${operationKey}:${idempotencyKey}`) || null;
         },
@@ -93,6 +94,40 @@ describe('confirmed -> rejected online order status (Phase 210, #1179)', () => {
         // The accepted_by/at pair records who accepted -- a later reject must not overwrite it.
         expect(repository.order.accepted_by).toBe(3);
         expect(repository.order.accepted_at).toEqual(new Date('2026-09-01T10:00:00Z'));
+        expect(repository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            user_id: 12,
+            entity_type: 'pos_transaction',
+            entity_id: 55,
+            location_id: 7,
+            reason: 'Outside our delivery route',
+            changes: expect.objectContaining({
+                event: 'online_order_status_changed',
+                from: 'confirmed',
+                to: 'rejected',
+                reason: 'Outside our delivery route'
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('audits confirmation once and does not audit a repeated status', async () => {
+        const repository = buildRepository({ fulfillment_status: 'placed' });
+        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository: repository });
+        const input = {
+            posTransactionId: 55,
+            payload: { fulfillment_status: 'confirmed' },
+            user: { user_id: 12 },
+            auditContext: { requestId: 'status-request-1' }
+        };
+        const first = await run(() => useCase(input));
+        expect(first.success).toBe(true);
+        expect(repository.createAuditLog).toHaveBeenCalledTimes(1);
+        expect(repository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            request_id: 'status-request-1',
+            changes: expect.objectContaining({ from: 'placed', to: 'confirmed' })
+        }), expect.any(Object));
+        const repeated = await run(() => useCase(input));
+        expect(repeated.success).toBe(true);
+        expect(repository.createAuditLog).toHaveBeenCalledTimes(1);
     });
 
     it('rejects a confirmed -> rejected without a reason with 422 (validator-level)', async () => {

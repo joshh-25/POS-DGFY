@@ -44,15 +44,49 @@ const runValidatedDeliveryRunUpdate = (body) => {
 };
 
 describe('Delivery run use cases (Phase 225)', () => {
-    it('creates a draft run with a resolved location scope', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
-        const resolveLocationScope = jest.fn(async () => ({ location_id: 7 }));
-        const useCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository, resolveLocationScope });
+    it('audits create, edit, cancel and un-cancel with actor, location, and request reference', async () => {
+        const { deliveryRunRepository, posRepository, state } = createDeliveryRunTestHarness();
+        const resolveLocationScope = createLocationScopeResolver({ 12: 7 });
+        const create = buildCreateDeliveryRunUseCase({ deliveryRunRepository, posRepository, resolveLocationScope });
+        const update = buildUpdateDeliveryRunUseCase({ deliveryRunRepository, posRepository, resolveLocationScope });
+        const auditContext = { requestId: 'delivery-run-request-1' };
+        const created = await runInTenantContext(() => create({
+            payload: { label: 'Aklan Route', location_id: 7 },
+            user: { user_id: 12 },
+            auditContext
+        }));
+        expect(created.success).toBe(true);
+        const runId = created.data.delivery_run_id;
+        for (const payload of [
+            { label: 'Aklan Route PM' },
+            { status: 'cancelled' },
+            { status: 'draft' }
+        ]) {
+            const result = await runInTenantContext(() => update({
+                deliveryRunId: runId, payload, user: { user_id: 12 }, auditContext
+            }));
+            expect(result.success).toBe(true);
+        }
+        expect(state.audit.map((row) => row.changes.event)).toEqual([
+            'delivery_run_created', 'delivery_run_updated',
+            'delivery_run_cancelled', 'delivery_run_uncancelled'
+        ]);
+        expect(state.audit[0]).toMatchObject({ user_id: 12, location_id: 7, request_id: 'delivery-run-request-1' });
+        expect(state.audit[1].changes).toMatchObject({
+            before: { label: 'Aklan Route' },
+            after: { label: 'Aklan Route PM' }
+        });
+    });
 
-        const result = await useCase({
+    it('creates a draft run with a resolved location scope', async () => {
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
+        const resolveLocationScope = jest.fn(async () => ({ location_id: 7 }));
+        const useCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository, posRepository, resolveLocationScope });
+
+        const result = await runInTenantContext(() => useCase({
             payload: { label: 'Morning Run', scheduled_date: '2026-09-02' },
             user: { user_id: 12 }
-        });
+        }));
 
         expect(result.success).toBe(true);
         expect(result.data).toMatchObject({
@@ -68,16 +102,17 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('creates and persists an optional transportation label', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const useCase = buildCreateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: jest.fn(async () => ({ location_id: 7 }))
         });
 
-        const result = await useCase({
+        const result = await runInTenantContext(() => useCase({
             payload: { label: 'Morning Run', transportation_label: 'Truck 1' },
             user: { user_id: 12 }
-        });
+        }));
 
         expect(result.success).toBe(true);
         expect(result.data.transportation_label).toBe('Truck 1');
@@ -87,14 +122,14 @@ describe('Delivery run use cases (Phase 225)', () => {
 
     // Phase 260 (#1489): date-range scheduling.
     it('creates a run with a valid scheduled_date/scheduled_date_end range', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const resolveLocationScope = jest.fn(async () => ({ location_id: 7 }));
-        const useCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository, resolveLocationScope });
+        const useCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository, posRepository, resolveLocationScope });
 
-        const result = await useCase({
+        const result = await runInTenantContext(() => useCase({
             payload: { label: 'Range Run', scheduled_date: '2026-09-10', scheduled_date_end: '2026-09-12' },
             user: { user_id: 12 }
-        });
+        }));
 
         expect(result.success).toBe(true);
         expect(result.data).toMatchObject({
@@ -104,9 +139,10 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('rejects run creation when the range exceeds the maximum span', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const useCase = buildCreateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: jest.fn(async () => ({ location_id: 7 }))
         });
 
@@ -123,9 +159,10 @@ describe('Delivery run use cases (Phase 225)', () => {
     // routed through the real validator middleware first -- see runValidatedDeliveryRunCreate's
     // own comment for why that distinction is the whole point of this test.
     it('rejects run creation when a real HTTP request carries a Date-object range exceeding the maximum span', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const useCase = buildCreateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: jest.fn(async () => ({ location_id: 7 }))
         });
 
@@ -144,9 +181,10 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('rejects run creation without an authenticated actor', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const useCase = buildCreateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: jest.fn(async () => ({ location_id: 7 }))
         });
 
@@ -174,7 +212,7 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('returns 404 for a missing run on get', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const useCase = buildGetDeliveryRunUseCase({
             deliveryRunRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
@@ -187,10 +225,11 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('updates label/notes/status but refuses once dispatched', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({ label: 'Run A', location_id: 7, created_by: 12 });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
         });
 
@@ -213,7 +252,7 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('sets, changes, and clears the optional transportation label without affecting run status behavior', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({
             label: 'Run A',
             location_id: 7,
@@ -222,6 +261,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
         });
 
@@ -246,7 +286,7 @@ describe('Delivery run use cases (Phase 225)', () => {
     // (existing row + this patch) -- a same-request Joi rule can't see a value that's only on the
     // existing row, so this has to be a use-case-level check.
     it('rejects a PATCH that sends scheduled_date_end alone, conflicting with the row\'s existing scheduled_date', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({
             label: 'Run A',
             location_id: 7,
@@ -255,6 +295,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
         });
 
@@ -269,7 +310,7 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('rejects a PATCH that sends scheduled_date alone, conflicting with the row\'s existing scheduled_date_end', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({
             label: 'Run A',
             location_id: 7,
@@ -279,6 +320,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
         });
 
@@ -293,7 +335,7 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('accepts a PATCH updating both scheduled_date and scheduled_date_end together', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({
             label: 'Run A',
             location_id: 7,
@@ -302,6 +344,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
         });
 
@@ -316,7 +359,7 @@ describe('Delivery run use cases (Phase 225)', () => {
     });
 
     it('rejects a PATCH whose merged effective range exceeds the maximum span', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({
             label: 'Run A',
             location_id: 7,
@@ -325,6 +368,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
         });
 
@@ -345,7 +389,7 @@ describe('Delivery run use cases (Phase 225)', () => {
     // Date/string pair broke calculateDeliveryRunSpanDays the same way the create-path regression
     // above does.
     it('rejects a PATCH whose merged effective range (real HTTP Date object + DB string) exceeds the maximum span', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const run = await deliveryRunRepository.createRun({
             label: 'Run A',
             location_id: 7,
@@ -354,6 +398,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: createLocationScopeResolver({ 12: 7 })
         });
 
@@ -432,7 +477,7 @@ describe('Delivery run location scoping (PR #1276 RF-1)', () => {
     const locationScopeResolver = () => createLocationScopeResolver({ 12: 7 });
 
     it('list excludes another location\'s runs even when requested by id', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const runB = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
         const useCase = buildListDeliveryRunsUseCase({
             deliveryRunRepository,
@@ -449,7 +494,7 @@ describe('Delivery run location scoping (PR #1276 RF-1)', () => {
     });
 
     it('get denies retrieval of a run belonging to another location', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const runB = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
         const useCase = buildGetDeliveryRunUseCase({
             deliveryRunRepository,
@@ -463,10 +508,11 @@ describe('Delivery run location scoping (PR #1276 RF-1)', () => {
     });
 
     it('update denies mutating a run belonging to another location', async () => {
-        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const { deliveryRunRepository, posRepository } = createDeliveryRunTestHarness();
         const runB = await deliveryRunRepository.createRun({ label: 'Run B', location_id: 8, created_by: 99 });
         const useCase = buildUpdateDeliveryRunUseCase({
             deliveryRunRepository,
+            posRepository,
             resolveLocationScope: locationScopeResolver()
         });
 

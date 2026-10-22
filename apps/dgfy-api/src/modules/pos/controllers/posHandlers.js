@@ -2245,7 +2245,12 @@ export const updateOnlineOrderStatus = async (req, res, next) => {
         const result = await updateOnlineOrderStatusUseCase({
             posTransactionId: req.validatedParams?.id || req.params.id,
             payload: req.validatedData || req.body,
-            user: req.user
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent'),
+                requestId: requestId(req, res)
+            }
         });
 
         return sendUseCaseResult(res, result, {
