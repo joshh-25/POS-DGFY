@@ -30151,7 +30151,7 @@ Append Hotel, Real Estate, Taxi, and Job chips to the Storefront discovery rail 
 
 ### Status
 
-`in_progress` — implementation and validation passed on `fix/hotfix-2715-discovery-category-chips`; merge and DEV verification remain pending. No merge or deployment has been performed.
+`completed` — implementation and validation were merged by PR #2723 to `main` at merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`. Outstanding deployment/provider checks remain listed below.
 
 ### Dependencies
 
@@ -30179,7 +30179,7 @@ The API's three focused suites pass (53 tests). The Storefront chip/filter/integ
 
 ### Completion date
 
-Not complete. Record after the PR merges and implementation validation passes.
+2026-10-23 — PR #2723, merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`.
 
 ### Post-merge verification
 
@@ -30204,7 +30204,7 @@ Add independent master-admin switches for each managed partner type and external
 
 ### Status
 
-`in_progress` — implementation and local validation are on `fix/hotfix-2715-discovery-category-chips` / PR #2723; merge and DEV verification remain pending. No merge or deployment has been performed.
+`completed` — implementation and validation were merged by PR #2723 to `main` at merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`. Outstanding deployment/provider checks remain listed below.
 
 ### Dependencies
 
@@ -30233,7 +30233,7 @@ API: 5 focused Jest suites / 70 tests passed, including peer-instance shared-sig
 
 ### Completion date
 
-Not complete. Record after the PR merges and implementation validation passes.
+2026-10-23 — PR #2723, merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`.
 
 ### Post-merge verification
 
@@ -30246,3 +30246,50 @@ Not complete. Record after the PR merges and implementation validation passes.
 ### Next phase number
 
 Phase 539. Depends on Phase 537, included on the same PR.
+
+## Phase 539 - SynqCore event-seed room ID mapping (#2715)
+
+### Initiative and release
+
+External discovery Saturday program / release candidate `2026-10-23-01`.
+
+### Objective and scope
+
+Keep one SynqCore map pin per property while selecting the lowest numeric `room_id` from the room-coordinate export as its external redirect reference. Preserve each property's existing DGFY slug, require the room export, and fail closed for unmatched properties instead of using `property_id` as a room URL. Use room coordinates only when property coordinates are missing. Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — implementation and DEV data correction are underway on `fix/hotfix-2715-synqcore-room-id`; the PR and DEV verification are pending.
+
+### Dependencies
+
+Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715) and Phase 536's external event seed foundation, which supplies the existing dry-run/apply path and stable public slug contract. No migration or provider API access is required.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), and [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md). Classification: `within-existing-boundary`; the change uses the current external reference and stable slug fields without schema changes.
+
+### Implementation targets
+
+`apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalEventSeedMapping.js`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`, `apps/dgfy-api/tests/externalEventSeedMapping.test.js`, API package version and lockfile, the external discovery feature doc, and release note `2026-10-23-01`.
+
+### Acceptance and validation evidence
+
+- [x] SynqCore extraction requires a property export and room-coordinate export, emits one property pin with its lowest room ID, and preserves the existing property slug.
+- [x] Missing room mappings are skipped; property IDs are never used as redirect references. Room coordinates supply missing property coordinates without exposing raw export fields.
+- [x] Focused API tests, actual-export extraction/schema validation, patch-version/compliance/architecture/docs gates, syntax, and changed-file marker scan pass.
+- [ ] After DEV deployment and seed apply, existing SynqCore `/e/{slug}` redirects resolve to their selected `/room/{room_id}` destination while pin visibility is preserved.
+
+### Evidence
+
+The two focused API suites passed 27 tests. Extraction from the supplied SynqCore exports produced 12 property pins and skipped one test property; the schema validator passed, the output used only the approved listing fields, and no supplied booking/host/account contact values appeared in the minimal seed. Home Square Valeria keeps slug `synqcore-100018` and maps to its lowest room ID, `100315`. The selected SynqCore URL returned HTTP 200; its rendered page has not been inspected. Architecture checks, strict docs/ADR lint, compliance checks, the staged patch-version gate, ESLint, `node --check`, and `git diff --check` passed. DEV deployment and seed verification remain outstanding.
+
+### Post-merge verification
+
+- [ ] deployment — deploy the PR branch to DEV, run the reviewed minimal SynqCore seed, and verify every visible SynqCore redirect uses the expected lowest room ID; owner: Pat; blocks #2715 closure.
+- [ ] provider — verify at least one selected room URL (including Home Square Valeria's `100315`) resolves on SynqCore; owner: Pat; blocks claiming provider-side destination availability.
+- [ ] operational — after the authorized main merge, open the required fresh-issue back-port PR to `develop` and finalize `production_commit` in the release record; owner: release; blocks hotfix reconciliation.
+
+### Next phase number
+
+Phase 540. No explicit dependency.
