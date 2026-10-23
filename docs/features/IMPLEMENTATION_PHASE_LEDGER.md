@@ -31281,7 +31281,7 @@ Phase 538. No explicit dependency.
 
 ### Initiative and release
 
-External discovery Saturday program / release candidate `2026-10-23-01`.
+External discovery Saturday program / production hotfix candidate `2026-10-23-02`.
 
 ### Objective and scope
 
@@ -31397,7 +31397,7 @@ Keep one SynqCore map pin per property while selecting the lowest numeric `room_
 
 ### Status
 
-`completed` — implementation and focused validation merged by PR #2730 to `main` at merge commit `62a4c00d08ff64fa15b072b277d5d15b69815760`; DEV deployment and provider verification remain open.
+`completed` — implementation and focused validation merged by PR #2730 to `main` at merge commit `62a4c00d08ff64fa15b072b277d5d15b69815760`; DEV and PROD deployment, seed application, and DGFY redirect verification are complete. Provider-side availability remains a separate open verification.
 
 ### Dependencies
 
@@ -31409,18 +31409,18 @@ Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715) and Phase 53
 
 ### Implementation targets
 
-`apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalEventSeedMapping.js`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`, `apps/dgfy-api/tests/externalEventSeedMapping.test.js`, API package version and lockfile, the external discovery feature doc, and release note `2026-10-23-01`.
+`apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalEventSeedMapping.js`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`, `apps/dgfy-api/tests/externalEventSeedMapping.test.js`, API package version and lockfile, the external discovery feature doc, and release note `2026-10-23-02`.
 
 ### Acceptance and validation evidence
 
 - [x] SynqCore extraction requires a property export and room-coordinate export, emits one property pin with its lowest room ID, and preserves the existing property slug.
 - [x] Missing room mappings are skipped; property IDs are never used as redirect references. Room coordinates supply missing property coordinates without exposing raw export fields.
 - [x] Focused API tests, actual-export extraction/schema validation, patch-version/compliance/architecture/docs gates, syntax, and changed-file marker scan pass.
-- [ ] After DEV deployment and seed apply, existing SynqCore `/e/{slug}` redirects resolve to their selected `/room/{room_id}` destination while pin visibility is preserved.
+- [x] After DEV and PROD seed applies, all 12 SynqCore `/e/{slug}` redirects resolve to their selected `/room/{room_id}` destination while pin visibility is preserved.
 
 ### Evidence
 
-The two focused API suites passed 27 tests. Extraction from the supplied SynqCore exports produced 12 property pins and skipped one test property; the schema validator passed, the output used only the approved listing fields, and no supplied booking/host/account contact values appeared in the minimal seed. Home Square Valeria keeps slug `synqcore-100018` and maps to its lowest room ID, `100315`. The selected SynqCore URL returned HTTP 200; its rendered page has not been inspected. Architecture checks, strict docs/ADR lint, compliance checks, the staged patch-version gate, ESLint, `node --check`, and `git diff --check` passed. DEV deployment and seed verification remain outstanding.
+The two focused API suites passed 27 tests. Extraction from the supplied SynqCore exports produced 12 property pins and skipped one test property; the schema validator passed, the output used only the approved listing fields, and no supplied booking/host/account contact values appeared in the minimal seed. Home Square Valeria keeps slug `synqcore-100018` and maps to its lowest room ID, `100315`. The API-only PROD deploy run #39939435837 succeeded at commit `62a4c00d08ff64fa15b072b277d5d15b69815760`; migration-runner reused the content-equivalent `1.34.2` image and frontend builds were skipped. Health poll #39940785872 passed. The PROD seed re-apply created 11 listings, updated one, and failed none; the final database comparison found all 12 expected mappings and preserved visibility. All 12 public redirect endpoints returned 302 to the matching SynqCore room URL. The selected provider page returned HTTP 200, but its rendered room availability has not been inspected. Architecture checks, strict docs/ADR lint, compliance checks, the staged patch-version gate, ESLint, `node --check`, and `git diff --check` passed in the implementation PR.
 
 ### Completion date
 
@@ -31428,9 +31428,9 @@ The two focused API suites passed 27 tests. Extraction from the supplied SynqCor
 
 ### Post-merge verification
 
-- [ ] deployment — deploy the PR branch to DEV, run the reviewed minimal SynqCore seed, and verify every visible SynqCore redirect uses the expected lowest room ID; owner: Pat; blocks #2715 closure.
+- [x] deployment — deploy to DEV and PROD, run the reviewed minimal SynqCore seed, and verify all 12 redirects use the expected lowest room ID; owner: Pat; complete.
 - [ ] provider — verify at least one selected room URL (including Home Square Valeria's `100315`) resolves on SynqCore; owner: Pat; blocks claiming provider-side destination availability.
-- [ ] operational — after the authorized main merge, open the required fresh-issue back-port PR to `develop` and finalize `production_commit` in the release record; owner: release; blocks hotfix reconciliation.
+- [x] operational — the fresh-issue back-port PR #2731 references #2728 and records production commits `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96` and `62a4c00d08ff64fa15b072b277d5d15b69815760`; owner: release; PR remains open for review and merge.
 
 ### Next phase number
 
