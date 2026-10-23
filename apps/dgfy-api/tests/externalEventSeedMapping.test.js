@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import { EVENT_SEED_SCHEMA, extractExternalEventSeed, validateExternalEventSeed } from '../src/modules/storefrontDiscovery/domain/externalEventSeedMapping.js';
 import { applyExternalEventSeed } from '../src/modules/storefrontDiscovery/usecases/externalEventSeedApply.js';
 
@@ -20,8 +20,12 @@ const proventus = (overrides = {}) => ({
   industry: 'Synthetic industry', businessType: 'Synthetic corporation', jobOpenings: 1,
   createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z', ...overrides
 });
-const extract = (s = [synqcore()], m = [[mapviu()]]) => extractExternalEventSeed({
-  synqcoreExport: { properties: s }, mapviuExports: m.map((rows) => [{ type: 'table', name: 'properties', data: rows }])
+const synqcoreRoomsFor = (properties) => properties.map((property, index) => ({
+  room_id: 4200 + index, property_id: property.id, room_lat: 11.1 + index, room_lng: 122.2 + index
+}));
+const extract = (s = [synqcore()], m = [[mapviu()]], rooms = synqcoreRoomsFor(s)) => extractExternalEventSeed({
+  synqcoreExport: { properties: s }, synqcoreRoomsExport: { rooms },
+  mapviuExports: m.map((rows) => [{ type: 'table', name: 'properties', data: rows }])
 });
 
 describe('external event seed allow-list', () => {
@@ -47,12 +51,47 @@ describe('external event seed allow-list', () => {
       mapviu({ id: '11111111-2222-4333-8444-555555555555', title: 'Test property' }),
       mapviu({ id: '11111111-2222-4333-8444-555555555556', title: 'person@example.invalid' })
     ];
-    const result = extract([synqcore({ lat: null }), synqcore({ id: 43, name: 'Test Stays' })], [rows]);
+    const properties = [synqcore({ lat: null }), synqcore({ id: 43, name: 'Test Stays' })];
+    const result = extract(properties, [rows], [
+      { room_id: 4200, property_id: 42, room_lat: null, room_lng: null },
+      { room_id: 4201, property_id: 43, room_lat: 10.1, room_lng: 123.1 }
+    ]);
     expect(result.listings).toHaveLength(0);
     expect(result.skipped.map((row) => row.reason)).toEqual([
       'no_coordinates', 'test_record', 'no_coordinates', 'hidden_location',
       'not_active', 'not_approved', 'client_only_scope', 'test_record', 'pii_in_title'
     ]);
+  });
+
+  it('uses the lowest room ID per property while preserving the property slug and pin coordinates', () => {
+    const result = extractExternalEventSeed({
+      synqcoreExport: { properties: [synqcore({ id: 100018, lat: null, lng: null })] },
+      synqcoreRoomsExport: { rooms: [
+        { property_id: 100018, room_id: 100319, room_lat: 10.7, room_lng: 122.56 },
+        { property_id: 100018, room_id: 100315, room_lat: 10.7, room_lng: 122.56 },
+        { property_id: 100018, room_id: 100316, room_lat: 10.7, room_lng: 122.56 }
+      ] }
+    });
+
+    expect(result.listings).toEqual([expect.objectContaining({
+      slug: 'synqcore-100018', external_reference_id: '100315',
+      latitude: 10.7, longitude: 122.56
+    })]);
+    expect(validateExternalEventSeed({
+      schema: EVENT_SEED_SCHEMA, generated_at: '2026-10-23T00:00:00Z', sources: [],
+      listings: result.listings, skipped: []
+    })).toBeDefined();
+  });
+
+  it('does not fall back to a property ID when its room mapping is missing', () => {
+    const result = extractExternalEventSeed({
+      synqcoreExport: { properties: [synqcore({ id: 100018 })] },
+      synqcoreRoomsExport: { rooms: [] }
+    });
+    expect(result.listings).toEqual([]);
+    expect(result.skipped).toEqual([{ provider: 'synqcore', reference: '100018', reason: 'missing_room_id' }]);
+    expect(() => extractExternalEventSeed({ synqcoreExport: { properties: [synqcore()] } }))
+      .toThrow('SynqCore room coordinates export is required');
   });
 
   it('validates minimal schema and performs no writes in dry-run mode', async () => {

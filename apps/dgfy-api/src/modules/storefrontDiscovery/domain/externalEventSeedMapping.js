@@ -17,6 +17,13 @@ const coordinates = (latitude, longitude) => {
 };
 const skip = (provider, reference, reason) => ({ provider, reference, reason });
 const first = (...values) => values.find((value) => String(value ?? '').trim()) || '';
+const numericId = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const number = Number(raw);
+  if (!Number.isSafeInteger(number) || number <= 0) return null;
+  return { value: String(number), number };
+};
 const mapviuRows = (data) => {
   if (Array.isArray(data)) return data.find((entry) => entry?.type === 'table' && entry.name === 'properties')?.data || [];
   return Array.isArray(data?.properties) ? data.properties : [];
@@ -27,12 +34,16 @@ const proventusRows = (data) => {
 };
 
 export const extractExternalEventSeed = (input = {}) => {
-  const { synqcoreExport = null, mapviuExports = [], proventusExports = [] } = input;
+  const { synqcoreExport = null, synqcoreRoomsExport = null, mapviuExports = [], proventusExports = [] } = input;
   const hasSynqcore = Object.prototype.hasOwnProperty.call(input, 'synqcoreExport');
+  const hasSynqcoreRooms = Object.prototype.hasOwnProperty.call(input, 'synqcoreRoomsExport');
   const hasMapviu = Object.prototype.hasOwnProperty.call(input, 'mapviuExports');
   const hasProventus = Object.prototype.hasOwnProperty.call(input, 'proventusExports');
 
   if (hasSynqcore && !Array.isArray(synqcoreExport?.properties)) throw new Error('SynqCore properties array is required');
+  if (hasSynqcore && !hasSynqcoreRooms) throw new Error('SynqCore room coordinates export is required');
+  if (hasSynqcoreRooms && !Array.isArray(synqcoreRoomsExport?.rooms)) throw new Error('SynqCore rooms array is required');
+  if (hasSynqcoreRooms && !hasSynqcore) throw new Error('SynqCore properties export is required');
   if (hasMapviu && (!Array.isArray(mapviuExports) || mapviuExports.length === 0)) {
     throw new Error('At least one MapViu export is required');
   }
@@ -43,20 +54,39 @@ export const extractExternalEventSeed = (input = {}) => {
   const listings = [];
   const skipped = [];
 
+  const synqcoreRoomsByProperty = new Map();
+  for (const room of (hasSynqcoreRooms ? synqcoreRoomsExport.rooms : [])) {
+    const propertyId = numericId(room?.property_id);
+    const roomId = numericId(room?.room_id);
+    if (!propertyId || !roomId) continue;
+    const current = synqcoreRoomsByProperty.get(propertyId.value);
+    if (!current || roomId.number < current.roomNumber) {
+      synqcoreRoomsByProperty.set(propertyId.value, {
+        roomId: roomId.value,
+        roomNumber: roomId.number,
+        point: coordinates(room?.room_lat, room?.room_lng)
+      });
+    }
+  }
+
   for (const row of (hasSynqcore ? synqcoreExport.properties : [])) {
-    const reference = String(row?.id ?? '').trim();
+    const propertyId = numericId(row?.id);
+    const slugId = propertyId?.value || String(row?.id ?? '').trim();
+    const room = propertyId ? synqcoreRoomsByProperty.get(propertyId.value) : null;
+    const reference = room?.roomId || '';
     const title = cleanText(row?.name, 255);
-    const point = coordinates(row?.lat, row?.lng);
+    const point = coordinates(row?.lat, row?.lng) || room?.point;
     const reason = /\btest\b/i.test(title) ? 'test_record'
-      : !/^\d+$/.test(reference) || !title ? 'invalid_reference'
+      : !propertyId || !title ? 'invalid_reference'
+        : !room ? 'missing_room_id'
         : containsContact(title) ? 'pii_in_title'
           : !point ? 'no_coordinates' : '';
     if (reason) {
-      skipped.push(skip('synqcore', reference, reason));
+      skipped.push(skip('synqcore', reference || propertyId?.value || String(row?.id ?? '').trim(), reason));
       continue;
     }
     listings.push({
-      slug: `synqcore-${reference}`, external_provider: 'synqcore', external_reference_id: reference,
+      slug: `synqcore-${slugId}`, external_provider: 'synqcore', external_reference_id: reference,
       title, ...point, address_line: safeText(first(row.formatted_address, row.address), 255), description: ''
     });
   }
@@ -131,16 +161,27 @@ export const validateExternalEventSeed = (seed) => {
     throw new Error('Unexpected external event seed fields');
   }
   const seen = new Set();
+  const seenProviderReferences = new Set();
   for (const listing of seed.listings) {
     if (Object.keys(listing).sort().join() !== [...listingKeys].sort().join()) throw new Error('Unexpected listing fields');
-    if (!['synqcore', 'mapviu', 'proventus'].includes(listing.external_provider)
-      || listing.slug !== `${listing.external_provider}-${String(listing.external_reference_id).toLowerCase()}`
+    const provider = listing.external_provider;
+    const reference = String(listing.external_reference_id).toLowerCase();
+    const identityIsValid = provider === 'synqcore'
+      ? /^synqcore-\d+$/.test(listing.slug) && /^\d+$/.test(reference)
+      : ['mapviu', 'proventus'].includes(provider)
+        && listing.slug === `${provider}-${reference}`;
+    const providerReference = `${provider}:${reference}`;
+    if (!['synqcore', 'mapviu', 'proventus'].includes(provider)
+      || !identityIsValid
       || !coordinates(listing.latitude, listing.longitude)
       || !listing.title || listing.title.length > 255
       || String(listing.address_line).length > 255 || String(listing.description).length > 120
       || [listing.title, listing.address_line, listing.description].some(containsContact)
-      || seen.has(listing.slug)) throw new Error(`Invalid listing ${listing.slug || ''}`);
+      || seen.has(listing.slug) || seenProviderReferences.has(providerReference)) {
+      throw new Error(`Invalid listing ${listing.slug || ''}`);
+    }
     seen.add(listing.slug);
+    seenProviderReferences.add(providerReference);
   }
   return seed;
 };

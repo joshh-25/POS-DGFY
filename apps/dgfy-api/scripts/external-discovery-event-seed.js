@@ -10,10 +10,10 @@ const parseArgs = (argv) => {
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
     if (flag === '--apply') { options.apply = true; continue; }
-    if (!['--synqcore', '--mapviu', '--proventus', '--out', '--file'].includes(flag) || !rest[i + 1]) {
+    if (!['--synqcore', '--synqcore-rooms', '--mapviu', '--proventus', '--out', '--file'].includes(flag) || !rest[i + 1]) {
       throw new Error(`Unknown or incomplete argument: ${flag}`);
     }
-    const key = flag.slice(2);
+    const key = flag.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
     if (key === 'mapviu') options.mapviu.push(rest[++i]);
     else {
       if (key === 'proventus' && options.proventus) throw new Error('--proventus may be provided only once');
@@ -27,7 +27,7 @@ const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));
 
 const main = async () => {
   const { command, options } = parseArgs(process.argv.slice(2));
-  const hasExtractSource = Boolean(options.synqcore || options.mapviu.length || options.proventus);
+  const hasExtractSource = Boolean(options.synqcore || options.synqcoreRooms || options.mapviu.length || options.proventus);
   if (command === 'extract' && hasExtractSource && options.out && !options.apply && !options.file) {
     const extractionInput = {};
     const sources = [];
@@ -35,6 +35,11 @@ const main = async () => {
       const synqcoreExport = await readJson(options.synqcore);
       extractionInput.synqcoreExport = synqcoreExport;
       sources.push({ provider: 'synqcore', file: basename(options.synqcore), exported_at: synqcoreExport.metadata?.exported_at_utc || null });
+    }
+    if (options.synqcoreRooms) {
+      const synqcoreRoomsExport = await readJson(options.synqcoreRooms);
+      extractionInput.synqcoreRoomsExport = synqcoreRoomsExport;
+      sources.push({ provider: 'synqcore', file: basename(options.synqcoreRooms), exported_at: synqcoreRoomsExport.metadata?.exported_at_utc || null });
     }
     if (options.mapviu.length) {
       extractionInput.mapviuExports = await Promise.all(options.mapviu.map(readJson));
@@ -57,7 +62,7 @@ const main = async () => {
     return;
   }
   if (command === 'apply' && options.file && !options.synqcore && !options.mapviu.length
-    && !options.proventus && !options.out) {
+    && !options.synqcoreRooms && !options.proventus && !options.out) {
     const { default: dotenv } = await import('dotenv');
     dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '..', '.env') });
     const { externalRedirectRepository } = await import('../src/modules/storefrontDiscovery/repositories/externalRedirectRepository.js');
@@ -71,7 +76,7 @@ const main = async () => {
     }
     return;
   }
-  throw new Error('Usage: extract [--synqcore <json>] [--mapviu <json> ...] [--proventus <json>] --out <file> | apply --file <minimal.json> [--apply]');
+  throw new Error('Usage: extract --synqcore <properties.json> --synqcore-rooms <rooms.json> [--mapviu <json> ...] [--proventus <json>] --out <file> | apply --file <minimal.json> [--apply]');
 };
 
 main().catch((error) => {
