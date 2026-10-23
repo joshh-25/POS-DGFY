@@ -30138,3 +30138,56 @@ Phase 533. No explicit dependency.
 ### Next phase number
 
 Phase 537. No explicit dependency.
+
+## Phase 537 - Provider-derived external discovery category chips (#2715)
+
+### Initiative and release
+
+External discovery Saturday program / release candidate `2026-10-23-01`.
+
+### Objective and scope
+
+Append Hotel, Real Estate, Taxi, and Job chips to the Storefront discovery rail and derive the matching `storefront_categories` value for managed external listing rows with known providers when no explicit category is stored. Preserve existing chips, native rows, explicit categories, provider write paths, Admin behavior, and schema. Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — implementation and validation are on `fix/hotfix-2715-discovery-category-chips`; the PR and DEV verification are pending. No merge or deployment has been performed.
+
+### Dependencies
+
+Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715). No explicit dependency on an earlier phase; Phase 536's external preview and event-seed scope is already merged.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), and the [API specification](../api/specification.md).
+
+### Implementation targets
+
+`apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalRedirectPolicy.js`, `apps/dgfy-api/src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js`, `apps/dgfy-storefront/src/discovery/components/DiscoveryCategoryStage.jsx`, API and Storefront focused tests, app package versions and lockfiles, and release note `2026-10-23-01`.
+
+### Acceptance and validation evidence
+
+- [ ] Each known provider derives its matching category only for external rows with no explicit categories; native, unknown-provider, and explicitly categorized rows remain unchanged.
+- [ ] API discovery search returns the SynqCore row for `Hotel` and the MapViu row for `Real Estate`; the Storefront filter selects only each matching provider's rows.
+- [ ] Existing twelve chips remain unchanged and the final four are Hotel, Real Estate, Taxi, and Job in that order; chip colors match external pin colors.
+- [ ] The desktop More interaction submits `search=Hotel` and updates the search input; the focused tests, app builds, and repository governance gates pass.
+- [ ] API and Storefront patch versions and release note are updated; the API/migration-runner production build-skip preflight passes for the exact candidate revision.
+
+### Evidence
+
+Focused API and Storefront tests pass. Complete focused suites, builds, governance checks, exact candidate preflight, diff-scope output, and PR evidence will be recorded before opening the PR. No browser session against DEV or production has been performed.
+
+### Completion date
+
+Not complete. Record after the PR merges and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — Pat deploys the merged change to DEV and verifies the four-chip order, Hotel/SynqCore results, Real Estate/MapViu results, and empty Taxi/Job states; owner: Pat; blocks #2715 closure.
+- [ ] deployment — after the separately authorized PROD deployment, verify Storefront 1.41.2 and the API/migration-runner pair on the merged SHA; owner: release/Verifier; blocks the production portion of #2715 acceptance.
+- [ ] provider — confirm Job and Taxi remain empty until valid Proventus/Eytitu listings are configured; owner: product/provider; blocks any claim that those pins exist.
+- [ ] operational — file a fresh issue and back-port the main hotfix to `develop`, then finalize `production_commit` on that back-port branch as required by the hotfix policy; owner: release; blocks hotfix reconciliation.
+
+### Next phase number
+
+Phase 538. No explicit dependency.

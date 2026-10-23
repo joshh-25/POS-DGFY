@@ -25,6 +25,10 @@ The Admin page can add or update a pin by stable slug, partner ID, title, real c
 
 Partner pins use category-specific colors and icons: Proventus blue briefcase, Eytitu amber taxi, Mapviu pink house, and Synqcore magenta hotel. Selecting a map pin opens an external preview and highlights the pin without navigating. The preview's one action uses **View Job**, **Book This Taxi**, **Inquire**, or **Book Stay**, respectively. The action opens the public `storefront_url`, which is `/e/{slug}` for Admin-managed rows. Available address, short description, distance, and approved HTTPS image appear only when supplied; no unavailable field is fabricated. Native pins retain their existing selection and navigation behavior.
 
+## Category chips
+
+Storefront appends **Hotel**, **Real Estate**, **Taxi**, and **Job** after the existing category chips. Desktop users reach them with **More**; mobile users scroll to the end of the chip rail. Managed external discovery rows derive `storefront_categories` from their known provider when no explicit categories are stored: SynqCore → Hotel, MapViu → Real Estate, Eytitu → Taxi, and Proventus → Job. Explicit categories and native storefront rows are unchanged, and the existing search and client category filters use the derived value. The event seed contains SynqCore and MapViu records only, so Job and Taxi return no pins until Proventus or Eytitu records are manually configured in Admin.
+
 ### Source fields needed by later import, not stored today
 
 Employer, vehicle/taxi ID, driver/provider name, ETA, availability, listing image with approved host, and price are not approved public fields in the managed external record. A later #2629 source contract must approve and supply them before a preview may show them. They are not a dependency for the current sparse preview.
