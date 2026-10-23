@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const applicationUploadMigration = require('../../dgfy-migration-runner/migrations/20261001000001-create-company-registration-uploads.cjs');
 const draftUploadExtensionMigration = require('../../dgfy-migration-runner/migrations/20261008000001-extend-company-registration-uploads-for-drafts.cjs');
-const applicationIdNullableMigration = require('../../dgfy-migration-runner/migrations/20261023000001-make-company-registration-upload-application-id-nullable.cjs');
+const applicationIdNullableMigration = require('../../dgfy-migration-runner/migrations/20261023000002-make-company-registration-upload-application-id-nullable.cjs');
 
 const Sequelize = {
   UUID: 'UUID',

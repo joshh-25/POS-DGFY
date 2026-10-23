@@ -6,7 +6,7 @@ import { runMigrationsForDb } from './helpers/migratedTestDatabase.js';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const applicationIdNullableMigration = require('../../dgfy-migration-runner/migrations/20261023000001-make-company-registration-upload-application-id-nullable.cjs');
+const applicationIdNullableMigration = require('../../dgfy-migration-runner/migrations/20261023000002-make-company-registration-upload-application-id-nullable.cjs');
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
