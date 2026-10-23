@@ -1,9 +1,11 @@
 import { jest } from '@jest/globals';
 import {
   normalizeRedirectTemplate,
-  resolveExternalRedirectUrl
+  resolveExternalRedirectUrl,
+  resolveExternalListingCategories
 } from '../src/modules/storefrontDiscovery/domain/externalRedirectPolicy.js';
 import {
+  buildListExternalAdminUseCase,
   buildResolveExternalRedirectUseCase,
   buildSaveExternalListingUseCase
 } from '../src/modules/storefrontDiscovery/usecases/externalRedirectUseCases.js';
@@ -15,6 +17,37 @@ import {
 } from '../src/modules/storefrontDiscovery/usecases/storefrontDiscoveryUseCases.js';
 
 describe('external destination policy', () => {
+  it.each([
+    ['proventus', 'Job'],
+    ['eytitu', 'Taxi'],
+    ['mapviu', 'Real Estate'],
+    ['synqcore', 'Hotel']
+  ])('derives the %s external listing category', (externalProvider, category) => {
+    expect(resolveExternalListingCategories({
+      entityType: 'external_listing',
+      externalProvider,
+      categories: []
+    })).toEqual([category]);
+  });
+
+  it('preserves explicit categories and leaves native or unknown-provider rows unchanged', () => {
+    expect(resolveExternalListingCategories({
+      entityType: 'external_listing',
+      externalProvider: 'synqcore',
+      categories: ['Boutique Stay']
+    })).toEqual(['Boutique Stay']);
+    expect(resolveExternalListingCategories({
+      entityType: 'dgfy_native',
+      externalProvider: 'synqcore',
+      categories: []
+    })).toEqual([]);
+    expect(resolveExternalListingCategories({
+      entityType: 'external_listing',
+      externalProvider: 'unknown',
+      categories: []
+    })).toEqual([]);
+  });
+
   it('requires a public HTTPS template with one partner ID slot', () => {
     expect(normalizeRedirectTemplate('https://mapviu.ph/inquire?id={id}')).toEqual({
       url_template: 'https://mapviu.ph/inquire?id={id}', allowed_hostname: 'mapviu.ph'
@@ -82,6 +115,25 @@ describe('external listing redirect', () => {
     })) };
     const listed = await buildListStorefrontDiscoveryUseCase({ storefrontDiscoveryRepository })();
     expect(listed.data.stores[0].storefront_url).toBe('https://synqcore.ph/old/123');
+  });
+
+  it('keeps provider category metadata out of the Admin sites response', async () => {
+    const listAdmin = buildListExternalAdminUseCase({
+      repository: {
+        listSites: jest.fn(async () => []),
+        listListings: jest.fn(async () => [])
+      }
+    });
+
+    const result = await listAdmin();
+
+    expect(result.data.sites[0]).toEqual({
+      site_key: 'proventus',
+      display_name: 'Proventus',
+      url_template: '',
+      enabled: false
+    });
+    expect(result.data.sites[0]).not.toHaveProperty('category');
   });
 
   it('rejects missing coordinates and duplicate partner records', async () => {

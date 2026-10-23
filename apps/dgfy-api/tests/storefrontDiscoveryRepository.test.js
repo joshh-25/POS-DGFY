@@ -74,8 +74,10 @@ const loadRepository = async () => {
 };
 
 const makeEntry = (overrides = {}) => ({
-  tenant_id: overrides.tenant_id || 'tenant-1',
+  tenant_id: Object.prototype.hasOwnProperty.call(overrides, 'tenant_id') ? overrides.tenant_id : 'tenant-1',
   tenant_name: overrides.tenant_name || 'Alpha Foods',
+  entity_type: overrides.entity_type || 'dgfy_native',
+  external_provider: overrides.external_provider || null,
   slug: overrides.slug || 'alpha-foods',
   storefront_open: overrides.storefront_open !== false,
   location_id: Object.prototype.hasOwnProperty.call(overrides, 'location_id') ? overrides.location_id : 11,
@@ -786,6 +788,52 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].tenant_id).toBe('tenant-seafood');
     expect(result.rows[0].match_reasons).toEqual(expect.arrayContaining(['store']));
+  });
+
+  it('searches SynqCore external listings by their derived Hotel category', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: null,
+        entity_type: 'external_listing',
+        external_provider: 'synqcore',
+        tenant_name: 'HuboMoto',
+        slug: 'hubomoto',
+        storefront_categories: []
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ search: 'Hotel', limit: 100 });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      entity_type: 'external_listing',
+      external_provider: 'synqcore',
+      storefront_categories: ['Hotel']
+    }));
+  });
+
+  it('searches MapViu external listings by their derived Real Estate category', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: null,
+        entity_type: 'external_listing',
+        external_provider: 'mapviu',
+        tenant_name: 'MapViu Listing',
+        slug: 'mapviu-listing',
+        storefront_categories: []
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ search: 'Real Estate', limit: 100 });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      entity_type: 'external_listing',
+      external_provider: 'mapviu',
+      storefront_categories: ['Real Estate']
+    }));
   });
 
   it('matches a storefront_categories tag via a cuisine synonym (e.g. "shrimp" finds a "Seafood"-tagged store)', async () => {

@@ -21,6 +21,7 @@ import {
 } from '../../shared/utils/storefrontBusinessHours.js';
 import { publicSearchTextMatches } from '../../shared/utils/publicSearchAliasPolicy.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import { resolveExternalListingCategories } from '../domain/externalRedirectPolicy.js';
 import {
     buildAccessCapabilities,
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -624,6 +625,7 @@ const toPlainEntry = (row) => {
         tenantId: plain.tenant_id,
         assetType: 'profile'
     });
+    const storefrontCategories = normalizeStringList(plain.storefront_categories, 12, 60);
     return {
     tenant_id: plain.tenant_id,
     tenant_name: plain.tenant_name,
@@ -688,7 +690,11 @@ const toPlainEntry = (row) => {
     // already shapes each entry into the exact fields the storefront needs before it's stored.
     storefront_vouchers: parseJsonArray(plain.storefront_vouchers),
     storefront_ui_v2_enabled: parseBoolean(plain.storefront_ui_v2_enabled, false),
-    storefront_categories: normalizeStringList(plain.storefront_categories, 12, 60),
+    storefront_categories: resolveExternalListingCategories({
+        entityType: plain.entity_type || 'dgfy_native',
+        externalProvider: plain.external_provider,
+        categories: storefrontCategories
+    }),
     storefront_gallery_images: normalizeStorefrontGalleryImages(plain.storefront_gallery_images),
     storefront_delivery_partners: normalizeStorefrontDeliveryPartners(plain.storefront_delivery_partners),
     storefront_follow_enabled: parseBoolean(plain.storefront_follow_enabled, false),
