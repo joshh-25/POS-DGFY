@@ -34,7 +34,9 @@ export const AUDIT_ARCHIVE_EXCLUDE_PATHS = Object.freeze([
   ':(exclude)**/.env',
   ':(exclude)**/.env.*',
   ':(exclude)**/CREDENTIALS.md',
+  ':(exclude)**/*Credentials*',
   ':(exclude)**/*credentials*',
+  ':(exclude)**/*Secrets*',
   ':(exclude)**/*secret*',
   ':(exclude)**/*token*.json',
   ':(exclude)**/private-uploads/**',
@@ -44,7 +46,8 @@ export const AUDIT_ARCHIVE_EXCLUDE_PATHS = Object.freeze([
   ':(exclude)**/dist/**',
   ':(exclude)**/node_modules/**',
   ':(exclude)**/*.pem',
-  ':(exclude)**/*.key'
+  ':(exclude)**/*.key',
+  ':(exclude)**/*Token*.json'
 ]);
 
 const parseArgs = (argv) => {
