@@ -30121,17 +30121,17 @@ Phase 533. No explicit dependency.
 ## Phase 536 - Selective main release of external discovery previews and event seed
 
 - **Initiative / release:** External discovery Saturday program / hotfix candidate 2026-10-23-01.
-- **Objective / scope:** Add category-specific external pin previews and a PII-safe, dry-run-first event seed tool on a narrow branch from `main`, including the Phase 532 redirect foundation. Exclude unrelated `develop` work and live provider integration.
+- **Objective / scope:** Add category-specific external pin previews and a PII-safe, dry-run-first event seed tool for SynqCore, MapViu, and Proventus employer exports on a narrow branch from `main`, including the Phase 532 redirect foundation. Exclude unrelated `develop` work and live provider integration.
 - **Status:** in_progress.
 - **Dependencies:** None explicit. Phase 532 is included in this same release; real partner URL templates are required before publishing its pins.
-- **Acceptance and validation evidence:** #2704 and #2715; focused API, Admin, Storefront, migration, architecture, compliance, version, and diff-scope evidence in the implementing PR. A local extract reports mappable and skipped rows without committing source data.
-- **Contracts / ADR / implementation:** [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), `apps/dgfy-storefront/src/discovery`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`.
+- **Acceptance and validation evidence:** #2704 and #2715; focused API, Admin, Storefront, migration, architecture, compliance, version, and diff-scope evidence in the implementing PR. Local extracts report mappable and skipped rows without committing source data. The Proventus follow-up adds `--proventus` with an eight-field allow-list; the supplied company export extracts six listings and skips two for `no_coordinates`.
+- **Contracts / ADR / implementation:** [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), `apps/dgfy-storefront/src/discovery`, `apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalEventSeedMapping.js`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`.
 
 ### Post-merge verification
 
 - [ ] Pat merges only with clean merge state and terminal checks, then dispatches the production deployment with tenant-schema and runner preflight gates.
-- [ ] Configure real Mapviu and Synqcore HTTPS `{id}` templates in Admin; dry-run and apply only the minimal seed file.
-- [ ] Verify desktop and mobile external pins, previews, one `/e/{slug}` 302 per action, and disabled-site failure behavior.
+- [ ] Configure operator-confirmed Mapviu, Synqcore, and Proventus HTTPS `{id}` templates in Admin. Review Proventus addresses for possible sole-proprietor personal addresses, then dry-run and apply only the reviewed minimal seed in DEV before any separately authorized production load.
+- [ ] Verify desktop and mobile external pins, previews, one `/e/{slug}` 302 per action, disabled-site failure behavior, and six Proventus employer pins under Job (including the known stacked coordinates and the listing outside the Iloilo view).
 - [ ] After the program, clear temporary event pins and confirm manual records remain.
 - [ ] File and complete a fresh `develop` back-port issue and finalize the release note's production commit.
 
@@ -30185,7 +30185,7 @@ Not complete. Record after the PR merges and implementation validation passes.
 
 - [ ] deployment — Pat deploys the merged change to DEV and verifies the four-chip order, Hotel/SynqCore results, Real Estate/MapViu results, and empty Taxi/Job states; owner: Pat; blocks #2715 closure.
 - [ ] deployment — after the separately authorized PROD deployment, verify Storefront 1.41.2 and the API/migration-runner pair on the merged SHA; owner: release/Verifier; blocks the production portion of #2715 acceptance.
-- [ ] provider — confirm Job and Taxi remain empty until valid Proventus/Eytitu listings are configured; owner: product/provider; blocks any claim that those pins exist.
+- [ ] provider — after Pat reviews and applies the Phase 536 Proventus event seed and enables its destination, verify six employer pins under Job; confirm Taxi remains empty until valid Eytitu listings are configured; owner: product/provider; blocks any claim that unconfigured partner pins are available.
 - [ ] operational — file a fresh issue and back-port the main hotfix to `develop`, then finalize `production_commit` on that back-port branch as required by the hotfix policy; owner: release; blocks hotfix reconciliation.
 
 ### Next phase number
