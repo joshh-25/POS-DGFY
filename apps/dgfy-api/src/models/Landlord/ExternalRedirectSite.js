@@ -8,6 +8,7 @@ export default (sequelize) => {
     url_template: { type: DataTypes.STRING(1000), allowNull: false },
     allowed_hostname: { type: DataTypes.STRING(253), allowNull: false },
     enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    show_on_map: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     updated_by_admin_id: { type: DataTypes.UUID, allowNull: true }
   }, {
     sequelize,

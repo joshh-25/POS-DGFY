@@ -19,21 +19,23 @@ export default function ExternalDiscoveryManager() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ preserveSiteDrafts = false } = {}) => {
     const result = await adminService.getExternalDiscovery();
     setData(result || { sites: [], listings: [] });
-    setSiteDrafts(Object.fromEntries((result?.sites || []).map((site) => [site.site_key, {
-      url_template: site.url_template || '', enabled: site.enabled === true
-    }])));
+    if (!preserveSiteDrafts) {
+      setSiteDrafts(Object.fromEntries((result?.sites || []).map((site) => [site.site_key, {
+        url_template: site.url_template || '', enabled: site.enabled === true
+      }])));
+    }
   }, []);
 
   useEffect(() => { refresh().catch((reason) => setError(errorText(reason))); }, [refresh]);
 
-  const run = async (action, successMessage) => {
+  const run = async (action, successMessage, refreshOptions) => {
     setBusy(true); setError(''); setMessage('');
     try {
       await action();
-      await refresh();
+      await refresh(refreshOptions);
       setMessage(successMessage);
     } catch (reason) { setError(errorText(reason)); }
     finally { setBusy(false); }
@@ -42,6 +44,18 @@ export default function ExternalDiscoveryManager() {
   const saveSite = (siteKey) => run(
     () => adminService.saveExternalRedirectSite(siteKey, siteDrafts[siteKey]),
     `${siteKey} destination saved.`
+  );
+
+  const setSiteVisibility = (siteKey, showOnMap) => run(
+    () => adminService.setExternalSiteVisibility(siteKey, showOnMap),
+    `${siteKey} map visibility updated.`,
+    { preserveSiteDrafts: true }
+  );
+
+  const setPinVisibility = (row, isVisible) => run(
+    () => adminService.setExternalListingVisibility(row.slug, isVisible),
+    `${row.title} is now ${isVisible ? 'visible' : 'hidden'}.`,
+    { preserveSiteDrafts: true }
   );
 
   const saveListing = (event) => {
@@ -78,14 +92,31 @@ export default function ExternalDiscoveryManager() {
       <section className="grid gap-4 md:grid-cols-2" aria-label="Partner destinations">
         {data.sites.map((site) => {
           const draft = siteDrafts[site.site_key] || { url_template: '', enabled: false };
+          const destinationConfigured = Boolean(site.url_template);
+          const visibilityHintId = `visibility-hint-${site.site_key}`;
           return (
             <div key={site.site_key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-slate-900">{site.display_name}</h2>
+                <h2 className="text-lg font-semibold text-slate-900">{site.display_name} · {site.type_label}</h2>
                 <span className={`rounded-full px-2 py-1 text-xs font-semibold ${draft.enabled ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
                   {draft.enabled ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
+              <p className="mt-2 text-xs text-slate-600">{site.visible_pin_count} of {site.pin_count} pins visible</p>
+              <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label={`Show ${site.display_name} on discovery map`}
+                  aria-describedby={!destinationConfigured ? visibilityHintId : undefined}
+                  checked={site.show_on_map !== false}
+                  disabled={busy || !destinationConfigured}
+                  onChange={(event) => setSiteVisibility(site.site_key, event.target.checked)}
+                />
+                Show on discovery map
+              </label>
+              {!destinationConfigured && <p id={visibilityHintId} className="mt-1 text-xs text-slate-500">Save a destination first.</p>}
+              {site.show_on_map === false && <p className="mt-1 text-xs text-slate-500">Hidden on the map; its /e/ links are unavailable.</p>}
               <label className="mt-3 block text-sm font-medium text-slate-700" htmlFor={`template-${site.site_key}`}>HTTPS destination template</label>
               <input id={`template-${site.site_key}`} className={`${fieldClass} mt-1`} value={draft.url_template} placeholder="https://partner.example/item?id={id}" onChange={(event) => setSiteDrafts((current) => ({ ...current, [site.site_key]: { ...draft, url_template: event.target.value } }))} />
               <p className="mt-1 text-xs text-slate-500">Use exactly one {'{id}'} placeholder. Only a public HTTPS host is accepted.</p>
@@ -132,12 +163,41 @@ export default function ExternalDiscoveryManager() {
         <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold text-slate-900">Pins ({data.listings.length})</h2><button type="button" disabled={busy || !data.listings.some((row) => row.external_record_origin === 'event_seed')} onClick={clearTemporary} className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50">Clear temporary event pins</button></div>
         {data.listings.length === 0 && <p className="mt-3 text-sm text-slate-500">No external pins yet. You can configure destinations before the JSON arrives.</p>}
         <div className="mt-3 space-y-2">
-          {data.listings.map((row) => (
-            <div key={row.slug} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
-              <div><strong className="text-sm text-slate-900">{row.title}</strong><p className="text-xs text-slate-500">{row.external_provider} · {row.external_reference_id} · {row.external_record_origin} · {row.is_visible ? 'Visible' : 'Hidden'}</p><code className="text-xs text-slate-600">/e/{row.slug}</code></div>
-              <div className="flex gap-2"><button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={() => setListing({ ...emptyListing, ...row })}>Edit</button><button type="button" className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700" onClick={() => removeListing(row.slug)}>Remove</button></div>
-            </div>
-          ))}
+          {data.listings.map((row) => {
+            const typeHidden = row.is_visible === true
+              && data.sites.some((site) => site.site_key === row.external_provider && site.show_on_map === false);
+            return (
+              <div key={row.slug} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                <div>
+                  <strong className="text-sm text-slate-900">{row.title}</strong>
+                  <p className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>{row.external_provider} · {row.external_reference_id} · {row.external_record_origin}</span>
+                    <span className={`rounded-full px-2 py-0.5 font-semibold ${row.is_visible ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
+                      {row.is_visible ? 'Visible' : 'Hidden'}
+                    </span>
+                    {typeHidden && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">Hidden by type</span>}
+                  </p>
+                  <code className="text-xs text-slate-600">/e/{row.slug}</code>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    aria-label={`Edit ${row.title}`}
+                    onClick={() => setListing({ ...emptyListing, ...row })}
+                  >Edit</button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    aria-label={`${row.is_visible ? 'Hide' : 'Show'} ${row.title}`}
+                    disabled={busy}
+                    onClick={() => setPinVisibility(row, !row.is_visible)}
+                  >{row.is_visible ? 'Hide' : 'Show'}</button>
+                  <button type="button" className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700" onClick={() => removeListing(row.slug)}>Remove</button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
     </main>

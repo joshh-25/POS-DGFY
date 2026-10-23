@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { Info, MapPin, Navigation } from 'lucide-react';
 
 import { DiscoveryMapCard } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
-import { openStorefrontActionLink, sanitizeExternalLink } from '../../shared/utils/externalLinks.js';
+import { openStorefrontActionLink } from '../../shared/utils/externalLinks.js';
+import { isExternalListing, resolveExternalActionHref } from '../model/externalListingActions.js';
 import { StoresMap } from './StoresMapLazy.jsx';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
@@ -54,7 +55,21 @@ export function DiscoveryHeroMapStage({
           openPopupOnHover
           onSelectCluster={handleDiscoveryClusterSelect}
           onCanvasContainerReady={setCanvasContainerEl}
+          onPreviewOpen={(pin) => {
+            if (!isExternalListing(pin)) return;
+            setHasDiscoveryExplorationStarted(true);
+            setHighlightedStoreSlug(pin.slug);
+            trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_MAP_PIN_CLICKED, {
+              store_slug: pin.slug,
+              entity_type: pin.entity_type,
+              business_mode: pin.workflow_mode || pin.business_mode
+            });
+          }}
           onSelectStore={(pin) => {
+            if (isExternalListing(pin)) {
+              openStorefrontActionLink(resolveExternalActionHref(pin));
+              return;
+            }
             setHasDiscoveryExplorationStarted(true);
             setHighlightedStoreSlug(pin.slug);
             setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin) || '');
@@ -63,12 +78,6 @@ export function DiscoveryHeroMapStage({
               entity_type: pin.entity_type,
               business_mode: pin.workflow_mode || pin.business_mode
             });
-            // External listings have no DGFY storefront to open — routing them into
-            // goStore would land the visitor on a broken/empty catalog shell.
-            if (pin.entity_type === 'external_listing') {
-              openStorefrontActionLink(sanitizeExternalLink(pin.storefront_url));
-              return;
-            }
             goStore(pin.slug, pin.location_id ?? null);
           }}
         />

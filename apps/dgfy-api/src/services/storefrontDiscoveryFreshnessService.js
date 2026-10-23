@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { fn, col } from 'sequelize';
-import { StorefrontDiscoveryIndex } from '../models/index.js';
+import { ExternalRedirectSite, StorefrontDiscoveryIndex } from '../models/index.js';
 
 const SIGNATURE_CACHE_TTL_MS = Math.max(
     250,
@@ -23,18 +24,28 @@ export const getStorefrontDiscoverySharedSignature = async () => {
         return signatureCache.signature;
     }
 
-    const row = await StorefrontDiscoveryIndex.findOne({
-        where: { is_visible: true },
-        attributes: [
-            [fn('COUNT', col('storefront_discovery_index_id')), 'row_count'],
-            [fn('MAX', col('updated_at')), 'last_updated_at']
-        ],
-        raw: true
-    });
+    const [row, externalSiteRows] = await Promise.all([
+        StorefrontDiscoveryIndex.findOne({
+            where: { is_visible: true },
+            attributes: [
+                [fn('COUNT', col('storefront_discovery_index_id')), 'row_count'],
+                [fn('MAX', col('updated_at')), 'last_updated_at']
+            ],
+            raw: true
+        }),
+        ExternalRedirectSite.findAll({
+            attributes: ['site_key', 'show_on_map'],
+            order: [['site_key', 'ASC']],
+            raw: true
+        }).catch(() => [])
+    ]);
 
     const rowCount = Number(row?.row_count || 0);
     const lastUpdatedAt = toTimestamp(row?.last_updated_at);
-    const signature = `${rowCount}:${lastUpdatedAt}`;
+    const partnerVisibility = createHash('sha256')
+        .update(JSON.stringify(externalSiteRows || []))
+        .digest('hex');
+    const signature = `${rowCount}:${lastUpdatedAt}:${partnerVisibility}`;
 
     signatureCache = {
         signature,
