@@ -138,6 +138,13 @@ moment that doc changes). This file names *where* each rule lives; go read it th
     not a finding; the PR body, linked issue, diff, and authoritative docs remain sufficient. When
     `Route:` and `Target:` are recorded, verify the PR base matches the target; for a hotfix, apply
     the existing `main`/`staging` compliance and release-note audits as applicable.
+11. **Reserved integration branches** — if the PR head or base starts with a reserved `epic/` or
+    `feature/` name, run `node scripts/check-integration-branch.js --pr <N> --json` and report its
+    findings. For a final reserved-head PR into `develop`, also run it with `--readiness` so the
+    local DEV-soak and merge-hygiene checks are included. Treat reservation findings as
+    `should-fix` while `RESERVATION_CHECK_BLOCKING` is false; once that toggle is true, report
+    blocker findings as blockers. Do not recreate the registration or readiness table here; the
+    script and `docs/ops/RELEASE_CANDIDATE_POLICY.md` own those details.
 
 ## Manual session handoff input
 
@@ -215,12 +222,20 @@ Rules for filling this in:
 
 | Condition | Action |
 |---|---|
+| Base is a registered reserved integration branch, head is ordinary, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | Same review and merge treatment as a `develop`-base PR: `gh pr merge <N> --merge --delete-branch` (merge commit, never squash) |
 | Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --merge --delete-branch` (true merge commit, never `--squash`) — unattended, no confirmation needed |
+| Base `develop`, head is a registered reserved integration branch, PR is not Draft, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN`, and `check-integration-branch.js` reports `autoMergeAllowed: true` | `gh pr merge <N> --merge` without `--delete-branch`; the repository's `delete_branch_on_merge` setting still deletes the head automatically |
+| Final reserved-head PR is Draft, readiness fails, or `autoMergeAllowed` is false (including before the first integration merge is recorded) | Report-only. Do not merge; name the failing readiness rows or that this is the first-merge calibration. |
 | Base `release/<candidate_id>`, head `fix/release/*`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --merge --delete-branch` — unattended after the release repair review; preserve the merge commit and never `--squash`. Apply the repo-wide Merge Safety hard stop |
 | Base `develop` or `staging`, verdict `APPROVE`, GitHub's checks are stuck (verified `runner_offline` / `queue_starvation` / `billing_allocation_failure` / `github_platform_outage`, not merely slow), a `## Local CI` comment reads `PASS`, **and its `Commit:` SHA matches `headRefOid`** | `gh pr merge <N> --merge --delete-branch`, citing the `## Local CI` comment as evidence in the merge — the bounded carve-out in `AGENTS.md`'s Merge Safety section, full precondition list there. Still never `--squash` |
 | Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never. The local-CI carve-out above **also never applies to `main`** |
 | Verdict `BLOCK`, any base | Never merge |
 | Checks red, or still pending, any base, with no qualifying `## Local CI` comment | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
+
+The `## Local CI` carve-out above applies only to `develop` and `staging` bases; a reserved base or
+final reserved-head PR into `develop` does not expand it. A merge into a reserved base writes no
+child issue to `For QA`. After the final integration PR merges into `develop`, apply the existing
+acceptance-criteria gate separately to each child issue listed in that PR body.
 
 `main` is excluded unconditionally, regardless of verdict — merging `main` *is* the production
 deploy for this repo, and that decision stays a human's, matching the standing rule already in

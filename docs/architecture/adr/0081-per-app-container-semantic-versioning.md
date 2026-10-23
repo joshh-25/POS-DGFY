@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-24
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis, release_process
 topic: per_app_container_semantic_versioning
@@ -991,3 +991,21 @@ source resolution, immutable artifact revisions, and promotion parity continue t
 existing provenance rules; this change affects only the identity used to verify the running
 staging deployment. `[default]` — amends Decision 8's staging observation contract; Decision 7's
 `[binding]` immutable-tag rule and existing per-app provenance semantics are unchanged. See #2399.
+
+### 2026-10-24 — Reserved integration branches keep app version floors unchanged (#2737)
+
+For a child PR whose base has a reserved `epic/<n>-<slug>` or `feature/<n>-<slug>` name, and for a
+reserved-name head PR into `develop`, `resolveMode` requires
+the app package floors to remain unchanged. These are pre-promotion integration steps, not
+independent release or version-floor events. Normal `develop` PRs, staging repairs, promotions, and
+main hotfixes keep their existing Decision 6 modes. The reserved-name registration and lifecycle
+contract is defined in ADR 0074's 2026-10-24 amendment and the release policy.
+
+| PR path | Mode |
+| --- | --- |
+| Reserved integration base, or reserved integration head into `develop` | `unchanged` |
+
+`[default]` tier — amends Decision 6's PR-path mode table only. Decision 7's `[binding]`
+immutable-tag invariant is unchanged.
+
+PR: (this PR). Refs #2737.

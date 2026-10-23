@@ -76,10 +76,13 @@ Before creating, updating, or describing any pull request in this repository, **
 
 1. **Commit message format** — Conventional Commits (`type(scope): subject`), types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `build`, `ci`, `revert`.
 2. **PR body format** — base the body on `.github/pull_request_template.md`; at minimum it must include `## Summary` and `## Testing Evidence` sections (no separate `## Motivation` header exists in the template).
-3. **PR base branch** — ordinary branches (features, fixes, chores, docs) target `develop`; a
-   promotion PR targets `staging` from a `to-staging/<label>` head, or `main` from a `release/<label>`
-   head, per `docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) — corrected 2026-08-16 from a
-   stale `rc/*` reference that named a prefix used nowhere else in the repo.
+3. **PR base branch** — large behavior-replacing work that cannot be dark-launched and is expected
+   to take more than about one iteration may use a registered `epic/<n>-<slug>` or
+   `feature/<n>-<slug>` integration branch before `develop`; ordinary branches target `develop`
+   (ordinary feature heads use `feat/`); a promotion PR targets `staging`
+   from a `to-staging/<label>` head, or `main` from a `release/<label>` head, per
+   `docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) — corrected 2026-08-16 from a stale `rc/*`
+   reference that named a prefix used nowhere else in the repo.
 4. **Pre-commit safety check** — scan for `DO NOT COMMIT` markers (`rg "DO NOT COMMIT"`) across changed files before staging/committing, and exclude any matches.
 5. **Batch commits by domain** — group changed files into logical batches (new modules → dependents → docs → CI config) and commit each batch separately with its own Conventional Commits message, so history stays bisectable and reviewable.
 

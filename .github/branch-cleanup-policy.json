@@ -2,7 +2,7 @@
   "allowedBaseBranches": ["develop", "staging", "main"],
   "eligibleHeadPrefixes": [
     "codex/",
-    "feature/",
+    "feat/",
     "fix/",
     "bugfix/",
     "hotfix/",
@@ -25,6 +25,8 @@
   "protectedHeadPrefixes": [
     "release/",
     "to-staging/",
+    "epic/",
+    "feature/",
     "deployment/",
     "production/",
     "safety/",

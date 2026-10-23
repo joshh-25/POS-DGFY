@@ -35,7 +35,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0010 | [Storefront Discovery Item-Match Index and Union Query Contract](0010-storefront-discovery-item-match-index-and-union-query.md) | `amended` | storefront_discovery_item_match_index_and_union_query | 2026-10-20 | 0 |
 | 0011 | [Compliance Downgrade Escape Hatches](0011-compliance-downgrade-escape-hatches.md) | `accepted` | compliance_downgrade_escape_hatches | 2026-10-21 | 6 |
 | 0012 | [DGFY Global Convenience Fee and UI Brand Separation](0012-dgfy-global-convenience-fee-and-ui-brand-separation.md) | `amended` | dgfy_global_convenience_fee_and_ui_brand_separation | 2026-10-23 | 1 |
-| 0013 | [Tenant First-Login Onboarding and Storefront Readiness Contract](0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md) | `amended` | tenant_first_login_onboarding_and_storefront_readiness_contract | 2027-04-16 | 0 |
+| 0013 | [Tenant First-Login Onboarding and Storefront Readiness Contract](0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md) | `amended` | tenant_first_login_onboarding_and_storefront_readiness_contract | 2026-10-25 | 0 |
 | 0014 | [Multi-Template Modes, POS Offline Replay Hardening, and Storefront Cache Contracts](0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md) | `amended` | multi_template_modes_pos_offline_sync_and_storefront_cache_contracts | 2026-10-27 | 0 |
 | 0015 | [Tenant User Invitation Registry](0015-tenant-user-invitation-registry.md) | `accepted` | tenant_user_invitation_registry | 2026-10-28 | 0 |
 | 0016 | [Services Mode Independent Booking And Ticketing](0016-services-mode-independent-booking-and-ticketing.md) | `accepted` | services_mode_independent_booking_and_ticketing | 2026-11-02 | 0 |
@@ -96,14 +96,14 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
 | 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `amended` | ghcr_container_image_naming | 2027-02-24 | 0 |
 | 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `amended` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
-| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 17 |
+| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 20 |
 | 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `amended` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 13 |
 | 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `amended` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `amended` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `amended` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 | 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `amended` | item_multi_category_membership | 2027-03-03 | 6 |
-| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 12 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 13 |
 | 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `amended` | production_release_record_and_release_notes | 2027-03-23 | 3 |
 | 0083 | [Courier Cash Custody and Remittance for COD Deliveries](0083-courier-cash-custody-and-remittance.md) | `accepted` | courier_cash_custody_remittance | 2027-03-13 | 9 |
 | 0084 | [POS Business Admin Operational Expense Ledger](0084-pos-business-admin-operational-expense-ledger.md) | `accepted` | pos_business_admin_operational_expense_ledger | 2027-03-17 | 5 |

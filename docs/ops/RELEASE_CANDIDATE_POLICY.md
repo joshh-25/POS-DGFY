@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-24
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -75,6 +75,11 @@ feature branch -> develop -> release/<label> -> main   (#1007-gated exception on
 `.github/branch-cleanup-policy.json`'s `protectedHeadPrefixes`, so neither kind of promotion
 branch is ever eligible for automatic deletion even if the (currently archived) cleanup workflow
 is restored.
+
+For large, behavior-replacing work that cannot be dark-launched and is expected to take more than
+about one iteration, an optional registered integration branch may sit between feature work and
+`develop`: `feature/<epic-number>-<slug>` or `epic/<epic-number>-<slug>`. The names are reserved for
+this process; ordinary feature branches use `feat/`. The table and lifecycle below are authoritative.
 
 ## Why every promotion cuts a branch, rather than using the long-lived branch directly
 
@@ -2068,3 +2073,105 @@ remain unchanged. This does not change ADR 0081 Decision 7's `[binding]` rule.
 in the implementation ledger.
 
 PR: (this PR). Refs #1610.
+
+### 2026-10-24: Optional reserved-name integration branches (#2737)
+
+This amendment adds an optional, registered integration stage before `develop` for large changes
+that cannot be dark-launched and are expected to take more than about one iteration. It does not
+change the default route: ordinary feature branches still target `develop`, and the production
+promotion path remains governed by the existing flow above.
+
+#### Names and registration
+
+| Reserved name | Purpose | Registration requirement |
+| --- | --- | --- |
+| `epic/<n>-<slug>` | Integration branch for epic issue `<n>`. | The issue is open, labeled `epic`, and has an issue comment containing the exact line `Integration branch: epic/<n>-<slug>`. |
+| `feature/<n>-<slug>` | Interchangeable name for the same integration process. | The issue is open, labeled `epic`, and has an issue comment containing the exact line `Integration branch: feature/<n>-<slug>`. |
+
+The full name must match `^(epic|feature)/\d+-[a-z0-9-]+$`. The issue comment is process evidence,
+not an access-control boundary. Only the operator creates these branches, with
+`npm run epic:branch -- <epic-number> [--prefix epic|feature] [--slug <slug>]`; the helper verifies
+the issue, checks the CI trigger at the selected `develop` SHA, creates the remote ref directly
+from that SHA, and writes the marker once. A repeated run is a no-op while the ref exists; if the
+marker remains after GitHub deletes the ref, the helper can recreate that same branch without
+posting another marker.
+
+#### Lifecycle
+
+1. Use this route only for behavior-replacing work that cannot be dark-launched and is expected to
+   take more than about one iteration. `develop` remains the default, including discovery and
+   first-wave child issues. An epic's existence or parent-child relationship alone never selects
+   this route.
+2. Use `feat/<issue-number>-<slug>` for ordinary feature branches. Reserve `epic/` and
+   `feature/` names matching the pattern above for a registered integration branch. Do not nest
+   reserved branches.
+3. Create the integration branch from the current `origin/develop` only after the PR checks
+   workflow at that SHA includes both reserved-name base triggers. Do not create it by branching
+   from a child PR or from another integration branch.
+4. Child PRs target the registered integration branch and use ordinary eligible heads. They run
+   the same PR checks as a `develop`-base PR, including the full app build checks. Link each
+   independently verifiable child with `Refs #<child-issue>`; do not close the epic from a child
+   PR. Review and merge readiness follow the same policy as a `develop`-base PR. Child merges use
+   merge commits, never squash. A merge into the integration branch does not
+   move the child card to `For QA`; it stays `In progress` until the final integration PR is
+   merged to `develop` and the existing QA gate can be applied to each child.
+5. Keep the integration branch synchronized with `develop` at least weekly. Land unrelated fixes
+   through ordinary PRs to `develop`, then merge `develop` into the integration branch. Do not
+   rebase or force-push the integration branch. The branch checker warns after 14 days without a
+   sync; the warning is advisory while `RESERVATION_CHECK_BLOCKING` is false.
+6. Do not add app version bumps solely for child PRs into the integration branch or the final
+   integration PR into `develop`. ADR 0081's version check treats these reserved-base and
+   reserved-head paths as `unchanged`; normal promotion version floors remain in force.
+7. Open the final integration PR from the registered branch to `develop` as Draft. The final PR
+   must pass the readiness checks below before it is marked ready. Merging requires a true merge
+   commit and never `--squash`. The repository currently has `delete_branch_on_merge: true`, so
+   GitHub deletes the integration branch when the final PR merges even when `--delete-branch` is
+   omitted. Verification must use the merged commit on `develop` (and DEV from `develop`), not the
+   deleted head ref; there is no separate post-merge deletion step. If the branch must be restored,
+   use the second parent of the final merge commit: `git branch <name> <merge-commit>^2`.
+8. The compliance checker recognizes a reserved head into `develop` as an aggregate PR and skips
+   only the bundled reclassification check. Each applicable declaration is still individually
+   validated. The final reviewer audit remains required.
+9. Keep governed phase numbering continuous. Before adding a phase for work using this route,
+   read the authoritative ledger, claim its current highest phase plus one, and record explicit
+   dependencies only. A reserved branch or epic does not reset or reserve phase numbers.
+
+#### Final integration PR readiness
+
+The final PR stays Draft until all of these checks pass:
+
+- the integration branch is even with current `develop` (`behind_by: 0`);
+- the linked epic has a `## Definition of done` section with at least one checklist item, and all
+  items are checked;
+- the PR body has `## DEV soak evidence` with a successful `deploy.yml` DEV run URL; the run's
+  source SHA is an ancestor of the PR head, and every first-parent merge after that SHA is a sync
+  merge whose second parent is reachable from `origin/develop`;
+- `npm run check:merge-hygiene -- --base origin/develop --head <integration-head>` passes; and
+- no open PR remains based on the integration branch, since GitHub would retarget or close those
+  PRs when the branch is deleted.
+
+CI classifies reserved-name PRs and reports freshness warnings. For a non-Draft final PR, CI also
+fails when the integration branch is behind `develop`. The reservation check starts advisory:
+`RESERVATION_CHECK_BLOCKING = false`. Flip it only in a separate change after the implementation
+PR is merged, no open `feature/` branch head remains, and the post-merge scratch probes pass. The
+first final merge is report-only until Pat completes that merge and records
+`FIRST_INTEGRATION_MERGE_RECORDED = true`;
+then an eligible, non-Draft final PR may be auto-merged under the ordinary check and CLEAN-state
+requirements. The `## Local CI` merge carve-out remains limited to `develop` and `staging` bases.
+
+The compliance aggregate match is prefix-based because `check-compliance-impact.js` runs offline
+and does not look up GitHub registration markers. Until the reservation check is made blocking, an
+unregistered reserved-name head into `develop` also receives aggregate routing. This rollout gap is
+accepted: declaration structure and preflight metadata are still validated, the reviewer reports
+the registration finding, and the separate blocking flip closes the merge path after the required
+straggler and scratch-PR checks.
+
+`delete_branch_on_merge` is operationally verified at implementation time and is accepted here as
+the lifecycle behavior. The helper's marker is durable after that deletion, so the same registered
+branch name can be recreated from `develop` if further integration work is needed.
+
+This is a `[default]`-tier process addition under ADR 0039. The accompanying ADR amendments explain
+why this does not alter the binding promotion head-cut rule or ADR 0081's binding immutable-tag
+rule. See Phase 541 and issue #2737 for implementation scope and post-merge probes.
+
+PR: (this PR). Refs #2737.

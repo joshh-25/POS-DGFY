@@ -37,6 +37,8 @@ test('resolveBlocking: main base is blocking for every real head shape', () => {
 
 test('resolveBlocking: an unrecognized base defaults to advisory, least-restrictive', () => {
   assert.equal(resolveBlocking('some-other-branch', 'anything'), false);
+  assert.equal(resolveBlocking('epic/2634-delivery', 'feature/2634-delivery'), false);
+  assert.equal(resolveBlocking('feature/2634-delivery', 'fix/2737-checker'), false);
   assert.equal(resolveBlocking('', 'anything'), false);
   assert.equal(resolveBlocking(undefined, undefined), false);
 });
@@ -46,10 +48,8 @@ test('resolveBlocking: an unrecognized base defaults to advisory, least-restrict
 // already installed), to document in-test why the two must not be conflated. resolveMode() and
 // resolveBlocking() answer different questions (required bump *level* vs. whether the check
 // *blocks* at all) and must not be assumed to move together -- a release/* head into main resolves
-// to resolveMode's 'any-increase', the SAME value develop gets, so a naive
-// `resolveMode(...) !== 'any-increase'` proxy for blocking would read false (advisory) for exactly
-// the case #1774 requires to stay blocking. This test asserts the real resolveBlocking() gets it
-// right regardless of what resolveMode() reports for the same inputs.
+// to 'any-increase', while an ordinary develop head resolves to 'unchanged'. A mode-based proxy
+// still misclassifies the main promotion, so this test asserts resolveBlocking() directly.
 test('resolveBlocking is not derived from (and disagrees in shape with) resolveMode', () => {
   // eslint-disable-next-line global-require
   const { resolveMode } = require('../check-app-version-bump');
@@ -69,10 +69,10 @@ test('resolveBlocking is not derived from (and disagrees in shape with) resolveM
     );
   }
 
-  // The specific case that makes the naive `resolveMode(...) !== 'any-increase'` proxy wrong:
-  // release/* into main resolves to the same mode as develop, yet must still block.
+  // A release into main uses any-increase but blocks; an ordinary develop PR uses unchanged and
+  // stays advisory.
   assert.equal(resolveMode('main', 'release/2026-09-10-01'), 'any-increase');
-  assert.equal(resolveMode('develop', 'anything'), 'any-increase');
+  assert.equal(resolveMode('develop', 'anything'), 'unchanged');
   assert.equal(resolveBlocking('main', 'release/2026-09-10-01'), true);
   assert.equal(resolveBlocking('develop', 'anything'), false);
 });

@@ -310,6 +310,25 @@ jobs:
         if: inputs.validate_pr_metadata
         run: npm ci --ignore-scripts
 
+      - name: Load integration-branch reservation toggle
+        if: inputs.validate_pr_metadata
+        id: integration_branch_gate
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "continue_on_error=$(node -e "console.log(require('./scripts/lib/integration-branch-policy').RESERVATION_CHECK_BLOCKING ? 'false' : 'true')")" >> "$GITHUB_OUTPUT"
+
+      - name: Check reserved integration branch registration
+        if: inputs.validate_pr_metadata
+        continue-on-error: ${{ steps.integration_branch_gate.outputs.continue_on_error == 'true' }}
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          INTEGRATION_PR_DRAFT: ${{ github.event.pull_request.draft }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-integration-branch.js
+
       - name: Verify CI S3 artifact workflow configuration
         if: inputs.validate_pr_metadata
         run: npm run check:ci-s3-artifact-workflows && npm run test:ci-s3-artifact-workflows

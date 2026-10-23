@@ -192,7 +192,15 @@ test('unavailable whole diff throws and cannot be interpreted as an empty succes
 });
 
 test('promotion exclusion, disabled optimization, and missing branch context preserve normal routing', async (t) => {
-  for (const [base, head] of [['staging', 'develop'], ['staging', 'to-staging'], ['staging', 'to-staging/2026-10-08'], ['main', 'staging'], ['main', 'release/2026-10-08']]) {
+  for (const [base, head] of [
+    ['develop', 'epic/2634-delivery'],
+    ['develop', 'feature/2634-delivery'],
+    ['staging', 'develop'],
+    ['staging', 'to-staging'],
+    ['staging', 'to-staging/2026-10-08'],
+    ['main', 'staging'],
+    ['main', 'release/2026-10-08'],
+  ]) {
     assert.equal(isAggregatePromotion(base, head), true, `${head} -> ${base}`);
   }
   assert.equal(isAggregatePromotion('main', 'fix/hotfix'), false);
@@ -210,6 +218,20 @@ test('promotion exclusion, disabled optimization, and missing branch context pre
     assert.equal(result.components.dgfy_api, true);
     assert.deepEqual(result.removedManifests, []);
   }
+});
+
+test('reserved integration heads into develop keep aggregate routing for version-only changes', async (t) => {
+  const fixture = makeFixture();
+  t.after(fixture.cleanup);
+  const pos = 'apps/dgfy-pos';
+  fixture.write(`${pos}/package.json`, packageJson(fixture, pos, { version: '1.0.1' }));
+  const result = await resolve(fixture, fixture.commit(), {
+    baseBranchName: 'develop',
+    headBranchName: 'epic/2634-delivery',
+  });
+  assert.equal(result.components.frontend_pos, true);
+  assert.deepEqual(result.removedManifests, []);
+  assert.equal(result.diagnostics.frontend_pos.reason, 'aggregate-promotion');
 });
 
 test('literal false outputs are written as strings and remain distinguishable from missing output', (t) => {

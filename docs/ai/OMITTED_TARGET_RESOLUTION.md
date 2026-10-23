@@ -72,14 +72,19 @@ malformed, or both links are null. Do not treat a malformed or mismatched link a
 
 The only repository-local issue signal is the last path component of the current branch when it
 starts with an issue number of one to seven digits followed by `-` or the end of the name. For
-example, `feature/2594-address-details-api` yields `2594`; `fix/1234` yields `1234`;
-`feature/address-details-2594`, detached `HEAD`, `develop`, `staging`, `main`, `hotfix-1234`, and
+example, `feat/2594-address-details-api` yields `2594`; `fix/1234` yields `1234`;
+`feat/address-details-2594`, detached `HEAD`, `develop`, `staging`, `main`, `hotfix-1234`, and
 `staging-1234` yield no signal. This is a fallback signal, never proof that an issue is valid.
 
 If both a valid Orca `linkedIssue` and a branch number exist and they disagree, stop and report
 both candidates. Do not silently prefer either source. Otherwise use the Orca issue link when
 present, then the branch number. If neither exists, the Worker has no assignment. A lone planner
 file is not an assignment: `.tmp` can persist across tasks in a plain checkout.
+
+On a reserved `epic/<n>-<slug>` or `feature/<n>-<slug>` integration branch, `<n>` identifies the
+parent epic, not a child implementation issue. If branch-based resolution selects it, the existing
+REST verification rejects the epic as a Worker assignment and stops. Do not treat the branch number
+as a child issue or guess one; request an explicit child issue or handoff.
 
 ## Worker: resolve an omitted issue
 
