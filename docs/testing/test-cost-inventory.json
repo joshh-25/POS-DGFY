@@ -1,6 +1,6 @@
 {
   "schema": "dgfy-test-cost-inventory/v1",
-  "generated_at": "2026-10-23T07:48:33.767Z",
+  "generated_at": "2026-10-23T09:00:03.616Z",
   "generator": "scripts/audit-test-cost-inventory.js",
   "sources": {
     "backend_db_manifest": "scripts/backend-db-dependent-tests.js",
@@ -52,7 +52,7 @@
   "stats": {
     "apps/dgfy-api :: fast-mocked-external :: default": 615,
     "apps/dgfy-api :: fast-pure :: default": 251,
-    "apps/dgfy-api :: db-required :: opt-in": 33,
+    "apps/dgfy-api :: db-required :: opt-in": 34,
     "apps/dgfy-api :: browser-e2e :: opt-in": 2,
     "apps/dgfy-ims :: fast-mocked-external :: default": 7,
     "apps/dgfy-ims :: fast-pure :: default": 2,
@@ -3761,6 +3761,30 @@
       "command": "npm run test:backend:fast",
       "safe_command": "npm run test:backend:fast (DB_HOST/DB_PORT guarded unreachable)",
       "notes": "No DB/Redis/network/browser signal detected.",
+      "runtime_bucket": "fast (<30s full-file, static estimate)",
+      "runtime_provenance": {
+        "method": "static-estimate",
+        "detail": "size + case count; see manifest measurements for timed samples"
+      },
+      "known_baseline_failure_378": false
+    },
+    {
+      "path": "apps/dgfy-api/tests/companyRegistrationUploads.applicationIdNullable.db.integration.test.js",
+      "workspace": "apps/dgfy-api",
+      "surface": "DGFY API",
+      "classification": "db-required",
+      "dependencies": {
+        "db_required": true,
+        "redis_required": false,
+        "network_provider_required": false,
+        "browser_runtime_required": false,
+        "fixture_seed_required": false
+      },
+      "default_opt_in": "opt-in",
+      "runner": "Jest (db tier)",
+      "command": "npm run test:backend:db",
+      "safe_command": "npm run test:backend:db (requires MySQL; see #372)",
+      "notes": "Listed in scripts/backend-db-dependent-tests.js, the execution source of truth.",
       "runtime_bucket": "fast (<30s full-file, static estimate)",
       "runtime_provenance": {
         "method": "static-estimate",
