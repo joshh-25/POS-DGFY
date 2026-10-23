@@ -63,6 +63,8 @@ export function StoresMap({
   selectedKey,
   highlightedKeys = EMPTY_HIGHLIGHTED_MARKER_KEYS,
   onSelectStore,
+  onPreviewOpen = null,
+  onPreviewClose = null,
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
@@ -82,6 +84,9 @@ export function StoresMap({
   const popupsRef = useRef([]);
   const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
+  const onPreviewOpenRef = useRef(onPreviewOpen);
+  const onPreviewCloseRef = useRef(onPreviewClose);
+  const clickedExternalMarkerKeyRef = useRef('');
   const onSelectClusterRef = useRef(onSelectCluster);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
@@ -164,6 +169,11 @@ export function StoresMap({
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
   }, [onSelectStore]);
+
+  useEffect(() => {
+    onPreviewOpenRef.current = onPreviewOpen;
+    onPreviewCloseRef.current = onPreviewClose;
+  }, [onPreviewOpen, onPreviewClose]);
 
   useEffect(() => {
     onSelectClusterRef.current = onSelectCluster;
@@ -291,6 +301,7 @@ export function StoresMap({
       .join('|');
     const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
     markerSignatureRef.current = nextMarkerSignature;
+    if (markerSetChanged) clickedExternalMarkerKeyRef.current = '';
     const normalizedViewportSignal = String(viewportSignal || '').trim();
     const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
     lastViewportSignalRef.current = normalizedViewportSignal;
@@ -324,7 +335,7 @@ export function StoresMap({
 
     const layerModel = buildDiscoveryPinLayerModel({
       stores: rows,
-      selectedKey: selectedMarkerKey,
+      selectedKey: clickedExternalMarkerKeyRef.current || selectedMarkerKey,
       highlightedKeys,
       allowProvisionedPlaceholder: focusSelectedKey
     });
@@ -337,6 +348,23 @@ export function StoresMap({
     if (layerReady) {
       setGeoJsonSourceData(map, DISCOVERY_USER_SOURCE_ID, userSourceData);
     }
+
+    const refreshExternalSelection = (key) => {
+      if (clickedExternalMarkerKeyRef.current === key) return;
+      clickedExternalMarkerKeyRef.current = key;
+      const next = buildDiscoveryPinLayerModel({
+        stores: rows,
+        selectedKey: key || selectedMarkerKey,
+        highlightedKeys,
+        allowProvisionedPlaceholder: focusSelectedKey
+      });
+      Promise.all(next.requiredImages.map(({ id, svg }) => ensureMapImage(map, id, svg)))
+        .then(() => {
+          if (!cancelled && popupGenerationRef.current === generation && layerReady) {
+            setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, next.sourceData);
+          }
+        });
+    };
 
     const popupEntries = new globalThis.Map();
     let activeHoverEntry = null;
@@ -361,12 +389,19 @@ export function StoresMap({
         return clusterEntry;
       }
       const popup = new maplibregl.Popup({
-        anchor: 'bottom',
-        offset: STORE_MARKER_POPUP_OFFSET,
+        anchor: group[0]?.entity_type === 'external_listing' ? undefined : 'bottom',
+        offset: group[0]?.entity_type === 'external_listing' ? 58 : STORE_MARKER_POPUP_OFFSET,
         closeOnClick: false,
+        closeButton: group[0]?.entity_type !== 'external_listing',
         focusAfterOpen: false
       });
       popup.__dgfyMarkerKey = markerKey;
+      popup.on?.('close', () => {
+        if (clickedExternalMarkerKeyRef.current === markerKey) {
+          refreshExternalSelection('');
+          onPreviewCloseRef.current?.(singleStore);
+        }
+      });
       popupsRef.current.push(popup);
 
       let closeTimer = null;
@@ -449,6 +484,13 @@ export function StoresMap({
       popup.setDOMContent(previewNode);
       const open = (mode = 'click') => {
         popupOpenMode = mode === 'click' || popupOpenMode === 'click' ? 'click' : 'hover';
+        if (mode === 'click' && singleStore?.entity_type === 'external_listing') {
+          popupsRef.current.forEach((other) => {
+            if (other !== popup && other?.isOpen?.()) other.remove();
+          });
+          refreshExternalSelection(markerKey);
+          onPreviewOpenRef.current?.(singleStore);
+        }
         clearCloseTimer();
         if (previewNodeRef?.style) {
           previewNodeRef.style.pointerEvents = popupOpenMode === 'hover' ? 'none' : '';
@@ -464,6 +506,7 @@ export function StoresMap({
       };
       popupEntries.set(entry.coordinateKey, {
         markerKey,
+        store: singleStore,
         coordinateKey: entry.coordinateKey,
         highlighted: entry.highlighted,
         isCluster: false,

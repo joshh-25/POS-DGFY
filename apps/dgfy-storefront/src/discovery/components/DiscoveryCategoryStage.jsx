@@ -3,8 +3,12 @@ import {
   ChevronRight,
   Coffee,
   CupSoda,
+  Briefcase,
+  CarTaxiFront,
   Droplets,
   HeartHandshake,
+  Home,
+  Hotel,
   MoreHorizontal,
   Scissors,
   Shirt,
@@ -17,6 +21,32 @@ import {
 } from 'lucide-react';
 
 import { DiscoveryCategoryRail } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
+import { BUSINESS_MODE_PIN_META } from '../model/businessModePins.js';
+
+export const getDiscoveryCategoryLists = (isDiscoveryMobileViewport = false) => {
+  const primaryCats = [
+    { label: 'Food', icon: <UtensilsCrossed size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
+    { label: 'Grocery', icon: <ShoppingCart size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+    { label: 'Laundry', icon: <Droplets size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
+    { label: 'Salon', icon: <Scissors size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
+    { label: 'Pharmacy', icon: <HeartHandshake size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#e11d48', bg: '#fff1f2', border: '#fecdd3' }
+  ];
+  const extendedCats = [
+    { label: 'Bakery', icon: <Coffee size={14} />, color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
+    { label: 'Clothing', icon: <Shirt size={14} />, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+    { label: 'Drinks', icon: <CupSoda size={14} />, color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
+    { label: 'Food Stall', icon: <Sandwich size={14} />, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    { label: 'Frozen', icon: <Snowflake size={14} />, color: '#1a4e8d', bg: '#eff6ff', border: '#bfdbfe' },
+    { label: 'Beauty', icon: <SprayCan size={14} />, color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
+    { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
+    { label: 'Hotel', icon: <Hotel size={14} />, color: BUSINESS_MODE_PIN_META.external_hotels.color, bg: '#fdf4ff', border: '#f5d0fe' },
+    { label: 'Real Estate', icon: <Home size={14} />, color: BUSINESS_MODE_PIN_META.external_real_estate.color, bg: '#fdf2f8', border: '#fbcfe8' },
+    { label: 'Taxi', icon: <CarTaxiFront size={14} />, color: BUSINESS_MODE_PIN_META.external_taxis.color, bg: '#fffbeb', border: '#fde68a' },
+    { label: 'Job', icon: <Briefcase size={14} />, color: BUSINESS_MODE_PIN_META.external_jobs.color, bg: '#eff6ff', border: '#bfdbfe' }
+  ];
+
+  return { primaryCats, extendedCats };
+};
 
 export function DiscoveryCategoryStage({
   desktopCategoryRailRef,
@@ -31,22 +61,7 @@ export function DiscoveryCategoryStage({
   setMobileCategoryGroupIndex,
   showDesktopCategoryOverflowCue
 }) {
-                        const primaryCats = [
-                          { label: 'Food', icon: <UtensilsCrossed size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
-                          { label: 'Grocery', icon: <ShoppingCart size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-                          { label: 'Laundry', icon: <Droplets size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
-                          { label: 'Salon', icon: <Scissors size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
-                          { label: 'Pharmacy', icon: <HeartHandshake size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#e11d48', bg: '#fff1f2', border: '#fecdd3' }
-                        ];
-                          const extendedCats = [
-                          { label: 'Bakery', icon: <Coffee size={14} />, color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
-                          { label: 'Clothing', icon: <Shirt size={14} />, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
-                          { label: 'Drinks', icon: <CupSoda size={14} />, color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
-                          { label: 'Food Stall', icon: <Sandwich size={14} />, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-                          { label: 'Frozen', icon: <Snowflake size={14} />, color: '#1a4e8d', bg: '#eff6ff', border: '#bfdbfe' },
-                          { label: 'Beauty', icon: <SprayCan size={14} />, color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
-                            { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
-                          ];
+                        const { primaryCats, extendedCats } = getDiscoveryCategoryLists(isDiscoveryMobileViewport);
                             const mobileCategoryStep = 3;
                             const mobilePrimaryCount = 5;
                             const allMobileCategories = [...primaryCats, ...extendedCats];
