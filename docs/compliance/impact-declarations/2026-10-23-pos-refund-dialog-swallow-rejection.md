@@ -12,8 +12,8 @@ verification_evidence: POS refund dialog regression test (red before, green afte
 rollback_note: Revert the dialog rejection catch, its regression test, and this declaration together. No endpoint, permission, payment, tax, or persisted-data behavior changes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-23T07:56:28Z
-preflight_request_ref: NOT-EXECUTED-POS-REFUND-2724
+preflight_run_at: 2026-10-23T11:25:41.975Z
+preflight_request_ref: PREFLIGHT-39945412063-2026-10-23-POS-REFUND-DIALOG-SWALLOW-REJECTION
 ---
 
 # POS refund dialog rejection handling (#2724)
