@@ -31153,4 +31153,90 @@ Not complete. Set only after the scoped implementation and named validation evid
 
 ### Next phase number
 
-Phase 536. No explicit dependency.
+## Phase 536 - Registration draft upload application ID nullability (#2718)
+
+### Initiative and release
+
+Repair the landlord registration upload schema for the next develop-bound release.
+
+### Objective and scope
+
+Make `company_registration_uploads.application_id` nullable on fresh MySQL schemas and on
+databases that already recorded the no-op `20261008000001` migration. Preserve the existing
+application foreign key and UUID column definition. Add a forward-only repair migration, real-MySQL
+coverage for the fresh chain and current production-shaped schema, mock-based migration cases, and
+test-cost inventory registration.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR and deployed verification remain open.
+
+### Dependencies
+
+Issue #2718 and the landlord migration chain. No explicit phase dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR 0022](../architecture/adr/0022-global-dgfy-account-business-registration.md), and the
+[migration-runner ownership/deploy-order contract](../../apps/dgfy-migration-runner/README.md).
+Classification: `within-existing-boundary`; the change only relaxes a landlord column constraint
+for the existing draft registration flow. It adds no tenant-schema contract and needs no ADR
+amendment.
+
+### Implementation targets
+
+- New guarded migration that reads the existing column type, character set, and collation from
+  `information_schema.COLUMNS`, then issues one raw MySQL `MODIFY ... NULL` statement.
+- Real-MySQL tests for a fresh full chain, all four draft upload categories with real parent rows,
+  and a pre-fix production-shaped upgrade path with idempotent rerun coverage.
+- Mock-based cases for absent table/column, already-nullable and `NOT NULL` columns, and no-op down.
+- Registration in `scripts/backend-db-dependent-tests.js` and the generated test-cost inventory.
+
+### Acceptance and validation evidence
+
+- [x] Baseline real-MySQL run against the current migration chain reproduced `IS_NULLABLE = 'NO'`;
+      the application foreign key and matching UUID type/character set/collation remained present.
+- [x] After the migration was added, the real-MySQL suite passed all four cases: fresh-chain
+      nullability, UUID metadata/FK preservation, all four draft upload inserts, and a
+      production-shaped `NOT NULL` upgrade with an idempotent rerun.
+- [x] Migration unit coverage passed (9 tests); the new integration file is registered as
+      `db-required` in the generated test-cost manifest.
+- [x] Migration syntax, architecture checks, compliance checks, docs lint, and app-version checks
+      passed.
+- [x] Staged tenant-schema coverage checked the new landlord migration and passed.
+- [ ] Resolve the test-cost inventory check failure: it reports seven unmatched historical #378
+      baseline filenames, unrelated to this change; the new test itself is registered as
+      `db-required`.
+- [ ] PR review and merge are complete; this phase does not merge or deploy.
+
+### Known verification boundary
+
+Local MySQL proves the fresh and pre-fix schema paths only. STAGING upload requests, post-deploy
+schema inspection, and PROD Sentry observation remain post-merge checks owned by Pat/Verifier and
+Observer.
+
+### Rollback
+
+The migration's `down()` is intentionally a no-op because draft rows can persist with
+`application_id = NULL`; restoring `NOT NULL` could fail or discard valid draft data. The forward
+change does not rewrite existing application rows or remove the foreign key.
+
+### Completion date
+
+Not complete. Set only after the implementation is merged and the local acceptance evidence is
+terminal.
+
+### Post-merge verification
+
+- [ ] On STAGING and then PROD, confirm `application_id` is nullable and its UUID definition and
+      application foreign key remain intact.
+- [ ] Upload profile, cover, gallery, and menu files through `/business/grow` on STAGING and confirm
+      each request returns 201.
+- [ ] After the fixed release reaches PROD, check for new `DGFY-BACKEND-M` or `DGFY-STORE-20`
+      events and re-open/re-resolve the Sentry issue as appropriate.
+
+### Next phase number
+
+Phase 537. No explicit dependency.
