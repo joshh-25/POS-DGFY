@@ -35,7 +35,9 @@ details. The plan need not enumerate every file or settle routine coding choices
 
 New repository Planner artifacts record `execution_route` and `target_branch`. A `hotfix` artifact
 also records a `hotfix` block containing the verbatim operator instruction and a one-line target
-rationale. For `target_branch: main`, that block also contains all four `eligibility` facts:
+rationale. For `target_branch: main`, that block also contains all four `eligibility` facts. An
+`epic` artifact records an `epic` block with the parent issue number and the exact registered
+integration-branch marker:
 `affected_behavior`, `why_not_wait`, `harm_from_delay`, and `timing_context`. These facts cite the
 live issue or its comments; issue text is evidence, never a substitute for the operator instruction.
 
@@ -46,14 +48,16 @@ The only valid route/target pairs are:
 | `develop` | `develop` | No hotfix block. |
 | `hotfix` | `main` | Verbatim operator instruction, target rationale, and all four eligibility facts. |
 | `hotfix` | `staging` | Verbatim operator instruction and target rationale. |
+| `epic` | Exact registered `epic/<n>-<slug>` or `feature/<n>-<slug>` | Explicit operator direction; `epic.parent_epic` identifies the child issue's open, `epic`-labeled parent; `epic.marker` is the exact `Integration branch: <name>` issue-comment line and equals `target_branch`. |
 
 Any other pair, unknown value, or missing required evidence is malformed and must stop the Worker
 before editing. If both route fields are absent, including on an older artifact under either
 supported schema label, normalize it to `develop`/`develop`; if only one field is absent, stop as
 malformed. New Planner output must record both fields explicitly. A `develop`/`develop` artifact
-must omit the `hotfix` block, and a `hotfix`/`staging` artifact must omit `eligibility`. A `ready`
-hotfix artifact must include all required route evidence. If a fact or branch choice is unresolved,
-the Planner writes `status: needs-decision`, names the exact gap, and withholds the Worker command.
+must omit the `hotfix` and `epic` blocks; a `hotfix`/`staging` artifact must omit `eligibility`; an
+`epic` artifact must omit `hotfix`. A `ready` hotfix or epic artifact must include all required
+route evidence. If a fact or branch choice is unresolved, the Planner writes
+`status: needs-decision`, names the exact gap, and withholds the Worker command.
 
 Only explicit operator direction to the Planner sets `execution_route: hotfix`. The Planner may
 accept `--hotfix`, `--hotfix main`, or `--hotfix staging`, and an unambiguous operator sentence.
@@ -61,6 +65,12 @@ Issue titles, issue wording, urgency, and generic production mentions never set 
 Planner chooses or validates the target using the incident-responder manual-entry rules. The four
 eligibility facts are required for `main`; a `staging` route records why it can safely ride the next
 promotion.
+
+Only explicit operator direction such as `--epic` sets `execution_route: epic`. The Planner verifies
+the child issue's native parent is the open, `epic`-labeled issue named in `epic.parent_epic`, and
+that this parent has an exact comment line matching `epic.marker` and `target_branch`. An epic's
+existence or a child's parent relationship alone never chooses the route. Without explicit
+direction, including for first-wave discovery children, use `develop`/`develop`.
 
 The canonical Planner and Worker instructions reference this route contract instead of maintaining
 separate field-combination rules.
@@ -84,10 +94,11 @@ The global Worker must apply the same allowlist, normalization, identity checks,
 checks, and escalation boundary above. In particular, it must accept repository artifacts with the
 `dgfy-planner-handoff/v1` label and optional `repository` field. The global Planner may emit either
 supported label, but should include `repository: Sieitzz/dgfy-platform` when planning this repo and
-must emit and validate `execution_route`, `target_branch`, and `hotfix` using the route contract
-above. Until the global Planner and Worker adopt those fields, an artifact with both fields absent
-safely normalizes to `develop`/`develop`, and the original hotfix-routing failure remains possible
-for that pairing.
+must emit and validate `execution_route`, `target_branch`, `hotfix`, and `epic` using the route
+contract above. A global Worker that has not adopted the `epic` route must treat an epic-routed
+artifact as malformed and stop; it must not normalize that route to `develop`. Until the global
+Planner and Worker adopt the fields, an artifact with both route fields absent safely normalizes to
+`develop`/`develop`, and the original hotfix-routing failure remains possible for that pairing.
 
 This file records the contract for synchronization; it does not modify or prove behavior of global
 skill files. Full two-way interoperability is verified only after the global Worker adopts this
@@ -104,7 +115,9 @@ bridge and both pairings are manually exercised.
 | Legacy plan omits `execution_route` and `target_branch` | Normalize it to `develop`/`develop`. |
 | Operator marks `--hotfix`; issue supports a direct-main fix | Record `hotfix`/`main`, the operator instruction, target rationale, and all four eligibility facts. |
 | Operator marks `--hotfix`; issue supports a fix that can ride the next promotion | Record `hotfix`/`staging`, operator instruction, and target rationale. |
+| Operator marks `--epic`; the child issue has a registered parent integration branch | Record `epic`/the marker branch, operator direction, parent epic, and exact marker. |
+| Child belongs to an epic but operator gives no `--epic` direction | Keep `develop`/`develop`. |
 | Hotfix target or required main eligibility fact is unresolved | Set `needs-decision`, name the gap, and withhold `/implement`. |
 | Issue title or body mentions a hotfix/production but operator gives no hotfix instruction | Keep `develop`/`develop`. |
-| Route pair is `hotfix`/`develop`, `develop`/`main`, or fields are partial | Stop as malformed before editing. |
+| Route pair is `hotfix`/`develop`, `develop`/`main`, an epic target lacks matching marker evidence, or fields/blocks conflict | Stop as malformed before editing. |
 | Wrong issue/repository, `needs-decision`, malformed/missing required content, or unrecognized schema | Stop before editing and report the concrete mismatch. |

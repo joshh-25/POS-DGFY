@@ -44,8 +44,8 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>` (Claude) or
 Record `execution_route` and `target_branch` in every new handoff artifact, including an ordinary
 `develop` plan. Use the field combinations and required evidence in
 `docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`; that document is the single source for the
-route contract. The fields are `execution_route`, `target_branch`, and `hotfix`; valid pairs are
-`develop`/`develop`, `hotfix`/`main`, and `hotfix`/`staging`.
+route contract. The fields are `execution_route`, `target_branch`, `hotfix`, and `epic`; use its
+valid combinations.
 
 Set `execution_route: hotfix` only when the operator explicitly marks the Planner request. The
 canonical forms are `--hotfix`, `--hotfix main`, and `--hotfix staging`; a sentence is
@@ -67,6 +67,15 @@ Cite the issue or its comments and copy the evidence into the artifact's `hotfix
 fields. If any fact is missing or contradicted, mark `needs-decision`, name that exact fact, and
 withhold the `/implement` command. For `staging`, record why the fix can safely ride the next
 promotion in `hotfix.target_rationale`; the four-fact direct-main test is not required.
+
+Set `execution_route: epic` only on explicit operator direction such as `--epic`. Validate the
+child issue's live parent epic and its exact registered `Integration branch: <name>` issue-comment
+marker. Record the parent issue number as `epic.parent_epic`, the exact comment line as
+`epic.marker`, and that branch as `target_branch`. Never infer this route from a child issue's
+parent. If the operator requests the route but the parent, marker, or branch cannot be validated,
+write `status: needs-decision`, name the missing or conflicting evidence, and withhold the
+`/implement` command. Without explicit direction, use `develop`/`develop`; this includes ordinary
+first-wave discovery children of an epic.
 
 Missing `## Acceptance criteria` remains non-blocking (#1908); do not conflate it with main-hotfix
 eligibility.
@@ -130,7 +139,7 @@ When status is `ready`, finish with exactly this copyable handoff shape:
 
 ```text
 Plan is built.
-Route: <develop → develop | hotfix → main (operator-marked) | hotfix → staging (operator-marked)>
+Route: <develop → develop | hotfix → main (operator-marked) | hotfix → staging (operator-marked) | epic → registered integration branch (operator-marked)>
 Handoff: /implement @.tmp/plan-<issue>.md
 ```
 
