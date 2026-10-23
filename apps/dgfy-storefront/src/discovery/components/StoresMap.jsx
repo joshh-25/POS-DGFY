@@ -389,9 +389,10 @@ export function StoresMap({
         return clusterEntry;
       }
       const popup = new maplibregl.Popup({
-        anchor: 'bottom',
-        offset: STORE_MARKER_POPUP_OFFSET,
+        anchor: group[0]?.entity_type === 'external_listing' ? undefined : 'bottom',
+        offset: group[0]?.entity_type === 'external_listing' ? 58 : STORE_MARKER_POPUP_OFFSET,
         closeOnClick: false,
+        closeButton: group[0]?.entity_type !== 'external_listing',
         focusAfterOpen: false
       });
       popup.__dgfyMarkerKey = markerKey;

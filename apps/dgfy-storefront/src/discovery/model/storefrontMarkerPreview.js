@@ -83,7 +83,9 @@ export const buildStoreMarkerPreviewModel = (store = {}, {
 } = {}) => {
   const partner = getExternalListingPresentation(store);
   const matchBadges = getDiscoveryMatchBadges(store, Array.isArray(store?.match_reasons) && store.match_reasons.length > 0);
-  const distanceLabel = formatMarkerDistance(partner ? store?.distance_km : (store?.distance_km ?? store?.nearest_distance_km));
+  const distanceLabel = partner
+    ? (Number(store?.distance_km) > 0 ? formatMarkerDistance(store.distance_km) : '')
+    : formatMarkerDistance(store?.distance_km ?? store?.nearest_distance_km);
   const catalogCount = Number(store?.catalog_count);
   const matchingItemCount = Number(store?.matching_item_count);
   const statusLabel = partner ? 'External listing' : (store?.storefront_open === false || store?.is_open === false ? 'Closed' : 'Open');

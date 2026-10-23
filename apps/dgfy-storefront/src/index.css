@@ -849,6 +849,38 @@
   }
 }
 
+/* External cards need room for supplied details and a usable outbound control.
+   The native compact-card breakpoints above remain unchanged. */
+.maplibregl-popup:has(.store-marker-preview-card--external) {
+  max-width: min(250px, calc(100vw - 48px)) !important;
+}
+
+.store-marker-preview-card--external {
+  width: min(248px, calc(100vw - 48px));
+  max-height: min(310px, calc(100vh - 140px));
+}
+
+.store-marker-preview-card--external .store-marker-preview-body {
+  padding: 12px;
+  gap: 7px;
+}
+
+.store-marker-preview-card--external .store-marker-preview-title {
+  font-size: 13px;
+}
+
+.store-marker-preview-card--external .store-marker-preview-branch,
+.store-marker-preview-card--external .store-marker-preview-address,
+.store-marker-preview-card--external .store-marker-preview-context {
+  display: block;
+  font-size: 11px;
+}
+
+.store-marker-preview-card--external .store-marker-preview-action {
+  min-height: 44px;
+  font-size: 12px;
+}
+
 .discovery-header {
   position: sticky;
   top: env(safe-area-inset-top, 0px);
