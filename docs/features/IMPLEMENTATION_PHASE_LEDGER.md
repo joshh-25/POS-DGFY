@@ -30277,12 +30277,12 @@ Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715) and Phase 53
 
 - [x] SynqCore extraction requires a property export and room-coordinate export, emits one property pin with its lowest room ID, and preserves the existing property slug.
 - [x] Missing room mappings are skipped; property IDs are never used as redirect references. Room coordinates supply missing property coordinates without exposing raw export fields.
-- [x] Focused API tests, actual-export extraction/schema validation, compliance/architecture/docs gates, syntax, and changed-file marker scan pass. The patch-version check remains to run against the staged diff.
+- [x] Focused API tests, actual-export extraction/schema validation, patch-version/compliance/architecture/docs gates, syntax, and changed-file marker scan pass.
 - [ ] After DEV deployment and seed apply, existing SynqCore `/e/{slug}` redirects resolve to their selected `/room/{room_id}` destination while pin visibility is preserved.
 
 ### Evidence
 
-The two focused API suites passed 27 tests. Extraction from the supplied SynqCore exports produced 12 property pins and skipped one test property; the schema validator passed, the output used only the approved listing fields, and no supplied booking/host/account contact values appeared in the minimal seed. Home Square Valeria keeps slug `synqcore-100018` and maps to its lowest room ID, `100315`. The selected SynqCore URL returned HTTP 200; its rendered page has not been inspected. Architecture checks, strict docs/ADR lint, compliance checks, ESLint, `node --check`, and `git diff --check` passed. The staged patch-version check and DEV deployment/seed verification remain outstanding.
+The two focused API suites passed 27 tests. Extraction from the supplied SynqCore exports produced 12 property pins and skipped one test property; the schema validator passed, the output used only the approved listing fields, and no supplied booking/host/account contact values appeared in the minimal seed. Home Square Valeria keeps slug `synqcore-100018` and maps to its lowest room ID, `100315`. The selected SynqCore URL returned HTTP 200; its rendered page has not been inspected. Architecture checks, strict docs/ADR lint, compliance checks, the staged patch-version gate, ESLint, `node --check`, and `git diff --check` passed. DEV deployment and seed verification remain outstanding.
 
 ### Post-merge verification
 
