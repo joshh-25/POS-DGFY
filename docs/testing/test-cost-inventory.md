@@ -9,7 +9,7 @@ Owner: #438
 One durable, repository-maintained answer to "what can I run safely by default?":
 
 - Machine-readable manifest: `docs/testing/test-cost-inventory.json`
-  (1700 records, 4 legacy exclusions — regenerate, don't hand-edit).
+  (1701 records, 4 legacy exclusions — regenerate, don't hand-edit).
 - Generator/check: `scripts/audit-test-cost-inventory.js`
   (`npm run audit:test-cost` / `npm run audit:test-cost:check` /
   `npm run test:audit-test-cost`).
