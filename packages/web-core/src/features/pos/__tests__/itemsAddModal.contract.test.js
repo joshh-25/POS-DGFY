@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/PosItemsWorkspace.jsx');
+const modalStylesPath = path.resolve(__dirname, '../components/posModalStyles.js');
 const stylesheetPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS Add Items desktop modal', () => {
@@ -52,6 +53,7 @@ describe('POS Add Items desktop modal', () => {
 
   it('matches the desktop wireframe while keeping create data backend-driven', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
+    const modalStyles = fs.readFileSync(modalStylesPath, 'utf8');
 
     expect(workspace).toContain('Product Details');
     expect(workspace).toContain('max-w-[54rem]');
@@ -60,7 +62,13 @@ describe('POS Add Items desktop modal', () => {
     expect(workspace).toContain('compact = false');
     expect(workspace).toContain('Product Barcode');
     expect(workspace).toContain('border-[#C7DCF3] bg-[#EEF5FF]');
-    expect(workspace).toContain('-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D]');
+    expect(workspace).toContain('POS_MODAL_HEADER_SURFACE_CLASS');
+    expect(modalStyles).toContain('bg-[#EFF6FF]');
+    expect(workspace).toContain("const POS_ITEM_EDITOR_HEADER_SURFACE_CLASS = 'border-b border-[#143F73] bg-[#1A4E8D]';");
+    expect(workspace.match(/POS_ITEM_EDITOR_HEADER_SURFACE_CLASS/g)).toHaveLength(3);
+    expect(workspace).toContain('text-sm font-black text-white');
+    expect(workspace.match(/text-blue-100/g)).toHaveLength(2);
+    expect(workspace.match(/focus:ring-offset-\[#1A4E8D\]/g)).toHaveLength(2);
     expect(workspace).not.toContain('Active Item</span>');
     expect(workspace).toContain('Always Available');
     expect(workspace).toContain('Best Seller');
@@ -78,6 +86,21 @@ describe('POS Add Items desktop modal', () => {
     expect(workspace).toContain('option.price.toFixed(2)');
     expect(workspace).not.toContain('Option Name');
     expect(workspace).not.toContain('P20.00');
+  });
+
+  it('uses a low-opacity DGFY blue surface for all Add/Edit item status cards', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(workspace).toContain("const POS_ITEM_STATUS_CARD_CLASS = 'flex min-w-0 items-start justify-between gap-2 rounded-lg border border-[#1A4E8D]/20 bg-[#1A4E8D]/[0.06] px-2.5 py-2';");
+    expect(workspace.match(/className={POS_ITEM_STATUS_CARD_CLASS}/g)).toHaveLength(6);
+  });
+
+  it('removes the redundant Edit Item section heading while retaining the Item Name field', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(workspace).not.toContain('<h3 className="pos-items-modal-section-title mb-2">Item Details</h3>');
+    expect(workspace).toContain('Item Name <span className="text-rose-500">*</span>');
+    expect(workspace).toContain('value={editForm.name}');
   });
 
   it('keeps tablet-portrait primary actions solid and import controls interactive', () => {

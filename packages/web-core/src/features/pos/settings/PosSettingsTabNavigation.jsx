@@ -12,6 +12,7 @@ export default function PosSettingsTabNavigation({ tabs, activeTab, onTabChange 
         activeTab={activeTab}
         onTabChange={onTabChange}
         ariaLabel="Settings sections"
+        hideScrollbar
         idPrefix="pos-settings-tab"
         panelId="pos-settings-panel"
       />

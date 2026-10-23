@@ -17,7 +17,8 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).toContain('grid min-w-0 grid-cols-2 gap-2');
     expect(workspace.match(/max-w-\[54rem\]/g)).toHaveLength(2);
     // Add Item and Edit Item use the shared blue modal header treatment.
-    expect(workspace.match(/rounded-t-\[17px\] border-b border-\[#143F73\] bg-\[#1A4E8D\]/g)).toHaveLength(2);
+    expect(workspace).toContain("const POS_ITEM_EDITOR_HEADER_SURFACE_CLASS = 'border-b border-[#143F73] bg-[#1A4E8D]';");
+    expect(workspace.match(/POS_ITEM_EDITOR_HEADER_SURFACE_CLASS/g)).toHaveLength(3);
   });
 
   it('keeps selection local and queues deferred images through the gallery worker flow', () => {
@@ -112,7 +113,9 @@ describe('POS edit-item image save flow', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
 
     expect(workspace).not.toContain('Changes update this item across POS and storefront immediately.');
-    expect(workspace).toContain('pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 border-t border-slate-200 bg-white px-4 py-2 sm:px-5');
+    expect(workspace).toContain('pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 px-4 py-2 sm:px-5');
+    expect(workspace.match(/className=\{\['pos-items-modal-footer/g)).toHaveLength(2);
+    expect(workspace.match(/POS_MODAL_FOOTER_SURFACE_CLASS/g)).toHaveLength(5);
     expect(workspace).toContain('pos-items-modal-footer-actions grid min-w-0 grid-cols-2 gap-2');
     expect(workspace).toContain('h-10 min-w-0 w-full');
   });

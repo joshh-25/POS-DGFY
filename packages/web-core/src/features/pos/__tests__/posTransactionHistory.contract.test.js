@@ -84,7 +84,7 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('dgfy-pos-history-table--tablet-portrait');
         expect(panelContent).toContain('dgfy-pos-history-table--tablet-landscape');
         expect(panelContent).toContain('w-full whitespace-nowrap ${isMobileViewport');
-        expect(panelContent).toContain('whitespace-nowrap">');
+        expect(panelContent).toContain('text-slate-700 transition-colors whitespace-nowrap ${isMobileViewport');
         expect(panelContent).toContain(": 'pos-history-action-column min-w-0';");
         expect(panelContent).toContain("const isCompactHistoryViewport = isMobileViewport;");
         expect(panelContent).toContain('isPosTabletPortraitViewport');
@@ -132,7 +132,7 @@ describe('POS transaction history search and filter contract', () => {
         expect(appStyles).toContain('.dgfy-pos-history-table--tablet-landscape {');
         expect(appStyles).toContain('.dgfy-pos-history-table--tablet-landscape > colgroup > col:last-child {');
         expect(appStyles).toContain('width: 26%;');
-        expect(panelContent).toContain("import PosTableSurface, { POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';");
+        expect(panelContent).toContain("import PosTableSurface, { POS_TABLE_HEADER_BLUE_TINT_CLASS, POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';");
         expect(panelContent).toContain('<thead className={POS_TABLE_HEADER_STANDARD_CLASS}>');
         expect(appStyles).toContain('.pos-table-header--standard > tr > th {\n  height: var(--pos-table-header-height);');
         expect(appStyles).toContain('.dgfy-pos-history-table--tablet .pos-history-action-column > .pos-history-action-cell,');
@@ -169,12 +169,12 @@ describe('POS transaction history search and filter contract', () => {
         expect(appStyles).toContain('width: min(26rem, calc(100vw - 2rem)) !important;');
         expect(appStyles).toContain('@keyframes dgfy-pos-history-mobile-landscape-dialog-enter');
         expect(appStyles).toContain('animation: dgfy-pos-history-mobile-landscape-dialog-enter 180ms');
-        expect(appStyles).toContain('[data-testid="pos-history-toolbar"] > .relative {');
-        expect(appStyles).toContain('[data-testid="pos-history-toolbar"] > :not(.relative) {');
+        expect(appStyles).toContain('[data-testid="pos-history-primary-actions"] {');
+        expect(appStyles).toContain('[data-testid="pos-history-void-approval-row"] {');
         expect(appStyles).toContain('flex: 1 1 0%;');
         expect(appStyles).toContain('[data-testid="pos-history-toolbar"] {');
         expect(appStyles).toContain('flex-direction: row;');
-        expect(panelContent).toContain('flex-row w-full px-0');
+        expect(panelContent).toContain("isPhoneHistoryToolbar ? 'flex w-full min-w-0 flex-col gap-2 px-0 py-0'");
         expect(panelContent).toContain('POS_FILTER_TRIGGER_HEIGHT_CLASS');
         expect(appStyles).toContain('tbody > tr:hover > td:not([colspan])');
         expect(panelContent).toContain('transition-colors whitespace-nowrap');
@@ -194,9 +194,9 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('ref={filterButtonRef}');
         expect(panelContent).toContain('data-testid="pos-history-source-tabs"');
         expect(panelContent).toContain('data-testid="pos-history-toolbar"');
-        expect(panelContent).toContain('flex flex-nowrap gap-2 lg:gap-3');
+        expect(panelContent).toContain('flex flex-nowrap items-center gap-2 pb-4 pt-2 min-[1024px]:gap-3');
         expect(panelContent).toContain('Filter by Date');
-        expect(panelContent).toContain('min-w-[8.75rem]');
+        expect(panelContent).toContain('gap-1 whitespace-nowrap rounded-xl border-[#1A4E8D]');
         expect(historyDialogShellContent).toContain("position: 'fixed'");
         expect(historyDialogShellContent).toContain("width: `${position.width}px`");
         expect(historyDialogShellContent).toContain('w-auto max-w-none');
@@ -206,6 +206,9 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('<PosLineTabNavigation');
         expect(panelContent).toContain('ariaLabel="Transaction sources"');
         expect(panelContent).toContain('idPrefix="pos-history-source-tab"');
+        expect(panelContent).toContain('hideScrollbar');
+        expect(panelContent).not.toContain('mobileGridColumns={3}');
+        expect(panelContent).not.toContain('singleLineMobile');
         expect(panelContent).toContain('testId: `pos-history-source-tab-${sourceTab.value}`');
         expect(panelContent).toContain("{ value: 'all', label: 'All Sources', icon: List }");
         expect(panelContent).toContain("{ value: 'in_store', label: 'In-Store', icon: Store }");
@@ -297,7 +300,7 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('pos-history-void-footer');
         expect(panelContent).toContain("import { Ban, CalendarDays, ClipboardCheck, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';");
         expect(panelContent).toContain("import PosSearchField from './PosSearchField.jsx';");
-        expect(panelContent).toContain('<Filter className={`${isMobileViewport ? \'\' : \'mr-2\'} h-4 w-4`} aria-hidden="true" />');
+        expect(panelContent).toContain('<Filter className="h-4 w-4" aria-hidden="true" />');
         expect(panelContent).toContain('icon={ClipboardList}');
         expect(panelContent).toContain('icon={Eye}');
         expect(panelContent).toContain('icon={Ban}');

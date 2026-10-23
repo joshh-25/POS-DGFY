@@ -49,7 +49,9 @@ describe('AdminBranchShiftMonitor', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Active Shifts' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Active Shifts' }).className).toContain('text-xl');
+    expect(screen.getByRole('heading', { name: 'Active Shifts' }).className).toContain('text-base');
+    expect(screen.getByRole('heading', { name: 'Active Shifts' }).className).toContain('leading-5');
+    expect(screen.getByRole('heading', { name: 'Active Shifts' }).className).toContain('pos-terminal-section-heading');
     expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
     expect(screen.getByText('1 active · 1 stale to review')).toBeTruthy();
     expect(screen.getByText('COUNTER-01')).toBeTruthy();

@@ -20,6 +20,9 @@ describe('iMin notification policy contract', () => {
       'src/features/pos/components/SkupervisorPOSBarcodeScanner.jsx',
       'src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx',
       'src/features/pos/components/PosItemsWorkspace.jsx',
+      // Incoming-order notifications moved with their rendered workspace into
+      // TerminalOperationsPanels; keep that current owner on the iMin facade.
+      'src/features/pos/components/TerminalOperationsPanels.jsx',
       'src/features/pos/settings/PosSettingsWorkspace.jsx',
       'src/features/pos/pages/PosPageShell.jsx',
       'src/features/pos/pages/TerminalPage.jsx'

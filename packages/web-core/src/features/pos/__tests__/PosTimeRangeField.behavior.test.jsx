@@ -29,7 +29,9 @@ describe('POS time range field', () => {
 
     fireEvent.click(trigger);
 
-    expect(screen.getByRole('dialog', { name: 'Select daily time window' })).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Select daily time window' });
+    expect(dialog.className).toContain('h-auto');
+    expect(dialog.className.split(/\s+/)).not.toContain('h-[min(90vh,40rem)]');
     expect(screen.getByRole('button', { name: 'Cancel' }).className).toContain('h-10 rounded-lg');
     expect(screen.getByRole('button', { name: 'Apply Times' }).className).toContain('h-10 rounded-lg');
     expect(screen.getByTestId('voucher-time-range-start-selection').textContent).toContain('e.g. 09:00 AM');

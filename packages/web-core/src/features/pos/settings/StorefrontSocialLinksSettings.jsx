@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import DropdownSelect from '../../../components/ui/DropdownSelect.jsx';
 import { STOREFRONT_TYPOGRAPHY, StorefrontEmptyState, StorefrontSectionHeader } from './StorefrontSectionPrimitives.jsx';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 
 export const STOREFRONT_SOCIAL_PLATFORMS = [
   { id: 'facebook', label: 'Facebook', Icon: Facebook, placeholder: 'https://facebook.com/yourpage' },
@@ -181,9 +182,9 @@ function SocialLinkDialog({ mode, open, draft, entries, editIndex, onChange, onC
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }} overlayClassName="bg-black/30 backdrop-blur-none">
-      <DialogContent aria-labelledby="storefront-social-link-dialog-title" aria-describedby="storefront-social-link-dialog-description" className="w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
+      <DialogContent aria-labelledby="storefront-social-link-dialog-title" aria-describedby="storefront-social-link-dialog-description" className="w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
         <form onSubmit={(event) => { event.preventDefault(); if (valid) onSubmit({ platform: currentPlatform, url }); }}>
-          <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+          <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
             <DialogTitle id="storefront-social-link-dialog-title" className="text-[16px] font-extrabold text-[#0F172A]">{editing ? 'Edit Social Link' : 'Add Social Link'}</DialogTitle>
             <DialogDescription id="storefront-social-link-dialog-description" className="mt-1 text-[12px] leading-5 text-[#64748B]">{editing ? 'Update the social channel customers see on your storefront.' : 'Connect a social channel customers can use to find your store.'}</DialogDescription>
           </DialogHeader>
@@ -205,7 +206,7 @@ function SocialLinkDialog({ mode, open, draft, entries, editIndex, onChange, onC
               {urlError ? <p className="text-[11px] font-semibold leading-4 text-rose-600" role="alert">{urlError}</p> : null}
             </div>
           </div>
-          <DialogFooter className="flex-row items-center gap-2 border-t border-slate-100 px-5 py-4 sm:justify-end sm:px-6">
+          <DialogFooter className={['flex-row items-center gap-2 px-5 py-4 sm:justify-end sm:px-6', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
             <Button type="button" variant="outline" onClick={onClose} className="min-h-9 min-w-0 flex-1 text-[13px] font-bold sm:flex-none sm:text-[14px]">Cancel</Button>
             <Button type="submit" disabled={!valid} className="min-h-9 min-w-0 flex-1 bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] sm:flex-none sm:text-[14px]">{editing ? 'Save Changes' : 'Add Social Link'}</Button>
           </DialogFooter>

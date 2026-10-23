@@ -93,6 +93,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
   const canCollectCash = order.order_method !== 'dine_in'
     && order.payment_type === 'cash'
     && order.payment_status === 'unpaid'
+    && isCashCollectionTimingValid(order)
     && (
       (order.order_method === 'pickup' && order.payment_timing === 'on_pickup' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.payment_timing === 'on_delivery' && order.fulfillment_status === 'out_for_delivery')

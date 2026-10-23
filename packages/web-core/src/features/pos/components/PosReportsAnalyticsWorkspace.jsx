@@ -12,7 +12,6 @@ import {
   Clock3,
   CreditCard,
   Download,
-  Filter,
   FileText,
   LayoutDashboard,
   Printer,
@@ -20,7 +19,7 @@ import {
   Scale,
   ShoppingBag,
   Tags,
-  Users
+  Users,
 } from 'lucide-react';
 import {
   Area,
@@ -63,6 +62,7 @@ import PosReportsToolbar from './PosReportsToolbar.jsx';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
 import PosZReadingHistoryTable from './PosZReadingHistoryTable.jsx';
 import PosZReadingHistoryToolbar from './PosZReadingHistoryToolbar.jsx';
+import PosShiftStateNotice from './PosShiftStateNotice.jsx';
 import {
   buildDailySalesCheckCsv,
   buildDailySalesCheckPrintHtml,
@@ -84,8 +84,6 @@ import {
 } from '../utils/posDeliveryProviders.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import {
-  BackOfficeReportDataTable as DataTable,
-  BackOfficeReportEmptyState as EmptyState,
   BackOfficeReportSectionCard as SectionCard
 } from '../../../components/backOffice/BackOfficePrimitives.jsx';
 
@@ -101,6 +99,18 @@ const REPORT_TABS = [
   { id: 'profit_loss', label: 'Profit/Loss', icon: Scale, granularity: 'monthly', exportSection: 'profit_loss' },
   { id: 'operations', label: 'Operations', icon: BarChart3, granularity: 'daily', exportSection: 'cashiers' }
 ];
+
+const SALES_REPORT_TAB_IDS = ['sales', 'hourly', 'item_sales', 'category_sales'];
+const SALES_REPORT_TABS = REPORT_TABS.filter((tab) => SALES_REPORT_TAB_IDS.includes(tab.id));
+const REPORT_KPI_VARIANTS = {
+  overview: 'overview',
+  sales: 'sales',
+  profit_loss: 'profit_loss'
+};
+const REPORT_PRIMARY_TABS = REPORT_TABS.flatMap((tab) => {
+  if (!SALES_REPORT_TAB_IDS.includes(tab.id)) return [tab];
+  return tab.id === 'sales' ? [{ id: 'sales_reports', label: 'Sales Reports', icon: Receipt }] : [];
+});
 
 const getDefaultBreakdownSort = (breakdown) => (
   breakdown === 'hourly'
@@ -265,13 +275,18 @@ const downloadBlob = (blob, filename) => {
   window.URL.revokeObjectURL(url);
 };
 
-const DailySalesCheckMetric = ({ label, value, description, className = '' }) => (
-  <div className={`min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/40 sm:p-4 ${className}`}>
-    <dt className="text-xs font-bold uppercase leading-4 tracking-wide text-slate-500">{label}</dt>
-    <dd className="mt-1.5 min-w-0 break-words text-xl font-black leading-tight tabular-nums text-slate-950 sm:text-2xl">
-      {value}
-      <span className="mt-1.5 block break-words text-xs font-normal leading-4 text-slate-600">{description}</span>
-    </dd>
+const DailySalesCheckMetric = ({ label, value, description, Icon, iconClassName, className = '' }) => (
+  <div className={`flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/40 sm:gap-3 sm:p-4 ${className}`}>
+    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 ${iconClassName}`} aria-hidden="true">
+      <Icon className="h-5 w-5" />
+    </span>
+    <div className="min-w-0">
+      <dt className="break-words text-[10px] font-semibold leading-4 text-slate-600">{label}</dt>
+      <dd className="mt-1 min-w-0 break-words text-[clamp(0.75rem,3.8vw,1rem)] font-black leading-tight tabular-nums text-slate-950 sm:text-xl lg:text-2xl">
+        {value}
+        {description ? <span className="sr-only">. {description}</span> : null}
+      </dd>
+    </div>
   </div>
 );
 
@@ -281,6 +296,7 @@ export const ZReadingReconciliationCard = ({
   title = 'Z-reading reconciliation',
   onPrint,
   onExport,
+  onHistory,
   actionsDisabled = false
 }) => {
   if (!data) return null;
@@ -309,34 +325,7 @@ export const ZReadingReconciliationCard = ({
       className="min-w-0 max-w-full"
       aria-labelledby="daily-sales-check-heading"
     >
-      {typeof onPrint === 'function' && typeof onExport === 'function' ? (
-        <div className="mb-3 flex min-w-0 justify-end" role="group" aria-label="Daily Sales Check actions">
-          <div className="flex w-full flex-col gap-3 min-[360px]:w-auto min-[360px]:flex-row min-[768px]:gap-2">
-            <Button
-              type="button"
-              onClick={onPrint}
-              disabled={actionsDisabled}
-              aria-label="Print or save Daily Sales Check as PDF"
-              className="min-h-11 w-full min-w-0 justify-center gap-1.5 rounded-xl bg-slate-900 px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-slate-800 min-[360px]:w-auto sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
-            >
-              <Printer className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
-              <span>Print / Save PDF</span>
-            </Button>
-            <Button
-              type="button"
-              onClick={onExport}
-              disabled={actionsDisabled}
-              aria-label="Export Daily Sales Check as CSV"
-              className="min-h-11 w-full min-w-0 justify-center gap-1.5 rounded-xl bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-[#143F73] min-[360px]:w-auto sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
-            >
-              <Download className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
-              <span>Export CSV</span>
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      <header className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 id="daily-sales-check-heading" className="min-w-0 break-words text-sm font-black text-slate-950">{title}</h3>
           <span
@@ -348,12 +337,51 @@ export const ZReadingReconciliationCard = ({
             <StatusIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {statusConfig.label}
           </span>
+          {data.reading_identifier ? (
+            <p className="flex min-w-0 items-center gap-1.5 break-all text-xs font-bold text-slate-600">
+              <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {data.reading_identifier}
+            </p>
+          ) : null}
         </div>
-        {data.reading_identifier ? (
-          <p className="flex min-w-0 items-center gap-1.5 break-all text-xs font-bold text-slate-600">
-            <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {data.reading_identifier}
-          </p>
+        {typeof onPrint === 'function' || typeof onExport === 'function' || typeof onHistory === 'function' ? (
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0" role="group" aria-label="Daily Sales Check actions">
+            {typeof onHistory === 'function' ? (
+              <Button
+                type="button"
+                onClick={onHistory}
+                aria-label="View Z-reading history"
+                className="min-h-10 min-w-0 flex-1 justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50 sm:flex-none sm:px-3 sm:text-xs"
+              >
+                <Clock3 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>History</span>
+              </Button>
+            ) : null}
+            {typeof onPrint === 'function' ? (
+              <Button
+                type="button"
+                onClick={onPrint}
+                disabled={actionsDisabled}
+                aria-label="Print or save Daily Sales Check as PDF"
+                className="min-h-10 h-10 w-10 shrink-0 justify-center gap-1.5 rounded-xl bg-slate-900 px-0 text-[11px] font-extrabold text-white shadow-sm hover:bg-slate-800 min-[1200px]:h-auto min-[1200px]:w-auto min-[1200px]:flex-none min-[1200px]:px-3 min-[1200px]:text-xs"
+              >
+                <Printer className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
+                <span className="sr-only min-[1200px]:not-sr-only">Print / Save PDF</span>
+              </Button>
+            ) : null}
+            {typeof onExport === 'function' ? (
+              <Button
+                type="button"
+                onClick={onExport}
+                disabled={actionsDisabled}
+                aria-label="Export Daily Sales Check as CSV"
+                className="min-h-10 h-10 w-10 shrink-0 justify-center gap-1.5 rounded-xl bg-[#1A4E8D] px-0 text-[11px] font-extrabold text-white shadow-sm hover:bg-[#143F73] min-[1200px]:h-auto min-[1200px]:w-auto min-[1200px]:flex-none min-[1200px]:px-3 min-[1200px]:text-xs"
+              >
+                <Download className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
+                <span className="sr-only min-[1200px]:not-sr-only">Export CSV</span>
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </header>
 
@@ -363,11 +391,13 @@ export const ZReadingReconciliationCard = ({
         </p>
       ) : null}
 
-      <dl className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Daily sales reconciliation">
+      <dl className="mt-3 grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Daily sales reconciliation">
         <DailySalesCheckMetric
-          label="Report recognized sales"
+          label="Recognized sales"
           value={formatAmount(data.report_recognized_sales)}
           description="Completed, recognized transaction totals"
+          Icon={CreditCard}
+          iconClassName="bg-emerald-50 text-emerald-600"
         />
         <DailySalesCheckMetric
           label="Z-reading total"
@@ -377,6 +407,8 @@ export const ZReadingReconciliationCard = ({
             : isComparable
               ? 'Saved immutable total for this business date'
               : 'Unavailable for this report selection'}
+          Icon={FileText}
+          iconClassName="bg-blue-50 text-blue-600"
         />
         <DailySalesCheckMetric
           label="Difference"
@@ -384,12 +416,16 @@ export const ZReadingReconciliationCard = ({
           description={status === 'variance'
             ? 'Recognized sales minus the saved total. Review scope and post-close events.'
             : 'Shown only when both totals are comparable'}
+          Icon={ArrowLeftRight}
+          iconClassName="bg-violet-50 text-violet-600"
           className={statusConfig.metricClassName || ''}
         />
         <DailySalesCheckMetric
           label="Report net sales"
           value={formatAmount(data.report_net_sales)}
           description="Different metric; includes line-level discounts/refunds"
+          Icon={BarChart3}
+          iconClassName="bg-rose-50 text-rose-600"
         />
       </dl>
 
@@ -493,6 +529,7 @@ function PosReportsAnalyticsWorkspace({
   sectionId
 }) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [lastSalesReportTab, setLastSalesReportTab] = useState('sales');
   const [renderedTab, setRenderedTab] = useState('overview');
   const [operationSection, setOperationSection] = useState('cashiers');
   const [renderedOperationSection, setRenderedOperationSection] = useState('cashiers');
@@ -548,6 +585,8 @@ function PosReportsAnalyticsWorkspace({
   )), [terminalUser]);
   const selectedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0], [activeTab]);
   const renderedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === renderedTab) || REPORT_TABS[0], [renderedTab]);
+  const activePrimaryTabId = SALES_REPORT_TAB_IDS.includes(activeTab) ? 'sales_reports' : activeTab;
+  const reportKpiVariant = REPORT_KPI_VARIANTS[activeTab] || null;
   const activeBreakdown = selectedReportTab.breakdown || null;
   const isBreakdownTab = Boolean(activeBreakdown);
   const displayGranularity = activeTab === 'comparison' ? granularity : selectedReportTab.granularity;
@@ -653,6 +692,7 @@ function PosReportsAnalyticsWorkspace({
   const handleTabChange = (tabId) => {
     const nextTab = String(tabId || 'overview').trim() || 'overview';
     const selectedTab = REPORT_TABS.find((tab) => tab.id === nextTab) || REPORT_TABS[0];
+    if (SALES_REPORT_TAB_IDS.includes(selectedTab.id)) setLastSalesReportTab(selectedTab.id);
     if (selectedTab.id === activeTab) return;
     transitionReportPanel(selectedTab.id, operationSection);
     setActiveTab(selectedTab.id);
@@ -661,6 +701,14 @@ function PosReportsAnalyticsWorkspace({
       setReportFiltersOpen(false);
       setReportDateFilterOpen(false);
     }
+  };
+
+  const handlePrimaryTabChange = (tabId) => {
+    if (tabId === 'sales_reports') {
+      handleTabChange(SALES_REPORT_TAB_IDS.includes(activeTab) ? activeTab : lastSalesReportTab);
+      return;
+    }
+    handleTabChange(tabId);
   };
 
   const handleZReadingSectionChange = (sectionId) => {
@@ -1089,6 +1137,37 @@ function PosReportsAnalyticsWorkspace({
       ? { folder_id: null, name: entry, legacy: true }
       : entry
   ));
+  const zReadingTerminalOptions = useMemo(() => {
+    const terminalValues = new Set(
+      (Array.isArray(zReadingHistoryRows) ? zReadingHistoryRows : [])
+        .map((row) => String(row?.closed_from_terminal_id || '').trim())
+        .filter(Boolean)
+    );
+    const selectedTerminal = String(zReadingHistoryFilters.terminalId || '').trim();
+    if (selectedTerminal) terminalValues.add(selectedTerminal);
+    return [
+      { key: 'all-terminals', value: '', label: 'All terminals' },
+      ...Array.from(terminalValues)
+        .sort((left, right) => left.localeCompare(right))
+        .map((value) => ({ key: `terminal-${value}`, value, label: value }))
+    ];
+  }, [zReadingHistoryFilters.terminalId, zReadingHistoryRows]);
+  const zReadingCashierOptions = useMemo(() => {
+    const cashierValues = new Map();
+    (Array.isArray(cashiers) ? cashiers : []).forEach((cashier) => {
+      const label = String(cashier?.cashier_name || cashier?.email || '').trim();
+      if (label) cashierValues.set(label.toLowerCase(), label);
+    });
+    (Array.isArray(zReadingHistoryRows) ? zReadingHistoryRows : []).forEach((row) => {
+      const label = String(row?.closed_by_display_name || '').trim();
+      if (label) cashierValues.set(label.toLowerCase(), label);
+    });
+    const selectedCashier = String(zReadingHistoryFilters.closedBy || '').trim();
+    if (selectedCashier) cashierValues.set(selectedCashier.toLowerCase(), selectedCashier);
+    return Array.from(cashierValues.values())
+      .sort((left, right) => left.localeCompare(right))
+      .map((label) => ({ key: `cashier-${label}`, value: label, label }));
+  }, [cashiers, zReadingHistoryFilters.closedBy, zReadingHistoryRows]);
   const transactionRows = Array.isArray(dailyReport.transaction_rows) ? dailyReport.transaction_rows : [];
   const selectedCashier = cashiers.find((entry) => String(entry.cashier_id) === String(cashierId));
   const reportCashierLabel = cashierId
@@ -1671,6 +1750,8 @@ function PosReportsAnalyticsWorkspace({
           setZReadingHistoryActionError('');
         }}
         filters={zReadingHistoryFilters}
+        terminalOptions={zReadingTerminalOptions}
+        cashierOptions={zReadingCashierOptions}
         onApplyFilters={(nextFilters) => {
           setZReadingHistoryFilters(nextFilters);
           setZReadingHistoryPage(1);
@@ -1700,7 +1781,7 @@ function PosReportsAnalyticsWorkspace({
   const renderDeliveryProviderBreakdown = () => (
     <SectionCard title="Delivery Provider Breakdown">
       {deliveryProviderRows.length === 0 ? (
-        <p className="text-sm font-semibold text-slate-500">No delivery provider sales were recorded for the selected filters.</p>
+        <PosShiftStateNotice variant="empty" message="No delivery provider sales were recorded for the selected filters." compact />
       ) : (
         <div className="divide-y divide-slate-100">
           {deliveryProviderRows.map((entry) => (
@@ -1720,7 +1801,7 @@ function PosReportsAnalyticsWorkspace({
   const renderOrderSourceBreakdown = () => (
     <SectionCard title="Sales Source Breakdown">
       {orderSourceRows.length === 0 ? (
-        <p className="text-sm font-semibold text-slate-500">No Walk-in Sales or Online Sales were recorded for the selected filters.</p>
+        <PosShiftStateNotice variant="empty" message="No Walk-in Sales or Online Sales were recorded for the selected filters." compact />
       ) : (
         <div className="divide-y divide-slate-100">
           {orderSourceRows.map((entry) => {
@@ -1744,7 +1825,7 @@ function PosReportsAnalyticsWorkspace({
   const renderOrderMethodBreakdown = () => (
     <SectionCard title="Order Method Breakdown">
       {orderMethodRows.length === 0 ? (
-        <p className="text-sm font-semibold text-slate-500">No order methods were recorded for the selected filters.</p>
+        <PosShiftStateNotice variant="empty" message="No order methods were recorded for the selected filters." compact />
       ) : (
         <div className="divide-y divide-slate-100">
           {orderMethodRows.map((entry) => {
@@ -1804,7 +1885,7 @@ function PosReportsAnalyticsWorkspace({
         </SectionCard>
 
         <SectionCard title="Payment Method Breakdown">
-          {paymentChartRows.length === 0 ? <p className="text-sm font-semibold text-slate-500">No payment methods were recorded for the selected filters.</p> : (
+          {paymentChartRows.length === 0 ? <PosShiftStateNotice variant="empty" message="No payment methods were recorded for the selected filters." compact /> : (
             <>
               <div className="h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1854,29 +1935,31 @@ function PosReportsAnalyticsWorkspace({
         className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}
       >
         <PosLineTabNavigation
-          tabs={REPORT_TABS}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
+          tabs={REPORT_PRIMARY_TABS}
+          activeTab={activePrimaryTabId}
+          onTabChange={handlePrimaryTabChange}
           ariaLabel="POS reports"
           hideScrollbar
           idPrefix={(tabId) => `${sectionId || 'pos-reports'}-${tabId}-tab`}
           panelId={`${sectionId || 'pos-reports'}-panel`}
         />
       </div>
-      {activeTab !== 'z_readings' ? (
+      {activePrimaryTabId === 'sales_reports' ? (
         <div className="min-w-0">
-          <PosReportsKpiCards
-            summaryCards={summaryCards}
-            dailySummary={dailyReport.summary}
-            comparison={comparisonReport.flexible_range}
-            currencySymbol={currencySymbol}
-            selectedTender={selectedTender}
-            transactionRows={transactionRows}
+          <PosSubtabNavigation
+            tabs={SALES_REPORT_TABS}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            ariaLabel="Sales reports"
+            idPrefix={`${sectionId || 'pos-reports'}-sales-reports`}
+            panelId={`${sectionId || 'pos-reports'}-panel`}
+            desktopColumns={4}
+            compactMobile
           />
         </div>
       ) : null}
       {shouldShowOperationsSubtabs ? (
-        <div className="flex min-w-0 flex-col gap-2">
+        <div className="min-w-0">
           <PosSubtabNavigation
             tabs={operationSections}
             activeTab={operationSection}
@@ -1887,9 +1970,20 @@ function PosReportsAnalyticsWorkspace({
             desktopColumns={operationSections.length === 6 ? 6 : 5}
             compactMobile
           />
-          {renderReportToolbar()}
         </div>
-      ) : activeTab === 'z_readings' ? (
+      ) : null}
+      {reportKpiVariant ? (
+        <div className="min-w-0">
+          <PosReportsKpiCards
+            variant={reportKpiVariant}
+            summaryCards={summaryCards}
+            dailySummary={dailyReport.summary}
+            currencySymbol={currencySymbol}
+            transactionRows={transactionRows}
+          />
+        </div>
+      ) : null}
+      {activeTab === 'z_readings' ? (
         <>
           <PosSubtabNavigation
             tabs={Z_READING_SECTIONS}
@@ -1906,24 +2000,24 @@ function PosReportsAnalyticsWorkspace({
       ) : renderReportToolbar()}
 
       {activeTab !== 'z_readings' && showInlineError ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-          {activeError}
-        </div>
+        <PosShiftStateNotice variant="warning" message={activeError} />
       ) : null}
 
       {activeTab !== 'z_readings' && isInitialLoading ? (
-        <EmptyState message="Loading POS reports..." />
+        <PosShiftStateNotice variant="loading" message="Loading POS reports..." />
       ) : activeTab !== 'z_readings' && showBlockingError ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm font-semibold text-rose-700">{activeError}</div>
+        <PosShiftStateNotice variant="error" message={activeError} />
       ) : !shouldRenderReportPanel ? (
-        <EmptyState message="No POS report data found for the selected filters." />
+        <PosShiftStateNotice variant="empty" message="No POS report data found for the selected filters." />
       ) : (
         <div
           id={`${sectionId || 'pos-reports'}-panel`}
           role="tabpanel"
           aria-labelledby={renderedTab === 'operations'
             ? `${sectionId || 'pos-reports'}-operations-${renderedOperationSection}`
-            : `${sectionId || 'pos-reports'}-${renderedTab}-tab`}
+            : SALES_REPORT_TAB_IDS.includes(renderedTab)
+              ? `${sectionId || 'pos-reports'}-sales-reports-${renderedTab}`
+              : `${sectionId || 'pos-reports'}-${renderedTab}-tab`}
           tabIndex={0}
           className="relative space-y-4"
           style={reportPanelInlineStyle}
@@ -1983,16 +2077,14 @@ function PosReportsAnalyticsWorkspace({
             zReadingSection === 'daily_check' ? (
               <div className="space-y-4">
                 {dailySalesCheckLoading ? (
-                  <EmptyState message="Loading the selected business date…" />
+                  <PosShiftStateNotice variant="loading" message="Loading the selected business date…" />
                 ) : dailySalesCheckError ? (
-                  <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm font-semibold text-rose-800">
-                    <span className="min-w-0">{dailySalesCheckError}</span>
-                    {isOnline ? (
-                      <Button type="button" variant="outline" onClick={() => setDailySalesCheckRefreshKey((current) => current + 1)}>
-                        Try again
-                      </Button>
-                    ) : null}
-                  </div>
+                  <PosShiftStateNotice
+                    variant="error"
+                    message={dailySalesCheckError}
+                    actionLabel={isOnline ? 'Try again' : ''}
+                    onAction={isOnline ? () => setDailySalesCheckRefreshKey((current) => current + 1) : undefined}
+                  />
                 ) : dailySalesCheckData ? (
                   <ZReadingReconciliationCard
                     data={dailySalesCheckData}
@@ -2000,10 +2092,11 @@ function PosReportsAnalyticsWorkspace({
                     title="Z-reading reconciliation"
                     onPrint={handlePrintDailySalesCheck}
                     onExport={handleExportDailySalesCheck}
+                    onHistory={() => handleZReadingSectionChange('history')}
                     actionsDisabled={dailySalesCheckLoading}
                   />
                 ) : (
-                  <EmptyState message="No comparison data is available for this business date." />
+                  <PosShiftStateNotice variant="empty" message="No comparison data is available for this business date." />
                 )}
               </div>
             ) : (
@@ -2102,7 +2195,6 @@ function PosReportsAnalyticsWorkspace({
                 emptyMessage="No shared-access or counted handoffs were recorded for these filters."
                 searchEmptyMessage="No handoff timeline rows match your search."
                 resultLabel="handoff events"
-                showActions={false}
               />
             </div>
           ) : null}

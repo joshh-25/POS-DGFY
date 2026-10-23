@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { FileText, Monitor, Settings2, ShieldCheck } from 'lucide-react';
+import usePosCenteredTabScroll from '../hooks/usePosCenteredTabScroll.js';
 
 const POS_SETUP_SECTIONS = [
   { id: 'business', label: 'Business & Receipts', icon: FileText },
@@ -13,31 +14,7 @@ export default function PosSetupSubTabs({ activeSection, onChange, visibleSectio
     ? POS_SETUP_SECTIONS.filter((section) => visibleSectionIds.includes(section.id))
     : POS_SETUP_SECTIONS;
   const sectionsViewportRef = useRef(null);
-  const activeSectionIndex = POS_SETUP_SECTIONS.findIndex((section) => section.id === activeSection);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    if (activeSectionIndex <= 0 || activeSectionIndex >= POS_SETUP_SECTIONS.length - 1) return undefined;
-
-    const viewport = sectionsViewportRef.current;
-    if (!viewport || viewport.scrollWidth <= viewport.clientWidth) return undefined;
-
-    const activeSectionElement = document.getElementById(`pos-setup-tab-${activeSection}`);
-    if (!activeSectionElement || !viewport.contains(activeSectionElement)) return undefined;
-
-    const frameId = window.requestAnimationFrame(() => {
-      const viewportRect = viewport.getBoundingClientRect();
-      const sectionRect = activeSectionElement.getBoundingClientRect();
-      const sectionCenter = sectionRect.left - viewportRect.left + viewport.scrollLeft + (sectionRect.width / 2);
-      const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-      viewport.scrollTo({
-        left: Math.min(maxScrollLeft, Math.max(0, sectionCenter - (viewport.clientWidth / 2))),
-        behavior: 'smooth'
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeSection, activeSectionIndex, visibleSections.length]);
+  const centerActiveSection = usePosCenteredTabScroll(sectionsViewportRef, activeSection ? `pos-setup-tab-${activeSection}` : '');
 
   const handleKeyDown = (event) => {
     const currentIndex = visibleSections.findIndex((section) => section.id === activeSection);
@@ -64,8 +41,11 @@ export default function PosSetupSubTabs({ activeSection, onChange, visibleSectio
   };
 
   return (
-    <div ref={sectionsViewportRef} role="tablist" aria-label="POS Setup sections" className="-mx-1 overflow-x-auto">
-      <div className="flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-4 min-[1200px]:px-0">
+    <div ref={sectionsViewportRef} role="tablist" aria-label="POS Setup sections" className="-mx-1 sm:-mt-2 overflow-x-auto">
+      <div
+        className="flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:px-0"
+        style={{ gridTemplateColumns: `repeat(${Math.max(1, visibleSections.length)}, minmax(0, 1fr))` }}
+      >
         {visibleSections.map(({ id, label, icon: Icon }) => {
           const isActive = activeSection === id;
           return (
@@ -77,12 +57,15 @@ export default function PosSetupSubTabs({ activeSection, onChange, visibleSectio
               aria-selected={isActive}
               aria-controls={`pos-setup-panel-${id}`}
               tabIndex={isActive ? 0 : -1}
-              onClick={() => onChange(id)}
+              onClick={() => {
+                if (isActive) centerActiveSection();
+                onChange(id);
+              }}
               onKeyDown={handleKeyDown}
               className={`inline-flex min-h-10 min-w-36 w-max shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-2 text-center text-[13px] font-bold leading-4 shadow-sm transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30 focus-visible:ring-offset-1 sm:px-3 min-[1200px]:min-h-9 min-[1200px]:w-full min-[1200px]:shrink min-[1200px]:px-4 ${
                 isActive
                   ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-[#1A4E8D]/20 hover:bg-[#164278]'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-[#9BBBE0] hover:bg-[#F5F9FF] hover:text-[#1A4E8D]'
+                  : 'border-[#9BBBE0] bg-[#F5F9FF] text-[#1A4E8D] hover:border-[#7FA6D6] hover:bg-[#EAF2FF]'
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />

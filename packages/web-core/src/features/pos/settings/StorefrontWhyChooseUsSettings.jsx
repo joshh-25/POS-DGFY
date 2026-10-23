@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { STOREFRONT_TYPOGRAPHY, StorefrontEmptyState, StorefrontSectionHeader } from './StorefrontSectionPrimitives.jsx';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 
 export const MAX_STOREFRONT_WHY_CHOOSE_US = 4;
 export const STOREFRONT_WHY_CHOOSE_US_MAX_LENGTH = 80;
@@ -128,9 +129,9 @@ function PhraseDialog({ mode, open, value, onChange, onClose, onSubmit }) {
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }} overlayClassName="bg-black/30 backdrop-blur-none">
-      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
         <form onSubmit={(event) => { event.preventDefault(); if (normalizedValue) onSubmit(normalizedValue); }}>
-          <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+          <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
             <DialogTitle className="text-[16px] font-extrabold text-[#0F172A]">{editing ? 'Edit Phrase' : 'Add Phrase'}</DialogTitle>
             <DialogDescription className="mt-1 text-[12px] leading-5 text-[#64748B]">{editing ? 'Update the reason customers see on your storefront.' : 'Add a short reason customers should choose your store.'}</DialogDescription>
           </DialogHeader>
@@ -139,7 +140,7 @@ function PhraseDialog({ mode, open, value, onChange, onClose, onSubmit }) {
             <Input id={inputId} autoFocus value={value} onChange={(event) => onChange(event.target.value.slice(0, STOREFRONT_WHY_CHOOSE_US_MAX_LENGTH))} placeholder="Add a short reason" maxLength={STOREFRONT_WHY_CHOOSE_US_MAX_LENGTH} className="h-9 rounded-lg border-slate-200 text-[13px] text-[#0F172A]" />
             <p className="text-right text-[11px] text-[#64748B]">{String(value || '').length}/{STOREFRONT_WHY_CHOOSE_US_MAX_LENGTH}</p>
           </div>
-          <DialogFooter className="flex-row items-center gap-2 border-t border-slate-100 px-5 py-4 sm:justify-end sm:px-6">
+          <DialogFooter className={['flex-row items-center gap-2 px-5 py-4 sm:justify-end sm:px-6', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
             <Button type="button" variant="outline" onClick={onClose} className="min-h-9 min-w-0 flex-1 text-[13px] font-bold sm:flex-none sm:text-[14px]">Cancel</Button>
             <Button type="submit" disabled={!normalizedValue} className="min-h-9 min-w-0 flex-1 bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] sm:flex-none sm:text-[14px]">{editing ? 'Save Changes' : 'Add Phrase'}</Button>
           </DialogFooter>

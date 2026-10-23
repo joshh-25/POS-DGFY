@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 import { Button } from '@/components/ui/button';
 import { FULFILLMENT_STATUS_LABELS, ORDER_METHOD_LABELS, PAYMENT_TYPE_LABELS, resolveAppliedVouchers } from './orderFulfillmentUi.js';
 
@@ -159,8 +160,8 @@ export default function OnlineOrderDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1rem)] max-w-none flex-col overflow-hidden border border-slate-200 bg-slate-50 p-0 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:w-full sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
-        <DialogHeader className="shrink-0 border-b border-slate-200 bg-white px-4 py-2.5 sm:px-5 sm:py-3.5">
+      <DialogContent className="flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1rem)] max-w-none flex-col overflow-hidden rounded-2xl border border-[#D9E5F3] bg-slate-50 p-0 shadow-2xl shadow-slate-950/15 sm:max-h-[calc(100dvh-3rem)] sm:w-full sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
+        <DialogHeader className={['shrink-0 rounded-t-2xl px-4 py-2.5 sm:px-5 sm:py-3.5', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <div className="flex min-w-0 items-center gap-2.5 pr-8">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 sm:h-10 sm:w-10">
               <Receipt className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
@@ -307,7 +308,7 @@ export default function OnlineOrderDetailsModal({
           )}
         </div>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-2 sm:justify-between sm:px-5">
+        <DialogFooter className={['shrink-0 gap-2 px-4 py-2 sm:justify-between sm:px-5', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-xs">
             Close
           </Button>

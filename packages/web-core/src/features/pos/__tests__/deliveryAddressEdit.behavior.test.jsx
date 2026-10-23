@@ -11,7 +11,7 @@ afterEach(() => {
 // Phase 210 (#1179). Covers the staff-only post-placement delivery address/pin edit control at
 // the component level: visibility gating (pre-dispatch only, per Pat's confirmed deviation from
 // the plan's default -- see PHASE_210_PLAN.md section 3.4/4.3), the required reason + paired
-// lat/lng guard, and the "customer is not notified" copy.
+// lat/lng guard, concise customer-confirmation copy, and its compact typography.
 
 const DELIVERY_ORDER = {
   pos_transaction_id: 903,
@@ -68,10 +68,18 @@ describe('DeliveryAddressEditControl visibility (Phase 210, #1179)', () => {
 });
 
 describe('DeliveryAddressEditControl dialog behaviour (Phase 210, #1179)', () => {
-  it('carries the "customer is not notified" copy', () => {
+  it('shows a concise customer-confirmation instruction in compact typography', () => {
     renderControl();
     fireEvent.click(screen.getByRole('button', { name: /edit delivery address/i }));
-    expect(screen.getByText(/customer is not notified and does not confirm this change/i)).toBeTruthy();
+    const description = screen.getByText(
+      "Call the customer to confirm the new address before saving. They won't be notified automatically."
+    );
+    const title = screen.getByRole('heading', { name: /edit delivery address/i });
+    const address = screen.getByLabelText('Address');
+
+    expect(description.className).toContain('text-[13px]');
+    expect(title.className).toContain('text-xl');
+    expect(address.className).toContain('text-[13px]');
   });
 
   it('disables save until a reason is entered', () => {

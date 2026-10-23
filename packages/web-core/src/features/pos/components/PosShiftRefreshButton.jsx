@@ -1,7 +1,10 @@
 import React from 'react';
 import { RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { POS_SHIFT_PRIMARY_BUTTON_CLASS } from './posShiftButtonStyles.js';
+import {
+  POS_SHIFT_PRIMARY_BUTTON_CLASS,
+  POS_SHIFT_SECONDARY_BUTTON_CLASS
+} from './posShiftButtonStyles.js';
 
 export default function PosShiftRefreshButton({
   label = 'Refresh data',
@@ -9,8 +12,14 @@ export default function PosShiftRefreshButton({
   disabled = false,
   onClick,
   className = '',
+  heightClassName = 'h-11 min-h-11',
+  appearance = 'primary',
   dataTestId
 }) {
+  const appearanceClass = appearance === 'secondary'
+    ? POS_SHIFT_SECONDARY_BUTTON_CLASS
+    : POS_SHIFT_PRIMARY_BUTTON_CLASS;
+
   return (
     <Button
       type="button"
@@ -18,7 +27,7 @@ export default function PosShiftRefreshButton({
       aria-label={label}
       aria-busy={loading || undefined}
       title={label}
-      className={`h-11 w-11 shrink-0 rounded-lg p-0 ${POS_SHIFT_PRIMARY_BUTTON_CLASS} ${className}`}
+      className={`${heightClassName} w-11 shrink-0 rounded-lg border p-0 ${appearanceClass} ${className}`}
       onClick={onClick}
       disabled={disabled || loading}
     >

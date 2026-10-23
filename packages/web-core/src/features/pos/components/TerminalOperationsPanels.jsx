@@ -1,5 +1,5 @@
 import React from 'react';
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, CalendarClock, MapPin, Phone, Truck, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueRunFilterControl from './QueueRunFilterControl.jsx';
 import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
+import usePosCenteredTabScroll from '../hooks/usePosCenteredTabScroll.js';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
 import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
@@ -151,6 +152,7 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
 }
 
 function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDineInSchedule = false, dineInScheduleCount = null, showDeliveryRuns = false, runCount = null, showSplitView = false }) {
+  const tabsViewportRef = React.useRef(null);
   const tabs = [
     {
       key: 'active',
@@ -196,32 +198,46 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
       icon: Columns
     });
   }
+  const centerActiveOrderView = usePosCenteredTabScroll(tabsViewportRef, activeView ? `pos-online-order-view-tab-${activeView}` : '');
 
   return (
-    <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" role="tablist" aria-label="Online order views">
-      {tabs.map(({ key, label, count, icon: Icon }) => {
-        const selected = activeView === key;
-        return (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            onClick={() => onChange?.(key)}
-            className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-extrabold transition ${selected
-              ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm'
-              : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-[#1A4E8D]'}`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-            {Number.isFinite(Number(count)) ? (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] ${selected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                {count}
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
+    <div
+      ref={tabsViewportRef}
+      className="-mx-1 min-w-0 overflow-x-auto overflow-y-hidden border-b border-slate-200 min-[1024px]:mx-0"
+      role="tablist"
+      aria-label="Online order views"
+    >
+      <div
+        className="-mb-px flex min-w-max items-stretch gap-2 px-1 min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0"
+      >
+        {tabs.map(({ key, label, count, icon: Icon }) => {
+          const selected = activeView === key;
+          return (
+            <button
+              key={key}
+              id={`pos-online-order-view-tab-${key}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => {
+                if (selected) centerActiveOrderView();
+                onChange?.(key);
+              }}
+              className={`relative inline-flex min-h-12 shrink-0 items-center justify-center gap-1.5 border-b-2 px-2 py-3 text-center text-[14px] font-bold text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-[-2px] sm:px-3 min-[1024px]:flex-1 min-[1024px]:justify-center min-[1024px]:px-2 xl:px-3 ${selected
+                ? 'border-[#1A4E8D] text-[#1A4E8D]'
+                : 'border-transparent hover:border-slate-300'}`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+              {Number.isFinite(Number(count)) ? (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] ${selected ? 'bg-blue-50 text-[#1A4E8D]' : 'bg-slate-100 text-slate-600'}`}>
+                  {count}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

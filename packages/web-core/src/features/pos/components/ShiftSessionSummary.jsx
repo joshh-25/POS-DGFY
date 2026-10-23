@@ -11,7 +11,7 @@ const normalizeLabel = (label) => String(label || '').replace(/:$/, '').trim();
 
 function ShiftContextItem({ row }) {
   return (
-    <div className={`flex min-w-0 flex-col gap-0.5 text-[11px] leading-4 sm:flex-row sm:items-baseline sm:gap-1.5 sm:text-xs sm:leading-5 ${row.mobileSpan === 'full' ? 'col-span-2 sm:col-auto' : ''}`}>
+    <div className={`flex min-w-0 flex-col gap-0.5 text-[11px] leading-4 sm:mr-4 sm:flex-row sm:items-baseline sm:gap-1.5 sm:border-r sm:border-slate-200 sm:pr-4 sm:text-xs sm:leading-5 sm:last:mr-0 sm:last:border-r-0 sm:last:pr-0 ${row.mobileSpan === 'full' ? 'col-span-2 sm:col-auto' : ''}`}>
       <dt className="min-w-0 break-words font-semibold text-slate-500 sm:shrink-0">{normalizeLabel(row.label)}</dt>
       <dd className="min-w-0 break-words font-bold text-slate-800 sm:truncate" title={typeof row.value === 'string' ? row.value : undefined}>
         {row.value}
@@ -59,21 +59,23 @@ export default function ShiftSessionSummary({
       <header className="flex flex-col gap-3 rounded-xl border border-blue-100 bg-white px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            <h2 id="pos-shift-session-summary-heading" className="text-base font-black tracking-tight text-[#0B1647] sm:text-lg">
+              Active Shift
+            </h2>
+            <span
+              role="img"
+              aria-label="Open shift"
+              title="Open shift"
+              className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+            />
             {shiftIdRow ? (
               <span className="inline-flex min-h-7 items-center rounded-md border border-blue-200 bg-blue-50 px-2 text-[11px] font-black tracking-wide text-[#1A4E8D]">
                 SHIFT <span>{shiftIdRow.value}</span>
               </span>
             ) : null}
-            <h2 id="pos-shift-session-summary-heading" className="text-base font-black tracking-tight text-[#0B1647] sm:text-lg">
-              Active Shift
-            </h2>
-            <span className="inline-flex min-h-6 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-[10px] font-extrabold text-emerald-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
-              Open
-            </span>
           </div>
           {contextRows.length > 0 ? (
-            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 sm:flex sm:flex-wrap sm:gap-x-4 sm:gap-y-0.5">
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 sm:flex sm:flex-wrap sm:gap-y-1.5">
               {contextRows.map((row) => <ShiftContextItem key={`pos-shift-session-${row.label}`} row={row} />)}
             </dl>
           ) : null}
@@ -104,6 +106,7 @@ export default function ShiftSessionSummary({
             onClick={onRefresh}
             disabled={locked || !isOnline || refreshLoading}
             loading={refreshLoading}
+            appearance="secondary"
           />
         </div>
       </header>

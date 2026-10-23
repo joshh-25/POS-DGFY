@@ -6,11 +6,13 @@ import PosTableSurface, {
   POS_TABLE_CELL_CLASS,
   POS_TABLE_HEADER_CELL_CLASS,
   POS_TABLE_HEADER_CLASS,
+  POS_TABLE_REPORT_SURFACE_CLASS,
   POS_TABLE_ROW_CLASS
 } from './PosTableSurface.jsx';
 import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
 import PosMobileDataCard from './PosMobileDataCard.jsx';
 import PosTableActionButton from './PosTableActionButton.jsx';
+import PosShiftStateNotice from './PosShiftStateNotice.jsx';
 import {
   getPosReportColumnValueToneClass,
   POS_REPORT_VALUE_TONE_CLASSES
@@ -96,7 +98,8 @@ export default function PosReportsResponsiveTable({
   getDetailsSubtitle,
   renderDetailsSections,
   renderDetailsFooter,
-  showActions = true
+  showActions = true,
+  loading = false
 }) {
   const sourceRows = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
   const normalizedColumns = useMemo(() => (Array.isArray(columns) ? columns : []), [columns]);
@@ -166,6 +169,10 @@ export default function PosReportsResponsiveTable({
   const paginatedRows = serverPagination
     ? sortedRows
     : sortedRows.slice((currentPage - 1) * selectedPageSize, currentPage * selectedPageSize);
+  const stateVariant = loading ? 'loading' : 'empty';
+  const stateMessage = loading
+    ? `Loading ${String(title || 'report').toLowerCase()}…`
+    : (searchQuery ? (searchEmptyMessage || emptyMessage) : emptyMessage);
   const renderCell = (row, column, index) => (
     typeof column.render === 'function' ? column.render(row, index) : fallbackValue(row, column, index)
   );
@@ -356,13 +363,15 @@ export default function PosReportsResponsiveTable({
             })}
           </ul>
         ) : (
-          <div className="rounded-xl border border-dashed border-slate-300 px-3 py-8 text-center text-[13px] font-medium text-slate-500">
-            {searchQuery ? (searchEmptyMessage || emptyMessage) : emptyMessage}
-          </div>
+          <PosShiftStateNotice
+            variant={stateVariant}
+            message={stateMessage}
+            compact
+          />
         )}
       </div>
 
-      <PosTableSurface className="hidden min-[768px]:block">
+      <PosTableSurface className={`${POS_TABLE_REPORT_SURFACE_CLASS} hidden min-[768px]:block`}>
         <div className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] min-[768px]:max-[1199px]:overflow-x-hidden" role="region" aria-label={ariaLabel} tabIndex={0}>
             <table className="pos-reports-responsive-table w-max min-w-full table-fixed text-[13px]">
               {caption ? <caption className="sr-only">{caption}</caption> : null}
@@ -380,7 +389,7 @@ export default function PosReportsResponsiveTable({
                   );
                 })}
                 {showActions ? (
-                  <th scope="col" className={`table-cell w-[4.5rem] ${POS_TABLE_HEADER_CELL_CLASS} text-center whitespace-nowrap`}>
+                  <th scope="col" className={`table-cell pos-reports-table-action-column w-[4.5rem] ${POS_TABLE_HEADER_CELL_CLASS} text-center whitespace-nowrap`}>
                     Actions
                   </th>
                 ) : null}
@@ -388,7 +397,7 @@ export default function PosReportsResponsiveTable({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedRows.length > 0 ? paginatedRows.map((row, index) => (
-                <tr key={`${idPrefix}-row-${index}`} className={POS_TABLE_ROW_CLASS}>
+                <tr key={`${idPrefix}-row-${index}`} className={`${POS_TABLE_ROW_CLASS} pos-table-row--report`}>
                 {responsiveTableColumns.map((column) => <td key={column.key} className={cn(resolveColumnVisibilityClasses(column), 'pos-reports-table-column', column.widthClass, POS_TABLE_CELL_CLASS, getPosReportColumnValueToneClass(column, row), resolveTextAlignment(column.valueAlign || column.align), (column.numeric || column.align === 'right' || column.align === 'center') ? 'font-semibold tabular-nums' : 'font-medium')}>{renderCell(row, column, index)}</td>)}
                   {showActions ? (
                     <td className={`table-cell pos-reports-table-action-column w-[4.5rem] ${POS_TABLE_CELL_CLASS} text-center`}>
@@ -403,7 +412,16 @@ export default function PosReportsResponsiveTable({
                   ) : null}
                 </tr>
               )) : (
-                <tr><td colSpan={(responsiveTableColumns.length || 0) + (showActions ? 1 : 0)} className="px-2.5 py-12 text-center text-sm font-semibold text-slate-500">{searchQuery ? (searchEmptyMessage || emptyMessage) : emptyMessage}</td></tr>
+                <tr>
+                  <td colSpan={(responsiveTableColumns.length || 0) + (showActions ? 1 : 0)} className="px-2.5 py-4">
+                    <PosShiftStateNotice
+                      variant={stateVariant}
+                      message={stateMessage}
+                      compact
+                      className="border-0 bg-transparent px-0 py-2 shadow-none"
+                    />
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

@@ -132,7 +132,7 @@ export default function PosItemResponsiveCard({
             variant="outline"
             onClick={onDelete}
             disabled={disabledActions.delete}
-            className="h-8 min-w-0 rounded-lg border-rose-300 bg-white px-1.5 text-[11px] font-bold text-rose-600 shadow-sm hover:bg-rose-50 active:border-rose-600 active:bg-rose-600 active:text-white"
+            className="h-8 min-w-0 rounded-lg border-rose-500 bg-rose-50 px-1.5 text-[11px] font-bold text-rose-700 shadow-sm hover:bg-rose-100 active:border-rose-600 active:bg-rose-600 active:text-white"
             title={`Delete ${itemName}`}
           >
             <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" />
@@ -145,7 +145,7 @@ export default function PosItemResponsiveCard({
             variant="outline"
             onClick={onEdit}
             disabled={disabledActions.edit}
-            className="h-8 min-w-0 rounded-lg border-blue-300 bg-white px-1.5 text-[11px] font-bold text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white"
+            className="h-8 min-w-0 rounded-lg border-blue-300 bg-[#1A4E8D]/[0.08] px-1.5 text-[11px] font-bold text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/[0.14] active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white"
             title={`Edit ${itemName}`}
           >
             <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" />

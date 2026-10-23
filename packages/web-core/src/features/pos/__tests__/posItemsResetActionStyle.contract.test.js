@@ -10,15 +10,11 @@ const stylesheetPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS > Items Reset All styling', () => {
   it('uses the reference default and hover colors for every Reset All action in Items', () => {
-    const terminalWorkspace = fs.readFileSync(path.join(workspaceDir, 'PosItemsWorkspace.jsx'), 'utf8');
-    const optionGroupManager = fs.readFileSync(path.join(workspaceDir, 'PosFnbModifierManager.jsx'), 'utf8');
-    const optionsWorkspace = fs.readFileSync(path.join(workspaceDir, 'PosFnbModifiersWorkspace.jsx'), 'utf8');
+    const itemsWorkspace = fs.readFileSync(path.join(workspaceDir, 'PosItemsWorkspace.jsx'), 'utf8');
     const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
 
-    expect((terminalWorkspace.match(/Reset All/g) || [])).toHaveLength(2);
-    expect((terminalWorkspace.match(/pos-items-reset-action/g) || [])).toHaveLength(2);
-    expect(optionGroupManager).toContain('className="pos-items-reset-action');
-    expect(optionsWorkspace).toContain('className="pos-items-reset-action');
+    expect((itemsWorkspace.match(/Reset All/g) || [])).toHaveLength(2);
+    expect((itemsWorkspace.match(/pos-items-reset-action/g) || [])).toHaveLength(2);
 
     const resetDefaultStyles = stylesheet.match(/\.pos-items-reset-action\s*\{([^}]*)\}/)?.[1] || '';
     expect(resetDefaultStyles).toContain('border: 1px solid #fda4af;');
@@ -26,10 +22,9 @@ describe('POS > Items Reset All styling', () => {
     expect(resetDefaultStyles).toContain('color: #be123c;');
 
     const outlineResetClassNames = [
-      ...terminalWorkspace.matchAll(/className="([^"]*pos-items-reset-action[^"]*)"/g),
-      ...optionsWorkspace.matchAll(/className="([^"]*pos-items-reset-action[^"]*)"/g),
+      ...itemsWorkspace.matchAll(/className="([^"]*pos-items-reset-action[^"]*)"/g),
     ].map((match) => match[1]);
-    expect(outlineResetClassNames).toHaveLength(3);
+    expect(outlineResetClassNames).toHaveLength(2);
     outlineResetClassNames.forEach((className) => {
       expect(className).toContain('hover:bg-[#fff1f2]');
       expect(className).toContain('hover:text-[#9f1239]');

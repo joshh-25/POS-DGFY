@@ -9,6 +9,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 
 const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -24,10 +25,10 @@ export default function BillRequestDialog({ open = false, draft = null, onClose 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose?.()}>
       <DialogContent
-        className="w-[calc(100vw-1.5rem)] max-w-lg rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full"
+        className="w-[calc(100vw-1.5rem)] max-w-lg rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full"
         data-testid="pos-bill-request-dialog"
       >
-        <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
+        <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
             <Receipt className="h-5 w-5 text-[#1A4E8D]" />
             Bill Request
@@ -65,7 +66,7 @@ export default function BillRequestDialog({ open = false, draft = null, onClose 
           </div>
         </div>
 
-        <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
+        <DialogFooter className={['px-5 py-4 sm:justify-end', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button type="button" onClick={onClose} className="bg-[#1A4E8D] font-extrabold text-white hover:bg-[#143F73]">
             Close
           </Button>

@@ -7,6 +7,7 @@ export default function PosFilterDialogShell({
   onClose,
   mode = 'filters',
   mobile = false,
+  fitContentHeight = false,
   tabletPortrait = false,
   landscapeMobile = false,
   contentSized = false,
@@ -28,8 +29,12 @@ export default function PosFilterDialogShell({
   const contentClassName = [
     'flex',
     mode === 'calendar'
-      ? 'h-[min(90vh,40rem)] max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl'
-      : 'h-[min(90vh,48rem)] max-h-[min(90vh,48rem)]',
+      ? fitContentHeight && !isMobileDialog
+        ? 'h-auto max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl'
+        : 'h-[min(90vh,40rem)] max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl'
+      : fitContentHeight && mode === 'filters' && !isMobileDialog
+        ? 'h-auto max-h-[min(90vh,48rem)]'
+        : 'h-[min(90vh,48rem)] max-h-[min(90vh,48rem)]',
     isMobileDialog
       ? 'dgfy-pos-history-mobile-sheet max-w-none rounded-t-2xl'
       : mode === 'calendar'

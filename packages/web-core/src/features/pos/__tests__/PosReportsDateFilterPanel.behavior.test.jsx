@@ -2,6 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import PosDateRangeFilterPanel from '../components/PosDateRangeFilterPanel.jsx';
 import PosReportsDateFilterPanel from '../components/PosReportsDateFilterPanel.jsx';
 
 const baseProps = {
@@ -10,13 +11,56 @@ const baseProps = {
   onClose: vi.fn()
 };
 const defaultViewportHeight = window.innerHeight;
+const defaultViewportWidth = window.innerWidth;
 const defaultMatchMedia = window.matchMedia;
 
 describe('POS reports date filter modal', () => {
   afterEach(() => {
     cleanup();
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: defaultViewportHeight });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: defaultViewportWidth });
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: defaultMatchMedia });
+  });
+
+  it('fits the Reports date dialog to its content when a desktop viewport has room', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 900 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false })
+    });
+
+    render(<PosReportsDateFilterPanel {...baseProps} />);
+
+    const panel = screen.getByRole('dialog', { name: 'Select Date' });
+    expect(panel.className).toContain('h-auto');
+    expect(panel.className).toContain('max-h-[min(90vh,40rem)]');
+    expect(panel.style.height).toBe('');
+  });
+
+  it('leaves other shared date dialogs on their existing fixed-height layout', () => {
+    render(<PosDateRangeFilterPanel {...baseProps} />);
+
+    const panel = screen.getByRole('dialog', { name: 'Select Date' });
+    expect(panel.className).toContain('h-[min(90vh,40rem)]');
+    expect(panel.className).not.toContain('h-auto');
+  });
+
+  it('keeps the Reports calendar scrollable when the available desktop height is short', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 900 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 500 });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false })
+    });
+
+    render(<PosReportsDateFilterPanel {...baseProps} />);
+
+    const panel = screen.getByRole('dialog', { name: 'Select Date' });
+    const content = panel.children[1];
+    expect(panel.style.height).toBe('404px');
+    expect(panel.style.maxHeight).toBe('404px');
+    expect(content.className).toContain('overflow-y-auto');
   });
 
   it('stages a quick date preset until Apply Filters is selected', () => {
