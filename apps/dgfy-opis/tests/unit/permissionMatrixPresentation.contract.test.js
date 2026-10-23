@@ -25,7 +25,7 @@ describe('Permission matrix presentation contract', () => {
     it('renders accessible permission checkboxes and preserves the save contract', () => {
         expect(permissionMatrix).toContain('className="peer sr-only"');
         expect(permissionMatrix).toContain('Select All');
-        expect(permissionMatrix).toContain('Grant All');
+        expect(permissionMatrix).toContain('Grant Visible');
         expect(permissionMatrix).toContain('Revoke Visible');
         expect(permissionMatrix).toContain('rounded-full border-2');
         expect(permissionMatrix).toContain('peer-focus-visible:ring-2');

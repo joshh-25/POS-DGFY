@@ -2,7 +2,11 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { STAFF_CAPABILITIES, isKnownStaffCapability } from '../../shared/constants/staffCapabilities.js';
 import dbStore from '../../../utils/dbStore.js';
-import { normalizePermissionArray } from '../../../utils/userPermissions.js';
+import {
+  normalizePermissionArray,
+  normalizePermissionMode,
+  PERMISSION_MODES
+} from '../../../utils/userPermissions.js';
 import { plain } from '../repositories/staffRoleRepository.js';
 
 const errorMap = (error, fallback) => {
@@ -21,7 +25,7 @@ const capabilities = (value) => {
   if (invalid.length) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Unknown staff capability slug', { statusCode: 422, details: { unknown_capabilities: invalid, allowed_capabilities: STAFF_CAPABILITIES } });
   return list;
 };
-const audit = (repository, actor, entityId, action, changes, transaction) => repository.createAuditLog({ user_id: actor, entity_type: 'staff_role', entity_id: entityId, action, changes }, { transaction });
+const audit = (repository, actor, entityId, action, changes, transaction, entityType = 'staff_role') => repository.createAuditLog({ user_id: actor, entity_type: entityType, entity_id: entityId, action, changes }, { transaction });
 const run = async (repository, work, fallback, onCommit) => {
   const transaction = await (dbStore.getStore()?.sequelize || dbStore.get('sequelize')).transaction();
   try {
@@ -79,14 +83,29 @@ export const buildAssignStaffRoleToUserUseCase = ({ repository, invalidateUserCa
   const actor = id(actorUserId, 'actorUserId'); const target = await repository.findUserById(id(userId, 'userId'), { transaction, lock: true }); if (!target) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'User was not found', { statusCode: 404 });
   let role = null; const normalizedRoleId = staffRoleId == null || staffRoleId === '' ? null : id(staffRoleId, 'staffRoleId'); if (normalizedRoleId) { role = await repository.findById(normalizedRoleId, { transaction }); if (!role) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Staff role was not found', { statusCode: 404 }); if (!role.is_active) throw new DomainError(DomainErrorCode.CONFLICT, 'Inactive staff roles cannot be assigned', { statusCode: 409 }); }
   const previousPermissions = normalizePermissionArray(target.permissions);
-  await target.update({ staff_role_id: normalizedRoleId, permissions: [] }, { transaction });
+  const previousStaffRoleId = target.staff_role_id ?? null;
+  const previousPermissionMode = normalizePermissionMode(target.permission_mode);
+  const nextPermissionMode = normalizedRoleId ? PERMISSION_MODES.INHERIT : PERMISSION_MODES.CUSTOM;
+  const nextPermissions = [];
+  await target.update({ staff_role_id: normalizedRoleId, permissions: nextPermissions, permission_mode: nextPermissionMode }, { transaction });
   await audit(repository, actor, target.user_id, 'UPDATE', {
+    previous_staff_role_id: previousStaffRoleId,
     staff_role_id: normalizedRoleId,
     previous_permissions: previousPermissions,
-    permissions: [],
-    permission_overrides_cleared: previousPermissions.length > 0
-  }, transaction);
+    permissions: nextPermissions,
+    previous_permission_mode: previousPermissionMode,
+    permission_mode: nextPermissionMode,
+    permission_overrides_cleared: previousPermissions.length > 0 || previousPermissionMode === PERMISSION_MODES.CUSTOM
+  }, transaction, 'user');
   affectedUserId = target.user_id;
-  return { assignment: { user_id: target.user_id, staff_role_id: normalizedRoleId, staff_role: role ? plain(role) : null } };
+  return {
+    assignment: {
+      user_id: target.user_id,
+      staff_role_id: normalizedRoleId,
+      staff_role: role ? plain(role) : null,
+      permission_mode: nextPermissionMode,
+      effective_permissions: normalizedRoleId ? normalizePermissionArray(role?.capabilities) : []
+    }
+  };
 }, 'Failed to assign staff role', () => evictUsers(invalidateUserCache, tenantId, affectedUserId ? [affectedUserId] : []));
 };

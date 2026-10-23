@@ -226,6 +226,38 @@
 .business-admin-heading { color: #0f172a; font-size: clamp(25px, 3vw, 34px); font-weight: 900; letter-spacing: -.03em; margin: 4px 0; }
 .business-admin-description { color: #64748b; font-size: 14px; max-width: 720px; }
 .business-admin-top-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.business-admin-header-action {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #cfe0e8;
+  border-radius: 9px;
+  padding: 7px 11px;
+  background: #fff;
+  color: #205b78;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.business-admin-header-action:hover { border-color: #2563eb; background: #eff7ff; color: #1a4e8d; }
+.business-admin-header-action:active { transform: translateY(1px); }
+.business-admin-header-action:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+.business-admin-header-action-badge {
+  min-width: 18px;
+  min-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 5px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  line-height: 1;
+}
 .business-admin-location-switcher { min-width: 184px; align-self: stretch; justify-content: flex-end; }
 .business-admin-location-switcher label { display: block; }
 .business-admin-location-switcher select { min-height: 32px; padding-top: 5px; padding-bottom: 5px; }
@@ -285,6 +317,34 @@
   min-width: 0;
   animation: business-admin-workspace-enter .18s cubic-bezier(.2, .65, .3, 1) both;
 }
+.business-admin-workspace-tabs {
+  min-width: 0;
+  margin: -4px 0 18px;
+  border-bottom: 1px solid #dce7ef;
+}
+.business-admin-workspace-tabs-scroll {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.business-admin-workspace-tab {
+  min-height: 38px;
+  flex: 0 0 auto;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .16s ease, color .16s ease, background-color .16s ease;
+}
+.business-admin-workspace-tab:hover { color: #1a4e8d; background: #f5faff; }
+.business-admin-workspace-tab.active { border-bottom-color: #159891; color: #0b706c; }
+.business-admin-workspace-tab:focus-visible { outline: 3px solid rgba(21, 152, 145, .24); outline-offset: -2px; }
 .business-admin-workspace-loading {
   min-height: 220px;
   margin-bottom: 18px;

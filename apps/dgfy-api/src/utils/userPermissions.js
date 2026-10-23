@@ -49,7 +49,8 @@ export const resolveEffectivePermissions = (user) => {
 
   const staffRolePermissions = normalizePermissionArray(user?.staffRole?.capabilities);
   const role = String(user?.role || 'staff').trim().toLowerCase();
-  const hasAssignedStaffRole = user?.staffRole != null;
+  const hasAssignedStaffRole = user?.staff_role_id != null
+    || user?.staffRole?.staff_role_id != null;
   const staffRoleActive = user?.staffRole?.is_active === true;
 
   // New rows have an explicit mode. `custom` is authoritative even when the
@@ -60,13 +61,12 @@ export const resolveEffectivePermissions = (user) => {
     ));
   }
 
-  if (user?.permission_mode === PERMISSION_MODES.INHERIT) {
+  if (normalizePermissionMode(user?.permission_mode) === PERMISSION_MODES.INHERIT
+    && user?.permission_mode !== undefined
+    && user?.permission_mode !== null
+    && String(user.permission_mode).trim() !== '') {
     if (staffRoleActive) return staffRolePermissions;
-    if (role === 'cashier' && hasAssignedStaffRole && !staffRoleActive) {
-      const viewOnlyDefaults = DEFAULT_ROLE_PERMISSIONS.staff || [];
-      return Array.from(new Set(viewOnlyDefaults))
-        .filter((permission) => permission !== 'items:delete');
-    }
+    if (hasAssignedStaffRole) return [];
     const inherited = DEFAULT_ROLE_PERMISSIONS[role];
     return Array.isArray(inherited) ? [...inherited] : [];
   }
@@ -77,15 +77,12 @@ export const resolveEffectivePermissions = (user) => {
     return staffRolePermissions;
   }
 
-  if (role === 'cashier') {
-    // #1901: an assigned but inactive staff role must not restore the broad cashier preset,
-    // including pos:transact. Preserve the view-only catalog defaults on this fallback.
-    if (explicitPermissions.length === 0 && hasAssignedStaffRole && !staffRoleActive) {
-      const viewOnlyDefaults = DEFAULT_ROLE_PERMISSIONS.staff || [];
-      return Array.from(new Set(viewOnlyDefaults))
-        .filter((permission) => permission !== 'items:delete');
-    }
+  // An assigned role is authoritative even for legacy rows that predate the explicit
+  // permission_mode column. If the assignment cannot be hydrated or is inactive, fail closed
+  // instead of restoring a broad legacy role preset.
+  if (explicitPermissions.length === 0 && hasAssignedStaffRole && !staffRoleActive) return [];
 
+  if (role === 'cashier') {
     const cashierPermissions = explicitPermissions.length > 0
       ? explicitPermissions
       : (DEFAULT_ROLE_PERMISSIONS.cashier || []);

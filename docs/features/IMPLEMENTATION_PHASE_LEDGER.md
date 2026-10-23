@@ -31136,3 +31136,92 @@ Not complete. Set only after the scoped implementation and named validation evid
 ### Next phase number
 
 Phase 535. No explicit dependency.
+
+## Phase 535 - OPIS clean sidebar navigation
+
+### Initiative and release
+
+OPIS navigation consolidation for the next develop-bound release; local implementation follows
+the approved `implementation_plan.md` and builds on the Phase 534 navigation contracts.
+
+### Objective and scope
+
+Reduce the default OPIS sidebar to the approved 16 primary destinations, keep workflow-specific
+tools discoverable when their existing workflow visibility permits them, and consolidate related
+destinations into URL-backed workspace tabs. Preserve canonical route IDs, legacy deep links,
+query/hash behavior, tenant and branch scope, server-projected access checks, existing APIs,
+database schema, and canonical owner boundaries. Notifications move from the primary sidebar to
+the existing header destination without adding a new polling contract.
+
+### Status
+
+`in_progress` — presentation-layer implementation and focused validation are in progress; browser
+runtime verification, final review, and PR/deployment remain open.
+
+### Dependencies
+
+Phase 533 RBAC remediation and Phase 534 OPIS/POS navigation parity remain in the current local
+worktree. Their existing uncommitted changes are preserved and are not rewritten by this phase.
+No new database migration or backend authorization contract is introduced.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-permission-contract.md),
+[ADR 0031](../architecture/adr/0031-pos-shift-safe-navigation-and-data-loading.md),
+[ADR 0087](../architecture/adr/0087-dedicated-opis-application-boundary.md),
+`apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js`,
+`apps/dgfy-opis/src/features/businessAdmin/businessAdminNavigation.js`, and
+`apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx`.
+Classification: `within-existing-boundary`; this phase changes OPIS presentation composition and
+route navigation only, while API authorization and canonical feature owners remain unchanged.
+
+### Implementation targets
+
+- Presentation-only clean sidebar groups for Overview, Sales, Inventory, Operations, and Management.
+- Additional-tools discovery for existing Services, Hospitality, Job orders, Dispatch orders,
+  Vouchers, and Attendance destinations when their current visibility rules allow them.
+- Parent highlighting and URL-backed tabs for Orders, Inventory, Purchasing, Users & Roles, and
+  Reports without creating duplicate route owners.
+- Header Notifications navigation while preserving the existing `/notifications` destination.
+- Direct-route accessibility remains separate from sidebar visibility; hidden legacy links are not
+  converted into authorization boundaries.
+- Focused route, navigation, visibility, build, lint, and rendered-shell validation.
+
+### Acceptance and validation evidence
+
+- [x] The plan was reviewed against the repository architecture, ADRs, manifest, route parser, and
+      current Phase 533/534 worktree state.
+- [x] The clean sidebar configuration contains exactly the approved 16 primary destination entries
+      and reuses existing manifest route IDs.
+- [x] Workspace tabs reuse existing canonical routes; no backend or schema change is introduced.
+- [x] Direct-route accessibility is separated from sidebar presentation visibility.
+- [ ] Focused tests, lint, affected builds, architecture checks, and `git diff --check` pass after
+      the final validation run.
+- [ ] Authenticated browser verification confirms parent highlighting, deep links, tab navigation,
+      branch/query preservation, restricted-user visibility, and no navigation flicker.
+- [ ] PR review and deployment are complete; this phase does not merge or deploy.
+
+### Rollback
+
+Revert the presentation-layer navigation changes through the normal release rollback process.
+Existing manifest routes, API authorization, permission grants, and database state remain intact.
+
+### Completion date
+
+Not complete. Set only after the scoped implementation and named validation evidence are terminal.
+
+### Post-merge verification
+
+- [ ] Verify Admin, Manager, Cashier, and restricted-user sidebar projections in an authenticated
+      deployed-like session.
+- [ ] Verify old OPIS prefixes and deep links preserve query/hash context and resolve to the same
+      authorized canonical destinations.
+- [ ] Verify branch changes and rapid tab navigation do not display stale data or log the user out.
+- [ ] Verify optional workflow tools appear only when their existing workflow/capability contract
+      makes them relevant.
+
+### Next phase number
+
+Phase 536. No explicit dependency.

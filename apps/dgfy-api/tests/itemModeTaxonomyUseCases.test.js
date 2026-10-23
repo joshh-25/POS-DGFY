@@ -74,6 +74,79 @@ describe('inventory item mode taxonomy use cases', () => {
         );
     });
 
+    it('normalizes a POS item with an unsupported IMS preset to the F&B sellable preset', async () => {
+        const itemRepository = {
+            createItem: jest.fn().mockResolvedValue({ item_id: 9 })
+        };
+        const useCase = buildCreateItemUseCase({
+            itemRepository,
+            resolveWorkflowMode: jest.fn().mockResolvedValue('fnb')
+        });
+
+        await useCase({
+            itemData: {
+                category: 'product',
+                product_type: 'finished_goods',
+                mode_item_preset: 'finished_product',
+                unit_of_measure: 'serving'
+            },
+            userId: 1,
+            source: 'pos'
+        });
+
+        expect(itemRepository.createItem).toHaveBeenCalledWith(
+            expect.objectContaining({
+                mode_item_preset: 'menu_item',
+                product_type: 'finished_goods',
+                unit_of_measure: 'serving'
+            }),
+            1,
+            { canManageCategories: false }
+        );
+    });
+
+    it('normalizes an invalid legacy preset when a POS update includes taxonomy fields', async () => {
+        const itemRepository = {
+            getItemById: jest.fn().mockResolvedValue({
+                item_id: 10,
+                status: 'active',
+                category: 'product',
+                product_type: 'finished_goods',
+                mode_item_preset: 'finished_product',
+                unit_of_measure: 'pcs'
+            }),
+            updateItem: jest.fn().mockResolvedValue({ item_id: 10 })
+        };
+        const useCase = buildUpdateItemUseCase({
+            itemRepository,
+            resolveWorkflowMode: jest.fn().mockResolvedValue('fnb')
+        });
+
+        await useCase({
+            itemId: 10,
+            itemData: {
+                name: 'Frappe',
+                category: 'product',
+                product_type: 'finished_goods',
+                mode_item_preset: 'finished_product',
+                unit_of_measure: 'pcs'
+            },
+            userId: 1,
+            source: 'pos'
+        });
+
+        expect(itemRepository.updateItem).toHaveBeenCalledWith(
+            10,
+            expect.objectContaining({
+                mode_item_preset: 'menu_item',
+                product_type: 'finished_goods',
+                unit_of_measure: 'serving'
+            }),
+            1,
+            { canManageCategories: false }
+        );
+    });
+
     it('rejects mismatched persisted F&B preset values', async () => {
         const itemRepository = {
             createItem: jest.fn()

@@ -123,6 +123,7 @@
     "backfill:dgfy-customer-activity": "cd apps/dgfy-api && npm run backfill:dgfy-customer-activity --",
     "backfill:dgfy-customer-activity:apply": "cd apps/dgfy-api && npm run backfill:dgfy-customer-activity:apply --",
     "evidence:incident": "node scripts/create-incident-bundle.js",
+    "audit:archive": "node scripts/create-code-audit-archive.mjs",
     "smoke:pos-local": "cd apps/dgfy-api && npm run smoke:pos-local",
     "smoke:pos-terminal-ui": "node scripts/smoke-pos-terminal-ui.js",
     "smoke:dgfy-access-ui": "node scripts/smoke-dgfy-access-ui.js",

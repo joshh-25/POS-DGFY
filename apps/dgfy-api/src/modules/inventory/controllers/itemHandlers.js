@@ -62,6 +62,11 @@ import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const resolveCatalogItemSource = (req) => (
+  String(req.headers?.['x-pos-terminal-id'] || '').trim()
+    ? 'pos'
+    : 'inventory'
+);
 const publishCatalogInvalidation = async (req, reason, itemIds = []) => {
   if (!req.user?.tenant_id && !req.tenant?.id) return;
   await publishCatalogChange({
@@ -194,7 +199,12 @@ export const createItem = async (req, res, next) => {
       PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES
     );
     const result = await runInventoryUseCase(
-      () => createItemUseCase({ itemData, userId, canManageCategories }),
+      () => createItemUseCase({
+        itemData,
+        userId,
+        canManageCategories,
+        source: resolveCatalogItemSource(req)
+      }),
       'Failed to create item'
     );
     if (result.success) {
@@ -258,7 +268,13 @@ export const updateItem = async (req, res, next) => {
       PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES
     );
     const result = await runInventoryUseCase(
-      () => updateItemUseCase({ itemId: item_id, itemData, userId, canManageCategories }),
+      () => updateItemUseCase({
+        itemId: item_id,
+        itemData,
+        userId,
+        canManageCategories,
+        source: resolveCatalogItemSource(req)
+      }),
       'Failed to update item'
     );
     if (result.success) {

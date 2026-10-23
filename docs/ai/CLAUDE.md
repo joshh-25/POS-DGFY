@@ -448,7 +448,7 @@ node apps/dgfy-api/scripts/sync-tenant-schemas.js
 - `docs/reference/QUICK_REFERENCE.md` - Common commands and troubleshooting
 
 **Backend Documentation:**
-- `apps/dgfy-api/CREDENTIALS.md` - Default admin credentials
+- `apps/dgfy-api/CREDENTIALS.md` - Safe local credential-handling guidance
 - `apps/dgfy-migration-runner/database-setup.sql` - Database setup script
 - `apps/dgfy-api/README.md` - Backend-specific documentation
 

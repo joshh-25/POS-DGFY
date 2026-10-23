@@ -90,13 +90,18 @@ import ProcessingFeePolicyEditor from './ProcessingFeePolicyEditor.jsx';
 import CanonicalBusinessNameEditor from './CanonicalBusinessNameEditor.jsx';
 import StaffRolesPanel from './StaffRolesPanel.jsx';
 import {
-    BACKOFFICE_NAV_GROUPS,
     BACKOFFICE_SECTION_META,
     buildBackOfficeOverviewPath,
     buildBackOfficeLocationsPath,
     buildBackOfficeModulePath,
     MERCHANT_BACKOFFICE_MODULE_META
 } from './businessAdminManifest.js';
+import {
+    BUSINESS_ADMIN_SIDEBAR_GROUPS,
+    buildBusinessAdminSidebarItemPath,
+    getBusinessAdminSidebarActiveKey,
+    getBusinessAdminWorkspaceTabs
+} from './businessAdminNavigation.js';
 import {
     getBusinessAdminWorkflowPageName,
     isBusinessAdminWorkflowSectionVisible
@@ -3044,6 +3049,28 @@ function CompanyWorkspace({ data }) {
     </div>;
 }
 
+const BusinessAdminWorkspaceTabs = ({ tabs = [], activeKey = '', onNavigate }) => {
+    if (!tabs.length) return null;
+    return (
+        <nav className="business-admin-workspace-tabs" aria-label="Workspace sections" data-testid="business-admin-workspace-tabs">
+            <div className="business-admin-workspace-tabs-scroll">
+                {tabs.map((tab) => (
+                    <button
+                        type="button"
+                        key={tab.key}
+                        className={`business-admin-workspace-tab ${activeKey === tab.key ? 'active' : ''}`}
+                        aria-current={activeKey === tab.key ? 'page' : undefined}
+                        data-testid={`business-admin-workspace-tab-${tab.key}`}
+                        onClick={() => onNavigate(tab)}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+        </nav>
+    );
+};
+
 export default function BusinessAdminPage() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -3067,6 +3094,7 @@ export default function BusinessAdminPage() {
     const locationView = activeSection === 'locations' ? pathInfo.locationView : '';
     const [bootstrap, setBootstrap] = useState(null);
     const [bootstrapLoading, setBootstrapLoading] = useState(true);
+    const [bootstrapRefreshing, setBootstrapRefreshing] = useState(false);
     const [bootstrapError, setBootstrapError] = useState('');
     const [bootstrapAuthRequired, setBootstrapAuthRequired] = useState(false);
     const [bootstrapAccessDenied, setBootstrapAccessDenied] = useState(false);
@@ -3080,9 +3108,10 @@ export default function BusinessAdminPage() {
     const [dateRangePreset, setDateRangePreset] = useState(initialDateRangePreset);
     const [dateFrom, setDateFrom] = useState(initialDateRange.dateFrom);
     const [dateTo, setDateTo] = useState(initialDateRange.dateTo);
-    const [branchId, setBranchId] = useState(() => (
+    const branchId = useMemo(() => (
         String(new URLSearchParams(location.search).get('branch_id') || '').trim()
-    ));
+    ), [location.search]);
+    const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [receiptType, setReceiptType] = useState('');
     const [ordersPage, setOrdersPage] = useState(1);
@@ -3106,7 +3135,13 @@ export default function BusinessAdminPage() {
     ));
     const [settingsDirty, setSettingsDirty] = useState(false);
     const requestRef = useRef(0);
+    const sectionAbortRef = useRef(null);
+    const bootstrapRef = useRef(null);
     const previousSectionRef = useRef(activeSection);
+
+    useEffect(() => {
+        bootstrapRef.current = bootstrap;
+    }, [bootstrap]);
 
     useEffect(() => {
         setMobileNavOpen(false);
@@ -3205,6 +3240,11 @@ export default function BusinessAdminPage() {
         if (activeSection === 'inventory') setInventoryPage(1);
     }, [activeSection, activeDateRange.dateFrom, activeDateRange.dateTo, branchId, receiptType, search]);
 
+    useEffect(() => {
+        const timer = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+        return () => window.clearTimeout(timer);
+    }, [searchInput]);
+
     const settingsCapabilities = useMemo(() => normalizeBusinessAdminSettingsCapabilities(
         bootstrap?.access?.settings_sections || bootstrap?.access?.capabilities?.settings_sections
     ), [bootstrap]);
@@ -3221,10 +3261,36 @@ export default function BusinessAdminPage() {
     const branches = useMemo(() => bootstrap?.business?.branches || [], [bootstrap]);
     const catalogOnlyAccess = bootstrap?.access?.tenant_capabilities?.pos_enabled === false;
 
+    const selectAuthorizedBranch = useCallback((nextBranchId, source = 'manual') => {
+        const normalizedBranchId = String(nextBranchId || '').trim();
+        const allowedBranchIds = new Set(branches.map((branch) => String(branch?.branch_id || '').trim()).filter(Boolean));
+        if (normalizedBranchId && !allowedBranchIds.has(normalizedBranchId)) {
+            setActionError(`The selected location is not available in this company (${source}).`);
+            return false;
+        }
+
+        if (activeSection === 'settings' && settingsDefinition?.scope === 'branch') {
+            setSettingsBranchId(normalizedBranchId);
+        }
+        const searchParams = new URLSearchParams(location.search);
+        if (normalizedBranchId) searchParams.set('branch_id', normalizedBranchId);
+        else searchParams.delete('branch_id');
+        const nextSearch = searchParams.toString();
+        const currentSearch = String(location.search || '').replace(/^\?/, '');
+        if (nextSearch !== currentSearch) {
+            navigate({
+                pathname: location.pathname,
+                search: nextSearch ? `?${nextSearch}` : ''
+            }, { replace: true });
+        }
+        return true;
+    }, [activeSection, branches, location.pathname, location.search, navigate, settingsDefinition?.scope]);
+
     useEffect(() => {
-        const requestedBranchId = String(new URLSearchParams(location.search).get('branch_id') || '').trim();
-        if (requestedBranchId !== branchId) setBranchId(requestedBranchId);
-    }, [branchId, location.search]);
+        if (!branchId || branches.length === 0) return;
+        const allowedBranchIds = new Set(branches.map((branch) => String(branch?.branch_id || '').trim()));
+        if (!allowedBranchIds.has(branchId)) selectAuthorizedBranch('', 'url');
+    }, [branchId, branches, selectAuthorizedBranch]);
 
     useEffect(() => {
         if (!bootstrap || typeof window === 'undefined') return undefined;
@@ -3236,12 +3302,9 @@ export default function BusinessAdminPage() {
             const isAllowedLocation = branches.some((branch) => Number(branch?.branch_id) === candidateLocationId);
             if (!isAllowedLocation) return;
             const normalizedBranchId = String(candidateLocationId);
-            setBranchId(normalizedBranchId);
-            if (activeSection === 'settings' && settingsDefinition?.scope === 'branch') {
-                setSettingsBranchId(normalizedBranchId);
-            }
+            selectAuthorizedBranch(normalizedBranchId, 'pos-location-context');
         });
-    }, [activeSection, bootstrap, branches, settingsDefinition?.scope]);
+    }, [bootstrap, branches, selectAuthorizedBranch]);
 
     const navigateBusinessAdmin = useCallback((target, options) => {
         if (shouldBlockSettingsNavigation(settingsDirty)) {
@@ -3273,21 +3336,7 @@ export default function BusinessAdminPage() {
         }, { replace: true });
     }, [location.pathname, location.search, navigate]);
 
-    const handleGlobalLocationChange = useCallback((nextBranchId) => {
-        const normalizedBranchId = String(nextBranchId || '').trim();
-        setBranchId(normalizedBranchId);
-        if (activeSection === 'settings' && settingsDefinition?.scope === 'branch') {
-            setSettingsBranchId(normalizedBranchId);
-        }
-        const searchParams = new URLSearchParams(location.search);
-        if (normalizedBranchId) searchParams.set('branch_id', normalizedBranchId);
-        else searchParams.delete('branch_id');
-        const nextSearch = searchParams.toString();
-        navigate({
-            pathname: location.pathname,
-            search: nextSearch ? `?${nextSearch}` : ''
-        }, { replace: true });
-    }, [activeSection, location.pathname, location.search, navigate, settingsDefinition?.scope]);
+    const handleGlobalLocationChange = selectAuthorizedBranch;
 
     const handleOverviewOrderClick = useCallback((order) => {
         const id = extractId(order, ['transaction_id', 'pos_transaction_id']);
@@ -3296,18 +3345,7 @@ export default function BusinessAdminPage() {
         navigateBusinessAdmin(`${ordersPath}?transaction_id=${encodeURIComponent(id)}`);
     }, [navigateBusinessAdmin, rootPath]);
 
-    const handleSettingsBranchChange = useCallback((nextBranchId) => {
-        const normalizedBranchId = String(nextBranchId || '').trim();
-        setSettingsBranchId(normalizedBranchId);
-        const searchParams = new URLSearchParams(location.search);
-        if (normalizedBranchId) searchParams.set('branch_id', normalizedBranchId);
-        else searchParams.delete('branch_id');
-        const nextSearch = searchParams.toString();
-        navigate({
-            pathname: location.pathname,
-            search: nextSearch ? `?${nextSearch}` : ''
-        }, { replace: true });
-    }, [location.pathname, location.search, navigate]);
+    const handleSettingsBranchChange = selectAuthorizedBranch;
 
     useEffect(() => {
         if (!settingsDirty || typeof window === 'undefined') return undefined;
@@ -3349,14 +3387,16 @@ export default function BusinessAdminPage() {
         }
         const requestId = bootstrapRequestRef.current + 1;
         bootstrapRequestRef.current = requestId;
-        setBootstrapLoading(true);
+        const hadBootstrap = bootstrapRef.current != null;
+        setBootstrapLoading(!hadBootstrap);
+        setBootstrapRefreshing(hadBootstrap);
         setBootstrapError('');
         setBootstrapAuthRequired(false);
         setBootstrapAccessDenied(false);
         try {
             const nextBootstrap = await businessAdminApi.bootstrap();
             if (bootstrapRequestRef.current !== requestId) return;
-            setBootstrap(normalizedOptimisticBusinessName && nextBootstrap?.business
+            const resolvedBootstrap = normalizedOptimisticBusinessName && nextBootstrap?.business
                 ? {
                     ...nextBootstrap,
                     business: {
@@ -3364,19 +3404,27 @@ export default function BusinessAdminPage() {
                         name: normalizedOptimisticBusinessName
                     }
                 }
-                : nextBootstrap);
+                : nextBootstrap;
+            bootstrapRef.current = resolvedBootstrap;
+            setBootstrap(resolvedBootstrap);
         } catch (error) {
             const status = Number(error?.response?.status || 0);
             if (bootstrapRequestRef.current !== requestId) return;
             const sessionRequired = status === 401 || status === 419;
             setBootstrapAuthRequired(sessionRequired);
             setBootstrapAccessDenied(status === 403);
-            setBootstrap(null);
+            if (sessionRequired || status === 403) {
+                bootstrapRef.current = null;
+                setBootstrap(null);
+            }
             setBootstrapError(sessionRequired
                 ? BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE
                 : (status === 403 ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : getBusinessAdminErrorMessage(error)));
         } finally {
-            if (bootstrapRequestRef.current === requestId) setBootstrapLoading(false);
+            if (bootstrapRequestRef.current === requestId) {
+                setBootstrapLoading(false);
+                setBootstrapRefreshing(false);
+            }
         }
     }, []);
 
@@ -3384,8 +3432,10 @@ export default function BusinessAdminPage() {
         if (typeof window === 'undefined') return undefined;
         const handleSessionInvalidation = () => {
             bootstrapRequestRef.current += 1;
+            bootstrapRef.current = null;
             setBootstrap(null);
             setBootstrapLoading(false);
+            setBootstrapRefreshing(false);
             setBootstrapAuthRequired(true);
             setBootstrapAccessDenied(false);
             setBootstrapError(BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE);
@@ -3396,8 +3446,10 @@ export default function BusinessAdminPage() {
         };
         const handleTenantSwitch = () => {
             bootstrapRequestRef.current += 1;
+            bootstrapRef.current = null;
             setBootstrap(null);
             setBootstrapLoading(false);
+            setBootstrapRefreshing(false);
             setBootstrapAuthRequired(true);
             setBootstrapAccessDenied(false);
             setBootstrapError(BUSINESS_ADMIN_COMPANY_SWITCHED_MESSAGE);
@@ -3489,8 +3541,12 @@ export default function BusinessAdminPage() {
 
     const loadSection = useCallback(async () => {
         if (!bootstrap) return;
+        sectionAbortRef.current?.abort();
         const requestId = requestRef.current + 1;
         requestRef.current = requestId;
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        sectionAbortRef.current = controller;
+        const requestConfig = controller ? { signal: controller.signal } : {};
         if (catalogOnlyAccess && activeSection !== 'catalog') {
             setSectionData(null);
             setLoadedSection(activeSection);
@@ -3518,16 +3574,16 @@ export default function BusinessAdminPage() {
         setActionError('');
         try {
             let payload;
-            if (['overview', 'locations'].includes(activeSection)) payload = { overview: await businessAdminApi.overview(params) };
-            else if (activeSection === 'orders') payload = await businessAdminApi.orders({ ...params, page: ordersPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE });
-            else if (activeSection === 'expenses') payload = await businessAdminApi.expenses({ ...params, page: expensesPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE });
-            else if (activeSection === 'customers') payload = await businessAdminApi.customers({ ...params, page: 1, limit: 50 });
-            else if (activeSection === 'team') payload = await businessAdminApi.workforce(params);
-            else if (activeSection === 'attendance') payload = await businessAdminApi.attendance({ ...params, page: 1, limit: 100 });
+            if (['overview', 'locations'].includes(activeSection)) payload = { overview: await businessAdminApi.overview(params, requestConfig) };
+            else if (activeSection === 'orders') payload = await businessAdminApi.orders({ ...params, page: ordersPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE }, requestConfig);
+            else if (activeSection === 'expenses') payload = await businessAdminApi.expenses({ ...params, page: expensesPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE }, requestConfig);
+            else if (activeSection === 'customers') payload = await businessAdminApi.customers({ ...params, page: 1, limit: 50 }, requestConfig);
+            else if (activeSection === 'team') payload = await businessAdminApi.workforce(params, requestConfig);
+            else if (activeSection === 'attendance') payload = await businessAdminApi.attendance({ ...params, page: 1, limit: 100 }, requestConfig);
             else if (activeSection === 'shifts') {
                 const [shiftHistory, cashSummary] = await Promise.all([
-                    businessAdminApi.shifts({ ...params, page: 1, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE }),
-                    businessAdminApi.shifts({ ...params, status: 'closed', page: cashSummaryPage, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE })
+                    businessAdminApi.shifts({ ...params, page: 1, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE }, requestConfig),
+                    businessAdminApi.shifts({ ...params, status: 'closed', page: cashSummaryPage, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE }, requestConfig)
                 ]);
                 payload = {
                     summary: shiftHistory?.summary || {},
@@ -3537,22 +3593,22 @@ export default function BusinessAdminPage() {
             }
             else if (activeSection === 'inventory') {
                 const [valuation, lowStock] = await Promise.all([
-                    businessAdminApi.inventoryValuation(branchId ? { branch_id: branchId } : {}),
-                    businessAdminApi.reportDataset('low_stock', { ...params, page: inventoryPage, limit: BUSINESS_ADMIN_INVENTORY_PAGE_SIZE })
+                    businessAdminApi.inventoryValuation(branchId ? { branch_id: branchId } : {}, requestConfig),
+                    businessAdminApi.reportDataset('low_stock', { ...params, page: inventoryPage, limit: BUSINESS_ADMIN_INVENTORY_PAGE_SIZE }, requestConfig)
                 ]);
                 payload = { valuation, lowStock };
-            } else if (activeSection === 'recipes') payload = await businessAdminApi.recipes({ ...params, page: 1, limit: 50 });
-            else if (activeSection === 'fiscal') payload = await businessAdminApi.fiscal(params);
-            else if (activeSection === 'notifications') payload = await businessAdminApi.notifications({ ...(branchId ? { branch_id: branchId } : {}), status: 'open', limit: 100 });
-            else if (activeSection === 'audit') payload = await businessAdminApi.audit({ ...params, limit: 100, page: 1 });
-            else if (activeSection === 'approvals') payload = { approvals: (await businessAdminApi.approvals({ status: 'pending', limit: 100 })).approvals || [] };
+            } else if (activeSection === 'recipes') payload = await businessAdminApi.recipes({ ...params, page: 1, limit: 50 }, requestConfig);
+            else if (activeSection === 'fiscal') payload = await businessAdminApi.fiscal(params, requestConfig);
+            else if (activeSection === 'notifications') payload = await businessAdminApi.notifications({ ...(branchId ? { branch_id: branchId } : {}), status: 'open', limit: 100 }, requestConfig);
+            else if (activeSection === 'audit') payload = await businessAdminApi.audit({ ...params, limit: 100, page: 1 }, requestConfig);
+            else if (activeSection === 'approvals') payload = { approvals: (await businessAdminApi.approvals({ status: 'pending', limit: 100 }, requestConfig)).approvals || [] };
             else if (activeSection === 'payments') {
                 const revenueParams = buildTenantRevenueQuery(params);
                 const [monitoring, revenueSummary, revenueTransactions, feeHistory] = await Promise.allSettled([
-                    businessAdminApi.payments(params),
-                    businessAdminApi.tenantRevenueSummary(revenueParams),
-                    businessAdminApi.tenantRevenueTransactions({ ...revenueParams, limit: 100, offset: 0 }),
-                    businessAdminApi.tenantRevenueFeeHistory()
+                    businessAdminApi.payments(params, requestConfig),
+                    businessAdminApi.tenantRevenueSummary(revenueParams, requestConfig),
+                    businessAdminApi.tenantRevenueTransactions({ ...revenueParams, limit: 100, offset: 0 }, requestConfig),
+                    businessAdminApi.tenantRevenueFeeHistory(requestConfig)
                 ]);
                 if (monitoring.status === 'rejected') throw monitoring.reason;
                 payload = {
@@ -3570,21 +3626,25 @@ export default function BusinessAdminPage() {
                     }
                 };
             }
-            else if (activeSection === 'company') payload = await businessAdminApi.company();
-            else if (activeSection === 'pos-activity') payload = await businessAdminApi.posActivityAnalytics(params);
+            else if (activeSection === 'company') payload = await businessAdminApi.company(requestConfig);
+            else if (activeSection === 'pos-activity') payload = await businessAdminApi.posActivityAnalytics(params, requestConfig);
             else payload = { bootstrap };
             if (requestRef.current === requestId) {
                 setSectionData(payload);
                 setLoadedSection(activeSection);
             }
         } catch (error) {
+            if (controller?.signal.aborted || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return;
             if (requestRef.current === requestId) {
                 setSectionAccessDenied(Number(error?.response?.status || 0) === 403);
                 setSectionError(getBusinessAdminErrorMessage(error));
                 setLoadedSection(activeSection);
             }
         } finally {
-            if (requestRef.current === requestId) setSectionLoading(false);
+            if (requestRef.current === requestId) {
+                setSectionLoading(false);
+                if (sectionAbortRef.current === controller) sectionAbortRef.current = null;
+            }
         }
     }, [activeSection, bootstrap, cashSummaryPage, catalogOnlyAccess, expensesPage, inventoryPage, ordersPage, params, branchId]);
 
@@ -3592,6 +3652,11 @@ export default function BusinessAdminPage() {
         setSelectedOrder(null);
         setSelectedCustomer(null);
         loadSection();
+        return () => {
+            requestRef.current += 1;
+            sectionAbortRef.current?.abort();
+            sectionAbortRef.current = null;
+        };
     }, [loadSection, reloadNonce]);
 
     const handleOrderSelect = useCallback(async (order) => {
@@ -3781,8 +3846,8 @@ export default function BusinessAdminPage() {
     const showBranchFilter = activeSection !== 'audit';
     const hasInlineBranchFilter = showDateFilters && showBranchFilter;
 
-    if (bootstrapLoading) return <Loading />;
-    if (bootstrapError || !bootstrap) {
+    if (bootstrapLoading && !bootstrap) return <Loading />;
+    if (!bootstrap) {
         // OPIS has no /terminal route: recovery stays in-app. Sign-in returns
         // to the requested Back Office path via the company picker's `next`
         // contract; access-denied offers a business switch; a generic failure
@@ -3811,7 +3876,14 @@ export default function BusinessAdminPage() {
         : activeSection === 'settings' && settingsDefinition
             ? { title: settingsDefinition.label, description: settingsDefinition.description }
         : (BACKOFFICE_SECTION_META[activeSection] || BACKOFFICE_SECTION_META.overview);
-    const activeNavigationKey = usersRolesShortcut ? 'users-roles' : activeSection;
+    const activeNavigationKey = getBusinessAdminSidebarActiveKey({
+        activeSection,
+        settingsSection,
+        usersRolesShortcut
+    });
+    const activeWorkspaceTabKey = usersRolesShortcut
+        ? 'users-roles'
+        : (activeSection === 'settings' && settingsSection === 'team' ? 'team' : activeSection);
     const overviewData = sectionData?.overview || (activeSection === 'overview' ? sectionData : null);
     const workflowPageName = getBusinessAdminWorkflowPageName(activeSection);
     const workflowVisibilityReady = workflowModeResolved && !workflowModeLoading;
@@ -3821,13 +3893,57 @@ export default function BusinessAdminPage() {
         enabledCapabilities,
         disabledCapabilities
     );
+    const isSidebarItemVisible = (item) => {
+        const definition = BACKOFFICE_SECTION_META[item.accessKey];
+        if (!definition) return false;
+        if (!isBusinessAdminNavigationVisible(definition, {
+            catalogOnlyAccess,
+            usersRolesVisible: canViewUsers,
+            capabilities: bootstrap.access?.capabilities || {},
+            settingsCapabilities
+        })) return false;
+        if (item.accessKey === 'settings' && visibleSettingsSections.length === 0) return false;
+        const workflowPageName = getBusinessAdminWorkflowPageName(item.accessKey);
+        if (!workflowPageName) return true;
+        if (!workflowVisibilityReady) return false;
+        return isBusinessAdminWorkflowSectionVisible(
+            item.accessKey,
+            workflowMode,
+            enabledCapabilities,
+            disabledCapabilities
+        );
+    };
+    const workspaceTabs = getBusinessAdminWorkspaceTabs({
+        activeSection,
+        settingsSection,
+        usersRolesShortcut
+    }).filter(isSidebarItemVisible);
+    const preserveBusinessAdminNavigationContext = (targetPath) => {
+        const rawTarget = String(targetPath || '');
+        const hashIndex = rawTarget.indexOf('#');
+        const targetHash = hashIndex >= 0 ? rawTarget.slice(hashIndex) : (location.hash || '');
+        const targetWithoutHash = hashIndex >= 0 ? rawTarget.slice(0, hashIndex) : rawTarget;
+        const queryIndex = targetWithoutHash.indexOf('?');
+        const targetPathname = queryIndex >= 0 ? targetWithoutHash.slice(0, queryIndex) : targetWithoutHash;
+        const targetSearch = queryIndex >= 0 ? targetWithoutHash.slice(queryIndex + 1) : '';
+        const searchParams = new URLSearchParams(location.search);
+        const targetSearchParams = new URLSearchParams(targetSearch);
+        targetSearchParams.forEach((value, key) => searchParams.set(key, value));
+        const serializedSearch = searchParams.toString();
+        return `${targetPathname}${serializedSearch ? `?${serializedSearch}` : ''}${targetHash}`;
+    };
+    const handleSidebarItemNavigate = (item) => {
+        const targetPath = item.key === 'settings'
+            ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile')
+            : buildBusinessAdminSidebarItemPath(rootPath, item);
+        navigateBusinessAdmin(preserveBusinessAdminNavigationContext(targetPath));
+    };
+    const handleWorkspaceTabNavigate = (tab) => {
+        navigateBusinessAdmin(preserveBusinessAdminNavigationContext(buildBusinessAdminSidebarItemPath(rootPath, tab)));
+    };
+    const unreadNotificationCount = Number(overviewData?.summary?.unread_notifications || 0);
     const notificationWorkspaceHasData = activeSection === 'notifications'
         && Array.isArray(sectionData?.notifications);
-    const workspaceTransitionKey = activeSection === 'settings'
-        ? (usersRolesShortcut ? 'users-roles' : `${activeSection}:${settingsSection || 'profile'}`)
-        : activeSection === 'locations'
-            ? `${activeSection}:${locationView || 'branches'}`
-        : activeSection;
     const workspaceBusy = Boolean(
         (workflowPageName && workflowModeLoading)
         || sectionLoading
@@ -3851,6 +3967,7 @@ export default function BusinessAdminPage() {
         const canKeepLocationsWorkspace = activeSection === 'locations'
             && Boolean(sectionData?.overview)
             && loadedSection === activeSection;
+        const canKeepSectionWorkspace = Boolean(sectionData) && loadedSection === activeSection;
         if (workflowPageName && workflowModeLoading) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;
         if (workflowPageName && !workflowModeResolved) {
             return <Navigate to={buildBackOfficeOverviewPath(rootPath)} replace />;
@@ -3897,8 +4014,7 @@ export default function BusinessAdminPage() {
                 />
             );
         }
-        if (sectionLoading) return <WorkspaceLoading label={`Refreshing ${meta.title}…`} />;
-        if (sectionError) return <div className="business-admin-alert error" data-testid={sectionAccessDenied ? 'business-admin-section-access-denied' : 'business-admin-section-error'}><AlertTriangle size={17} /><div><strong>{sectionAccessDenied ? 'Back Office access denied.' : 'Back Office data unavailable.'}</strong><div>{sectionError}</div></div></div>;
+        if (sectionError && !canKeepSectionWorkspace) return <div className="business-admin-alert error" data-testid={sectionAccessDenied ? 'business-admin-section-access-denied' : 'business-admin-section-error'}><AlertTriangle size={17} /><div><strong>{sectionAccessDenied ? 'Back Office access denied.' : 'Back Office data unavailable.'}</strong><div>{sectionError}</div></div></div>;
         if (usersRolesShortcut) {
             return (
                 <BusinessAdminUsersRolesWorkspace
@@ -3995,28 +4111,12 @@ export default function BusinessAdminPage() {
                     </button>
                 </div>
                 {mobileNavOpen ? <button type="button" className="business-admin-mobile-sidebar-close" data-testid="business-admin-mobile-sidebar-close" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}><X size={16} /> Close menu</button> : null}
-                {BACKOFFICE_NAV_GROUPS.map((group) => {
-                    const items = group.items.filter((item) => {
-                        if (!isBusinessAdminNavigationVisible(item, {
-                            catalogOnlyAccess,
-                            usersRolesVisible: canViewUsers,
-                            capabilities: bootstrap.access?.capabilities || {},
-                            settingsCapabilities
-                        })) return false;
-                        if (item.key === 'settings' && visibleSettingsSections.length === 0) return false;
-                        if (!getBusinessAdminWorkflowPageName(item.key)) return true;
-                        if (!workflowVisibilityReady) return false;
-                        return isBusinessAdminWorkflowSectionVisible(
-                            item.key,
-                            workflowMode,
-                            enabledCapabilities,
-                            disabledCapabilities
-                        );
-                    });
+                {BUSINESS_ADMIN_SIDEBAR_GROUPS.map((group) => {
+                    const items = group.items.filter(isSidebarItemVisible);
                     if (!items.length) return null;
                     return (
                         <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>
-                            {group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}
+                            <div className="business-admin-nav-label">{group.label}</div>
                             {items.map((item) => {
                                 const Icon = item.icon;
                                 const isActive = activeNavigationKey === item.key;
@@ -4028,11 +4128,7 @@ export default function BusinessAdminPage() {
                                         aria-label={item.label}
                                         title={sidebarCollapsed ? item.label : undefined}
                                         aria-current={isActive ? 'page' : undefined}
-                                        onClick={() => navigateBusinessAdmin(item.key === 'settings'
-                                            ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile')
-                                            : (item.key === 'overview'
-                                                ? buildBackOfficeOverviewPath(rootPath)
-                                                : buildBackOfficeModulePath(rootPath, item.key)))}
+                                        onClick={() => handleSidebarItemNavigate(item)}
                                     >
                                         <Icon size={16} />
                                         <span className="business-admin-nav-item-label">{item.label}</span>
@@ -4075,6 +4171,22 @@ export default function BusinessAdminPage() {
                         </div>
                     </div>
                     <div className="business-admin-top-actions">
+                        <button
+                            type="button"
+                            className="business-admin-header-action"
+                            data-testid="business-admin-notifications-trigger"
+                            aria-label="Open notifications"
+                            title="Open notifications"
+                            onClick={() => navigateBusinessAdmin(preserveBusinessAdminNavigationContext(buildBackOfficeModulePath(rootPath, 'notifications')))}
+                        >
+                            <Bell size={16} />
+                            <span>Notifications</span>
+                            {Number.isFinite(unreadNotificationCount) && unreadNotificationCount > 0 ? (
+                                <span className="business-admin-header-action-badge" aria-label={`${unreadNotificationCount} unread notifications`}>
+                                    {unreadNotificationCount}
+                                </span>
+                            ) : null}
+                        </button>
                         {!hasInlineBranchFilter && branches.length > 0 ? (
                             <div className="business-admin-field business-admin-location-switcher" data-testid="business-admin-location-scope">
                                 <label htmlFor="business-admin-location-scope"><MapPin size={12} className="inline mr-1" /> Location scope</label>
@@ -4093,6 +4205,11 @@ export default function BusinessAdminPage() {
                         ) : null}
                     </div>
                 </div>
+                <BusinessAdminWorkspaceTabs
+                    tabs={workspaceTabs}
+                    activeKey={activeWorkspaceTabKey}
+                    onNavigate={handleWorkspaceTabNavigate}
+                />
                 {showDateFilters ? (
                     <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''}`}>
                         {showHistoricalRangePreset ? (
@@ -4131,7 +4248,7 @@ export default function BusinessAdminPage() {
                         {['orders', 'customers', 'expenses'].includes(activeSection) ? (
                             <div className="business-admin-field flex-1">
                                 <label htmlFor="ba-search"><Search size={12} className="inline mr-1" /> Search</label>
-                                <input id="ba-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={activeSection === 'orders' ? 'Invoice, customer, tracking PIN' : (activeSection === 'customers' ? 'Name, email, or phone' : 'Description, vendor, reference')} />
+                                <input id="ba-search" type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={activeSection === 'orders' ? 'Invoice, customer, tracking PIN' : (activeSection === 'customers' ? 'Name, email, or phone' : 'Description, vendor, reference')} />
                             </div>
                         ) : null}
                         <div className="business-admin-filter-spacer" />
@@ -4139,8 +4256,11 @@ export default function BusinessAdminPage() {
                     </div>
                 ) : null}
                 {actionError ? <div className="business-admin-alert error"><AlertTriangle size={17} /><div>{actionError}</div></div> : null}
+                {bootstrapRefreshing ? <div className="business-admin-alert info" data-testid="business-admin-bootstrap-refreshing">Refreshing Back Office access…</div> : null}
+                {bootstrapError && bootstrap ? <div className="business-admin-alert error" data-testid="business-admin-bootstrap-refresh-error"><AlertTriangle size={17} /><div>{bootstrapError}</div></div> : null}
+                {sectionLoading && loadedSection === activeSection && sectionData ? <div className="business-admin-alert info" data-testid="business-admin-section-refreshing">Refreshing {meta.title}…</div> : null}
+                {sectionError && loadedSection === activeSection && sectionData ? <div className="business-admin-alert error" data-testid="business-admin-section-refresh-error"><AlertTriangle size={17} /><div>{sectionError}</div></div> : null}
                 <div
-                    key={workspaceTransitionKey}
                     className="business-admin-workspace"
                     data-testid="business-admin-workspace"
                     aria-busy={workspaceBusy ? 'true' : 'false'}

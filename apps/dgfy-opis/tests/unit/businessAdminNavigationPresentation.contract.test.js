@@ -16,14 +16,12 @@ const businessAdminCss = fs.readFileSync(
 
 describe('Business Admin navigation presentation contract', () => {
   it('animates only route-level workspace changes and keeps loading state inside the shell', () => {
-    expect(businessAdminPage).toContain('const workspaceTransitionKey = activeSection === \'settings\'');
     expect(businessAdminPage).toContain('const workspaceBusy = Boolean(');
-    expect(businessAdminPage).toContain('key={workspaceTransitionKey}');
     expect(businessAdminPage).toContain('data-testid="business-admin-workspace"');
     expect(businessAdminPage).toContain('aria-busy={workspaceBusy ? \'true\' : \'false\'}');
     expect(businessAdminPage).toContain('const [loadedSection, setLoadedSection] = useState(\'\');');
     expect(businessAdminPage).toContain('if (loadedSection !== activeSection) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;');
-    expect(businessAdminPage).toContain('if (sectionLoading) return <WorkspaceLoading label={`Refreshing ${meta.title}…`} />;');
+    expect(businessAdminPage).toContain('sectionLoading && loadedSection === activeSection && sectionData');
   });
 
   it('keeps navigation feedback lightweight and keyboard-visible', () => {
@@ -37,18 +35,17 @@ describe('Business Admin navigation presentation contract', () => {
   });
 
   it('preserves semantic route state and avoids animating filter-driven rerenders', () => {
-    expect(businessAdminPage).toContain("const activeNavigationKey = usersRolesShortcut ? 'users-roles' : activeSection;");
+    expect(businessAdminPage).toContain('const activeNavigationKey = getBusinessAdminSidebarActiveKey({');
     expect(businessAdminPage).toContain("aria-current={isActive ? 'page' : undefined}");
-    expect(businessAdminPage).toContain("const workspaceTransitionKey = activeSection === 'settings'");
-    expect(businessAdminPage).toContain(": activeSection;");
     expect(businessAdminPage).not.toContain('key={location.search}');
-    expect(businessAdminPage).toContain('navigateBusinessAdmin(item.key === \'settings\'');
+    expect(businessAdminPage).toContain('handleSidebarItemNavigate(item)');
   });
 
   it('renders the domain-grouped sidebar without adding a second navigation path', () => {
     expect(businessAdminPage).toContain("className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()}");
-    expect(businessAdminPage).toContain('{group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}');
-    expect(businessAdminPage).toContain('navigateBusinessAdmin(item.key === \'settings\'');
+    expect(businessAdminPage).toContain('<div className="business-admin-nav-label">{group.label}</div>');
+    expect(businessAdminPage).toContain('BUSINESS_ADMIN_SIDEBAR_GROUPS.map');
+    expect(businessAdminPage).toContain('handleSidebarItemNavigate(item)');
     expect(businessAdminCss).toContain('.business-admin-nav-group.is-standalone');
     expect(businessAdminCss).toContain('.business-admin-nav-group.is-standalone .business-admin-nav-item');
   });
