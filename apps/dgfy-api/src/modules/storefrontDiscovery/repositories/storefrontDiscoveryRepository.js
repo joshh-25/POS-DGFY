@@ -1,4 +1,4 @@
-import { StorefrontDiscoveryIndex } from '../../../models/index.js';
+import { ExternalRedirectSite, StorefrontDiscoveryIndex } from '../../../models/index.js';
 import { geoSearchRepository } from '../../geoSearch/repositories/geoSearchRepository.js';
 import {
     reconcileStorefrontDiscoveryIndex,
@@ -21,6 +21,7 @@ import {
 } from '../../shared/utils/storefrontBusinessHours.js';
 import { publicSearchTextMatches } from '../../shared/utils/publicSearchAliasPolicy.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import { resolveExternalListingCategories } from '../domain/externalRedirectPolicy.js';
 import {
     buildAccessCapabilities,
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -136,6 +137,27 @@ const DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS = Math.max(
 );
 
 const normalizeSlug = (value) => String(value || '').trim().toLowerCase();
+export const isExternalTypeHidden = (entry = {}, hiddenProviders = new Set()) => {
+    const provider = String(entry.external_provider || '').trim().toLowerCase();
+    return entry.entity_type === 'external_listing'
+        && hiddenProviders instanceof Set
+        && hiddenProviders.has(provider);
+};
+
+const loadHiddenExternalProviders = async () => {
+    try {
+        const rows = await ExternalRedirectSite.findAll({
+            where: { show_on_map: false },
+            attributes: ['site_key']
+        });
+        return new Set((rows || []).map((row) => String(row.site_key || '').trim().toLowerCase()).filter(Boolean));
+    } catch (error) {
+        logger.warn('[StorefrontDiscovery] External visibility lookup failed; treating all partner types as shown', {
+            error: error?.message || 'unknown_error'
+        });
+        return new Set();
+    }
+};
 const shouldAutoRepairEmptyIndex = () => process.env.STOREFRONT_DISCOVERY_INDEX_AUTO_REPAIR_ON_EMPTY !== 'false';
 const shouldEnableFanoutFallback = () => process.env.STOREFRONT_DISCOVERY_FANOUT_FALLBACK_ENABLED === 'true';
 
@@ -624,6 +646,7 @@ const toPlainEntry = (row) => {
         tenantId: plain.tenant_id,
         assetType: 'profile'
     });
+    const storefrontCategories = normalizeStringList(plain.storefront_categories, 12, 60);
     return {
     tenant_id: plain.tenant_id,
     tenant_name: plain.tenant_name,
@@ -688,7 +711,11 @@ const toPlainEntry = (row) => {
     // already shapes each entry into the exact fields the storefront needs before it's stored.
     storefront_vouchers: parseJsonArray(plain.storefront_vouchers),
     storefront_ui_v2_enabled: parseBoolean(plain.storefront_ui_v2_enabled, false),
-    storefront_categories: normalizeStringList(plain.storefront_categories, 12, 60),
+    storefront_categories: resolveExternalListingCategories({
+        entityType: plain.entity_type || 'dgfy_native',
+        externalProvider: plain.external_provider,
+        categories: storefrontCategories
+    }),
     storefront_gallery_images: normalizeStorefrontGalleryImages(plain.storefront_gallery_images),
     storefront_delivery_partners: normalizeStorefrontDeliveryPartners(plain.storefront_delivery_partners),
     storefront_follow_enabled: parseBoolean(plain.storefront_follow_enabled, false),
@@ -766,7 +793,10 @@ const loadAllEntries = async ({ cacheVersion = null, cacheSignature = null } = {
         logger.warn('[StorefrontDiscovery] Index is empty and fan-out fallback was requested, but fallback path is removed.');
     }
 
-    const entries = (rows || []).map(toPlainEntry);
+    const hiddenProviders = await loadHiddenExternalProviders();
+    const entries = (rows || [])
+        .map(toPlainEntry)
+        .filter((entry) => !isExternalTypeHidden(entry, hiddenProviders));
     cache = {
         entries,
         expiresAt: now + CACHE_TTL_MS,
@@ -1178,6 +1208,8 @@ export const storefrontDiscoveryRepository = {
         if (!row) return null;
         const hasMaterializedProfileFields = hasMaterializedStorefrontProfileColumns(row);
         const entry = toPlainEntry(row);
+        const hiddenProviders = await loadHiddenExternalProviders();
+        if (isExternalTypeHidden(entry, hiddenProviders)) return null;
         let profileSettings = await readStorefrontProfileSettings({
             tenantId: entry.tenant_id,
             cacheVersion: version,

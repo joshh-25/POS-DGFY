@@ -99,6 +99,50 @@ describe('POS refund workflow resolution', () => {
         }));
     });
 
+    it('contains a rejected refund action instead of leaking an unhandled rejection', async () => {
+        const error = Object.assign(new Error('Request failed with status code 409'), {
+            name: 'AxiosError',
+            isAxiosError: true,
+            response: {
+                status: 409,
+                data: { message: 'Void the POS transaction before requesting a provider refund' }
+            }
+        });
+        const onSubmit = vi.fn().mockRejectedValue(error);
+        const unhandledRejection = vi.fn();
+
+        render(
+            <POSRefundWorkflowDialog
+                transaction={cashRefundTransaction}
+                open
+                hasActiveShift
+                onSubmit={onSubmit}
+            />
+        );
+
+        fireEvent.change(screen.getByLabelText('Refund reason'), { target: { value: 'Customer return' } });
+        const submit = screen.getByRole('button', { name: 'Confirm refund action' });
+        process.on('unhandledRejection', unhandledRejection);
+
+        try {
+            fireEvent.click(submit);
+            await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(unhandledRejection).not.toHaveBeenCalled();
+            expect(screen.getByTestId('pos-refund-workflow-dialog')).toBeTruthy();
+            expect(submit.disabled).toBe(false);
+
+            fireEvent.click(submit);
+            await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(unhandledRejection).not.toHaveBeenCalled();
+        } finally {
+            process.removeListener('unhandledRejection', unhandledRejection);
+        }
+    });
+
     it('reuses the original void reason instead of asking for a second refund reason', () => {
         const onSubmit = vi.fn();
 

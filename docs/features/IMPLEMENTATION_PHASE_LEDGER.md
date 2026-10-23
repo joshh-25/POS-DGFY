@@ -31153,4 +31153,285 @@ Not complete. Set only after the scoped implementation and named validation evid
 
 ### Next phase number
 
-Phase 536. No explicit dependency.
+## Phase 536 - Registration draft upload application ID nullability (#2718)
+
+### Initiative and release
+
+Repair the landlord registration upload schema for the next develop-bound release.
+
+### Objective and scope
+
+Make `company_registration_uploads.application_id` nullable on fresh MySQL schemas and on
+databases that already recorded the no-op `20261008000001` migration. Preserve the existing
+application foreign key and UUID column definition. Add a forward-only repair migration, real-MySQL
+coverage for the fresh chain and current production-shaped schema, mock-based migration cases, and
+test-cost inventory registration.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR and deployed verification remain open.
+
+### Dependencies
+
+Issue #2718 and the landlord migration chain. No explicit phase dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR 0022](../architecture/adr/0022-global-dgfy-account-business-registration.md), and the
+[migration-runner ownership/deploy-order contract](../../apps/dgfy-migration-runner/README.md).
+Classification: `within-existing-boundary`; the change only relaxes a landlord column constraint
+for the existing draft registration flow. It adds no tenant-schema contract and needs no ADR
+amendment.
+
+### Implementation targets
+
+- New guarded migration that reads the existing column type, character set, and collation from
+  `information_schema.COLUMNS`, then issues one raw MySQL `MODIFY ... NULL` statement.
+- Real-MySQL tests for a fresh full chain, all four draft upload categories with real parent rows,
+  and a pre-fix production-shaped upgrade path with idempotent rerun coverage.
+- Mock-based cases for absent table/column, already-nullable and `NOT NULL` columns, and no-op down.
+- Registration in `scripts/backend-db-dependent-tests.js` and the generated test-cost inventory.
+
+### Acceptance and validation evidence
+
+- [x] Baseline real-MySQL run against the current migration chain reproduced `IS_NULLABLE = 'NO'`;
+      the application foreign key and matching UUID type/character set/collation remained present.
+- [x] After the migration was added, the real-MySQL suite passed all four cases: fresh-chain
+      nullability, UUID metadata/FK preservation, all four draft upload inserts, and a
+      production-shaped `NOT NULL` upgrade with an idempotent rerun.
+- [x] Migration unit coverage passed (9 tests); the new integration file is registered as
+      `db-required` in the generated test-cost manifest.
+- [x] Migration syntax, architecture checks, compliance checks, docs lint, and app-version checks
+      passed.
+- [x] Staged tenant-schema coverage checked the new landlord migration and passed.
+- [ ] Resolve the test-cost inventory check failure: it reports seven unmatched historical #378
+      baseline filenames, unrelated to this change; the new test itself is registered as
+      `db-required`.
+- [ ] PR review and merge are complete; this phase does not merge or deploy.
+
+### Known verification boundary
+
+Local MySQL proves the fresh and pre-fix schema paths only. STAGING upload requests, post-deploy
+schema inspection, and PROD Sentry observation remain post-merge checks owned by Pat/Verifier and
+Observer.
+
+### Rollback
+
+The migration's `down()` is intentionally a no-op because draft rows can persist with
+`application_id = NULL`; restoring `NOT NULL` could fail or discard valid draft data. The forward
+change does not rewrite existing application rows or remove the foreign key.
+
+### Completion date
+
+Not complete. Set only after the implementation is merged and the local acceptance evidence is
+terminal.
+
+### Post-merge verification
+
+- [ ] On STAGING and then PROD, confirm `application_id` is nullable and its UUID definition and
+      application foreign key remain intact.
+- [ ] Upload profile, cover, gallery, and menu files through `/business/grow` on STAGING and confirm
+      each request returns 201.
+- [ ] After the fixed release reaches PROD, check for new `DGFY-BACKEND-M` or `DGFY-STORE-20`
+      events and re-open/re-resolve the Sentry issue as appropriate.
+
+### Next phase number
+
+Phase 537. No explicit dependency.
+
+## Back-port phase ID reconciliation (2026-10-23)
+
+Develop had already claimed Phase 536 for #2718. To keep the develop ledger sequence unique, the external-discovery entries from main use the next free develop phase numbers below. Their original main phase IDs are retained here for traceability; the scopes and source merge records are unchanged.
+
+| Main source phase | Develop phase | Scope | Source PR |
+| --- | --- | --- | --- |
+| 536 | 537 | Selective main release of external discovery previews and event seed | #2723 |
+| 537 | 538 | Provider-derived external discovery category chips | #2723 |
+| 538 | 539 | Admin visibility controls for external discovery types and pins | #2723 |
+| 539 | 540 | SynqCore event-seed room ID mapping | #2730 |
+
+## Phase 537 - Selective main release of external discovery previews and event seed
+
+- **Initiative / release:** External discovery Saturday program / hotfix candidate 2026-10-23-01.
+- **Objective / scope:** Add category-specific external pin previews and a PII-safe, dry-run-first event seed tool for SynqCore, MapViu, and Proventus employer exports on a narrow branch from `main`, including the Phase 532 redirect foundation. Exclude unrelated `develop` work and live provider integration.
+- **Status:** completed.
+- **Dependencies:** None explicit. Phase 532 is included in this same release; real partner URL templates are required before publishing its pins.
+- **Acceptance and validation evidence:** #2704 and #2715; focused API, Admin, Storefront, migration, architecture, compliance, version, and diff-scope evidence in the implementing PR. Local extracts report mappable and skipped rows without committing source data. The Proventus follow-up adds `--proventus` with an eight-field allow-list; the supplied company export extracts six listings and skips two for `no_coordinates`.
+- **Contracts / ADR / implementation:** [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), `apps/dgfy-storefront/src/discovery`, `apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalEventSeedMapping.js`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`.
+
+### Completion date
+
+2026-10-23 — PR #2723, merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`.
+
+### Post-merge verification
+
+- [ ] Pat merges only with clean merge state and terminal checks, then dispatches the production deployment with tenant-schema and runner preflight gates.
+- [ ] Configure operator-confirmed Mapviu, Synqcore, and Proventus HTTPS `{id}` templates in Admin. Review Proventus addresses for possible sole-proprietor personal addresses, then dry-run and apply only the reviewed minimal seed in DEV before any separately authorized production load.
+- [ ] Verify desktop and mobile external pins, previews, one `/e/{slug}` 302 per action, disabled-site failure behavior, and six Proventus employer pins under Job (including the known stacked coordinates and the listing outside the Iloilo view).
+- [ ] After the program, clear temporary event pins and confirm manual records remain.
+- [ ] File and complete a fresh `develop` back-port issue and finalize the release note's production commit.
+
+### Next phase number
+
+Phase 538. No explicit dependency.
+
+## Phase 538 - Provider-derived external discovery category chips (#2715)
+
+### Initiative and release
+
+External discovery Saturday program / production hotfix candidate `2026-10-23-02`.
+
+### Objective and scope
+
+Append Hotel, Real Estate, Taxi, and Job chips to the Storefront discovery rail and derive the matching `storefront_categories` value for managed external listing rows with known providers when no explicit category is stored. Preserve existing chips, native rows, explicit categories, provider write paths, Admin behavior, and schema. Classification: `within-existing-boundary`.
+
+### Status
+
+`completed` — implementation and validation were merged by PR #2723 to `main` at merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`. Outstanding deployment/provider checks remain listed below.
+
+### Dependencies
+
+Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715). No explicit dependency on an earlier phase; Phase 537's external preview and event-seed scope is already merged.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), and the [API specification](../api/specification.md).
+
+### Implementation targets
+
+`apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalRedirectPolicy.js`, `apps/dgfy-api/src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js`, `apps/dgfy-storefront/src/discovery/components/DiscoveryCategoryStage.jsx`, API and Storefront focused tests, app package versions and lockfiles, and release note `2026-10-23-01`.
+
+### Acceptance and validation evidence
+
+- [x] Each known provider derives its matching category only for external rows with no explicit categories; native, unknown-provider, and explicitly categorized rows remain unchanged.
+- [x] API discovery search returns the SynqCore row for `Hotel` and the MapViu row for `Real Estate`; the Storefront filter selects only each matching provider's rows.
+- [x] Existing twelve chips remain unchanged and the final four are Hotel, Real Estate, Taxi, and Job in that order; chip colors match external pin colors.
+- [x] The desktop More interaction submits `search=Hotel` and updates the search input; the focused tests, Storefront build, and repository governance gates pass.
+- [x] API and Storefront patch versions and release note are updated; the API/migration-runner production build-skip preflight passes for the candidate contents.
+
+### Evidence
+
+The API's three focused suites pass (53 tests). The Storefront chip/filter/integration suites pass (45 tests), and the external-presentation, pin, and map-layer regressions pass (22 tests). `npm run build:store`, `npm run check:architecture`, `npm run lint:docs` (including ADR validation), `npm run check:compliance`, and the main-hotfix patch version gate pass. `node --check` passes for every changed API source/test file, and the API/migration-runner production preflight says BUILD for unpublished API 1.48.2-r1 and SKIP for migration-runner 1.34.1-r1 (`content-equivalent`). `git diff --check` and the repository marker scan pass. Focused Storefront ESLint reports zero errors and two existing unused-variable warnings in the unchanged integration-test setup. No desktop/mobile browser screenshots or live DEV/PROD verification have been performed; the integration flow is exercised in jsdom with mocked API responses.
+
+### Completion date
+
+2026-10-23 — PR #2723, merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`.
+
+### Post-merge verification
+
+- [ ] deployment — Pat deploys the merged change to DEV and verifies the four-chip order, Hotel/SynqCore results, Real Estate/MapViu results, and empty Taxi/Job states; owner: Pat; blocks #2715 closure.
+- [ ] deployment — after the separately authorized PROD deployment, verify Storefront 1.41.2 and the API/migration-runner pair on the merged SHA; owner: release/Verifier; blocks the production portion of #2715 acceptance.
+- [ ] provider — after Pat reviews and applies the Phase 537 Proventus event seed and enables its destination, verify six employer pins under Job; confirm Taxi remains empty until valid Eytitu listings are configured; owner: product/provider; blocks any claim that unconfigured partner pins are available.
+- [ ] operational — file a fresh issue and back-port the main hotfix to `develop`, then finalize `production_commit` on that back-port branch as required by the hotfix policy; owner: release; blocks hotfix reconciliation.
+
+### Next phase number
+
+Phase 539. No explicit dependency.
+
+## Phase 539 - Admin visibility controls for external discovery types and pins (#2715)
+
+### Initiative and release
+
+External discovery Saturday program / release candidate `2026-10-23-01`.
+
+### Objective and scope
+
+Add independent master-admin switches for each managed partner type and external pin. Enforce the effective visibility rule across discovery search, map pins, profile-by-slug reads, and `/e/{slug}` redirects. Preserve individual pin state when a type is toggled or the event seed is re-applied. Add an additive landlord migration, Admin controls, audit records, and operator documentation. Classification: `within-existing-boundary`.
+
+### Status
+
+`completed` — implementation and validation were merged by PR #2723 to `main` at merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`. Outstanding deployment/provider checks remain listed below.
+
+### Dependencies
+
+Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715) and Phase 538's provider category metadata on the same PR. Phase 538 is the explicit feature dependency; no new provider data or seed apply is required.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), and the [API specification](../api/specification.md). Classification: `within-existing-boundary`; the visibility controls use the existing discovery repository, master-only Admin route group, and audit log.
+
+### Implementation targets
+
+`apps/dgfy-migration-runner/migrations/20261023000001-add-show-on-map-to-external-redirect-sites.cjs`, `apps/dgfy-api/src/models/Landlord/ExternalRedirectSite.js`, the `storefrontDiscovery` repository/use cases/handlers/routes and seed apply path, public discovery repository, their focused API tests, `apps/dgfy-admin/Pages/ExternalDiscoveryManager.jsx`, its Admin service and tests, package versions and lockfiles, the feature/API docs, and release note `2026-10-23-01`.
+
+### Acceptance and validation evidence
+
+- [x] A partner's `show_on_map` and each pin's `is_visible` are independent; public reads and `/e/{slug}` honor both flags, while a missing column fails open during migration rollout. Focused API tests passed.
+- [x] Both switches are audited, do not write when unchanged, and refresh discovery cache state after a change; partner-type visibility is part of the shared signature so peer API instances stop using old Redis list/profile entries after their signature interval. Focused tests cover audit/no-op/cache refresh and a peer-instance signature change; pin visibility works while destination redirects are disabled.
+- [x] Saving a destination preserves type visibility, and event-seed re-apply preserves pin visibility. Focused use-case and seed mapping tests passed.
+- [x] Admin shows partner type/counts, disables an unconfigured type switch with its hint, preserves unsaved destination drafts, and provides accessible one-click Hide/Show controls. Admin tests and local mocked browser proof passed.
+- [x] Additive migration is idempotent and reversible; Admin, migration-runner, and API version floors pass the main-hotfix policy. Disposable MySQL 8 check passed `up/up/down/down/up/up`; the version checker passed.
+- [x] Focused API/Admin tests, Admin lint/build, architecture, docs, compliance, version, syntax, and marker checks passed. Diff-scope is recorded in PR #2723; local rendered and MySQL evidence is recorded in its body.
+
+### Evidence
+
+API: 5 focused Jest suites / 70 tests passed, including peer-instance shared-signature coverage for partner type changes. Admin: 2 focused Vitest files / 53 tests passed; lint, production build, direct page ESLint, and a local mocked Playwright interaction/render passed. The browser proof covers effective counts, type and pin toggles, hidden-by-type state, redirects-disabled pin changes, an unconfigured disabled switch, and draft preservation; screenshot: `.tmp/admin-visibility-rendered.png` (local ignored artifact). `npm run check:architecture`, `npm run lint:docs`, `npm run check:compliance`, the app version checker, syntax, `git diff --check`, and the changed-file marker scan passed. Release note `2026-10-23-01` was updated; its standalone validator reports not applicable because this is a hotfix issue branch rather than a `release/<candidate_id>` promotion branch. Compliance preflight: `no_breach` / `ALLOWED`, reference `PREFLIGHT-LOCAL-1792735602532-2026-10-23-EXTERNAL-DISCOVERY-VISIBILITY`. Disposable MySQL 8 migration round trip: `up/up/down/down/up/up`. No storefront screenshot or deployed-environment validation was run; public read-path behavior is covered by focused API tests. No migration was applied to a deployed environment; Pat's DEV checks below remain outstanding. Public list/map HTTP responses retain `max-age=20`, `stale-while-revalidate=40`, and `stale-if-error=90`; profile responses retain `max-age=30`, `stale-while-revalidate=60`, and `stale-if-error=120`. DEV cache propagation remains to be verified.
+
+### Completion date
+
+2026-10-23 — PR #2723, merge commit `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96`.
+
+### Post-merge verification
+
+- [ ] deployment — run the additive migration on each target landlord database before the API starts; owner: release; blocks enabling type visibility controls.
+- [ ] DEV — Pat deploys the branch with migration runner first, verifies each partner type can be hidden/restored, confirms pins remain individually hidden/restored, tests `/e/{slug}` behavior, and checks changes propagate across API instances; owner: Pat; blocks #2715 closure.
+- [ ] Admin — confirm a type with no saved destination is disabled, pin Hide/Show works with redirects disabled, and unsaved destination drafts survive a type toggle; owner: Pat; blocks Admin acceptance.
+- [ ] seed — hide an event-seed pin, run dry-run and DEV apply for its provider, and confirm the pin stays hidden; owner: Pat; no seed data is applied by this PR.
+- [ ] back-port — after the authorized main merge, open the required fresh-issue back-port PR to `develop` and finalize `production_commit` in that branch; owner: release; blocks hotfix reconciliation.
+
+### Next phase number
+
+Phase 540. Depends on Phase 538, included on the same PR.
+
+## Phase 540 - SynqCore event-seed room ID mapping (#2715)
+
+### Initiative and release
+
+External discovery Saturday program / release candidate `2026-10-23-01`.
+
+### Objective and scope
+
+Keep one SynqCore map pin per property while selecting the lowest numeric `room_id` from the room-coordinate export as its external redirect reference. Preserve each property's existing DGFY slug, require the room export, and fail closed for unmatched properties instead of using `property_id` as a room URL. Use room coordinates only when property coordinates are missing. Classification: `within-existing-boundary`.
+
+### Status
+
+`completed` — implementation and focused validation merged by PR #2730 to `main` at merge commit `62a4c00d08ff64fa15b072b277d5d15b69815760`; DEV and PROD deployment, seed application, and DGFY redirect verification are complete. Provider-side availability remains a separate open verification.
+
+### Dependencies
+
+Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715) and Phase 537's external event seed foundation, which supplies the existing dry-run/apply path and stable public slug contract. No migration or provider API access is required.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), and [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md). Classification: `within-existing-boundary`; the change uses the current external reference and stable slug fields without schema changes.
+
+### Implementation targets
+
+`apps/dgfy-api/src/modules/storefrontDiscovery/domain/externalEventSeedMapping.js`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`, `apps/dgfy-api/tests/externalEventSeedMapping.test.js`, API package version and lockfile, the external discovery feature doc, and release note `2026-10-23-02`.
+
+### Acceptance and validation evidence
+
+- [x] SynqCore extraction requires a property export and room-coordinate export, emits one property pin with its lowest room ID, and preserves the existing property slug.
+- [x] Missing room mappings are skipped; property IDs are never used as redirect references. Room coordinates supply missing property coordinates without exposing raw export fields.
+- [x] Focused API tests, actual-export extraction/schema validation, patch-version/compliance/architecture/docs gates, syntax, and changed-file marker scan pass.
+- [x] After DEV and PROD seed applies, all 12 SynqCore `/e/{slug}` redirects resolve to their selected `/room/{room_id}` destination while pin visibility is preserved.
+
+### Evidence
+
+The two focused API suites passed 27 tests. Extraction from the supplied SynqCore exports produced 12 property pins and skipped one test property; the schema validator passed, the output used only the approved listing fields, and no supplied booking/host/account contact values appeared in the minimal seed. Home Square Valeria keeps slug `synqcore-100018` and maps to its lowest room ID, `100315`. The API-only PROD deploy run #39939435837 succeeded at commit `62a4c00d08ff64fa15b072b277d5d15b69815760`; migration-runner reused the content-equivalent `1.34.2` image and frontend builds were skipped. Health poll #39940785872 passed. The PROD seed re-apply created 11 listings, updated one, and failed none; the final database comparison found all 12 expected mappings and preserved visibility. All 12 public redirect endpoints returned 302 to the matching SynqCore room URL. The selected provider page returned HTTP 200, but its rendered room availability has not been inspected. Architecture checks, strict docs/ADR lint, compliance checks, the staged patch-version gate, ESLint, `node --check`, and `git diff --check` passed in the implementation PR.
+
+### Completion date
+
+2026-10-23 — PR #2730, merge commit `62a4c00d08ff64fa15b072b277d5d15b69815760`.
+
+### Post-merge verification
+
+- [x] deployment — deploy to DEV and PROD, run the reviewed minimal SynqCore seed, and verify all 12 redirects use the expected lowest room ID; owner: Pat; complete.
+- [ ] provider — verify at least one selected room URL (including Home Square Valeria's `100315`) resolves on SynqCore; owner: Pat; blocks claiming provider-side destination availability.
+- [x] operational — the fresh-issue back-port PR #2731 references #2728 and records production commits `3aca2d8699814fe4a9edcf58c0a53e06bc6bde96` and `62a4c00d08ff64fa15b072b277d5d15b69815760`; owner: release; PR remains open for review and merge.
+
+### Next phase number
+
+Phase 541. No explicit dependency.

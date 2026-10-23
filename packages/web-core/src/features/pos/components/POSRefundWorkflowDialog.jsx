@@ -121,14 +121,18 @@ export default function POSRefundWorkflowDialog({
 
     const submit = async () => {
         if (!canSubmit) return;
-        await onSubmit({
-            workflow,
-            reason: reason.trim(),
-            externalReference: externalReference.trim(),
-            completionConfirmed,
-            allocationId: selectedAllocation?.pos_payment_allocation_id || null,
-            amount: selectedAllocation?.applied_amount || null
-        });
+        try {
+            await onSubmit({
+                workflow,
+                reason: reason.trim(),
+                externalReference: externalReference.trim(),
+                completionConfirmed,
+                allocationId: selectedAllocation?.pos_payment_allocation_id || null,
+                amount: selectedAllocation?.applied_amount || null
+            });
+        } catch {
+            // The action handler reports the server error and keeps this dialog open for correction.
+        }
     };
 
     return (

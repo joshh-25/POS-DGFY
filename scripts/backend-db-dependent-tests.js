@@ -54,6 +54,7 @@
 module.exports = [
   // #2614/#2605: this migration-backed geo inventory regression test needs real MySQL.
   'tests/geoStoreItems.nullLocation.db.integration.test.js',
+  'tests/companyRegistrationUploads.applicationIdNullable.db.integration.test.js',
   'tests/migratedTemplateClone.db.integration.test.js',
   'tests/adminTenantLifecycle.integration.test.js',
   'tests/ai_cost_control_e2e.test.js',

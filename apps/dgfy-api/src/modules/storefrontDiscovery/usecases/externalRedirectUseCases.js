@@ -19,7 +19,7 @@ export const buildResolveExternalRedirectUseCase = ({ repository }) => async ({ 
   const siteKey = normalizeExternalSiteKey(listing.external_provider);
   if (!siteKey || !listing.external_reference_id) return missing('External destination is unavailable');
   const site = await repository.getSite(siteKey);
-  if (!site?.enabled) return missing('External destination is unavailable');
+  if (!site?.enabled || site.show_on_map === false) return missing('External destination is unavailable');
   const destination = resolveExternalRedirectUrl({
     template: site.url_template,
     allowedHostname: site.allowed_hostname,
@@ -31,15 +31,33 @@ export const buildResolveExternalRedirectUseCase = ({ repository }) => async ({ 
 
 export const buildListExternalAdminUseCase = ({ repository }) => async () => {
   const [sites, listings] = await Promise.all([repository.listSites(), repository.listListings()]);
+  const managedListings = listings.filter((row) => normalizeExternalSiteKey(row.external_provider));
+  const sitesByKey = new Map(sites.map((site) => [site.site_key, site]));
+  const pinCounts = new Map(Object.keys(EXTERNAL_REDIRECT_SITES).map((siteKey) => [siteKey, {
+    pin_count: 0,
+    visible_pin_count: 0
+  }]));
+  managedListings.forEach((row) => {
+    const siteKey = normalizeExternalSiteKey(row.external_provider);
+    const counts = pinCounts.get(siteKey);
+    if (!counts) return;
+    counts.pin_count += 1;
+    if (row.is_visible === true && sitesByKey.get(siteKey)?.show_on_map !== false) counts.visible_pin_count += 1;
+  });
   return ok({
-    sites: Object.entries(EXTERNAL_REDIRECT_SITES).map(([siteKey, meta]) => ({
-      site_key: siteKey,
-      display_name: meta.label,
-      url_template: '',
-      enabled: false,
-      ...sites.find((site) => site.site_key === siteKey)
-    })),
-    listings: listings.filter((row) => normalizeExternalSiteKey(row.external_provider)).map((row) => ({
+    sites: Object.entries(EXTERNAL_REDIRECT_SITES).map(([siteKey, meta]) => {
+      const site = sitesByKey.get(siteKey);
+      return {
+        site_key: siteKey,
+        display_name: meta.label,
+        type_label: meta.category,
+        url_template: site?.url_template || '',
+        enabled: site?.enabled === true,
+        show_on_map: site?.show_on_map !== false,
+        ...pinCounts.get(siteKey)
+      };
+    }),
+    listings: managedListings.map((row) => ({
       slug: row.slug,
       title: row.tenant_name,
       external_provider: row.external_provider,
@@ -66,6 +84,15 @@ export const buildSaveExternalSiteUseCase = ({ repository }) => async ({ siteKey
     admin
   });
   return ok({ site_key: site.site_key, url_template: site.url_template, allowed_hostname: site.allowed_hostname, enabled: site.enabled });
+};
+
+export const buildSetExternalSiteVisibilityUseCase = ({ repository }) => async ({ siteKey, payload, admin } = {}) => {
+  const key = normalizeExternalSiteKey(siteKey);
+  if (!key) return invalid('Unknown external site');
+  if (typeof payload?.show_on_map !== 'boolean') return invalid('show_on_map must be a boolean');
+  const result = await repository.setSiteVisibility({ siteKey: key, showOnMap: payload.show_on_map, admin });
+  if (result.status === 'not_found') return missing("Configure this partner's destination first");
+  return ok({ site_key: key, show_on_map: payload.show_on_map, status: result.status });
 };
 
 const PROVIDER_WORKFLOW_MODE = Object.freeze({
@@ -109,7 +136,7 @@ export const buildSaveExternalListingUseCase = ({ repository }) => async ({ slug
       longitude,
       address_line: String(payload?.address_line || '').trim().slice(0, 255),
       storefront_tagline: String(payload?.description || '').trim().slice(0, 120),
-      is_visible: payload?.is_visible !== false,
+      ...(typeof payload?.is_visible === 'boolean' ? { is_visible: payload.is_visible } : {}),
       storefront_open: true,
       supports_delivery: false,
       supports_pickup: false,
@@ -119,6 +146,15 @@ export const buildSaveExternalListingUseCase = ({ repository }) => async ({ slug
   if (result.status === 'conflict') return fail(new DomainError(DomainErrorCode.CONFLICT, 'Slug belongs to a native storefront', { statusCode: 409 }));
   if (result.status === 'duplicate') return fail(new DomainError(DomainErrorCode.CONFLICT, 'Partner record is already listed under another DGFY link ID', { statusCode: 409 }));
   return ok({ slug: key, status: result.status });
+};
+
+export const buildSetExternalListingVisibilityUseCase = ({ repository }) => async ({ slug, payload, admin } = {}) => {
+  const key = String(slug || '').trim().toLowerCase();
+  if (!slugPattern.test(key)) return invalid('Invalid external listing slug');
+  if (typeof payload?.is_visible !== 'boolean') return invalid('is_visible must be a boolean');
+  const result = await repository.setListingVisibility({ slug: key, isVisible: payload.is_visible, admin });
+  if (result.status === 'not_found') return missing('External listing not found');
+  return ok({ slug: key, is_visible: payload.is_visible, status: result.status });
 };
 
 export const buildRemoveExternalListingUseCase = ({ repository }) => async ({ slug, admin } = {}) => {
