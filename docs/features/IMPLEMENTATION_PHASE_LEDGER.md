@@ -30151,7 +30151,7 @@ Append Hotel, Real Estate, Taxi, and Job chips to the Storefront discovery rail 
 
 ### Status
 
-`in_progress` — implementation and validation are on `fix/hotfix-2715-discovery-category-chips`; the PR and DEV verification are pending. No merge or deployment has been performed.
+`in_progress` — implementation and validation passed on `fix/hotfix-2715-discovery-category-chips`; merge and DEV verification remain pending. No merge or deployment has been performed.
 
 ### Dependencies
 
@@ -30167,15 +30167,15 @@ Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715). No explicit
 
 ### Acceptance and validation evidence
 
-- [ ] Each known provider derives its matching category only for external rows with no explicit categories; native, unknown-provider, and explicitly categorized rows remain unchanged.
-- [ ] API discovery search returns the SynqCore row for `Hotel` and the MapViu row for `Real Estate`; the Storefront filter selects only each matching provider's rows.
-- [ ] Existing twelve chips remain unchanged and the final four are Hotel, Real Estate, Taxi, and Job in that order; chip colors match external pin colors.
-- [ ] The desktop More interaction submits `search=Hotel` and updates the search input; the focused tests, app builds, and repository governance gates pass.
-- [ ] API and Storefront patch versions and release note are updated; the API/migration-runner production build-skip preflight passes for the exact candidate revision.
+- [x] Each known provider derives its matching category only for external rows with no explicit categories; native, unknown-provider, and explicitly categorized rows remain unchanged.
+- [x] API discovery search returns the SynqCore row for `Hotel` and the MapViu row for `Real Estate`; the Storefront filter selects only each matching provider's rows.
+- [x] Existing twelve chips remain unchanged and the final four are Hotel, Real Estate, Taxi, and Job in that order; chip colors match external pin colors.
+- [x] The desktop More interaction submits `search=Hotel` and updates the search input; the focused tests, Storefront build, and repository governance gates pass.
+- [x] API and Storefront patch versions and release note are updated; the API/migration-runner production build-skip preflight passes for the candidate contents.
 
 ### Evidence
 
-Focused API and Storefront tests pass. Complete focused suites, builds, governance checks, exact candidate preflight, diff-scope output, and PR evidence will be recorded before opening the PR. No browser session against DEV or production has been performed.
+The API's three focused suites pass (53 tests). The Storefront chip/filter/integration suites pass (45 tests), and the external-presentation, pin, and map-layer regressions pass (22 tests). `npm run build:store`, `npm run check:architecture`, `npm run lint:docs` (including ADR validation), `npm run check:compliance`, and the main-hotfix patch version gate pass. `node --check` passes for every changed API source/test file, and the API/migration-runner production preflight says BUILD for unpublished API 1.48.2-r1 and SKIP for migration-runner 1.34.1-r1 (`content-equivalent`). `git diff --check` and the repository marker scan pass. Focused Storefront ESLint reports zero errors and two existing unused-variable warnings in the unchanged integration-test setup. No desktop/mobile browser screenshots or live DEV/PROD verification have been performed; the integration flow is exercised in jsdom with mocked API responses.
 
 ### Completion date
 
