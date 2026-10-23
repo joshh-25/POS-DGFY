@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import { DiscoveryMapCard } from '../../../Components/store/DiscoveryResponsiveLayout.jsx';
 import { getDiscoveryMobilePanelLayout } from '../../../discovery/model/discoveryResultsModel.js';
-import { openStorefrontActionLink, sanitizeExternalLink } from '../../../shared/utils/externalLinks.js';
+import { openStorefrontActionLink } from '../../../shared/utils/externalLinks.js';
+import { isExternalListing, resolveExternalActionHref } from '../../../discovery/model/externalListingActions.js';
 import { getExternalListingPresentation } from '../../../discovery/model/externalListingPresentation.js';
 
 export function createDiscoveryResultsRenderer(ctx) {
@@ -134,7 +135,7 @@ const resultsSubtitle = isClusterResultsActive
       const renderDiscoveryStoreCard = (store) => {
   const partner = getExternalListingPresentation(store);
   if (partner) {
-    const openPartner = () => openStorefrontActionLink(sanitizeExternalLink(store.storefront_url));
+    const openPartner = () => openStorefrontActionLink(resolveExternalActionHref(store));
     return (
       <article key={store.slug} style={{ border: '1px solid #cbd5e1', borderRadius: 16, background: '#fff', padding: 16, display: 'grid', gap: 12, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -660,7 +661,24 @@ const resultsSubtitle = isClusterResultsActive
               height="100%"
               viewportPolicy="search-stable"
               viewportSignal={discoveryViewportSignal}
+              onPreviewOpen={(pin) => {
+                if (!isExternalListing(pin)) return;
+                setHasDiscoveryExplorationStarted(true);
+                setIsMobileResultsCollapsed(false);
+                setHighlightedStoreSlug(pin.slug);
+                const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug)
+                  || discoveryResultStores.find((s) => s.slug === pin.slug)
+                  || storesWithNearestBranch.find((s) => s.slug === pin.slug);
+                setSelectedMapPin(matched || pin);
+              }}
+              onPreviewClose={(pin) => {
+                if (isExternalListing(pin)) setSelectedMapPin(null);
+              }}
                     onSelectStore={(pin) => {
+                      if (isExternalListing(pin)) {
+                        openStorefrontActionLink(resolveExternalActionHref(pin));
+                        return;
+                      }
                       setHasDiscoveryExplorationStarted(true);
                   setIsMobileResultsCollapsed(false);
                       setHighlightedStoreSlug(pin.slug);
@@ -670,12 +688,6 @@ const resultsSubtitle = isClusterResultsActive
                   || storesWithNearestBranch.find((s) => s.slug === pin.slug)
                   || null;
                 setSelectedMapPin(matched || pin || null);
-                // External listings have no DGFY storefront to open — routing them
-                // into goStore would land the visitor on a broken/empty catalog shell.
-                if (pin.entity_type === 'external_listing') {
-                  openStorefrontActionLink(sanitizeExternalLink(pin.storefront_url));
-                  return;
-                }
                 goStore(pin.slug, pin.location_id ?? null);
               }}
               autoOpenPopups={false}
