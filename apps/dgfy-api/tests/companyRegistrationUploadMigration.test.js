@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const applicationUploadMigration = require('../../dgfy-migration-runner/migrations/20261001000001-create-company-registration-uploads.cjs');
 const draftUploadExtensionMigration = require('../../dgfy-migration-runner/migrations/20261008000001-extend-company-registration-uploads-for-drafts.cjs');
+const applicationIdNullableMigration = require('../../dgfy-migration-runner/migrations/20261023000001-make-company-registration-upload-application-id-nullable.cjs');
 
 const Sequelize = {
   UUID: 'UUID',
@@ -37,12 +38,24 @@ const applicationColumns = () => ({
   updated_at: {}
 });
 
-const buildQueryInterface = ({ existingColumns = null, existingIndexes = [] } = {}) => {
+const buildQueryInterface = ({
+  existingColumns = null,
+  existingIndexes = [],
+  metadataRows = [{
+    columnType: 'char(36)',
+    characterSetName: 'utf8mb4',
+    collationName: 'utf8mb4_bin'
+  }]
+} = {}) => {
   const schemas = new Map(existingColumns ? [['company_registration_uploads', { ...existingColumns }]] : []);
   const indexes = [...existingIndexes];
   const tableExists = (table) => schemas.has(table);
+  const sequelizeQuery = jest.fn(async (sql) => (
+    sql.includes('FROM information_schema.COLUMNS') ? [metadataRows, {}] : [[], {}]
+  ));
 
   return {
+    sequelize: { query: sequelizeQuery },
     describeTable: jest.fn(async (table) => {
       if (!tableExists(table)) throw new Error('table does not exist');
       return schemas.get(table);
@@ -168,5 +181,60 @@ describe('company registration upload migrations', () => {
     expect(queryInterface.removeColumn).toHaveBeenCalledWith('company_registration_uploads', 'registration_draft_id');
     expect(queryInterface.removeColumn).toHaveBeenCalledWith('company_registration_uploads', 'removed_by_account_id');
     expect(queryInterface.removeColumn).not.toHaveBeenCalledWith('company_registration_uploads', 'application_id');
+  });
+
+  it('does not alter the table when it is absent', async () => {
+    const queryInterface = buildQueryInterface();
+
+    await applicationIdNullableMigration.up(queryInterface);
+
+    expect(queryInterface.sequelize.query).not.toHaveBeenCalled();
+    expect(queryInterface.changeColumn).not.toHaveBeenCalled();
+  });
+
+  it('does not alter the table when application_id is absent', async () => {
+    const queryInterface = buildQueryInterface({ existingColumns: { id: {} } });
+
+    await applicationIdNullableMigration.up(queryInterface);
+
+    expect(queryInterface.sequelize.query).not.toHaveBeenCalled();
+    expect(queryInterface.changeColumn).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when application_id is already nullable', async () => {
+    const queryInterface = buildQueryInterface({
+      existingColumns: { ...applicationColumns(), application_id: { allowNull: true } }
+    });
+
+    await applicationIdNullableMigration.up(queryInterface);
+
+    expect(queryInterface.sequelize.query).not.toHaveBeenCalled();
+    expect(queryInterface.changeColumn).not.toHaveBeenCalled();
+  });
+
+  it('uses one metadata-preserving raw MODIFY for a NOT NULL application_id', async () => {
+    const queryInterface = buildQueryInterface({
+      existingColumns: { ...applicationColumns(), application_id: { allowNull: false } }
+    });
+
+    await applicationIdNullableMigration.up(queryInterface);
+
+    const modifyCalls = queryInterface.sequelize.query.mock.calls.filter(([sql]) => /^ALTER TABLE/i.test(sql));
+    expect(modifyCalls).toHaveLength(1);
+    expect(modifyCalls[0][0]).toBe(
+      'ALTER TABLE `company_registration_uploads` MODIFY `application_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL'
+    );
+    expect(queryInterface.changeColumn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the nullable column when rolled back', async () => {
+    const queryInterface = buildQueryInterface({
+      existingColumns: { ...applicationColumns(), application_id: { allowNull: true } }
+    });
+
+    await applicationIdNullableMigration.down(queryInterface);
+
+    expect(queryInterface.sequelize.query).not.toHaveBeenCalled();
+    expect(queryInterface.changeColumn).not.toHaveBeenCalled();
   });
 });
