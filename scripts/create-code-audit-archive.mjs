@@ -34,6 +34,8 @@ export const AUDIT_ARCHIVE_EXCLUDE_PATHS = Object.freeze([
   ':(exclude)**/.env',
   ':(exclude)**/.env.*',
   ':(exclude)**/CREDENTIALS.md',
+  ':(exclude)**/*Credential*',
+  ':(exclude)**/*credential*',
   ':(exclude)**/*Credentials*',
   ':(exclude)**/*credentials*',
   ':(exclude)**/*Secrets*',
