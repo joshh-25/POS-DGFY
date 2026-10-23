@@ -21,6 +21,16 @@ The public listing and map pin expose `/e/{slug}` as `storefront_url` for newly 
 
 The Admin page can add or update a pin by stable slug, partner ID, title, real coordinates, and optional public description/address. It also supports hide, delete, and event-only cleanup. Save actions audit the operator. Duplicate partner IDs within a provider are rejected; a slug belonging to a native DGFY storefront cannot be taken over.
 
+## Admin visibility controls
+
+The master-only **External Map Pins** page has two independent visibility switches. Each partner card has **Show on discovery map**, stored as `external_redirect_sites.show_on_map`; each pin has its existing **Visible on discovery map** state, stored as `storefront_discovery_index.is_visible`. A pin appears in public discovery only when its own `is_visible` value is true and its partner's `show_on_map` value is not false. Missing `show_on_map` values default to shown for additive rollout compatibility.
+
+The partner card's `visible_pin_count` reports effective public visibility after both switches are applied, so it is zero while the partner type is hidden even when some individual pin switches remain on.
+
+Hiding a partner type removes its managed pins from discovery search, map pins, and the profile-by-slug read, and makes their `/e/{slug}` links unavailable. Showing the type restores only pins whose individual visibility remains on. Hiding one pin leaves it in Admin as `Hidden` and makes its `/e/{slug}` link unavailable; showing it restores that pin even if its partner's redirect switch is disabled. `Enable redirects` remains separate: it controls destination resolution, not map visibility. Both visibility changes are audited and refresh the existing discovery cache version/signature.
+
+The type switch is available after that partner's destination configuration has been saved. Saving a destination does not change `show_on_map`. Re-applying an event seed does not resend `is_visible`, so it cannot show a pin an operator hid. The additive migration `20261023000001-add-show-on-map-to-external-redirect-sites.cjs` adds a non-null boolean with default `true`; run the migration runner before starting the API. During a mixed-version rollout, an API whose database has not received the column logs the lookup failure and fails open by treating all partner types as shown.
+
 ## Map behavior
 
 Partner pins use category-specific colors and icons: Proventus blue briefcase, Eytitu amber taxi, Mapviu pink house, and Synqcore magenta hotel. Selecting a map pin opens an external preview and highlights the pin without navigating. The preview's one action uses **View Job**, **Book This Taxi**, **Inquire**, or **Book Stay**, respectively. The action opens the public `storefront_url`, which is `/e/{slug}` for Admin-managed rows. Available address, short description, distance, and approved HTTPS image appear only when supplied; no unavailable field is fabricated. Native pins retain their existing selection and navigation behavior.

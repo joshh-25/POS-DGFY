@@ -30191,3 +30191,58 @@ Not complete. Record after the PR merges and implementation validation passes.
 ### Next phase number
 
 Phase 538. No explicit dependency.
+
+## Phase 538 - Admin visibility controls for external discovery types and pins (#2715)
+
+### Initiative and release
+
+External discovery Saturday program / release candidate `2026-10-23-01`.
+
+### Objective and scope
+
+Add independent master-admin switches for each managed partner type and external pin. Enforce the effective visibility rule across discovery search, map pins, profile-by-slug reads, and `/e/{slug}` redirects. Preserve individual pin state when a type is toggled or the event seed is re-applied. Add an additive landlord migration, Admin controls, audit records, and operator documentation. Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — implementation and local validation are on `fix/hotfix-2715-discovery-category-chips` / PR #2723; merge and DEV verification remain pending. No merge or deployment has been performed.
+
+### Dependencies
+
+Issue [#2715](https://github.com/Sieitzz/dgfy-platform/issues/2715) and Phase 537's provider category metadata on the same PR. Phase 537 is the explicit feature dependency; no new provider data or seed apply is required.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), and the [API specification](../api/specification.md). Classification: `within-existing-boundary`; the visibility controls use the existing discovery repository, master-only Admin route group, and audit log.
+
+### Implementation targets
+
+`apps/dgfy-migration-runner/migrations/20261023000001-add-show-on-map-to-external-redirect-sites.cjs`, `apps/dgfy-api/src/models/Landlord/ExternalRedirectSite.js`, the `storefrontDiscovery` repository/use cases/handlers/routes and seed apply path, public discovery repository, their focused API tests, `apps/dgfy-admin/Pages/ExternalDiscoveryManager.jsx`, its Admin service and tests, package versions and lockfiles, the feature/API docs, and release note `2026-10-23-01`.
+
+### Acceptance and validation evidence
+
+- [x] A partner's `show_on_map` and each pin's `is_visible` are independent; public reads and `/e/{slug}` honor both flags, while a missing column fails open during migration rollout. Focused API tests passed.
+- [x] Both switches are audited, do not write when unchanged, and refresh discovery cache state after a change; pin visibility works while destination redirects are disabled. Repository tests cover audit/no-op/cache-refresh behavior.
+- [x] Saving a destination preserves type visibility, and event-seed re-apply preserves pin visibility. Focused use-case and seed mapping tests passed.
+- [x] Admin shows partner type/counts, disables an unconfigured type switch with its hint, preserves unsaved destination drafts, and provides accessible one-click Hide/Show controls. Admin tests and local mocked browser proof passed.
+- [x] Additive migration is idempotent and reversible; Admin, migration-runner, and API version floors pass the main-hotfix policy. Disposable MySQL 8 check passed `up/up/down/down/up/up`; the version checker passed.
+- [x] Focused API/Admin tests, Admin lint/build, architecture, docs, compliance, version, syntax, and marker checks passed. Diff-scope is recorded in PR #2723; local rendered and MySQL evidence is recorded in its body.
+
+### Evidence
+
+API: 4 focused Jest suites / 68 tests passed. Admin: 2 focused Vitest files / 53 tests passed; lint, production build, direct page ESLint, and a local mocked Playwright interaction/render passed. The browser proof covers effective counts, type and pin toggles, hidden-by-type state, redirects-disabled pin changes, an unconfigured disabled switch, and draft preservation; screenshot: `.tmp/admin-visibility-rendered.png` (local ignored artifact). `npm run check:architecture`, `npm run lint:docs`, `npm run check:compliance`, the app version checker, syntax, `git diff --check`, and the changed-file marker scan passed. Release note `2026-10-23-01` was updated; its standalone validator reports not applicable because this is a hotfix issue branch rather than a `release/<candidate_id>` promotion branch. Compliance preflight: `no_breach` / `ALLOWED`, reference `PREFLIGHT-LOCAL-1792735602532-2026-10-23-EXTERNAL-DISCOVERY-VISIBILITY`. Disposable MySQL 8 migration round trip: `up/up/down/down/up/up`. No storefront screenshot or deployed-environment validation was run; public read-path behavior is covered by focused API tests. No migration was applied to a deployed environment; Pat's DEV checks below remain outstanding.
+
+### Completion date
+
+Not complete. Record after the PR merges and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] deployment — run the additive migration on each target landlord database before the API starts; owner: release; blocks enabling type visibility controls.
+- [ ] DEV — Pat deploys the branch with migration runner first, verifies each partner type can be hidden/restored, confirms pins remain individually hidden/restored, tests `/e/{slug}` behavior, and checks changes propagate across API instances; owner: Pat; blocks #2715 closure.
+- [ ] Admin — confirm a type with no saved destination is disabled, pin Hide/Show works with redirects disabled, and unsaved destination drafts survive a type toggle; owner: Pat; blocks Admin acceptance.
+- [ ] seed — hide an event-seed pin, run dry-run and DEV apply for its provider, and confirm the pin stays hidden; owner: Pat; no seed data is applied by this PR.
+- [ ] back-port — after the authorized main merge, open the required fresh-issue back-port PR to `develop` and finalize `production_commit` in that branch; owner: release; blocks hotfix reconciliation.
+
+### Next phase number
+
+Phase 539. Depends on Phase 537, included on the same PR.
