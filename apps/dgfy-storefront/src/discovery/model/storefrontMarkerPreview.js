@@ -1,4 +1,5 @@
 import { getDiscoveryMatchBadges } from './discoveryPresentation.js';
+import { getExternalListingPresentation } from './externalListingPresentation.js';
 
 const trimText = (value, fallback = '') => {
   const normalized = String(value ?? '').trim();
@@ -80,15 +81,18 @@ export const formatMarkerDistance = (distanceKm) => {
 export const buildStoreMarkerPreviewModel = (store = {}, {
   resolveAssetUrl = (value) => value
 } = {}) => {
+  const partner = getExternalListingPresentation(store);
   const matchBadges = getDiscoveryMatchBadges(store, Array.isArray(store?.match_reasons) && store.match_reasons.length > 0);
-  const distanceLabel = formatMarkerDistance(store?.distance_km ?? store?.nearest_distance_km);
+  const distanceLabel = partner
+    ? (Number(store?.distance_km) > 0 ? formatMarkerDistance(store.distance_km) : '')
+    : formatMarkerDistance(store?.distance_km ?? store?.nearest_distance_km);
   const catalogCount = Number(store?.catalog_count);
   const matchingItemCount = Number(store?.matching_item_count);
-  const statusLabel = store?.storefront_open === false || store?.is_open === false ? 'Closed' : 'Open';
-  const branchName = trimText(store?.location_name, trimText(store?.nearest_location_name, trimText(store?.branch_label, 'Storefront location')));
-  const tenantName = trimText(store?.tenant_name, 'Storefront');
+  const statusLabel = partner ? 'External listing' : (store?.storefront_open === false || store?.is_open === false ? 'Closed' : 'Open');
+  const branchName = partner ? `External · ${partner.name}` : trimText(store?.location_name, trimText(store?.nearest_location_name, trimText(store?.branch_label, 'Storefront location')));
+  const tenantName = trimText(store?.tenant_name, partner ? 'External listing' : 'Storefront');
 
-  const address = trimText(store?.address_line, 'Address unavailable');
+  const address = trimText(store?.address_line, partner ? '' : 'Address unavailable');
   const displayAddress = trimText(
     store?.primary_location_address_line || store?.nearest_location_address_line || store?.location_address_line,
     address
@@ -98,19 +102,63 @@ export const buildStoreMarkerPreviewModel = (store = {}, {
     tenantName,
     branchName,
     address: displayAddress,
-    coverImageUrl: resolveAssetUrl(store?.storefront_cover_image_url) || '',
+    coverImageUrl: partner ? (partner.allowImage && /^https:\/\//i.test(String(store?.storefront_cover_image_url || '')) ? store.storefront_cover_image_url : '') : (resolveAssetUrl(store?.storefront_cover_image_url) || ''),
     profileImageUrl: resolveAssetUrl(store?.storefront_profile_image_url) || '',
     statusLabel,
     isOpen: statusLabel === 'Open',
-    branchLabel: store?.is_primary_storefront === true ? 'Primary branch' : trimText(store?.branch_label, 'Branch'),
+    branchLabel: partner ? '' : (store?.is_primary_storefront === true ? 'Primary branch' : trimText(store?.branch_label, 'Branch')),
     locationId: store?.location_id ?? null,
     distanceLabel,
-    catalogLabel: Number.isFinite(catalogCount) && catalogCount > 0 ? `${catalogCount} storefront item(s)` : '',
-    matchingLabel: Number.isFinite(matchingItemCount) && matchingItemCount > 0 ? `${matchingItemCount} matching item(s)` : '',
+    catalogLabel: !partner && Number.isFinite(catalogCount) && catalogCount > 0 ? `${catalogCount} storefront item(s)` : '',
+    matchingLabel: !partner && Number.isFinite(matchingItemCount) && matchingItemCount > 0 ? `${matchingItemCount} matching item(s)` : '',
     matchBadges,
-    isExternalListing: store?.entity_type === 'external_listing',
-    actionLabel: store?.entity_type === 'external_listing' ? 'Visit store' : 'Open storefront'
+    isExternalListing: Boolean(partner),
+    partnerName: partner?.name || '',
+    actionLabel: partner?.action || 'Open storefront',
+    description: partner ? trimText(store?.storefront_tagline) : ''
   };
+};
+
+const createExternalPreviewNode = (store, model, { onAction, onClose }) => {
+  const card = document.createElement('article');
+  card.className = 'store-marker-preview-card store-marker-preview-card--external';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-label', `${model.tenantName} external listing preview`);
+  if (model.coverImageUrl) {
+    appendImage(card, { src: model.coverImageUrl, alt: `${model.tenantName} listing`, className: 'store-marker-preview-externalImage' });
+  }
+  const body = document.createElement('div');
+  body.className = 'store-marker-preview-body';
+  if (typeof onClose === 'function') {
+    const close = appendText(body, 'button', '×');
+    close.type = 'button';
+    close.className = 'store-marker-preview-externalClose';
+    close.setAttribute('aria-label', `Close ${model.tenantName} preview`);
+    close.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    });
+  }
+  appendText(body, 'strong', model.tenantName).className = 'store-marker-preview-title';
+  appendText(body, 'span', `External · ${model.partnerName}`).className = 'store-marker-preview-branch';
+  if (model.address) appendText(body, 'span', model.address).className = 'store-marker-preview-address';
+  if (model.description) appendText(body, 'span', model.description).className = 'store-marker-preview-description';
+  if (model.distanceLabel) appendText(body, 'span', model.distanceLabel).className = 'store-marker-preview-context';
+  if (typeof onAction === 'function') {
+    const action = appendText(body, 'button', model.actionLabel);
+    action.type = 'button';
+    action.className = 'store-marker-preview-action';
+    // A click fires once for pointer, Enter and Space activation. Pointerdown plus
+    // click opens two tabs on real browsers when the old timer guard has expired.
+    action.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onAction(store);
+    });
+  }
+  card.appendChild(body);
+  return card;
 };
 
 export const createStoreMarkerPreviewNode = (store = {}, {
@@ -119,6 +167,7 @@ export const createStoreMarkerPreviewNode = (store = {}, {
   onClose = null
 } = {}) => {
   const model = buildStoreMarkerPreviewModel(store, { resolveAssetUrl });
+  if (model.isExternalListing) return createExternalPreviewNode(store, model, { onAction, onClose });
   const card = document.createElement('article');
   card.setAttribute('role', 'dialog');
   card.setAttribute('aria-label', `${model.tenantName} location preview`);
@@ -136,7 +185,7 @@ export const createStoreMarkerPreviewNode = (store = {}, {
   cover.appendChild(coverOverlay);
   const status = document.createElement('span');
   status.textContent = model.statusLabel;
-  status.className = `store-marker-preview-status ${model.isOpen ? 'store-marker-preview-statusOpen' : 'store-marker-preview-statusClosed'}`;
+  status.className = `store-marker-preview-status ${model.isExternalListing ? 'store-marker-preview-statusExternal' : model.isOpen ? 'store-marker-preview-statusOpen' : 'store-marker-preview-statusClosed'}`;
   cover.appendChild(status);
   if (typeof onClose === 'function') {
     const closeButton = document.createElement('button');
@@ -191,7 +240,7 @@ export const createStoreMarkerPreviewNode = (store = {}, {
     badges.className = 'store-marker-preview-badges';
     if (model.isExternalListing) {
       const chip = document.createElement('span');
-      chip.textContent = 'Partner store';
+      chip.textContent = `External · ${model.partnerName}`;
       chip.className = 'store-marker-preview-badge';
       badges.appendChild(chip);
     }

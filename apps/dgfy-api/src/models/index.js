@@ -193,6 +193,7 @@ import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
 import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex.js';
+import ExternalRedirectSiteFactory from './Landlord/ExternalRedirectSite.js';
 import StorefrontCustomDomainFactory from './Landlord/StorefrontCustomDomain.js';
 import StorefrontCustomDomainAuditLogFactory from './Landlord/StorefrontCustomDomainAuditLog.js';
 import StorefrontCustomDomainOperationFactory from './Landlord/StorefrontCustomDomainOperation.js';
@@ -293,6 +294,7 @@ const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
 const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
+const ExternalRedirectSite = ExternalRedirectSiteFactory(sequelize);
 const StorefrontCustomDomain = StorefrontCustomDomainFactory(sequelize);
 const StorefrontCustomDomainAuditLog = StorefrontCustomDomainAuditLogFactory(sequelize);
 const StorefrontCustomDomainOperation = StorefrontCustomDomainOperationFactory(sequelize);
@@ -1449,6 +1451,7 @@ const db = {
   EngagementEvent,
   AiUsageLog,
   StorefrontDiscoveryIndex,
+  ExternalRedirectSite,
   StorefrontCustomDomain,
   StorefrontCustomDomainAuditLog,
   StorefrontCustomDomainOperation,
@@ -1704,6 +1707,7 @@ export {
   EngagementEvent,
   AiUsageLog,
   StorefrontDiscoveryIndex,
+  ExternalRedirectSite,
   StorefrontCustomDomain,
   StorefrontCustomDomainAuditLog,
   StorefrontCustomDomainOperation,

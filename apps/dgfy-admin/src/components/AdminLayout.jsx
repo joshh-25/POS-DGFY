@@ -17,7 +17,8 @@ import {
     FileText,
     ShieldCheck,
     LayoutTemplate,
-    BellRing
+    BellRing,
+    MapPinned
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ const SIDEBAR_ITEMS = [
     { path: '/admin/push-diagnostics', label: 'Push Diagnostics', icon: BellRing, permission: 'admin.push_diagnostics' },
     { path: '/admin/platform-admins', label: 'Platform Admins', icon: ShieldCheck, masterOnly: true },
     { path: '/admin/store-templates', label: 'Store Templates', icon: LayoutTemplate, masterOnly: true },
+    { path: '/admin/external-discovery', label: 'External Map Pins', icon: MapPinned, masterOnly: true },
 ];
 
 export default function AdminLayout() {

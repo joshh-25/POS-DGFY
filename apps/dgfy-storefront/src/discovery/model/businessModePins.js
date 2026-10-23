@@ -10,7 +10,12 @@ export const BUSINESS_MODE_PIN_META = Object.freeze({
   ticketing_transport: { icon: 'Ticket', label: 'Ticketing & Transport', color: '#1a4e8d' },
   logistics_distribution: { icon: 'Truck', label: 'Logistics & Distribution', color: '#1e3a8a' },
   education_institutions: { icon: 'GraduationCap', label: 'Education & Institutions', color: '#4338ca' },
-  msme: { icon: 'Store', label: 'Simple (MSME)', color: '#0f766e' }
+  msme: { icon: 'Store', label: 'Simple (MSME)', color: '#0f766e' },
+  external_jobs: { icon: 'Briefcase', label: 'Partner jobs', color: '#2563eb' },
+  external_taxis: { icon: 'Taxi', label: 'Partner taxis', color: '#b45309' },
+  external_real_estate: { icon: 'Home', label: 'Partner real estate', color: '#db2777' },
+  external_hotels: { icon: 'Hotel', label: 'Partner hotels', color: '#a21caf' },
+  external_listing: { icon: 'MapPin', label: 'Partner listing', color: '#475569' }
 });
 
 const aliases = Object.freeze({ manufacturing: 'food_manufacturing' });
@@ -28,6 +33,12 @@ export const getBusinessModePinMeta = (mode) => {
 
 const iconPath = (icon) => {
   switch (icon) {
+    case 'Briefcase':
+      return '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>';
+    case 'Car':
+      return '<path d="m5 16-1 2v2h3v-2h10v2h3v-2l-1-2-2-7H7l-2 7Z"/><path d="M5 16h14M8 13h1M15 13h1"/>';
+    case 'Taxi':
+      return '<path d="m5 16-1 2v2h3v-2h10v2h3v-2l-1-2-2-7H7l-2 7Z"/><path d="M5 16h14M8 13h1M15 13h1M9 9V6h6v3M10 6V4h4v2"/>';
     case 'CalendarCheck':
       return '<path d="M7 3v3M17 3v3M4 9h16"/><rect x="4" y="5" width="16" height="15" rx="2"/><path d="m8 15 2 2 5-5"/>';
     case 'ShoppingBag':

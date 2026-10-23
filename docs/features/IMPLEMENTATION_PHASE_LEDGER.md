@@ -30099,3 +30099,42 @@ Not complete. Record after the implementation merges and validation passes.
 ### Next phase number
 
 Phase 519. No explicit dependency.
+## Phase 532 - External discovery redirect foundation
+
+- **Initiative / release:** Sieitz external listing MVP / next develop promotion.
+- **Objective / scope:** Prepare distinct external map pins, stable DGFY links resolved through master Admin partner templates, and selective cleanup of temporary event records. No source JSON has arrived; import and live API integration remain open under #2629.
+- **Status:** in_progress.
+- **Dependencies:** None explicit. Real source export and approved destination URLs are required for #2629 import and operational proof, not for this foundation.
+- **Acceptance and validation evidence:** #2629; Admin and Storefront builds; focused redirect and pin tests; API syntax, architecture, migration, and documentation checks in the implementing PR.
+- **Contracts / ADR / implementation:** [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md), `apps/dgfy-api/src/modules/storefrontDiscovery`, `apps/dgfy-migration-runner/migrations/20261022000002-create-external-redirect-sites.cjs`.
+
+### Post-merge verification
+
+- [ ] deployment (#2629): verify landlord migration and all three app surfaces in the deployed environment; blocks enabling public external pins.
+- [ ] provider (#2629): obtain approved real destination templates and source IDs; blocks claiming any partner integrated.
+- [ ] operational (#2629): verify partner popup, `/e/{slug}` redirect, template update, disable behavior, and event-only cleanup on desktop and mobile; blocks MVP acceptance.
+
+### Next phase number
+
+Phase 533. No explicit dependency.
+
+## Phase 536 - Selective main release of external discovery previews and event seed
+
+- **Initiative / release:** External discovery Saturday program / hotfix candidate 2026-10-23-01.
+- **Objective / scope:** Add category-specific external pin previews and a PII-safe, dry-run-first event seed tool on a narrow branch from `main`, including the Phase 532 redirect foundation. Exclude unrelated `develop` work and live provider integration.
+- **Status:** in_progress.
+- **Dependencies:** None explicit. Phase 532 is included in this same release; real partner URL templates are required before publishing its pins.
+- **Acceptance and validation evidence:** #2704 and #2715; focused API, Admin, Storefront, migration, architecture, compliance, version, and diff-scope evidence in the implementing PR. A local extract reports mappable and skipped rows without committing source data.
+- **Contracts / ADR / implementation:** [External discovery redirect foundation](EXTERNAL_DISCOVERY_REDIRECT_FOUNDATION.md), [ADR 0010](../architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md), [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md), `apps/dgfy-storefront/src/discovery`, `apps/dgfy-api/scripts/external-discovery-event-seed.js`.
+
+### Post-merge verification
+
+- [ ] Pat merges only with clean merge state and terminal checks, then dispatches the production deployment with tenant-schema and runner preflight gates.
+- [ ] Configure real Mapviu and Synqcore HTTPS `{id}` templates in Admin; dry-run and apply only the minimal seed file.
+- [ ] Verify desktop and mobile external pins, previews, one `/e/{slug}` 302 per action, and disabled-site failure behavior.
+- [ ] After the program, clear temporary event pins and confirm manual records remain.
+- [ ] File and complete a fresh `develop` back-port issue and finalize the release note's production commit.
+
+### Next phase number
+
+Phase 537. No explicit dependency.

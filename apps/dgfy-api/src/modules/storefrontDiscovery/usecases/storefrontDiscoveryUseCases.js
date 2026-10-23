@@ -1,5 +1,6 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { normalizeExternalSiteKey } from '../domain/externalRedirectPolicy.js';
 
 // An external listing has no DGFY tenant/domain — its storefront_url must always
 // come from the master-admin-supplied external_storefront_url, never from the
@@ -8,25 +9,33 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 // DGFY storefront).
 const resolveStorefrontUrl = (row = {}, canonicalOrigin = null) => (
     row.entity_type === 'external_listing'
-        ? (row.external_storefront_url || '')
+        ? (!row.external_storefront_url && normalizeExternalSiteKey(row.external_provider) && row.external_reference_id && row.slug
+            ? `/e/${encodeURIComponent(row.slug)}`
+            : (row.external_storefront_url || ''))
         : (canonicalOrigin || (row.slug ? `https://dgfy.ph/store/${row.slug}` : ''))
 );
+
+const toPublicRow = (row, storefrontUrl) => {
+    const { external_reference_id: _internalReference, external_record_origin: _internalOrigin, ...publicRow } = row;
+    return { ...publicRow, storefront_url: storefrontUrl };
+};
 
 const withCanonicalOrigins = async (rows, storefrontDomainRepository) => {
     const source = rows || [];
     if (!storefrontDomainRepository) {
         return source.map((row) => (
             row.entity_type === 'external_listing'
-                ? { ...row, storefront_url: resolveStorefrontUrl(row) }
+                ? toPublicRow(row, resolveStorefrontUrl(row))
                 : row
         ));
     }
     const tenantIds = [...new Set(source.map((row) => String(row.tenant_id || '')).filter(Boolean))];
     const origins = await storefrontDomainRepository.listActiveCanonicalOriginsByTenantIds(tenantIds);
-    return source.map((row) => ({
-        ...row,
-        storefront_url: resolveStorefrontUrl(row, origins.get(String(row.tenant_id)))
-    }));
+    return source.map((row) => (
+        row.entity_type === 'external_listing'
+            ? toPublicRow(row, resolveStorefrontUrl(row))
+            : { ...row, storefront_url: resolveStorefrontUrl(row, origins.get(String(row.tenant_id))) }
+    ));
 };
 
 export const buildListStorefrontDiscoveryUseCase = ({ storefrontDiscoveryRepository, storefrontDomainRepository = null }) => {
@@ -90,8 +99,9 @@ export const toMapPinSourceRow = (store = {}) => ({
     address: String(store.address_line || '').trim(),
     slug: String(store.slug || '').trim(),
     entity_type: store.entity_type === 'external_listing' ? 'external_listing' : 'dgfy_native',
+    external_provider: store.entity_type === 'external_listing' ? (store.external_provider || null) : null,
     storefront_url: store.entity_type === 'external_listing'
-        ? (store.external_storefront_url || store.storefront_url || '')
+        ? (store.storefront_url || store.external_storefront_url || '')
         : (store.storefront_url || (store.slug ? `https://dgfy.ph/store/${store.slug}` : '')),
     tenant_id: store.tenant_id,
     location_id: store.location_id,
@@ -277,6 +287,9 @@ export const buildUpsertExternalStorefrontListingUseCase = ({ storefrontDiscover
                     { statusCode: 409 }
                 ));
             }
+            if (result?.status === 'managed_conflict') {
+                return fail(new DomainError(DomainErrorCode.CONFLICT, 'This listing is managed in Platform Admin external discovery', { statusCode: 409 }));
+            }
             if (result?.status === 'invalid') {
                 return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'slug is required', { statusCode: 400 }));
             }
@@ -307,6 +320,9 @@ export const buildDeleteExternalStorefrontListingUseCase = ({ storefrontDiscover
                     'External listing not found',
                     { statusCode: 404 }
                 ));
+            }
+            if (result?.status === 'managed_conflict') {
+                return fail(new DomainError(DomainErrorCode.CONFLICT, 'This listing is managed in Platform Admin external discovery', { statusCode: 409 }));
             }
             return ok({ slug: normalizedSlug, status: result?.status || 'removed' });
         } catch (error) {

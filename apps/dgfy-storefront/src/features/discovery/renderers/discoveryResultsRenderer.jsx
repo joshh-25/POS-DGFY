@@ -20,7 +20,9 @@ import {
 } from 'lucide-react';
 import { DiscoveryMapCard } from '../../../Components/store/DiscoveryResponsiveLayout.jsx';
 import { getDiscoveryMobilePanelLayout } from '../../../discovery/model/discoveryResultsModel.js';
-import { openStorefrontActionLink, sanitizeExternalLink } from '../../../shared/utils/externalLinks.js';
+import { openStorefrontActionLink } from '../../../shared/utils/externalLinks.js';
+import { isExternalListing, resolveExternalActionHref } from '../../../discovery/model/externalListingActions.js';
+import { getExternalListingPresentation } from '../../../discovery/model/externalListingPresentation.js';
 
 export function createDiscoveryResultsRenderer(ctx) {
   const {
@@ -131,6 +133,28 @@ const resultsSubtitle = isClusterResultsActive
         boxShadow: viewMode === mode ? '0 8px 18px rgba(37,99,235,.12)' : 'none'
       });
       const renderDiscoveryStoreCard = (store) => {
+  const partner = getExternalListingPresentation(store);
+  if (partner) {
+    const openPartner = () => openStorefrontActionLink(resolveExternalActionHref(store));
+    return (
+      <article key={store.slug} style={{ border: '1px solid #cbd5e1', borderRadius: 16, background: '#fff', padding: 16, display: 'grid', gap: 12, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span aria-hidden="true" style={{ width: 42, height: 42, borderRadius: 12, background: '#eff6ff', color: '#1a4e8d', display: 'grid', placeItems: 'center', fontWeight: 800 }}>
+            {String(store.tenant_name || partner.name).charAt(0).toUpperCase()}
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: 'block', color: '#0f172a' }}>{store.tenant_name}</strong>
+            <span style={{ color: '#475569', fontSize: 12 }}>External listing · {partner.name}</span>
+          </div>
+        </div>
+        {store.storefront_tagline && <p style={{ margin: 0, color: '#475569', fontSize: 13 }}>{store.storefront_tagline}</p>}
+        {store.address_line && <span style={{ color: '#64748b', fontSize: 12 }}>{store.address_line}</span>}
+        <button type="button" onClick={openPartner} style={{ minHeight: 40, border: 0, borderRadius: 10, background: '#1a4e8d', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+          {partner.action} on {partner.name}
+        </button>
+      </article>
+    );
+  }
   const storeSlug = toSlug(store?.slug);
   const imgUrl = withAssetOrigin(store?.storefront_cover_image_url);
   const imgKey = `discovery-cover:${storeSlug}:${imgUrl}`;
@@ -637,7 +661,24 @@ const resultsSubtitle = isClusterResultsActive
               height="100%"
               viewportPolicy="search-stable"
               viewportSignal={discoveryViewportSignal}
+              onPreviewOpen={(pin) => {
+                if (!isExternalListing(pin)) return;
+                setHasDiscoveryExplorationStarted(true);
+                setIsMobileResultsCollapsed(false);
+                setHighlightedStoreSlug(pin.slug);
+                const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug)
+                  || discoveryResultStores.find((s) => s.slug === pin.slug)
+                  || storesWithNearestBranch.find((s) => s.slug === pin.slug);
+                setSelectedMapPin(matched || pin);
+              }}
+              onPreviewClose={(pin) => {
+                if (isExternalListing(pin)) setSelectedMapPin(null);
+              }}
                     onSelectStore={(pin) => {
+                      if (isExternalListing(pin)) {
+                        openStorefrontActionLink(resolveExternalActionHref(pin));
+                        return;
+                      }
                       setHasDiscoveryExplorationStarted(true);
                   setIsMobileResultsCollapsed(false);
                       setHighlightedStoreSlug(pin.slug);
@@ -647,12 +688,6 @@ const resultsSubtitle = isClusterResultsActive
                   || storesWithNearestBranch.find((s) => s.slug === pin.slug)
                   || null;
                 setSelectedMapPin(matched || pin || null);
-                // External listings have no DGFY storefront to open — routing them
-                // into goStore would land the visitor on a broken/empty catalog shell.
-                if (pin.entity_type === 'external_listing') {
-                  openStorefrontActionLink(sanitizeExternalLink(pin.storefront_url));
-                  return;
-                }
                 goStore(pin.slug, pin.location_id ?? null);
               }}
               autoOpenPopups={false}

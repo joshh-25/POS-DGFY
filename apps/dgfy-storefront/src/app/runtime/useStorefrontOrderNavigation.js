@@ -14,7 +14,8 @@ import {
 } from '../routing/storefrontRouting.js';
 import { toSlug } from '../../shared/utils/storefrontFormatters.js';
 import { canUseCheckout, getStorefrontAccessBlockMessage } from '../../shared/model/customerAccess.js';
-import { openStorefrontActionLink, sanitizeExternalLink } from '../../shared/utils/externalLinks.js';
+import { openStorefrontActionLink } from '../../shared/utils/externalLinks.js';
+import { isExternalListing, resolveExternalActionHref } from '../../discovery/model/externalListingActions.js';
 import {
   readLastTrackingPinForStore,
   readTrackedOrdersForStore,
@@ -53,8 +54,8 @@ export function useStorefrontOrderNavigation({
   const goStoreOrderForDiscovery = useCallback((slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
     if (!normalized || typeof window === 'undefined') return;
-    if (storeContext?.entity_type === 'external_listing') {
-      openStorefrontActionLink(sanitizeExternalLink(storeContext.storefront_url || storeContext.external_storefront_url));
+    if (isExternalListing(storeContext)) {
+      openStorefrontActionLink(resolveExternalActionHref(storeContext));
       return;
     }
     goStore(normalized, locationId);
