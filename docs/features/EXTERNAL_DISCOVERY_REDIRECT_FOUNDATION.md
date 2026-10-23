@@ -2,14 +2,14 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-10-22
+last_reviewed: 2026-10-23
 review_by: 2027-02-16
 applies_to: external_discovery_redirects
 ---
 
 # External discovery redirect foundation
 
-This is the prepared handoff for external Sieitz listings in #2629. It does not claim that a source export has been received or imported. Live API integration, booking, job applications, and ride dispatch remain separate work.
+This is the prepared handoff for external Sieitz listings in #2629. The event seed tool can extract a narrow, temporary set of pins from the received exports; it is not a live import pipeline. Live API integration, booking, job applications, and ride dispatch remain separate work.
 
 ## Current record and link contract
 
@@ -23,7 +23,17 @@ The Admin page can add or update a pin by stable slug, partner ID, title, real c
 
 ## Map behavior
 
-Partner pins use distinct icons and identify their source in the popup. Proventus uses **View job**, Eytitu **Book ride**, Mapviu **Inquire**, and Synqcore **Book stay**. Discovery cards and popups say the action opens a partner site. They do not show native order or store actions for these records.
+Partner pins use category-specific colors and icons: Proventus blue briefcase, Eytitu amber taxi, Mapviu pink house, and Synqcore magenta hotel. Selecting a map pin opens an external preview and highlights the pin without navigating. The preview's one action uses **View Job**, **Book This Taxi**, **Inquire**, or **Book Stay**, respectively. The action opens the public `storefront_url`, which is `/e/{slug}` for Admin-managed rows. Available address, short description, distance, and approved HTTPS image appear only when supplied; no unavailable field is fabricated. Native pins retain their existing selection and navigation behavior.
+
+### Source fields needed by later import, not stored today
+
+Employer, vehicle/taxi ID, driver/provider name, ETA, availability, listing image with approved host, and price are not approved public fields in the managed external record. A later #2629 source contract must approve and supply them before a preview may show them. They are not a dependency for the current sparse preview.
+
+### Event seed (2026-10-24 program)
+
+`apps/dgfy-api/scripts/external-discovery-event-seed.js extract` reads the SynqCore and MapViu exports and writes an ignored `dgfy-external-event-seed/v1` file. It allow-lists only slug, provider, reference ID, title, coordinates, address, and short description. Test, unpublished, hidden-location, invalid-reference, contact-bearing title, and coordinate-less records are skipped with explicit reasons. No coordinates are inferred or geocoded. The raw exports, bookings, users, tokens, prices, and derived seed file must never enter git or be copied to the server except for the minimal seed file.
+
+After the API and migration deploy, an operator enables the partner's real HTTPS `{id}` template in Admin. Run `node scripts/external-discovery-event-seed.js apply --file <minimal.json>` inside the API container for a dry run, then repeat with `--apply` after reviewing the sites and counts. After the event, use **Clear temporary event pins** in Admin. That action removes only `event_seed` pins and leaves manually managed pins intact.
 
 ## When source JSON arrives
 
