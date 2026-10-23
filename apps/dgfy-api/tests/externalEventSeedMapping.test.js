@@ -77,8 +77,9 @@ describe('external event seed allow-list', () => {
     expect(result).toEqual(expect.objectContaining({ created: 1, failed: 1, missingSites: ['mapviu'] }));
     expect(repository.saveListing).toHaveBeenCalledTimes(1);
     expect(repository.saveListing.mock.calls[0][0].payload).toEqual(expect.objectContaining({
-      external_record_origin: 'event_seed', is_visible: true
+      external_record_origin: 'event_seed'
     }));
+    expect(repository.saveListing.mock.calls[0][0].payload).not.toHaveProperty('is_visible');
   });
 
   it('extracts Proventus companies into the eight-field public allow-list', () => {
@@ -170,8 +171,9 @@ describe('external event seed allow-list', () => {
     const applied = await applyExternalEventSeed({ seed, repository, apply: true });
     expect(applied).toEqual(expect.objectContaining({ created: 1, failed: 0, missingSites: [] }));
     expect(repository.saveListing.mock.calls[0][0].payload).toEqual(expect.objectContaining({
-      external_provider: 'proventus', external_record_origin: 'event_seed', is_visible: true
+      external_provider: 'proventus', external_record_origin: 'event_seed'
     }));
+    expect(repository.saveListing.mock.calls[0][0].payload).not.toHaveProperty('is_visible');
 
     repository.getSite.mockResolvedValue({ enabled: false });
     const disabled = await applyExternalEventSeed({ seed, repository, apply: true });

@@ -7,8 +7,12 @@ import {
 import {
   buildListExternalAdminUseCase,
   buildResolveExternalRedirectUseCase,
+  buildSaveExternalSiteUseCase,
+  buildSetExternalSiteVisibilityUseCase,
+  buildSetExternalListingVisibilityUseCase,
   buildSaveExternalListingUseCase
 } from '../src/modules/storefrontDiscovery/usecases/externalRedirectUseCases.js';
+import { getExternalListingEditableFields } from '../src/modules/storefrontDiscovery/repositories/externalRedirectRepository.js';
 import {
   buildDeleteExternalStorefrontListingUseCase,
   buildListStorefrontDiscoveryUseCase,
@@ -95,6 +99,12 @@ describe('external listing redirect', () => {
     repository.getVisibleListing.mockResolvedValue(listing);
     repository.getSite.mockResolvedValue({ enabled: false });
     expect((await resolve({ slug: 'hotel-123' })).success).toBe(false);
+    repository.getSite.mockResolvedValue({ enabled: true, show_on_map: false });
+    expect((await resolve({ slug: 'hotel-123' })).success).toBe(false);
+    repository.getSite.mockResolvedValue({ enabled: true, show_on_map: true, url_template: 'https://synqcore.ph/book?id={id}', allowed_hostname: 'synqcore.ph' });
+    expect((await resolve({ slug: 'hotel-123' })).success).toBe(true);
+    repository.getSite.mockResolvedValue({ enabled: true, url_template: 'https://synqcore.ph/book?id={id}', allowed_hostname: 'synqcore.ph' });
+    expect((await resolve({ slug: 'hotel-123' })).success).toBe(true);
   });
 
   it('publishes a stable DGFY link without leaking the partner record ID', async () => {
@@ -117,11 +127,18 @@ describe('external listing redirect', () => {
     expect(listed.data.stores[0].storefront_url).toBe('https://synqcore.ph/old/123');
   });
 
-  it('keeps provider category metadata out of the Admin sites response', async () => {
+  it('returns type visibility and pin counts without extra Admin site fields', async () => {
     const listAdmin = buildListExternalAdminUseCase({
       repository: {
-        listSites: jest.fn(async () => []),
-        listListings: jest.fn(async () => [])
+        listSites: jest.fn(async () => [{
+          site_key: 'proventus', url_template: 'https://proventus.ph/company/{id}',
+          enabled: true, show_on_map: false, allowed_hostname: 'proventus.ph', updated_by_admin_id: 'private'
+        }]),
+        listListings: jest.fn(async () => [
+          { slug: 'job-1', external_provider: 'proventus', is_visible: true },
+          { slug: 'job-2', external_provider: 'proventus', is_visible: false },
+          { slug: 'ignored', external_provider: 'other', is_visible: true }
+        ])
       }
     });
 
@@ -130,10 +147,76 @@ describe('external listing redirect', () => {
     expect(result.data.sites[0]).toEqual({
       site_key: 'proventus',
       display_name: 'Proventus',
-      url_template: '',
-      enabled: false
+      type_label: 'Job',
+      url_template: 'https://proventus.ph/company/{id}',
+      enabled: true,
+      show_on_map: false,
+      pin_count: 2,
+      visible_pin_count: 0
     });
     expect(result.data.sites[0]).not.toHaveProperty('category');
+    expect(result.data.sites[0]).not.toHaveProperty('allowed_hostname');
+    expect(result.data.sites[0]).not.toHaveProperty('updated_by_admin_id');
+    expect(result.data.sites[1]).toEqual(expect.objectContaining({
+      site_key: 'eytitu', show_on_map: true, pin_count: 0, visible_pin_count: 0
+    }));
+  });
+
+  it('validates and saves partner type visibility', async () => {
+    const repository = { setSiteVisibility: jest.fn(async () => ({ status: 'updated' })) };
+    const setVisibility = buildSetExternalSiteVisibilityUseCase({ repository });
+
+    expect((await setVisibility({ siteKey: 'unknown', payload: { show_on_map: false } })).error.code).toBe('VALIDATION_FAILED');
+    expect((await setVisibility({ siteKey: 'proventus', payload: { show_on_map: 'false' } })).error.code).toBe('VALIDATION_FAILED');
+    expect(repository.setSiteVisibility).not.toHaveBeenCalled();
+
+    repository.setSiteVisibility.mockResolvedValueOnce({ status: 'not_found' });
+    const unconfigured = await setVisibility({ siteKey: 'proventus', payload: { show_on_map: false } });
+    expect(unconfigured.error.statusCode).toBe(404);
+    expect(unconfigured.error.message).toBe("Configure this partner's destination first");
+
+    repository.setSiteVisibility.mockClear();
+    const updated = await setVisibility({ siteKey: 'Proventus', payload: { show_on_map: false }, admin: { id: 'admin-1' } });
+    expect(updated.data).toEqual({ site_key: 'proventus', show_on_map: false, status: 'updated' });
+    expect(repository.setSiteVisibility).toHaveBeenCalledTimes(1);
+    expect(repository.setSiteVisibility).toHaveBeenLastCalledWith({ siteKey: 'proventus', showOnMap: false, admin: { id: 'admin-1' } });
+  });
+
+  it('validates and saves per-pin visibility for managed listings', async () => {
+    const repository = { setListingVisibility: jest.fn(async () => ({ status: 'updated' })) };
+    const setVisibility = buildSetExternalListingVisibilityUseCase({ repository });
+
+    expect((await setVisibility({ slug: 'Bad Slug', payload: { is_visible: false } })).error.code).toBe('VALIDATION_FAILED');
+    expect((await setVisibility({ slug: 'job-1', payload: { is_visible: 0 } })).error.code).toBe('VALIDATION_FAILED');
+    expect(repository.setListingVisibility).not.toHaveBeenCalled();
+
+    repository.setListingVisibility.mockResolvedValueOnce({ status: 'not_found' });
+    expect((await setVisibility({ slug: 'unknown-pin', payload: { is_visible: false } })).error.statusCode).toBe(404);
+    repository.setListingVisibility.mockClear();
+    const updated = await setVisibility({ slug: 'JOB-1', payload: { is_visible: false }, admin: { id: 'admin-1' } });
+    expect(updated.data).toEqual({ slug: 'job-1', is_visible: false, status: 'updated' });
+    expect(repository.setListingVisibility).toHaveBeenCalledTimes(1);
+    expect(repository.setListingVisibility).toHaveBeenLastCalledWith({ slug: 'job-1', isVisible: false, admin: { id: 'admin-1' } });
+  });
+
+  it('keeps the type visibility field out of destination saves and preserves pin visibility on partial updates', async () => {
+    const repository = {
+      saveSite: jest.fn(async ({ siteKey, config }) => ({ site_key: siteKey, ...config })),
+      getSite: jest.fn(async () => ({ enabled: true })),
+      saveListing: jest.fn(async () => ({ status: 'updated' }))
+    };
+    const saveSite = buildSaveExternalSiteUseCase({ repository });
+    await saveSite({ siteKey: 'mapviu', payload: { url_template: 'https://mapviu.ph/item/{id}', enabled: false } });
+    expect(repository.saveSite.mock.calls[0][0].config).not.toHaveProperty('show_on_map');
+
+    const saveListing = buildSaveExternalListingUseCase({ repository });
+    await saveListing({ slug: 'mapviu-1', payload: {
+      title: 'Sample listing', external_provider: 'mapviu', external_reference_id: '1',
+      external_record_origin: 'manual', latitude: 10, longitude: 122
+    } });
+    expect(repository.saveListing.mock.calls[0][0].payload.is_visible).toBeUndefined();
+    expect(getExternalListingEditableFields({}).includes('is_visible')).toBe(false);
+    expect(getExternalListingEditableFields({ is_visible: false })).toContain('is_visible');
   });
 
   it('rejects missing coordinates and duplicate partner records', async () => {

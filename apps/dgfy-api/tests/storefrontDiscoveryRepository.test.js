@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 
 const findAllMock = jest.fn();
 const findOneMock = jest.fn();
+const externalSiteFindAllMock = jest.fn();
 const tenantFindOneMock = jest.fn();
 const getTenantConnectionMock = jest.fn();
 const getTenantModelsMock = jest.fn();
@@ -21,6 +22,9 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
   StorefrontDiscoveryIndex: {
     findAll: findAllMock,
     findOne: findOneMock
+  },
+  ExternalRedirectSite: {
+    findAll: externalSiteFindAllMock
   },
   Tenant: {
     findOne: tenantFindOneMock
@@ -66,10 +70,11 @@ jest.unstable_mockModule('../src/modules/geoSearch/repositories/geoSearchReposit
 }));
 
 let storefrontDiscoveryRepository;
+let isExternalTypeHidden;
 
 const loadRepository = async () => {
   jest.resetModules();
-  ({ storefrontDiscoveryRepository } = await import('../src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js'));
+  ({ storefrontDiscoveryRepository, isExternalTypeHidden } = await import('../src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js'));
   return storefrontDiscoveryRepository;
 };
 
@@ -149,6 +154,7 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       row_count: 1,
       last_updated_at: '2026-03-31T00:00:00.000Z'
     });
+    externalSiteFindAllMock.mockResolvedValue([]);
     tenantFindOneMock.mockResolvedValue(null);
     getTenantConnectionMock.mockResolvedValue({});
     getTenantModelsMock.mockReturnValue({
@@ -199,6 +205,61 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     }));
     expect(result.rows[0]).not.toHaveProperty('company_token');
     expect(reconcileMock).not.toHaveBeenCalled();
+  });
+
+  it('hides only external entries for providers whose type is off', async () => {
+    await loadRepository();
+    const hiddenProviders = new Set(['synqcore']);
+    expect(isExternalTypeHidden(makeEntry({ entity_type: 'external_listing', external_provider: 'synqcore' }), hiddenProviders)).toBe(true);
+    expect(isExternalTypeHidden(makeEntry({ entity_type: 'dgfy_native', external_provider: 'synqcore' }), hiddenProviders)).toBe(false);
+    expect(isExternalTypeHidden(makeEntry({ entity_type: 'external_listing', external_provider: 'mapviu' }), hiddenProviders)).toBe(false);
+  });
+
+  it('filters hidden partner types from public discovery while keeping other entries', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({ entity_type: 'external_listing', external_provider: 'synqcore', slug: 'hidden-hotel' }),
+      makeEntry({ entity_type: 'external_listing', external_provider: 'mapviu', slug: 'visible-property' }),
+      makeEntry({ entity_type: 'dgfy_native', external_provider: null, slug: 'native-store' })
+    ]);
+    externalSiteFindAllMock.mockResolvedValue([{ site_key: 'synqcore' }]);
+
+    const result = await repository.listDiscovery({ limit: 10 });
+
+    expect(result.rows.map((row) => row.slug).sort()).toEqual(['native-store', 'visible-property']);
+    expect(externalSiteFindAllMock).toHaveBeenCalledTimes(1);
+    expect(externalSiteFindAllMock).toHaveBeenCalledWith({
+      where: { show_on_map: false }, attributes: ['site_key']
+    });
+  });
+
+  it('fails open if the optional partner visibility column is not available yet', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({ entity_type: 'external_listing', external_provider: 'synqcore', slug: 'hotel-1' })
+    ]);
+    externalSiteFindAllMock.mockRejectedValue(new Error("Unknown column 'show_on_map'"));
+
+    const result = await repository.listDiscovery({ limit: 10 });
+
+    expect(result.rows.map((row) => row.slug)).toEqual(['hotel-1']);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      '[StorefrontDiscovery] External visibility lookup failed; treating all partner types as shown',
+      expect.objectContaining({ error: "Unknown column 'show_on_map'" })
+    );
+  });
+
+  it('returns null for a direct profile lookup when its external type is hidden', async () => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValueOnce(makeEntry({
+      entity_type: 'external_listing', external_provider: 'synqcore', slug: 'hidden-hotel', tenant_id: null
+    }));
+    externalSiteFindAllMock.mockResolvedValue([{ site_key: 'synqcore' }]);
+
+    const result = await repository.getStorefrontBySlug('hidden-hotel');
+
+    expect(result).toBeNull();
+    expect(externalSiteFindAllMock).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to legacy-safe attributes when storefront branding columns are missing', async () => {
