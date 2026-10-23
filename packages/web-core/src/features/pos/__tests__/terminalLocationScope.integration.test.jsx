@@ -227,15 +227,18 @@ describe('POS terminal location UX integration', () => {
 
     expect(screen.getByRole('tab', { name: 'Branch Terminals' }).getAttribute('aria-selected')).toBe('true');
     const shiftSections = screen.getByRole('tablist', { name: 'Shift sections' });
-    expect(shiftSections.parentElement.className).toContain('overflow-x-hidden');
-    expect(shiftSections.className).toContain('grid grid-cols-2 min-w-0 w-full');
-    expect(shiftSections.className).not.toContain('min-w-max');
+    expect(shiftSections.parentElement.className).toContain('overflow-x-auto');
+    expect(shiftSections.className).toContain('flex min-w-full items-end');
+    expect(shiftSections.className).not.toContain('grid-cols-2');
     const adminShiftSections = screen.getByRole('tablist', { name: 'Admin shift location sections' });
     expect(adminShiftSections.className).toContain('overflow-x-auto');
     expect(adminShiftSections.className).toContain('pt-2');
-    expect(adminShiftSections.firstElementChild.className).toContain('grid grid-cols-3 min-w-0 w-full');
+    expect(adminShiftSections.firstElementChild.className).toContain('flex min-w-max');
+    expect(adminShiftSections.firstElementChild.className).not.toContain('grid grid-cols-3');
+    expect(adminShiftSections.firstElementChild.className).toContain('min-[1200px]:grid-cols-3');
     const branchTerminalsTab = screen.getByRole('tab', { name: 'Branch Terminals' });
-    expect(branchTerminalsTab.className).toContain('w-full');
+    expect(branchTerminalsTab.className).toContain('min-w-36');
+    expect(branchTerminalsTab.className).toContain('whitespace-nowrap');
     expect(branchTerminalsTab.className).toContain('justify-center');
     expect(screen.getByRole('heading', { name: 'Terminals' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'Current Operator' })).toBeTruthy();

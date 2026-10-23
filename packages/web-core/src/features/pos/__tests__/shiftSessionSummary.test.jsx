@@ -28,8 +28,11 @@ describe('ShiftSessionSummary', () => {
 
     expect(summaryButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
     expect(summaryButton.classList.contains('text-white')).toBe(true);
-    expect(refreshButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
-    expect(refreshButton.classList.contains('text-white')).toBe(true);
+    expect(refreshButton.classList.contains('border')).toBe(true);
+    expect(refreshButton.className).toContain('border-[#8AA8CD]');
+    expect(refreshButton.className).toContain('bg-white');
+    expect(refreshButton.className).toContain('text-[#1A4E8D]');
+    expect(refreshButton.className).not.toContain('!bg-[#1A4E8D]');
     fireEvent.click(xReadingButton);
     expect(onViewXReading).toHaveBeenCalledTimes(1);
   });
@@ -47,7 +50,7 @@ describe('ShiftSessionSummary', () => {
     expect(screen.getByRole('button', { name: 'Refresh shift data' })).toBeTruthy();
   });
 
-  it('presents the active register context and the four scannable shift KPIs', () => {
+  it('matches the compact active-shift header and retains the cash overview', () => {
     render(
       <ShiftSessionSummary
         summaryRows={[
@@ -65,13 +68,19 @@ describe('ShiftSessionSummary', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { name: 'Active Shift' })).toBeTruthy();
+    const activeShiftHeading = screen.getByRole('heading', { name: 'Active Shift' });
+    const openShiftIndicator = screen.getByRole('img', { name: 'Open shift' });
+    expect(activeShiftHeading.nextElementSibling).toBe(openShiftIndicator);
+    expect(openShiftIndicator.nextElementSibling).toBe(screen.getByText('#52').parentElement);
     expect(screen.getByText('#52')).toBeTruthy();
     expect(screen.getByText('Tinda')).toBeTruthy();
     expect(screen.getByText('2026-10-08')).toBeTruthy();
     expect(screen.getByText('Oct. 8, 2026, 12:25 PM')).toBeTruthy();
+    expect(screen.getByText('COUNTER-01')).toBeTruthy();
     expect(screen.getByText('Len2 Sari-Sari Store')).toBeTruthy();
     const contextGrid = screen.getByText('Cashier').closest('dl');
+    expect(contextGrid?.className).toContain('sm:flex');
+    expect(screen.getByText('Cashier').parentElement?.className).toContain('sm:border-r');
     const openedAtRow = screen.getByText('Opened at').parentElement;
     expect(contextGrid?.className).toContain('grid-cols-2');
     expect(openedAtRow?.className).toContain('col-span-2');

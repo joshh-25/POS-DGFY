@@ -12,6 +12,7 @@ import {
     POS_SHIFT_PRIMARY_BUTTON_CLASS,
     POS_SHIFT_SECONDARY_BUTTON_CLASS
 } from './posShiftButtonStyles.js';
+import { POS_FILTER_TRIGGER_HEIGHT_CLASS } from './posToolbarSizing.js';
 
 const CASHIER_HISTORY_PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -249,25 +250,26 @@ export default function CashierHistoryPanel({
             label: `Status: ${appliedFilters.status === 'open' ? 'Open' : 'Closed'}`
         }] : [])
     ]), [appliedFilters]);
+    const refreshAction = (
+        <PosShiftRefreshButton
+            label="Refresh cashier history"
+            onClick={() => void refresh(page, requestFilters)}
+            disabled={state?.loading || !isOnline}
+            loading={state?.loading}
+            heightClassName={POS_FILTER_TRIGGER_HEIGHT_CLASS}
+        />
+    );
 
     return (
         <div className="min-w-0 space-y-4" aria-busy={state?.loading || undefined}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <History className="h-5 w-5 text-[#1A4E8D]" />
-                        <h3 className="text-base font-black text-[#0F172A]">{scopeHeading}</h3>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                        {scopeDescription}
-                    </p>
+            <div>
+                <div className="flex items-center gap-2">
+                    <History className="h-5 w-5 text-[#1A4E8D]" />
+                    <h3 className="text-base font-black text-[#0F172A]">{scopeHeading}</h3>
                 </div>
-                <PosShiftRefreshButton
-                    label="Refresh cashier history"
-                    onClick={() => void refresh(page, requestFilters)}
-                    disabled={state?.loading || !isOnline}
-                    loading={state?.loading}
-                />
+                <p className="mt-1 text-sm text-slate-500">
+                    {scopeDescription}
+                </p>
             </div>
 
             <CashierHistoryFilterToolbar
@@ -286,6 +288,7 @@ export default function CashierHistoryPanel({
                 onApplyDateRange={handleApplyDateRange}
                 cashierName={cashierName}
                 actionDisabled={locked || !isOnline}
+                refreshAction={refreshAction}
             />
 
             <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">

@@ -91,6 +91,27 @@ afterEach(() => {
 });
 
 describe('TerminalPageLayout company switcher', () => {
+  it('keeps the account profile trigger available on mobile and bounds the open menu to the viewport', () => {
+    renderLayout();
+
+    const trigger = screen.getByRole('button', { name: 'Open account profile menu' });
+    const profile = trigger.parentElement;
+    const identityDetails = trigger.querySelector('span.min-w-0.leading-tight');
+
+    expect(profile?.className).toContain('flex');
+    expect(profile?.className).not.toContain('hidden');
+    expect(identityDetails?.className).toContain('block');
+    expect(identityDetails?.className).not.toContain('hidden');
+
+    fireEvent.click(trigger);
+
+    const menuTitle = screen.getByText('Account Profile');
+    const menuPanel = menuTitle.parentElement?.parentElement;
+    expect(menuPanel?.className).toContain('max-[1023px]:max-h-[calc(100dvh-5rem)]');
+    expect(menuPanel?.className).toContain('max-[1023px]:overflow-y-auto');
+    expect(screen.getByText('Second Cafe')).toBeTruthy();
+  });
+
   it('lists accessible companies and switches only a non-current company', () => {
     renderLayout();
 

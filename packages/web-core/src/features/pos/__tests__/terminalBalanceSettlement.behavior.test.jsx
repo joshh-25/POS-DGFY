@@ -138,6 +138,7 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
       ...DOWNPAYMENT_ORDER,
       order_method: 'dine_in',
       payment_type: 'cash',
+      payment_timing: 'on_dine_in',
       payment_status: 'unpaid',
       fulfillment_status: 'ready_for_pickup',
       amount_paid: 0,

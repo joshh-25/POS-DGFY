@@ -7,9 +7,12 @@ import {
 } from './PosFilterDialogParts.jsx';
 import PosFilterDialogShell from './PosFilterDialogShell.jsx';
 import PosCashierFilterControl from './PosCashierFilterControl.jsx';
+import { POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 import PosFloatingScrollbar from './PosFloatingScrollbar.jsx';
 import { usePosViewportMode } from './PosResponsiveFormDrawer.jsx';
 import usePosReportsPopoverPosition from './usePosReportsPopoverPosition.js';
+
+const WIDE_REPORT_FILTER_CHOICE_GRID_CLASS = 'min-[1200px]:grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))]';
 
 const buildDraft = ({
   cashierId,
@@ -47,7 +50,13 @@ export default function PosReportsFilterPanel({
   const filterScrollRef = useRef(null);
   const viewportMode = usePosViewportMode();
   const isMobileDialog = viewportMode === 'mobile';
-  const position = usePosReportsPopoverPosition({ open, anchorRef, maxWidth: 464 });
+  const position = usePosReportsPopoverPosition({
+    open,
+    anchorRef,
+    maxWidth: 464,
+    wideViewportMaxWidth: 760,
+    fitContentHeight: true
+  });
 
   const resetDraft = () => {
     setDraft(buildDraft({
@@ -106,10 +115,12 @@ export default function PosReportsFilterPanel({
         onClose={onClose}
         mode="filters"
         mobile={isMobileDialog}
+        fitContentHeight
         position={position}
         id="pos-reports-filter-dialog"
         ariaLabelledBy="pos-reports-filter-title"
         ariaDescribedBy="pos-reports-filter-description"
+        className="rounded-2xl border-[#D9E5F3] shadow-2xl shadow-slate-950/15"
       >
         <PosFilterDialogHeader
           title="Filter"
@@ -119,7 +130,7 @@ export default function PosReportsFilterPanel({
           onClose={onClose}
           closeLabel="Close filters"
           mobile={isMobileDialog}
-          className="dgfy-pos-history-dialog-header"
+          className={['dgfy-pos-history-dialog-header rounded-t-2xl', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}
           titleClassName="text-xl font-black text-[#0F172A]"
           descriptionClassName="mt-0.5 text-[12px] text-slate-500"
         />
@@ -139,6 +150,7 @@ export default function PosReportsFilterPanel({
                 onChange={(value) => updateDraft('paymentType', value)}
                 testId="pos-reports-filter-payment"
                 compact={!isMobileDialog}
+                compactGridClassName={WIDE_REPORT_FILTER_CHOICE_GRID_CLASS}
                 mobile={isMobileDialog}
                 groupAriaLabel="Payment Type"
               />
@@ -149,6 +161,7 @@ export default function PosReportsFilterPanel({
                 onChange={(value) => updateDraft('deliveryProvider', value)}
                 testId="pos-reports-filter-delivery-provider"
                 compact={!isMobileDialog}
+                compactGridClassName={WIDE_REPORT_FILTER_CHOICE_GRID_CLASS}
                 mobile={isMobileDialog}
                 groupAriaLabel="Delivery Provider"
               />
@@ -159,6 +172,7 @@ export default function PosReportsFilterPanel({
                 onChange={(value) => updateDraft('source', value)}
                 testId="pos-reports-filter-source"
                 compact={!isMobileDialog}
+                compactGridClassName={WIDE_REPORT_FILTER_CHOICE_GRID_CLASS}
                 mobile={isMobileDialog}
                 groupAriaLabel="Sources"
               />
@@ -169,6 +183,7 @@ export default function PosReportsFilterPanel({
                 onChange={(value) => updateDraft('categoryId', value)}
                 testId="pos-reports-filter-category"
                 compact={!isMobileDialog}
+                compactGridClassName={WIDE_REPORT_FILTER_CHOICE_GRID_CLASS}
                 mobile={isMobileDialog}
                 groupAriaLabel="Categories"
               />

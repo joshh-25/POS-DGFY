@@ -3,6 +3,7 @@ import { CreditCard, Truck, Users } from 'lucide-react';
 import EmployeeCreditManagementPanel from '../components/EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from '../components/EmployeeManagementPanel.jsx';
 import DeliveryPersonnelManagementPanel from '../components/DeliveryPersonnelManagementPanel.jsx';
+import usePosCenteredTabScroll from '../hooks/usePosCenteredTabScroll.js';
 
 const EMPLOYEE_SETTINGS_TABS = [
   { id: 'employees', label: 'Employees', icon: Users, permission: 'canManageEmployees' },
@@ -26,6 +27,7 @@ export default function PosEmployeesSettingsPane({
     canManageEmployeeCredit
   }[tab.permission])), [canManageDeliveryPersonnel, canManageEmployeeCredit, canManageEmployees]);
   const [activeTab, setActiveTab] = useState(availableTabs[0]?.id || '');
+  const tabsViewportRef = useRef(null);
   const employeeRefreshActionRef = useRef(null);
   const deliveryPersonnelRefreshActionRef = useRef(null);
   const employeeCreditRefreshActionRef = useRef(null);
@@ -35,6 +37,7 @@ export default function PosEmployeesSettingsPane({
       setActiveTab(availableTabs[0]?.id || '');
     }
   }, [activeTab, availableTabs]);
+  const centerActiveEmployeeSection = usePosCenteredTabScroll(tabsViewportRef, activeTab ? `pos-employees-tab-${activeTab}` : '');
 
   const handleTabKeyDown = (event) => {
     const currentIndex = availableTabs.findIndex((tab) => tab.id === activeTab);
@@ -91,11 +94,15 @@ export default function PosEmployeesSettingsPane({
     <div className="grid min-w-0 max-w-full gap-6 sm:gap-4">
       {availableTabs.length > 1 ? (
         <div
-          className="-mx-1 overflow-x-auto"
+          ref={tabsViewportRef}
+          className="-mx-1 sm:-mt-2 overflow-x-auto"
           role="tablist"
           aria-label="Employee settings sections"
         >
-          <div className="flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-3 min-[1200px]:px-0">
+          <div
+            className="flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:px-0"
+            style={{ gridTemplateColumns: `repeat(${availableTabs.length}, minmax(0, 1fr))` }}
+          >
             {availableTabs.map((tab) => {
               const isActive = activeTab === tab.id;
               const TabIcon = tab.icon;
@@ -108,12 +115,15 @@ export default function PosEmployeesSettingsPane({
                   aria-selected={isActive}
                   aria-controls={`pos-employees-panel-${tab.id}`}
                   tabIndex={isActive ? 0 : -1}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    if (isActive) centerActiveEmployeeSection();
+                    setActiveTab(tab.id);
+                  }}
                   onKeyDown={handleTabKeyDown}
                   className={`inline-flex min-h-10 min-w-36 w-max shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-2 text-center text-[13px] font-bold leading-4 shadow-sm transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30 focus-visible:ring-offset-1 sm:px-3 sm:text-[14px] min-[1200px]:min-h-9 min-[1200px]:w-full min-[1200px]:shrink min-[1200px]:px-4 ${
                     isActive
                       ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-[#1A4E8D]/20 hover:bg-[#164278]'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-[#9BBBE0] hover:bg-[#F5F9FF] hover:text-[#1A4E8D]'
+                      : 'border-[#9BBBE0] bg-[#F5F9FF] text-[#1A4E8D] hover:border-[#7FA6D6] hover:bg-[#EAF2FF]'
                   }`}
                 >
                   <TabIcon className="h-4 w-4 shrink-0" aria-hidden="true" />

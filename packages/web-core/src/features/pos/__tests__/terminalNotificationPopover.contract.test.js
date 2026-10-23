@@ -10,16 +10,24 @@ const layoutSource = fs.readFileSync(
 );
 
 describe('POS notification popover layout contract', () => {
-  it('anchors the notification panel inside the header viewport', () => {
+  it('centers the POS notification panel below compact headers and preserves desktop anchoring', () => {
     expect(layoutSource).toContain(
-      'absolute right-0 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] translate-x-0 text-left'
+      "? 'fixed left-1/2 top-[3.875rem] z-[121] w-[21rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 text-left lg:absolute lg:left-auto lg:right-0 lg:top-full lg:mt-3.5 lg:translate-x-0'"
     );
-    expect(layoutSource).not.toContain(
-      'absolute left-1/2 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 text-left'
+    expect(layoutSource).toContain(
+      ": 'absolute right-0 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] translate-x-0 text-left'"
     );
+    expect(layoutSource).toContain('className={notificationPopoverPositionClassName}');
   });
 
-  it('keeps the notification pointer aligned near the triggering bell', () => {
+  it('hides the pointer while the POS popover is viewport-centered', () => {
+    expect(layoutSource).toContain(
+      '`${notificationPopoverClasses.pointer} hidden lg:block`'
+    );
+    expect(layoutSource).toContain('className={notificationPopoverPointerClassName}');
+  });
+
+  it('keeps the desktop notification pointer aligned near the triggering bell', () => {
     expect(layoutSource).toContain(
       "pointer: 'absolute right-3 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#EFF6FF]'"
     );
@@ -69,13 +77,13 @@ describe('POS notification popover layout contract', () => {
 
   it('keeps POS notification and text controls the same size across breakpoints', () => {
     expect(layoutSource).toContain(
-      "'relative grid h-10 w-10 shrink-0 place-items-center lg:hidden'"
+      "'dgfy-pos-header-action-slot relative grid h-10 w-10 shrink-0 place-items-center lg:hidden'"
     );
     expect(layoutSource).toContain(
-      "'relative hidden h-10 w-10 shrink-0 place-items-center lg:grid'"
+      "'dgfy-pos-header-action-slot relative hidden h-10 w-10 shrink-0 place-items-center lg:grid'"
     );
     expect(layoutSource).toContain(
-      "'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#1A4E8D] transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1'"
+      "'dgfy-pos-header-action-trigger relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#1A4E8D] transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1'"
     );
     expect(layoutSource).toContain('renderNotificationButton(compactBellClassName, 20)');
     expect(layoutSource).toContain(

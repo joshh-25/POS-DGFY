@@ -162,7 +162,7 @@ export default function AdminOpenShiftOverview({
         >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 id="pos-admin-current-open-shift-heading" className="text-lg font-black tracking-tight text-[#0B1647] sm:text-xl">
+            <h2 id="pos-admin-current-open-shift-heading" className="pos-terminal-section-heading text-base font-black leading-5 tracking-tight text-[#0B1647]">
               Current Shift
             </h2>
             <span className="inline-flex items-center gap-2 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[12px] font-extrabold text-emerald-800">
@@ -209,7 +209,7 @@ export default function AdminOpenShiftOverview({
           aria-busy={branchDirectoryState?.loading || undefined}
         >
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
-            <h2 id="pos-admin-branch-terminals-heading" className="text-xl font-black tracking-tight text-[#0B1647] sm:text-2xl">
+            <h2 id="pos-admin-branch-terminals-heading" className="pos-terminal-section-heading text-base font-black leading-5 tracking-tight text-[#0B1647]">
               Terminals
             </h2>
 

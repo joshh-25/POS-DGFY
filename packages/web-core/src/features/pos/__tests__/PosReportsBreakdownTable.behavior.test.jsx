@@ -85,7 +85,7 @@ describe('POS report breakdown table', () => {
     expect(within(tableRegion).getByRole('columnheader', { name: 'Item' })).toBeTruthy();
     expect(within(tableRegion).getByRole('columnheader', { name: 'Net Sales (₱)' })).toBeTruthy();
     expect(within(tableRegion).getByRole('columnheader', { name: 'Refunds/Voids (₱)' })).toBeTruthy();
-    expect(within(tableRegion).queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(within(tableRegion).getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('Coffee').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱450.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱-80.00').length).toBeGreaterThan(0);
@@ -120,28 +120,20 @@ describe('POS report breakdown table', () => {
   it('labels cached values as display-only stale data', () => {
     render(<PosReportsBreakdownSummary breakdown="items" data={itemData} currencySymbol="₱" stale />);
     expect(screen.getByRole('status').textContent).toContain('Offline snapshot');
-    fireEvent.click(screen.getByRole('button', { name: 'cards' }));
-    expect(screen.getByText('₱450.00')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Item sales chart showing net sales and profit by item' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /cards|graph/i })).toBeNull();
   });
 
-  it('switches item sales between graph and cards', () => {
+  it('keeps item sales graph-only to avoid repeating the main report KPIs', () => {
     render(<PosReportsBreakdownSummary breakdown="items" data={itemData} currencySymbol="₱" />);
 
     expect(screen.getByRole('heading', { name: 'Item Sales trend' })).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Item sales chart showing net sales and profit by item' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'graph' }).getAttribute('aria-pressed')).toBe('true');
-
-    fireEvent.click(screen.getByRole('button', { name: 'cards' }));
-
-    expect(screen.getByRole('heading', { name: 'Item Sales summary' })).toBeTruthy();
-    expect(screen.getByText('₱450.00')).toBeTruthy();
-    expect(screen.queryByRole('img', { name: 'Item sales chart showing net sales and profit by item' })).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'graph' }));
-    expect(screen.getByRole('img', { name: 'Item sales chart showing net sales and profit by item' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /cards|graph/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Item Sales summary' })).toBeNull();
   });
 
-  it('switches sales by category between graph and cards', () => {
+  it('keeps sales by category graph-only to avoid repeating the main report KPIs', () => {
     const categoryData = {
       ...itemData,
       breakdown: 'categories',
@@ -163,10 +155,8 @@ describe('POS report breakdown table', () => {
     expect(screen.getByRole('heading', { name: 'Sales by Category trend' })).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Sales by category chart showing net sales and profit by category' })).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Sales by category chart legend' })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'cards' }));
-    expect(screen.getByRole('heading', { name: 'Sales by Category summary' })).toBeTruthy();
-    expect(screen.getByText('₱450.00')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /cards|graph/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Sales by Category summary' })).toBeNull();
   });
 
   it('replaces the hourly KPI summary with an hourly sales chart', () => {
@@ -179,17 +169,14 @@ describe('POS report breakdown table', () => {
     expect(screen.getByText('Net Sales')).toBeTruthy();
     expect(screen.getByText('Profit')).toBeTruthy();
     expect(screen.queryByText('₱500.00')).toBeNull();
+    expect(screen.queryByRole('button', { name: /cards|graph/i })).toBeNull();
   });
 
-  it('keeps the hourly chart available after switching to cards', () => {
+  it('keeps the hourly summary graph-only to avoid repeating the main report KPIs', () => {
     render(<PosReportsBreakdownSummary breakdown="hourly" data={hourlyData} currencySymbol="₱" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'cards' }));
-    expect(screen.getByRole('heading', { name: 'Hourly Sales summary' })).toBeTruthy();
-    expect(screen.getByText('₱80.00')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'graph' }));
     expect(screen.getByRole('img', { name: 'Hourly sales chart showing gross sales, net sales, and profit by hour' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /cards|graph/i })).toBeNull();
   });
 
   it('shows an empty state when hourly chart rows are unavailable', () => {

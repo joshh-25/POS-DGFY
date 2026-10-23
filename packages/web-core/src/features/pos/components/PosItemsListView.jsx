@@ -3,6 +3,7 @@ import { ImagePlus, Pencil, Trash2 } from 'lucide-react';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosTableSurface, {
+  POS_TABLE_HEADER_BLUE_TINT_CLASS,
   POS_TABLE_HEADER_CELL_CLASS,
   POS_TABLE_ROW_CLASS
 } from './PosTableSurface.jsx';
@@ -32,7 +33,7 @@ export default function PosItemsListView({
               <col className="pos-items-list-column-stock w-[8%]" />
               <col className="pos-items-list-column-actions w-[15%]" />
             </colgroup>
-            <thead className="border-b border-slate-200 bg-slate-50 text-[#0F172A]">
+            <thead className={POS_TABLE_HEADER_BLUE_TINT_CLASS}>
               <tr>
                 <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} px-3 py-2.5`}>Item</th>
                 <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} px-2 py-2.5`}>Category</th>

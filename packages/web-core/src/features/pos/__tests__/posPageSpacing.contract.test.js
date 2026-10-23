@@ -30,8 +30,8 @@ const pageScrollCss = fs.readFileSync(path.resolve(__dirname, '../../..', 'index
 describe('POS mobile page spacing contract', () => {
   it('keeps Shift top spacing aligned with the shared page frame on desktop and mobile', () => {
     const primaryShiftTabCall = operationsWorkspaceSource.match(/<PosLineTabNavigation([\s\S]*?)\/>/)?.[1] || '';
-    expect(spacingSource).toContain("export const POS_PAGE_FRAME_CLASS = 'px-4 py-4 sm:px-6 sm:py-4';");
-    expect(spacingSource).toContain("export const POS_MOBILE_STICKY_TAB_ROW_CLASS = 'max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-4 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-4';");
+    expect(spacingSource).toContain("export const POS_PAGE_FRAME_CLASS = 'px-4 pt-2 pb-4 sm:px-6 min-[1024px]:py-4';");
+    expect(spacingSource).toContain("export const POS_MOBILE_STICKY_TAB_ROW_CLASS = 'max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-2 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-2';");
     expect(operationsWorkspaceSource).toContain('page="shift"');
     expect(operationsWorkspaceSource).toContain('data-testid="pos-shift-sticky-tabs"');
     expect(operationsWorkspaceSource).toContain('className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}');
@@ -43,7 +43,7 @@ describe('POS mobile page spacing contract', () => {
   });
 
   it('keeps the primary page roots on one shared spacing contract', () => {
-    expect(spacingSource).toContain("export const POS_PAGE_FRAME_CLASS = 'px-4 py-4 sm:px-6 sm:py-4';");
+    expect(spacingSource).toContain("export const POS_PAGE_FRAME_CLASS = 'px-4 pt-2 pb-4 sm:px-6 min-[1024px]:py-4';");
     expect(spacingSource).not.toContain('POS_PAGE_COMPACT_FRAME_CLASS');
     expect(reportsSource).toContain('page="reports"');
     expect(settingsSource).not.toContain('spacing="compact"');
@@ -57,6 +57,9 @@ describe('POS mobile page spacing contract', () => {
     expect(settingsSource).toMatch(/<PosPageFrame\s+id=\{sectionId\}\s+page="settings"/);
     expect(operationsWorkspaceSource).toContain('<PosPageFrame\n      id={sectionId}\n      page="shift"\n      className="max-[767px]:overflow-x-clip"');
     expect(terminalLayoutSource).toContain('const STANDARD_POS_PAGE_FRAME_MODES = new Set([');
+    expect(terminalLayoutSource).toContain('pos-items-workspace-content max-[1023px]:pt-0');
+    expect(operationsWorkspaceSource).toContain('pos-items-workspace-shell max-[767px]:pt-0');
+    expect(pageScrollCss).toMatch(/\.dgfy-pos-shell\[data-pos-items-view="true"\] \.pos-items-workspace-content\s*\{[^}]*padding-top:\s*0;/s);
     expect(terminalLayoutSource).toContain('SHIFT_WORKSPACE_MODES.has(posViewMode)');
     expect(terminalLayoutSource).toContain("usesStandardPosPageFrame ? 'p-0' : 'p-2'");
     expect(operationsWorkspaceSource).toContain("const workspaceShellClassName = usesOwnPageFrame\n    ? isAffiliateManagementView\n      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-affiliates-workspace-shell'\n      : 'p-0'");
@@ -77,7 +80,8 @@ describe('POS mobile page spacing contract', () => {
     expect(spacingSource).toContain("export const POS_MOBILE_PAGE_STACK_CLASS = 'flex flex-col gap-4';");
     expect(historySource).toContain('POS_MOBILE_PAGE_STACK_CLASS');
     expect(historySource).not.toContain('POS_PAGE_MOBILE_GUTTER_CLASS');
-    expect(historySource).toContain('flex-row w-full px-0 py-0');
+    expect(historySource).toContain('testId="pos-history-pagination-footer"');
+    expect(historySource).toContain('className={POS_PAGINATION_FOOTER_CLASS}');
     expect(historySource).toContain('overscroll-contain touch-pan-y');
     expect(settingsSource).toContain('className="min-w-0"');
   });

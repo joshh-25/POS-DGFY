@@ -28,6 +28,7 @@ import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarou
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { getItemPriceLimitError } from '@/src/features/inventory/itemPriceLimits.js';
 import { resolveEditItemSaveError } from '../utils/editItemSaveErrors.js';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_ICON_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 import { listFnbModifierGroups, replaceFnbItemModifierGroups } from '@/src/features/fnb/api/fnbApi.js';
 import { resolveEffectiveItemTaxonomy, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
@@ -58,6 +59,9 @@ const PosServiceCatalogEditModal = lazyWithChunkRetry(() => import('./PosService
 const POS_ITEMS_PAGE_SIZE = 20;
 
 const POS_ITEMS_PAGE_SIZE_OPTIONS = POS_HISTORY_PAGE_SIZE_OPTIONS;
+
+const POS_ITEM_EDITOR_HEADER_SURFACE_CLASS = 'border-b border-[#143F73] bg-[#1A4E8D]';
+const POS_ITEM_STATUS_CARD_CLASS = 'flex min-w-0 items-start justify-between gap-2 rounded-lg border border-[#1A4E8D]/20 bg-[#1A4E8D]/[0.06] px-2.5 py-2';
 
 // Keep the Items filter aligned with the desktop History/Calendar extended
 // surface. A single width prevents the same filter language from looking
@@ -2375,10 +2379,10 @@ function ItemsWorkspace({
               id="pos-items-desktop-filters"
               role="dialog"
               aria-labelledby="pos-items-filter-title"
-              className="pos-filter-surface pos-filter-surface--extended fixed z-40 hidden max-h-[min(90vh,48rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-900/20 sm:flex"
+              className="pos-filter-surface pos-filter-surface--extended fixed z-40 hidden max-h-[min(90vh,48rem)] flex-col overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:flex"
               style={desktopFilterPosition || undefined}
             >
-              <div className="pos-filter-surface-header pos-filter-surface-header--extended flex shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-[#0F172A]">
+              <div className={['pos-filter-surface-header pos-filter-surface-header--extended flex shrink-0 flex-row items-center justify-between gap-3 rounded-t-2xl px-5 py-3.5 text-[#0F172A]', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
                 <div className="min-w-0 flex-1">
                   <p id="pos-items-filter-title" className="pos-filter-surface-title pos-filter-surface-title--extended truncate text-xl font-bold leading-6 tracking-tight">Filter</p>
                   <p className="mt-1 max-w-full break-words text-sm leading-5 text-slate-500">Refine your item list</p>
@@ -2459,7 +2463,7 @@ function ItemsWorkspace({
                 </div>
               </div>
 
-              <div className="pos-filter-surface-footer flex shrink-0 items-center gap-2 border-t border-slate-200 px-4 py-2.5">
+              <div className={['pos-filter-surface-footer flex shrink-0 items-center gap-2 border-t border-slate-200 px-4 py-2.5', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
                 {isServicesMode && canManageServiceCatalog && !catalogOnlyAccess ? (
                   <Button
                     type="button"
@@ -2577,7 +2581,7 @@ function ItemsWorkspace({
               id="pos-items-mobile-filter-dialog"
               className="pos-filter-surface flex max-h-[min(90vh,40rem)] max-w-none flex-col overflow-hidden rounded-t-2xl border border-slate-300 bg-white p-0 shadow-[0_12px_30px_rgba(15,23,42,0.2)] dgfy-pos-history-mobile-sheet"
             >
-              <DialogHeader className="pos-filter-surface-header shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-[#0F172A]">
+              <DialogHeader className={['pos-filter-surface-header shrink-0 flex-row items-center justify-between gap-3 px-5 py-3.5 text-[#0F172A]', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
                 <div className="min-w-0 flex-1">
                   <DialogTitle className="pos-filter-surface-title truncate text-xl font-bold leading-6 tracking-tight">Filter</DialogTitle>
                   <DialogDescription className="mt-1 text-sm leading-5 text-slate-500">Refine your item list</DialogDescription>
@@ -2649,7 +2653,7 @@ function ItemsWorkspace({
                 </div>
               </div>
 
-              <DialogFooter className="pos-filter-surface-footer shrink-0 flex-row justify-between gap-3 border-t border-slate-200 px-4 py-3">
+              <DialogFooter className={['pos-filter-surface-footer shrink-0 flex-row justify-between gap-3 px-4 py-3', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
                 <Button
                   type="button"
                   variant="outline"
@@ -2904,7 +2908,7 @@ function ItemsWorkspace({
                         variant="outline"
                         onClick={() => openEdit(item)}
                         disabled={locked || savingItem || deletingItem || creatingItem || (isServiceItem && !isOnline)}
-                        className="h-14 min-w-0 rounded-xl border-2 border-[#1A4E8D] bg-white px-3 text-base font-bold text-[#1A4E8D] shadow-none hover:bg-[#1A4E8D]/5"
+                        className="h-14 min-w-0 rounded-xl border-2 border-[#1A4E8D] bg-[#1A4E8D]/[0.08] px-3 text-base font-bold text-[#1A4E8D] shadow-none hover:bg-[#1A4E8D]/[0.14] active:bg-[#1A4E8D] active:text-white"
                         title={`Edit ${item.name || 'item'}`}
                       >
                         <Pencil className="mr-1 h-3.5 w-3.5" />
@@ -2917,7 +2921,7 @@ function ItemsWorkspace({
                         variant="outline"
                         onClick={() => setDeleteConfirmItem(item)}
                         disabled={locked || savingItem || deletingItem || creatingItem}
-                        className="h-14 min-w-0 rounded-xl border-2 border-rose-600 bg-white px-3 text-base font-bold text-rose-600 shadow-none hover:bg-rose-50"
+                        className="h-14 min-w-0 rounded-xl border-2 border-rose-600 bg-rose-50 px-3 text-base font-bold text-rose-700 shadow-none hover:bg-rose-100 active:border-rose-700 active:bg-rose-600 active:text-white"
                         title={`Delete ${item.name || 'item'}`}
                       >
                         <Trash2 className="mr-1 h-3.5 w-3.5" />
@@ -3014,9 +3018,9 @@ function ItemsWorkspace({
             className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-items-form-scale relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[54rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[calc(100dvh-1.5rem)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 sm:px-5">
+            <div className={['-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] px-4 py-2.5 text-white sm:px-5', POS_ITEM_EDITOR_HEADER_SURFACE_CLASS].join(' ')}>
               <div className="flex min-w-0 items-center gap-2.5">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
+                <div className={POS_MODAL_HEADER_ICON_CLASS}>
                   <Package className="h-4 w-4" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
@@ -3033,7 +3037,7 @@ function ItemsWorkspace({
                 onClick={closeCreate}
                 disabled={creatingItem || postCreateSaving}
                 aria-label="Close Add Item"
-                className="grid h-8 w-8 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D]"
+                className="grid h-8 w-8 place-items-center rounded-lg text-white transition-colors hover:bg-[#143F73] hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -3150,14 +3154,14 @@ function ItemsWorkspace({
 
               <div className="pos-items-status-grid mt-4 grid gap-3 md:grid-cols-3">
                 {!catalogOnlyAccess && <>
-                <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
+                <div className={POS_ITEM_STATUS_CARD_CLASS}>
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-600"><Check className="h-3.5 w-3.5" aria-hidden="true" /></div>
                     <div className="flex min-h-9 min-w-0 flex-1 flex-col justify-center"><label htmlFor="pos-items-create-always-available" className="block break-words text-[10px] font-black text-[#0F172A]">Always Available</label><span className="mt-0.5 block break-words text-[10px] text-[#94A3B8]">Allow POS sales at zero stock.</span></div>
                   </div>
                   <Switch id="pos-items-create-always-available" checked={createForm.pos_always_available === true} onCheckedChange={(checked) => setCreateForm((current) => ({ ...current, pos_always_available: Boolean(checked) }))} disabled={creatingItem || postCreateSaving} className={getPosItemStatusSwitchClass(createForm.pos_always_available === true)} />
                 </div>
-                <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
+                <div className={POS_ITEM_STATUS_CARD_CLASS}>
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-600"><Star className="h-3.5 w-3.5" aria-hidden="true" /></div>
                     <div className="flex min-h-9 min-w-0 flex-1 flex-col justify-center"><label htmlFor="pos-items-create-best-seller-mode" className="block break-words text-[10px] font-black text-[#0F172A]">Best Seller</label><span className="mt-0.5 block break-words text-[10px] text-[#94A3B8]">Manually tag this item as a Best Seller.</span></div>
@@ -3165,7 +3169,7 @@ function ItemsWorkspace({
                   <Switch id="pos-items-create-best-seller-mode" checked={createForm.pos_best_seller_mode === 'force'} onCheckedChange={(checked) => setCreateForm((current) => ({ ...current, pos_best_seller_mode: checked ? 'force' : 'never' }))} disabled={creatingItem || postCreateSaving} className={getPosItemStatusSwitchClass(createForm.pos_best_seller_mode === 'force')} />
                 </div>
                 </>}
-                <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
+                <div className={POS_ITEM_STATUS_CARD_CLASS}>
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-indigo-50 text-indigo-500"><UserRound className="h-3.5 w-3.5" aria-hidden="true" /></div>
                     <div className="flex min-h-9 min-w-0 flex-1 flex-col justify-center"><label htmlFor="pos-items-create-senior-pwd" className="block break-words text-[10px] font-black text-[#0F172A]">Senior/PWD Eligible</label><span className="mt-0.5 block break-words text-[10px] text-[#94A3B8]">Allow statutory discount selection.</span></div>
@@ -3475,7 +3479,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 border-t border-slate-200 bg-white px-4 py-2 sm:px-5">
+            <div className={['pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 px-4 py-2 sm:px-5', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
               <div className="pos-items-modal-footer-actions grid min-w-0 grid-cols-2 gap-2">
                 <Button
                   type="button"
@@ -3529,9 +3533,9 @@ function ItemsWorkspace({
             className="pos-items-modal-panel pos-items-catalog-form-modal pos-items-mobile-sheet-panel pos-items-form-scale relative flex h-[calc(100dvh-1.5rem)] w-full max-w-[54rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[calc(100dvh-1.5rem)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 sm:px-5">
+            <div className={['-mx-px -mt-px flex shrink-0 items-center justify-between gap-3 rounded-t-[17px] px-4 py-2.5 text-white sm:px-5', POS_ITEM_EDITOR_HEADER_SURFACE_CLASS].join(' ')}>
               <div className="flex min-w-0 items-center gap-2.5">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
+                <div className={POS_MODAL_HEADER_ICON_CLASS}>
                   <Package className="h-4 w-4" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
@@ -3546,7 +3550,7 @@ function ItemsWorkspace({
                 onClick={closeEdit}
                 disabled={savingItem || persistingEditAssets}
                 aria-label="Close Edit Item"
-                className="grid h-8 w-8 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D]"
+                className="grid h-8 w-8 place-items-center rounded-lg text-white transition-colors hover:bg-[#143F73] hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -3556,7 +3560,7 @@ function ItemsWorkspace({
               <div className="pos-items-status-grid mt-4 grid gap-3 md:grid-cols-3">
                 {/* Toggle Card 1: Always Available */}
                 {!catalogOnlyAccess && <>
-                <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
+                <div className={POS_ITEM_STATUS_CARD_CLASS}>
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-600">
                       <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -3576,7 +3580,7 @@ function ItemsWorkspace({
                 </div>
 
                 {/* Toggle Card 2: Best Seller */}
-                <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
+                <div className={POS_ITEM_STATUS_CARD_CLASS}>
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-600">
                       <Star className="h-3.5 w-3.5" aria-hidden="true" />
@@ -3597,7 +3601,7 @@ function ItemsWorkspace({
                 </>}
 
                 {/* Toggle Card 3: Senior/PWD Eligible */}
-                <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/40 px-2.5 py-2">
+                <div className={POS_ITEM_STATUS_CARD_CLASS}>
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-indigo-50 text-indigo-500">
                       <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
@@ -3744,7 +3748,6 @@ function ItemsWorkspace({
 
                 {/* Column 2: Item Details */}
                 <div ref={editItemDetailsRef} className="min-w-0">
-                  <h3 className="pos-items-modal-section-title mb-2">Item Details</h3>
                   <div className="grid gap-2.5 sm:grid-cols-2">
                     <div className="space-y-1 sm:col-span-2">
                     <label className="pos-items-modal-label block">
@@ -4046,7 +4049,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 border-t border-slate-200 bg-white px-4 py-2 sm:px-5">
+            <div className={['pos-items-modal-footer grid shrink-0 grid-cols-1 gap-2 px-4 py-2 sm:px-5', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
               {editPermissionDenied ? (
                 <div
                   role="alert"

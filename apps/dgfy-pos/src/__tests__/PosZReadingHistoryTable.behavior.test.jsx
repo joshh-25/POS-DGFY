@@ -26,7 +26,7 @@ describe('POS Z-reading history table', () => {
     expect(screen.getAllByText('₱879.50').length).toBeGreaterThan(0);
     expect(screen.getByText(/completed, saved branch readings only/i)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: /preview z-reading ZR-20260927-00000019/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /view z-reading ZR-20260927-00000019/i })[0]);
 
     expect(onPreview).toHaveBeenCalledWith(row);
   });

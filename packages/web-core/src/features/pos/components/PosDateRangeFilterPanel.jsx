@@ -33,7 +33,8 @@ export default function PosDateRangeFilterPanel({
   resetButtonLabel = 'Reset date range',
   todayDate = '',
   timeZone,
-  actionDisabled = false
+  actionDisabled = false,
+  fitContentHeight = false
 }) {
   const initialFrom = dateRange.dateFrom || todayDate || dateToInput(new Date());
   const initialTo = dateRange.dateTo || initialFrom;
@@ -41,7 +42,7 @@ export default function PosDateRangeFilterPanel({
   const [draftTo, setDraftTo] = useState(initialTo);
   const viewportMode = usePosViewportMode();
   const isMobileDialog = viewportMode === 'mobile';
-  const position = usePosReportsPopoverPosition({ open, anchorRef, maxWidth: 464 });
+  const position = usePosReportsPopoverPosition({ open, anchorRef, maxWidth: 464, fitContentHeight });
 
   const rangeStart = draftFrom && draftTo && compareDates(draftFrom, draftTo) <= 0 ? draftFrom : draftTo;
   const rangeEnd = draftFrom && draftTo && compareDates(draftFrom, draftTo) <= 0 ? draftTo : draftFrom;
@@ -65,6 +66,7 @@ export default function PosDateRangeFilterPanel({
       onClose={onClose}
       mode="calendar"
       mobile={isMobileDialog}
+      fitContentHeight={fitContentHeight}
       position={position}
       id={dialogId}
       ariaLabelledBy={titleId}

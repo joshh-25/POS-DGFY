@@ -393,6 +393,17 @@ describe('CashierHistoryPanel', () => {
         expect(historyCardClasses.some((className) => historyContainer.classList.contains(className))).toBe(false);
         expect(historyCardClasses.some((className) => filterToolbar.classList.contains(className))).toBe(false);
         const refreshButton = screen.getByRole('button', { name: 'Refresh cashier history' });
+        const filterToolbarControls = screen.getByTestId('pos-cashier-history-toolbar-controls');
+        const filterButton = screen.getByRole('button', { name: 'Filter' });
+        const dateFilterButton = screen.getByRole('button', { name: 'Filter by Date' });
+
+        expect(filterToolbarControls.classList.contains('min-[1024px]:flex-row')).toBe(true);
+        expect(filterToolbarControls.contains(refreshButton)).toBe(true);
+        ['h-10', 'min-h-10', 'md:h-11', 'md:min-h-11', 'min-[1200px]:h-10', 'min-[1200px]:min-h-10'].forEach((heightClass) => {
+            expect(refreshButton.classList.contains(heightClass)).toBe(true);
+            expect(filterButton.classList.contains(heightClass)).toBe(true);
+            expect(dateFilterButton.classList.contains(heightClass)).toBe(true);
+        });
         expect(refreshButton.classList.contains('!bg-[#1A4E8D]')).toBe(true);
         expect(refreshButton.classList.contains('text-white')).toBe(true);
         expect(screen.getByRole('button', { name: 'Today' }).classList.contains('!bg-[#1A4E8D]')).toBe(true);

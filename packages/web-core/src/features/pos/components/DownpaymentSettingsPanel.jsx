@@ -408,7 +408,7 @@ export default function DownpaymentSettingsPanel({
                             value={form.downpayment_type}
                             onValueChange={(value) => updateField('downpayment_type', value)}
                         >
-                            <SelectTrigger id="downpayment-type" className="w-full" disabled={!canManage}>
+                            <SelectTrigger id="downpayment-type" aria-label="Downpayment type" className="w-full" disabled={!canManage}>
                                 <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                             <SelectContent>

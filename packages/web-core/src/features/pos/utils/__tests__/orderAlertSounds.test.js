@@ -90,6 +90,13 @@ describe('order alert sound storage', () => {
   it('converts an imported audio file to a local compressed MP3 and remembers its KB metadata', async () => {
     const cachePut = vi.fn();
     const cacheDelete = vi.fn();
+    vi.stubGlobal('Response', class MockResponse {
+      constructor(body, init = {}) {
+        this.body = body;
+        const headers = new Map(Object.entries(init.headers || {}).map(([name, value]) => [name.toLowerCase(), value]));
+        this.headers = { get: (name) => headers.get(String(name).toLowerCase()) || null };
+      }
+    });
     vi.stubGlobal('caches', {
       open: vi.fn().mockResolvedValue({ put: cachePut, delete: cacheDelete })
     });
@@ -120,6 +127,8 @@ describe('order alert sound storage', () => {
     expect(close).toHaveBeenCalledTimes(1);
     expect(Mp3Encoder).toHaveBeenCalledWith(1, 22_050, 64);
     expect(cachePut).toHaveBeenCalledTimes(1);
+    expect(cachePut.mock.calls[0][1].body.type).toBe('audio/mpeg');
+    expect(cachePut.mock.calls[0][1].headers.get('content-type')).toBe('audio/mpeg');
     expect(cachePut.mock.calls[0][0]).toContain(`/sounds/order-alerts/imported/${importedSound.id}.mp3`);
     expect(saveOrderAlertSoundWithIminBridge).toHaveBeenCalledWith(
       importedSound.id,

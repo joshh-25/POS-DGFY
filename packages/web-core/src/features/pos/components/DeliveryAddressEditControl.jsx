@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 
 // Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. Modelled on
 // DeliveryAssignmentControl.jsx's shape: plain props, no reach into the terminal's whole `model`
@@ -113,47 +114,58 @@ export default function DeliveryAddressEditControl({
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit delivery address</DialogTitle>
-            <DialogDescription>
-              The customer is not notified and does not confirm this change. Use this only after
-              agreeing the new location directly with the customer -- the phone call is the
-              confirmation.
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
+          <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
+            <DialogTitle className="text-xl font-semibold leading-tight">
+              Edit delivery address
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-[13px] leading-5 text-slate-600">
+              Call the customer to confirm the new address before saving. They won&apos;t be notified automatically.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-2">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
             <div>
-              <Label htmlFor={`delivery-address-${normalizedOrderId}`}>Address</Label>
+              <Label
+                className="text-[13px]"
+                htmlFor={`delivery-address-${normalizedOrderId}`}
+              >
+                Address
+              </Label>
               <textarea
                 id={`delivery-address-${normalizedOrderId}`}
                 value={address}
                 onChange={(event) => setAddress(event.target.value)}
                 maxLength={500}
                 rows={3}
-                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[13px] text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <div className="flex gap-2">
               <div className="flex-1">
-                <Label htmlFor={`delivery-lat-${normalizedOrderId}`}>Latitude</Label>
+                <Label className="text-[13px]" htmlFor={`delivery-lat-${normalizedOrderId}`}>
+                  Latitude
+                </Label>
                 <Input
                   id={`delivery-lat-${normalizedOrderId}`}
                   type="number"
                   step="any"
                   value={latitude}
                   onChange={(event) => setLatitude(event.target.value)}
+                  className="text-[13px]"
                 />
               </div>
               <div className="flex-1">
-                <Label htmlFor={`delivery-lng-${normalizedOrderId}`}>Longitude</Label>
+                <Label className="text-[13px]" htmlFor={`delivery-lng-${normalizedOrderId}`}>
+                  Longitude
+                </Label>
                 <Input
                   id={`delivery-lng-${normalizedOrderId}`}
                   type="number"
                   step="any"
                   value={longitude}
                   onChange={(event) => setLongitude(event.target.value)}
+                  className="text-[13px]"
                 />
               </div>
             </div>
@@ -161,13 +173,19 @@ export default function DeliveryAddressEditControl({
               <p className="text-xs text-rose-700">Provide both latitude and longitude, or neither.</p>
             )}
             <div>
-              <Label htmlFor={`delivery-address-reason-${normalizedOrderId}`}>Reason for change</Label>
+              <Label
+                className="text-[13px]"
+                htmlFor={`delivery-address-reason-${normalizedOrderId}`}
+              >
+                Reason for change
+              </Label>
               <Input
                 id={`delivery-address-reason-${normalizedOrderId}`}
                 value={reason}
                 maxLength={255}
                 placeholder="e.g. customer requested handover at the highway junction"
                 onChange={(event) => setReason(event.target.value)}
+                className="text-[13px]"
               />
             </div>
 
@@ -185,7 +203,7 @@ export default function DeliveryAddressEditControl({
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className={['px-5 py-4', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>
               Cancel
             </Button>

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from './posModalStyles.js';
 
 // Phase 226 (#1273), extended Phase 260 (#1489). Create/edit dialog. Fields match POST/PATCH
 // /pos/delivery-runs exactly: label (1-120, required), scheduled_date (date().iso(), sent as
@@ -87,14 +88,14 @@ export default function DeliveryRunFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
+        <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <DialogTitle>{isEdit ? 'Edit delivery run' : 'New delivery run'}</DialogTitle>
           <DialogDescription>
             {isEdit ? 'Update this run\'s label, schedule, notes, or status.' : 'Create a new run to group orders for one delivery trip.'}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <div className="space-y-1.5">
             <Label>Label *</Label>
             <Input
@@ -150,7 +151,7 @@ export default function DeliveryRunFormDialog({
           </div>
           {error ? <p className="text-xs font-bold text-rose-700">{error}</p> : null}
         </div>
-        <DialogFooter>
+        <DialogFooter className={['px-5 py-4', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
           <Button type="button" onClick={handleSubmit} disabled={saving} className="!bg-[#1A4E8D] text-white hover:!bg-[#123B6D]">
             {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Create run'}

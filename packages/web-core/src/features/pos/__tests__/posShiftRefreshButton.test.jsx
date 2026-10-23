@@ -31,4 +31,20 @@ describe('PosShiftRefreshButton', () => {
     fireEvent.click(button);
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it('accepts a shared responsive height token for toolbar alignment', () => {
+    render(
+      <PosShiftRefreshButton
+        label="Refresh cashier history"
+        heightClassName="h-10 min-h-10 md:h-11 md:min-h-11 min-[1200px]:h-10 min-[1200px]:min-h-10"
+        onClick={vi.fn()}
+      />
+    );
+
+    const button = screen.getByRole('button', { name: 'Refresh cashier history' });
+    expect(button.classList.contains('h-10')).toBe(true);
+    expect(button.classList.contains('min-h-10')).toBe(true);
+    expect(button.classList.contains('md:h-11')).toBe(true);
+    expect(button.classList.contains('min-[1200px]:h-10')).toBe(true);
+  });
 });
