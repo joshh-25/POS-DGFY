@@ -21,14 +21,29 @@ const mapviuRows = (data) => {
   if (Array.isArray(data)) return data.find((entry) => entry?.type === 'table' && entry.name === 'properties')?.data || [];
   return Array.isArray(data?.properties) ? data.properties : [];
 };
+const proventusRows = (data) => {
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data?.companies) ? data.companies : null;
+};
 
-export const extractExternalEventSeed = ({ synqcoreExport, mapviuExports = [] }) => {
-  if (!Array.isArray(synqcoreExport?.properties)) throw new Error('SynqCore properties array is required');
-  if (!Array.isArray(mapviuExports) || mapviuExports.length === 0) throw new Error('At least one MapViu export is required');
+export const extractExternalEventSeed = (input = {}) => {
+  const { synqcoreExport = null, mapviuExports = [], proventusExports = [] } = input;
+  const hasSynqcore = Object.prototype.hasOwnProperty.call(input, 'synqcoreExport');
+  const hasMapviu = Object.prototype.hasOwnProperty.call(input, 'mapviuExports');
+  const hasProventus = Object.prototype.hasOwnProperty.call(input, 'proventusExports');
+
+  if (hasSynqcore && !Array.isArray(synqcoreExport?.properties)) throw new Error('SynqCore properties array is required');
+  if (hasMapviu && (!Array.isArray(mapviuExports) || mapviuExports.length === 0)) {
+    throw new Error('At least one MapViu export is required');
+  }
+  const companies = hasProventus ? proventusRows(proventusExports) : null;
+  if (hasProventus && !companies) throw new Error('Proventus companies array is required');
+  if (!hasSynqcore && !hasMapviu && !hasProventus) throw new Error('At least one external event source is required');
+
   const listings = [];
   const skipped = [];
 
-  for (const row of synqcoreExport.properties) {
+  for (const row of (hasSynqcore ? synqcoreExport.properties : [])) {
     const reference = String(row?.id ?? '').trim();
     const title = cleanText(row?.name, 255);
     const point = coordinates(row?.lat, row?.lng);
@@ -47,7 +62,7 @@ export const extractExternalEventSeed = ({ synqcoreExport, mapviuExports = [] })
   }
 
   const seen = new Set();
-  for (const data of mapviuExports) {
+  for (const data of (hasMapviu ? mapviuExports : [])) {
     for (const row of mapviuRows(data)) {
       const reference = String(row?.id ?? '').trim().toLowerCase();
       if (seen.has(reference)) continue;
@@ -75,6 +90,30 @@ export const extractExternalEventSeed = ({ synqcoreExport, mapviuExports = [] })
       });
     }
   }
+
+  const seenProventus = new Set();
+  for (const company of companies || []) {
+    const reference = String(company?.id ?? '').trim().toLowerCase();
+    if (seenProventus.has(reference)) continue;
+    seenProventus.add(reference);
+    const title = cleanText(company?.name, 255);
+    const point = coordinates(company?.latitude, company?.longitude);
+    const reason = !/^[0-9a-f-]{36}$/.test(reference) || !title ? 'invalid_reference'
+      : /\btest\b/i.test(String(company?.name ?? '')) ? 'test_record'
+        : containsContact(title) ? 'pii_in_title'
+          : String(company?.status || '').toLowerCase() !== 'active' || company?.isActive !== 1 ? 'not_active'
+            : !point ? 'no_coordinates' : '';
+    if (reason) {
+      skipped.push(skip('proventus', reference, reason));
+      continue;
+    }
+    listings.push({
+      slug: `proventus-${reference}`, external_provider: 'proventus', external_reference_id: reference,
+      title, ...point, address_line: safeText(company?.location, 255),
+      description: safeText(company?.description, 120)
+    });
+  }
+
   return { listings, skipped };
 };
 
@@ -94,7 +133,7 @@ export const validateExternalEventSeed = (seed) => {
   const seen = new Set();
   for (const listing of seed.listings) {
     if (Object.keys(listing).sort().join() !== [...listingKeys].sort().join()) throw new Error('Unexpected listing fields');
-    if (!['synqcore', 'mapviu'].includes(listing.external_provider)
+    if (!['synqcore', 'mapviu', 'proventus'].includes(listing.external_provider)
       || listing.slug !== `${listing.external_provider}-${String(listing.external_reference_id).toLowerCase()}`
       || !coordinates(listing.latitude, listing.longitude)
       || !listing.title || listing.title.length > 255

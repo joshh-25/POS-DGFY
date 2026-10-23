@@ -49,6 +49,8 @@ describe('adminService admin operation contracts', () => {
     ['getPushDiagnosticsOverview', 'get', '/admin/push-diagnostics/overview', () => adminService.getPushDiagnosticsOverview()],
     ['getPushDiagnosticsVisibility', 'get', '/admin/push-diagnostics/visibility', () => adminService.getPushDiagnosticsVisibility()],
     ['setPushDiagnosticsVisibility', 'put', '/admin/push-diagnostics/visibility/pos', () => adminService.setPushDiagnosticsVisibility('pos', true)],
+    ['setExternalSiteVisibility', 'patch', '/admin/external-discovery/sites/proventus/visibility', () => adminService.setExternalSiteVisibility('proventus', false)],
+    ['setExternalListingVisibility', 'patch', '/admin/external-discovery/listings/job-1/visibility', () => adminService.setExternalListingVisibility('job-1', false)],
     ['listPushDiagnosticsRegistrations', 'get', '/admin/push-diagnostics/registrations', () => adminService.listPushDiagnosticsRegistrations({ state: 'active' })],
     ['listPushDiagnosticsAttempts', 'get', '/admin/push-diagnostics/attempts', () => adminService.listPushDiagnosticsAttempts({ window_hours: 24 })],
     ['listPushDiagnosticDevices', 'get', '/admin/push-diagnostics/diagnostic-devices', () => adminService.listPushDiagnosticDevices()],
@@ -121,6 +123,24 @@ describe('adminService admin operation contracts', () => {
 
     await expect(adminService.setPushDiagnosticsVisibility('fiscalpos', false)).resolves.toEqual({
       app: 'fiscalpos', enabled: false, changed: true
+    });
+  });
+
+  it('sends only the requested visibility flag to each external discovery switch', async () => {
+    mockAdminApi.onPatch('/admin/external-discovery/sites/proventus/visibility').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ show_on_map: false });
+      return [200, { success: true, data: { site_key: 'proventus', show_on_map: false } }];
+    });
+    mockAdminApi.onPatch('/admin/external-discovery/listings/job-1/visibility').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ is_visible: false });
+      return [200, { success: true, data: { slug: 'job-1', is_visible: false } }];
+    });
+
+    await expect(adminService.setExternalSiteVisibility('proventus', false)).resolves.toEqual({
+      site_key: 'proventus', show_on_map: false
+    });
+    await expect(adminService.setExternalListingVisibility('job-1', false)).resolves.toEqual({
+      slug: 'job-1', is_visible: false
     });
   });
 });

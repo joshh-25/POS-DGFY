@@ -1,15 +1,27 @@
 import { isIP } from 'node:net';
 
 export const EXTERNAL_REDIRECT_SITES = Object.freeze({
-  proventus: { label: 'Proventus', action: 'View job' },
-  eytitu: { label: 'Eytitu', action: 'Book ride' },
-  mapviu: { label: 'Mapviu', action: 'Inquire' },
-  synqcore: { label: 'Synqcore', action: 'Book stay' }
+  proventus: { label: 'Proventus', action: 'View job', category: 'Job' },
+  eytitu: { label: 'Eytitu', action: 'Book ride', category: 'Taxi' },
+  mapviu: { label: 'Mapviu', action: 'Inquire', category: 'Real Estate' },
+  synqcore: { label: 'Synqcore', action: 'Book stay', category: 'Hotel' }
 });
 
 export const normalizeExternalSiteKey = (value) => {
   const key = String(value || '').trim().toLowerCase();
   return Object.hasOwn(EXTERNAL_REDIRECT_SITES, key) ? key : null;
+};
+
+export const resolveExternalListingCategories = ({
+  entityType,
+  externalProvider,
+  categories = []
+} = {}) => {
+  const normalizedCategories = Array.isArray(categories) ? categories : [];
+  if (normalizedCategories.length > 0 || entityType !== 'external_listing') return normalizedCategories;
+  const provider = normalizeExternalSiteKey(externalProvider);
+  const category = provider ? EXTERNAL_REDIRECT_SITES[provider]?.category : null;
+  return category ? [category] : normalizedCategories;
 };
 
 export const normalizeRedirectTemplate = (value) => {

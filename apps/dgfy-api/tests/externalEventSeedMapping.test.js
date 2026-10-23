@@ -3,6 +3,7 @@ import { EVENT_SEED_SCHEMA, extractExternalEventSeed, validateExternalEventSeed 
 import { applyExternalEventSeed } from '../src/modules/storefrontDiscovery/usecases/externalEventSeedApply.js';
 
 const uuid = '11111111-2222-4333-8444-555555555555';
+const proventusUuid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const mapviu = (overrides = {}) => ({
   id: uuid, title: 'Synthetic rental', latitude: '11.1', longitude: '122.2',
   status: 'active', moderation_status: 'approved', hide_exact_location: '0',
@@ -11,6 +12,14 @@ const mapviu = (overrides = {}) => ({
 });
 const synqcore = (overrides = {}) => ({ id: 42, name: 'Synthetic stay', lat: 10.1, lng: 123.1,
   formatted_address: 'Example avenue', email: 'person@example.test', ...overrides });
+const proventus = (overrides = {}) => ({
+  id: proventusUuid, name: 'Synthetic employer', latitude: '10.7', longitude: '122.5',
+  location: 'Example district', description: 'A synthetic company description',
+  status: 'active', isActive: 1, email: 'employer@example.test', phone: '09912340000',
+  website: 'https://facebook.example.test/company', logo: 'https://proventous.example.test/logo.png',
+  industry: 'Synthetic industry', businessType: 'Synthetic corporation', jobOpenings: 1,
+  createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z', ...overrides
+});
 const extract = (s = [synqcore()], m = [[mapviu()]]) => extractExternalEventSeed({
   synqcoreExport: { properties: s }, mapviuExports: m.map((rows) => [{ type: 'table', name: 'properties', data: rows }])
 });
@@ -68,7 +77,107 @@ describe('external event seed allow-list', () => {
     expect(result).toEqual(expect.objectContaining({ created: 1, failed: 1, missingSites: ['mapviu'] }));
     expect(repository.saveListing).toHaveBeenCalledTimes(1);
     expect(repository.saveListing.mock.calls[0][0].payload).toEqual(expect.objectContaining({
-      external_record_origin: 'event_seed', is_visible: true
+      external_record_origin: 'event_seed'
     }));
+    expect(repository.saveListing.mock.calls[0][0].payload).not.toHaveProperty('is_visible');
+  });
+
+  it('extracts Proventus companies into the eight-field public allow-list', () => {
+    const privateFields = {
+      email: 'private-employer@example.test', phone: '09987654321',
+      website: 'https://facebook.example.test/private-company',
+      logo: 'https://proventous.example.test/storage/private-logo.png',
+      industry: 'private-industry-marker', businessType: 'private-business-marker',
+      jobOpenings: 8372619, createdAt: 'private-created-marker', updatedAt: 'private-updated-marker'
+    };
+    const { listings, skipped } = extractExternalEventSeed({
+      proventusExports: [proventus({ ...privateFields, description: 'd'.repeat(140) })]
+    });
+
+    expect(skipped).toEqual([]);
+    expect(listings).toHaveLength(1);
+    expect(Object.keys(listings[0]).sort()).toEqual([
+      'address_line', 'description', 'external_provider', 'external_reference_id',
+      'latitude', 'longitude', 'slug', 'title'
+    ]);
+    expect(listings[0]).toEqual({
+      slug: `proventus-${proventusUuid}`, external_provider: 'proventus',
+      external_reference_id: proventusUuid, title: 'Synthetic employer',
+      latitude: 10.7, longitude: 122.5, address_line: 'Example district', description: 'd'.repeat(120)
+    });
+    const serialized = JSON.stringify(listings);
+    for (const value of Object.values(privateFields)) expect(serialized).not.toContain(String(value));
+  });
+
+  it('deduplicates Proventus IDs and applies skip reasons in the documented order', () => {
+    const duplicateId = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+    const companies = [
+      proventus({ id: duplicateId, name: 'First synthetic employer' }),
+      proventus({ id: duplicateId.toUpperCase(), name: 'Second synthetic employer' }),
+      proventus({ id: 'not-a-uuid', name: 'Test employer' }),
+      proventus({ id: 'cccccccc-dddd-4eee-8fff-000000000001', name: 'Test person@example.test' }),
+      proventus({ id: 'cccccccc-dddd-4eee-8fff-000000000002', name: 'person@example.invalid' }),
+      proventus({ id: 'cccccccc-dddd-4eee-8fff-000000000003', status: 'draft', latitude: null, longitude: null }),
+      proventus({ id: 'cccccccc-dddd-4eee-8fff-000000000004', isActive: 0 }),
+      proventus({ id: 'cccccccc-dddd-4eee-8fff-000000000005', latitude: null, longitude: null })
+    ];
+    const result = extractExternalEventSeed({ proventusExports: companies });
+
+    expect(result.listings).toHaveLength(1);
+    expect(result.listings[0].title).toBe('First synthetic employer');
+    expect(result.skipped.map(({ reason }) => reason)).toEqual([
+      'invalid_reference', 'test_record', 'pii_in_title', 'not_active', 'not_active', 'no_coordinates'
+    ]);
+  });
+
+  it('accepts Proventus company envelopes and validates Proventus listings strictly', () => {
+    const listings = extractExternalEventSeed({ proventusExports: { companies: [proventus()] } }).listings;
+    expect(listings).toHaveLength(1);
+    const seed = {
+      schema: EVENT_SEED_SCHEMA, generated_at: '2026-10-23T00:00:00Z',
+      sources: [{ provider: 'proventus', file: 'synthetic.json', exported_at: null }],
+      listings, skipped: []
+    };
+    expect(validateExternalEventSeed(seed)).toBe(seed);
+    expect(() => validateExternalEventSeed({ ...seed, listings: [{
+      ...listings[0], external_provider: 'unknown', slug: `unknown-${proventusUuid}`
+    }] })).toThrow('Invalid listing');
+    expect(() => validateExternalEventSeed({ ...seed, listings: [{ ...listings[0], extra: 'unexpected' }] }))
+      .toThrow('Unexpected listing fields');
+    expect(() => extractExternalEventSeed({})).toThrow('At least one external event source is required');
+    expect(() => extractExternalEventSeed({ synqcoreExport: {} }))
+      .toThrow('SynqCore properties array is required');
+    expect(() => extractExternalEventSeed({ mapviuExports: [] }))
+      .toThrow('At least one MapViu export is required');
+    expect(() => extractExternalEventSeed({ proventusExports: { companies: 'invalid' } }))
+      .toThrow('Proventus companies array is required');
+  });
+
+  it('dry-runs, saves, and reports disabled Proventus sites through the existing apply use case', async () => {
+    const listings = extractExternalEventSeed({ proventusExports: [proventus()] }).listings;
+    const seed = {
+      schema: EVENT_SEED_SCHEMA, generated_at: '2026-10-23T00:00:00Z',
+      sources: [{ provider: 'proventus', file: 'synthetic.json', exported_at: null }],
+      listings, skipped: []
+    };
+    const repository = {
+      getSite: jest.fn(async () => ({ enabled: true })),
+      saveListing: jest.fn(async () => ({ status: 'created' }))
+    };
+    const dryRun = await applyExternalEventSeed({ seed, repository });
+    expect(dryRun).toEqual(expect.objectContaining({ dryRun: true, missingSites: [] }));
+    expect(repository.saveListing).not.toHaveBeenCalled();
+
+    const applied = await applyExternalEventSeed({ seed, repository, apply: true });
+    expect(applied).toEqual(expect.objectContaining({ created: 1, failed: 0, missingSites: [] }));
+    expect(repository.saveListing.mock.calls[0][0].payload).toEqual(expect.objectContaining({
+      external_provider: 'proventus', external_record_origin: 'event_seed'
+    }));
+    expect(repository.saveListing.mock.calls[0][0].payload).not.toHaveProperty('is_visible');
+
+    repository.getSite.mockResolvedValue({ enabled: false });
+    const disabled = await applyExternalEventSeed({ seed, repository, apply: true });
+    expect(disabled).toEqual(expect.objectContaining({ failed: 1, missingSites: ['proventus'] }));
+    expect(repository.saveListing).toHaveBeenCalledTimes(1);
   });
 });

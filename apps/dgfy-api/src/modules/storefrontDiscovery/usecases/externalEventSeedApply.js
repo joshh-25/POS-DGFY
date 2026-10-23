@@ -22,7 +22,7 @@ export const applyExternalEventSeed = async ({ seed, repository, apply = false, 
     try {
       const result = await save({
         slug: row.slug,
-        payload: { ...row, external_record_origin: 'event_seed', is_visible: true },
+        payload: { ...row, external_record_origin: 'event_seed' },
         admin: { id: null, username: 'external-event-seed-script' }
       });
       if (!result.success) throw new Error(result.error?.message || 'save rejected');

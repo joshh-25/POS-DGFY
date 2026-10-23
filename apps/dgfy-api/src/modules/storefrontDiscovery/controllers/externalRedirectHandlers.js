@@ -2,7 +2,9 @@ import {
   resolveExternalRedirectUseCase,
   listExternalAdminUseCase,
   saveExternalSiteUseCase,
+  setExternalSiteVisibilityUseCase,
   saveExternalListingUseCase,
+  setExternalListingVisibilityUseCase,
   removeExternalListingUseCase,
   clearTemporaryExternalListingsUseCase
 } from '../index.js';
@@ -47,10 +49,24 @@ export const saveExternalSite = async (req, res, next) => {
   } catch (error) { return next(error); }
 };
 
+export const setExternalSiteVisibility = async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    return respond(res, await setExternalSiteVisibilityUseCase({ siteKey: req.params.siteKey, payload: req.body, admin: req.admin }));
+  } catch (error) { return next(error); }
+};
+
 export const saveExternalListing = async (req, res, next) => {
   try {
     res.set('Cache-Control', 'no-store');
     return respond(res, await saveExternalListingUseCase({ slug: req.params.slug, payload: req.body, admin: req.admin }));
+  } catch (error) { return next(error); }
+};
+
+export const setExternalListingVisibility = async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    return respond(res, await setExternalListingVisibilityUseCase({ slug: req.params.slug, payload: req.body, admin: req.admin }));
   } catch (error) { return next(error); }
 };
 

@@ -3912,6 +3912,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 
 **Search Notes**
 - Tenants with `store_is_visible=false` are excluded from public discovery/map responses and public profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; hidden tenants are not exposed as Map Listing Only entries.
+- Managed external listing rows with a known provider return a provider-derived `storefront_categories` value (`Job`, `Taxi`, `Real Estate`, or `Hotel`) when no categories are stored; explicit stored categories are preserved.
 - Tenants with `store_is_visible=true` and `store_has_no_location=true` are included only when the customer expresses search/filter intent. Their discovery/profile coordinates are nullable, `/storefront/discovery/map-pins` excludes them, and clients must not coerce nullable coordinates to `0`.
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
 - Search matching is index-backed and deterministic. It is not a general fuzzy-search engine; bounded alias expansion is shared between `item_search_snapshot` generation and discovery query matching so common public terms can match equivalent catalog/service wording without making unrelated short strings match.
@@ -4027,9 +4028,11 @@ The master Platform Admin routes below require the cookie-backed Platform Admin 
 
 | Route | Purpose |
 | --- | --- |
-| `GET /admin/external-discovery` | List four partner configurations and external pins for management |
+| `GET /admin/external-discovery` | List four partner configurations and external pins for management; each site includes `type_label`, `show_on_map`, `pin_count`, and `visible_pin_count` (effective public pins after both visibility switches) |
 | `PUT /admin/external-discovery/sites/:siteKey` | Set an approved HTTPS `url_template` with exactly one `{id}` slot and `enabled` boolean |
+| `PATCH /admin/external-discovery/sites/:siteKey/visibility` | Set the managed partner type's `show_on_map` boolean; requires a saved destination |
 | `PUT /admin/external-discovery/listings/:slug` | Create or update an external pin by stable DGFY slug, `external_provider`, `external_reference_id`, title, real coordinates, `external_record_origin` (`event_seed` or `manual`), and optional public fields |
+| `PATCH /admin/external-discovery/listings/:slug/visibility` | Set the managed external pin's `is_visible` boolean without resending its listing or requiring an enabled destination |
 | `DELETE /admin/external-discovery/listings/:slug` | Remove one external pin |
 | `POST /admin/external-discovery/temporary/clear` | Remove only the four partners' `event_seed` pins |
 

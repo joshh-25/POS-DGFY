@@ -118,7 +118,9 @@ export const getCurrentAdmin = async () => {
 
 export const getExternalDiscovery = async () => (await adminApi.get('/admin/external-discovery', requireAdminAuthConfig())).data?.data;
 export const saveExternalRedirectSite = async (siteKey, payload) => (await adminApi.put(`/admin/external-discovery/sites/${encodeURIComponent(siteKey)}`, payload, requireAdminAuthConfig())).data?.data;
+export const setExternalSiteVisibility = async (siteKey, showOnMap) => (await adminApi.patch(`/admin/external-discovery/sites/${encodeURIComponent(siteKey)}/visibility`, { show_on_map: showOnMap }, requireAdminAuthConfig())).data?.data;
 export const saveExternalDiscoveryListing = async (slug, payload) => (await adminApi.put(`/admin/external-discovery/listings/${encodeURIComponent(slug)}`, payload, requireAdminAuthConfig())).data?.data;
+export const setExternalListingVisibility = async (slug, isVisible) => (await adminApi.patch(`/admin/external-discovery/listings/${encodeURIComponent(slug)}/visibility`, { is_visible: isVisible }, requireAdminAuthConfig())).data?.data;
 export const removeExternalDiscoveryListing = async (slug) => (await adminApi.delete(`/admin/external-discovery/listings/${encodeURIComponent(slug)}`, requireAdminAuthConfig())).data?.data;
 export const clearTemporaryExternalDiscoveryListings = async () => (await adminApi.post('/admin/external-discovery/temporary/clear', {}, requireAdminAuthConfig())).data?.data;
 
