@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: settings,compliance
 reason_codes_impacted: NONE
 policy_version: 2026.10.24
-verification_evidence: Request-time preflight against disposable API/MySQL/Redis fixtures before implementation; focused Admin and shared observability checks, affected builds, rendered desktop/mobile journeys, architecture, docs, compliance, version, hygiene, and privacy evidence will be recorded in the PR
+verification_evidence: Admin 29-file/212-test suite, focused 25-test selector/registration files, shared observability 86 tests, five consumer builds, lint, architecture, docs/strict ADR, compliance, and app-version checks pass; synthetic desktop/mobile browser journey passes; disposable DB-tier API matrix passes all 34 test files including tenant lifecycle, while the full 872-file fast tier in the focused Testing Agent gate has 27 failures and is not represented as green
 rollback_note: Revert the tenant-console cleanup and empty-state correction, Admin-only observability URL redaction and focused tests, documentation updates, and this declaration together. No API, permission, schema, migration, or deployed tenant change is introduced.
 preflight_request_ref: PREFLIGHT-LOCAL-1792859561527-2026-10-25-ADMIN-TENANT-CONSOLE-INTEGRATION-CLEANUP
 preflight_result: no_breach
@@ -44,7 +44,25 @@ reason `ALLOWED`, at `2026-10-24T16:34:12.472Z`; request reference
 
 ## Verification Evidence
 
-Evidence for focused Admin/shared-client checks, affected builds, rendered desktop/mobile journeys, architecture/docs/compliance/version/hygiene checks, and telemetry payload interception will be added after implementation.
+The 29-file/212-test Admin suite, focused selector/registration files (25 tests), shared
+observability suites (2 files/86 tests), five affected consumer builds, Admin/shared lint,
+architecture, docs/strict ADR, compliance, and app-version checks pass. The synthetic browser
+journey passes at 1440×1000 and 390×844 with directory query/history preservation and no page or
+console errors or horizontal overflow; report and screenshots are under `.tmp/`.
+
+The shared-client tests invoke PostHog's installed `before_send` hook directly for `$pageview` and
+`$pageleave`, nested URL/referrer/person properties, and non-Admin behavior. The local browser run
+observed PostHog feature-flag requests only; it did not observe a network event payload.
+
+The Testing Agent ran against target code SHA `cc125a40a` with disposable MySQL 8 and Redis 7.
+All 34 DB-tier test files passed across eight groups, including
+`adminTenantLifecycle.integration.test.js` and registration-upload coverage. The overall focused
+gate is `FAIL`, because 27 suites failed in the 872-file fast tier; no backend production files
+changed here and those failures have not been baseline-compared. Full evidence is under
+`.tmp/release-gates/cc125a40a/`. The earlier direct host API run could not reach MySQL; its target
+lifecycle suite passed in the disposable DB-tier run. Child merge-hygiene passes against the
+registered epic base, `git diff --check` passes, and the final changed-file debug-marker scan found
+no matches.
 
 ## Rollback
 

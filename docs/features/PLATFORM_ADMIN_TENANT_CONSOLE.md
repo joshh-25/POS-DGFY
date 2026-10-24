@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-25
 applies_to: platform_admin_tenant_console
 topic: platform_admin_tenant_console
 ---
@@ -12,12 +12,13 @@ topic: platform_admin_tenant_console
 This document records the landlord Platform Admin tenant console's current actions and the agreed
 contracts for epic #2696. It is a reference for product and implementation work;
 the route permission matrix and accepted ADRs remain authoritative when a statement here differs.
-Current placement notes were updated for Phase 544 (#2756), implemented on the #2696 epic branch
-from base SHA `48e1cadf513304eed607ee517b8b8c4cd46266ab`. Access & storefront now owns the existing
-capability controls and audit entry point. Unavailable capability reads remain explicitly unknown
-and disable writes. #1923's STAGING persistence/publication checks and the PROD read failure remain
-external verification; they do not block integrating this route into the epic branch. The optional
-combined Activity page remains deferred.
+Current placement notes and the 27-action destination map were updated for Phase 545 (Wave 4,
+#2757/#2748/#2750) on the child branch, based on epic SHA
+`8fc6861dc56c374abdd110a700b8c2c427d247db`. Access & storefront owns the existing capability
+controls and audit entry point. Unavailable capability reads remain explicitly unknown and disable
+writes. #1923's STAGING persistence/publication checks and the PROD read failure remain external
+verification; they do not block integrating this route into the epic branch. The optional combined
+Activity page remains deferred.
 
 ## Scope and authority
 
@@ -43,7 +44,7 @@ checks authority on direct requests; hiding a control is only a navigation aid.
 
 `T` below means `admin.tenants`. All tenant routes in this table are mounted below
 `/api/v1/admin/tenants` unless a different prefix is shown. UI entry points describe current
-placement after Phase 544. Audit names describe existing writes;
+placement after Phase 545 (Wave 4). Audit names describe existing writes;
 read-only actions have no write audit. “None” means no audit write was found for that action in the
 current route/use-case path.
 
@@ -74,8 +75,20 @@ current route/use-case path.
 | 23 | Tenant detail → Overview: Assign owner | `POST /:id/owner` | T and `admin.dgfy_accounts` | Existing active account, required reason, explicit force acknowledgement, and preview | `tenant_admin_audit_logs` (`admin_assign_owner` or `admin_force_assign_owner`) | #2742 | Available for active tenants only; Platform Master or both page grants are required. The endpoint payload deliberately sends `force: true`; this does not imply a stronger backend concurrency guarantee. |
 | 24 | No current page caller | `GET/PATCH /:id/affiliate-slots` and `GET /:id/affiliate-slots/audit-logs` | T | Required reason, 3–500 characters; audit and cap write share a transaction | `tenant_admin_audit_logs` (`affiliate_slots_update`) | #1190 | API-only for now; no detail-page UI is approved in this decision. |
 | 25 | No current page caller | `POST /:id/compliance/final-review/documents/:document_id/review` | T | Review note is optional in the API | `tenant_compliance_audit_logs` (`compliance.final_review.review_document`) | — | API-only for now; keep the existing review API outside this UI migration. |
-| 26 | No active page control; legacy service wrappers/routes remain | `POST /:id/change-plan`, `POST /:id/setup-paypal-recurring`, and `POST /api/v1/admin/tenants/provision` | T | Legacy billing actions are disabled under current billing policy; no current reason/confirmation flow | No tenant-admin audit write found in these legacy paths | — | Out of UI scope. Route API removal to PM rather than reviving deprecated controls. |
+| 26 | No active page control; Admin frontend wrappers removed and backend routes retained | `POST /:id/change-plan`, `POST /:id/setup-paypal-recurring`, and `POST /api/v1/admin/tenants/provision` | T | Legacy billing actions are disabled under current billing policy; no current reason/confirmation flow | No tenant-admin audit write found in these legacy paths | — | Out of UI scope. The unused Admin service wrappers are removed; backend routes remain unchanged. Route API removal to PM rather than reviving deprecated controls. |
 | 27 | Add tenant page at `/admin/tenants/new` | `POST /api/v1/admin/tenants/admin-provision` or `/admin-provision-with-account` | T; the combined account path also requires `admin.dgfy_accounts` | Required reason; success remains visible with an explicit Overview link; the returned temporary password stays in component memory | `tenant_admin_audit_logs` (`admin_create_*`) | — | Wave 2 keeps the entry point separate from the directory and does not auto-navigate after provisioning. |
+
+### Final integrated destination map
+
+The 27 rows above are the reconciled Wave 4 map; earlier phase entries preserve the placement and
+open findings recorded at their own implementation points. Actions 1–6 live in Lifecycle; 7–9 in
+Registration; 11–12 in Access & storefront; 13–16 in Compliance; 17–19 in Store setup; and 23 in
+Overview. The submitted registration-draft queue (10) and Revenue & Settlement (20) remain global
+directory tools. Payment Operations (21) and Invoices (22) remain separate grant-protected global
+pages. Add tenant (27) stays at `/admin/tenants/new`. Affiliate slots (24) and final-review document
+review (25) remain API-only under the recorded decisions. Legacy actions (26) remain outside the
+UI, with only unused Admin frontend wrappers removed; their backend routes are unchanged. The
+combined Activity page remains deferred, with audit views beside their owning controls.
 
 ## Search and filter contract
 
