@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-24
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -642,6 +642,39 @@ is not refreshable, including while production deployment is deferred.
 
 This amends the default mid-soak routing in Decision 5 and supersedes #1660 only for this explicit
 delayed-production case. Compliance and production controls remain unchanged. `[default]`.
+
+### 2026-10-24 — Optional registered integration branches before `develop` (#2737)
+
+Large behavior-replacing work that cannot be dark-launched and is expected to take more than about
+one iteration may use a registered `epic/<n>-<slug>` or `feature/<n>-<slug>` integration branch
+between ordinary feature branches and `develop`. The branch is created from `origin/develop`, child
+PRs merge into it, and one Draft-gated final PR targets `develop`. Ordinary work continues to use
+`feat/*` branches and target `develop`. The full registration, lifecycle, synchronization, deletion,
+and final-readiness contract lives in
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-10-24 amendment.
+
+The strictness-tier check is explicit: this changes Decision 1's `[default]` flow description by
+adding an optional pre-stage before `develop`; it does not change Decisions 6 or 8. Decision 6's
+`[binding]` production tenant-schema report remains mandatory. Decision 8's `[binding]` no-squash
+and promotion-branch head-cut rule remains intact: that head-cut requirement governs promotion PRs
+into `staging` or `main`, where a release snapshot must be cut from the qualified source branch.
+The integration branch is never a promotion PR head into either branch; its only final PR targets
+`develop`, and every merge in this lifecycle is a true merge commit, never a squash. Therefore no
+long-lived branch is used as a promotion head and no binding clause is being relaxed. If a future
+proposal makes the integration branch a head into `staging` or `main`, this reading no longer
+applies and that change needs a superseding ADR plus tech-lead approval.
+
+The repository's `delete_branch_on_merge: true` setting deletes the integration branch on final
+merge even when `--delete-branch` is omitted. This setting is accepted: final readiness requires no
+open child PRs, verification uses the merge commit on `develop` and DEV from `develop`, and the
+integration branch can be restored from `<merge-commit>^2` if needed. The reviewer omits
+`--delete-branch` for defense in depth, but the repository setting controls the actual deletion.
+
+`[default]` tier under ADR 0039. This amendment does not change the `[binding]` clauses in Decisions
+6 or 8, or ADR 0081 Decision 7. If this scope outgrows an amendment, issue #2737 must be escalated
+for ADR 0098 and tech-lead approval rather than broadening this interpretation.
+
+PR: (this PR). Refs #2737.
 
 ## Related
 

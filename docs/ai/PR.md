@@ -44,6 +44,10 @@ reuse another session's record, or write `unknown-AI`: if it emits no line, omit
 ## PR base branch
 
 - Ordinary branches (features, fixes, chores, docs) target `develop` as base
+- Large behavior-replacing work that cannot be dark-launched and is expected to take more than
+  about one iteration may use a registered `epic/<n>-<slug>` or `feature/<n>-<slug>` integration
+  branch before `develop`; ordinary feature branches use `feat/`. See the authoritative lifecycle
+  in `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
 - A promotion PR targets `staging`, headed from a `to-staging/<label>` branch, or targets `main`,
   headed from a `release/<label>` branch — per `docs/ops/RELEASE_CANDIDATE_POLICY.md`
   (authoritative) and the `promoter` role (`.agents/skills/promoter/SKILL.md`, #512)

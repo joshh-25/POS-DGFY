@@ -7,6 +7,8 @@ const {
   PATH_FILTERS,
   BACKEND_TEST_INVENTORY_FILTER,
   parseArgs,
+  resolvePrBase,
+  canPostLocalCi,
   detectComponents,
   classifyCiUnavailability,
   computeOverallResult,
@@ -38,11 +40,26 @@ test('PATH_FILTERS stay verbatim in sync with shared-changed-paths.yml', () => {
 
 // --- parseArgs ---------------------------------------------------------
 
-test('parseArgs defaults to fast tier and develop base', () => {
+test('parseArgs defers the base default until PR metadata is available', () => {
   const options = parseArgs([]);
   assert.equal(options.tier, 'fast');
-  assert.equal(options.base, 'develop');
+  assert.equal(options.base, null);
   assert.equal(options.post, false);
+});
+
+test('base defaults from the PR, honors an explicit override, and falls back to develop without a PR', () => {
+  assert.equal(resolvePrBase(null, { baseRefName: 'epic/2634-delivery' }), 'epic/2634-delivery');
+  assert.equal(resolvePrBase('staging', { baseRefName: 'epic/2634-delivery' }), 'staging');
+  assert.equal(resolvePrBase(null, null), 'develop');
+});
+
+test('Local CI evidence can only be posted for develop or staging bases', () => {
+  assert.equal(canPostLocalCi('develop', 'develop'), true);
+  assert.equal(canPostLocalCi('staging', 'staging'), true);
+  assert.equal(canPostLocalCi('main', 'main'), false);
+  assert.equal(canPostLocalCi('epic/2634-delivery', 'epic/2634-delivery'), false);
+  assert.equal(canPostLocalCi('develop', 'epic/2634-delivery'), false);
+  assert.equal(canPostLocalCi('develop', null), false);
 });
 
 test('parseArgs accepts --tier full --post --pr', () => {

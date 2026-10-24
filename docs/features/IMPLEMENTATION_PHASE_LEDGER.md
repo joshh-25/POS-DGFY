@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-21
+last_reviewed: 2026-10-24
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -31435,3 +31435,182 @@ The two focused API suites passed 27 tests. Extraction from the supplied SynqCor
 ### Next phase number
 
 Phase 541. No explicit dependency.
+
+## Phase 541 - Optional registered integration branches (#2737)
+
+### Initiative and release
+
+Engineering process / optional integration route before `develop`.
+
+### Objective and scope
+
+Add optional registered `epic/<n>-<slug>` and `feature/<n>-<slug>` integration branches for large,
+behavior-replacing work that cannot be dark-launched and is expected to take more than about one
+iteration. Add PR check parity, advisory reservation/readiness checks, operator branch creation,
+Planner/Worker handoff support, reviewer rules, and policy/ADR documentation. The route does not
+change the `develop` default, flip the reservation gate, record a first final merge, merge, or deploy.
+
+### Status
+
+`in_progress` — implementation and local validation are underway in PR for issue #2737. The initial
+reservation and first-integration-merge toggles remain false until their separate post-merge gates.
+
+### Dependencies
+
+None. Phase 541 follows the Phase 540 high-water mark; no earlier unfinished phase is an explicit
+dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0074](../architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md),
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md),
+[Issue Taxonomy](../process/ISSUE-TAXONOMY.md), and the Planner/Worker compatibility contract.
+Classification: `within-existing-boundary`; no runtime API, database, or deployment behavior changes.
+
+### Implementation targets
+
+[`integration-branch-policy.js`](../../scripts/lib/integration-branch-policy.js) and its
+[`tests`](../../scripts/lib/integration-branch-policy.test.js),
+[`check-integration-branch.js`](../../scripts/check-integration-branch.js) and its
+[`tests`](../../scripts/check-integration-branch.test.js),
+[`epic-branch.js`](../../scripts/epic-branch.js) and its
+[`tests`](../../scripts/epic-branch.test.js), plus the app-version,
+[`compliance`](../../scripts/check-compliance-impact.js), and PR-check routing scripts and tests;
+PR workflow triggers and permissions; [branch cleanup policy](../../.github/branch-cleanup-policy.json);
+Planner/Worker/reviewer skills; governed process docs; ADR 0074 and ADR 0081 amendments; and this
+ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] Reserved registration requires the exact name pattern, an open epic-labeled issue, and the
+  exact issue-comment marker; ordinary and nested PR shapes are classified as specified.
+- [x] Child PRs receive the same PR checks as `develop`; reserved version-bump and compliance
+  routing behavior is covered by focused tests; the `## Local CI` carve-out stays on `develop` and
+  `staging` only.
+- [x] The operator helper validates the issue and CI trigger, creates from fresh `develop`, is
+  idempotent, and preserves the marker after auto-delete.
+- [x] Final readiness checks cover current `develop`, the epic definition of done, successful DEV
+  soak ancestry and allowed sync merges, merge hygiene, and absence of open child PRs.
+- [x] Planner/Worker handoff validation is explicit-operator-only for `epic`; reviewer and board
+  handling preserves child `In progress` status through integration merges.
+- [x] The documented ADR 0074 Decision 8 interpretation preserves the binding promotion head-cut
+  rule; ADR 0081 Decision 7 remains unchanged.
+- [x] Focused script tests, required docs/ADR/architecture checks, PR workflow checks, app version
+  check, syntax checks, and the changed-file marker scan pass.
+
+### Evidence
+
+`npm run test:integration-branch` passed 23 tests; app-version tests passed 42; compliance-impact
+tests passed 9; PR-check tests passed 55; app-check routing passed 20; branch-cleanup policy tests
+passed; version-toggle tests passed 6; and PR workflow tests passed 11. `npm run check:compliance`,
+`npm run check:architecture`, `npm run lint:docs`, `npm run test:adr`, PR workflow contract checks,
+`node scripts/check-app-version-bump.js`, syntax checks, and `git diff --check` passed. The
+reservation and first-integration-merge toggles remain false; external scratch-PR probes remain in
+the post-merge checklist below.
+
+### Risks and decisions
+
+No unresolved product decision. The marker is process evidence, not access control. Automatic
+deletion is accepted because the repository has `delete_branch_on_merge: true`; recovery uses the
+final merge commit's second parent. Compliance aggregation is selected by the reserved-name prefix
+while the checker runs offline; registration enforcement remains advisory until the separately
+gated blocking flip.
+
+### Post-merge verification
+
+- [ ] operational — create a scratch epic issue/branch via `epic:branch`, open a child PR and a
+  final PR, and verify positive and negative CI/reviewer probes; owner: Pat; blocks closing #2737.
+- [ ] operational — after the Phase 541 implementation PR is merged, no open `feature/` branch
+  heads remain, and scratch probes pass, make the separate change that flips
+  `RESERVATION_CHECK_BLOCKING`; owner: Pat; blocks enforcing registration findings.
+- [ ] operational — after Pat personally merges the first eligible integration-to-`develop` PR,
+  record that event by flipping `FIRST_INTEGRATION_MERGE_RECORDED`; owner: Pat; blocks unattended
+  final integration auto-merge.
+
+### Next phase number
+
+Phase 542. No explicit dependency.
+
+## Phase 545 - Resume-compatible AI session handoffs (#2753)
+
+### Initiative and release
+
+Agent workflow reliability / manual session handoff compatibility.
+
+### Objective and scope
+
+Allow Planner, Implementer, and Reviewer sessions to resume from the generic `agent-handoff/v1`
+and repository `dgfy-handoff/v1` snapshot variants. Centralize the compatibility contract, align
+the canonical producer and three receivers, preserve live-source and identity checks, and keep
+session snapshots distinct from Planner-to-Worker implementation plans. No application runtime,
+API, database, merge, or deployment behavior changes.
+
+### Status
+
+`in_progress` — implementation and documentation validation are underway on the #2753 Worker
+branch.
+
+### Dependencies
+
+None. Phases 542–544 are active integration-branch sequencing claims, not technical prerequisites
+for this documentation work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[Manual Session Handoff Compatibility](../ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md),
+[Planner/Worker Handoff Compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md), and issue
+[#2753](https://github.com/Sieitzz/dgfy-platform/issues/2753). Classification:
+`no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+`.agents/skills/handoff/SKILL.md`, the manual-session sections of the Planner, Implementer, and
+Reviewer skills, `docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md`, and this ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] The producer continues emitting `dgfy-handoff/v1`; all three receivers accept exactly
+  `agent-handoff/v1` and `dgfy-handoff/v1` under the same shared compatibility contract.
+- [x] Additional metadata, descriptive runtime/model values, and recoverable missing context do not
+  cause a hard stop; real repository/issue/PR/role conflicts still pause.
+- [x] Walkthroughs cover Planner, Implementer, and Reviewer, the #2696 reproduction and live docs,
+  changed live state, recoverable metadata, and a genuine unresolved conflict.
+- [x] Planner-to-Worker `ready` content and route checks, plus existing implementation/review action
+  boundaries, remain unchanged.
+- [x] `npm run lint:docs` and `npm run check:agent-surfaces` pass; walkthrough results are recorded
+  in PR Testing Evidence.
+
+### Evidence
+
+`npm run lint:docs` passed (36 governed docs); `npm run check:adr` passed (105 ADRs);
+`npm run check:agent-surfaces` passed (14 canonical roles, 10 shims); and
+`npm run check:compliance` reported no compliance-sensitive changes and passed API-contract checks.
+Manual walkthrough results are recorded in the PR's `## Testing Evidence`: the #2696 generic
+snapshot matched its live issue/role and continued after rereading the newer live candidate-slate
+comment and the feature doc on its registered branch; the DGFY variant followed the same path;
+matching Implementer/#2753 and Reviewer/#2758 variants resumed through live-source checks; harmless
+metadata and omitted checkout fields were recovered; wrong repository/issue/role and unresolved
+role cases stopped. No review or other external action was taken during walkthroughs. No
+application runtime tests apply to this instructions-only change.
+
+### Risks and decisions
+
+Phase 545 follows the highest active integration-branch claim (Phase 544) to avoid adding another
+branch-local collision. The current `develop` ledger lists Phase 542 next; Phase 542–544 are
+represented on active integration branches. This numbering choice creates no technical dependency
+on those phases. Their existing branch-local numbering must be reconciled before those branches
+converge. No unresolved product or scope decision remains.
+
+### Post-merge verification
+
+- [x] No deployment, provider, or operational verification is required for this documentation-only
+  change; the shared contract and walkthrough evidence close the scoped work.
+
+### Next phase number
+
+Phase 546. No explicit dependency.
