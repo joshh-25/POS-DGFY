@@ -171,6 +171,19 @@ describe('TenantManager searchable directory', () => {
     expect(screen.getByTestId('location-search').textContent).toContain('storefront=on');
   });
 
+  it('keeps provisioning off the directory and preserves query context on Add tenant and Overview links', async () => {
+    const search = '?q=Kate&status=active&plan=premium&compliance=compliant_active&ownership=claimed&ims=enabled&pos=disabled&storefront=visible&extra=keep';
+    renderDirectory(`/admin/tenants${search}`);
+    await screen.findByRole('heading', { name: 'Kate Market' });
+
+    expect(screen.queryByText('Assisted provisioning')).toBeNull();
+    expect(screen.queryByPlaceholderText('Company name')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Add tenant' }).getAttribute('href')).toBe(`/admin/tenants/new${search}`);
+    expect(screen.getByRole('link', { name: 'Kate Market' }).getAttribute('href')).toBe(
+      `/admin/tenants/550e8400-e29b-41d4-a716-446655440000${search}`
+    );
+  });
+
   it('hides archived by default, counts the whole set, and labels archived tenants', async () => {
     renderDirectory();
     await waitForDirectory();

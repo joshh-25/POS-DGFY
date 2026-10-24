@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: settings,compliance
 reason_codes_impacted: NONE
 policy_version: 2026.10.24
-verification_evidence: Focused API and Admin behavioral tests, API syntax checks, Admin build and lint, architecture/docs/compliance/app-version gates, and rendered desktop/mobile route evidence will be recorded in the implementation PR
+verification_evidence: API focused suites (8 suites/75 tests) and authenticated DB-backed tenant lifecycle suite (10 tests) pass; Admin and final implementation validation evidence will be recorded before opening the PR
 rollback_note: Revert the additive tenant detail read, Admin detail/Add tenant routes, moved assisted-provisioning UI, tests, and documentation together. No schema migration or permission grant is added.
 preflight_request_ref: PREFLIGHT-LOCAL-1792829038640-2026-10-24-ADMIN-TENANT-DETAIL-FOUNDATION
 preflight_result: no_breach
@@ -44,7 +44,7 @@ The local request-time preflight passed against the disposable API, MySQL, and R
 
 ## Verification Evidence
 
-Pending implementation. Record the exact tests, build, lint, architecture, documentation, compliance, app-version, and rendered UI evidence in the PR.
+API evidence is verified: 8 focused Jest suites/75 tests and the authenticated DB-backed tenant lifecycle suite/10 tests pass. Record the Admin, browser-session, build/lint, architecture/documentation/compliance, app-version, and rendered UI results here and in the PR after final checks.
 
 ## Rollback
 

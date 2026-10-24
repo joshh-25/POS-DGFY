@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
     Building2,
-    Building,
     RefreshCw,
     Check,
     X,
@@ -40,7 +39,6 @@ import {
     getStorefrontAccessModeMessage
 } from '../../../packages/web-core/src/utils/tenantCapabilityMessages.js';
 import { WORKFLOW_MODE_LABELS } from '../../../packages/web-core/src/features/settings/workflowMode.js';
-import IndustryPicker from '../../../packages/web-core/src/features/registration/IndustryPicker.jsx';
 import StorefrontCustomDomainsModal from '../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
 import TenantRevenueSettlementPanel from '../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
 import TenantDirectoryToolbar from '../src/features/admin/tenantDirectory/TenantDirectoryToolbar.jsx';
@@ -756,6 +754,7 @@ const categorizeAuditEvent = (eventType) => {
 
 export default function TenantManager() {
     const navigate = useNavigate();
+    const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const directoryState = useMemo(() => parseDirectoryParams(searchParams), [searchParams]);
     const [searchDraft, setSearchDraft] = useState(directoryState.q);
@@ -798,26 +797,6 @@ export default function TenantManager() {
     const [posMetadataSaving, setPosMetadataSaving] = useState('');
     const [posMetadataAuditLogs, setPosMetadataAuditLogs] = useState([]);
     const [posMetadataAuditLoading, setPosMetadataAuditLoading] = useState(false);
-
-    const [assistMode, setAssistMode] = useState('company');
-    const [assistLoading, setAssistLoading] = useState(false);
-    const [assistTemporaryPassword, setAssistTemporaryPassword] = useState('');
-    const [assistForm, setAssistForm] = useState({
-        name: '',
-        industryKey: '',
-        workflowMode: 'food_manufacturing',
-        templateKey: '',
-        adminEmail: '',
-        adminPhone: '',
-        adminPassword: '',
-        first_name: '',
-        middle_name: '',
-        last_name: '',
-        email: '',
-        phone: '',
-        temporary_password: '',
-        reason: ''
-    });
 
     // Edit Tenant Modal State
     const [showEditModal, setShowEditModal] = useState(false);
@@ -1005,68 +984,6 @@ export default function TenantManager() {
             loadRegistrationDrafts(),
             loadTenants({ silent: true })
         ]);
-    };
-
-    const updateAssistForm = (key, value) => {
-        setAssistForm((current) => ({ ...current, [key]: value }));
-    };
-
-    const submitAssistedProvisioning = async (event) => {
-        event.preventDefault();
-        setAssistLoading(true);
-        setAssistTemporaryPassword('');
-        try {
-            const response = assistMode === 'account_company'
-                ? await adminService.createAdminProvisionedAccountAndTenant({
-                    reason: assistForm.reason,
-                    dgfy_account: {
-                        first_name: assistForm.first_name,
-                        middle_name: assistForm.middle_name,
-                        last_name: assistForm.last_name,
-                        email: assistForm.email,
-                        phone: assistForm.phone,
-                        temporary_password: assistForm.temporary_password
-                    },
-                    company: {
-                        name: assistForm.name,
-                        workflowMode: assistForm.workflowMode,
-                        templateKey: assistForm.templateKey || null
-                    }
-                })
-                : await adminService.createAdminProvisionedTenant({
-                    name: assistForm.name,
-                    workflowMode: assistForm.workflowMode,
-                    templateKey: assistForm.templateKey || null,
-                    adminEmail: assistForm.adminEmail,
-                    adminPhone: assistForm.adminPhone,
-                    adminPassword: assistForm.adminPassword,
-                    reason: assistForm.reason
-                });
-            setAssistTemporaryPassword(response.data?.temporary_password || '');
-            setAssistForm({
-                name: '',
-                industryKey: '',
-                workflowMode: 'food_manufacturing',
-                templateKey: '',
-                adminEmail: '',
-                adminPhone: '',
-                adminPassword: '',
-                first_name: '',
-                middle_name: '',
-                last_name: '',
-                email: '',
-                phone: '',
-                temporary_password: '',
-                reason: ''
-            });
-            await loadTenants();
-            toast.success('Assisted provisioning completed');
-        } catch (err) {
-            const normalized = normalizeApiError(err);
-            toast.error(`Assisted provisioning failed: ${normalized.message}`);
-        } finally {
-            setAssistLoading(false);
-        }
     };
 
     const openCapabilityChange = (tenant, patch, label) => {
@@ -1910,6 +1827,12 @@ export default function TenantManager() {
                         </p>
                     </div>
                     <div className="flex gap-2">
+                        <Link
+                            to={{ pathname: '/admin/tenants/new', search: location.search }}
+                            className="inline-flex items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                        >
+                            Add tenant
+                        </Link>
                         <Button onClick={() => loadTenants()} variant="outline" disabled={loading}>
                             <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
                             Refresh
@@ -1923,63 +1846,6 @@ export default function TenantManager() {
             </div>
 
             <TenantRevenueSettlementPanel tenants={tenants} />
-
-            <form onSubmit={submitAssistedProvisioning} className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-center gap-2">
-                        <Building className="h-5 w-5 text-slate-500" />
-                        <div>
-                            <h2 className="text-sm font-semibold text-slate-900">Assisted provisioning</h2>
-                            <p className="text-xs text-slate-500">Create merchant companies for platform-led DGFY, IMS, and point-of-sale setup.</p>
-                        </div>
-                    </div>
-                    <div className="flex rounded-lg border border-slate-200 p-1">
-                        <button type="button" onClick={() => setAssistMode('company')} className={cn('rounded-md px-3 py-1.5 text-sm', assistMode === 'company' ? 'bg-slate-900 text-white' : 'text-slate-600')}>Company only</button>
-                        <button type="button" onClick={() => setAssistMode('account_company')} className={cn('rounded-md px-3 py-1.5 text-sm', assistMode === 'account_company' ? 'bg-slate-900 text-white' : 'text-slate-600')}>DGFY + Company</button>
-                    </div>
-                </div>
-                <div className="mb-3 rounded-lg border border-slate-200 p-3">
-                    <IndustryPicker
-                        idPrefix="assisted-provisioning-industry"
-                        value={assistForm.industryKey}
-                        onSelect={(entry) => setAssistForm((current) => ({ ...current, industryKey: entry.key, workflowMode: entry.workflow_mode, templateKey: entry.template_key || '' }))}
-                    />
-                </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Company name" value={assistForm.name} onChange={(event) => updateAssistForm('name', event.target.value)} />
-                    <input required minLength={3} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Audit reason" value={assistForm.reason} onChange={(event) => updateAssistForm('reason', event.target.value)} />
-                    {assistMode === 'company' ? (
-                        <>
-                            <input required type="email" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Admin email" value={assistForm.adminEmail} onChange={(event) => updateAssistForm('adminEmail', event.target.value)} />
-                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Admin phone" value={assistForm.adminPhone} onChange={(event) => updateAssistForm('adminPhone', event.target.value)} />
-                            <input required minLength={8} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Temporary password" value={assistForm.adminPassword} onChange={(event) => updateAssistForm('adminPassword', event.target.value)} />
-                        </>
-                    ) : (
-                        <>
-                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY first name" value={assistForm.first_name} onChange={(event) => updateAssistForm('first_name', event.target.value)} />
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY middle name" value={assistForm.middle_name} onChange={(event) => updateAssistForm('middle_name', event.target.value)} />
-                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY last name" value={assistForm.last_name} onChange={(event) => updateAssistForm('last_name', event.target.value)} />
-                            <input required type="email" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY email" value={assistForm.email} onChange={(event) => updateAssistForm('email', event.target.value)} />
-                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY phone" value={assistForm.phone} onChange={(event) => updateAssistForm('phone', event.target.value)} />
-                            <input minLength={8} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Temporary password (optional)" value={assistForm.temporary_password} onChange={(event) => updateAssistForm('temporary_password', event.target.value)} />
-                        </>
-                    )}
-                    <Button type="submit" disabled={assistLoading}>
-                        <Building2 className="mr-2 h-4 w-4" />
-                        {assistLoading ? 'Provisioning...' : 'Provision'}
-                    </Button>
-                </div>
-                {assistMode === 'company' ? (
-                    <p className="mt-3 text-xs text-amber-800">
-                        Company only creates an operational tenant without a DGFY owner. DGFY login, company switching, owner actions, and POS access require owner assignment and an accepted membership.
-                    </p>
-                ) : null}
-                {assistTemporaryPassword ? (
-                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                        Temporary password: <span className="font-mono font-semibold">{assistTemporaryPassword}</span>
-                    </div>
-                ) : null}
-            </form>
 
             <TenantDirectoryToolbar
                 tenants={tenants}
@@ -2006,7 +1872,7 @@ export default function TenantManager() {
                 <div role="alert" className="mb-6 flex w-full items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
                     <div className="flex items-center gap-2">
                         <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
-                        <span>Couldn't refresh tenants. Showing the last loaded list.</span>
+                        <span>Couldn&apos;t refresh tenants. Showing the last loaded list.</span>
                     </div>
                     <Button type="button" variant="outline" onClick={() => loadTenants()}>Retry</Button>
                 </div>
@@ -2125,7 +1991,13 @@ export default function TenantManager() {
                                     <div className="flex-1 min-w-0">
                                         <div className="flex min-w-0 flex-wrap items-center gap-3 mb-2">
                                             <h3 className="min-w-0 max-w-full truncate text-xl font-semibold text-slate-900" title={tenant.name}>
-                                                {tenant.name}
+                                                <Link
+                                                    to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}`, search: location.search }}
+                                                    className="hover:underline"
+                                                    title={`View ${tenant.name}`}
+                                                >
+                                                    {tenant.name}
+                                                </Link>
                                             </h3>
                                             <span className={cn(
                                                 "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",

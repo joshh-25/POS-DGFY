@@ -300,6 +300,22 @@ export const getTenants = async (status = 'all') => {
     return response.data;
 };
 
+export const getTenant = async (tenantId) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.get(`/admin/tenants/${encodeURIComponent(tenantId)}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
 /**
  * List submitted Storefront registration drafts awaiting platform-admin review.
  */
