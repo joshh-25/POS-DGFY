@@ -31839,7 +31839,13 @@ code, migration, schema, shared web-core, or app-version file is changed.
 - [x] Mocked browser route proof passes on desktop and mobile: all five destinations render, the
   full query survives navigation, global links retain their independent targets, no mutations or
   browser errors occur, and the 390 px viewport has no horizontal overflow.
-- [ ] Disposable-DB backend matrix evidence for the final committed SHA is pending.
+- [x] Focused disposable Linux/MySQL 8/Redis 7 backend matrix completed against implementation
+  commit `7cec71f966139ce9d231e48e185086e4180f84bd`, with coverage complete for 872 fast-tier and
+  34 DB-tier test files. The DB tier passed all 34 files. The fast tier was non-green: 6,703 tests
+  passed and 50 failed across 24 suites, including 12 runtime-error suites. The changed
+  `adminTenantCapabilities.transport.test.js` passed. The fast-tier failures are in unmodified
+  suites; a baseline run was not performed. The container recorded 12 OOM-killed child processes.
+  This focused run is advisory and does not replace the remaining skipped release gates.
 
 ### Evidence
 
@@ -31848,8 +31854,13 @@ The local compliance preflight passed against disposable API/MySQL/Redis fixture
 `PREFLIGHT-LOCAL-1792835197869-2026-10-24-ADMIN-TENANT-MANAGEMENT-SECTIONS` is reconciled in the
 declaration. The final full Admin run completed with 202 passing tests and six unrelated failures
 in the unchanged #2750 StoreTemplateManager suite. Focused Admin and API contract suites pass. The
-disposable backend matrix remains pending until the implementation is committed so its evidence
-can bind to the actual SHA. Rendered-route screenshots and the JSON report are under ignored
+focused disposable backend matrix targeted implementation commit
+`7cec71f966139ce9d231e48e185086e4180f84bd`: all 34 DB-tier files passed; the fast tier had 6,703
+passing tests and 50 failures across 24 unmodified suites, with 12 runtime-error suites and 12
+container OOM-killed child processes. The matrix reported overall fail (child exit 2); 16 other
+release gates were skipped by the focused scope. Its SHA-bound reports are under ignored
+`.tmp/release-gates/7cec71f966139ce9d231e48e185086e4180f84bd/`. The later commit records this result
+and changes documentation only. Rendered-route screenshots and the JSON report are under ignored
 `.tmp/tenant-detail-sections-proof/`.
 
 ### Risks and decisions
