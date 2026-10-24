@@ -71,7 +71,7 @@ current route/use-case path.
 | 24 | No current page caller | `GET/PATCH /:id/affiliate-slots` and `GET /:id/affiliate-slots/audit-logs` | T | Required reason, 3–500 characters; audit and cap write share a transaction | `tenant_admin_audit_logs` (`affiliate_slots_update`) | #1190 | API-only for now; no detail-page UI is approved in this decision. |
 | 25 | No current page caller | `POST /:id/compliance/final-review/documents/:document_id/review` | T | Review note is optional in the API | `tenant_compliance_audit_logs` (`compliance.final_review.review_document`) | — | API-only for now; keep the existing review API outside this UI migration. |
 | 26 | No active page control; legacy service wrappers/routes remain | `POST /:id/change-plan`, `POST /:id/setup-paypal-recurring`, and `POST /api/v1/admin/tenants/provision` | T | Legacy billing actions are disabled under current billing policy; no current reason/confirmation flow | No tenant-admin audit write found in these legacy paths | — | Out of UI scope. Route API removal to PM rather than reviving deprecated controls. |
-| 27 | Inline assisted-provisioning form | `POST /api/v1/admin/tenants/admin-provision` or `/admin-provision-with-account` | T; the combined account path also requires `admin.dgfy_accounts` | Required reason; combined flow returns a one-time temporary password | `tenant_admin_audit_logs` (`admin_create_*`) | — | Move to `/admin/tenants/new` with an Add tenant button on the directory. |
+| 27 | Add tenant page at `/admin/tenants/new` | `POST /api/v1/admin/tenants/admin-provision` or `/admin-provision-with-account` | T; the combined account path also requires `admin.dgfy_accounts` | Required reason; success remains visible with an explicit Overview link; the returned temporary password stays in component memory | `tenant_admin_audit_logs` (`admin_create_*`) | — | Wave 2 keeps the entry point separate from the directory and does not auto-navigate after provisioning. |
 
 ## Search and filter contract
 
@@ -91,12 +91,13 @@ search/filter context when returning from a detail page.
 If the UI displays a result count as “N of M”, it must define what `M` counts (the full tenant set,
 the filtered match set, or the visible non-archived set); do not leave the denominator ambiguous.
 
-The directory decision hides archived tenants from the default view and shows them only under the
-Archived status filter. Summary tiles count the whole tenant set, including archived rows, rather
-than the currently visible/search-filtered subset. A detail URL remains directly addressable and
-is presented read-only for an archived tenant; the current API does not have the future single-
-tenant `GET /admin/tenants/:id` needed by that detail route yet. This read-only UI rule is not a
-uniform API restriction; see [Archived tenant API behavior](#archived-tenant-api-behavior).
+The directory hides archived tenants from the default view and shows them when the Archived status
+filter is selected. Summary tiles count the whole tenant set, including archived rows, rather than
+the currently visible/search-filtered subset. `GET /admin/tenants/:id` is available to the existing
+`admin.tenants` grant and returns one item with the same enrichment and safe presentation as the
+directory read. A detail URL remains directly addressable and is presented read-only for an
+archived tenant. This read-only UI rule is not a uniform API restriction; see
+[Archived tenant API behavior](#archived-tenant-api-behavior).
 
 ## Detail-page sections and URL shape
 
@@ -113,12 +114,21 @@ The detail page uses one bookmarkable route per section:
 | Activity | `/admin/tenants/:id/activity` |
 | Billing | Link group to global billing tools; no detail route |
 
-Add tenant uses `/admin/tenants/new`. Route matching must handle `new` before `:id`. The current
-`AdminLayout` route guard and sidebar highlight compare exact paths, so nested tenant routes require
-that layout support before the detail routes ship. A section the current admin cannot use is hidden
+Add tenant uses `/admin/tenants/new`, declared before `/admin/tenants/:id`. Admin route access and
+sidebar highlighting resolve exact paths and slash-delimited descendants through the same policy;
+denied child pages do not mount during the redirect. Only Overview is available in Wave 2. Other
+sections remain unavailable and have no links yet. A section the current admin cannot use is hidden
 or has its permission explained; the page must not show an action and then rely on a 403 to explain
 the missing grant. Owner assignment requires both `admin.tenants` and `admin.dgfy_accounts`.
 Billing links keep their target pages' independent grants.
+
+Directory Add tenant and tenant-name links carry the complete current query string, including
+unrecognized parameters. Overview/Add tenant return links use the fixed local directory path with
+that same query string; a direct detail URL without search context returns to the default
+directory. Admin analytics and Sentry route labels replace tenant IDs with `:id`, while Add tenant
+remains `/admin/tenants/new`. This label normalization does not scrub SDK-captured URLs or query
+strings; URL privacy remediation remains tracked by [#2748](https://github.com/Sieitzz/dgfy-platform/issues/2748)
+and is required before the final DEV soak.
 
 ## Decisions log
 
@@ -150,16 +160,17 @@ Billing links keep their target pages' independent grants.
 
 ## Slice order and dependencies
 
-Wave 1 is the inventory/decision record (#2742) and searchable directory (#2743). The remaining
-candidate work follows the 2026-10-24 slate on #2696, with the decisions above applied:
+Wave 1 delivered the inventory/decision record (#2742) and searchable directory (#2743). Wave 2
+delivers the targeted single-tenant read, Overview route, nested authorization, query restoration,
+Add tenant page, and ID-free route labels. The remaining candidate work follows the 2026-10-24 slate
+on #2696, with the decisions above applied:
 
-1. **Wave 2 — detail foundation:** add `GET /admin/tenants/:id` with the list-item shape, the same
-   enrichment as the list, and the `admin.tenants` grant; add it to the route-classification test and
-   permission matrix. Then add the Overview/detail routes, nested-path guard/highlight support,
-   return-to-directory context, analytics labels without tenant IDs, and regression coverage for
-   existing admin routes. The detail page depends on the single-tenant read. The Add tenant page can
-   ship before or after Overview once routing support exists. Keep API list-payload decoupling
-   conditional on the healthy-read evidence below.
+1. **Wave 2 — detail foundation:** `GET /admin/tenants/:id` uses the list-item shape, enrichment,
+   and `admin.tenants` grant. Overview loads that endpoint directly and is independent of directory
+   state. Add tenant lives at `/admin/tenants/new`; its combined path requires the additional
+   `admin.dgfy_accounts` grant. Preserve the full directory query through navigation and return
+   links. API list-payload decoupling remains deferred until a healthy active-capability-read sample
+   establishes that it is warranted.
 2. **Wave 3 — section moves:** move Lifecycle and Registration controls from cards and keep the
    global registration-draft queue on the directory. Move Access & storefront only after #1923,
    #2633, and #2639 settle and the PROD capability-read failure is resolved. Move Compliance

@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: settings,compliance
 reason_codes_impacted: NONE
 policy_version: 2026.10.24
-verification_evidence: API focused suites (8 suites/75 tests) and authenticated DB-backed tenant lifecycle suite (10 tests) pass; Admin and final implementation validation evidence will be recorded before opening the PR
+verification_evidence: API focused suites 8/75, DB-backed lifecycle 10/10, auth_security_session DB matrix 7/38, browserSessionCookies 11/11, Admin focused 7/84; full Admin 185/191 with six unchanged #2750 failures; build, lint, architecture, docs, compliance, app-version, browser guard, and rendered desktop/mobile evidence pass
 rollback_note: Revert the additive tenant detail read, Admin detail/Add tenant routes, moved assisted-provisioning UI, tests, and documentation together. No schema migration or permission grant is added.
 preflight_request_ref: PREFLIGHT-LOCAL-1792829038640-2026-10-24-ADMIN-TENANT-DETAIL-FOUNDATION
 preflight_result: no_breach
@@ -44,7 +44,25 @@ The local request-time preflight passed against the disposable API, MySQL, and R
 
 ## Verification Evidence
 
-API evidence is verified: 8 focused Jest suites/75 tests and the authenticated DB-backed tenant lifecycle suite/10 tests pass. Record the Admin, browser-session, build/lint, architecture/documentation/compliance, app-version, and rendered UI results here and in the PR after final checks.
+- API: focused Jest suites pass 8/8 suites and 75/75 tests; the authenticated DB-backed tenant
+  lifecycle suite passes 10/10 tests, including the mounted detail route and safe response fields.
+- Admin: focused Vitest suites pass 7/7 files and 84/84 tests. The full suite passes 185/191 tests;
+  all six failures are in unchanged `StoreTemplateManager.registrationIndustries.integration.test.jsx`
+  and match existing issue #2750.
+- Security and DB: the disposable `auth_security_session` matrix passes 7/7 suites and 38/38 tests,
+  including RTR; `browserSessionCookies.test.js` passes 11/11; shared browser-token-storage guard
+  passes 2/2.
+- Build and static checks: Admin production build, Admin lint, explicit changed-`Pages/` lint, API
+  syntax checks, architecture checks, docs/ADR lint, compliance check, and app-version validation
+  against `epic/2696-admin-tenant-management-ux` pass. Lint reports one existing unused import in
+  `src/main.jsx` and one existing max-lines warning in `TenantManager.jsx`.
+- Rendered local Playwright evidence uses mocked API responses at 1440×1000 and 390×844. Directory
+  to Overview and back preserves all directory facets and unrelated query state; direct Overview
+  loads only the targeted detail API; mocked Add tenant success stays on-page without a directory
+  fetch. There were no console or page errors, framework overlays, or horizontal overflow. Screenshots
+  are in ignored local `.tmp/` artifacts; no deployed tenant data was modified.
+- `git diff --check` passes and the changed-file commit-marker scan found no matches. The local
+  request-time preflight reference above was reconciled before implementation.
 
 ## Rollback
 

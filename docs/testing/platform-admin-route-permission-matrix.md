@@ -19,6 +19,7 @@ The backend resolves current session and database permissions on every Platform 
 | `/api/v1/admin/partner-integrations*` | `admin.partner_integrations` |
 | `/api/v1/admin/tenant-intake*` | `admin.tenants` and `admin.dgfy_accounts` |
 | `/api/v1/admin/tenants/pricing*` | `admin.pricing` |
+| `GET /api/v1/admin/tenants/:id` (single-tenant detail read) | `admin.tenants` |
 | `/api/v1/admin/tenants/*` | `admin.tenants` |
 | `/api/v1/admin/tenants/admin-provision-with-account`, `/:id/owner` | `admin.tenants` and `admin.dgfy_accounts` |
 | `/api/v1/admin/tenants/registration-drafts/:draftId/approve`, `/:draftId/retry-materialization` | `admin.tenants` (via the generic tenant rule) |
