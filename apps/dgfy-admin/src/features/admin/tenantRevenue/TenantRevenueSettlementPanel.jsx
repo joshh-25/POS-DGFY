@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     Banknote,
@@ -79,7 +79,7 @@ const SummaryCard = ({ label, value, tone = 'slate' }) => {
     );
 };
 
-export default function TenantRevenueSettlementPanel({ tenants = [] }) {
+export default function TenantRevenueSettlementPanel({ tenants = [], preselectTenantId = '', preselectionReady = false }) {
     const [activeTab, setActiveTab] = useState('overview');
     const [tenantId, setTenantId] = useState('');
     const [periodStart, setPeriodStart] = useState(monthStart());
@@ -115,6 +115,8 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
     const [statementReference, setStatementReference] = useState('');
     const [statementRows, setStatementRows] = useState('');
     const [policyForm, setPolicyForm] = useState(() => createDefaultTenantRevenuePolicyForm(today()));
+    const [preselectionMessage, setPreselectionMessage] = useState('');
+    const preselectionHandled = useRef(false);
     const latestPolicy = policies[0] || null;
 
     const filters = useMemo(() => ({
@@ -175,7 +177,20 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
         }
     }, [latestPolicy, tenantId]);
 
+    useEffect(() => {
+        if (preselectionHandled.current || !preselectionReady || !preselectTenantId) return;
+        preselectionHandled.current = true;
+        const match = tenants.find((tenant) => String(tenant.id) === String(preselectTenantId));
+        if (!match) {
+            setPreselectionMessage('The tenant in this link is not available in the authorized tenant list. No tenant was selected.');
+            return;
+        }
+        setTenantId((current) => current || String(match.id));
+        setPreselectionMessage(`Showing revenue and settlement for ${match.name}.`);
+    }, [preselectTenantId, preselectionReady, tenants]);
+
     const handleTenantChange = (event) => {
+        setPreselectionMessage('');
         setPolicies([]);
         setPolicyForm(createDefaultTenantRevenuePolicyForm(today()));
         setTenantId(event.target.value);
@@ -362,6 +377,7 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
             </header>
 
             <div className="border-b border-slate-200 bg-slate-50 p-4">
+                {preselectionMessage ? <p role="status" className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{preselectionMessage}</p> : null}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
                     <label className="text-sm font-medium text-slate-700">
                         Tenant

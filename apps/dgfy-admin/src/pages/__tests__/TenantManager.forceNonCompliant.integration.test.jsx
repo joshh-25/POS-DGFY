@@ -3,12 +3,16 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import TenantManager from '../../../Pages/TenantManager.jsx';
+import TenantDetailLayout from '../../../Pages/TenantDetailLayout.jsx';
+import TenantCompliance from '../../../Pages/TenantCompliance.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminServiceMock: {
+    getTenant: vi.fn(),
     getTenants: vi.fn(),
+    listCompanyRegistrationDrafts: vi.fn(),
     updateTenant: vi.fn(),
     createTenant: vi.fn(),
     deleteTenant: vi.fn(),
@@ -40,7 +44,18 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/services/adminService', () => mocks.adminServiceMock);
 vi.mock('sonner', () => ({ toast: mocks.toastMock }));
 
-describe('TenantManager force non-compliant guardrails', () => {
+const renderCompliance = (tenant) => {
+  mocks.adminServiceMock.getTenant.mockResolvedValue({ data: tenant });
+  return render(<MemoryRouter initialEntries={[`/admin/tenants/${tenant.id}/compliance`]}><Routes>
+    <Route path="/admin" element={<Outlet context={{ adminProfile: { permissions: ['admin.tenants'] } }} />}>
+      <Route path="tenants/:id" element={<TenantDetailLayout />}>
+        <Route path="compliance" element={<TenantCompliance />} />
+      </Route>
+    </Route>
+  </Routes></MemoryRouter>);
+};
+
+describe('tenant Compliance section mode guardrails', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.adminServiceMock.getTenants.mockResolvedValue({
@@ -104,6 +119,7 @@ describe('TenantManager force non-compliant guardrails', () => {
         }
       ]
     });
+    mocks.adminServiceMock.listCompanyRegistrationDrafts.mockResolvedValue({ data: [] });
     mocks.adminServiceMock.forceTenantNonCompliant.mockResolvedValue({ success: true });
     mocks.adminServiceMock.selectTenantComplianceMode.mockResolvedValue({ success: true });
     mocks.adminServiceMock.upgradeTenantComplianceMode.mockResolvedValue({ success: true });
@@ -115,27 +131,31 @@ describe('TenantManager force non-compliant guardrails', () => {
     cleanup();
   });
 
-  it('renders the correct compliance lifecycle action for each tenant state', async () => {
+  it('removes compliance mode actions from tenant cards after moving them to Compliance', async () => {
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Legacy Retail' });
     await screen.findByRole('heading', { name: 'Non-compliant Retail' });
     await screen.findByRole('heading', { name: 'Compliant Retail' });
 
-    expect(screen.getByRole('button', { name: /Set compliance mode/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Move to compliant pending/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Force non-compliant/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Set compliance mode/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Move to compliant pending/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Force non-compliant/i })).toBeNull();
   });
 
   it('submits force action from the confirmation modal with trimmed reason payload', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    renderCompliance({
+      id: 'compliant-tenant', name: 'Compliant Retail', status: 'active', plan: 'standard',
+      compliance_mode_state: 'compliant_active',
+      admin_compliance_mode_action: { action: 'force_non_compliant', allowed: true, label: 'Force non-compliant', helper_text: 'Returns the tenant to non-fiscal POS access and disables fiscal output.', options: [] }
+    });
 
     await screen.findByRole('heading', { name: 'Compliant Retail' });
 
     await user.click(screen.getByRole('button', { name: /Force non-compliant/i }));
-    expect(await screen.findByText('Fiscal output is disabled and the tenant returns to non-fiscal POS access.')).toBeTruthy();
     const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Returns the tenant to non-fiscal POS access/)).toBeTruthy();
     await user.type(within(dialog).getByLabelText(/Reason/i), '  Emergency rollback  ');
     await user.click(within(dialog).getByRole('button', { name: /^Force non-compliant$/i }));
 
@@ -144,7 +164,7 @@ describe('TenantManager force non-compliant guardrails', () => {
         'compliant-tenant',
         {
           reason: 'Emergency rollback',
-          context: { source: 'tenant_manager_modal' }
+          context: { source: 'tenant_compliance_section' }
         }
       );
     });
@@ -152,16 +172,18 @@ describe('TenantManager force non-compliant guardrails', () => {
 
   it('selects compliant pending for legacy tenants without activating fiscal mode', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    renderCompliance({
+      id: 'legacy-tenant', name: 'Legacy Retail', status: 'active', plan: 'standard',
+      compliance_mode_state: null, compliance_mode_choice_required: true,
+      admin_compliance_mode_action: { action: 'select_mode', allowed: true, label: 'Set compliance mode', helper_text: 'Select non-compliant POS access or move the tenant into compliant pending mode.', options: ['non_compliant', 'compliant'] }
+    });
 
     await screen.findByRole('heading', { name: 'Legacy Retail' });
     await user.click(screen.getByRole('button', { name: /Set compliance mode/i }));
     let dialog = screen.getByRole('dialog');
     await user.click(within(dialog).getByRole('button', { name: /^Compliant pending$/i }));
-    expect(await screen.findByText('POS remains available, but fiscal issuance waits for checklist activation.')).toBeTruthy();
-    dialog = screen.getByRole('dialog');
     await user.type(within(dialog).getByLabelText(/Reason/i), 'Tenant requested compliant onboarding');
-    await user.click(within(dialog).getByRole('button', { name: /Set compliant pending/i }));
+    await user.click(within(dialog).getByRole('button', { name: /Set compliance mode/i }));
 
     await waitFor(() => {
       expect(mocks.adminServiceMock.selectTenantComplianceMode).toHaveBeenCalledWith(
@@ -169,7 +191,7 @@ describe('TenantManager force non-compliant guardrails', () => {
         {
           mode_choice: 'compliant',
           reason: 'Tenant requested compliant onboarding',
-          context: { source: 'tenant_manager_modal' }
+          context: { source: 'tenant_compliance_section' }
         }
       );
     });
@@ -177,11 +199,14 @@ describe('TenantManager force non-compliant guardrails', () => {
 
   it('moves non-compliant tenant to compliant pending without compliant active activation', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    renderCompliance({
+      id: 'non-compliant-tenant', name: 'Non-compliant Retail', status: 'active', plan: 'standard',
+      compliance_mode_state: 'non_compliant_active',
+      admin_compliance_mode_action: { action: 'upgrade_to_compliant_pending', allowed: true, label: 'Move to compliant pending', helper_text: 'Moves the tenant into the compliant path. Fiscal activation still requires the checklist.', options: [] }
+    });
 
     await screen.findByRole('heading', { name: 'Non-compliant Retail' });
     await user.click(screen.getByRole('button', { name: /Move to compliant pending/i }));
-    expect(await screen.findByText('The tenant enters the compliant path. Fiscal issuance still waits for checklist activation.')).toBeTruthy();
     const dialog = screen.getByRole('dialog');
     await user.type(within(dialog).getByLabelText(/Reason/i), 'Tenant is preparing compliance documents');
     await user.click(within(dialog).getByRole('button', { name: /^Move to compliant pending$/i }));
@@ -191,7 +216,7 @@ describe('TenantManager force non-compliant guardrails', () => {
         'non-compliant-tenant',
         {
           reason: 'Tenant is preparing compliance documents',
-          context: { source: 'tenant_manager_modal' }
+          context: { source: 'tenant_compliance_section' }
         }
       );
     });
@@ -200,9 +225,7 @@ describe('TenantManager force non-compliant guardrails', () => {
 
   it('blocks force action when backend eligibility says false even if lifecycle appears compliant', async () => {
     const user = userEvent.setup();
-    mocks.adminServiceMock.getTenants.mockResolvedValue({
-      data: [
-        {
+    const blockedTenant = {
           id: 'server-blocked-tenant',
           name: 'Server Blocked Retail',
           admin_email: 'blocked@retail.test',
@@ -219,11 +242,9 @@ describe('TenantManager force non-compliant guardrails', () => {
             helper_text: 'Tenant force override is temporarily blocked by policy gate.',
             options: []
           }
-        }
-      ]
-    });
+        };
 
-    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+    renderCompliance(blockedTenant);
     const forceButton = await screen.findByRole('button', { name: /Force non-compliant/i });
 
     expect(forceButton.hasAttribute('disabled')).toBe(true);

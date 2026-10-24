@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
     getTenantComplianceChecklist: vi.fn(),
     listTenantComplianceAuditLogs: vi.fn(),
     listTenantComplianceSecurityIncidents: vi.fn(),
+    listCompanyRegistrationDrafts: vi.fn(),
     updateTenantComplianceArtifactVerification: vi.fn(),
     updateTenantCompliancePeripheralVerification: vi.fn(),
     acknowledgeTenantComplianceSecurityIncident: vi.fn(),
@@ -104,6 +105,7 @@ describe('TenantManager capability controls', () => {
     mocks.adminServiceMock.getTenants.mockResolvedValue({
       data: [kusinaTenant, kateTenant]
     });
+    mocks.adminServiceMock.listCompanyRegistrationDrafts.mockResolvedValue({ data: [] });
     mocks.adminServiceMock.updateTenantCapabilities.mockResolvedValue({ success: true });
     mocks.adminServiceMock.listTenantCapabilityAuditLogs.mockResolvedValue({
       data: {

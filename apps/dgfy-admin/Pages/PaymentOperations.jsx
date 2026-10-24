@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, CreditCard, Download, QrCode, RefreshCw, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -63,6 +63,9 @@ const downloadCsv = (rows) => {
 export default function PaymentOperations() {
   const outletContext = useOutletContext() || {};
   const adminProfile = outletContext.adminProfile || null;
+  const [searchParams] = useSearchParams();
+  const requestedTenantId = searchParams.get('tenant_id') || '';
+  const canReadTenants = Boolean(adminProfile?.is_master || adminProfile?.permissions?.includes('admin.tenants'));
   const [loading, setLoading] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
   const [creatingChildAccount, setCreatingChildAccount] = useState(false);
@@ -83,6 +86,10 @@ export default function PaymentOperations() {
   const [, setCountdownTick] = useState(0);
   const [accounts, setAccounts] = useState([]);
   const [tenants, setTenants] = useState([]);
+  const [selectedTenantFilter, setSelectedTenantFilter] = useState('');
+  const [tenantContextMessage, setTenantContextMessage] = useState('');
+  const tenantPreselectionHandled = useRef(false);
+  const loadGeneration = useRef(0);
   const [settlementReport, setSettlementReport] = useState(null);
   const [certification, setCertification] = useState(null);
   const [onboardingUrl, setOnboardingUrl] = useState('');
@@ -126,35 +133,64 @@ export default function PaymentOperations() {
     || refundAmountInvalid
     || (selectedRefundSession && !canRefundSession(selectedRefundSession));
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    const generation = loadGeneration.current + 1;
+    loadGeneration.current = generation;
     setLoading(true);
     try {
-      const filters = statusFilter ? { status: statusFilter } : {};
-      const [sessionResponse, accountResponse, settlementResponse, certificationResponse, tenantResponse, sandboxSessionResponse] = await Promise.all([
+      const filters = {
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(selectedTenantFilter ? { tenant_id: selectedTenantFilter } : {})
+      };
+      const results = await Promise.allSettled([
         adminService.listCommercePaymentSessions(filters),
         adminService.listTenantPaymentAccounts(),
         adminService.getCommerceSettlementReport(filters),
         adminService.getPayMongoSandboxCertification(),
-        adminService.getTenants('all'),
+        canReadTenants ? adminService.getTenants('all') : Promise.resolve({ data: null }),
         // Own dedicated query — see the note on `sandboxSessions` state above.
-        adminService.listCommercePaymentSessions({ status: 'awaiting_payment' })
+        adminService.listCommercePaymentSessions({ status: 'awaiting_payment', ...(selectedTenantFilter ? { tenant_id: selectedTenantFilter } : {}) })
       ]);
-      setSessions(sessionResponse.data?.payment_sessions || []);
-      setAccounts(accountResponse.data?.payment_accounts || []);
-      setSettlementReport(settlementResponse.data?.settlement_report || null);
-      setCertification(certificationResponse.data?.certification || null);
-      setTenants(tenantResponse.data || []);
-      setSandboxSessions(sandboxSessionResponse.data?.payment_sessions || []);
+      if (generation !== loadGeneration.current) return;
+      const [sessionResult, accountResult, settlementResult, certificationResult, tenantResult, sandboxResult] = results;
+      if (sessionResult.status === 'fulfilled') setSessions(sessionResult.value.data?.payment_sessions || []);
+      if (accountResult.status === 'fulfilled') setAccounts(accountResult.value.data?.payment_accounts || []);
+      if (settlementResult.status === 'fulfilled') setSettlementReport(settlementResult.value.data?.settlement_report || null);
+      if (certificationResult.status === 'fulfilled') setCertification(certificationResult.value.data?.certification || null);
+      if (sandboxResult.status === 'fulfilled') setSandboxSessions(sandboxResult.value.data?.payment_sessions || []);
+      if (canReadTenants && tenantResult.status === 'fulfilled') {
+        const availableTenants = tenantResult.value.data || [];
+        setTenants(availableTenants);
+        if (requestedTenantId && !tenantPreselectionHandled.current) {
+          tenantPreselectionHandled.current = true;
+          const requestedTenant = availableTenants.find((tenant) => String(tenant.id) === String(requestedTenantId));
+          if (requestedTenant) {
+            setSelectedTenantFilter(String(requestedTenant.id));
+            setTenantContextMessage(`Payment operations are filtered to ${requestedTenant.name}. This link only selects a view; it does not perform an action.`);
+          } else {
+            setTenantContextMessage('The tenant in this link is not present in your authorized tenant list. No tenant was selected.');
+          }
+        }
+      } else if (requestedTenantId && !tenantPreselectionHandled.current) {
+        if (canReadTenants && tenantResult.status === 'rejected') {
+          setTenantContextMessage('The authorized tenant list could not be loaded, so the linked tenant was not selected. Refresh to retry validation.');
+        } else {
+          tenantPreselectionHandled.current = true;
+          setTenantContextMessage('Tenant preselection requires Tenant Management access. The URL value was not used; payment operations remain available without a tenant filter.');
+        }
+      }
+      const failures = results.slice(0, 4).filter((result) => result.status === 'rejected');
+      if (failures.length) toast.error(failures[0].reason?.response?.data?.message || failures[0].reason?.message || 'Some payment operation data could not be loaded.');
     } catch (error) {
       toast.error(error.response?.data?.message || error.message || 'Failed to load payment operations.');
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
-  };
+  }, [canReadTenants, requestedTenantId, selectedTenantFilter, statusFilter]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   // Keeps the sandbox section's expiry countdowns live without a per-row timer.
   useEffect(() => {
@@ -399,6 +435,13 @@ export default function PaymentOperations() {
           Refresh
         </Button>
       </div>
+
+      {tenantContextMessage ? (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          <span>{tenantContextMessage}</span>
+          {selectedTenantFilter ? <Button type="button" size="sm" variant="outline" onClick={() => { tenantPreselectionHandled.current = true; setSelectedTenantFilter(''); setTenantContextMessage('Tenant filter cleared. No billing action was performed.'); }}>Clear tenant filter</Button> : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
