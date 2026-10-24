@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import TenantDetailLayout from '../../../Pages/TenantDetailLayout.jsx';
 import TenantLifecycle from '../../../Pages/TenantLifecycle.jsx';
 import TenantRegistration from '../../../Pages/TenantRegistration.jsx';
@@ -50,6 +50,10 @@ vi.mock('@/services/adminService', () => mocks.adminServiceMock);
 vi.mock('sonner', () => ({ toast: mocks.toastMock }));
 
 const AdminContext = () => <Outlet context={{ adminProfile: { permissions: ['admin.tenants', 'admin.invoices'] } }} />;
+const RegistrationRouteSwitcher = () => {
+  const navigate = useNavigate();
+  return <button type="button" onClick={() => navigate('/admin/tenants/second-registration-tenant/registration')}>Switch tenant</button>;
+};
 const renderTenantSection = (tenant, section = 'lifecycle') => {
   mocks.adminServiceMock.getTenant.mockResolvedValue({ data: tenant });
   return render(<MemoryRouter initialEntries={[`/admin/tenants/${tenant.id}/${section}`]}><Routes>
@@ -65,6 +69,41 @@ const renderTenantSection = (tenant, section = 'lifecycle') => {
 describe('Tenant Lifecycle and Registration detail sections', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('does not show a late registration response after switching tenants', async () => {
+    let resolveFirstRegistration;
+    mocks.adminServiceMock.getTenant.mockImplementation(async (tenantId) => ({
+      data: { id: tenantId, name: tenantId === 'first-registration-tenant' ? 'First Tenant' : 'Second Tenant', status: 'active' }
+    }));
+    mocks.adminServiceMock.getTenantRegistration.mockImplementation((tenantId) => (
+      tenantId === 'first-registration-tenant'
+        ? new Promise((resolve) => { resolveFirstRegistration = resolve; })
+        : Promise.resolve({ data: { company_name: 'Second Tenant Evidence', review_status: 'approved', uploads: [] } })
+    ));
+
+    render(<MemoryRouter initialEntries={['/admin/tenants/first-registration-tenant/registration']}>
+      <RegistrationRouteSwitcher />
+      <Routes>
+        <Route path="/admin" element={<AdminContext />}>
+          <Route path="tenants/:id" element={<TenantDetailLayout />}>
+            <Route path="registration" element={<TenantRegistration />} />
+          </Route>
+        </Route>
+      </Routes>
+    </MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'First Tenant' });
+    await waitFor(() => expect(mocks.adminServiceMock.getTenantRegistration).toHaveBeenCalledWith('first-registration-tenant'));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Switch tenant' }));
+
+    await screen.findByRole('heading', { name: 'Second Tenant' });
+    expect(await screen.findByText('Second Tenant Evidence', { selector: 'dd' })).toBeTruthy();
+    resolveFirstRegistration({ data: { company_name: 'Stale First Tenant Evidence', review_status: 'pending', uploads: [] } });
+
+    await waitFor(() => expect(screen.queryByText('Stale First Tenant Evidence')).toBeNull());
+    expect(screen.getByText('Second Tenant Evidence', { selector: 'dd' })).toBeTruthy();
   });
 
   afterEach(() => {
@@ -242,6 +281,40 @@ describe('Tenant Lifecycle and Registration detail sections', () => {
     await screen.findByText('Recorded agreement states and acknowledgement evidence are shown when available.');
     expect(screen.getAllByText('Not recorded')).toHaveLength(2);
     expect(screen.queryByText('Accepted')).toBeNull();
+  });
+
+  it('renders an empty state when the registration application is not found', async () => {
+    mocks.adminServiceMock.getTenantRegistration.mockRejectedValue({
+      response: { status: 404, data: { code: 'RESOURCE_NOT_FOUND', message: 'Resource not found.' } }
+    });
+
+    renderTenantSection({ id: 'tenant-without-registration', name: 'Assisted Tenant', status: 'active' }, 'registration');
+
+    expect(await screen.findByRole('heading', { name: 'No registration application' })).toBeTruthy();
+    expect(screen.getByText(/no public registration application or submitted registration evidence/i)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Review record')).toBeNull();
+  });
+
+  it.each([
+    [{ response: { status: 401, data: { message: 'Unauthorized. Please login again.' } } }, 'Unauthorized. Please login again.'],
+    [{ response: { status: 403, data: { message: 'You do not have permission to perform this action.' } } }, 'You do not have permission to perform this action.'],
+    [{ response: { status: 503, data: { message: 'Service unavailable. Please try again.' } } }, 'Service unavailable. Please try again.'],
+    [{ request: {}, message: 'Network Error' }, 'No response from server. Check your connection.']
+  ])('keeps permission, server, and transport failures distinct and retryable', async (failure, message) => {
+    const user = userEvent.setup();
+    mocks.adminServiceMock.getTenantRegistration.mockRejectedValueOnce(failure);
+
+    renderTenantSection({ id: 'tenant-registration-error', name: 'Registration Error Tenant', status: 'active' }, 'registration');
+
+    expect((await screen.findByRole('alert')).textContent).toContain(message);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'No registration application' })).toBeNull();
+
+    mocks.adminServiceMock.getTenantRegistration.mockResolvedValue({ data: { review_status: 'approved', uploads: [] } });
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Review record')).toBeTruthy();
+    expect(mocks.adminServiceMock.getTenantRegistration).toHaveBeenCalledTimes(2);
   });
 
   it('uses the authenticated private blob for view and download actions', async () => {

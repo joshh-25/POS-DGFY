@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Eye, FileArchive, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -104,27 +104,42 @@ export default function TenantRegistration() {
     const [review, setReview] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [missingApplication, setMissingApplication] = useState(false);
     const [actionId, setActionId] = useState('');
     const [revokeTarget, setRevokeTarget] = useState(null);
     const [revokeReason, setRevokeReason] = useState('');
     const [revokeError, setRevokeError] = useState('');
     const [showDraftUploads, setShowDraftUploads] = useState(false);
+    const loadSequence = useRef(0);
 
     const load = useCallback(async () => {
+        const sequence = loadSequence.current + 1;
+        loadSequence.current = sequence;
         setLoading(true);
         setError('');
+        setMissingApplication(false);
+        setReview(null);
         try {
             const response = await adminService.getTenantRegistration(tenant.id);
-            setReview(responseData(response));
+            if (loadSequence.current === sequence) setReview(responseData(response));
         } catch (requestError) {
             const normalized = normalizeApiError(requestError);
-            setError(normalized.message || 'Registration evidence could not be loaded.');
+            if (loadSequence.current === sequence) {
+                if (normalized.status === 404 && normalized.code === 'RESOURCE_NOT_FOUND') {
+                    setMissingApplication(true);
+                } else {
+                    setError(normalized.message || 'Registration evidence could not be loaded.');
+                }
+            }
         } finally {
-            setLoading(false);
+            if (loadSequence.current === sequence) setLoading(false);
         }
     }, [tenant.id]);
 
-    useEffect(() => { void load(); }, [load]);
+    useEffect(() => {
+        void load();
+        return () => { loadSequence.current += 1; };
+    }, [load]);
 
     const download = async (upload) => {
         setActionId(`download:${upload.id}`);
@@ -204,7 +219,12 @@ export default function TenantRegistration() {
                 <p className="mt-1 text-sm text-slate-600">Submitted registration evidence, private files, download history, and upload access revocation.</p>
             </header>
             {error ? <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><Button type="button" variant="outline" onClick={() => void load()}>Retry</Button></div> : null}
-            {loading ? <p role="status" className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600"><RefreshCw className="h-4 w-4 animate-spin" />Loading registration record…</p> : review ? (
+            {loading ? <p role="status" className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600"><RefreshCw className="h-4 w-4 animate-spin" />Loading registration record…</p> : missingApplication ? (
+                <div role="status" className="rounded-lg border border-slate-200 bg-white p-5">
+                    <h3 className="font-semibold text-slate-900">No registration application</h3>
+                    <p className="mt-1 text-sm text-slate-600">This tenant has no public registration application or submitted registration evidence.</p>
+                </div>
+            ) : review ? (
                 <>
                     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                         <h3 className="font-semibold text-slate-900">Review record</h3>

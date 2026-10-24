@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-25
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -362,7 +362,7 @@ Assisted provisioning retries are identity-bound and fail-closed. A matching pen
 - **Tenant Overview**: `/admin/tenants/:id` reads one tenant directly and shows its identity, contact/domain, status, effective plan, ownership, and compliance. Owner assignment requires both `admin.tenants` and `admin.dgfy_accounts` (or Platform Master), an active tenant/account, a reason, and explicit force confirmation before `force: true` is sent. Payment and invoice links validate authorized tenant/application data before selection; the master-only Revenue link targets the directory panel anchor. Directory and detail navigation preserve the full query context. Lifecycle, Registration, Compliance, Store setup, and Access & storefront are linked sections. The optional combined Activity section is deferred.
 - **Assisted provisioning**: The directory's Add tenant link opens `/admin/tenants/new`. The standalone form keeps the required reason, IndustryPicker-derived workflow/template values, and both existing payloads. Combined DGFY account plus company creation requires both `admin.tenants` and `admin.dgfy_accounts`; the server continues to enforce direct requests. Success stays on the page with an explicit tenant Overview link. Any returned temporary password stays in component memory, clears before another submission, and is removed when the page unmounts.
 - **Archived tenant presentation**: The default directory hides archived rows and the Archived filter exposes them. Direct archived detail routes keep reads and audit history available and disable mutations across sections. This is a UI contract only: current API writes do not all reject archived tenants; see the archived API behavior inventory before treating the UI as an API-level safety guard.
-- **Observability and URL privacy**: Admin route labels use `/admin/tenants/:id` and keep `/admin/tenants/new` distinct. This does not scrub full URLs or query strings captured by shared SDKs. The URL privacy follow-up remains tracked by [#2748](https://github.com/Sieitzz/dgfy-platform/issues/2748) and is required before the final DEV soak.
+- **Observability and URL privacy**: Admin route labels use `/admin/tenants/:id` and keep `/admin/tenants/new` distinct. Shared telemetry clients remove query strings from Admin PostHog URL/referrer properties, including pageleave and nested person properties, and Sentry `request.url`; the Admin path and fragment remain useful for diagnosis. The resolved Admin surface controls this redaction. Browser URLs/history and non-Admin telemetry are unchanged. This is the #2748 privacy implementation in Phase 545 and must be present in the tested SHA used for the final DEV soak.
 
 ### Tenant Schema Sync Caveat
 

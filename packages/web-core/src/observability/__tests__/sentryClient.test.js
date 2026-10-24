@@ -8,7 +8,8 @@ import {
   resolveTracesSampleRate,
   resolveTracingMode,
   resolveWebviewChromeMajor,
-  sanitizeSentryEvent
+  sanitizeSentryEvent,
+  sanitizeSentryEventForSurface
 } from '../sentryClient.js';
 
 describe('resolveSentryEnvironment', () => {
@@ -58,6 +59,33 @@ describe('resolveWebviewChromeMajor', () => {
   it('returns null for missing/empty input', () => {
     expect(resolveWebviewChromeMajor(undefined)).toBeNull();
     expect(resolveWebviewChromeMajor('')).toBeNull();
+  });
+});
+
+describe('surface-aware Sentry URL redaction', () => {
+  it('removes Admin request query strings after the existing event sanitizer runs', () => {
+    const event = {
+      request: {
+        url: 'https://admin.example.test/admin/tenants?q=private#overview',
+        headers: { Cookie: 'session=private' },
+        data: { password: 'private' }
+      },
+      user: { id: 'admin-1', email: 'private@example.test' },
+      message: 'Authorization: Bearer secret-value-that-is-long-enough'
+    };
+
+    const sanitized = sanitizeSentryEventForSurface(event, 'admin');
+
+    expect(sanitized.request.url).toBe('https://admin.example.test/admin/tenants#overview');
+    expect(sanitized.request.headers).toBeUndefined();
+    expect(sanitized.request.data).toBeUndefined();
+    expect(sanitized.user).toEqual({ id: 'admin-1', username: undefined, email: undefined, ip_address: undefined });
+    expect(sanitized.message).toBe('Authorization: Bearer [redacted]');
+  });
+
+  it('preserves request URLs on non-Admin surfaces', () => {
+    const url = 'https://store.example.test/catalog?campaign=summer#item';
+    expect(sanitizeSentryEventForSurface({ request: { url } }, 'store').request.url).toBe(url);
   });
 });
 
@@ -257,6 +285,24 @@ describe('initBrowserSentry integrations', () => {
     vi.resetModules();
     return import('../sentryClient.js');
   };
+
+  it('uses the resolved Admin surface in the beforeSend URL sanitizer', async () => {
+    const init = vi.fn();
+    const browserTracingIntegration = vi.fn(() => ({ name: 'BrowserTracing' }));
+    vi.doMock('@sentry/react', () => ({ init, browserTracingIntegration, replayIntegration: vi.fn() }));
+
+    const freshModule = await importFreshSentryClient();
+    freshModule.initBrowserSentry({
+      env: { VITE_SENTRY_ENABLED: 'true', VITE_SENTRY_DSN: 'https://test@sentry.test/1' },
+      surface: 'admin'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const beforeSend = init.mock.calls[0][0].beforeSend;
+    const sent = beforeSend({ request: { url: '/admin/tenants?q=private' } });
+    expect(sent.request.url).toBe('/admin/tenants');
+    vi.doUnmock('@sentry/react');
+  });
 
   it('registers browserTracingIntegration with full options and replayIntegration when their sample rates are > 0', async () => {
     const browserTracingIntegration = vi.fn(() => ({ name: 'BrowserTracing' }));

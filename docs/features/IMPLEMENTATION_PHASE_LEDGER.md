@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-25
 review_by: 2027-02-16
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -31903,3 +31903,152 @@ and changes documentation only. Rendered-route screenshots and the JSON report a
 ### Next phase number
 
 Phase 545. No explicit dependency.
+
+## Phase 545 - Tenant-console integration cleanup and URL privacy (#2757, #2748, #2750)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 4 of epic #2696.
+
+### Objective and scope
+
+Reconcile the tenant-console action inventory to the integrated Wave 1–3 routes; remove unused
+Admin-only service wrappers for legacy plan-change and PayPal setup actions while retaining their
+backend APIs; repair the ambiguous Retail row selectors tracked by #2750; render an explicit empty
+state when the existing registration-review API reports no application; and remove query strings
+from Admin PostHog URL/referrer properties and Sentry `request.url` without changing browser URLs,
+event identity, unrelated telemetry properties, or non-Admin behavior. No API, permission, schema,
+migration, provider, or app-version change is in scope. The combined Activity page and payload
+decoupling remain deferred. Classification: `regulatory`.
+
+### Status
+
+`in_progress` — implementation and local validation are underway on the registered child branch
+`chore/2757-wave4-tenant-console`, based on the current
+`epic/2696-admin-tenant-management-ux` head. The child PR references #2757, #2748, and #2750 and
+targets the epic branch. The issues remain open and In Progress through epic integration; this phase
+is not complete until the implementation merges into the epic.
+
+### Dependencies
+
+- Phase 543 / PR #2760 and Phase 544 / PR #2764 provide the integrated detail routes, directory
+  context restoration, Add tenant flow, and Access controls that this phase reconciles and verifies.
+- #2748 is included in this Wave 4 PR by the dated 2026-10-25 scope updates on #2757 and #2748; no
+  separate privacy implementation is to be duplicated.
+- #2750 bounds the StoreTemplateManager change to test selectors. Product behavior, row assertions,
+  and existing mutation checks remain unchanged.
+- No earlier unfinished phase blocks this work. Deployment-specific #1923, #2633, and #2639
+  verification remains separate release work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md), [Tenant Management](TENANT_MANAGEMENT.md),
+[PR conventions](../ai/PR.md), and issues #2757, #2748, and #2750. Classification: `regulatory`; the
+reconciled preflight is recorded in
+[`2026-10-25-admin-tenant-console-integration-cleanup.md`](../compliance/impact-declarations/2026-10-25-admin-tenant-console-integration-cleanup.md).
+
+### Implementation targets
+
+`packages/web-core/src/observability/analyticsClient.js`, `sentryClient.js`, and the shared URL
+scrubber and tests; Admin `TenantRegistration.jsx`, unused legacy service wrappers, #2750's
+registration-industry integration test, relevant Admin integration tests; the 27-action inventory,
+Tenant Management reference, phase ledger, and compliance declaration. No backend production files,
+permission-matrix rules, endpoint contracts, or app-version files are changed.
+
+### Acceptance and validation evidence
+
+- [x] Current epic head, registered route, and issue scope were revalidated before editing. The
+  active board card remains In Progress.
+- [x] All 27 inventory rows were checked against the integrated section and global-tool placement.
+  Rows 24–25 remain API-only; row 26 documents the frontend wrapper removal and unchanged backend
+  routes; Activity and payload decoupling remain deferred.
+- [x] A repository-wide caller search found no production use of `setupPayPalRecurring` or
+  `adminChangePlan` in the Admin app; backend route/use-case code remains untouched. No relocated
+  tenant-console import or source-text assertion was found in tracked IMS tests.
+- [x] Admin selector and registration empty/error/retry coverage passes in the 29-file/212-test
+  Admin suite; the focused selector/registration files pass 25 tests. Shared PostHog/Sentry tests
+  pass 86 tests, including direct `before_send` checks for `$pageview` and `$pageleave`, nested
+  URL/referrer and person properties, Sentry composition, and unchanged non-Admin behavior.
+- [x] Admin lint passes with one existing warning in unchanged `src/main.jsx`; the changed
+  `Pages/TenantRegistration.jsx` and shared observability files lint cleanly. Admin, OPIS, POS,
+  Storefront, and IMS builds pass. Architecture (63 modules/799 code files, 115 controllers),
+  docs/strict ADR (37 governed docs/105 ADRs), compliance, and app-version checks against the epic
+  base pass. The pre-commit compliance and whitespace checks also pass.
+- [x] Synthetic-fixture browser journey passes at 1440×1000 and 390×844: directory filters remain
+  intact through all five detail sections, return navigation, Back/Forward, direct registration
+  route, and reload; both viewports have no horizontal overflow, console errors, or page errors.
+  Evidence: `.tmp/tenant-console-journey-report.json` and `.tmp/tenant-console-*-registration.png`.
+  Payload redaction is verified through the shared SDK hook unit tests; the browser experiment only
+  observed PostHog feature-flag traffic and did not observe a network event payload. No deployed
+  DEV evidence is claimed; this Worker does not deploy.
+- [x] The disposable Testing Agent DB tier passed all 34 test files across eight groups, including
+  `adminTenantLifecycle.integration.test.js` and registration-upload coverage. The earlier direct
+  host run passed four suites/27 tests but could not connect to host MySQL for the lifecycle suite;
+  the DB-tier rerun used the repository's isolated runner with MySQL 8 and Redis 7 and passed.
+- [ ] The focused Testing Agent gate is not fully green: the 872-file fast tier has 27 failing
+  backend suites across POS, delivery, migrations, compliance, billing, and other areas. No backend
+  production file changed in this phase, and these failures have not been baseline-compared, so
+  their origin is left unclassified. SHA-bound evidence: `.tmp/release-gates/cc125a40a/`.
+- [x] `npm run check:merge-hygiene -- --base origin/epic/2696-admin-tenant-management-ux --head HEAD`
+  passes. `git diff --check` passes and the final changed-file debug-marker scan found no matches.
+- [x] No merge, deployment, shared tenant write, billing/provider operation, or STAGING/PROD change
+  is performed in this phase's Worker session.
+
+### Risks and decisions
+
+- PostHog's installed SDK types expose `before_send` as a capture-result transformation. The Admin
+  surface is selected from resolved app initialization, not an event property; nested URL/referrer
+  values and `$set`/`$set_once` person properties are included. Sentry's existing PII and secret
+  sanitizer remains composed with Admin request-URL redaction.
+- The registration endpoint returns its existing `RESOURCE_NOT_FOUND` 404 when no review
+  application exists. Only that response becomes the empty state; 401/403, network, and 5xx errors
+  retain their messages and Retry action.
+- The prior full Admin run's six #2750 failures are historical evidence only; this phase must run
+  the repaired standalone suite and full Admin suite on its own SHA.
+- #1923 STAGING persistence/publication checks, #2633/#2639 deployed evidence, and PROD
+  capability-read recovery remain explicit release-verification follow-ups. No release readiness
+  or deployed acceptance is claimed by this child PR.
+
+### Evidence
+
+The required local request-time compliance preflight passed before implementation against
+disposable API/MySQL/Redis fixtures: `no_breach`, reason `ALLOWED`, at
+`2026-10-24T16:34:12.472Z`, reference
+`PREFLIGHT-LOCAL-1792859561527-2026-10-25-ADMIN-TENANT-CONSOLE-INTEGRATION-CLEANUP`. Implementation
+commits are `cdb5c0a0f` (shared telemetry URL redaction) and `cc125a40a` (Admin registration
+journey and reconciled compliance declaration). The Admin suite passed 29 files/212 tests; the
+focused selector/registration files passed 25 tests; shared observability passed 2 files/86 tests.
+Five affected builds, lint, architecture, docs/strict ADR, compliance, and unchanged-version checks
+passed. The synthetic browser journey passed on desktop/mobile with query/history preservation and
+no page/console errors or horizontal overflow; its report and screenshots are under `.tmp/`.
+PostHog URL redaction was verified at `before_send` in the shared-client tests; live network event
+delivery was not observed in the browser run. The Testing Agent focused gate targeted at
+`cc125a40a` completed with `FAIL`: all 34 DB-tier test files passed, including
+`adminTenantLifecycle.integration.test.js`, while 27 suites failed in the 872-file fast tier.
+Failure origin was not baseline-compared. Full logs and `local_readiness.json` are under
+`.tmp/release-gates/cc125a40a/`. Child merge-hygiene passes against the registered epic base;
+`git diff --check` passes and the final changed-file debug-marker scan found no matches.
+
+### Post-merge verification
+
+- [ ] `deployment` — an authorized deployment role verifies the tested child SHA in DEV and records
+  the successful workflow URL and running Admin image/build identity; owner: deployment role; this
+  does not substitute for the aggregate soak.
+- [ ] `deployment` — after Wave 4 merges into the epic, obtain a qualifying DEV soak from the final
+  epic SHA under the release policy; verify the tenant journey on desktop and mobile and bind the
+  evidence to that SHA; owner: deployment role; blocks the aggregate PR readiness.
+- [ ] `operational` — retain #1923 STAGING persistence/publication, #2633/#2639 deployed evidence,
+  and PROD capability-read recovery as outstanding release verification; owner: existing issue
+  owners; blocks release qualification.
+- [ ] `compliance` — confirm the aggregate commit retains this declaration's reconciled preflight
+  reference and the compliance gate passes; owner: compliance sweep.
+
+### Next phase number
+
+Phase 546. Phase 545 depends on integrated Phases 543 and 544; no other explicit dependency blocks
+implementation.
