@@ -20,6 +20,7 @@ import { registrationIndustryRepository } from '../registration/index.js';
 import { createTenantPayMongoChildAccountUseCase } from '../commercePayments/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
 import { buildListTenantsUseCase } from './usecases/listTenantsUseCase.js';
+import { buildGetTenantUseCase } from './usecases/getTenantUseCase.js';
 import { buildApproveTenantUseCase } from './usecases/approveTenantUseCase.js';
 import { buildRejectTenantUseCase } from './usecases/rejectTenantUseCase.js';
 import { buildProvisionNewTenantUseCase } from './usecases/provisionNewTenantUseCase.js';
@@ -100,6 +101,13 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
 });
 
 export const listTenantsUseCase = buildListTenantsUseCase({
+    tenantAdminRepository,
+    tenantConnector,
+    readTenantCapabilities,
+    logger
+});
+
+export const getTenantUseCase = buildGetTenantUseCase({
     tenantAdminRepository,
     tenantConnector,
     readTenantCapabilities,

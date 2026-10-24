@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
     registerCompanyRequestUseCase,
     listTenantsUseCase,
+    getTenantUseCase,
     approveTenantUseCase,
     assignTenantOwnerByAdminUseCase,
     createAdminProvisionedAccountAndTenantUseCase,
@@ -122,6 +123,18 @@ export const listTenants = async (req, res) => {
         })
     });
     return sendUseCaseResult(res, result);
+};
+
+/**
+ * ADMIN: Read one tenant using the same safe, enriched item shape as the directory.
+ */
+export const getTenant = async (req, res) => {
+    const result = await getTenantUseCase({
+        id: req.params?.id
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to load tenant.'
+    });
 };
 
 export const listAdminCompanyRegistrationDrafts = async (req, res) => {
@@ -1041,6 +1054,7 @@ export const adminUpdateComplianceFinalReviewDocumentReview = async (req, res) =
 export default {
     registerCompanyRequest,
     listTenants,
+    getTenant,
     approveTenant,
     retryTenantProvisioning,
     rejectTenant,
