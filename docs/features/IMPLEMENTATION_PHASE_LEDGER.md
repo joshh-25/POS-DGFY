@@ -31638,3 +31638,112 @@ fixtures and reconciled the declaration to `PREFLIGHT-LOCAL-1792811289372-2026-1
 ### Next phase number
 
 Phase 543. No explicit dependency.
+
+## Phase 543 - Tenant detail foundation and Add tenant page (#2755)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 2 of epic #2696.
+
+### Objective and scope
+
+Add a targeted, safe single-tenant Platform Admin read; bookmarkable tenant Overview and Add tenant
+routes; nested authorization and sidebar ownership; directory-query restoration; ID-free Admin route
+labels; and a dedicated assisted-provisioning page. Preserve the directory payload, existing
+provisioning payloads/audit behavior, route grants, and archived API write behavior. Classification:
+`regulatory` because the changed API and Admin paths cover `settings,compliance` surfaces.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress on the registered epic child
+branch. The child PR targets `epic/2696-admin-tenant-management-ux`, references #2755, and keeps the
+issue In Progress through integration. This phase remains in progress until the aggregate change
+reaches `develop` and its implementation gates pass.
+
+### Dependencies
+
+Uses the integrated #2742 inventory and #2743 directory output on the #2696 integration branch.
+Within this phase, the detail read precedes Overview; route authorization precedes both nested pages.
+No other phase lifecycle dependency is claimed.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md),
+[Tenant Management](TENANT_MANAGEMENT.md), [PR conventions](../ai/PR.md), and issue #2755.
+Classification: `regulatory`; no architecture boundary, schema, or permission-grant change.
+
+### Implementation targets
+
+API single-tenant repository contract, shared presentation, detail use case, handlers, route, and
+compatibility facade under `apps/dgfy-api`; Admin routes, route policy, route labels, service wrapper,
+Overview, Add tenant, and directory links under `apps/dgfy-admin`; focused API/Admin tests; the route
+permission matrix; this ledger; tenant-console and Tenant Management docs; and the reconciled
+declaration `docs/compliance/impact-declarations/2026-10-24-admin-tenant-detail-foundation.md`.
+No migration, shared web-core implementation, or app-version bump.
+
+### Acceptance and validation evidence
+
+- [x] The targeted API returns the safe enriched list-item shape, preserves active capability
+  failure semantics, returns 404 for a missing tenant, and does not list all tenants for detail.
+- [x] API focused suites pass, including safe repository projection, list/detail use cases, route
+  classification, middleware grants/session denial, handler response, and static route precedence.
+  The authenticated DB-backed tenant lifecycle suite also passes with a persisted tenant returned
+  through the mounted detail endpoint and private fields excluded.
+- [x] Admin focused suites pass for direct Overview reads, not-found/error/retry, ID changes,
+  archived read-only presentation, query-preserving links, Add tenant payloads/grants/secrets, nested
+  authorization, route labels, service encoding, and directory regression behavior.
+- [x] Full Admin suite, Admin lint/build, changed `Pages/` lint, architecture/docs/compliance and
+  epic-base app-version checks, browser-session security regressions, rendered desktop/mobile
+  evidence, and changed-file marker/diff checks are recorded below. The full Admin suite has six
+  failures in the unchanged StoreTemplateManager registration-industries test tracked by #2750;
+  185 other tests pass.
+- [ ] Final child PR records its current head, validation evidence, payload decision, compliance
+  reference, #2748 dependency, and post-merge checklist; no merge or deploy is part of this phase.
+
+### Evidence
+
+Focused API validation: 8 Jest suites/75 tests passed; the DB-backed Admin Tenant Lifecycle suite
+passed 10/10 tests, including the authenticated tenant detail endpoint. The disposable
+`auth_security_session` DB matrix passed 7 suites/38 tests, and
+`browserSessionCookies.test.js` passed 11/11 tests. Focused Admin validation passed 7 Vitest files/84
+tests. The full Admin suite ran 28 files: 185/191 tests passed; its six failures are confined to
+unchanged `StoreTemplateManager.registrationIndustries.integration.test.jsx` and match the existing
+#2750 failure. Admin lint passed with one existing unused-import warning in `src/main.jsx`; explicit
+`Pages/` lint passed with the existing `TenantManager.jsx` max-lines warning. `build:admin`, shared
+browser-token-storage guard (2/2), API `node --check`, architecture, docs/ADR lint, compliance, and
+the epic-base app-version check passed. Mocked local Playwright evidence passed at 1440×1000 and
+390×844: direct Overview uses the targeted endpoint without a directory read, all directory facets
+and unrelated query state return intact, mocked Add tenant submission keeps success on-page without
+a directory fetch, no console/page errors or framework overlay appeared, and neither viewport
+overflowed horizontally. `git diff --check` passed and the changed-file commit-marker scan found no
+matches. Screenshots and backend matrix logs are local under ignored `.tmp/` artifacts.
+
+### Risks and decisions
+
+- Keep the existing full directory payload and client filtering. Defer payload decoupling until a
+  healthy active-capability-read sample supports that change; the 2026-10-24 PROD sample had 53/53
+  active capability reads unavailable and cannot establish healthy-path cost.
+- Archived Overview is read-only UI only. Existing status-specific API write behavior is unchanged.
+- Route-label normalization removes tenant IDs but does not scrub SDK-captured URLs or query strings.
+  #2748 remains required before the final DEV soak.
+- No deployed tenant data or external environment was changed. The local request-time preflight was
+  reconciled before implementation; declaration evidence is recorded in the linked artifact.
+
+### Post-merge verification
+
+- [ ] deployment — after the aggregate #2696 change reaches `develop`, verify direct Overview reload,
+  archived read-only presentation, all query facets through directory → detail → back, and Add tenant
+  on desktop and mobile; owner: Pat; blocks #2755 deployed QA acceptance.
+- [ ] privacy — complete shared Admin URL/query scrubbing in #2748 before the final DEV soak; owner:
+  PM/Worker; this is an explicit dependency for the soak.
+- [ ] compliance — verify the integrated commit retains the reconciled preflight reference and the
+  compliance gate remains green; owner: compliance sweep.
+
+### Next phase number
+
+Phase 544. No explicit dependency.

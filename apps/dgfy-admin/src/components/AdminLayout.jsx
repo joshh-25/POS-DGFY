@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
     Lock,
     LogOut,
@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
+import { canAccessAdminRoute, resolveAdminRoute } from '../features/admin/adminRoutePolicy.js';
 
 const SIDEBAR_ITEMS = [
     { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare, permission: 'admin.feedback' },
@@ -57,7 +58,7 @@ export default function AdminLayout() {
     const [passwordChange, setPasswordChange] = useState({ current_password: '', new_password: '', confirmation: '' });
     const [passwordChangeError, setPasswordChangeError] = useState('');
     const [passwordChanging, setPasswordChanging] = useState(false);
-    const allowedItems = SIDEBAR_ITEMS.filter((item) => adminProfile?.is_master || (!item.masterOnly && adminProfile?.permissions?.includes(item.permission)));
+    const allowedItems = SIDEBAR_ITEMS.filter((item) => canAccessAdminRoute(item, adminProfile));
 
     // Sidebar state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
@@ -71,13 +72,6 @@ export default function AdminLayout() {
         media.addEventListener?.('change', syncMobileSidebar);
         return () => media.removeEventListener?.('change', syncMobileSidebar);
     }, []);
-
-    useEffect(() => {
-        if (!isAuthenticated || !adminProfile) return;
-        const requestedItem = SIDEBAR_ITEMS.find((item) => item.path === location.pathname);
-        const permitted = requestedItem && allowedItems.some((item) => item.path === requestedItem.path);
-        if (!permitted && allowedItems[0]) navigate(allowedItems[0].path, { replace: true });
-    }, [adminProfile, isAuthenticated, location.pathname, navigate]);
 
     // Rehydrate only through the HttpOnly-cookie-backed identity endpoint.
     useEffect(() => {
@@ -235,6 +229,11 @@ export default function AdminLayout() {
         );
     }
 
+    const requestedRoute = resolveAdminRoute(location.pathname);
+    if (adminProfile && requestedRoute && !canAccessAdminRoute(requestedRoute, adminProfile) && allowedItems[0]) {
+        return <Navigate to={allowedItems[0].path} replace />;
+    }
+
     // Admin Portal Layout
     return (
         <div className="min-h-screen bg-slate-50 flex">
@@ -265,7 +264,7 @@ export default function AdminLayout() {
                 <nav className="flex-1 p-2 space-y-1">
                     {allowedItems.map(item => {
                         const Icon = item.icon;
-                        const isActive = location.pathname === item.path;
+                        const isActive = resolveAdminRoute(location.pathname)?.path === item.path;
                         return (
                             <button
                                 key={item.path}
