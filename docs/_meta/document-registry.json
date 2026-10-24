@@ -202,6 +202,12 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/features/PLATFORM_ADMIN_TENANT_CONSOLE.md",
+      "topic": "platform_admin_tenant_console",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/features/TENANT_CRM_FOUNDATION.md",
       "topic": "tenant_customer_crm_foundation",
       "expected_status": "reference",

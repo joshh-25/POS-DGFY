@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-24
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -170,7 +170,7 @@ CREATE TABLE Tenants (
     admin_email VARCHAR(255) NOT NULL,
     company_token VARCHAR(255) UNIQUE NOT NULL, -- Header: x-company-token
     db_name VARCHAR(255), -- The name of their isolated DB
-    status ENUM('pending', 'active', 'inactive', 'rejected') DEFAULT 'pending',
+    status ENUM('pending', 'active', 'inactive', 'rejected', 'archived') DEFAULT 'pending',
     plan ENUM('standard', 'premium') DEFAULT 'premium',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -179,6 +179,12 @@ CREATE TABLE Tenants (
     -- model attributes (createdAt, updatedAt) map correctly to these columns.
 );
 ```
+
+This is the landlord database schema sketch: `company_token` is a stored routing credential and
+`created_at` is the physical SQL column. The admin tenant-list API does not return `company_token`
+and serializes the timestamp as `createdAt`; see the
+[Platform Admin Tenant Console inventory](PLATFORM_ADMIN_TENANT_CONSOLE.md) for that response
+contract.
 
 ### Routing Logic
 1.  Frontend sends `x-company-token` header.
@@ -334,20 +340,26 @@ Production email delivery is closed for the SMTP path. DGFY in-account invitatio
 
 Located at `/admin/tenants`.
 
+The current-state action inventory and the next-slice search, filter, URL, and section contracts
+are recorded in the [Platform Admin Tenant Console inventory](PLATFORM_ADMIN_TENANT_CONSOLE.md).
+
 Platform-admin assisted provisioning exposes only `Company only` and `DGFY + Company` on this route; the redundant legacy `+ Add Tenant` control is removed. `Company only` remains operationally provisioned but cannot use DGFY login, company switching, owner actions, or POS access until owner assignment creates an accepted membership.
 
 Assisted provisioning retries are identity-bound and fail-closed. A matching pending platform-admin tenant may resume database provisioning without creating a second tenant or database. For combined provisioning, an active tenant with the exact linked admin-provisioned account may resume only when accepted membership assignment is incomplete; this reconciliation skips database provisioning and repairs the tenant-local master-admin/membership link. Other duplicates remain conflicts. Partial failures return the failed phase, retained record identifiers, and `retryable=true` instead of a generic success response.
 
 **Features:**
-- **List View**: Filter by status (Pending, Active, etc.).
-- **Search/Filter**: Search is a first-class admin tool for large tenant lists. It matches company name, admin email, company token, status, plan, Customer Access Mode, and capability state, and shows the current result count beside the search box.
-- **Quick Actions**: Approve, Reject, Edit, Delete.
-- **Capability Controls**: IMS/POS controls are grouped as core workspace access, while Storefront/Maps visibility and Customer Access Mode are grouped as public Storefront controls. Changes open a confirmation modal and require a reason persisted to the platform-admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
+- **List View**: The current status buttons are All, Pending, Active, and Rejected. The API also stores Inactive and Archived tenants, but the current directory has no filter button for either status. The agreed Archived-only filter and default-hidden behavior are defined in the inventory above.
+- **Search/Filter**: Search is a first-class admin tool for large tenant lists. The next directory slice's agreed search contract matches tenant identity fields; see the [agreed search and filter field set](PLATFORM_ADMIN_TENANT_CONSOLE.md#search-and-filter-contract) for the exact fields and structured filters. The current result count appears beside the search box.
+- **Quick Actions**: Pending tenants expose Approve, Reject, and Retry setup; inactive tenants can be reactivated; tenant cards also expose status edit and delete actions. Confirmations and reason requirements vary by action and are listed in the inventory.
+- **Registration review**: Tenant cards can open registration details, list and download registration files, and revoke an uploaded file. Submitted registration drafts have a separate review queue because no tenant row exists until materialization.
+- **Capability Controls**: IMS/POS controls are grouped as core workspace access, while Storefront/Maps visibility, customer access, and platform-controlled allowances are grouped as public Storefront controls. Changes open a confirmation modal, preview the impact, and require a reason persisted to the tenant admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
 - **Tenant Impact Preview**: Capability confirmation modals show the tenant/customer-facing consequence before the platform admin submits the audit reason, using the same "Platform admin changed your permissions" copy that tenants see for disabled IMS/POS access or downgraded Storefront modes.
 - **Capability Audit Trail**: Active tenant cards expose recent platform-admin capability changes from `GET /admin/tenants/:id/capabilities/audit-logs`, including actor, reason, timestamp, and before/after capability state.
-- **Compliance Lifecycle Control**: Tenant cards expose exactly one backend-authoritative compliance action from `admin_compliance_mode_action`: set the mode for legacy/no-mode tenants, move `non_compliant_active` tenants to `compliant_pending`, or force `compliant_pending` / `compliant_active` tenants back to `non_compliant_active`. Each action opens a confirmation modal with the POS/fiscal effect and requires a reason for immutable audit evidence.
+- **Compliance Lifecycle Control**: Tenant cards expose exactly one backend-authoritative compliance action from `admin_compliance_mode_action`: set the mode for legacy/no-mode tenants, move `non_compliant_active` tenants to `compliant_pending`, or force `compliant_pending` / `compliant_active` tenants back to `non_compliant_active`. Each action opens a confirmation modal with the POS/fiscal effect and requires a reason for immutable audit evidence. Artifact/peripheral verification and security incident actions also write compliance audit events.
 - **Compliance Safety Guard**: `Force non-compliant` remains available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided helper text to render the disabled reason. Moving a tenant toward compliance never bypasses fiscal readiness: Platform Admin can move the tenant to `compliant_pending`, while `compliant_active` still requires the normal checklist activation flow.
-- **Stats**: Total tenants, active vs pending counts.
+- **Stats**: The current tiles show Total, Pending, Active, and Rejected counts from the set loaded for the selected status filter. The agreed directory contract requires whole-set counts, including Archived tenants, independent of the visible filter/search subset.
+- **Assisted provisioning**: Company-only and DGFY-plus-company creation currently share an inline form on the directory. The agreed next slice moves it to `/admin/tenants/new`, keeps the required reason, and preserves the additional `admin.dgfy_accounts` grant for the combined path.
+- **Archived tenant presentation**: The current All view can include archived rows, but there is no dedicated Archived button or label. The agreed contract hides archived rows from the default list, exposes an Archived filter, and presents a directly opened archived detail page as read-only; current API write guards are documented in the inventory.
 
 ### Tenant Schema Sync Caveat
 

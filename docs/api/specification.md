@@ -6729,6 +6729,9 @@ The Platform Admin UI accepts a Philippine-peso amount and converts it to intege
 ### GET /admin/tenants
 List all tenant registrations with their status.
 
+**Query parameters**
+- `status`: any stored tenant status (`pending`, `active`, `inactive`, `rejected`, or `archived`), or `all` to omit the status filter. The current handler passes other non-empty values through without validating them.
+
 **Response (200)**
 ```json
 {
@@ -6738,13 +6741,20 @@ List all tenant registrations with their status.
       "id": 1,
       "name": "ACME Corp",
       "admin_email": "admin@acme.com",
-      "company_token": "token-acme-123",
+      "is_demo": false,
+      "domain": "acme.example",
       "status": "pending",
       "plan": "standard",
+      "owner_dgfy_account_id": null,
+      "provisioning_source": "public_registration",
+      "ownership_status": "unassigned",
       "effective_plan": "premium",
       "plan_policy": "registered_tenant_premium_capable",
       "compliance_mode_state": null,
       "compliance_mode_choice_required": true,
+      "compliance_activated_at": null,
+      "compliance_policy_version": null,
+      "registration_draft_id": null,
       "admin_compliance_mode_action": {
         "action": "select_mode",
         "allowed": true,
@@ -6779,7 +6789,7 @@ List all tenant registrations with their status.
           "reason": "missing_active_primary_storefront_location"
         }
       },
-      "created_at": "2026-02-06T..."
+      "createdAt": "2026-02-06T..."
     }
   ]
 }
@@ -6795,6 +6805,8 @@ List all tenant registrations with their status.
 - `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, `store_visibility_merchant_editable=true`, and `customer_access_mode=catalog`.
 - `capabilities.storefront_readiness`: indicates whether public Storefront visibility can publish through an active primary storefront location with valid coordinates.
 - `registration_action`: authoritative next action for a pending tenant's linked public registration. `approve` is returned only for `pending/not_started`; `retry` is returned for failed provisioning or an approved `in_progress` attempt older than the existing ten-minute retry window; `setting_up` and `reconcile` are non-actionable states. The approval and retry endpoints remain authoritative and continue to enforce these transitions atomically.
+- The list response omits `settings` and `db_name`. It does not include `company_token`; the API returns the model's `createdAt` attribute even though the physical landlord column is `created_at`.
+- Active tenants may return capability details or `capabilities: { "unavailable": true }` when a capability read fails. Non-active tenants have `capabilities: null`.
 
 ### PATCH /admin/tenants/:id/capabilities
 Update platform-admin capability controls for an active tenant.
