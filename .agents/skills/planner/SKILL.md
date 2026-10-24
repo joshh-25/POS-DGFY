@@ -155,8 +155,13 @@ turns an existing issue/epic into a local implementation contract.
 ## Manual handoff input
 
 When a session resumes from `/handoff`, accept `/planner <issue-or-epic-number> @.tmp/handoff-<...>.md`.
-Validate the `dgfy-handoff/v1` schema, confirm the issue or epic and `role: planner`, and use the
-artifact only as a snapshot of prior progress. Re-read the live issue and authoritative docs; they
-win over the artifact. A missing, malformed, mismatched, or ambiguous handoff is a hard stop with
-an instruction to rerun `/handoff` or resume without the artifact. Without a handoff artifact, the
-existing planner workflow is unchanged.
+Follow the [manual session handoff compatibility contract](../../../docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md),
+including its supported `agent-handoff/v1` and `dgfy-handoff/v1` variants. Confirm the requested
+issue or epic and `role: planner`; infer omitted context from the explicit invocation and verified
+live sources only when they settle it. Use the artifact as prior-progress evidence, then re-read the
+live issue, checkout, and authoritative docs before continuing; they win over snapshot state. A
+real identity/role conflict or consequential unresolved ambiguity is a hard stop with a precise
+question. A schema-label difference, extra metadata, descriptive runtime/model value, or stale
+branch/HEAD by itself is not. A snapshot does not authorize implementation or any other action
+outside Planner's existing boundary. Without a handoff artifact, the existing planner workflow is
+unchanged.
