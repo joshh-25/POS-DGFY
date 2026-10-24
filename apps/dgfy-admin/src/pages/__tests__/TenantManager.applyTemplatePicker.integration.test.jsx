@@ -39,7 +39,6 @@ const mocks = vi.hoisted(() => ({
     listTenantPosMetadataAuditLogs: vi.fn(),
     updateTenantPosMetadata: vi.fn(),
     retryTenantProvisioning: vi.fn(),
-    setupPayPalRecurring: vi.fn(),
     getTenantRevenueDashboard: vi.fn()
   },
   toast: { success: vi.fn(), error: vi.fn() }

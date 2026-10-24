@@ -87,9 +87,7 @@ describe('StoreTemplateManager registration-industries panel', () => {
     mocks.adminService.setRegistrationIndustryVisibility.mockResolvedValue({ data: { industry: { key: 'retail', hidden: true } } });
 
     render(<StoreTemplateManager />);
-    const [retailLabel] = await screen.findAllByText('Retail');
-
-    const retailRow = retailLabel.closest('tr');
+    const retailRow = await screen.findByRole('row', { name: /Retail businesses\./ });
     fireEvent.click(findHideOrShowButton(retailRow));
 
     await waitFor(() => expect(mocks.adminService.setRegistrationIndustryVisibility).toHaveBeenCalledWith(
@@ -105,9 +103,7 @@ describe('StoreTemplateManager registration-industries panel', () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null);
 
     render(<StoreTemplateManager />);
-    const [retailLabel] = await screen.findAllByText('Retail');
-
-    const retailRow = retailLabel.closest('tr');
+    const retailRow = await screen.findByRole('row', { name: /Retail businesses\./ });
     fireEvent.click(findHideOrShowButton(retailRow));
 
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -120,9 +116,7 @@ describe('StoreTemplateManager registration-industries panel', () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('no');
 
     render(<StoreTemplateManager />);
-    const [retailLabel] = await screen.findAllByText('Retail');
-
-    const retailRow = retailLabel.closest('tr');
+    const retailRow = await screen.findByRole('row', { name: /Retail businesses\./ });
     fireEvent.click(findHideOrShowButton(retailRow));
 
     expect(await screen.findByText(/a reason is required/i)).toBeTruthy();
@@ -187,8 +181,7 @@ describe('StoreTemplateManager registration-industries panel', () => {
   describe('edit', () => {
     it('locks the workflow-mode select for a system (baseline) row', async () => {
       render(<StoreTemplateManager />);
-      const [retailLabel] = await screen.findAllByText('Retail');
-      const retailRow = retailLabel.closest('tr');
+      const retailRow = await screen.findByRole('row', { name: /Retail businesses\./ });
 
       fireEvent.click(findEditButton(retailRow));
 
@@ -199,8 +192,7 @@ describe('StoreTemplateManager registration-industries panel', () => {
       mocks.adminService.updateRegistrationIndustry.mockResolvedValue({ data: { industry: { key: 'retail' } } });
 
       render(<StoreTemplateManager />);
-      const [retailLabel] = await screen.findAllByText('Retail');
-      const retailRow = retailLabel.closest('tr');
+      const retailRow = await screen.findByRole('row', { name: /Retail businesses\./ });
       fireEvent.click(findEditButton(retailRow));
 
       // The edit form renders as a second <tr> right below the row - both
@@ -221,8 +213,7 @@ describe('StoreTemplateManager registration-industries panel', () => {
 
     it('does not submit when no field actually changed', async () => {
       render(<StoreTemplateManager />);
-      const [retailLabel] = await screen.findAllByText('Retail');
-      const retailRow = retailLabel.closest('tr');
+      const retailRow = await screen.findByRole('row', { name: /Retail businesses\./ });
       fireEvent.click(findEditButton(retailRow));
 
       const editRow = (await screen.findByRole('button', { name: 'Save changes' })).closest('tr');
