@@ -64,7 +64,8 @@ describe('TenantOverview', () => {
     expect(screen.getByText('premium')).toBeTruthy();
     expect(screen.getByText('Claimed')).toBeTruthy();
     expect(screen.getByText('Compliant active')).toBeTruthy();
-    expect(screen.getByText(/capabilities and their audit controls remain on the directory/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Access & storefront section' }).getAttribute('href'))
+      .toBe('/admin/tenants/tenant-1/access?status=active&extra=keep');
     expect(screen.getByRole('link', { name: /Back to tenants/ }).getAttribute('href'))
       .toBe('/admin/tenants?status=active&extra=keep');
     expect(screen.queryByRole('link', { name: /compliance history|capability controls|ownership changes/i })).toBeNull();

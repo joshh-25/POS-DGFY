@@ -33,7 +33,7 @@ const TenantLifecycle = lazy(() => import('../Pages/TenantLifecycle.jsx'));
 const TenantRegistration = lazy(() => import('../Pages/TenantRegistration.jsx'));
 const TenantCompliance = lazy(() => import('../Pages/TenantCompliance.jsx'));
 const TenantStoreSetup = lazy(() => import('../Pages/TenantStoreSetup.jsx'));
-const TenantAccessGate = lazy(() => import('../Pages/TenantAccessGate.jsx'));
+const TenantAccess = lazy(() => import('../Pages/TenantAccess.jsx'));
 const AddTenant = lazy(() => import('../Pages/AddTenant.jsx'));
 const DgfyAccountManager = lazy(() => import('../Pages/DgfyAccountManager.jsx'));
 const PaymentOperations = lazy(() => import('../Pages/PaymentOperations.jsx'));
@@ -108,7 +108,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 <Route path="registration" element={<TenantRegistration />} />
                 <Route path="compliance" element={<TenantCompliance />} />
                 <Route path="store-setup" element={<TenantStoreSetup />} />
-                <Route path="access" element={<TenantAccessGate />} />
+                <Route path="access" element={<TenantAccess />} />
               </Route>
               <Route path="tenants" element={<TenantManager />} />
               <Route path="dgfy-accounts" element={<DgfyAccountManager />} />

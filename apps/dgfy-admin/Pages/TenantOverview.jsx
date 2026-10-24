@@ -135,7 +135,7 @@ function OwnerAssignment({ tenant, refreshTenant, adminProfile, isArchived }) {
 }
 
 export default function TenantOverview() {
-    const { tenant, adminProfile, refreshTenant, isArchived } = useOutletContext();
+    const { tenant, adminProfile, refreshTenant, isArchived, directoryTarget } = useOutletContext();
     const registrationApplicationId = tenant.registrationApplication?.id || tenant.registration_application_id;
     const paymentAllowed = adminProfile?.is_master || adminProfile?.permissions?.includes('admin.payments');
     const invoicesAllowed = adminProfile?.is_master || adminProfile?.permissions?.includes('admin.invoices');
@@ -175,7 +175,7 @@ export default function TenantOverview() {
                     {isArchived ? <span className="text-sm text-slate-500">Billing navigation is hidden for archived tenants.</span> : null}
                 </div>
             </section>
-            <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Tenant capabilities and their audit controls remain on the directory until the required Access verification evidence is available. The optional combined Activity page is deferred; audit history remains in each owning section.</p>
+            <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Manage tenant capabilities and storefront readiness in the <Link className="font-medium underline" to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/access`, search: directoryTarget.search }}>Access &amp; storefront section</Link>. The optional combined Activity page is deferred; audit history remains in each owning section.</p>
         </div>
     );
 }

@@ -11,7 +11,7 @@ import TenantLifecycle from '../../../Pages/TenantLifecycle.jsx';
 import TenantRegistration from '../../../Pages/TenantRegistration.jsx';
 import TenantCompliance from '../../../Pages/TenantCompliance.jsx';
 import TenantStoreSetup from '../../../Pages/TenantStoreSetup.jsx';
-import TenantAccessGate from '../../../Pages/TenantAccessGate.jsx';
+import TenantAccess from '../../../Pages/TenantAccess.jsx';
 
 const mocks = vi.hoisted(() => ({
     adminService: {
@@ -76,7 +76,7 @@ function renderAdminRoute(path, adminProfile = profile()) {
                         <Route path="registration" element={<TenantRegistration />} />
                         <Route path="compliance" element={<TenantCompliance />} />
                         <Route path="store-setup" element={<TenantStoreSetup />} />
-                        <Route path="access" element={<TenantAccessGate />} />
+                        <Route path="access" element={<TenantAccess />} />
                     </Route>
                 </Route>
             </Routes>
@@ -326,8 +326,7 @@ describe('Platform Admin tenant detail sections', () => {
         ));
     });
 
-    it('does not request the master-only template catalog for a delegate and shows the access evidence gate without moving controls', async () => {
-        const user = userEvent.setup();
+    it('does not request the master-only template catalog for a delegate and moves capability controls into Access', async () => {
         renderAdminRoute('/admin/tenants/tenant-1/store-setup', profile());
         expect(await screen.findByText(/catalog is Platform Master only/)).toBeTruthy();
         expect(mocks.adminService.listStoreTemplates).not.toHaveBeenCalled();
@@ -335,10 +334,9 @@ describe('Platform Admin tenant detail sections', () => {
         cleanup();
         setTenantRead(tenantFactory());
         renderAdminRoute('/admin/tenants/tenant-1/access', profile({ permissions: ['admin.tenants'] }));
-        expect(await screen.findByRole('heading', { name: /Access controls are awaiting verification/ })).toBeTruthy();
-        expect(screen.getByText(/cause of that production failure has not been established/)).toBeTruthy();
-        expect(screen.getByRole('link', { name: /Open North Market in the tenant directory/ })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Access & storefront' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Storefront / Maps Off' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Audit' })).toBeTruthy();
         expect(mocks.adminService.updateTenantCapabilities).not.toHaveBeenCalled();
-        await user.click(screen.getByRole('link', { name: /Open North Market in the tenant directory/ }));
     });
 });
