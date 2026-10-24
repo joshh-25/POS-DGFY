@@ -83,7 +83,10 @@ export const PERMISSION_GROUPS = {
             PACK_ASSIGNED_ORDERS: "orders:pack",
             VIEW_ASSIGNED_ORDERS: "orders:view_assigned",
             VIEW_ASSIGNED_DELIVERY_RUNS: "delivery_runs:view_assigned",
-            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act"
+            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act",
+            LOAD_DELIVERY_RUNS: "delivery_runs:load",
+            ACT_ASSIGNED_DELIVERY_JOBS: "delivery_jobs:act_assigned",
+            COLLECT_ASSIGNED_BALANCE: "orders:collect_assigned_balance"
         }
     },
     POS: {
@@ -97,6 +100,7 @@ export const PERMISSION_GROUPS = {
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
             RESOLVE_DELIVERY_RUN_VARIANCE: "pos:delivery_run_variance_resolve",
             CLOSE_SHIFT_POS: "pos:shift_close",
+            SHIFT_ACCESS: "pos:shift_access",
             CLOSE_DAY_POS: "pos:close_day",
             REPRINT_POS_RECEIPT: "pos:reprint",
             VOID_POS_TRANSACTION: "pos:void",

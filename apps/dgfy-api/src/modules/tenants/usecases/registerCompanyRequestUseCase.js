@@ -20,7 +20,7 @@ import {
     resolveRegisteredTenantPlan
 } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
-import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
+import { resolveCompanyRegistrationStatusUrl, resolvePosOnboardingUrl } from '../entities/companyRegistrationStatusUrl.js';
 import { normalizeCompanyRegistrationSnapshot } from '../entities/companyRegistrationPayload.js';
 
 const buildRuntimeOwnershipSettings = (workflowMode) => (
@@ -72,9 +72,121 @@ export const buildRegisterCompanyRequestUseCase = ({
     registrationIndustryRepository = null,
     emailService,
     idGenerator,
-    getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.MANUAL,
+    getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD,
+    provisionTenant = null,
+    materializeApprovedCompanyRegistration = async () => null,
+    createPayMongoChildAccountForTenant = null,
+    shouldAutoCreatePayMongoChildAccounts = () => false,
     logger
 }) => {
+    const parseTenantSettings = (tenant) => {
+        const rawSettings = tenant?.settings;
+        if (!rawSettings) return {};
+        if (typeof rawSettings === 'object') return rawSettings;
+        try {
+            return JSON.parse(rawSettings) || {};
+        } catch {
+            return {};
+        }
+    };
+
+    const runAutoProvisioningInBackground = async ({ tenant, application }) => {
+        let result;
+        try {
+            if (typeof provisionTenant !== 'function') {
+                throw new Error('Automatic registration provisioning is not configured.');
+            }
+            result = await provisionTenant({
+                tenantId: tenant.id,
+                name: tenant.name,
+                dbName: tenant.db_name,
+                companyToken: tenant.company_token,
+                adminEmail: tenant.admin_email,
+                adminPhone: tenant.admin_phone,
+                adminPasswordHash: tenant.admin_password_hash,
+                workflowMode: normalizeWorkflowMode(parseTenantSettings(tenant)?.workflow_mode),
+                templateKey: parseTenantSettings(tenant)?.store_template_key || null,
+                tenantCapabilities: { pos_enabled: false }
+            });
+            const registrationReview = typeof companyRegistrationRepository.findAdminReview === 'function'
+                ? await companyRegistrationRepository.findAdminReview(tenant.id)
+                : application;
+            await materializeApprovedCompanyRegistration({
+                tenant,
+                application: registrationReview || application
+            });
+            if (typeof dgfyAccountRepository?.upsertFounderMembership === 'function') {
+                await dgfyAccountRepository.upsertFounderMembership({
+                    dgfyAccountId: tenant.owner_dgfy_account_id,
+                    tenantId: tenant.id,
+                    tenantUserId: result?.admin_user_id || null,
+                    role: 'admin'
+                });
+            }
+            await companyRegistrationRepository.markProvisioningOutcome({
+                tenantId: tenant.id,
+                succeeded: true
+            });
+        } catch (provisioningError) {
+            await companyRegistrationRepository.markProvisioningOutcome({
+                tenantId: tenant.id,
+                succeeded: false,
+                details: { error: provisioningError.message }
+            }).catch(() => {});
+            logger?.error?.('[Registration] Automatic background provisioning failed', {
+                tenant_id: tenant.id,
+                error: provisioningError.message
+            });
+            return;
+        }
+
+        if (shouldAutoCreatePayMongoChildAccounts() && typeof createPayMongoChildAccountForTenant === 'function') {
+            try {
+                await createPayMongoChildAccountForTenant({
+                    tenantId: tenant.id,
+                    payload: { trade_name: tenant.name },
+                    actor: 'tenant_registration'
+                });
+            } catch (paymongoError) {
+                logger?.warn?.('[Registration] PayMongo child account creation failed after provisioning', {
+                    tenant_id: tenant.id,
+                    error: paymongoError.message
+                });
+            }
+        }
+
+        const onboardingDelivery = application.onboardingEmailDelivery || application.submissionEmailDelivery;
+        if (onboardingDelivery && emailService?.isEmailConfigured?.() && typeof emailService.sendCompanyOnboardingEmail === 'function') {
+            try {
+                const deliveryResult = await emailService.sendCompanyOnboardingEmail({
+                    email: tenant.admin_email,
+                    companyName: tenant.name,
+                    statusUrl: resolveCompanyRegistrationStatusUrl(application.id),
+                    posUrl: resolvePosOnboardingUrl(tenant.id)
+                });
+                await companyRegistrationRepository.updateEmailDelivery(onboardingDelivery, {
+                    status: 'sent_to_provider',
+                    provider_message_id: deliveryResult?.messageId || null,
+                    sent_at: new Date(),
+                    last_error_summary: null
+                });
+            } catch (emailError) {
+                await companyRegistrationRepository.updateEmailDelivery(onboardingDelivery, {
+                    status: 'failed',
+                    last_error_summary: String(emailError.message || 'Onboarding email failed.').slice(0, 500)
+                }).catch(() => {});
+                logger?.warn?.('[Registration] POS onboarding email failed', {
+                    application_id: application.id,
+                    error: emailError.message
+                });
+            }
+        }
+
+        logger?.info?.('[Registration] Automatic background provisioning completed', {
+            tenant_id: tenant.id
+        });
+    };
+
     return async ({ body, dgfyAccount, correlationId, metadata = {} }) => {
         const {
             name,
@@ -356,9 +468,7 @@ export const buildRegisterCompanyRequestUseCase = ({
             let paymentMethod = 'manual';
 
             const approvalMode = getTenantRegistrationApprovalMode();
-            if (approvalMode !== TENANT_REGISTRATION_APPROVAL_MODES.MANUAL) {
-                throw new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Public registration must use mandatory manual approval.', { statusCode: 500 });
-            }
+            const autoApprove = approvalMode === TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD;
 
             // Both Standard and Premium support PayPal (if subscriptionId provided) OR manual path.
             if (subscriptionId) {
@@ -439,6 +549,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                             industry_tag: normalizedIndustryTag,
                             registration_industry: resolvedIndustry ? normalizedIndustryKey : null,
                             store_template_key: storeTemplateKey,
+                            ...(autoApprove ? { registration_access_mode: 'catalog_only' } : {}),
                             ...buildRuntimeOwnershipSettings(normalizedWorkflowMode)
                         }
                     }, { transaction });
@@ -462,6 +573,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                         registrationIndustry: resolvedIndustry ? normalizedIndustryKey : null,
                         storeTemplateKey,
                         registrationSnapshot,
+                        emailEventType: autoApprove ? 'onboarding_ready' : 'submission_received',
                         transaction
                     });
 
@@ -498,17 +610,46 @@ export const buildRegisterCompanyRequestUseCase = ({
                 );
             }
 
+            if (autoApprove) {
+                if (typeof companyRegistrationRepository.markAutoProvisioningStarted !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Automatic registration provisioning is not configured.',
+                        { statusCode: 500 }
+                    );
+                }
+                const claimedApplication = await companyRegistrationRepository.markAutoProvisioningStarted({
+                    tenantId: tenant.id
+                });
+                if (!claimedApplication) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'This company registration is already being processed.',
+                        { statusCode: 409 }
+                    );
+                }
+                void runAutoProvisioningInBackground({
+                    tenant,
+                    application: registrationApplication
+                }).catch((backgroundError) => {
+                    logger?.error?.('[Registration] Unexpected automatic provisioning error', {
+                        tenant_id: tenant.id,
+                        error: backgroundError.message
+                    });
+                });
+            }
+
             await tracker.succeeded({
                 tenantId: tenant.id,
                 subscriptionId: validatedSubscriptionId,
                 metadata: {
                     status: tenant.status,
-                    auto_approved: false
+                    auto_approved: autoApprove
                 }
             });
 
             const submissionDelivery = registrationApplication.submissionEmailDelivery;
-            if (submissionDelivery && emailService?.isEmailConfigured?.()) {
+            if (!autoApprove && submissionDelivery && emailService?.isEmailConfigured?.()) {
                 try {
                     const deliveryResult = await emailService.sendCompanySubmissionReceivedEmail({
                         email: adminEmail,
@@ -534,21 +675,26 @@ export const buildRegisterCompanyRequestUseCase = ({
             }
 
             return ok({
-                statusCode: 201,
+                statusCode: autoApprove ? 202 : 201,
                 payload: {
                     success: true,
-                    message: `Your ${normalizedPlan} plan registration has been submitted for review. You will be notified once approved.`,
+                    message: autoApprove
+                        ? `Your ${normalizedPlan} plan company is being prepared. We will email your POS onboarding link when it is ready.`
+                        : `Your ${normalizedPlan} plan registration has been submitted for review. You will be notified once approved.`,
                     data: {
                         id: tenant.id,
                         name: tenant.name,
-                        status: 'pending',
+                        status: autoApprove ? 'setting_up_company' : 'pending',
+                        review_status: autoApprove ? 'approved' : 'pending',
+                        provisioning_status: autoApprove ? 'in_progress' : 'not_started',
                         plan: normalizedPlan,
                         compliance_mode_state: complianceModeState,
                         workflow_mode: normalizedWorkflowMode,
                         industry_tag: normalizedIndustryTag,
                         registration_industry: resolvedIndustry ? normalizedIndustryKey : null,
                         store_template_key: storeTemplateKey,
-                        application_id: registrationApplication.id
+                        application_id: registrationApplication.id,
+                        ...(autoApprove ? { registration_access_mode: 'catalog_only' } : {})
                     }
                 }
             });

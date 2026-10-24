@@ -293,6 +293,21 @@ No fee policy, settlement-hold, or payment-acceptance decision changes. Full
 context: issue #824,
 `docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md`.
 
+### 2026-10-17: Automatic refund recovery after POS rejection
+
+Clause 14's refund path is amended for provider failures. After a Storefront order is rejected or
+cancelled by the store, the terminal fulfillment decision remains committed and the same local
+refund row is retained as the recovery record. A definitive PayMongo refund rejection is retried
+automatically with a bounded exponential backoff; no cashier, manager, or administrator approval is
+required to release the retry.
+
+An ambiguous provider response (timeout, missing response, rate limit, or server-side failure) is
+kept pending for webhook or reconciliation evidence and is never blindly replayed. A permanent or
+exhausted failure remains `refund_pending`/settlement-ineligible and is surfaced for reconciliation;
+reconciliation is an observation and recovery path, not an approval gate. A successful signed
+PayMongo refund webhook remains authoritative and still creates the immutable refund and fee-reversal
+entries. Captured-amount and downpayment refund/forfeiture rules are unchanged.
+
 ### 2026-10-06: Tenant Owner fallback processing-fee configuration
 
 Clause 9's tenant read-only statement boundary is amended for one narrow, tenant-scoped

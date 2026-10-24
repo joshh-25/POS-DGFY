@@ -74,6 +74,8 @@ describe('Business Admin contracts', () => {
         const capabilities = buildBusinessAdminSettingsCapabilities({
             role: 'manager',
             permissions: [
+                PERMISSIONS.POS.actions.VIEW_POS,
+                PERMISSIONS.POS.actions.SHIFT_ACCESS,
                 PERMISSIONS.POS.actions.MANAGE_EMPLOYEES,
                 PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT
             ]
@@ -115,6 +117,39 @@ describe('Business Admin contracts', () => {
         expect(result.data.access.settings_sections).toMatchObject({
             profile: { view: true, edit: false },
             branches: { view: true, edit: false }
+        });
+    });
+
+    it('projects restricted tenant capabilities without removing catalog bootstrap access', async () => {
+        const tenantCapabilityResolver = jest.fn().mockResolvedValue({
+            pos_enabled: false,
+            storefront_visible: false
+        });
+        const useCase = buildGetBusinessAdminBootstrapUseCase({
+            businessAdminOverviewRepository: {
+                listUserLocationGrantIds: jest.fn().mockResolvedValue([]),
+                listActiveLocations: jest.fn().mockResolvedValue([])
+            },
+            tenantCapabilityResolver
+        });
+
+        const result = await useCase({
+            user: {
+                user_id: 8,
+                username: 'owner',
+                role: 'admin',
+                permissions: [PERMISSIONS.BUSINESS_ADMIN.actions.ACCESS]
+            },
+            tenant: { id: TENANT_ID, name: 'Catalog-only Business' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(tenantCapabilityResolver).toHaveBeenCalledWith({
+            tenant: { id: TENANT_ID, name: 'Catalog-only Business' }
+        });
+        expect(result.data.access.tenant_capabilities).toEqual({
+            pos_enabled: false,
+            storefront_visible: false
         });
     });
 

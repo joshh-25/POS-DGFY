@@ -8,6 +8,7 @@ import {
 
 const TERMINAL_REFUND_STATUSES = new Set(['succeeded']);
 const ACTIVE_REFUND_STATUSES = new Set(['created', 'pending']);
+const FAILED_REFUND_STATUSES = new Set(['failed', 'cancelled', 'canceled', 'manual_review_required']);
 
 // Phase 144 (#824). Who ended the order decides whether a non-refundable downpayment may be kept.
 //
@@ -95,6 +96,17 @@ export const buildHandleCommerceOrderLifecycleUseCase = ({
         payment_session: session.public_reference,
         refund: activeRefund,
         idempotent_replay: true
+      });
+    }
+    const failedRefund = refunds.find((refund) => FAILED_REFUND_STATUSES.has(refund.status));
+    if (failedRefund) {
+      return ok({
+        tracked: true,
+        payment_action: 'refund_failed',
+        payment_session: session.public_reference,
+        refund: failedRefund,
+        idempotent_replay: true,
+        reconciliation_required: true
       });
     }
 

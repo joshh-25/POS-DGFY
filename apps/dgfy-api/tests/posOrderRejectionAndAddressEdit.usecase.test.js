@@ -16,6 +16,7 @@ const createTransaction = () => ({
 });
 
 const buildRepository = (seed = {}) => {
+    const deliveryJob = seed.deliveryJob || null;
     const order = {
         pos_transaction_id: 55,
         order_source: 'online_store',
@@ -29,13 +30,16 @@ const buildRepository = (seed = {}) => {
         delivery_latitude: 14.5,
         delivery_longitude: 121.0,
         updated_at: new Date('2026-09-01T10:00:00Z'),
+        deliveryJob,
         ...seed
     };
     const replays = new Map();
     const addressChanges = [];
     return {
         order,
+        deliveryJob,
         addressChanges,
+        createAuditLog: jest.fn().mockResolvedValue({}),
         async findOperationReplayByKey({ operationKey, idempotencyKey }) {
             return replays.get(`${operationKey}:${idempotencyKey}`) || null;
         },
@@ -45,6 +49,10 @@ const buildRepository = (seed = {}) => {
         },
         async getOrderByIdForLifecycle() {
             return { ...order };
+        },
+        async updateDeliveryJobByOrderId(_id, payload) {
+            Object.assign(deliveryJob, payload);
+            return { ...deliveryJob };
         },
         async findOpenTerminalShift() {
             return {
@@ -93,6 +101,59 @@ describe('confirmed -> rejected online order status (Phase 210, #1179)', () => {
         // The accepted_by/at pair records who accepted -- a later reject must not overwrite it.
         expect(repository.order.accepted_by).toBe(3);
         expect(repository.order.accepted_at).toEqual(new Date('2026-09-01T10:00:00Z'));
+        expect(repository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            user_id: 12,
+            entity_type: 'pos_transaction',
+            entity_id: 55,
+            location_id: 7,
+            reason: 'Outside our delivery route',
+            changes: expect.objectContaining({
+                event: 'online_order_status_changed',
+                from: 'confirmed',
+                to: 'rejected',
+                reason: 'Outside our delivery route'
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('audits confirmation once and does not audit a repeated status', async () => {
+        const repository = buildRepository({ fulfillment_status: 'placed' });
+        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository: repository });
+        const input = {
+            posTransactionId: 55,
+            payload: { fulfillment_status: 'confirmed' },
+            user: { user_id: 12 },
+            auditContext: { requestId: 'status-request-1' }
+        };
+        const first = await run(() => useCase(input));
+        expect(first.success).toBe(true);
+        expect(repository.createAuditLog).toHaveBeenCalledTimes(1);
+        expect(repository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            request_id: 'status-request-1',
+            changes: expect.objectContaining({ from: 'placed', to: 'confirmed' })
+        }), expect.any(Object));
+        const repeated = await run(() => useCase(input));
+        expect(repeated.success).toBe(true);
+        expect(repository.createAuditLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels an attached manual delivery job when staff Rejects the order', async () => {
+        const repository = buildRepository({
+            deliveryJob: { delivery_job_id: 81, provider: 'manual', status: 'pending_dispatch' }
+        });
+        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository: repository });
+
+        const result = await run(() => useCase({
+            posTransactionId: 55,
+            payload: {
+                fulfillment_status: 'rejected', reason: 'Outside our delivery route',
+                idempotency_key: 'reject-with-delivery-job-1'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(repository.deliveryJob.status).toBe('cancelled');
     });
 
     it('rejects a confirmed -> rejected without a reason with 422 (validator-level)', async () => {

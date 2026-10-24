@@ -14,6 +14,7 @@ import { isAdminLikeRole } from '../config/userRoles.js';
 import logger from '../config/logger.js';
 import { resolveDegradedTenantContextFailure, sendTenantContextError } from './tenantHandler.js';
 import { getCachedCapabilityEnabled } from '../modules/shared/utils/tenantCapabilitySettingCache.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const resolveAdminFinancialRole = (username, isMaster = false) => {
   const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -352,6 +353,8 @@ export const authenticate = async (req, res, next) => {
       staff_role_id: user.staff_role_id || null,
       staffRole: user.staffRole || null,
       permissions: resolveEffectivePermissions(user),
+      permissions_resolved: true,
+      permission_mode: user.permission_mode || 'inherit',
       is_master_admin: user.is_master_admin,
       tenant_id: contextTenantId
     };
@@ -382,7 +385,7 @@ export const checkPermission = (requiredPermission) => {
 
     // Check if user has the specific permission
     const userPermissions = req.user.permissions || [];
-    if (userPermissions.includes(requiredPermission)) {
+    if (isPermissionEffective(userPermissions, requiredPermission)) {
       return next();
     }
 
@@ -433,7 +436,7 @@ export const requireTenantAdmin = (req, res, next) => {
   const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
   if (
     req.user.is_master_admin
-    || userPermissions.includes(PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES)
+    || isPermissionEffective(userPermissions, PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES)
   ) {
     return next();
   }
@@ -553,7 +556,9 @@ export const checkAnyPermission = (requiredPermissions) => {
     try {
       const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
       const effectivePermissions = await filterCapabilityDisabledPermissions(req, permissions);
-      const matchedPermissionIndex = effectivePermissions.findIndex((permission) => userPermissions.includes(permission));
+      const matchedPermissionIndex = effectivePermissions.findIndex((permission) => (
+        isPermissionEffective(userPermissions, permission)
+      ));
       if (matchedPermissionIndex >= 0) {
         const modeFallback = permissions.__modeRbacFallback;
         if (
@@ -600,7 +605,7 @@ export const checkStorefrontBrandingEditPermission = (req, res, next) => {
   }
 
   const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
-  if (userPermissions.includes(PERMISSIONS.SYSTEM.actions.EDIT_STOREFRONT_BRANDING)) {
+  if (isPermissionEffective(userPermissions, PERMISSIONS.SYSTEM.actions.EDIT_STOREFRONT_BRANDING)) {
     return next();
   }
 

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import api from '@/services/api';
 
-export default function FeedbackWidget() {
+export default function FeedbackWidget({ surface = 'unknown' }) {
     const [isOpen, setIsOpen] = useState(false);
     const [type, setType] = useState('bug');
     const [description, setDescription] = useState('');
@@ -26,6 +26,7 @@ export default function FeedbackWidget() {
                 type,
                 description,
                 url: window.location.href,
+                origin: { surface, platform: 'web' },
                 context: {
                     userAgent: navigator.userAgent,
                     timestamp: new Date().toISOString()

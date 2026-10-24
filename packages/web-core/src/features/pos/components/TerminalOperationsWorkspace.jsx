@@ -171,6 +171,7 @@ const parseIsoDateTime = (value) => {
 function ShiftControlsWorkspace({
   shiftState,
   terminalMeta,
+  terminalUser,
   operatorUserId,
   activeTerminalId,
   terminalRegistry = [],
@@ -316,6 +317,23 @@ function ShiftControlsWorkspace({
       && Number(entry?.location_id || 0) === Number(operatingLocationId || 0)
     )
   );
+  const operatingLocation = activeLocations.find(
+    (location) => Number(location?.location_id || 0) === Number(operatingLocationId || 0)
+  );
+  const operatingLocationLabel = operatingLocation?.name
+    || (operatingLocationId ? `Branch #${operatingLocationId}` : 'Not selected');
+  const currentRegisterTerminalId = sanitizeTerminalId(activeShift?.terminal_id || activeTerminalId);
+  const currentRegisterTerminal = activeTerminals.find(
+    (entry) => sanitizeTerminalId(entry?.terminal_id) === currentRegisterTerminalId
+  );
+  const currentRegisterTerminalLabel = currentRegisterTerminal?.label
+    || currentRegisterTerminalId
+    || 'Not selected';
+  const signedInCashierLabel = terminalUser?.display_name
+    || terminalUser?.name
+    || terminalUser?.username
+    || terminalUser?.email
+    || 'Current cashier';
   const activeTerminalMatchesOperatingLocation = !canAdminBypassShiftPrompt || Boolean(
     activeTerminalRegistryEntry
   );
@@ -819,6 +837,11 @@ function ShiftControlsWorkspace({
             {branchLocations.map((location) => {
               const locationId = Number(location?.location_id || 0);
               const terminals = Array.isArray(location?.terminals) ? location.terminals : [];
+              const occupiedTerminals = terminals.filter(
+                (terminal) => terminal?.status === 'occupied' || terminal?.status === 'stale'
+              );
+              const hasActiveShift = occupiedTerminals.length > 0;
+              const allTerminalsOccupied = terminals.length > 0 && occupiedTerminals.length === terminals.length;
               const firstAvailableTerminal = terminals.find((terminal) => terminal?.can_open === true);
               const activeTerminalKey = sanitizeTerminalId(activeTerminalId);
               const firstAvailableTerminalKey = sanitizeTerminalId(firstAvailableTerminal?.terminal_id);
@@ -832,7 +855,7 @@ function ShiftControlsWorkspace({
               return (
                 <article
                   key={`pos-branch-directory-${locationId}`}
-                  className={`rounded-xl border bg-white p-3 sm:p-3.5 ${isViewing ? 'border-blue-300 shadow-sm shadow-blue-100/70' : 'border-slate-200'}`}
+                  className={`rounded-xl border p-3 sm:p-3.5 ${allTerminalsOccupied ? 'border-slate-300 bg-slate-100/90' : 'border-slate-200 bg-white'} ${isViewing ? 'border-blue-300 shadow-sm shadow-blue-100/70' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -845,9 +868,19 @@ function ShiftControlsWorkspace({
                     <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-extrabold ${
                       isViewing
                         ? 'border-blue-200 bg-blue-700 text-white'
-                        : 'border-slate-200 bg-slate-50 text-slate-700'
+                        : allTerminalsOccupied
+                          ? 'border-slate-300 bg-slate-200 text-slate-700'
+                          : hasActiveShift
+                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
                     }`}>
-                      {isViewing ? 'Viewing' : 'Authorized'}
+                      {isViewing
+                        ? 'Viewing'
+                        : allTerminalsOccupied
+                          ? 'In use'
+                          : hasActiveShift
+                            ? 'Partially in use'
+                            : 'Available'}
                     </span>
                   </div>
 
@@ -858,15 +891,22 @@ function ShiftControlsWorkspace({
                       </p>
                     ) : terminals.map((terminal) => {
                       const shiftOwner = terminal?.shift?.cashier?.display_name || 'No shift owner';
-                              const currentOperator = terminal?.current_operator?.display_name
-                                || (terminal?.current_operator_status === 'unavailable'
-                                  ? 'Operator status unavailable'
-                                  : '');
+                      const terminalIsOccupied = terminal?.status === 'occupied' || terminal?.status === 'stale';
+                      const currentOperator = terminal?.current_operator?.display_name
+                        || terminal?.current_operator?.username
+                        || '';
+                      const activeCashier = currentOperator
+                        || (terminalIsOccupied
+                          ? (terminal?.current_operator_status === 'unavailable' ? 'Status unavailable' : 'Not signed in')
+                          : '');
                       const terminalStatus = terminal.status === 'stale'
                         ? 'Stale'
                         : (terminal.status === 'occupied' ? 'In use' : 'Available');
                       return (
-                        <div key={`${locationId}-${terminal.terminal_id}`} className="flex items-start justify-between gap-3 rounded-lg bg-[#F1F2FF] px-3 py-2.5">
+                        <div
+                          key={`${locationId}-${terminal.terminal_id}`}
+                          className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5 ${terminalIsOccupied ? 'border-slate-300 bg-slate-200/80' : 'border-emerald-100 bg-emerald-50/40'}`}
+                        >
                           <div className="flex min-w-0 items-start gap-2.5">
                             <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/80 text-[#1A4E8D]" aria-hidden="true">
                               <Monitor className="h-3.5 w-3.5" />
@@ -876,11 +916,11 @@ function ShiftControlsWorkspace({
                                 {terminal.label || terminal.terminal_id}
                               </p>
                               <p className="mt-0.5 truncate text-[10px] text-slate-600">
-                                {terminal.status === 'available' ? 'No active shift' : `Shift owner: ${shiftOwner}`}
+                                {terminalIsOccupied ? `Shift cashier: ${shiftOwner}` : 'No active shift'}
                               </p>
-                              {currentOperator ? (
+                              {activeCashier ? (
                                 <p className={`mt-0.5 truncate text-[10px] ${terminal?.current_operator_status === 'unavailable' ? 'text-amber-700' : 'text-slate-600'}`}>
-                                  Operator: {currentOperator}
+                                  Active cashier: {activeCashier}
                                 </p>
                               ) : null}
                               {terminal.reason_code ? (
@@ -1015,6 +1055,51 @@ function ShiftControlsWorkspace({
     );
   };
 
+  const renderCurrentRegisterCard = () => {
+    if (canViewBranchLocations || canAdminBypassShiftPrompt) return null;
+
+    return (
+      <section
+        className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 shadow-sm shadow-blue-100/60"
+        data-testid="pos-current-register-card"
+        aria-labelledby="pos-current-register-card-heading"
+      >
+        <div className="flex items-start gap-2.5">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D]">
+            <MapPinned className="h-4.5 w-4.5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h2 id="pos-current-register-card-heading" className="text-[13px] font-black text-[#0F172A]">
+              Current register
+            </h2>
+            <p className="mt-1 text-[11px] leading-4 text-[#475569]">
+              This cashier can operate only in the assigned branch and terminal.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-blue-100 bg-white/80 px-3 py-2.5">
+            <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Branch</p>
+            <p className="mt-1 truncate text-[12px] font-black text-[#0F172A]">{activeShift ? shiftLocationLabel : operatingLocationLabel}</p>
+          </div>
+          <div className="rounded-lg border border-blue-100 bg-white/80 px-3 py-2.5">
+            <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Terminal</p>
+            <p className="mt-1 truncate text-[12px] font-black text-[#0F172A]">{currentRegisterTerminalLabel}</p>
+          </div>
+          <div className="rounded-lg border border-blue-100 bg-white/80 px-3 py-2.5">
+            <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Cashier</p>
+            <p className="mt-1 truncate text-[12px] font-black text-[#0F172A]">{signedInCashierLabel}</p>
+          </div>
+        </div>
+
+        <div className={`mt-2 rounded-lg px-3 py-2 text-[11px] font-extrabold ${activeShift ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+          {activeShift ? 'Open shift' : 'No active shift'}
+        </div>
+      </section>
+    );
+  };
+
   const renderOpeningShiftControls = () => (
     <div className="space-y-3">
       <div className="space-y-1.5">
@@ -1104,7 +1189,7 @@ function ShiftControlsWorkspace({
     void refreshAdminLocationMonitor?.();
   };
 
-  const renderAdminShiftLocationTabs = (branchTerminalsContent) => {
+  const renderAdminShiftLocationTabs = (branchTerminalsContent, belowSubtabsContent = null) => {
     const isTerminalsTab = adminShiftLocationTab === 'terminals';
     const refreshLoading = isTerminalsTab
       ? Boolean(branchDirectoryState?.loading || (!locked && shiftState?.loading))
@@ -1135,9 +1220,9 @@ function ShiftControlsWorkspace({
               idPrefix="pos-admin-shift-location"
               panelId="pos-admin-shift-location-panel"
               desktopColumns={3}
-              mobileGridColumns={3}
               compactMobile
             />
+            {belowSubtabsContent ? <div className="mt-3">{belowSubtabsContent}</div> : null}
           </div>
           {isTerminalsTab && !canViewBranchLocations ? (
             <div className="flex justify-end">
@@ -1220,23 +1305,24 @@ function ShiftControlsWorkspace({
         const operatingBranchLabel = activeLocations.find(
           (location) => Number(location?.location_id || 0) === Number(operatingLocationId || 0)
         )?.name || 'Unassigned';
+        const closedShiftActionRow = (
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">{closedShiftNotice}</div>
+            <Button
+              type="button"
+              variant="outline"
+              className={`h-10 shrink-0 rounded-lg px-4 text-[13px] font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
+              onClick={() => handleTabChange('close_shift')}
+            >
+              Go to Shift Session
+            </Button>
+          </div>
+        );
 
         return (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 flex-1">{closedShiftNotice}</div>
-              <Button
-                type="button"
-                variant="outline"
-                className={`h-10 shrink-0 rounded-lg px-4 text-[13px] font-extrabold ${POS_SHIFT_SECONDARY_BUTTON_CLASS}`}
-                onClick={() => handleTabChange('close_shift')}
-              >
-                Go to Shift Session
-              </Button>
-            </div>
-            {renderAdminShiftLocationTabs(
+          renderAdminShiftLocationTabs(
               canViewBranchLocations ? (
-            <AdminOpenShiftOverview
+                <AdminOpenShiftOverview
                   activeShift={null}
                   initialLocationId={operatingLocationId}
                   showOpenShiftSummary={false}
@@ -1254,9 +1340,9 @@ function ShiftControlsWorkspace({
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
                   Branch monitoring isn’t available for this account.
                 </p>
-              )
-            )}
-          </div>
+              ),
+              closedShiftActionRow
+            )
         );
       }
 
@@ -1273,7 +1359,7 @@ function ShiftControlsWorkspace({
               Go to Shift Session
             </Button>
           </div>
-          {renderBranchDirectory()}
+          {renderCurrentRegisterCard()}
         </div>
       );
     }
@@ -1314,7 +1400,7 @@ function ShiftControlsWorkspace({
                 </div>
               ) : (
                 <>
-                  {renderBranchDirectory({ compact: true })}
+                  {renderCurrentRegisterCard()}
                   <p className="text-[13px] font-black text-[#0F172A]">Shift Location</p>
                   <p className="mt-1 text-[12px] leading-5 text-[#475569]">
                     Used for catalog, checkout, and dashboard.
@@ -1685,7 +1771,6 @@ function ShiftControlsWorkspace({
             onTabChange={handleTabChange}
             ariaLabel="Shift sections"
             hideScrollbar
-            mobileGridColumns={2}
             idPrefix={shiftTabIdPrefix}
             panelId={shiftPanelId}
           />
@@ -1887,11 +1972,15 @@ export default function TerminalOperationsWorkspace({
   onTestPrinter = async () => false,
   onSelectTerminal = async () => false,
   canViewPos,
+  canViewItems = null,
+  catalogOnlyAccess = false,
+  effectiveCapabilities = [],
   canCreateItems = false,
   canManageServiceCatalog = false,
   canViewFnbModifiers = false,
   canManageFnbModifiers = false,
   serviceOperationsPermissions = {},
+  onServiceAuthorizationFailure = async () => null,
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
@@ -2020,11 +2109,12 @@ export default function TerminalOperationsWorkspace({
       ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-affiliates-workspace-shell'
       : 'p-0'
     : isFullBleedCatalogView
-      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell' : ' pos-catalog-workspace-shell'}`
+      ? `flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2${effectiveViewMode === 'items' ? ' pos-items-workspace-shell max-[767px]:pt-0' : ' pos-catalog-workspace-shell'}`
       : 'p-5';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;
-  const canImportItems = IS_DGFY_POS_SURFACE && (
+  const effectiveCanViewItems = canViewItems == null ? canViewPos : canViewItems;
+  const canImportItems = effectiveCanViewItems && IS_DGFY_POS_SURFACE && (
     terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('items:import')
   );
@@ -2158,6 +2248,7 @@ export default function TerminalOperationsWorkspace({
         <ShiftControlsWorkspace
           shiftState={shiftState}
           terminalMeta={terminalMeta}
+          terminalUser={terminalUser}
           operatorUserId={resolvePosUserId(terminalUser)}
           activeTerminalId={activeTerminalId}
           terminalRegistry={terminalRegistry}
@@ -2217,6 +2308,7 @@ export default function TerminalOperationsWorkspace({
         <ShiftControlsWorkspace
           shiftState={shiftState}
           terminalMeta={terminalMeta}
+          terminalUser={terminalUser}
           operatorUserId={resolvePosUserId(terminalUser)}
           activeTerminalId={activeTerminalId}
           terminalRegistry={terminalRegistry}
@@ -2334,6 +2426,9 @@ export default function TerminalOperationsWorkspace({
         <ItemsCatalogWorkspace
           itemsWorkspaceComponent={ItemsWorkspace}
           canViewPos={canViewPos}
+          canViewItems={canViewItems}
+          catalogOnlyAccess={catalogOnlyAccess}
+          effectiveCapabilities={effectiveCapabilities}
           canCreateItems={isBranchReadOnlyView ? false : canCreateItems}
           canImportItems={isBranchReadOnlyView ? false : canImportItems}
           canEditItems={isBranchReadOnlyView ? false : canEditItems}
@@ -2367,6 +2462,7 @@ export default function TerminalOperationsWorkspace({
             <PosServicesOperationsWorkspace
               permissions={serviceOperationsPermissions}
               isOnline={isOnline}
+              onAuthorizationFailure={onServiceAuthorizationFailure}
             />
           </Suspense>
         </div>
@@ -2409,14 +2505,17 @@ export default function TerminalOperationsWorkspace({
     canManageFnbModifiers,
     canViewFnbModifiers,
     serviceOperationsPermissions,
+    onServiceAuthorizationFailure,
     canRecoverStaleShifts,
     adminLocationMonitorState,
     adminTerminalSwitching,
     itemsStockFilterPreset,
     workflowMode,
+    effectiveCapabilities,
     canSwitchPosLocation,
     canTransactPos,
     canViewPos,
+    catalogOnlyAccess,
     handleDeliveryJobStatusChange,
     handleAssignDeliveryPersonnel,
     deliveryPersonnelState,

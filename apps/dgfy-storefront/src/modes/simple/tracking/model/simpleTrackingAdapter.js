@@ -1,30 +1,14 @@
-const SIMPLE_TRACKING_STATUS_FLOW = Object.freeze({
-  delivery: [
-    { id: 'placed', label: 'Order confirmed' },
-    { id: 'confirmed', label: 'Confirmed by store' },
-    { id: 'preparing', label: 'Preparing' },
-    { id: 'out_for_delivery', label: 'Out for delivery' },
-    { id: 'completed', label: 'Delivered' }
-  ],
-  pickup: [
-    { id: 'placed', label: 'Order confirmed' },
-    { id: 'confirmed', label: 'Confirmed by store' },
-    { id: 'preparing', label: 'Preparing' },
-    { id: 'ready_for_pickup', label: 'Ready for pickup' },
-    { id: 'completed', label: 'Picked up' }
-  ]
-});
+import { getOrderTrackingFlow, getOrderTrackingTimeline } from '../../../../shared/tracking/directDeliveryTimeline.js';
 
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'rejected']);
 
 export function getSimpleTrackingFlowForOrderMethod(orderMethod = 'delivery') {
-  return orderMethod === 'pickup'
-    ? SIMPLE_TRACKING_STATUS_FLOW.pickup
-    : SIMPLE_TRACKING_STATUS_FLOW.delivery;
+  return getOrderTrackingFlow(orderMethod, false);
 }
 
 export function getSimpleCompletedTrackingLabel(orderMethod = 'delivery') {
-  return orderMethod === 'pickup' ? 'Picked up' : 'Delivered';
+  const flow = getSimpleTrackingFlowForOrderMethod(orderMethod);
+  return flow[flow.length - 1].label;
 }
 
 function isTrackingPin(value = '') {
@@ -94,13 +78,13 @@ export const simpleTrackingAdapter = Object.freeze({
     const reference = String(payload?.tracking_pin || order?.tracking_pin || input?.rawReference || '').trim().toUpperCase();
     const orderMethod = String(payload?.order_method || order?.order_method || 'delivery').trim().toLowerCase();
     const items = normalizeItems(resolveLines(payload, order, payloadDisplay, orderDisplay));
-    const flow = getSimpleTrackingFlowForOrderMethod(orderMethod);
+    const delivery = order?.delivery || payload?.delivery || null;
+    const flow = getOrderTrackingTimeline(orderMethod, statusCode, delivery, false);
     // Phase 211 (#1180). `packed` is a Retail-only step and deliberately absent from this mode's
     // flow. If it ever appears here (direct API call -- the server gate is mode-agnostic, see
     // posUseCases.js's ONLINE_FULFILLMENT_TRANSITIONS), render it at the `preparing` position
     // rather than silently rewinding the timeline to step 0.
-    const timelineStatusCode = statusCode === 'packed' ? 'preparing' : statusCode;
-    const activeStepIndex = Math.max(0, flow.findIndex((step) => step.id === timelineStatusCode));
+    const activeStepIndex = Math.max(0, flow.findIndex((step) => step.state === 'active'));
 
     return {
       mode: 'simple',
@@ -111,6 +95,8 @@ export const simpleTrackingAdapter = Object.freeze({
       // Phase 210 (#1179). Merchant-attributed copy on a rejected order -- never DGFY's own
       // statement.
       rejectionReason: String(payload?.rejection_reason || order?.rejection_reason || '').trim() || null,
+      cancellationReason: String(payload?.cancellation_reason || order?.cancellation_reason || '').trim() || null,
+      delivery,
       isTerminal: TERMINAL_STATUSES.has(statusCode),
       orderMethod,
       specialInstructions: String(order?.special_instructions || payload?.special_instructions || orderDisplay?.special_instructions || payloadDisplay?.special_instructions || '').trim() || null,
@@ -134,11 +120,7 @@ export const simpleTrackingAdapter = Object.freeze({
       branchAddress: String(location?.full_address || location?.address_line || payloadDisplay?.branch_address || orderDisplay?.branch_address || payload?.branch_address || '').trim() || null,
       deliveryAddress: String(order?.delivery_address || payload?.delivery_address || payload?.customer_address || payloadDisplay?.delivery_address || orderDisplay?.delivery_address || '').trim() || null,
       items,
-      timeline: flow.map((step, index) => ({
-        id: step.id,
-        label: step.label,
-        state: index === activeStepIndex ? 'active' : (index < activeStepIndex ? 'done' : 'pending')
-      })),
+      timeline: flow,
       uiHints: {
         icon: orderMethod === 'pickup' ? 'ShoppingBag' : 'PackageCheck',
         tone: orderMethod === 'pickup' ? 'pickup' : 'delivery'

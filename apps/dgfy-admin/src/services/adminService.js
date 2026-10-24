@@ -621,6 +621,14 @@ export const listCommercePaymentSessions = async (params = {}) => {
     return response.data;
 };
 
+export const listCommerceRefunds = async (params = {}) => {
+    const response = await adminApi.get('/commerce-payments/admin/refunds', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
 export const getCommerceSettlementReport = async (params = {}) => {
     const response = await adminApi.get('/commerce-payments/admin/settlement-report', {
         ...requireAdminAuthConfig(),
@@ -675,6 +683,15 @@ export const operateTenantPayMongoChildAccount = async (tenantId, action) => {
 export const createCommercePaymentRefund = async (paymentSessionId, payload = {}) => {
     const response = await adminApi.post(
         `/commerce-payments/admin/payment-sessions/${paymentSessionId}/refunds`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const retryCommercePaymentRefund = async (paymentSessionId, refundReference, payload = {}) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/payment-sessions/${encodeURIComponent(paymentSessionId)}/refunds/${encodeURIComponent(refundReference)}/retry`,
         payload,
         requireAdminAuthConfig()
     );

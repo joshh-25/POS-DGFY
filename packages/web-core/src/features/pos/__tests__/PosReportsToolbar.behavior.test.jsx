@@ -112,7 +112,7 @@ describe('POS reports active filter toolbar', () => {
     expect(filterButton.className).toContain('w-11');
     expect(dateFilterButton.className).toContain('h-11');
     expect(dateFilterButton.className).toContain('w-11');
-    expect(screen.getByText('Filter').className).toContain('lg:not-sr-only');
-    expect(screen.getByText('Filter by Date').className).toContain('lg:not-sr-only');
+    expect(screen.getByText('Filter').className).toContain('min-[1200px]:not-sr-only');
+    expect(screen.getByText('Filter by Date').className).toContain('min-[1200px]:not-sr-only');
   });
 });

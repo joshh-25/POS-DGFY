@@ -1310,6 +1310,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildStoreCheckoutUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
                     {
                         item_id: 11,
@@ -1661,6 +1662,7 @@ describe('store use-cases application result contract', () => {
             revenueSharingEnabled: false,
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -1818,6 +1820,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildStoreCheckoutUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -1930,6 +1933,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildStoreCheckoutUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
                     {
                         item_id: 11,
@@ -2003,6 +2007,7 @@ describe('store use-cases application result contract', () => {
             revenueSharingEnabled: false,
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -2100,6 +2105,7 @@ describe('store use-cases application result contract', () => {
             revenueSharingEnabled: false,
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
                     name: 'Main',
@@ -2217,6 +2223,48 @@ describe('store use-cases application result contract', () => {
         expect(result.data.order.customer_phone).toBeUndefined();
         expect(result.data.order.customer_email).toBeUndefined();
         expect(result.data.order.delivery_address).toBeUndefined();
+    });
+
+    it('tracks only customer-safe direct delivery details and the store failure reason', async () => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const order = {
+            pos_transaction_id: 90, tracking_pin: 'SK-A1B2', order_source: 'online_store',
+            order_method: 'delivery', fulfillment_status: 'ready_for_rider', lines: [],
+            deliveryJob: {
+                status: 'assigned', courier_service: 'other', courier_service_name: 'City Courier',
+                courier_reference: 'BOOK-90', tracking_url: 'https://courier.example/90',
+                delivery_personnel_id: 88, delivery_personnel_name: null,
+                assigned_by: 12, assigned_at: new Date(), failure_reason: null
+            }
+        };
+        const useCase = buildTrackStoreOrderUseCase({
+            storeRepository: { getOrderByTrackingPin: jest.fn(async () => order) }
+        });
+
+        const assigned = await useCase({ trackingPin: order.tracking_pin, tenantId });
+        expect(assigned.success).toBe(true);
+        expect(assigned.data.order.status_label).toBe('Ready for pickup');
+        expect(assigned.data.delivery).toEqual({
+            stage: 'rider_assigned', courier_name: 'City Courier', courier_reference: 'BOOK-90',
+            tracking_url: 'https://courier.example/90', rider_name: null
+        });
+        expect(JSON.stringify(assigned.data.delivery)).not.toMatch(/assigned_by|delivery_personnel_id|provider/);
+
+        order.deliveryJob.courier_service = null;
+        const legacyRegisteredRider = await useCase({ trackingPin: order.tracking_pin, tenantId });
+        expect(legacyRegisteredRider.data.delivery.courier_name).toBe('Own rider');
+        expect(legacyRegisteredRider.data.delivery.rider_name).toBeNull();
+        order.deliveryJob.courier_service = 'other';
+
+        order.fulfillment_status = 'cancelled';
+        order.deliveryJob.status = 'failed';
+        order.deliveryJob.failure_reason = 'Customer unavailable';
+        order.deliveryJob.tracking_url = 'http://unsafe.example/90';
+        const failed = await useCase({ trackingPin: order.tracking_pin, tenantId });
+        expect(failed.success).toBe(true);
+        expect(failed.data.cancellation_reason).toBe('Customer unavailable');
+        expect(failed.data.delivery.tracking_url).toBeNull();
+        expect(failed.data.message).toMatch(/store cancelled this order/i);
     });
 
     // Phase 210 (#1179): the store-initiated rejection reason surfaces on the tracking response.
@@ -2398,6 +2446,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildCancelStoreOrderUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 getOrderByTrackingPin: jest.fn().mockResolvedValue({
                     pos_transaction_id: 91,
                     tracking_pin: 'SK-A1B2',
@@ -2446,6 +2495,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildCancelStoreOrderUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 getOrderByTrackingPin,
                 updateOrderByTrackingPin: jest.fn().mockResolvedValue(updated)
             }
@@ -2479,6 +2529,7 @@ describe('store use-cases application result contract', () => {
         const useCase = buildCancelStoreOrderUseCase({
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
+                createAuditLog: jest.fn().mockResolvedValue({}),
                 getOrderByTrackingPin: jest.fn().mockResolvedValue({
                     pos_transaction_id: 101,
                     tracking_pin: 'SK-A1B2',

@@ -60,7 +60,7 @@ describe('POS branch directory and read-only branch view', () => {
         const fixture = buildFixture();
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:switch_location', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location', 'pos:transact'] }
         });
 
         expect(result.success).toBe(false);
@@ -91,7 +91,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
 
         expect(result.success).toBe(true);
@@ -120,7 +120,7 @@ describe('POS branch directory and read-only branch view', () => {
             user: {
                 user_id: 7,
                 role: 'admin',
-                permissions: ['pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
+                permissions: ['pos:view', 'pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
             }
         });
 
@@ -152,7 +152,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
         const terminal = result.data.locations[0].terminals[0];
 
@@ -163,6 +163,58 @@ describe('POS branch directory and read-only branch view', () => {
         }));
         expect(terminal.shift.cashier).toEqual({ user_id: 12, display_name: 'main-cashier' });
         expect(terminal.current_operator).toEqual({ user_id: 12, display_name: 'main-operator' });
+    });
+
+    it('keeps a stale admin-owned shift resumable for the owner', async () => {
+        const fixture = buildFixture({
+            shifts: [{
+                pos_terminal_shift_id: 46,
+                terminal_id: 'MAIN-01',
+                location_id: 1,
+                status: 'open',
+                cashier_id: 7,
+                opened_at: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+                cashier: { user_id: 7, username: 'admin-owner' }
+            }]
+        });
+
+        const result = await fixture.getDirectory({
+            user: { user_id: 7, role: 'admin', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
+        });
+        const terminal = result.data.locations[0].terminals[0];
+
+        expect(terminal).toEqual(expect.objectContaining({
+            status: 'stale',
+            can_open: false,
+            can_resume: true,
+            reason_code: null
+        }));
+    });
+
+    it('keeps a stale shift recovery-only for a different cashier', async () => {
+        const fixture = buildFixture({
+            shifts: [{
+                pos_terminal_shift_id: 47,
+                terminal_id: 'MAIN-01',
+                location_id: 1,
+                status: 'open',
+                cashier_id: 99,
+                opened_at: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+                cashier: { user_id: 99, username: 'other-cashier' }
+            }]
+        });
+
+        const result = await fixture.getDirectory({
+            user: { user_id: 7, role: 'admin', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
+        });
+        const terminal = result.data.locations[0].terminals[0];
+
+        expect(terminal).toEqual(expect.objectContaining({
+            status: 'stale',
+            can_open: false,
+            can_resume: false,
+            reason_code: 'POS_TERMINAL_STALE_SHIFT'
+        }));
     });
 
     it('does not borrow a moved terminal shift from another branch', async () => {
@@ -194,7 +246,7 @@ describe('POS branch directory and read-only branch view', () => {
             user: {
                 user_id: 7,
                 role: 'admin',
-                permissions: ['pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
+                permissions: ['pos:view', 'pos:branch_view', 'pos:transact', 'business_admin:branches:view_all']
             }
         });
 
@@ -230,7 +282,7 @@ describe('POS branch directory and read-only branch view', () => {
         });
 
         const result = await fixture.getDirectory({
-            user: { user_id: 7, role: 'manager', permissions: ['pos:branch_view', 'pos:transact'] }
+            user: { user_id: 7, role: 'manager', permissions: ['pos:view', 'pos:branch_view', 'pos:transact'] }
         });
         const terminal = result.data.locations[0].terminals[0];
 

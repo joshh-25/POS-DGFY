@@ -38,6 +38,9 @@ export const getTenantMaxCachedConnections = () => readPositiveInt(process.env.T
 /** Max simultaneous connections inside a single tenant's pool. */
 export const getTenantPoolMax = () => readPositiveInt(process.env.TENANT_DB_POOL_MAX, 7);
 
+/** Time an unused tenant connection stays warm between requests. */
+export const getTenantPoolIdleMs = () => readPositiveInt(process.env.TENANT_DB_POOL_IDLE_MS, 60000);
+
 /**
  * The server's `max_connections`. Declared here rather than probed so the check
  * still works before the first connection is made, and so a deploy that lowers
@@ -98,6 +101,7 @@ export default {
     getLandlordPoolMax,
     getTenantMaxCachedConnections,
     getTenantPoolMax,
+    getTenantPoolIdleMs,
     getServerMaxConnections,
     computeConnectionBudget,
     assertConnectionBudget

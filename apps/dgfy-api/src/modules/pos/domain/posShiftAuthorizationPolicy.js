@@ -20,6 +20,8 @@ const isMasterAdmin = (user = {}) => (
     || user?.is_master_admin === '1'
 );
 
+const isBusinessAdminForceClose = (user = {}) => user?.business_admin_force_close === true;
+
 export const authorizePosShiftMutation = ({
     shift,
     actorUser,
@@ -71,10 +73,10 @@ export const authorizePosShiftMutation = ({
         };
     }
 
-    if (!isMasterAdmin(actorUser)) {
+    if (!isMasterAdmin(actorUser) && !isBusinessAdminForceClose(actorUser)) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,
-            'Only the operator who opened this shift can change it.',
+            'Only the shift operator or an authorized Business Admin can change it.',
             {
                 statusCode: 403,
                 details: {
@@ -91,7 +93,7 @@ export const authorizePosShiftMutation = ({
     if (normalizedOverrideReason.length < 8) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'A master-admin override reason of at least 8 characters is required.',
+            'An administrator override reason of at least 8 characters is required.',
             {
                 statusCode: 422,
                 details: {
@@ -105,7 +107,9 @@ export const authorizePosShiftMutation = ({
     }
 
     return {
-        authorization_mode: 'master_admin_override',
+        authorization_mode: isBusinessAdminForceClose(actorUser)
+            ? 'business_admin_override'
+            : 'master_admin_override',
         actor_user_id: actorUserId,
         shift_cashier_id: shiftCashierId,
         override_reason: normalizedOverrideReason

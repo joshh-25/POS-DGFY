@@ -28,6 +28,7 @@
 //   BACKEND_TEST_MATRIX_FAST_ALLOW_DB=false npm run test:backend:fast
 // -- with no reachable database (the default; see runFastTier()) and confirm it's still green.
 // To remove an entry: the same command must still be green with the entry gone.
+// Every active `*.db.*test.js` file must be listed here; the matrix runner enforces this convention.
 //
 // #1441 (Phase 250): demoted `engagementEventModel`, `tenantCredentialSurface.security`,
 // `posParkedSale.schema.contract`, `posSplitPayment.schema.contract`, and
@@ -51,6 +52,9 @@
 // issues zero DB queries, so it belongs in the fast tier. Re-proved via
 // BACKEND_TEST_MATRIX_FAST_ALLOW_DB=false npm run test:backend:fast.
 module.exports = [
+  // #2614/#2605: this migration-backed geo inventory regression test needs real MySQL.
+  'tests/geoStoreItems.nullLocation.db.integration.test.js',
+  'tests/companyRegistrationUploads.applicationIdNullable.db.integration.test.js',
   'tests/migratedTemplateClone.db.integration.test.js',
   'tests/adminTenantLifecycle.integration.test.js',
   'tests/ai_cost_control_e2e.test.js',

@@ -70,6 +70,23 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('extracted POS Settings workspace', () => {
+  it('renders the business identity editor inside Profile Setting and keeps it out of POS Setup', async () => {
+    render(<PosSettingsWorkspace {...buildProps({
+      allowedTabIds: ['profile', 'pos_setup'],
+      settingsSurface: 'business-admin',
+      editorSection: 'profile',
+      profileSettingsHeader: <div data-testid="canonical-business-name-header">Canonical business name</div>
+    })} />);
+
+    expect(await screen.findByTestId('canonical-business-name-header')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'POS Setup', exact: true }));
+    await waitFor(() => expect(screen.queryByTestId('canonical-business-name-header')).toBeNull());
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Profile Setting', exact: true }));
+    await waitFor(() => expect(screen.getByTestId('canonical-business-name-header')).toBeTruthy());
+  });
+
   it('switches the POS settings tabs and moves the active underline state', async () => {
     render(<PosSettingsWorkspace {...buildProps({
       initialTab: 'pos_setup',
@@ -134,9 +151,9 @@ describe('extracted POS Settings workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
     await waitFor(() => expect(updateProfile).toHaveBeenCalledWith({
       username: 'Updated Operator',
-      email: 'operator@example.test',
       phone_number: '+639000000000'
     }));
+    expect(updateProfile.mock.calls[0][0]).not.toHaveProperty('email');
     expect(onRefreshTerminalUser).toHaveBeenCalledWith({ suppressGlobalErrors: true });
     expect(updateSettings).not.toHaveBeenCalled();
   });
@@ -298,6 +315,20 @@ describe('extracted POS Settings workspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
     expect(screen.getByRole('button', { name: 'Set Up Now', exact: true })).toBeTruthy();
+  });
+
+  it('keeps the canonical business name out of the OPIS receipt metadata editor', () => {
+    const setPosForm = vi.fn();
+    render(<PosBusinessReceiptsSection
+      locked={false}
+      loading={false}
+      posForm={{ businessName: 'Masu Cafe Indian Foods' }}
+      setPosForm={setPosForm}
+      showBusinessNameEditor={false}
+    />);
+
+    expect(screen.queryByRole('textbox', { name: 'Receipt business name' })).toBeNull();
+    expect(screen.getByText(/canonical business name is managed in profile setting/i)).toBeTruthy();
   });
 
   it('retains the selected Storefront subtab after leaving and returning to POS Settings', async () => {
@@ -844,6 +875,27 @@ describe('extracted POS Settings workspace', () => {
       expect(switches.length).toBeGreaterThan(0);
       switches.forEach((toggle) => expect(toggle.getAttribute('aria-checked')).toBe('true'));
     }
+  });
+
+  it('shows a locked storefront visibility control without issuing a visibility write', async () => {
+    getAllSettings.mockResolvedValue({
+      store_is_visible: { value: false },
+      store_visibility_merchant_editable: { value: false }
+    });
+    render(<PosSettingsWorkspace {...buildProps({
+      initialTab: 'storefront',
+      terminalUser: { ...buildProps().terminalUser, permissions: ['settings:edit'] }
+    })} />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Store Setup', exact: true }));
+    const switches = await screen.findAllByRole('switch', { name: 'Storefront visible', exact: true });
+    expect(switches.length).toBeGreaterThan(0);
+    switches.forEach((toggle) => {
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+      expect(toggle.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(toggle);
+    });
+    expect(screen.getAllByText(/Platform Admin controls storefront visibility/).length).toBeGreaterThan(0);
+    expect(updateSettingByKey).not.toHaveBeenCalledWith('store_is_visible', true);
   });
 
   it('keeps Store Categories on the existing storefront settings save payload', async () => {

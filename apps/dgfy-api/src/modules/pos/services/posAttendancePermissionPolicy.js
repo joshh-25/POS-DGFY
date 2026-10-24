@@ -1,5 +1,5 @@
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
-import { normalizePermissionArray } from '../../../utils/userPermissions.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 
 // #1045: shared by posOperatorAuthorityUseCases.getCurrent and
@@ -16,8 +16,7 @@ export const POS_ATTENDANCE_LIFECYCLE_PERMISSIONS = Object.freeze([
 
 export const hasPosAttendanceLifecyclePermission = (user) => {
     if (user?.is_master_admin === true) return true;
-    const held = new Set(normalizePermissionArray(user?.permissions));
-    return POS_ATTENDANCE_LIFECYCLE_PERMISSIONS.every((permission) => held.has(permission));
+    return POS_ATTENDANCE_LIFECYCLE_PERMISSIONS.every((permission) => hasEffectivePermission(user, permission));
 };
 
 // Ordering is load-bearing (#1045): callers must resolve the attendance

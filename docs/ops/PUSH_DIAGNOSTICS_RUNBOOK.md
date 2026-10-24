@@ -166,6 +166,37 @@ all test-send actions remain disabled.
    those are the observed states. Never report that the notification was delivered, displayed, or
    seen based only on an API response or receipt.
 
+## Provision production push configuration
+
+Production secrets use SOPS+age ([ADR 0060](../architecture/adr/0060-sops-age-encrypted-secrets-at-rest.md),
+[cutover runbook](SOPS_SECRETS_CUTOVER_RUNBOOK.md)). Staging keeps its push settings in its `.env`; this
+section is production only. No step below needs, prints, or records a secret value.
+
+| Variable | Class | Where it goes |
+|---|---|---|
+| `PUSH_PROVIDER=expo` | non-secret | literal in the live PROD `docker-compose.api.yml` `environment:` block (PROD-scoped; never the shared template) |
+| `PUSH_TOKEN_HASH_SECRET` | secret, required | `secrets/dgfy-api.env` (SOPS) |
+| `EXPO_ACCESS_TOKEN` | secret, optional | `secrets/dgfy-api.env` (SOPS) |
+
+Order matters, because nothing in the boot validator checks these (see
+[`prod.env-var-classification.md`](../../infrastructure/docker/env/prod.env-var-classification.md)):
+
+1. **Secrets first.** On the production host, with `SOPS_AGE_KEY_FILE=/etc/dgfy/age/keys.txt`, add the
+   keys with `sops set --value-stdin` (the value must be piped in as a JSON string, e.g. through
+   `jq -Rs .`) or interactively with `sops /opt/dgfy-platform/secrets/dgfy-api.env`. Generate
+   `PUSH_TOKEN_HASH_SECRET` on the host (`openssl rand -hex 32`, 64 hex characters) and never reuse the
+   staging value. Take a ciphertext backup first; keep the file at `pat:docker 640`.
+2. **Verify without printing.** Decrypt and report only key presence and value length, or a short
+   `sha256` fingerprint compared against the source value.
+3. **Mirror the ciphertext** into the private `Sieitzz/dgfy-secrets` repository at
+   `prod/dgfy/dgfy-api.env` (branch + PR; compare `sha256sum` of server and committed file).
+4. **Then compose.** Add `PUSH_PROVIDER: expo`, `EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}` and
+   `PUSH_TOKEN_HASH_SECRET: ${PUSH_TOKEN_HASH_SECRET}` to the live PROD compose file, matching
+   `infrastructure/docker/env/prod.sops-cutover-fragment.yml`. This changes nothing until the next
+   `deploy-sops.sh` run.
+5. **Deploy through the normal controlled PROD procedure**, then confirm in Platform Admin push
+   diagnostics that the mode is `expo` and the hash-secret readiness indicator is ready.
+
 ## Operational boundaries
 
 - Only Platform Admins granted `admin.push_diagnostics` can use the page and its protected APIs.

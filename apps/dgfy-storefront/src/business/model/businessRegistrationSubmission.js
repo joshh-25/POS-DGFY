@@ -1,9 +1,10 @@
 export const BUSINESS_REGISTRATION_SUBMISSION_PATH = '/business-registration-submission';
 
-export const buildBusinessRegistrationSubmissionPath = (applicationId = '') => {
+export const buildBusinessRegistrationSubmissionPath = (applicationId = '', { autoApproved = false } = {}) => {
   const normalizedApplicationId = String(applicationId || '').trim();
   if (!normalizedApplicationId) return BUSINESS_REGISTRATION_SUBMISSION_PATH;
   const search = new URLSearchParams({ application_id: normalizedApplicationId });
+  if (autoApproved) search.set('auto_approved', '1');
   return `${BUSINESS_REGISTRATION_SUBMISSION_PATH}?${search.toString()}`;
 };
 

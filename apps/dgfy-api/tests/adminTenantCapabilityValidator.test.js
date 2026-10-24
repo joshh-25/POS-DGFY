@@ -23,6 +23,13 @@ const runMiddleware = (middleware, req) => {
 };
 
 describe('admin tenant capability validators', () => {
+    it('accepts a policy-only patch with an audit reason', () => {
+        const req = { body: { store_visibility_merchant_editable: false, reason: 'Platform control' } };
+        const { res, next } = runMiddleware(validateTenantCapabilityPatch, req);
+        expect(res.statusCode).toBe(200);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.store_visibility_merchant_editable).toBe(false);
+    });
     it('rejects string booleans and requires a reason', () => {
         const { res, next } = runMiddleware(validateTenantCapabilityPatch, {
             body: {
@@ -46,4 +53,14 @@ describe('admin tenant capability validators', () => {
         expect(next).toHaveBeenCalledTimes(1);
         expect(req.validatedQuery).toEqual({ limit: 25 });
     });
+});
+
+it.each([true, false])('accepts a strict downpayment allowance %s with reason', (downpayment_allowed) => {
+    const { next } = runMiddleware(validateTenantCapabilityPatch, { body: { downpayment_allowed, reason: 'Premium decision' } });
+    expect(next).toHaveBeenCalledTimes(1);
+});
+it.each(['true', 1, null])('rejects non-boolean allowance %s', (downpayment_allowed) => {
+    const { res, next } = runMiddleware(validateTenantCapabilityPatch, { body: { downpayment_allowed, reason: 'Premium decision' } });
+    expect(res.statusCode).toBe(422);
+    expect(next).not.toHaveBeenCalled();
 });

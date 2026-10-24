@@ -4,6 +4,8 @@ import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { isIminWrapperRuntime } from '@/src/utils/iminRuntimeFeedback.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import CategoryManagementWorkspace from './PosItemsCategoryManagementWorkspace.jsx';
+import PosLineTabNavigation from './PosLineTabNavigation.jsx';
+import { POS_MOBILE_STICKY_TAB_ROW_CLASS } from './PosPageSpacing.js';
 
 const PosServicesOperationsWorkspace = lazyWithChunkRetry(() => import('./PosServicesOperationsWorkspace.jsx'));
 const PosFnbModifiersWorkspace = lazyWithChunkRetry(() => import('./PosFnbModifiersWorkspace.jsx'));
@@ -12,6 +14,9 @@ const PosServiceOptionsWorkspace = lazyWithChunkRetry(() => import('./PosService
 export default function ItemsCatalogWorkspace({
   itemsWorkspaceComponent: ItemsWorkspaceComponent,
   canViewPos = false,
+  canViewItems = null,
+  catalogOnlyAccess = false,
+  effectiveCapabilities = [],
   canManageCategories = false,
   canManageServiceCatalog = false,
   canManageServiceOptions = false,
@@ -27,20 +32,22 @@ export default function ItemsCatalogWorkspace({
   sectionId,
   ...itemsWorkspaceProps
 }) {
+  const effectiveCanViewItems = canViewItems == null ? canViewPos : canViewItems;
+  const canViewCatalog = effectiveCanViewItems || catalogOnlyAccess;
   const availableTabs = useMemo(() => [
-    ...(canViewPos ? [{ id: 'items', label: 'Items', icon: ClipboardList }] : []),
+    ...(canViewCatalog ? [{ id: 'items', label: 'Items', icon: ClipboardList }] : []),
     ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : []),
-    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && canManageServiceOptions
-      ? [{ id: 'service-options', label: 'Service add-ons', icon: SlidersHorizontal }]
+    ...(!catalogOnlyAccess && normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && canManageServiceOptions
+      ? [{ id: 'service-options', label: 'Service add-ons', mobileLabel: 'Add-ons', icon: SlidersHorizontal }]
       : []),
-    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'fnb' && canViewFnbModifiers
-      ? [{ id: 'fnb-modifiers', label: 'Item Options & Modifiers', icon: ListPlus }]
+    ...(!catalogOnlyAccess && normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'fnb' && canViewFnbModifiers
+      ? [{ id: 'fnb-modifiers', label: 'Item Options & Modifiers', mobileLabel: 'Options', icon: ListPlus }]
       : []),
-    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && Object.values(serviceOperationsPermissions).some(Boolean)
-      ? [{ id: 'service-operations', label: 'Service operations', icon: CalendarDays }]
+    ...(!catalogOnlyAccess && normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && Object.values(serviceOperationsPermissions).some(Boolean)
+      ? [{ id: 'service-operations', label: 'Service operations', mobileLabel: 'Operations', icon: CalendarDays }]
       : [])
-  ], [canManageCategories, canManageServiceOptions, canViewFnbModifiers, canViewPos, itemsWorkspaceProps.workflowMode, serviceOperationsPermissions]);
-  const defaultTab = canViewPos ? 'items' : 'categories';
+  ], [canManageCategories, canManageServiceOptions, canViewCatalog, canViewFnbModifiers, catalogOnlyAccess, itemsWorkspaceProps.workflowMode, serviceOperationsPermissions]);
+  const defaultTab = canViewCatalog ? 'items' : 'categories';
   const [selectedTab, setSelectedTab] = useState(defaultTab);
   const [renderedTab, setRenderedTab] = useState(defaultTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -125,27 +132,6 @@ export default function ItemsCatalogWorkspace({
     animationTimersRef.current.push(swapTimer);
   }, [activeTab, clearAnimationTimers, isIminRuntime, resolveTabIndex]);
 
-  const handleTabKeyDown = useCallback((event, tabId) => {
-    const navigationKeys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
-    if (!navigationKeys.includes(event.key)) return;
-    event.preventDefault();
-
-    const currentIndex = availableTabs.findIndex((tab) => tab.id === tabId);
-    if (currentIndex < 0 || availableTabs.length === 0) return;
-
-    const isForwardKey = event.key === 'ArrowRight' || event.key === 'ArrowDown';
-    const nextIndex = event.key === 'Home'
-      ? 0
-      : (event.key === 'End'
-        ? availableTabs.length - 1
-        : (currentIndex + (isForwardKey ? 1 : -1) + availableTabs.length) % availableTabs.length);
-    const nextTab = availableTabs[nextIndex];
-    handleTabChange(nextTab.id);
-    window.requestAnimationFrame(() => {
-      document.getElementById(`pos-items-tab-${nextTab.id}`)?.focus();
-    });
-  }, [availableTabs, handleTabChange]);
-
   if (availableTabs.length === 0) {
     return (
       <p id={sectionId} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
@@ -157,36 +143,20 @@ export default function ItemsCatalogWorkspace({
   return (
     <div id={sectionId} className="pos-items-catalog-workspace flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden">
       {availableTabs.length > 1 ? (
-        <div className="pos-items-mobile-tab-strip -mx-1 overflow-x-auto border-b border-slate-200">
-          <div
-            role="tablist"
-            aria-label="Items workspace navigation"
-            className="pos-items-mobile-tab-list -mb-px flex min-w-max items-end gap-3 px-1 min-[1200px]:min-w-0 min-[1200px]:w-full min-[1200px]:gap-0 min-[1200px]:px-0"
-          >
-            {availableTabs.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  id={`pos-items-tab-${tab.id}`}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  aria-controls={active ? `pos-items-${tab.id}-panel` : undefined}
-                  tabIndex={active ? 0 : -1}
-                  onClick={() => handleTabChange(tab.id)}
-                  onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
-                  className={`pos-items-mobile-tab relative inline-flex min-h-12 shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-[14px] font-bold whitespace-nowrap text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-[-2px] sm:px-3 min-[1200px]:flex-1 min-[1200px]:justify-center min-[1200px]:px-2 xl:px-3 ${
-                    active ? 'border-[#1A4E8D]' : 'border-transparent hover:border-slate-300'
-                  }`}
-                >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+        <div
+          data-testid="pos-items-sticky-tabs"
+          className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS} max-[767px]:mb-3`}
+        >
+          <PosLineTabNavigation
+            tabs={availableTabs}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            ariaLabel="Items workspace navigation"
+            idPrefix="pos-items-tab"
+            panelId={`pos-items-${visibleTab || 'unavailable'}-panel`}
+            hideScrollbar
+            mobileGridColumns={availableTabs.length}
+          />
         </div>
       ) : null}
 
@@ -240,6 +210,9 @@ export default function ItemsCatalogWorkspace({
           <ItemsWorkspaceComponent
             {...itemsWorkspaceProps}
             canViewPos={canViewPos}
+            canViewItems={effectiveCanViewItems}
+            catalogOnlyAccess={catalogOnlyAccess}
+            effectiveCapabilities={effectiveCapabilities}
             canManageCategories={canManageCategories}
             canManageServiceCatalog={canManageServiceCatalog}
             canManageFnbModifiers={canManageFnbModifiers}

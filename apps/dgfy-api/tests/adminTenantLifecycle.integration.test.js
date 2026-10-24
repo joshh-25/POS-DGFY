@@ -52,6 +52,7 @@ jest.unstable_mockModule('../src/services/emailService.js', () => ({
     sendEmail: jest.fn(),
     sendAffiliateInviteEmail: jest.fn(),
     sendCompanyApprovedEmail: jest.fn(),
+    sendCompanyOnboardingEmail: jest.fn(),
     sendCompanyRejectedEmail: jest.fn(),
     sendCompanySubmissionReceivedEmail: jest.fn(),
     sendResubmissionConfirmationEmail: jest.fn()
@@ -326,7 +327,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         expect(byKey.paypal_product_id).toBe(`prod-${testSuffix}`);
     });
 
-    it('keeps public registration pending when a legacy auto_standard value is configured', async () => {
+    it('auto-approves public registration into a restricted catalog-only provisioning flow', async () => {
         const previousMode = process.env.TENANT_REGISTRATION_APPROVAL_MODE;
         process.env.TENANT_REGISTRATION_APPROVAL_MODE = 'auto_standard';
 
@@ -348,13 +349,19 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
                     marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
                 });
 
-            expect(response.status).toBe(201);
+            expect(response.status).toBe(202);
             expect(response.body.success).toBe(true);
-            expect(response.body.message).toContain('submitted for review');
-            expect(response.body.data.status).toBe('pending');
+            expect(response.body.message).toContain('being prepared');
+            expect(response.body.message).toContain('POS onboarding link');
+            expect(response.body.data.status).toBe('setting_up_company');
+            expect(response.body.data.review_status).toBe('approved');
+            expect(response.body.data.provisioning_status).toBe('in_progress');
             expect(response.body.data.application_id).toEqual(expect.any(String));
             expect(response.body.data).not.toHaveProperty('company_token');
-            expect(mockProvisionTenant).not.toHaveBeenCalled();
+            await new Promise((resolve) => setImmediate(resolve));
+            expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
+                tenantCapabilities: { pos_enabled: false }
+            }));
         } finally {
             if (previousMode === undefined) {
                 delete process.env.TENANT_REGISTRATION_APPROVAL_MODE;

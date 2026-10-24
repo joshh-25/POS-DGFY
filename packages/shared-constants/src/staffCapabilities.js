@@ -10,7 +10,7 @@ export const STAFF_CAPABILITIES = Object.freeze([
   'jo:view', 'jo:create', 'jo:edit', 'jo:approve', 'jo:complete', 'jo:delete',
   'do:view', 'do:create', 'do:dispatch', 'do:delete',
   'pos:view', 'pos:transact', 'pos:discount_authorize', 'pos:price_override', 'pos:delivery_fee_override',
-  'pos:cash_drawer_adjust', 'pos:delivery_run_variance_resolve', 'pos:shift_close', 'pos:close_day', 'pos:reprint', 'pos:void', 'pos:refund', 'pos:shift_force_close',
+  'pos:cash_drawer_adjust', 'pos:delivery_run_variance_resolve', 'pos:shift_access', 'pos:shift_close', 'pos:close_day', 'pos:reprint', 'pos:void', 'pos:refund', 'pos:shift_force_close',
   'pos:fiscal_terminals:manage', 'pos:esales:manage', 'pos:switch_location', 'pos:branch_view', 'pos:employees:manage',
   'pos:attendance:view', 'pos:attendance:operate', 'pos:attendance:manage', 'pos:employee_credit:use',
   'pos:employee_credit:manage', 'pos:employee_credit:report',
@@ -32,7 +32,8 @@ export const STAFF_CAPABILITIES = Object.freeze([
   'stock:view', 'stock:adjust', 'batches:view', 'batches:edit', 'reports:view', 'reports:export',
   'ai:chat', 'ai:action', 'settings:view', 'settings:edit', 'settings:storefront_branding_edit',
   'categories:manage', 'users:manage', 'users:view', 'users:delete', 'audit:view',
-  'orders:pack', 'orders:view_assigned', 'delivery_runs:view_assigned', 'delivery_runs:act'
+  'orders:pack', 'orders:view_assigned', 'delivery_runs:view_assigned', 'delivery_runs:act',
+  'delivery_runs:load', 'delivery_jobs:act_assigned', 'orders:collect_assigned_balance'
 ]);
 
 export const STAFF_CAPABILITY_DEPRECATED = Object.freeze({});

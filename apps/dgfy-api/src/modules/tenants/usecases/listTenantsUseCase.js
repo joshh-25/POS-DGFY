@@ -91,6 +91,7 @@ const enrichTenant = (tenant, capabilities = null) => {
     const registrationDraftId = baseTenant.settings?.registration_draft_id || null;
     const safeTenant = { ...baseTenant };
     delete safeTenant.settings;
+    delete safeTenant.db_name;
     const eligibility = buildForceNonCompliantEligibility(baseTenant);
     const adminComplianceModeAction = buildAdminComplianceModeAction(baseTenant);
     const effectivePlan = resolveTenantEffectivePlan(baseTenant);

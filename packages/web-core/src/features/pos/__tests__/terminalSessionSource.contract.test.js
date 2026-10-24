@@ -96,13 +96,19 @@ describe('TerminalPage session contract', () => {
     expect(resumeSource).not.toContain('openTerminalShift(');
   });
 
-  it('closes the login drawer after terminal unlock completes', () => {
+  it('closes the login drawer and does not block cashier unlock on stock alerts', () => {
     const completionStart = terminalPageSource.indexOf('const completeTerminalUnlock');
     const completionEnd = terminalPageSource.indexOf('const handleSelectAdminTerminal', completionStart);
     const completionSource = terminalPageSource.slice(completionStart, completionEnd);
 
     expect(completionSource).toContain('setDrawerOpen(false);');
     expect(completionSource).toContain('setTerminalUnlockModalOpen(false);');
+    expect(completionSource).toContain(
+      'setUnlockFailure(null);\n    setLocked(false);\n    if (!suppressStockAlerts && canReceiveStockAlerts) {\n      void notifyStockAlertsAfterUnlock();'
+    );
+    expect(completionSource).toContain('suppressStockAlerts = false');
+    expect(terminalPageSource).toContain('suppressStockAlerts: true');
+    expect(terminalPageSource).toContain('stockAlertSummary.open');
   });
 
   it('uses the floating toast for DGFY login failures without an inline duplicate', () => {
@@ -160,7 +166,7 @@ describe('TerminalPage session contract', () => {
   });
 
   it('sends a verified DGFY cashier handoff into the same terminal shift-entry flow as direct POS login', () => {
-    expect(terminalPageSource).toContain('if (IS_DGFY_POS_SURFACE && dgfyTenantId && !userCanAccessSettings) {');
+    expect(terminalPageSource).toContain('if (IS_DGFY_POS_SURFACE && dgfyTenantId && userIsCashier && !userCanAccessSettings && !userCanViewBranchLocations) {');
     expect(terminalPageSource).toContain('fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST)');
     expect(terminalPageSource).toContain('fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST)');
     expect(terminalPageSource).toContain("source: 'dgfy_pos'");

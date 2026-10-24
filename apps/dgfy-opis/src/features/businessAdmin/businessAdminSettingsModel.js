@@ -107,13 +107,18 @@ export const parseBusinessAdminPath = (pathname, rootPath = '/business-admin') =
                 : '';
     const segments = suffix.split('/').map((segment) => normalizeKey(segment)).filter(Boolean);
     const requestedSection = segments[0] || 'overview';
+    const usersRolesShortcut = requestedSection === 'users-roles';
     const legacyLocationView = requestedSection === 'registers' ? 'registers' : requestedSection === 'branches' ? 'branches' : '';
     const legacyActivity = requestedSection === 'activity';
-    const activeSection = legacyLocationView ? 'locations' : (legacyActivity ? 'audit' : requestedSection);
+    const activeSection = legacyLocationView
+        ? 'locations'
+        : (legacyActivity ? 'audit' : (usersRolesShortcut ? 'settings' : requestedSection));
     const locationView = activeSection === 'locations'
         ? (legacyLocationView || (segments[1] === 'registers' ? 'registers' : 'branches'))
         : '';
-    const requestedSettingsSection = activeSection === 'settings' ? (segments[1] || 'profile') : '';
+    const requestedSettingsSection = activeSection === 'settings'
+        ? (usersRolesShortcut ? 'team' : (segments[1] || 'profile'))
+        : '';
     const requestedSettingsDefinition = getBusinessAdminSettingsSectionDefinition(requestedSettingsSection);
     return {
         activeSection,
@@ -122,6 +127,7 @@ export const parseBusinessAdminPath = (pathname, rootPath = '/business-admin') =
             : '',
         locationView,
         legacyActivity,
+        usersRolesShortcut,
         segments
     };
 };

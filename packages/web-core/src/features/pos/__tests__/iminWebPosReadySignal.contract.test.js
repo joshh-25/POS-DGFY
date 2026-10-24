@@ -43,6 +43,7 @@ describe('POS iMin wrapper ready signal', () => {
     // once the session is unlocked.
     expect(terminalPageLayoutSource).toContain('{!locked && shouldMountCheckoutTerminal && (');
     expect(terminalPageLayoutSource).toContain('<POSCheckoutTerminal');
+    expect(terminalPageLayoutSource).toContain('!locked && shouldMountCheckoutTerminal');
     expect(posCheckoutTerminalSource).toContain('notifyIminWebPosReady();');
   });
 });

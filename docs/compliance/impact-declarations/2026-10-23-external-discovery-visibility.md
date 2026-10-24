@@ -16,7 +16,7 @@ preflight_run_at: 2026-10-23T06:08:27.116Z
 preflight_request_ref: PREFLIGHT-LOCAL-1792735602532-2026-10-23-EXTERNAL-DISCOVERY-VISIBILITY
 ---
 
-# External discovery visibility controls (#2715, Phase 538)
+# External discovery visibility controls (#2715, Phase 539)
 
 ## Compliance Impact Classification
 

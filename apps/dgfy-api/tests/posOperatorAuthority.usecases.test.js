@@ -4,8 +4,8 @@ import { assertPosAttendanceLifecyclePermission } from '../src/modules/pos/servi
 
 const buildFixture = ({ featureEnabled = true, pin = '2468', assertUserOperatingScope } = {}) => {
     const users = new Map([
-        [1, { user_id: 1, username: 'alice', role: 'cashier', is_active: true, permissions: ['pos:attendance:view', 'pos:attendance:operate'], pos_cashier_pin_hash: 'hash-a', pos_cashier_pin_failed_attempts: 0 }],
-        [2, { user_id: 2, username: 'bob', role: 'cashier', is_active: true, permissions: ['pos:attendance:view', 'pos:attendance:operate'], pos_cashier_pin_hash: 'hash-b', pos_cashier_pin_failed_attempts: 0 }]
+        [1, { user_id: 1, username: 'alice', role: 'cashier', is_active: true, permissions: ['pos:view', 'pos:attendance:view', 'pos:attendance:operate'], pos_cashier_pin_hash: 'hash-a', pos_cashier_pin_failed_attempts: 0 }],
+        [2, { user_id: 2, username: 'bob', role: 'cashier', is_active: true, permissions: ['pos:view', 'pos:attendance:view', 'pos:attendance:operate'], pos_cashier_pin_hash: 'hash-b', pos_cashier_pin_failed_attempts: 0 }]
     ]);
     let current = {
         pos_terminal_operator_session_id: 10,
@@ -447,7 +447,7 @@ describe('Phase 159 POS operator authority use cases', () => {
 
     test('getCurrent succeeds for a permitted user when the feature is enabled', async () => {
         const { useCases } = buildFixture({ featureEnabled: true });
-        const permittedUser = { user_id: 1, username: 'alice', permissions: ['pos:attendance:view', 'pos:attendance:operate'] };
+        const permittedUser = { user_id: 1, username: 'alice', permissions: ['pos:view', 'pos:attendance:view', 'pos:attendance:operate'] };
 
         const result = await useCases.getCurrent({
             authorityToken: 'authority-10',

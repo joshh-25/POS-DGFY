@@ -56,6 +56,7 @@ const terminalModalSource = fs.readFileSync(path.resolve(__dirname, '../settings
 const closeoutModalSource = fs.readFileSync(path.resolve(__dirname, '../settings/PosCashierCloseoutDefaultsModal.jsx'), 'utf8');
 const terminalIdentitySource = fs.readFileSync(path.resolve(__dirname, '../utils/terminalIdentity.js'), 'utf8');
 const setupSubTabsSource = fs.readFileSync(path.resolve(__dirname, '../settings/PosSetupSubTabs.jsx'), 'utf8');
+const centeredTabScrollSource = fs.readFileSync(path.resolve(__dirname, '../hooks/usePosCenteredTabScroll.js'), 'utf8');
 const toasterSource = fs.readFileSync(path.resolve(__dirname, '../../../../Components/ui/sonner.jsx'), 'utf8');
 const invitationModalSource = fs.readFileSync(path.resolve(__dirname, '../../../../Components/users/UserInvitationModal.jsx'), 'utf8');
 const confirmActionDialogSource = fs.readFileSync(path.resolve(__dirname, '../../../../Components/ui/ConfirmActionDialog.jsx'), 'utf8');
@@ -366,7 +367,8 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('keeps closeout modal actions inline on mobile and removes redundant intro copy', () => {
-    expect(closeoutModalSource).toContain('className="flex-row items-center justify-between gap-2 border-t border-slate-100 px-5 py-4 sm:justify-end sm:gap-6 sm:px-6 sm:pt-4"');
+    expect(closeoutModalSource).toContain('flex-row items-center justify-between gap-2 px-5 py-4 sm:justify-end sm:gap-6 sm:px-6 sm:pt-4');
+    expect(closeoutModalSource).toContain('POS_MODAL_FOOTER_SURFACE_CLASS');
     expect(closeoutModalSource).toContain('min-h-9 min-w-0 flex-1 rounded-xl');
     expect(closeoutModalSource).toContain('min-h-9 min-w-0 flex-1 gap-1.5 rounded-xl');
     expect(closeoutModalSource).not.toContain('Set the defaults used when a new shift or queue session starts. Changes are shared across this POS workspace.');
@@ -399,6 +401,8 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('items-end gap-3 px-1');
     expect(workspaceSource).toContain("mobileGridClass ? 'w-full min-w-0 justify-center whitespace-normal px-2 text-center' : 'shrink-0 px-2 whitespace-nowrap'");
     expect(workspaceSource).toContain("'py-3 text-[14px] font-bold text-[#0F172A] transition-colors'");
+    expect(workspaceSource).toContain('min-w-max flex-1 justify-center px-2 whitespace-nowrap');
+    expect(workspaceSource).toContain('py-3 text-[14px] font-bold text-[#0F172A] transition-colors');
   });
 
   it('centers interior settings tabs when the mobile tab rail overflows', () => {
@@ -432,7 +436,10 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('makes the Employees subtab rail full-width on desktop like POS Setup', () => {
-    expect(employeesPaneSource).toContain('flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-3 min-[1200px]:px-0');
+    expect(employeesPaneSource).toContain('flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:px-0');
+    expect(employeesPaneSource).toContain('usePosCenteredTabScroll(tabsViewportRef');
+    expect(employeesPaneSource).toContain('ref={tabsViewportRef}');
+    expect(employeesPaneSource).toContain('gridTemplateColumns: `repeat(${availableTabs.length}, minmax(0, 1fr))`');
     expect(employeesPaneSource).toContain('min-h-10 min-w-36 w-max shrink-0');
     expect(employeesPaneSource).toContain('min-[1200px]:min-h-9 min-[1200px]:w-full min-[1200px]:shrink min-[1200px]:px-4');
   });
@@ -484,7 +491,8 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('keeps POS Setup section labels at the compact 13px size across breakpoints', () => {
-    expect(setupSubTabsSource).toContain('flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-4 min-[1200px]:px-0');
+    expect(setupSubTabsSource).toContain('flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:px-0');
+    expect(setupSubTabsSource).toContain('gridTemplateColumns: `repeat(${Math.max(1, visibleSections.length)}, minmax(0, 1fr))`');
     expect(setupSubTabsSource).toContain('min-w-36 w-max shrink-0');
     expect(setupSubTabsSource).toContain('whitespace-nowrap');
     expect(setupSubTabsSource).toContain('text-center text-[13px] font-bold');
@@ -492,15 +500,15 @@ describe('regular POS Setup cashier management contract', () => {
     expect(setupSubTabsSource).not.toContain('sm:text-[14px]');
   });
 
-  it('centers interior POS Setup subtabs when the mobile rail overflows', () => {
+  it('centers the selected POS Setup subtab with the shared mobile rail behavior', () => {
     expect(setupSubTabsSource).toContain('const sectionsViewportRef = useRef(null);');
-    expect(setupSubTabsSource).toContain('const activeSectionIndex = POS_SETUP_SECTIONS.findIndex((section) => section.id === activeSection);');
-    expect(setupSubTabsSource).toContain('if (activeSectionIndex <= 0 || activeSectionIndex >= POS_SETUP_SECTIONS.length - 1) return undefined;');
-    expect(setupSubTabsSource).toContain('if (!viewport || viewport.scrollWidth <= viewport.clientWidth) return undefined;');
-    expect(setupSubTabsSource).toContain('const sectionCenter = sectionRect.left - viewportRect.left + viewport.scrollLeft + (sectionRect.width / 2);');
-    expect(setupSubTabsSource).toContain('viewport.scrollTo({');
-    expect(setupSubTabsSource).not.toContain('activeSectionElement.scrollIntoView');
+    expect(setupSubTabsSource).toContain('usePosCenteredTabScroll(sectionsViewportRef');
     expect(setupSubTabsSource).toContain('ref={sectionsViewportRef}');
+    expect(centeredTabScrollSource).toContain('viewport.scrollWidth <= viewport.clientWidth');
+    expect(centeredTabScrollSource).toContain('const tabCenter = tabRect.left - viewportRect.left + viewport.scrollLeft + (tabRect.width / 2);');
+    expect(centeredTabScrollSource).toContain('viewport.scrollTo({');
+    expect(centeredTabScrollSource).toContain('Math.min(maxScrollLeft, Math.max(0, tabCenter - (viewport.clientWidth / 2)))');
+    expect(centeredTabScrollSource).not.toContain('activeTabIndex <= 0');
   });
 
   it('matches POS visibility and online-order labels to the responsive summary value size', () => {
@@ -684,8 +692,8 @@ describe('regular POS Setup cashier management contract', () => {
     expect(storefrontPaneSource).toContain('StoreSetupSummary');
     expect(storefrontPaneSource).toContain('StoreContentSummary');
     expect(storefrontPaneSource).toContain('StoreLocationsSummary');
-    expect(subtabNavigationSource).toContain('min-[1024px]:grid min-[1024px]:min-w-0');
-    expect(subtabNavigationSource).toContain('min-[1024px]:grid-cols-4');
+    expect(subtabNavigationSource).toContain('min-[1200px]:grid min-[1200px]:min-w-0');
+    expect(subtabNavigationSource).toContain("4: 'min-[1200px]:grid-cols-4'");
     expect(subtabNavigationSource).toContain('min-w-36 w-max shrink-0');
     expect(storefrontPaneSource).toContain('idPrefix="pos-storefront-tab"');
     expect(storefrontPaneSource).toContain('aria-live="polite"');
@@ -915,6 +923,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(storefrontHoursSchedulerSource).toContain('showHeader = true');
     expect(storefrontHoursSchedulerSource).toContain('className={`mt-3 grid gap-4 ${registrationScheduleEditor ?');
     expect(storefrontHoursSchedulerSource).toContain("'min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.5fr)_auto] min-[1200px]:items-end'");
+    expect(storefrontHoursSchedulerSource).toContain('min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.5fr)_auto] min-[1200px]:items-end');
     expect(storefrontHoursSchedulerSource).toContain('grid min-w-0 grid-cols-2 gap-2 sm:gap-3');
     expect(storefrontHoursSchedulerSource).toContain('Add Schedule Set');
     expect(storefrontHoursSchedulerSource).toContain('aria-label={`Edit ${formatScheduleDayLabel(set.dayKeys)} schedule`}');
@@ -946,14 +955,14 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalPageSource).toContain('pinEnabled = refreshedMeta?.settingsAccessPinEnabled === true;');
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('items')}");
-    expect(sidebarSource).toContain("disabled={locked || onboardingRestricted || !canViewPos}");
+    expect(sidebarSource).toContain('{canViewPos && (');
     expect(sidebarSource).toContain('Daily totals, popular items, and transactions');
   });
 
   it('requires explicit item-edit permission while always hiding cashier item deletion', () => {
-    expect(terminalPageSource).toContain("const canEditItems = hasPermission('items:edit');");
+    expect(terminalPageSource).toContain("const canEditItems = canViewItems && hasPermission('items:edit');");
     expect(terminalPageSource).not.toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
-    expect(terminalPageSource).toContain("const canDeleteItems = !isCashierRole && hasPermission('items:delete');");
+    expect(terminalPageSource).toContain("const canDeleteItems = canViewItems && !isCashierRole && hasPermission('items:delete');");
     expect(itemsWorkspaceSource).toContain('{canDeleteItems && (');
   });
 });

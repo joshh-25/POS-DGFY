@@ -12,7 +12,8 @@ the only layer that reads landlord models.
   the order status changed and the order has neither a Storefront customer nor a DGFY account.
 - Pushable statuses are `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`,
   `completed`, `rejected`, and `cancelled`. `placed` remains SMS-owned; `packed`, `delivered`, and
-  `picked_up` do not produce order-status pushes.
+  `picked_up`, and `ready_for_rider` do not produce order-status pushes. `packed` and
+  `ready_for_rider` are internal handoff states.
 - A push contains the shared status title/body and `data.tracking_pin`. It includes
   `data.store_slug` only when the public Storefront discovery index resolves a tenant or location
   slug. It never uses `company_token` or includes customer contact, address, or order-line data.

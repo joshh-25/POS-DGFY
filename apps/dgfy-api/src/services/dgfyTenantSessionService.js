@@ -12,6 +12,7 @@ import {
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import { resolveEffectivePermissions } from '../utils/userPermissions.js';
 import { updateOwnPosDayClosePinForVerifiedDgfyAccount } from './userService.js';
+import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
 
 const isEnabledFlag = (value) => (
   value === true
@@ -19,6 +20,15 @@ const isEnabledFlag = (value) => (
   || value === '1'
   || (typeof value === 'string' && value.trim().toLowerCase() === 'true')
 );
+
+const parseCapabilityBoolean = (value, fallback = true) => {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
 
 const findAcceptedMembership = async ({ account, tenantId, companyToken }) => {
   const where = {
@@ -78,6 +88,7 @@ export const createTenantSessionForDgfyAccount = async ({
 
   return dbStore.run(context, async () => {
     const User = dbStore.get('User');
+    const SystemSetting = dbStore.get('SystemSetting');
     const tenantUserId = Number.parseInt(membership.tenant_user_id, 10);
     let user = Number.isInteger(tenantUserId) && tenantUserId > 0
       ? await User.findByPk(tenantUserId, { include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }] })
@@ -115,6 +126,13 @@ export const createTenantSessionForDgfyAccount = async ({
     }
 
     const permissions = resolveEffectivePermissions(user);
+    const tenantPosEnabledSetting = SystemSetting?.findOne
+      ? await SystemSetting.findOne({
+        where: { setting_key: 'tenant_pos_enabled' },
+        attributes: ['setting_value']
+      })
+      : null;
+    const tenantPosEnabled = parseCapabilityBoolean(tenantPosEnabledSetting?.setting_value, true);
 
     return {
       user_id: user.user_id,
@@ -127,7 +145,7 @@ export const createTenantSessionForDgfyAccount = async ({
       // Keep the legacy response field for older POS clients. The canonical
       // global PIN is valid for day close as well.
       pos_day_close_pin_configured: Boolean(String(user.pos_cashier_pin_hash || user.pos_day_close_pin_hash || '').trim()),
-      can_configure_pos_global_pin: isMasterAdmin || permissions.includes('pos:transact'),
+      can_configure_pos_global_pin: isPermissionEffective(permissions, 'pos:transact', isMasterAdmin),
       is_master_admin: isMasterAdmin,
       onboarding,
       token,
@@ -137,7 +155,11 @@ export const createTenantSessionForDgfyAccount = async ({
         id: tenant.id,
         name: tenant.name,
         token: tenant.company_token,
-        plan: tenant.plan || null
+        plan: tenant.plan || null,
+        pos_enabled: tenantPosEnabled
+      },
+      tenant_capabilities: {
+        pos_enabled: tenantPosEnabled
       }
     };
   });

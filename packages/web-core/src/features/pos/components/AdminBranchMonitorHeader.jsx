@@ -15,7 +15,7 @@ export default function AdminBranchMonitorHeader({
       className="flex min-w-0 items-center justify-between gap-3 border-b border-slate-100 pb-3"
     >
       <div className="min-w-0 flex-1">
-        <h2 id={headingId} className="text-xl font-black tracking-tight text-[#0B1647] sm:text-2xl">
+        <h2 id={headingId} className="pos-terminal-section-heading text-base font-black leading-5 tracking-tight text-[#0B1647]">
           {title}
         </h2>
         {subtitle ? (

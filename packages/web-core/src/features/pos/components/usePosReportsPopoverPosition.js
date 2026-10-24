@@ -6,7 +6,10 @@ const ANCHOR_GAP = 12;
 export default function usePosReportsPopoverPosition({
   open = false,
   anchorRef,
-  maxWidth = 480
+  maxWidth = 480,
+  wideViewportMaxWidth = maxWidth,
+  wideViewportMinWidth = 1200,
+  fitContentHeight = false
 } = {}) {
   const [position, setPosition] = useState(null);
 
@@ -18,7 +21,10 @@ export default function usePosReportsPopoverPosition({
     const updatePosition = () => {
       const viewportWidth = window.innerWidth || 1024;
       const viewportHeight = window.innerHeight || 768;
-      const width = Math.min(maxWidth, Math.max(240, viewportWidth - (VIEWPORT_PADDING * 2)));
+      const viewportMaxWidth = viewportWidth >= wideViewportMinWidth
+        ? wideViewportMaxWidth
+        : maxWidth;
+      const width = Math.min(viewportMaxWidth, Math.max(240, viewportWidth - (VIEWPORT_PADDING * 2)));
       const anchorRect = anchorRef?.current?.getBoundingClientRect?.();
       const requestedTop = anchorRect ? anchorRect.bottom + ANCHOR_GAP : 80;
       const top = Math.max(VIEWPORT_PADDING, requestedTop);
@@ -29,7 +35,7 @@ export default function usePosReportsPopoverPosition({
         )
         : VIEWPORT_PADDING;
       const availableHeight = viewportHeight - top - VIEWPORT_PADDING;
-      const shouldConstrainHeight = viewportWidth < 1024 || availableHeight < 560;
+      const shouldConstrainHeight = availableHeight < 560 || (!fitContentHeight && viewportWidth < 1024);
 
       setPosition({
         top,
@@ -46,7 +52,7 @@ export default function usePosReportsPopoverPosition({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [anchorRef, maxWidth, open]);
+  }, [anchorRef, fitContentHeight, maxWidth, open, wideViewportMaxWidth, wideViewportMinWidth]);
 
   return position;
 }

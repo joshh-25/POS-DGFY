@@ -177,18 +177,23 @@ export default function TerminalPageLayout({
     isDesktopWide,
     isTabletLayout = false,
     canViewPos,
+    canViewItems = null,
+    canViewReports = null,
+    canViewAffiliates = null,
     canViewAttendance = false,
     canOperateAttendance = false,
     canViewAudit = false,
     canReviewVoidApprovals = false,
     inlineVoidApprovalEnabled = false,
     onboardingRestricted = false,
+    catalogOnlyAccess = false,
     canCreateItems = false,
     canManageServiceCatalog = false,
     canViewFnbModifiers = false,
     showFnbService = false,
     canManageFnbModifiers = false,
     serviceOperationsPermissions = {},
+    onServiceAuthorizationFailure = async () => null,
     canAccessServiceOperations = false,
     canEditItems = false,
     canDeleteItems = false,
@@ -408,6 +413,7 @@ export default function TerminalPageLayout({
     ? (branchViewLocationId || viewingLocationId || operatingLocationId)
     : operatingLocationId;
   const workspaceCanViewPos = canViewPos || (isBranchReadOnlyView && canViewBranchLocations);
+  const workspaceCanViewItems = canViewItems || (isBranchReadOnlyView && canViewBranchLocations);
   const workspaceCanTransactPos = isBranchReadOnlyView ? false : canTransactPos;
   const workspaceCanOpenShift = isBranchReadOnlyView ? false : canOpenShift;
   const workspaceCanCloseShift = isBranchReadOnlyView ? false : canCloseShift;
@@ -597,6 +603,12 @@ export default function TerminalPageLayout({
   const notificationPopoverClasses = IS_DGFY_POS_SURFACE
     ? POS_NOTIFICATION_POPOVER_CLASSES
     : DEFAULT_NOTIFICATION_POPOVER_CLASSES;
+  const notificationPopoverPositionClassName = IS_DGFY_POS_SURFACE
+    ? 'fixed left-1/2 top-[3.875rem] z-[121] w-[21rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 text-left lg:absolute lg:left-auto lg:right-0 lg:top-full lg:mt-3.5 lg:translate-x-0'
+    : 'absolute right-0 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] translate-x-0 text-left';
+  const notificationPopoverPointerClassName = IS_DGFY_POS_SURFACE
+    ? `${notificationPopoverClasses.pointer} hidden lg:block`
+    : notificationPopoverClasses.pointer;
   const companyRows = Array.isArray(accessibleCompanies) ? accessibleCompanies : [];
   const currentCompanyId = String(terminalUser?.company?.id || '').trim();
   const isFloatingSidebarLayout = IS_DGFY_POS_SURFACE
@@ -624,19 +636,19 @@ export default function TerminalPageLayout({
       ? 'hidden lg:flex lg:h-full lg:w-full lg:min-h-0 lg:touch-pan-y'
     : 'hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:touch-pan-y';
   const headerShellClassName = IS_DGFY_POS_SURFACE
-    ? 'flex min-h-[38px] min-w-0 items-center justify-between gap-2 lg:min-h-[46px] lg:gap-3'
+    ? 'flex min-h-[44px] min-w-0 items-center justify-between gap-1 lg:min-h-[46px] lg:gap-3'
     : 'flex min-h-[56px] min-w-0 items-center justify-between gap-2.5';
   const compactBellClassName = IS_DGFY_POS_SURFACE
-    ? 'relative grid h-10 w-10 shrink-0 place-items-center lg:hidden'
+    ? 'dgfy-pos-header-action-slot relative grid h-10 w-10 shrink-0 place-items-center lg:hidden'
     : 'hidden';
   const desktopBellClassName = IS_DGFY_POS_SURFACE
-    ? 'relative hidden h-10 w-10 shrink-0 place-items-center lg:grid'
+    ? 'dgfy-pos-header-action-slot relative hidden h-10 w-10 shrink-0 place-items-center lg:grid'
     : 'relative grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[#1A4E8D] hover:bg-slate-100';
   const notificationButtonClassName = IS_DGFY_POS_SURFACE
-    ? 'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#1A4E8D] transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1'
+    ? 'dgfy-pos-header-action-trigger relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#1A4E8D] transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1'
     : 'relative flex h-full w-full items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-1';
   const desktopIdentityClassName = IS_DGFY_POS_SURFACE
-    ? 'hidden min-w-0 shrink-0 items-center gap-2 lg:flex'
+    ? 'flex min-w-0 shrink-0 items-center gap-2'
     : 'flex min-w-0 shrink-0 items-center gap-2.5';
   const overlayContainerClassName = isTabletLayout
     ? 'fixed inset-0 z-50'
@@ -674,10 +686,10 @@ export default function TerminalPageLayout({
     && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
   const isCustomerDisplaySettingsMode = CUSTOMER_DISPLAY_SETTINGS_VIEW_MODES.has(posViewMode);
-  const shouldMountCheckoutTerminal = isCheckoutWorkspaceMode
+  const shouldMountCheckoutTerminal = !catalogOnlyAccess && (isCheckoutWorkspaceMode
     || receiptRequestId !== null
     || receiptReturnViewMode !== null
-    || isCustomerDisplaySettingsMode;
+    || isCustomerDisplaySettingsMode);
   const isAffiliateWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_affiliates';
   const isVoucherManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_vouchers';
   const isPricelistManagementWorkspace = isOperationsWorkspaceMode && posViewMode === 'settings_pricelists';
@@ -701,7 +713,7 @@ export default function TerminalPageLayout({
   const workspaceContentClassName = isCheckoutWorkspaceMode
     ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden ${usesStandardPosPageFrame ? 'p-0' : `p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`}`
     : isFullBleedCatalogWorkspace
-      ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${workspaceContentModifierClassName}`
+      ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${workspaceContentModifierClassName}${isItemsView ? ' max-[1023px]:pt-0' : ''}`
       : `grid min-w-0 max-w-full grid-cols-1 gap-2 ${usesStandardPosPageFrame ? 'p-0' : 'p-2'}`;
   const workspaceSectionClassName = isCheckoutWorkspaceMode || isFullBleedCatalogWorkspace
     ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition'
@@ -793,10 +805,10 @@ export default function TerminalPageLayout({
         <>
           <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)} />
           <div
-            className="absolute right-0 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] translate-x-0 text-left"
+            className={notificationPopoverPositionClassName}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={notificationPopoverClasses.pointer} />
+            <div className={notificationPopoverPointerClassName} />
             <div className={notificationPopoverClasses.panel}>
               <div className={notificationPopoverClasses.header}>
                 <p className={notificationPopoverClasses.title}>Notifications</p>
@@ -866,13 +878,13 @@ export default function TerminalPageLayout({
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
           <UserRound size={22} className="text-white" />
         </span>
-        <span className="min-w-0 leading-tight">
+        <span className={`${IS_DGFY_POS_SURFACE ? 'hidden lg:block' : 'block'} min-w-0 leading-tight`}>
           <span className="block truncate text-[12px] font-extrabold dgfy-pos-header-profile-name">{terminalUser?.username || 'Locked'}</span>
           <span className={`block truncate text-[11px] ${mutedEmailClassName} dgfy-pos-header-profile-email`}>{terminalUser?.email || 'Sign in required'}</span>
         </span>
       </button>
       {companyMenuOpen && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-950/15">
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden max-[1023px]:max-h-[calc(100dvh-5rem)] max-[1023px]:overflow-y-auto max-[1023px]:overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-950/15">
           <div className="border-b border-slate-100 px-4 py-3">
             <p className="text-sm font-extrabold text-[#0F172A]">Account Profile</p>
             <p className="mt-0.5 text-xs text-[#64748B]">Choose a company and review your role before opening its POS workspace.</p>
@@ -950,9 +962,15 @@ export default function TerminalPageLayout({
               terminalUser={terminalUser}
               currentViewMode={posViewMode}
               canViewPos={workspaceCanViewPos}
+              canTransactPos={workspaceCanTransactPos}
+              canViewItems={workspaceCanViewItems}
+              canViewReports={canViewReports}
+              canViewAffiliates={canViewAffiliates}
               canViewAudit={canViewAudit}
               canReviewVoidApprovals={canReviewVoidApprovals}
               canAccessPosOnlySetup={canAccessPosOnlySetup}
+              catalogOnlyAccess={catalogOnlyAccess}
+              canCreateItems={canCreateItems}
               canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
               showFnbService={showFnbService}
@@ -962,6 +980,7 @@ export default function TerminalPageLayout({
               onboardingRestricted={onboardingRestricted}
               allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
               canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
+              canCloseShift={workspaceCanCloseShift}
               canCloseDay={workspaceCanCloseDay}
               shiftState={shiftState}
               incomingOrdersState={incomingOrdersState}
@@ -1002,6 +1021,7 @@ export default function TerminalPageLayout({
       <div
         key={locked ? 'terminal-header-locked' : 'terminal-header-unlocked'}
         className={`dgfy-pos-panel dgfy-pos-panel-strong sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 sm:px-5 lg:px-7 ${lockedHeaderSurfaceClassName} dgfy-pos-topbar`}
+        data-pos-surface={IS_DGFY_POS_SURFACE ? 'pos' : undefined}
       >
         <div className={`${headerShellClassName} dgfy-pos-header-shell`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 dgfy-pos-header-main">
@@ -1016,7 +1036,7 @@ export default function TerminalPageLayout({
                 setMobileNavOpen(true);
               }}
               disabled={locked}
-              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'pointer-events-auto hover:bg-slate-100'}`}
+              className={`dgfy-pos-header-menu-button grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'pointer-events-auto hover:bg-slate-100'}`}
               aria-label={!isFloatingSidebarLayout ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
               aria-pressed={!isFloatingSidebarLayout ? effectiveSidebarCollapsed : undefined}
             >
@@ -1025,7 +1045,7 @@ export default function TerminalPageLayout({
             <div className="min-w-0 flex-1 dgfy-pos-header-title">
               <div className="flex min-w-0 items-center gap-2 lg:gap-3">
                 <div className="min-w-0 flex-1 dgfy-pos-header-page-title-group">
-                  <h1 className="min-w-0 truncate text-[18px] font-black leading-tight tracking-tight text-[#0F172A] lg:text-[22px]">
+                  <h1 className={`min-w-0 ${IS_DGFY_POS_SURFACE ? 'whitespace-nowrap' : 'truncate'} text-[18px] font-black leading-tight tracking-tight text-[#0F172A] lg:text-[22px]`}>
                     {activeHeaderTitle}
                   </h1>
                   <div
@@ -1064,18 +1084,13 @@ export default function TerminalPageLayout({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-3 sm:gap-4 dgfy-pos-header-actions">
-            <PosTextSizeControl
-              id="pos-text-size-header"
-              value={posTextSize}
-              onChange={onPosTextSizeChange}
-            />
+          <div className="flex shrink-0 items-center gap-3 dgfy-pos-header-actions">
             {!locked && posViewMode === 'checkout' ? (
               <button
                 type="button"
                 onClick={openCustomerDisplay}
                 disabled={!customerDisplayReady}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-extrabold text-[#1A4E8D] shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45 sm:h-10 sm:px-3"
+                className={`${IS_DGFY_POS_SURFACE ? 'hidden min-[1200px]:inline-flex' : 'inline-flex'} h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-extrabold text-[#1A4E8D] shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45 sm:h-10 sm:px-3`}
                 aria-label="Open customer display"
                 title={customerDisplayReady ? 'Open customer display' : 'A terminal location is required'}
                 data-testid="pos-open-customer-display"
@@ -1087,8 +1102,14 @@ export default function TerminalPageLayout({
             <div
               data-testid="pos-header-park-slot"
               className={posViewMode === 'checkout'
-                ? 'dgfy-pos-header-park-slot relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5'
+                ? 'dgfy-pos-header-park-slot relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10'
                 : 'hidden'}
+            />
+            <PosTextSizeControl
+              id="pos-text-size-header"
+              value={posTextSize}
+              onChange={onPosTextSizeChange}
+              className={IS_DGFY_POS_SURFACE ? 'dgfy-pos-header-action-slot' : ''}
             />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, IS_DGFY_POS_SURFACE ? 20 : 24)}
@@ -1221,6 +1242,12 @@ export default function TerminalPageLayout({
                 terminalUser={terminalUser}
                 currentViewMode={posViewMode}
                 canViewPos={workspaceCanViewPos}
+              canTransactPos={workspaceCanTransactPos}
+              canViewItems={workspaceCanViewItems}
+              canViewReports={canViewReports}
+              canViewAffiliates={canViewAffiliates}
+                catalogOnlyAccess={catalogOnlyAccess}
+                canCreateItems={canCreateItems}
                 canViewAudit={canViewAudit}
                 canReviewVoidApprovals={canReviewVoidApprovals}
                 canAccessPosOnlySetup={canAccessPosOnlySetup}
@@ -1231,8 +1258,9 @@ export default function TerminalPageLayout({
                 showIncomingQueue={showIncomingQueue}
                 canAccessServiceOperations={canAccessServiceOperations}
                 allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
-              canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
-              canCloseDay={workspaceCanCloseDay}
+                canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
+                canCloseShift={workspaceCanCloseShift}
+                canCloseDay={workspaceCanCloseDay}
                 shiftState={shiftState}
                 incomingOrdersState={incomingOrdersState}
                 adminLocationMonitorState={adminLocationMonitorState}
@@ -1430,11 +1458,15 @@ export default function TerminalPageLayout({
                 settingsRefreshKey={settingsRefreshKey}
                 employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
                 canViewPos={workspaceCanViewPos}
+                canViewItems={workspaceCanViewItems}
+                catalogOnlyAccess={catalogOnlyAccess}
+                effectiveCapabilities={effectiveCapabilities}
                 canCreateItems={canCreateItems}
                 canManageServiceCatalog={canManageServiceCatalog}
                 canViewFnbModifiers={canViewFnbModifiers}
                 canManageFnbModifiers={canManageFnbModifiers}
                 serviceOperationsPermissions={serviceOperationsPermissions}
+                onServiceAuthorizationFailure={onServiceAuthorizationFailure}
                 canEditItems={canEditItems}
                 canDeleteItems={canDeleteItems}
                 canManageCategories={canManageCategories}

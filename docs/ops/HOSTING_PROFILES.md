@@ -28,7 +28,7 @@ Authoritative planning inputs:
 
 `vps` is the Redis-capable profile. It requires `REDIS_URL`, uses Redis-backed token blacklist/rate limiting/cache paths when connected, and requires fail-closed blacklist checks.
 
-Both profiles require `TENANT_REGISTRATION_APPROVAL_MODE=manual`. Public company registration creates pending landlord review state, and only Platform Admin approval may provision a tenant database. Keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` or stricter.
+Both profiles default to `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`. Public company registration provisions in the background and sends the owner a POS onboarding link, while new tenants remain catalog-only and Storefront-hidden until Platform Admin capability enablement. Use `manual` only for an explicit rollback/admin-review window. Keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` or stricter.
 
 ## Runtime Surfaces
 The backend exposes non-secret capability status at both endpoints:
@@ -115,9 +115,9 @@ Token blacklist runtime behavior must match the reported capability mode:
 Production browser session cookies require `SESSION_COOKIE_SECURE=true`. Use `SESSION_COOKIE_DOMAIN` only when an approved production domain intentionally shares sessions across subdomains; otherwise keep cookies host-only.
 
 Tenant registration approval mode is security-sensitive operational config:
-- `manual` keeps company registrations pending until Platform Admin approval and is the required current mode.
-- `auto_standard` is a legacy compatibility value only; current public-registration use cases still fail closed to manual review.
-- Invalid values fall back to `manual`; do not depend on typoed values for rollout state.
+- `auto_standard` is the default restricted-registration mode: background provisioning starts after the governed registration transaction, the owner receives a POS onboarding link, and `tenant_pos_enabled=false` plus `store_is_visible=false` remain in force until Platform Admin enablement.
+- `manual` keeps company registrations pending until Platform Admin approval and is reserved for explicit rollback/admin-review windows.
+- Invalid values fall back to `auto_standard`; do not depend on typoed values for rollout state.
 - New pending and active registrations are premium-capable by plan metadata, but provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
 
 In `vps` mode, Redis is a required capability. If `REDIS_URL` is configured but Redis is disconnected, `/health` and `/api/v1/health` should report degraded/unhealthy status so deploy automation and operators do not treat the runtime as fully ready.

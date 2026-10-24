@@ -152,9 +152,45 @@ describe('POS reports filter modal', () => {
     render(<PosReportsFilterPanel {...baseProps} />);
 
     const panel = screen.getByRole('dialog', { name: 'Filter' });
+    expect(panel.style.width).toBe('464px');
     expect(panel.style.maxHeight).toBe('384px');
     expect(panel.style.height).toBe('384px');
     expect(panel.querySelector('.dgfy-pos-history-dialog-body').className).toContain('overflow-y-auto');
+  });
+
+  it('fits filter content on a medium-width desktop when the viewport has room', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 900 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false })
+    });
+
+    render(<PosReportsFilterPanel {...baseProps} />);
+
+    const panel = screen.getByRole('dialog', { name: 'Filter' });
+    expect(panel.className).toContain('h-auto');
+    expect(panel.style.height).toBe('');
+    expect(panel.style.maxHeight).toBe('');
+  });
+
+  it('widens the filter modal and lets it fit its content on wide viewports', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1365 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false })
+    });
+
+    render(<PosReportsFilterPanel {...baseProps} />);
+
+    const panel = screen.getByRole('dialog', { name: 'Filter' });
+    const paymentGroup = screen.getByRole('group', { name: 'Payment Type' });
+
+    expect(panel.style.width).toBe('760px');
+    expect(panel.className).toContain('h-auto');
+    expect(panel.className).toContain('max-h-[min(90vh,48rem)]');
+    expect(paymentGroup.className).toContain('min-[1200px]:grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))]');
   });
 
   it('shows a floating scrollbar before the Cashier picker is opened', () => {

@@ -11,7 +11,7 @@ describe('Phase 355 item-update HTTP authorization', () => {
         ['view-only cashier', { role: 'cashier', permissions: ['items:view'] }, 403],
         ['delegated editor', { role: 'cashier', permissions: ['items:view', 'items:edit'] }, 200],
         ['manager without edit', { role: 'manager', permissions: ['items:view'] }, 403],
-        ['admin editor without POS shift', { role: 'admin', permissions: ['items:edit'] }, 200]
+        ['admin editor without POS shift', { role: 'admin', permissions: ['items:view', 'items:edit'] }, 200]
     ])('%s receives %i', async (_label, actor, expected) => {
         const app = express();
         app.use((req, _res, next) => { req.user = { ...actor, permissions: resolveEffectivePermissions(actor) }; next(); });

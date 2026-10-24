@@ -1,4 +1,5 @@
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { ONLINE_FULFILLMENT_STATUSES } from '../../shared/constants/orderFulfillmentStatuses.js';
 import { resolveBusinessAdminAccess } from '../domain/businessAdminAccessPolicy.js';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -6,7 +7,7 @@ const SOURCES = new Set(['in_store', 'online_store']);
 const PAYMENT_TYPES = new Set(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph']);
 const PAYMENT_STATUSES = new Set(['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded']);
 const TRANSACTION_STATUSES = new Set(['completed', 'voided']);
-const FULFILLMENT_STATUSES = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected']);
+const FULFILLMENT_STATUSES = new Set(ONLINE_FULFILLMENT_STATUSES);
 const RECEIPT_TYPES = new Set(['sales', 'refund', 'voided']);
 
 const fail = (code, message, statusCode = 400, details = null) => ({ success: false, error: new DomainError(code, message, { statusCode, details }) });

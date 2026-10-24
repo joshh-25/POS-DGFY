@@ -507,7 +507,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             const result = await switchShiftUseCase({
                 shiftId: sourceShift.pos_terminal_shift_id,
                 payload,
-                user: { user_id: 17, permissions: ['pos:switch_location'] }
+                user: { user_id: 17, permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location'] }
             });
 
             expect(result.success).toBe(true);
@@ -556,7 +556,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             const replay = await switchShiftUseCase({
                 shiftId: sourceShift.pos_terminal_shift_id,
                 payload,
-                user: { user_id: 17, permissions: ['pos:switch_location'] }
+                user: { user_id: 17, permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location'] }
             });
             expect(replay.success).toBe(true);
             expect(replay.data.idempotent_replay).toBe(true);
@@ -594,7 +594,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                     reason: 'Covering the neighboring branch',
                     idempotency_key: 'SHIFT-SWITCH-BLOCKED'
                 },
-                user: { user_id: 17, permissions: ['pos:switch_location'] }
+                user: { user_id: 17, permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location'] }
             });
 
             expect(result.success).toBe(false);
@@ -644,7 +644,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                     reason: 'Covering the neighboring branch',
                     idempotency_key: 'SHIFT-SWITCH-OCCUPIED'
                 },
-                user: { user_id: 17, permissions: ['pos:switch_location'] }
+                user: { user_id: 17, permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location'] }
             });
 
             expect(result.success).toBe(false);
@@ -687,7 +687,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                     reason: 'Covering the neighboring branch',
                     idempotency_key: 'SHIFT-SWITCH-ROLLBACK'
                 },
-                user: { user_id: 17, permissions: ['pos:switch_location'] }
+                user: { user_id: 17, permissions: ['pos:view', 'pos:shift_access', 'pos:switch_location'] }
             });
 
             expect(result.success).toBe(false);
@@ -838,7 +838,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         expect(posRepository.counters.shiftCreates).toBe(2);
         expect(posRepository.counters.cashEventsCreated).toBe(1);
         expect(posRepository.counters.shiftCloses).toBe(1);
-        expect(posRepository.counters.auditLogsCreated).toBe(3);
+        expect(posRepository.counters.auditLogsCreated).toBe(4);
         expect(posRepository.counters.orderUpdates).toBe(1);
         // Operator-authority lifecycle work opens its own transaction in addition to
         // the four idempotent POS operations exercised above.

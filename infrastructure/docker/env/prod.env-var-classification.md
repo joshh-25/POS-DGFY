@@ -3,7 +3,7 @@ status: draft
 authority_level: default
 owner: architecture
 date: 2026-08-28
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-19
 review_by: 2027-04-11
 applies_to: production_deployment, secrets_management
 topic: prod_env_var_classification
@@ -29,7 +29,11 @@ start. Everything else under `scripts/` (E2E/smoke/verify/CI tooling) never exec
 inside the production container and is excluded from the counts below, listed separately
 at the bottom instead of silently dropped.
 
-**Result: 314 vars `dgfy-api` can read in its production runtime path** (325 total matches minus 11 CI/test/script-only names). `dgfy-migration-runner` reads 7, unchanged from Appendix A and confirmed correct.
+**Historical baseline:** the original classification counted 314 API runtime vars (325 matches
+minus 11 CI/test/script-only names). The source scan above now returns 435 names as of 2026-10-20;
+this incrementally maintained classification has not been fully reconciled to that scan. The new
+`TENANT_DB_POOL_IDLE_MS` setting is classified below. `dgfy-migration-runner` counted 7 in the
+original baseline.
 
 **Scope note (#1236):** this file's method (`grep`-ing `process.env.*` reads) only ever
 covers the two Node services above. `nginx`'s domain vars are never `process.env` reads —
@@ -74,6 +78,19 @@ is the input to that step, not a replacement for it.
 ### Additional unconditional production validator requirement
 
 - `SMS_PHONE_HASH_SECRET` — **secret** (bucket A; `productionEnvValidation.cjs:71-73` requires it whenever `NODE_ENV=production`, regardless of `SMS_PROVIDER`)
+
+### Push delivery — production-required, but NOT checked by `validateProductionEnv` (added 2026-10-19, #2579)
+
+- `PUSH_PROVIDER` — non-secret (bucket B; PROD literal `expo`, PROD-scoped only — DEV/STAGING set it through their own `.env`)
+- `PUSH_TOKEN_HASH_SECRET` — **secret** (bucket A; ADR 0097 and `PUSH_DIAGNOSTICS_RUNBOOK.md` require it in production for HMAC token hashing)
+- `EXPO_ACCESS_TOKEN` — **secret** (bucket A; optional, Expo enhanced push security, so the compose reference carries an empty default)
+
+`productionEnvValidation.cjs` has no push check (verified 2026-10-19), so unlike `SMS_PHONE_HASH_SECRET`
+a missing `PUSH_TOKEN_HASH_SECRET` does **not** crash-loop the container and is not caught by
+`deploy-sops.sh`'s pre-flight. It surfaces only in the read-only readiness indicators of
+Platform Admin push diagnostics. That is why the secret must be in `secrets/dgfy-api.env`
+**before** `PUSH_PROVIDER: expo` reaches the live compose file. Whether to promote this to a boot-time
+check is a separate decision, not made here.
 
 ### Conditionally required — depends on which features/profile are live
 
@@ -774,9 +791,10 @@ the bucket-B sensitivity call against the live Phase 0 capture.
 
 </details>
 
-<details><summary><code>TENANT_*</code> (9)</summary>
+<details><summary><code>TENANT_*</code> (10)</summary>
 
 - `TENANT_AUTOMATIC_PAYOUT_ENABLED`
+- `TENANT_DB_POOL_IDLE_MS` — optional; defaults to 60000 ms to keep connections warm between POS polls
 - `TENANT_DB_POOL_MAX`
 - `TENANT_EXTERNAL_PAYOUT_APPROVED`
 - `TENANT_MAX_CACHED_CONNECTIONS`

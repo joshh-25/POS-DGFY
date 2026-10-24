@@ -42,9 +42,12 @@ describe('tenant DB pool timeout diagnostics', () => {
             waiting: 3,
             size: 7,
             available: 0,
-            max: 7
+            max: 7,
+            creating: 0,
+            last_connect_ms: 1300,
+            slow_connects: 2
         });
-        getPoolStats.mockReturnValue({ total: 20, pending: 0, capacity: 20, utilizationPercent: 100 });
+        getPoolStats.mockReturnValue({ total: 20, pending: 0, capacity: 20, utilizationPercent: 100, created_total: 24, evicted_total: 4 });
         getStore.mockReturnValue({ tenantId: 'tenant-from-store' });
     });
 
@@ -75,8 +78,8 @@ describe('tenant DB pool timeout diagnostics', () => {
             route: '/api/v1/pos/incoming-orders',
             method: 'GET',
             request_id: 'req-42',
-            pool: { using: 7, waiting: 3, size: 7, available: 0, max: 7 },
-            global_pool: { total: 20, pending: 0, capacity: 20, utilizationPercent: 100 }
+            pool: { using: 7, waiting: 3, size: 7, available: 0, max: 7, creating: 0, last_connect_ms: 1300, slow_connects: 2 },
+            global_pool: { total: 20, pending: 0, capacity: 20, utilizationPercent: 100, created_total: 24, evicted_total: 4 }
         });
     });
 

@@ -59,7 +59,7 @@ const createBulkPosRepository = ({ items = [], existing = null, readiness = null
         : jest.fn().mockResolvedValue({ item_id: 1, pos_image_url: '/uploads/image.png' })
 });
 
-const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
+const editableUser = { is_master_admin: false, permissions: ['items:view', 'items:edit'] };
 const posOperator = { user_id: 15, is_active: true, permissions: ['pos:view', 'pos:transact'] };
 
 const runWithTenantComplianceContext = (callback) => {
@@ -1776,6 +1776,7 @@ describe('pos use-cases application result contract', () => {
             status: 'open'
         };
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             getTerminalShiftById: jest.fn().mockResolvedValue(activeShift),
             listIncomingOnlineOrders: jest.fn().mockResolvedValue([
                 { pos_transaction_id: 54, location_id: 2 }
@@ -1820,6 +1821,7 @@ describe('pos use-cases application result contract', () => {
 
     it('listIncomingOnlineOrders rejects a branch request outside the active shift location', async () => {
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             getTerminalShiftById: jest.fn().mockResolvedValue({
                 pos_terminal_shift_id: 12,
                 cashier_id: 7,
@@ -1860,6 +1862,7 @@ describe('pos use-cases application result contract', () => {
             status: 'open'
         };
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             getTerminalShiftById: jest.fn().mockResolvedValue(activeShift),
             listIncomingOnlineOrders: jest.fn().mockResolvedValue([])
         };
@@ -1908,6 +1911,7 @@ describe('pos use-cases application result contract', () => {
             lines: []
         };
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             findOpenTerminalShift: jest.fn().mockResolvedValue(null),
             getOrderByIdForLifecycle: jest.fn().mockResolvedValue(existingOrder),
             updateOrderById: jest.fn()
@@ -1989,6 +1993,7 @@ describe('pos use-cases application result contract', () => {
         };
 
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             findOpenTerminalShift: jest.fn().mockResolvedValue({
                 pos_terminal_shift_id: 10,
                 cashier_id: 7,
@@ -2093,6 +2098,7 @@ describe('pos use-cases application result contract', () => {
         };
 
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             findOpenTerminalShift: jest.fn().mockResolvedValue({
                 pos_terminal_shift_id: 11,
                 cashier_id: 7,
@@ -2193,6 +2199,7 @@ describe('pos use-cases application result contract', () => {
             fulfillment_status: targetStatus
         };
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             findOpenTerminalShift: jest.fn().mockResolvedValue({
                 pos_terminal_shift_id: 13,
                 cashier_id: 9,
@@ -2248,6 +2255,7 @@ describe('pos use-cases application result contract', () => {
         };
 
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             findOpenTerminalShift: jest.fn().mockResolvedValue({
                 pos_terminal_shift_id: 12,
                 cashier_id: 8,
@@ -2300,6 +2308,7 @@ describe('pos use-cases application result contract', () => {
         };
         const updatedOrder = { ...existingOrder, fulfillment_status: 'confirmed' };
         const posRepository = {
+    createAuditLog: jest.fn().mockResolvedValue({}),
             findOpenTerminalShift: jest.fn().mockResolvedValue({
                 pos_terminal_shift_id: 15,
                 cashier_id: 7,

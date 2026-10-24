@@ -1,27 +1,28 @@
 {
-  "generatedAt": "2026-10-19T13:19:43.110Z",
-  "totalFiles": 871,
+  "generatedAt": "2026-10-23T07:48:57.979Z",
+  "totalFiles": 900,
   "byClassification": {
-    "keep": 803,
-    "delete": 23,
-    "consolidate": 37,
+    "keep": 830,
+    "delete": 22,
+    "consolidate": 40,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
-    "migration": 54,
-    "(none)": 296,
+    "migration": 57,
+    "(none)": 307,
     "middleware": 14,
     "handler": 1,
     "transport": 46,
     "integration": 13,
-    "unit": 96,
+    "unit": 97,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
+    "onboardingEmail": 1,
     "storeTemplateKey": 1,
-    "usecase": 72,
-    "contract": 50,
+    "usecase": 76,
+    "contract": 51,
     "ratelimit.e2e": 1,
     "hardening": 1,
     "phoneCompletionGate.middleware": 1,
@@ -38,6 +39,7 @@
     "documentaryReadiness": 1,
     "profileMerge": 1,
     "authorization": 1,
+    "idle.unit": 1,
     "budgetFeature": 1,
     "workflowMode": 2,
     "syncMode": 1,
@@ -54,7 +56,7 @@
     "deliveryProvider": 2,
     "companyApproved": 1,
     "invitation": 1,
-    "repository": 12,
+    "repository": 13,
     "loggingPolicy": 1,
     "helper": 1,
     "routes": 2,
@@ -64,9 +66,11 @@
     "resolveItemId": 1,
     "tenantCompanyToken": 1,
     "nullLocation.db.integration": 1,
+    "priceRange": 1,
     "alwaysAvailable": 1,
     "imageGeneration": 1,
     "schemaCompatibility": 3,
+    "guard": 2,
     "crossLayer.contract": 2,
     "publicRoutes.transport": 1,
     "simulateWebhook": 1,
@@ -83,14 +87,17 @@
     "catalogFolderWidening": 1,
     "catalogImages": 1,
     "catalogPagination": 1,
+    "listIncomingOnlineOrders": 1,
     "locationStockFallback": 2,
     "transactionInclude.contract": 1,
     "service": 1,
     "foundation": 1,
     "affiliateCode": 1,
+    "assignDeliveryPersonnel": 1,
     "deliveryAssignment": 1,
     "deliveryPersonnelRegistry": 1,
     "deliveryRun": 1,
+    "directDeliverySettlement": 1,
     "discountPolicy": 1,
     "orderHistoryQuery": 1,
     "reportsOverviewQuery": 1,
@@ -154,7 +161,7 @@
     "supertest": 1,
     "enforcement.contract": 1
   },
-  "dbManifestCount": 32,
+  "dbManifestCount": 33,
   "findingsCount": 3,
   "files": [
     {
@@ -376,7 +383,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -449,7 +458,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -519,7 +530,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -1231,14 +1244,14 @@
     },
     {
       "path": "tests/adminTenantCapabilityValidator.test.js",
-      "lines": 50,
-      "caseCount": 2,
+      "lines": 67,
+      "caseCount": 5,
       "describeTitles": [
         "admin tenant capability validators"
       ],
-      "expectCount": 6,
-      "expectResCount": 3,
-      "toHaveBeenCalledCount": 2,
+      "expectCount": 12,
+      "expectResCount": 5,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -1316,17 +1329,17 @@
     },
     {
       "path": "tests/adminTenantLifecycle.integration.test.js",
-      "lines": 480,
+      "lines": 487,
       "caseCount": 9,
       "describeTitles": [
         "Admin Tenant Lifecycle Integration - Parity"
       ],
-      "expectCount": 50,
-      "expectResCount": 25,
+      "expectCount": 53,
+      "expectResCount": 28,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
-      "maxMockStubCount": 8,
+      "maxMockStubCount": 9,
       "isSupertest": true,
       "isSnapshot": false,
       "onDbManifest": true,
@@ -2107,7 +2120,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -2331,6 +2346,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: asyncCrashRecovery)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/approveTenantUseCase.onboardingEmail.test.js",
+      "lines": 69,
+      "caseCount": 1,
+      "describeTitles": [
+        "approveTenantUseCase POS onboarding email"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "onboardingEmail",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: onboardingEmail)",
       "rule": "R5-default",
       "findings": []
     },
@@ -2749,13 +2799,13 @@
     },
     {
       "path": "tests/authCheckPermission.unit.test.js",
-      "lines": 60,
-      "caseCount": 3,
+      "lines": 79,
+      "caseCount": 5,
       "describeTitles": [
         "checkPermission"
       ],
-      "expectCount": 8,
-      "expectResCount": 5,
+      "expectCount": 11,
+      "expectResCount": 6,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
       "textRatio": 0,
@@ -3431,7 +3481,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -3479,14 +3531,14 @@
     },
     {
       "path": "tests/businessAdmin.contract.test.js",
-      "lines": 216,
-      "caseCount": 8,
+      "lines": 251,
+      "caseCount": 9,
       "describeTitles": [
         "Business Admin contracts"
       ],
-      "expectCount": 18,
+      "expectCount": 21,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 2,
+      "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -3552,14 +3604,14 @@
     },
     {
       "path": "tests/businessAdminAttendance.contract.test.js",
-      "lines": 102,
-      "caseCount": 4,
+      "lines": 123,
+      "caseCount": 5,
       "describeTitles": [
         "Business Admin attendance read model"
       ],
-      "expectCount": 13,
+      "expectCount": 15,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 5,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -3589,14 +3641,14 @@
     },
     {
       "path": "tests/businessAdminBootstrapCapability.route.test.js",
-      "lines": 78,
-      "caseCount": 2,
+      "lines": 94,
+      "caseCount": 3,
       "describeTitles": [
         "Business Admin bootstrap capability boundary"
       ],
-      "expectCount": 6,
-      "expectResCount": 4,
-      "toHaveBeenCalledCount": 2,
+      "expectCount": 8,
+      "expectResCount": 5,
+      "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 1,
@@ -3611,12 +3663,84 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
       "reason": "default keep (suffix: route)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCompanyName.usecase.test.js",
+      "lines": 188,
+      "caseCount": 6,
+      "describeTitles": [
+        "business admin canonical company name use case"
+      ],
+      "expectCount": 23,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 9,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCompanyRepository.test.js",
+      "lines": 133,
+      "caseCount": 3,
+      "describeTitles": [
+        "business admin company repository"
+      ],
+      "expectCount": 10,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -3693,6 +3817,41 @@
       "findings": []
     },
     {
+      "path": "tests/businessAdminEndAttendanceShift.usecase.test.js",
+      "lines": 114,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin end attendance shift"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/businessAdminEvidence.transport.test.js",
       "lines": 29,
       "caseCount": 1,
@@ -3717,7 +3876,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.json"
+          "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.json",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-10-03-pos-bir-annex-b-items-4-14-section-05.md"
@@ -3754,7 +3914,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.json"
+          "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.json",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-10-03-pos-bir-annex-b-items-4-14-section-05.md"
@@ -3946,6 +4107,41 @@
       "findings": []
     },
     {
+      "path": "tests/businessAdminOrderTimeline.test.js",
+      "lines": 29,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin online-order timeline"
+      ],
+      "expectCount": 2,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/businessAdminOverviewRepository.audit.test.js",
       "lines": 40,
       "caseCount": 1,
@@ -4042,7 +4238,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -4122,6 +4320,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminShiftHistoryRepository.test.js",
+      "lines": 117,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin shift cash projection"
+      ],
+      "expectCount": 2,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -4322,7 +4555,7 @@
     },
     {
       "path": "tests/cashierPosPermissions.test.js",
-      "lines": 31,
+      "lines": 32,
       "caseCount": 1,
       "describeTitles": [
         "cashier POS least-privilege defaults"
@@ -4360,12 +4593,12 @@
     },
     {
       "path": "tests/catalogChangeEventBus.test.js",
-      "lines": 39,
-      "caseCount": 2,
+      "lines": 63,
+      "caseCount": 3,
       "describeTitles": [
         "catalog change event bus"
       ],
-      "expectCount": 5,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -4697,15 +4930,15 @@
     },
     {
       "path": "tests/commerceOrderLifecycle.usecase.test.js",
-      "lines": 314,
-      "caseCount": 12,
+      "lines": 339,
+      "caseCount": 13,
       "describeTitles": [
         "commerce order payment lifecycle",
         "downpayment refund vs forfeiture (Phase 144, #824)"
       ],
-      "expectCount": 44,
+      "expectCount": 47,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 18,
+      "toHaveBeenCalledCount": 19,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -4819,16 +5052,51 @@
       "findings": []
     },
     {
+      "path": "tests/commercePaymentRefundRetryWorker.test.js",
+      "lines": 54,
+      "caseCount": 2,
+      "describeTitles": [
+        "commerce payment refund retry worker"
+      ],
+      "expectCount": 5,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/commercePaymentRefunds.usecases.test.js",
-      "lines": 434,
-      "caseCount": 10,
+      "lines": 603,
+      "caseCount": 14,
       "describeTitles": [
         "commerce payment refund use-cases",
         "tenant order-payment ledger mirroring (Phase 144, #824)"
       ],
-      "expectCount": 30,
+      "expectCount": 48,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 15,
+      "toHaveBeenCalledCount": 24,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -4868,12 +5136,12 @@
     },
     {
       "path": "tests/commercePaymentRouteMount.contract.test.js",
-      "lines": 33,
-      "caseCount": 4,
+      "lines": 41,
+      "caseCount": 5,
       "describeTitles": [
         "commerce payment route mount contract"
       ],
-      "expectCount": 6,
+      "expectCount": 9,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 2,
@@ -4989,12 +5257,12 @@
     },
     {
       "path": "tests/commercePaymentValidator.test.js",
-      "lines": 179,
-      "caseCount": 10,
+      "lines": 245,
+      "caseCount": 13,
       "describeTitles": [
         "commerce payment validators"
       ],
-      "expectCount": 30,
+      "expectCount": 45,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -5054,7 +5322,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5087,7 +5357,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5098,14 +5370,15 @@
     },
     {
       "path": "tests/commerceRefundRetry.usecase.test.js",
-      "lines": 123,
-      "caseCount": 4,
+      "lines": 309,
+      "caseCount": 11,
       "describeTitles": [
-        "commerce refund retry"
+        "commerce refund retry",
+        "commerce admin refund list use case"
       ],
-      "expectCount": 17,
+      "expectCount": 57,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 6,
+      "toHaveBeenCalledCount": 12,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5120,7 +5393,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5194,7 +5469,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5227,7 +5504,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5260,7 +5539,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5271,14 +5552,14 @@
     },
     {
       "path": "tests/companyRegistrationDraftMaterialization.test.js",
-      "lines": 338,
-      "caseCount": 4,
+      "lines": 379,
+      "caseCount": 5,
       "describeTitles": [
         "company registration draft materialization"
       ],
-      "expectCount": 23,
+      "expectCount": 27,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 11,
+      "toHaveBeenCalledCount": 13,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5293,7 +5574,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5304,14 +5587,14 @@
     },
     {
       "path": "tests/companyRegistrationDraftUseCases.test.js",
-      "lines": 523,
-      "caseCount": 10,
+      "lines": 590,
+      "caseCount": 11,
       "describeTitles": [
         "company registration draft use cases"
       ],
-      "expectCount": 38,
+      "expectCount": 42,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 17,
+      "toHaveBeenCalledCount": 18,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5326,7 +5609,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5359,7 +5644,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5392,7 +5679,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5463,7 +5752,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5496,7 +5787,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5529,7 +5822,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5562,7 +5857,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5595,7 +5892,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -5628,7 +5927,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -6369,6 +6670,41 @@
       "findings": []
     },
     {
+      "path": "tests/connectionBudget.idle.unit.test.js",
+      "lines": 23,
+      "caseCount": 2,
+      "describeTitles": [
+        "tenant pool idle window"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "idle.unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: idle.unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/controllerBoundaryScript.integration.test.js",
       "lines": 38,
       "caseCount": 2,
@@ -6663,6 +6999,39 @@
       "findings": []
     },
     {
+      "path": "tests/createFeedbackSubmissions.migration.test.js",
+      "lines": 44,
+      "caseCount": 1,
+      "describeTitles": [],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/createMenuImportJobUseCase.budgetFeature.test.js",
       "lines": 36,
       "caseCount": 1,
@@ -6721,7 +7090,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -6756,7 +7127,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -6789,7 +7162,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -6824,7 +7199,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -6857,7 +7234,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -7233,7 +7612,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -7307,7 +7688,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -7425,7 +7808,7 @@
     },
     {
       "path": "tests/dbPoolDiagnostics.test.js",
-      "lines": 161,
+      "lines": 164,
       "caseCount": 7,
       "describeTitles": [
         "tenant DB pool timeout diagnostics"
@@ -7447,7 +7830,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -7847,13 +8232,13 @@
     },
     {
       "path": "tests/deliveryRun.usecase.test.js",
-      "lines": 508,
-      "caseCount": 21,
+      "lines": 554,
+      "caseCount": 22,
       "describeTitles": [
         "Delivery run use cases (Phase 225)",
         "Delivery run location scoping (PR #1276 RF-1)"
       ],
-      "expectCount": 57,
+      "expectCount": 62,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -7890,7 +8275,7 @@
     },
     {
       "path": "tests/deliveryRunDispatch.usecase.test.js",
-      "lines": 665,
+      "lines": 673,
       "caseCount": 24,
       "describeTitles": [
         "buildDispatchDeliveryRunUseCase -- run-level preconditions",
@@ -7903,7 +8288,7 @@
         "buildDispatchDeliveryRunUseCase -- durable replay (D-4 layer 1)",
         "buildDispatchDeliveryRunUseCase -- validation"
       ],
-      "expectCount": 89,
+      "expectCount": 91,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -8844,14 +9229,14 @@
     },
     {
       "path": "tests/dgfyCustomerUseCases.test.js",
-      "lines": 1125,
-      "caseCount": 42,
+      "lines": 1237,
+      "caseCount": 44,
       "describeTitles": [
         "dgfyCustomerUseCases"
       ],
-      "expectCount": 152,
+      "expectCount": 167,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 44,
+      "toHaveBeenCalledCount": 50,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -8859,7 +9244,7 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 2,
+      "srcImportCount": 5,
       "deadImportCount": 0,
       "suffix": "(none)",
       "conditionalSkip": false,
@@ -8981,7 +9366,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/architecture/compatibility-seams.json"
+          "docs/architecture/compatibility-seams.json",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
         "hardcoded": []
@@ -9016,7 +9402,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/architecture/compatibility-seams.json"
+          "docs/architecture/compatibility-seams.json",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
         "hardcoded": []
@@ -9050,7 +9437,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9158,7 +9547,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9266,7 +9657,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -9472,14 +9865,14 @@
     },
     {
       "path": "tests/dgfyTenantSessionService.test.js",
-      "lines": 100,
-      "caseCount": 1,
+      "lines": 147,
+      "caseCount": 2,
       "describeTitles": [
         "DGFY tenant session authority normalization"
       ],
-      "expectCount": 5,
+      "expectCount": 9,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 1,
@@ -9569,7 +9962,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9602,7 +9997,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9635,7 +10032,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9706,7 +10105,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -9742,7 +10143,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9776,7 +10179,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9810,7 +10215,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/architecture/compatibility-seams.json"
+          "docs/architecture/compatibility-seams.json",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
         "hardcoded": []
@@ -9956,7 +10362,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -9992,7 +10400,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/architecture/compatibility-seams.json"
+          "docs/architecture/compatibility-seams.json",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -10001,6 +10410,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/directDeliverySchema.migration.test.js",
+      "lines": 81,
+      "caseCount": 4,
+      "describeTitles": [
+        "direct delivery tenant schema migration (Phase 527, #2667)"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
       "rule": "R5-default",
       "findings": []
     },
@@ -10064,7 +10508,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -10173,7 +10619,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -10228,14 +10676,15 @@
     },
     {
       "path": "tests/downpaymentPolicy.unit.test.js",
-      "lines": 283,
-      "caseCount": 23,
+      "lines": 293,
+      "caseCount": 24,
       "describeTitles": [
         "resolveDownpaymentForTotal",
         "resolveDownpaymentForTotal -- customer_choice (Phase 150, #866)",
-        "resolveDownpaymentForTotal -- fixed-mode minimum floor is a no-op (Phase 150 RF-5)"
+        "resolveDownpaymentForTotal -- fixed-mode minimum floor is a no-op (Phase 150 RF-5)",
+        "platform allowance"
       ],
-      "expectCount": 28,
+      "expectCount": 31,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -10270,14 +10719,14 @@
     },
     {
       "path": "tests/downpaymentSettingsRepository.unit.test.js",
-      "lines": 116,
-      "caseCount": 4,
+      "lines": 140,
+      "caseCount": 6,
       "describeTitles": [
         "downpaymentSettingsRepository"
       ],
-      "expectCount": 8,
+      "expectCount": 14,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 4,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -10308,13 +10757,14 @@
     },
     {
       "path": "tests/downpaymentSettingsUseCases.unit.test.js",
-      "lines": 239,
-      "caseCount": 16,
+      "lines": 261,
+      "caseCount": 19,
       "describeTitles": [
         "buildGetDownpaymentSettingsUseCase",
-        "buildUpdateDownpaymentSettingsUseCase"
+        "buildUpdateDownpaymentSettingsUseCase",
+        "platform downpayment allowance (#2639)"
       ],
-      "expectCount": 34,
+      "expectCount": 40,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -10349,14 +10799,14 @@
     },
     {
       "path": "tests/downpaymentSettingsValidator.unit.test.js",
-      "lines": 99,
-      "caseCount": 7,
+      "lines": 107,
+      "caseCount": 8,
       "describeTitles": [
         "downpaymentSettingsValidator"
       ],
-      "expectCount": 16,
+      "expectCount": 18,
       "expectResCount": 5,
-      "toHaveBeenCalledCount": 12,
+      "toHaveBeenCalledCount": 13,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -10388,7 +10838,7 @@
     },
     {
       "path": "tests/downpaymentWebhookFinalization.unit.test.js",
-      "lines": 482,
+      "lines": 483,
       "caseCount": 7,
       "describeTitles": [
         "processVerifiedPaidCommerceSession — downpayment amount equality (#822, ADR 0069 clause 1b)",
@@ -10538,7 +10988,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.json"
+          "docs/compliance/evidence/annex-b-items-4-14-section-05-evidence-contract-v1.json",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-10-03-pos-bir-annex-b-items-4-14-section-05.md"
@@ -10747,12 +11198,12 @@
     },
     {
       "path": "tests/emailTemplates.companyApproved.test.js",
-      "lines": 21,
-      "caseCount": 1,
+      "lines": 36,
+      "caseCount": 2,
       "describeTitles": [
         "company approval email template"
       ],
-      "expectCount": 7,
+      "expectCount": 11,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -11258,6 +11709,41 @@
       "findings": []
     },
     {
+      "path": "tests/extendTenantAdminAuditActionsApplyTemplate.migration.test.js",
+      "lines": 81,
+      "caseCount": 3,
+      "describeTitles": [
+        "extend tenant admin audit actions with apply_template migration"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/externalProductImageImport.test.js",
       "lines": 107,
       "caseCount": 4,
@@ -11328,15 +11814,51 @@
       "findings": []
     },
     {
+      "path": "tests/externalRedirectFoundation.test.js",
+      "lines": 109,
+      "caseCount": 8,
+      "describeTitles": [
+        "external destination policy",
+        "external listing redirect"
+      ],
+      "expectCount": 18,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 3,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/feedbackHandlers.transport.test.js",
-      "lines": 108,
-      "caseCount": 2,
+      "lines": 138,
+      "caseCount": 3,
       "describeTitles": [
         "feedbackHandlers transport contracts"
       ],
-      "expectCount": 6,
+      "expectCount": 11,
       "expectResCount": 4,
-      "toHaveBeenCalledCount": 6,
+      "toHaveBeenCalledCount": 7,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -11363,13 +11885,46 @@
       "findings": []
     },
     {
-      "path": "tests/feedbackUsecases.applicationResult.test.js",
-      "lines": 43,
-      "caseCount": 2,
+      "path": "tests/feedbackIdentity.test.js",
+      "lines": 77,
+      "caseCount": 4,
       "describeTitles": [
-        "feedback use-cases application result contract"
+        "optional feedback identity"
       ],
-      "expectCount": 5,
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 7,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/feedbackRepository.unit.test.js",
+      "lines": 34,
+      "caseCount": 2,
+      "describeTitles": [],
+      "expectCount": 10,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -11379,7 +11934,113 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 2,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/feedbackRoute.test.js",
+      "lines": 65,
+      "caseCount": 3,
+      "describeTitles": [
+        "feedback route middleware order"
+      ],
+      "expectCount": 10,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": true,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/feedbackSubmissionValidator.test.js",
+      "lines": 50,
+      "caseCount": 4,
+      "describeTitles": [
+        "feedback submission validator"
+      ],
+      "expectCount": 8,
+      "expectResCount": 2,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/feedbackUsecases.applicationResult.test.js",
+      "lines": 119,
+      "caseCount": 8,
+      "describeTitles": [
+        "feedback submission contract",
+        "feedback read and legacy mapping"
+      ],
+      "expectCount": 24,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 4,
       "deadImportCount": 0,
       "suffix": "applicationResult",
       "conditionalSkip": false,
@@ -11542,7 +12203,8 @@
       "citations": {
         "live": [
           "docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.json",
-          "docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.md"
+          "docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.md",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
         "hardcoded": []
@@ -11614,7 +12276,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -12479,7 +13143,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -12512,7 +13178,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -12827,7 +13495,7 @@
     },
     {
       "path": "tests/geoStoreItems.nullLocation.db.integration.test.js",
-      "lines": 213,
+      "lines": 216,
       "caseCount": 3,
       "describeTitles": [
         "geo_store_items NULL-location uniqueness MySQL integration"
@@ -12840,7 +13508,7 @@
       "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
-      "onDbManifest": false,
+      "onDbManifest": true,
       "usesCreateTestTenant": false,
       "srcImportCount": 3,
       "deadImportCount": 0,
@@ -12849,13 +13517,18 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json",
+          "scripts/run-backend-test-matrix.test.js"
+        ],
         "historical": [],
-        "hardcoded": []
+        "hardcoded": [
+          "scripts/backend-db-dependent-tests.js"
+        ]
       },
       "classification": "keep",
-      "reason": "default keep (suffix: nullLocation.db.integration)",
-      "rule": "R5-default",
+      "reason": "hardcoded reference: scripts/backend-db-dependent-tests.js",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -13507,6 +14180,39 @@
       "findings": []
     },
     {
+      "path": "tests/importLegacyFeedbackLog.test.js",
+      "lines": 35,
+      "caseCount": 1,
+      "describeTitles": [],
+      "expectCount": 7,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/incidentBundleScript.test.js",
       "lines": 50,
       "caseCount": 2,
@@ -13733,14 +14439,14 @@
     },
     {
       "path": "tests/inventoryItemRepository.test.js",
-      "lines": 3647,
-      "caseCount": 82,
+      "lines": 3706,
+      "caseCount": 83,
       "describeTitles": [
         "inventory itemRepository"
       ],
-      "expectCount": 308,
+      "expectCount": 311,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 150,
+      "toHaveBeenCalledCount": 153,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -14342,6 +15048,43 @@
       "findings": []
     },
     {
+      "path": "tests/itemValidator.priceRange.test.js",
+      "lines": 129,
+      "caseCount": 4,
+      "describeTitles": [
+        "item price storage range validation"
+      ],
+      "expectCount": 13,
+      "expectResCount": 3,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "priceRange",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-10-22-item-price-range-2686.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: priceRange)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/jobOrderHandlers.transport.test.js",
       "lines": 292,
       "caseCount": 7,
@@ -14545,7 +15288,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-10-01-legacy-promo-revoke.md"
         ],
@@ -14581,7 +15326,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-10-01-legacy-promo-revoke.md"
         ],
@@ -14637,14 +15384,14 @@
     },
     {
       "path": "tests/listTenants.usecase.test.js",
-      "lines": 141,
-      "caseCount": 3,
+      "lines": 177,
+      "caseCount": 4,
       "describeTitles": [
         "listTenants usecase eligibility enrichment"
       ],
-      "expectCount": 13,
+      "expectCount": 16,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
+      "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -14776,7 +15523,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -15317,7 +16066,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -15880,7 +16631,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/ops/STOREFRONT_APP_LINKS.md"
+          "docs/ops/STOREFRONT_APP_LINKS.md",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
         "hardcoded": []
@@ -16023,7 +16775,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -16056,7 +16810,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -16107,14 +16863,14 @@
     },
     {
       "path": "tests/onboardingRepository.schemaCompatibility.test.js",
-      "lines": 246,
-      "caseCount": 5,
+      "lines": 270,
+      "caseCount": 6,
       "describeTitles": [
         "onboardingRepository schema compatibility"
       ],
-      "expectCount": 16,
+      "expectCount": 20,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 6,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -16306,6 +17062,41 @@
       "findings": []
     },
     {
+      "path": "tests/orderFulfillmentStatuses.guard.test.js",
+      "lines": 49,
+      "caseCount": 2,
+      "describeTitles": [
+        "online fulfillment vocabulary guard"
+      ],
+      "expectCount": 8,
+      "expectResCount": 1,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 4,
+      "deadImportCount": 0,
+      "suffix": "guard",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: guard)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/orderMethods.crossLayer.contract.test.js",
       "lines": 73,
       "caseCount": 4,
@@ -16343,6 +17134,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: crossLayer.contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/orderStatusPush.guard.test.js",
+      "lines": 10,
+      "caseCount": 1,
+      "describeTitles": [
+        "customer order push allowlist"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "guard",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: guard)",
       "rule": "R5-default",
       "findings": []
     },
@@ -16405,7 +17231,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -16438,7 +17266,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -16471,7 +17301,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -16504,7 +17336,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -16537,7 +17371,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -16914,7 +17750,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -17258,7 +18096,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -17293,7 +18133,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -17446,7 +18288,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -17554,7 +18398,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -17565,12 +18411,12 @@
     },
     {
       "path": "tests/posBranchDirectory.usecase.test.js",
-      "lines": 291,
-      "caseCount": 9,
+      "lines": 343,
+      "caseCount": 11,
       "describeTitles": [
         "POS branch directory and read-only branch view"
       ],
-      "expectCount": 32,
+      "expectCount": 34,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
@@ -17587,7 +18433,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-10-16-pos-terminal-branch-scope-and-permission-scroll.md"
         ],
@@ -17713,6 +18561,41 @@
       "expectCount": 9,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posCashReconciliation.test.js",
+      "lines": 47,
+      "caseCount": 2,
+      "describeTitles": [
+        "POS cash reconciliation helpers"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17954,7 +18837,7 @@
     },
     {
       "path": "tests/posCashierAttendanceLifecycle.usecases.test.js",
-      "lines": 230,
+      "lines": 232,
       "caseCount": 7,
       "describeTitles": [
         "POS cashier attendance and break lifecycle"
@@ -18125,7 +19008,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -18136,12 +19021,12 @@
     },
     {
       "path": "tests/posCashierLifecycle.usecases.test.js",
-      "lines": 434,
-      "caseCount": 11,
+      "lines": 523,
+      "caseCount": 13,
       "describeTitles": [
         "POS automatic cashier shift lifecycle"
       ],
-      "expectCount": 43,
+      "expectCount": 55,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
@@ -18316,7 +19201,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -18349,7 +19236,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -18395,12 +19284,12 @@
     },
     {
       "path": "tests/posCatalogEvents.transport.test.js",
-      "lines": 23,
+      "lines": 24,
       "caseCount": 2,
       "describeTitles": [
         "POS catalog event transport contract"
       ],
-      "expectCount": 6,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 1,
@@ -18705,12 +19594,12 @@
     },
     {
       "path": "tests/posDeliveryAssignment.usecase.test.js",
-      "lines": 302,
-      "caseCount": 8,
+      "lines": 360,
+      "caseCount": 11,
       "describeTitles": [
         "POS delivery personnel assignment"
       ],
-      "expectCount": 35,
+      "expectCount": 41,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -18821,7 +19710,7 @@
     },
     {
       "path": "tests/posDeliveryCompletionGuard.usecase.test.js",
-      "lines": 222,
+      "lines": 223,
       "caseCount": 7,
       "describeTitles": [
         "POS delivery completion guard"
@@ -18901,12 +19790,12 @@
     },
     {
       "path": "tests/posDeliveryJobStatus.usecase.test.js",
-      "lines": 272,
-      "caseCount": 8,
+      "lines": 293,
+      "caseCount": 9,
       "describeTitles": [
         "POS manual delivery job status"
       ],
-      "expectCount": 43,
+      "expectCount": 47,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -19341,6 +20230,41 @@
       "findings": []
     },
     {
+      "path": "tests/posDirectDeliveryAction.usecase.test.js",
+      "lines": 189,
+      "caseCount": 7,
+      "describeTitles": [
+        "direct delivery completion and failure"
+      ],
+      "expectCount": 32,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 10,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/posDiscountApprovalPolicy.unit.test.js",
       "lines": 127,
       "caseCount": 10,
@@ -19623,7 +20547,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -19671,14 +20597,14 @@
     },
     {
       "path": "tests/posHandlers.transport.test.js",
-      "lines": 1759,
-      "caseCount": 38,
+      "lines": 1785,
+      "caseCount": 39,
       "describeTitles": [
         "posHandlers transport contracts"
       ],
-      "expectCount": 135,
+      "expectCount": 136,
       "expectResCount": 73,
-      "toHaveBeenCalledCount": 134,
+      "toHaveBeenCalledCount": 135,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -19797,7 +20723,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -19882,7 +20810,7 @@
     },
     {
       "path": "tests/posOnlineInventoryReservationLifecycle.unit.test.js",
-      "lines": 407,
+      "lines": 409,
       "caseCount": 11,
       "describeTitles": [
         "POS online inventory reservation lifecycle",
@@ -19922,14 +20850,14 @@
     },
     {
       "path": "tests/posOnlineOrderCompletionBalanceGate.usecase.test.js",
-      "lines": 202,
-      "caseCount": 6,
+      "lines": 219,
+      "caseCount": 7,
       "describeTitles": [
         "POS online order completion balance gate"
       ],
-      "expectCount": 15,
+      "expectCount": 17,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -20120,12 +21048,12 @@
     },
     {
       "path": "tests/posOperatorMutationAttribution.contract.test.js",
-      "lines": 56,
+      "lines": 59,
       "caseCount": 4,
       "describeTitles": [
         "Phase 160 POS operator mutation attribution contract"
       ],
-      "expectCount": 11,
+      "expectCount": 12,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 1,
@@ -20192,14 +21120,14 @@
     },
     {
       "path": "tests/posOrderBalanceSettlement.usecase.test.js",
-      "lines": 338,
+      "lines": 348,
       "caseCount": 11,
       "describeTitles": [
         "POS downpayment balance settlement"
       ],
-      "expectCount": 43,
+      "expectCount": 44,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
+      "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -20308,14 +21236,14 @@
     },
     {
       "path": "tests/posOrderPackedStep.usecase.test.js",
-      "lines": 170,
-      "caseCount": 6,
+      "lines": 209,
+      "caseCount": 8,
       "describeTitles": [
         "preparing -> packed online order status (Phase 211, #1180)"
       ],
-      "expectCount": 21,
+      "expectCount": 28,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
+      "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -20346,15 +21274,15 @@
     },
     {
       "path": "tests/posOrderRejectionAndAddressEdit.usecase.test.js",
-      "lines": 255,
-      "caseCount": 8,
+      "lines": 316,
+      "caseCount": 10,
       "describeTitles": [
         "confirmed -> rejected online order status (Phase 210, #1179)",
         "staff delivery-address/pin edit (Phase 210, #1179) -- pre-dispatch only"
       ],
-      "expectCount": 26,
+      "expectCount": 34,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -20823,7 +21751,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -20856,7 +21786,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -20869,7 +21801,7 @@
     },
     {
       "path": "tests/posReports.repository.test.js",
-      "lines": 2241,
+      "lines": 2249,
       "caseCount": 35,
       "describeTitles": [
         "posRepository reports analytics"
@@ -21071,6 +22003,41 @@
       "findings": []
     },
     {
+      "path": "tests/posRepository.listIncomingOnlineOrders.test.js",
+      "lines": 22,
+      "caseCount": 1,
+      "describeTitles": [
+        "incoming online order visibility"
+      ],
+      "expectCount": 5,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 3,
+      "deadImportCount": 0,
+      "suffix": "listIncomingOnlineOrders",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: listIncomingOnlineOrders)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/posRepository.locationStockFallback.test.js",
       "lines": 169,
       "caseCount": 6,
@@ -21181,7 +22148,8 @@
       "citations": {
         "live": [
           "docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.json",
-          "docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.md"
+          "docs/compliance/evidence/annex-b-items-4-14-section-04-evidence-contract-v1.md",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
         "hardcoded": []
@@ -21290,12 +22258,12 @@
     },
     {
       "path": "tests/posShiftAuthorizationPolicy.test.js",
-      "lines": 101,
-      "caseCount": 6,
+      "lines": 115,
+      "caseCount": 7,
       "describeTitles": [
         "POS shift authorization policy"
       ],
-      "expectCount": 6,
+      "expectCount": 7,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -21716,7 +22684,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -22328,7 +23298,7 @@
     },
     {
       "path": "tests/posUsecases.applicationResult.test.js",
-      "lines": 2342,
+      "lines": 2351,
       "caseCount": 61,
       "describeTitles": [
         "pos use-cases application result contract"
@@ -22464,6 +23434,41 @@
       "findings": []
     },
     {
+      "path": "tests/posValidator.assignDeliveryPersonnel.test.js",
+      "lines": 52,
+      "caseCount": 2,
+      "describeTitles": [
+        "POS delivery assignment validator"
+      ],
+      "expectCount": 5,
+      "expectResCount": 2,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "assignDeliveryPersonnel",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "consolidate",
+      "reason": "duplicate-describe: \"POS delivery assignment validator\" also declared by a stem sibling",
+      "rule": "R3-duplicate-describe",
+      "findings": []
+    },
+    {
       "path": "tests/posValidator.deliveryAssignment.test.js",
       "lines": 47,
       "caseCount": 2,
@@ -22497,9 +23502,9 @@
         ],
         "hardcoded": []
       },
-      "classification": "keep",
-      "reason": "default keep (suffix: deliveryAssignment)",
-      "rule": "R5-default",
+      "classification": "consolidate",
+      "reason": "duplicate-describe: \"POS delivery assignment validator\" also declared by a stem sibling",
+      "rule": "R3-duplicate-describe",
       "findings": []
     },
     {
@@ -22563,7 +23568,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -22612,6 +23619,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: deliveryRun)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posValidator.directDeliverySettlement.test.js",
+      "lines": 24,
+      "caseCount": 2,
+      "describeTitles": [
+        "direct delivery settlement methods"
+      ],
+      "expectCount": 4,
+      "expectResCount": 2,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "directDeliverySettlement",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: directDeliverySettlement)",
       "rule": "R5-default",
       "findings": []
     },
@@ -22811,7 +23853,7 @@
     },
     {
       "path": "tests/posVoid.route.transport.test.js",
-      "lines": 519,
+      "lines": 520,
       "caseCount": 12,
       "describeTitles": [
         "POS transaction void route transport contract"
@@ -22949,7 +23991,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -23244,7 +24288,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -23369,12 +24415,12 @@
     },
     {
       "path": "tests/productionEnvGuard.test.js",
-      "lines": 170,
-      "caseCount": 7,
+      "lines": 250,
+      "caseCount": 9,
       "describeTitles": [
         "production startup environment guard"
       ],
-      "expectCount": 16,
+      "expectCount": 24,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -23703,7 +24749,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -23738,7 +24786,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -23774,7 +24824,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -23809,7 +24861,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -23844,7 +24898,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -23877,7 +24933,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -23914,7 +24972,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -23949,7 +25009,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -23982,7 +25044,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -24015,7 +25079,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -24067,12 +25133,12 @@
     },
     {
       "path": "tests/rateLimiter.behavior.test.js",
-      "lines": 568,
-      "caseCount": 23,
+      "lines": 583,
+      "caseCount": 24,
       "describeTitles": [
         "Rate limiter behavior"
       ],
-      "expectCount": 83,
+      "expectCount": 86,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -24368,7 +25434,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -24379,14 +25447,14 @@
     },
     {
       "path": "tests/registerCompanyRequestUseCase.autoApproval.test.js",
-      "lines": 99,
-      "caseCount": 6,
+      "lines": 161,
+      "caseCount": 7,
       "describeTitles": [
-        "registerCompanyRequestUseCase mandatory manual review"
+        "registerCompanyRequestUseCase registration approval modes"
       ],
-      "expectCount": 24,
+      "expectCount": 33,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 10,
+      "toHaveBeenCalledCount": 16,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -24613,7 +25681,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -25797,7 +26867,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -25911,7 +26983,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -26028,6 +27102,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: usecases)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/servicesCapabilities.contract.test.js",
+      "lines": 59,
+      "caseCount": 4,
+      "describeTitles": [
+        "Services capability projection contract"
+      ],
+      "expectCount": 19,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
       "rule": "R5-default",
       "findings": []
     },
@@ -26433,14 +27542,14 @@
     },
     {
       "path": "tests/settingsUsecases.applicationResult.test.js",
-      "lines": 1548,
-      "caseCount": 65,
+      "lines": 1595,
+      "caseCount": 68,
       "describeTitles": [
         "settings use-cases application result contract"
       ],
-      "expectCount": 213,
+      "expectCount": 224,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 63,
+      "toHaveBeenCalledCount": 67,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -26488,14 +27597,14 @@
     },
     {
       "path": "tests/settingsValidator.customerAccessModes.test.js",
-      "lines": 195,
-      "caseCount": 9,
+      "lines": 203,
+      "caseCount": 10,
       "describeTitles": [
         "settings validator customer access modes"
       ],
-      "expectCount": 24,
+      "expectCount": 26,
       "expectResCount": 7,
-      "toHaveBeenCalledCount": 16,
+      "toHaveBeenCalledCount": 17,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -26876,7 +27985,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -26909,7 +28020,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -26942,7 +28055,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -26975,7 +28090,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -27008,7 +28125,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -27041,7 +28160,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -27074,7 +28195,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -27162,12 +28285,12 @@
     },
     {
       "path": "tests/staffCapabilityContract.test.js",
-      "lines": 73,
-      "caseCount": 15,
+      "lines": 92,
+      "caseCount": 17,
       "describeTitles": [
         "staff capability contract"
       ],
-      "expectCount": 21,
+      "expectCount": 23,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -27222,7 +28345,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -27230,6 +28355,41 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/staffRoleFoundation.usecase.test.js",
+      "lines": 113,
+      "caseCount": 6,
+      "describeTitles": [
+        "staff-role foundation"
+      ],
+      "expectCount": 19,
+      "expectResCount": 1,
+      "toHaveBeenCalledCount": 9,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 5,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
       "rule": "R5-default",
       "findings": []
     },
@@ -27299,7 +28459,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -27527,15 +28689,50 @@
       "findings": []
     },
     {
+      "path": "tests/storeCancelDeliveryJob.repository.test.js",
+      "lines": 35,
+      "caseCount": 2,
+      "describeTitles": [
+        "store order delivery-job cancellation"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "repository",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: repository)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/storeCancelDownpaymentLifecycle.unit.test.js",
-      "lines": 174,
-      "caseCount": 6,
+      "lines": 211,
+      "caseCount": 8,
       "describeTitles": [
         "customer cancellation payment lifecycle (Phase 144, #824)"
       ],
-      "expectCount": 16,
+      "expectCount": 25,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 7,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -27568,7 +28765,7 @@
     },
     {
       "path": "tests/storeCancelInventoryReversal.unit.test.js",
-      "lines": 138,
+      "lines": 139,
       "caseCount": 5,
       "describeTitles": [
         "storefront cancel reverses confirmation-time online goods-issue"
@@ -27628,7 +28825,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-10-06-commerce-payment-session-cancellation.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -27642,7 +28841,7 @@
     },
     {
       "path": "tests/storeCancelVoucherReversal.unit.test.js",
-      "lines": 479,
+      "lines": 481,
       "caseCount": 11,
       "describeTitles": [
         "storefront order cancellation reverses its voucher redemption(s) (#1390)"
@@ -27758,12 +28957,12 @@
     },
     {
       "path": "tests/storeCatalogPaymentMode.unit.test.js",
-      "lines": 139,
-      "caseCount": 5,
+      "lines": 148,
+      "caseCount": 6,
       "describeTitles": [
         "buildListStoreCatalogUseCase — Phase 142 (#823) tenant payment_mode on the public catalog"
       ],
-      "expectCount": 13,
+      "expectCount": 15,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -28103,18 +29302,19 @@
     },
     {
       "path": "tests/storeCheckoutDownpaymentResolution.unit.test.js",
-      "lines": 1021,
-      "caseCount": 18,
+      "lines": 1126,
+      "caseCount": 21,
       "describeTitles": [
         "buildStoreCartQuoteUseCase — Phase 140 downpayment resolution",
         "buildStoreCartQuoteUseCase — Phase 150 (#866) customer_choice election",
         "buildStoreCheckoutUseCase — Phase 141 (#822) fail-closed guard, offline path (ADR 0070 clause 7)",
         "buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures the downpayment, not the total (ADR 0069 clause 1b)",
-        "serializePaymentSession — Phase 142 (#823) downpayment fields on the client-facing session payload"
+        "serializePaymentSession — Phase 142 (#823) downpayment fields on the client-facing session payload",
+        "revoked platform allowance (#2639)"
       ],
-      "expectCount": 84,
+      "expectCount": 94,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 15,
+      "toHaveBeenCalledCount": 16,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -28154,7 +29354,7 @@
     },
     {
       "path": "tests/storeCheckoutInventoryReservation.unit.test.js",
-      "lines": 142,
+      "lines": 144,
       "caseCount": 2,
       "describeTitles": [
         "storefront inventory reservation integration"
@@ -28258,7 +29458,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -28994,14 +30196,14 @@
     },
     {
       "path": "tests/storeRouteTenantContext.integration.test.js",
-      "lines": 158,
-      "caseCount": 5,
+      "lines": 201,
+      "caseCount": 7,
       "describeTitles": [
         "store route tenant context integration"
       ],
-      "expectCount": 12,
-      "expectResCount": 8,
-      "toHaveBeenCalledCount": 4,
+      "expectCount": 22,
+      "expectResCount": 11,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -29072,12 +30274,12 @@
     },
     {
       "path": "tests/storeUsecases.applicationResult.test.js",
-      "lines": 2619,
-      "caseCount": 60,
+      "lines": 2670,
+      "caseCount": 61,
       "describeTitles": [
         "store use-cases application result contract"
       ],
-      "expectCount": 203,
+      "expectCount": 213,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 25,
       "readFileSyncCount": 0,
@@ -29253,6 +30455,41 @@
       "findings": []
     },
     {
+      "path": "tests/storeVisibilityEditAuthority.test.js",
+      "lines": 45,
+      "caseCount": 4,
+      "describeTitles": [
+        "merchant storefront visibility authority"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/storefrontBusinessHours.test.js",
       "lines": 103,
       "caseCount": 7,
@@ -29329,7 +30566,7 @@
     },
     {
       "path": "tests/storefrontCatalogGenerateImageUseCases.test.js",
-      "lines": 105,
+      "lines": 106,
       "caseCount": 8,
       "describeTitles": [
         "buildGenerateItemImageUseCase (#197)",
@@ -30050,14 +31287,14 @@
     },
     {
       "path": "tests/storefrontTenantResolver.test.js",
-      "lines": 158,
-      "caseCount": 4,
+      "lines": 170,
+      "caseCount": 5,
       "describeTitles": [
         "storefrontTenantResolver"
       ],
-      "expectCount": 13,
+      "expectCount": 18,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 8,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -30395,22 +31632,22 @@
     },
     {
       "path": "tests/tenantAdminAuditLogActions.contract.test.js",
-      "lines": 31,
-      "caseCount": 1,
+      "lines": 473,
+      "caseCount": 11,
       "describeTitles": [
         "tenant admin audit log action contract"
       ],
-      "expectCount": 11,
+      "expectCount": 24,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 5,
-      "textRatio": 1,
+      "readFileSyncCount": 7,
+      "textRatio": 0.75,
       "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 0,
+      "srcImportCount": 1,
       "deadImportCount": 0,
       "suffix": "contract",
       "conditionalSkip": false,
@@ -30428,9 +31665,9 @@
         ],
         "hardcoded": []
       },
-      "classification": "delete",
-      "reason": "source-text-only (text_ratio=1)",
-      "rule": "R3-source-text-only",
+      "classification": "consolidate",
+      "reason": "source-text-mixed (text_ratio=0.75)",
+      "rule": "R4-source-text-mixed",
       "findings": []
     },
     {
@@ -30547,14 +31784,14 @@
     },
     {
       "path": "tests/tenantCapabilitiesWriteReadback.test.js",
-      "lines": 250,
-      "caseCount": 4,
+      "lines": 315,
+      "caseCount": 8,
       "describeTitles": [
         "tenant capability write durability and read-back (#1923)"
       ],
-      "expectCount": 19,
+      "expectCount": 34,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 2,
@@ -30584,7 +31821,7 @@
     },
     {
       "path": "tests/tenantCapabilityReadiness.schemaCompatibility.test.js",
-      "lines": 84,
+      "lines": 88,
       "caseCount": 1,
       "describeTitles": [
         "tenant capability readiness schema compatibility"
@@ -30594,7 +31831,7 @@
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
       "textRatio": 0,
-      "maxMockStubCount": 0,
+      "maxMockStubCount": 1,
       "isSupertest": false,
       "isSnapshot": false,
       "onDbManifest": false,
@@ -30623,13 +31860,14 @@
     },
     {
       "path": "tests/tenantCapabilityRouteGates.test.js",
-      "lines": 153,
-      "caseCount": 6,
+      "lines": 208,
+      "caseCount": 10,
       "describeTitles": [
-        "tenant capability route gates"
+        "tenant capability route gates",
+        "public storefront visibility gate"
       ],
-      "expectCount": 18,
-      "expectResCount": 4,
+      "expectCount": 28,
+      "expectResCount": 7,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
@@ -30684,7 +31922,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -30695,7 +31935,7 @@
     },
     {
       "path": "tests/tenantCapabilitySettings.test.js",
-      "lines": 136,
+      "lines": 138,
       "caseCount": 8,
       "describeTitles": [
         "tenant capability settings helpers"
@@ -30735,14 +31975,14 @@
     },
     {
       "path": "tests/tenantConnector.evictionSafety.unit.test.js",
-      "lines": 347,
-      "caseCount": 11,
+      "lines": 417,
+      "caseCount": 16,
       "describeTitles": [
         "TenantConnector — eviction safety (issue #474 follow-up)"
       ],
-      "expectCount": 36,
+      "expectCount": 49,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 14,
+      "toHaveBeenCalledCount": 17,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -30957,7 +32197,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/api/tenant-intake.md"
+          "docs/api/tenant-intake.md",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -30992,7 +32233,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/api/tenant-intake.md"
+          "docs/api/tenant-intake.md",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [],
         "hardcoded": []
@@ -31028,7 +32270,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/api/tenant-intake.md"
+          "docs/api/tenant-intake.md",
+          "docs/testing/test-cost-inventory.json"
         ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -31068,7 +32311,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -31377,12 +32622,12 @@
     },
     {
       "path": "tests/tenantModelFactory.contract.test.js",
-      "lines": 140,
+      "lines": 142,
       "caseCount": 3,
       "describeTitles": [
         "tenantModelFactory contract"
       ],
-      "expectCount": 27,
+      "expectCount": 29,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -31912,7 +33157,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -32036,12 +33283,12 @@
     },
     {
       "path": "tests/tenantSchemaSyncScripts.test.js",
-      "lines": 927,
-      "caseCount": 47,
+      "lines": 1026,
+      "caseCount": 52,
       "describeTitles": [
         "tenant schema sync script contracts"
       ],
-      "expectCount": 219,
+      "expectCount": 237,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
@@ -32123,7 +33370,7 @@
     },
     {
       "path": "tests/updateTenantCapabilitiesFulfillmentGuard.usecases.test.js",
-      "lines": 172,
+      "lines": 176,
       "caseCount": 3,
       "describeTitles": [
         "update tenant capabilities -- fulfillment-method availability guard"
@@ -32160,7 +33407,7 @@
     },
     {
       "path": "tests/updateTenantCapabilitiesUseCase.rollback.test.js",
-      "lines": 183,
+      "lines": 187,
       "caseCount": 2,
       "describeTitles": [
         "update tenant capabilities rollback behavior"
@@ -32309,7 +33556,7 @@
     },
     {
       "path": "tests/userHandlers.transport.test.js",
-      "lines": 417,
+      "lines": 418,
       "caseCount": 9,
       "describeTitles": [
         "userHandlers transport contracts"
@@ -32319,7 +33566,7 @@
       "toHaveBeenCalledCount": 34,
       "readFileSyncCount": 0,
       "textRatio": 0,
-      "maxMockStubCount": 8,
+      "maxMockStubCount": 9,
       "isSupertest": false,
       "isSnapshot": false,
       "onDbManifest": false,
@@ -32347,14 +33594,14 @@
     },
     {
       "path": "tests/userManagementToolRegistry.test.js",
-      "lines": 367,
-      "caseCount": 10,
+      "lines": 403,
+      "caseCount": 11,
       "describeTitles": [
         "userManagementToolRegistry"
       ],
-      "expectCount": 29,
+      "expectCount": 33,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -32409,7 +33656,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/testing/test-cost-inventory.json"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -32420,12 +33669,12 @@
     },
     {
       "path": "tests/userService.modeRbac.test.js",
-      "lines": 265,
+      "lines": 266,
       "caseCount": 5,
       "describeTitles": [
         "userService mode-aware RBAC persistence"
       ],
-      "expectCount": 18,
+      "expectCount": 19,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 12,
       "readFileSyncCount": 0,

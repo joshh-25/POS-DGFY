@@ -128,7 +128,10 @@ describe('geo_store_items NULL-location uniqueness MySQL integration', () => {
                 tenant_id, location_id, item_id, sku_code, price, quantity,
                 in_stock, storefront_visible, last_updated_at, created_at, updated_at
             ) VALUES (:tenantA, NULL, :itemId, NULL, NULL, 8, 1, 1, NOW(), NOW(), NOW())
-        `, { replacements: { tenantA, itemId } })).rejects.toThrow(/Duplicate entry/i);
+        `, { replacements: { tenantA, itemId } })).rejects.toMatchObject({
+            name: 'SequelizeUniqueConstraintError',
+            parent: { code: 'ER_DUP_ENTRY' }
+        });
 
         const beforeRerunCount = await migrationDb.query(
             'SELECT COUNT(*) AS row_count FROM geo_store_items',

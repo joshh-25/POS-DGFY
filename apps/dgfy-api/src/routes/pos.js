@@ -79,6 +79,8 @@ import {
     validateDeliveryCompletionEvidenceImageParams,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
+    validateCompleteDirectDelivery,
+    validateFailDirectDelivery,
     validateShiftIdParam,
     validateOpenTerminalShift,
     validateAttendanceMutation,
@@ -390,15 +392,15 @@ router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUS
 router.post('/device/authorize-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, posDrawerAuthorizationLimiter, validatePosDrawerAuthorization, posController.requireActiveOperatorForMutation, posController.authorizeDeviceDrawer);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.requireActiveOperatorForMutation, posController.voidTransaction);
-router.post('/transactions/:id/return', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateReturnPosTransaction, posController.requireActiveOperatorForMutation, posController.returnTransaction);
+router.post('/transactions/:id/return', checkPermission(PERMISSIONS.POS.actions.REFUND_TRANSACTION), checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateReturnPosTransaction, posController.requireActiveOperatorForMutation, posController.returnTransaction);
 // Phase 238 (#1330): not gated on a paired terminal/active shift, unlike void/refund above --
 // same class of guard as PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS (a permissioned order-level
 // edit, not a terminal cash-handling action), so it works from a back-office screen too.
 router.patch('/transactions/:id/delivery-fee', checkPermission(PERMISSIONS.POS.actions.OVERRIDE_DELIVERY_FEE), validatePosTransactionIdParam, validateOverrideDeliveryFee, posController.overrideDeliveryFee);
-router.post('/transactions/:id/cash-refund', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCashRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.cashRefundTransaction);
-router.post('/transactions/:id/external-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateExternalRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.externalRefundTransaction);
-router.post('/transactions/:id/provider-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateProviderRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.providerRefundTransaction);
-router.post('/transactions/:id/split-allocations/:allocation_id/reversal', checkAnyPermission([
+router.post('/transactions/:id/cash-refund', checkPermission(PERMISSIONS.POS.actions.REFUND_TRANSACTION), checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCashRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.cashRefundTransaction);
+router.post('/transactions/:id/external-refund', checkPermission(PERMISSIONS.POS.actions.REFUND_TRANSACTION), checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateExternalRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.externalRefundTransaction);
+router.post('/transactions/:id/provider-refund', checkPermission(PERMISSIONS.POS.actions.REFUND_TRANSACTION), checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateProviderRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.providerRefundTransaction);
+router.post('/transactions/:id/split-allocations/:allocation_id/reversal', checkPermission(PERMISSIONS.POS.actions.REFUND_TRANSACTION), checkAnyPermission([
     PERMISSIONS.POS.actions.VOID_POS_TRANSACTION,
     PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER
 ]), posController.requirePairedTerminal, validateSplitPaymentAllocationIdParam, validateSplitAllocationReversal, posController.requireActiveOperatorForMutation, posController.splitAllocationReversal);
@@ -486,6 +488,8 @@ router.get(
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
+router.post('/orders/:id/delivery/complete', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCompleteDirectDelivery, posController.requireActiveOperatorForMutation, posController.completeDirectDeliveryOrder);
+router.post('/orders/:id/delivery/fail', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFailDirectDelivery, posController.requireActiveOperatorForMutation, posController.failDirectDeliveryOrder);
 // #1462: delivery evidence is a delivery-job action, not a terminal-hardware action. Staff may
 // attach it through the assigned-run capability; POS operators retain the broad transact path.
 router.post(

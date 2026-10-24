@@ -61,6 +61,14 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(80),
     allowNull: true
   },
+  permission_mode: {
+    type: DataTypes.STRING(16),
+    allowNull: false,
+    defaultValue: 'inherit',
+    validate: {
+      isIn: [['inherit', 'custom']]
+    }
+  },
   is_active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

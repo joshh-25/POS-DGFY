@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Bell, CalendarCheck, Clock, ListChecks, RefreshCw, UserRound, UsersRound } from 'lucide-react';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import PosSearchField from './PosSearchField.jsx';
+import usePosCenteredTabScroll from '../hooks/usePosCenteredTabScroll.js';
 import { getAllUsers } from '@/services/userService.js';
 import {
   createServiceAssignment,
@@ -65,7 +66,12 @@ const toIsoOrNull = (value) => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
-export default function PosServicesOperationsWorkspace({ permissions = {}, isOnline = true, settlementContext = {} }) {
+export default function PosServicesOperationsWorkspace({
+  permissions = {},
+  isOnline = true,
+  settlementContext = {},
+  onAuthorizationFailure = async () => null
+}) {
   const tabs = useMemo(() => [
     ...(permissions.viewBookings ? [{ id: 'today', label: 'Today', icon: CalendarCheck }, { id: 'calendar', label: 'Calendar', icon: Clock }] : []),
     ...(permissions.viewResources ? [{ id: 'team', label: 'Team & Resources', icon: UserRound }] : []),
@@ -74,6 +80,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     ...(permissions.viewClients ? [{ id: 'clients', label: 'Clients', icon: UsersRound }] : [])
   ], [permissions]);
   const [activeTab, setActiveTab] = useState(() => tabs[0]?.id || '');
+  const tabsViewportRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState('');
   const [bookings, setBookings] = useState([]);
@@ -98,9 +105,20 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
   const [settlingBookingId, setSettlingBookingId] = useState(null);
   const [settlementResult, setSettlementResult] = useState(null);
 
+  const reportServiceError = useCallback(async (error, fallbackMessage) => {
+    const isForbidden = error?.response?.status === 403;
+    const message = isForbidden
+      ? 'You are not authorized to use Services operations. Permissions were refreshed; retry if the workspace remains open.'
+      : (error?.response?.data?.message || fallbackMessage);
+    setLoadError(message);
+    if (isForbidden) await onAuthorizationFailure(error);
+    toast.error(message);
+  }, [onAuthorizationFailure]);
+
   useEffect(() => {
     if (!tabs.some((tab) => tab.id === activeTab)) setActiveTab(tabs[0]?.id || '');
   }, [activeTab, tabs]);
+  const centerActiveServiceSection = usePosCenteredTabScroll(tabsViewportRef, activeTab ? `pos-service-operations-tab-${activeTab}` : '');
 
   const loadWorkspace = useCallback(async () => {
     if (!isOnline || tabs.length === 0) {
@@ -129,13 +147,11 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       setClients(Array.isArray(clientData?.clients) ? clientData.clients : []);
       setUsers(Array.isArray(userData) ? userData : Array.isArray(userData?.users) ? userData.users : []);
     } catch (error) {
-      const message = error?.response?.data?.message || 'Unable to load Services operations.';
-      setLoadError(message);
-      toast.error(message);
+      await reportServiceError(error, 'Unable to load Services operations.');
     } finally {
       setLoading(false);
     }
-  }, [isOnline, permissions, tabs.length]);
+  }, [isOnline, permissions, reportServiceError, tabs.length]);
 
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
 
@@ -176,7 +192,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     if (!permissions.manageBookings) return;
     setUpdatingBookingId(bookingId);
     try { await updateServiceBookingStatus(bookingId, { status }); await loadWorkspace(); toast.success('Booking updated.'); }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to update booking.'); }
+    catch (error) { await reportServiceError(error, 'Unable to update booking.'); }
     finally { setUpdatingBookingId(null); }
   };
 
@@ -194,7 +210,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       await loadWorkspace();
       toast.success('Resource created.');
     }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to create resource.'); }
+    catch (error) { await reportServiceError(error, 'Unable to create resource.'); }
     finally { setSaving(''); }
   };
 
@@ -210,7 +226,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     try {
       await createServiceAssignment({ item_id: Number(assignmentForm.item_id), resource_id: assignmentForm.resource_id ? Number(assignmentForm.resource_id) : null, user_id: assignmentForm.user_id ? Number(assignmentForm.user_id) : null, location_id: assignmentForm.location_id ? Number(assignmentForm.location_id) : null });
       setAssignmentForm(emptyAssignment); await loadWorkspace(); toast.success('Assignment created.');
-    } catch (error) { toast.error(error?.response?.data?.message || 'Unable to create assignment.'); }
+    } catch (error) { await reportServiceError(error, 'Unable to create assignment.'); }
     finally { setSaving(''); }
   };
 
@@ -218,7 +234,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     if (!permissions.manageResources || saving) return;
     setSaving(`assignment-${assignmentId}`);
     try { await updateServiceAssignment(assignmentId, { is_active: false }); await loadWorkspace(); toast.success('Assignment removed.'); }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to remove assignment.'); }
+    catch (error) { await reportServiceError(error, 'Unable to remove assignment.'); }
     finally { setSaving(''); }
   };
 
@@ -239,7 +255,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     try {
       await createServiceWaitlistEntry({ service_item_id: Number(waitlistForm.service_item_id), customer_name: waitlistForm.customer_name, customer_email: waitlistForm.customer_email || null, customer_phone: waitlistForm.customer_phone || null, preferred_start_at: preferredStart, preferred_end_at: preferredEnd, notes: waitlistForm.notes || null });
       setWaitlistForm(emptyWaitlist); await loadWorkspace(); toast.success('Waitlist entry added.');
-    } catch (error) { toast.error(error?.response?.data?.message || 'Unable to add waitlist entry.'); }
+    } catch (error) { await reportServiceError(error, 'Unable to add waitlist entry.'); }
     finally { setSaving(''); }
   };
 
@@ -247,7 +263,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     if (!permissions.manageWaitlist || updatingWaitlistId !== null) return;
     setUpdatingWaitlistId(entryId);
     try { await updateServiceWaitlistStatus(entryId, { status }); await loadWorkspace(); toast.success('Waitlist updated.'); }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to update waitlist.'); }
+    catch (error) { await reportServiceError(error, 'Unable to update waitlist.'); }
     finally { setUpdatingWaitlistId(null); }
   };
 
@@ -263,7 +279,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       await loadWorkspace();
       toast.success(action === 'queue-reminders' ? 'Due reminders queued.' : 'Due reminders processed.');
     }
-    catch (error) { toast.error(error?.response?.data?.message || 'Unable to process reminders.'); }
+    catch (error) { await reportServiceError(error, 'Unable to process reminders.'); }
     finally { setSaving(''); }
   };
 
@@ -298,7 +314,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
       await loadWorkspace();
       toast.success(result?.idempotency?.idempotent_replay ? 'Existing settlement loaded.' : 'Booking payment collected.');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Unable to settle booking.');
+      await reportServiceError(error, 'Unable to settle booking.');
     } finally {
       setSettlingBookingId(null);
     }
@@ -309,7 +325,34 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
 
   return <div className="space-y-4" data-testid="pos-services-operations-workspace">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div role="tablist" aria-label="Service operations navigation" className="flex min-w-0 flex-1 gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2">{tabs.map((tab) => { const Icon = tab.icon; return <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${activeTab === tab.id ? 'bg-teal-700 text-white' : 'bg-slate-50 text-slate-700'}`}><Icon className="h-4 w-4" />{tab.label}</button>; })}</div>
+      <div
+        ref={tabsViewportRef}
+        role="tablist"
+        aria-label="Service operations navigation"
+        className="flex min-w-0 flex-1 gap-2 overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 bg-white p-2 min-[1200px]:grid"
+        style={{ gridTemplateColumns: `repeat(${Math.max(1, tabs.length)}, minmax(0, 1fr))` }}
+      >
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              id={`pos-service-operations-tab-${tab.id}`}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              type="button"
+              onClick={() => {
+                if (activeTab === tab.id) centerActiveServiceSection();
+                setActiveTab(tab.id);
+              }}
+              className={`inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-center text-sm font-bold min-[1200px]:w-full min-[1200px]:whitespace-normal ${activeTab === tab.id ? 'bg-teal-700 text-white' : 'bg-slate-50 text-slate-700'}`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
       <button type="button" onClick={loadWorkspace} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Refreshing...' : 'Refresh'}</button>
     </div>
     {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><span className="inline-flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" />{loadError}</span><button type="button" onClick={loadWorkspace} className="rounded-md border border-rose-300 bg-white px-3 py-1.5 font-bold">Retry</button></div>}

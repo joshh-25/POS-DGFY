@@ -10,6 +10,7 @@ import {
   buildUpdateUserRoleUseCase,
   buildUpdateUserStatusUseCase,
   buildUpdateUserPermissionsUseCase,
+  buildResetUserPermissionsUseCase,
   buildUpdatePosApprovalPinUseCase,
   buildUpdatePosDayClosePinUseCase,
   buildUpdateOwnPosDayClosePinUseCase,
@@ -32,6 +33,7 @@ export const getRoleCatalogUseCase = buildGetRoleCatalogUseCase({ userService })
 export const updateUserRoleUseCase = buildUpdateUserRoleUseCase({ userService });
 export const updateUserStatusUseCase = buildUpdateUserStatusUseCase({ userService });
 export const updateUserPermissionsUseCase = buildUpdateUserPermissionsUseCase({ userService });
+export const resetUserPermissionsUseCase = buildResetUserPermissionsUseCase({ userService });
 export const updatePosApprovalPinUseCase = buildUpdatePosApprovalPinUseCase({ userService });
 export const updatePosDayClosePinUseCase = buildUpdatePosDayClosePinUseCase({ userService });
 export const updateOwnPosDayClosePinUseCase = buildUpdateOwnPosDayClosePinUseCase({ userService });

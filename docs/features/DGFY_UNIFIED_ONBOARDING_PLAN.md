@@ -20,15 +20,15 @@ topic: dgfy_unified_onboarding_plan
 ### Vision Target
 1. Store owner registers a store.
 2. On first login, a short guided setup appears for brand assets and primary storefront location. Hospitality also configures its first room type and room; all non-Hospitality modes may proceed directly to POS setup and create catalog items later.
-3. A tenant storefront page in DGFY is automatically available using template-based UI/UX.
+3. A tenant storefront page in DGFY becomes available using template-based UI/UX after Platform Admin enables Storefront visibility.
 
 ### Current Closeness Score
 - **Overall closeness: 98%**
 
 ### Layman Evidence (What Exists Today)
-1. Registration requires Platform Admin review.
-- Evidence: public company registration creates a pending landlord application and status route without provisioning, activation, company-token disclosure, or POS handoff (`backend/src/modules/tenants/usecases/registerCompanyRequestUseCase.js`, `docs/features/TENANT_MANAGEMENT.md`).
-- Evidence: only the approved-registration path provisions the tenant and completes the active founder membership.
+1. Registration defaults to automatic restricted provisioning.
+- Evidence: public company registration returns `setting_up_company`, starts background provisioning, sends a POS onboarding link after setup, and does not disclose a company token or tenant session (`apps/dgfy-api/src/modules/tenants/usecases/registerCompanyRequestUseCase.js`, `docs/features/TENANT_MANAGEMENT.md`).
+- Evidence: auto-provisioning seeds POS disabled and Storefront hidden; Platform Admin capability enablement is required before selling or public Storefront visibility.
 
 2. First-login onboarding wizard is implemented for tenant master admin.
 - Evidence: onboarding routes exist (`GET /onboarding/status`, `PUT /onboarding/step`, `POST /onboarding/items/bulk`, `POST /onboarding/complete`, `POST /onboarding/events`) (`backend/src/routes/onboarding.js`).
@@ -44,8 +44,8 @@ topic: dgfy_unified_onboarding_plan
 - Evidence: `POST/DELETE /api/v1/settings/storefront-assets/:asset_type` documented and implemented (`docs/api/specification.md`, `backend/src/routes/settings.js`, `frontend/Pages/Settings.jsx`).
 
 ### Layman Evidence (What Is Missing)
-1. The current approved behavior is **soft reminder**, not hard blocking.
-- Users can still enter POS/IMS while onboarding is incomplete.
+1. Onboarding completion remains a **soft reminder**, while the new-registration capability gate is hard.
+- Restricted owners can enter the catalog-management surface, but selling and operational POS pages remain blocked until Platform Admin enables POS.
 
 2. Logo/cover remain optional by approved default.
 - Completion is gated by required operational checks (store name baseline, active + primary location, sellable item), not all media assets.
@@ -138,8 +138,12 @@ topic: dgfy_unified_onboarding_plan
 4. Keep storefront page editable through existing Settings after completion.
 
 ### Phase 4: Connected Surface Entry Rules
-1. DGFY POS and SKUpervisor show setup-status banner until onboarding is complete.
-2. Soft reminder policy preserved (no hard block).
+1. DGFY POS owns the emailed onboarding entry point and keeps onboarding settings available until
+   the checklist is complete.
+2. While the tenant POS capability is disabled, POS renders Items/Categories as the only catalog
+   workspace available to the owner; selling and operational navigation is disabled.
+3. Tenant capability restrictions remain enforced independently by the backend, and Storefront
+   remains hidden until its audited visibility capability is enabled.
 
 ### Phase 5: Telemetry + QA
 1. Added onboarding telemetry events:
@@ -188,3 +192,16 @@ topic: dgfy_unified_onboarding_plan
 1. ADR 0022 makes manual Platform Admin review mandatory for public company registration.
 2. Submission creates pending application/attempt state and opens the applicant status page; it does not provision, activate, disclose a company token, or offer POS access.
 3. First-login onboarding begins only after approved provisioning succeeds and remains a soft-reminder workflow.
+
+## Addendum (2026-10-16): Automatic Restricted POS Onboarding
+
+1. The current public-registration default is `auto_standard`: the signed-in owner receives a
+   `202 setting_up_company` response, the tenant is provisioned in the background, and the owner
+   receives an email containing the POS onboarding link when setup is ready.
+2. Auto-provisioned tenants seed `tenant_pos_enabled=false` and `store_is_visible=false`. The
+   owner receives the POS onboarding link and may complete onboarding or add catalog items and
+   categories only; selling, checkout, scanning, operational POS pages, and public Storefront
+   visibility remain unavailable until Platform Admin enables the audited capabilities.
+3. The POS email link is an authenticated onboarding entry point, not a company-token or tenant-
+   session bypass. Tenant Manager remains the control surface for enabling POS and Storefront
+   capabilities independently.

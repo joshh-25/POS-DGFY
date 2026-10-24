@@ -44,13 +44,13 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `amended` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
 | 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `amended` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
 | 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `amended` | email_otp_verification | 2026-11-17 | 0 |
-| 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `accepted` | global_dgfy_account_business_registration | 2027-01-08 | 0 |
+| 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `amended` | global_dgfy_account_business_registration | 2027-04-16 | 0 |
 | 0023 | [Front-Facing DGFY Customer Account](0023-front-facing-dgfy-customer-account.md) | `amended` | front_facing_dgfy_customer_account | 2027-01-08 | 0 |
 | 0024 | [Fulfilled Guest Item Reviews For Storefront Menu Details](0024-fulfilled-guest-item-reviews.md) | `accepted` | fulfilled_guest_item_reviews | 2027-01-08 | 0 |
 | 0025 | [POS Application Shells And LAN Host Runtime](0025-pos-application-shells-and-lan-host-runtime.md) | `amended` | pos_application_shells_and_lan_host_runtime | 2026-12-03 | 0 |
 | 0026 | [Browser Session Cookie Authority](0026-browser-session-cookie-authority.md) | `accepted` | browser_session_cookie_authority | 2027-01-08 | 0 |
 | 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `superseded` | paymongo_qrph_platform_split_settlement | 2026-07-30 | 0 |
-| 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-03-14 | 0 |
+| 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `amended` | dgfy_account_company_switching | 2027-04-22 | 0 |
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `amended` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 7 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2027-04-10 | 1 |
@@ -96,14 +96,14 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
 | 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `amended` | ghcr_container_image_naming | 2027-02-24 | 0 |
 | 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `amended` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
-| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 17 |
+| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 20 |
 | 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `amended` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 13 |
 | 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `amended` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `amended` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `amended` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 | 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `amended` | item_multi_category_membership | 2027-03-03 | 6 |
-| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 12 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-23 | 13 |
 | 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `amended` | production_release_record_and_release_notes | 2027-03-23 | 3 |
 | 0083 | [Courier Cash Custody and Remittance for COD Deliveries](0083-courier-cash-custody-and-remittance.md) | `accepted` | courier_cash_custody_remittance | 2027-03-13 | 9 |
 | 0084 | [POS Business Admin Operational Expense Ledger](0084-pos-business-admin-operational-expense-ledger.md) | `accepted` | pos_business_admin_operational_expense_ledger | 2027-03-17 | 5 |
@@ -119,7 +119,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0094 | [Outbound SMS delivery contract, log, and PII retention](0094-outbound-sms-delivery-contract-log-and-pii-retention.md) | `amended` | outbound_sms_delivery_contract_and_log | 2027-04-10 | 0 |
 | 0095 | [Offline POS Sync Contract Convergence](0095-offline-pos-sync-contract-convergence.md) | `proposed` | pos_offline_sync_contract | 2027-04-10 | 4 |
 | 0096 | [Contact Inquiry Provider Configuration](0096-contact-inquiry-provider-configuration.md) | `proposed` | contact_inquiry_provider_configuration | 2027-04-14 | 0 |
-| 0097 | [Outbound push-notification delivery contract](0097-outbound-push-notification-delivery-contract.md) | `amended` | outbound_push_notification_delivery_contract | 2027-04-17 | 1 |
+| 0097 | [Outbound push-notification delivery contract](0097-outbound-push-notification-delivery-contract.md) | `amended` | outbound_push_notification_delivery_contract | 2027-04-17 | 3 |
 
 ## Renumbered (collision stubs)
 

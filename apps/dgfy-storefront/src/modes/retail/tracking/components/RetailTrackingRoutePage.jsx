@@ -8,6 +8,7 @@ import TrackingRouteMap from '../../../../tracking/TrackingRouteMapLazy.jsx';
 import { extractTrackingMapCoordinates } from '../../../../tracking/extractTrackingMapCoordinates.js';
 import { RetailTrackingActiveView } from './RetailTrackingActiveView.jsx';
 import { RetailTrackingCompletedView } from './RetailTrackingCompletedView.jsx';
+import { getOrderTrackingTimeline } from '../../../../shared/tracking/directDeliveryTimeline.js';
 
 function RetailTrackingLoadingState({ selectedTrackingPin }) {
   return (
@@ -48,8 +49,9 @@ export function RetailTrackingRoutePage({
 
     const trackingOrderMethod = String(trackingResult.order_method || 'delivery').trim().toLowerCase();
     const activeStatus = String(trackingResult.status || '').trim().toLowerCase();
-    const trackingSteps = getTrackingFlowForOrderMethod(trackingOrderMethod);
-    const activeStepIndex = Math.max(0, trackingSteps.findIndex((step) => step.id === activeStatus));
+    const trackingSteps = Array.isArray(trackingResult.timeline) ? trackingResult.timeline
+      : getOrderTrackingTimeline(trackingOrderMethod, activeStatus, trackingResult.delivery, true);
+    const activeStepIndex = Math.max(0, trackingSteps.findIndex((step) => step.state === 'active'));
     const isPickup = trackingOrderMethod === 'pickup';
     const finalStatusLabel = activeStatus === 'completed'
       ? getCompletedTrackingLabel(trackingOrderMethod)
@@ -81,6 +83,7 @@ export function RetailTrackingRoutePage({
       placed: isPickup ? 'Your pickup order has been received and is being confirmed by the store.' : "We've received your order and it's being confirmed by the store.",
       confirmed: isPickup ? 'The store has confirmed your order and is preparing it with care.' : 'Your order is confirmed and queued for preparation.',
       preparing: isPickup ? 'Good things take time! Your order is being prepared fresh by our team.' : 'The store is currently preparing your order.',
+      ready_for_rider: 'Your order is ready and waiting for the courier to pick it up.',
       out_for_delivery: 'Your rider is on the way with your order.',
       ready_for_pickup: 'Great news! Your order is ready to go. Head to the counter and show your PIN to claim your order.',
       completed: isPickup ? 'Your order has been picked up successfully.' : 'Your order has been delivered successfully.',
@@ -138,7 +141,9 @@ export function RetailTrackingRoutePage({
         ),
       // Phase 210 (#1179). Merchant-attributed copy, only ever shown for a rejected order --
       // never DGFY's own statement.
-      statusGuidance: activeStatus === 'rejected' && String(trackingResult.rejectionReason || trackingResult.rejection_reason || '').trim()
+      statusGuidance: activeStatus === 'cancelled' && String(trackingResult.cancellationReason || trackingResult.cancellation_reason || '').trim()
+        ? `The store cancelled this order: ${String(trackingResult.cancellationReason || trackingResult.cancellation_reason).trim()}`
+        : activeStatus === 'rejected' && String(trackingResult.rejectionReason || trackingResult.rejection_reason || '').trim()
         ? `The store could not accept this order: ${String(trackingResult.rejectionReason || trackingResult.rejection_reason).trim()}`
         : (statusGuidanceByCode[activeStatus] || "We're preparing your latest status update."),
       storeAddress: String(selectedStoreLocationForMap?.address_line || selectedStore?.address_line || selectedStore?.locationLabel || '').trim(),

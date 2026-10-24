@@ -9,6 +9,7 @@ import {
   updateUserRoleUseCase,
   updateUserStatusUseCase,
   updateUserPermissionsUseCase,
+  resetUserPermissionsUseCase,
   updatePosApprovalPinUseCase,
   updatePosDayClosePinUseCase,
   updateOwnPosDayClosePinUseCase,
@@ -411,6 +412,34 @@ export const updateUserPermissions = async (req, res, next) => {
   }
 };
 
+export const resetUserPermissions = async (req, res, next) => {
+  try {
+    const result = await resetUserPermissionsUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id
+    });
+
+    invalidateUserAuthCache({
+      tenantId: req.tenant?.id || null,
+      companyToken: req.headers['x-company-token'] || null,
+      userId: Number.parseInt(req.params.user_id, 10) || null
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'User permissions reset to inherited role access',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updatePosApprovalPin = async (req, res, next) => {
   try {
     const result = await updatePosApprovalPinUseCase({
@@ -694,6 +723,7 @@ export default {
   updateUserRole,
   updateUserStatus,
   updateUserPermissions,
+  resetUserPermissions,
   updatePosApprovalPin,
   updatePosDayClosePin,
   updateOwnPosDayClosePin,

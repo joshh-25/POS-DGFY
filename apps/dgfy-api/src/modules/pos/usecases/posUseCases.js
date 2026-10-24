@@ -37,6 +37,7 @@ import {
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import { formatReportDateTime } from '../../shared/utils/reportTimezone.js';
 import { POS_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
+import { ONLINE_FULFILLMENT_STATUSES } from '../../shared/constants/orderFulfillmentStatuses.js';
 import {
     normalizeBarcodeValue,
     parseBarcodeStructuredPayload
@@ -99,6 +100,11 @@ import {
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import {
+    buildExpectedPosCashAmount,
+    POS_CASH_EVENT_EFFECT,
+    summarizePosCashEvents
+} from '../domain/posCashReconciliation.js';
+import {
     assertDeliveryProviderBreakdown,
     DeliveryProviderBreakdownError,
     normalizeDeliveryProviderBreakdown,
@@ -115,17 +121,6 @@ const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
 const ORDER_METHODS = POS_ORDER_METHODS;
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 export const ONLINE_ORDER_SOURCE = 'online_store';
-const ONLINE_FULFILLMENT_STATUSES = [
-    'placed',
-    'confirmed',
-    'preparing',
-    'packed',
-    'ready_for_pickup',
-    'out_for_delivery',
-    'completed',
-    'cancelled',
-    'rejected'
-];
 const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     placed: ['confirmed', 'rejected'],
     // Phase 210 (#1179). A merchant who has already accepted an order can still discover it is
@@ -133,11 +128,12 @@ const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     // refunds (commerceOrderLifecycleUseCase.js:109-113, Phase 144/#824) -- widening this edge
     // does not widen forfeiture.
     confirmed: ['preparing', 'rejected'],
-    preparing: ['packed', 'ready_for_pickup', 'out_for_delivery'],
+    preparing: ['packed', 'ready_for_rider', 'ready_for_pickup', 'out_for_delivery'],
     // Phase 211 (#1180). ADDITIVE and optional: `preparing` keeps both original onward edges, and
     // `packed` offers exactly the same two. F&B gains no mandatory step; an order that never
     // enters `packed` behaves identically to before this phase.
-    packed: ['ready_for_pickup', 'out_for_delivery'],
+    packed: ['ready_for_rider', 'ready_for_pickup', 'out_for_delivery'],
+    ready_for_rider: ['out_for_delivery'],
     ready_for_pickup: ['completed'],
     out_for_delivery: ['completed'],
     completed: [],
@@ -166,12 +162,17 @@ const DELIVERY_JOB_TRANSITIONS = Object.freeze({
     failed: [],
     cancelled: []
 });
-const CASH_EVENT_EFFECT = Object.freeze({
-    cash_in: 1,
-    opening_adjustment: 1,
-    cash_out: -1,
-    closing_adjustment: -1
-});
+const COURIER_SERVICES = Object.freeze(['own', 'maxim', 'grabexpress', 'lalamove', 'other']);
+const isDirectDeliveryJob = (job) => !parsePositiveInt(job?.delivery_run_id)
+    || ['completed', 'cancelled'].includes(String(job?.deliveryRun?.status || '').toLowerCase());
+const hasCompleteDeliveryAssignment = (job) => Boolean(
+    (['maxim', 'grabexpress', 'lalamove', 'other'].includes(job?.courier_service)
+        || parsePositiveInt(job?.delivery_personnel_id)
+        || String(job?.delivery_personnel_name || '').trim())
+    && parsePositiveInt(job?.assigned_by)
+    && parsePositiveInt(job?.assigned_shift_id)
+    && job?.assigned_at
+);
 const POS_SHIFT_SALES_WINDOW_PRECISION_BUFFER_MS = 1000;
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
@@ -208,6 +209,8 @@ export const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_CLOSE: 'terminal.shift_close',
     SHIFT_FORCE_CLOSE: 'terminal.shift_force_close',
     ORDER_STATUS_UPDATE: 'terminal.order_status_update',
+    DELIVERY_ORDER_COMPLETE: 'terminal.delivery_order_complete',
+    DELIVERY_ORDER_FAIL: 'terminal.delivery_order_fail',
     PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection',
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
     DINE_IN_CASH_COLLECTION: 'terminal.dine_in_cash_collection',
@@ -1436,6 +1439,8 @@ const buildUnavailableZReadingReconciliation = ({ businessDate, locationId }) =>
     report_net_sales: 0,
     report_refunds_voids: 0,
     report_adjustment_amount: 0,
+    report_cash_refunds_voids: null,
+    report_voided_refunded_transactions: null,
     z_void_transaction_count: null,
     z_void_amount: null,
     message: 'Report reconciliation was unavailable when this Z-reading was prepared.'
@@ -2010,10 +2015,10 @@ export const validateOnlineOrderTransition = ({ currentStatus, nextStatus, order
         );
     }
 
-    if (nextStatus === 'out_for_delivery' && orderMethod !== 'delivery') {
+    if (['ready_for_rider', 'out_for_delivery'].includes(nextStatus) && orderMethod !== 'delivery') {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
-            'Only delivery orders can transition to out_for_delivery',
+            'Only delivery orders can use rider fulfillment states',
             {
                 statusCode: 409,
                 details: {
@@ -2068,16 +2073,7 @@ const assertDeliveryCompletionReadiness = (order) => {
 
     const deliveryProvider = String(deliveryJob.provider || 'manual').trim().toLowerCase();
     if (deliveryProvider === 'manual') {
-        const hasPersonnel = Boolean(
-            parsePositiveInt(deliveryJob.delivery_personnel_id)
-            || String(deliveryJob.delivery_personnel_name || '').trim()
-        );
-        const hasAssignment = Boolean(
-            hasPersonnel
-            && parsePositiveInt(deliveryJob.assigned_by)
-            && parsePositiveInt(deliveryJob.assigned_shift_id)
-            && deliveryJob.assigned_at
-        );
+        const hasAssignment = hasCompleteDeliveryAssignment(deliveryJob);
         if (!hasAssignment) {
             throw new DomainError(
                 DomainErrorCode.CONFLICT,
@@ -2317,8 +2313,10 @@ const requireRegisteredTerminalContext = ({ terminalId, policy = {}, operation }
 
 const requirePosPermissionForPairing = (user) => {
     if (user?.is_master_admin === true) return;
-    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
-    if (permissions.includes('pos:view') || permissions.includes('pos:transact')) return;
+    if (
+        hasEffectivePermission(user, 'pos:view')
+        || hasEffectivePermission(user, 'pos:transact')
+    ) return;
     throw new DomainError(
         DomainErrorCode.AUTHORIZATION_FAILED,
         'POS permission is required for terminal pairing.',
@@ -10059,35 +10057,16 @@ export const buildDeletePosCatalogImageUseCase = ({ posRepository, imageStorage 
     };
 };
 
-const summarizeCashEvents = (events = []) => {
-    const summary = {
-        cash_in_total: 0,
-        cash_out_total: 0,
-        opening_adjustment_total: 0,
-        closing_adjustment_total: 0,
-        net_events_total: 0
-    };
-
-    for (const event of events) {
-        const eventType = String(event.event_type || '').trim();
-        const amount = round4(Number(event.amount || 0));
-        if (!CASH_EVENT_EFFECT[eventType]) continue;
-        const key = `${eventType}_total`;
-        if (Object.prototype.hasOwnProperty.call(summary, key)) {
-            summary[key] = round4(summary[key] + amount);
-        }
-        summary.net_events_total = round4(summary.net_events_total + (amount * CASH_EVENT_EFFECT[eventType]));
-    }
-
-    return summary;
-};
-
 const buildShiftCashSummary = ({ shift, cashSalesAmount }) => {
     if (!shift) return null;
     const events = Array.isArray(shift.cashEvents) ? shift.cashEvents : [];
-    const eventSummary = summarizeCashEvents(events);
+    const eventSummary = summarizePosCashEvents(events);
     const openingFloat = round4(shift.opening_float_amount || 0);
-    const expectedCashAmount = round4(openingFloat + eventSummary.net_events_total + round4(cashSalesAmount || 0));
+    const expectedCashAmount = buildExpectedPosCashAmount({
+        openingFloatAmount: openingFloat,
+        cashSalesAmount,
+        cashEvents: events
+    });
     return {
         pos_terminal_shift_id: shift.pos_terminal_shift_id,
         business_date: shift.business_date,
@@ -10779,6 +10758,7 @@ export const buildSwitchTerminalShiftLocationUseCase = ({
                     shift: existingShift,
                     user,
                     payload,
+                    authorization: shiftAuthorization,
                     requestId: idempotencyKey,
                     transaction
                 })
@@ -11280,7 +11260,7 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
             reason
         });
 
-        if (!CASH_EVENT_EFFECT[eventType]) {
+        if (!POS_CASH_EVENT_EFFECT[eventType]) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'Unsupported cash drawer event type',
@@ -11586,7 +11566,7 @@ const buildShiftCloseCashData = async ({
 };
 
 export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSessionsForTerminal = null, onShiftClosing = null }) => {
-    return async ({ shiftId, payload, user }) => {
+    return async ({ shiftId, payload, user, locationScope = null, recordXReading = false }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         const normalizedShiftId = parsePositiveInt(shiftId);
         if (!normalizedUserId || !normalizedShiftId) {
@@ -11605,7 +11585,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
             shift_id: normalizedShiftId,
             closing_cash_amount: closingCashAmount,
             closing_note: closingNote,
-            override_reason: overrideReason
+            override_reason: overrideReason,
+            record_x_reading: Boolean(recordXReading)
         });
         if (!Number.isFinite(closingCashAmount) || closingCashAmount < 0) {
             return fail(new DomainError(
@@ -11645,6 +11626,23 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 transaction,
                 lock: true
             });
+            if (Array.isArray(locationScope?.allowedLocationIds)) {
+                const shiftLocationId = parsePositiveInt(shift?.location_id);
+                if (!shiftLocationId || !locationScope.allowedLocationIds.includes(shiftLocationId)) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'This shift is outside the administrator\'s assigned branch scope.',
+                        {
+                            statusCode: 403,
+                            details: {
+                                reason_code: 'POS_SHIFT_BRANCH_SCOPE_DENIED',
+                                shift_id: normalizedShiftId,
+                                location_id: shiftLocationId
+                            }
+                        }
+                    );
+                }
+            }
             const shiftAuthorization = authorizePosShiftMutation({
                 shift,
                 actorUser: user,
@@ -11678,11 +11676,36 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 variance
             } = cashCloseData;
 
+            const xReadingEvent = recordXReading && typeof posRepository.createFiscalEvent === 'function'
+                ? await posRepository.createFiscalEvent({
+                    event_type: 'x_reading',
+                    terminal_id: shiftPayload.terminal_id || null,
+                    actor_user_id: normalizedUserId,
+                    payload: {
+                        reading_type: 'x_reading',
+                        source: 'business_admin_attendance_end_shift',
+                        shift_id: normalizedShiftId,
+                        location_id: shiftPayload.location_id || null,
+                        cashier_id: shiftPayload.cashier_id || null,
+                        business_date: shiftPayload.business_date || null,
+                        generated_at: new Date().toISOString(),
+                        sales_summary: salesSummary,
+                        cash_summary: {
+                            ...summary,
+                            closing_cash_amount: closingCashAmount,
+                            expected_cash_amount: expectedCashAmount,
+                            cash_variance_amount: variance
+                        }
+                    }
+                }, { transaction })
+                : null;
+
             const cashierLifecycle = typeof onShiftClosing === 'function'
                 ? await onShiftClosing({
                     shift,
                     user,
                     payload,
+                    authorization: shiftAuthorization,
                     requestId: idempotencyKey,
                     transaction
                 })
@@ -11726,6 +11749,16 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                     cash_variance_amount: variance
                 },
                 sales_summary: salesSummary,
+                ...(recordXReading
+                    ? {
+                        x_reading: {
+                            recorded: Boolean(xReadingEvent),
+                            event_id: xReadingEvent?.pos_fiscal_event_id || null,
+                            event_hash: xReadingEvent?.event_hash || null,
+                            generated_at: xReadingEvent?.occurred_at || null
+                        }
+                    }
+                    : {}),
                 day_close_readiness: buildDayCloseReadinessData({
                     businessDate: buildBusinessDateRange(new Date()).businessDate,
                     locationId: shiftLocationId,
@@ -11738,8 +11771,10 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 shiftId: normalizedShiftId,
                 event: 'shift_closed',
                 changes: {
-                    authorization_mode: shiftAuthorization.mode,
+                    authorization_mode: shiftAuthorization.authorization_mode || shiftAuthorization.mode || null,
                     override_reason: shiftAuthorization.override_reason || null,
+                    x_reading_recorded: Boolean(xReadingEvent),
+                    x_reading_event_id: xReadingEvent?.pos_fiscal_event_id || null,
                     terminal_id: shiftPayload.terminal_id || null,
                     location_id: shiftPayload.location_id || null,
                     closing_cash_amount: closingCashAmount,
@@ -11916,6 +11951,7 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                     shift,
                     user,
                     payload,
+                    authorization: recoveryAuthorization,
                     requestId: idempotencyKey,
                     transaction
                 })
@@ -14018,6 +14054,7 @@ export const applyDeliveryPersonnelAssignment = async ({
     personnel,
     hasRegisteredPersonnel,
     deliveryPersonnelName,
+    courierDetails = null,
     cashierId,
     activeShift,
     orderLocationId,
@@ -14033,6 +14070,7 @@ export const applyDeliveryPersonnelAssignment = async ({
     const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
         delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
         delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+        ...(courierDetails || {}),
         assigned_by: cashierId,
         assigned_shift_id: activeShift.pos_terminal_shift_id,
         assigned_at: assignedAt,
@@ -14067,6 +14105,7 @@ export const applyDeliveryPersonnelAssignment = async ({
             previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
             delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
             delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+            ...(courierDetails || {}),
             assigned_by: cashierId,
             assigned_shift_id: activeShift.pos_terminal_shift_id,
             location_id: orderLocationId,
@@ -14093,11 +14132,19 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
         const deliveryPersonnelName = String(payload?.delivery_personnel_name || '').trim();
         const hasRegisteredPersonnel = Boolean(deliveryPersonnelId);
         const hasThirdPartyPersonnel = Boolean(deliveryPersonnelName);
+        const courierService = String(payload?.courier_service || '').trim().toLowerCase() || null;
+        const courierServiceName = String(payload?.courier_service_name || '').trim() || null;
+        const courierReference = String(payload?.courier_reference || '').trim() || null;
+        const trackingUrl = String(payload?.tracking_url || '').trim() || null;
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const requestHash = hashPayload({
             pos_transaction_id: orderId,
             delivery_personnel_id: deliveryPersonnelId,
-            delivery_personnel_name: deliveryPersonnelName || null
+            delivery_personnel_name: deliveryPersonnelName || null,
+            courier_service: courierService,
+            courier_service_name: courierServiceName,
+            courier_reference: courierReference,
+            tracking_url: trackingUrl
         });
 
         if (!orderId) {
@@ -14121,12 +14168,24 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 { statusCode: 422 }
             ));
         }
-        if ((hasRegisteredPersonnel && hasThirdPartyPersonnel) || (!hasRegisteredPersonnel && !hasThirdPartyPersonnel)) {
+        if ((hasRegisteredPersonnel && hasThirdPartyPersonnel)
+            || (courierService === 'own' && !hasRegisteredPersonnel && !hasThirdPartyPersonnel)
+            || (!courierService && !hasRegisteredPersonnel && !hasThirdPartyPersonnel)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'Provide either a positive delivery_personnel_id or a delivery_personnel_name',
                 { statusCode: 422 }
             ));
+        }
+        if ((courierService && !COURIER_SERVICES.includes(courierService))
+            || (courierService === 'other' && !courierServiceName)
+            || courierServiceName?.length > 120 || courierReference?.length > 120) {
+            return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED,
+                'Invalid courier service or reference.', { statusCode: 422, details: { reason_code: 'DELIVERY_COURIER_DETAILS_INVALID' } }));
+        }
+        if (trackingUrl && (trackingUrl.length > 1000 || !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/i.test(trackingUrl))) {
+            return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED,
+                'Tracking link must use HTTPS.', { statusCode: 422, details: { reason_code: 'DELIVERY_TRACKING_URL_INVALID' } }));
         }
         if (!idempotencyKey) {
             return fail(new DomainError(
@@ -14174,7 +14233,9 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                     }
                 );
             }
-            if (String(order.fulfillment_status || '').trim() !== 'out_for_delivery') {
+            const directJob = isDirectDeliveryJob(order.deliveryJob);
+            const status = String(order.fulfillment_status || '').trim();
+            if (!(status === 'out_for_delivery' || (directJob && ['confirmed', 'preparing', 'packed', 'ready_for_rider'].includes(status)))) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Delivery assignment is available only when the order is out for delivery.',
@@ -14217,6 +14278,11 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                         details: { reason_code: 'MANUAL_DELIVERY_JOB_REQUIRED' }
                     }
                 );
+            }
+            if (status !== 'out_for_delivery' && !courierService) {
+                throw new DomainError(DomainErrorCode.CONFLICT,
+                    'A courier service is required before dispatch.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_COURIER_SERVICE_REQUIRED' } });
             }
 
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
@@ -14269,14 +14335,14 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                     );
                 }
             } else {
-                personnel = {
+                personnel = hasThirdPartyPersonnel ? {
                     delivery_personnel_id: null,
                     display_name: deliveryPersonnelName,
                     phone: null,
                     location_id: orderLocationId,
                     is_active: true,
                     is_third_party: true
-                };
+                } : null;
             }
 
             const {
@@ -14291,6 +14357,12 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 personnel,
                 hasRegisteredPersonnel,
                 deliveryPersonnelName,
+                courierDetails: {
+                    courier_service: courierService || (hasRegisteredPersonnel ? 'own' : null),
+                    courier_service_name: courierService === 'other' ? courierServiceName : null,
+                    courier_reference: courierReference,
+                    tracking_url: trackingUrl
+                },
                 cashierId,
                 activeShift,
                 orderLocationId,
@@ -14433,7 +14505,11 @@ export const buildUpdateDeliveryJobStatusUseCase = ({
                     }
                 );
             }
-            if (String(order.fulfillment_status || '').trim() !== 'out_for_delivery') {
+            const advancesReadyOrder = requestedStatus === 'picked_up'
+                && String(order.fulfillment_status || '').trim() === 'ready_for_rider'
+                && isDirectDeliveryJob(order.deliveryJob)
+                && (broadAuthorization || !hasPermissionContext);
+            if (String(order.fulfillment_status || '').trim() !== 'out_for_delivery' && !advancesReadyOrder) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Delivery job actions are available only when the order is out for delivery.',
@@ -14518,16 +14594,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({
                 await assertStaffLocationAccess({ userId: cashierId, locationId: orderLocationId, transaction });
             }
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
-            const hasPersonnel = Boolean(
-                parsePositiveInt(deliveryJob.delivery_personnel_id)
-                || String(deliveryJob.delivery_personnel_name || '').trim()
-            );
-            const hasAssignment = Boolean(
-                hasPersonnel
-                && parsePositiveInt(deliveryJob.assigned_by)
-                && parsePositiveInt(deliveryJob.assigned_shift_id)
-                && deliveryJob.assigned_at
-            );
+            const hasAssignment = hasCompleteDeliveryAssignment(deliveryJob);
             if (!hasAssignment && ['assigned', 'picked_up', 'delivered'].includes(requestedStatus)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
@@ -14572,6 +14639,17 @@ export const buildUpdateDeliveryJobStatusUseCase = ({
             }
 
             const mutationTimestamp = new Date();
+            if (advancesReadyOrder) {
+                validateOnlineOrderTransition({
+                    currentStatus: 'ready_for_rider',
+                    nextStatus: 'out_for_delivery',
+                    orderMethod: order.order_method
+                });
+                await posRepository.updateOrderById(orderId, { fulfillment_status: 'out_for_delivery' }, {
+                    transaction,
+                    lock: true
+                });
+            }
             const updatePayload = currentStatus === requestedStatus
                 ? {}
                 : {
@@ -14608,6 +14686,10 @@ export const buildUpdateDeliveryJobStatusUseCase = ({
                         provider: deliveryJob.provider,
                         previous_status: currentStatus,
                         status: requestedStatus,
+                        ...(advancesReadyOrder ? {
+                            previous_order_status: 'ready_for_rider',
+                            order_status: 'out_for_delivery'
+                        } : {}),
                         shift_id: activeShift?.pos_terminal_shift_id || null,
                         location_id: orderLocationId,
                         applied_at: mutationTimestamp.toISOString()
@@ -14620,6 +14702,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({
             const updatedOrder = {
                 ...order,
                 ...shiftAttributionPayload,
+                ...(advancesReadyOrder ? { fulfillment_status: 'out_for_delivery' } : {}),
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
@@ -14681,6 +14764,23 @@ export const buildUpdateDeliveryJobStatusUseCase = ({
     };
 };
 
+export const writeOnlineOrderStatusAudit = async ({
+    posRepository, orderId, userId, locationId, shiftId, from, to, orderMethod,
+    reason = null, auditContext = {}, transaction
+}) => posRepository.createAuditLog({
+    user_id: userId,
+    entity_type: 'pos_transaction',
+    entity_id: orderId,
+    action: 'UPDATE',
+    location_id: locationId || null,
+    shift_id: shiftId || null,
+    reason,
+    request_id: auditContext.requestId || null,
+    ip_address: auditContext.ipAddress || null,
+    user_agent: auditContext.userAgent || null,
+    changes: { event: 'online_order_status_changed', from, to, order_method: orderMethod, reason }
+}, { transaction });
+
 export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
@@ -14691,7 +14791,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
-    return async ({ posTransactionId, payload, user }) => {
+    return async ({ posTransactionId, payload, user, auditContext = {} }) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         if (!normalizedTransactionId) {
             return fail(new DomainError(
@@ -14971,6 +15071,12 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 updatePayload.rejection_reason = String(payload?.reason || '').trim().slice(0, 255) || null;
                 updatePayload.rejected_by = actingUserId;
                 updatePayload.rejected_at = mutationTimestamp;
+                if (existing.order_method === 'delivery'
+                    && existing.deliveryJob?.provider === 'manual'
+                    && !['delivered', 'failed', 'cancelled'].includes(existing.deliveryJob.status)) {
+                    await posRepository.updateDeliveryJobByOrderId(normalizedTransactionId,
+                        { status: 'cancelled' }, { transaction, lock: true });
+                }
             }
 
             // Persisted one-time evidence for the confirmation-time issue and its reversal.
@@ -15002,6 +15108,22 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             const updated = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
                 transaction
             });
+
+            if (currentStatus !== targetStatus) {
+                await writeOnlineOrderStatusAudit({
+                    posRepository,
+                    orderId: normalizedTransactionId,
+                    userId: actingUserId,
+                    locationId: existing.location_id,
+                    shiftId: activeShift?.pos_terminal_shift_id || null,
+                    from: currentStatus,
+                    to: targetStatus,
+                    orderMethod: existing.order_method,
+                    reason: payload?.reason || null,
+                    auditContext,
+                    transaction
+                });
+            }
 
             await transaction.commit();
             const currentTenantId = dbStore.getStore()?.tenantId || null;
@@ -15039,7 +15161,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                         tracked: true,
                         payment_action: 'refund_failed',
                         failure_reason: lifecycleResult.error?.message
-                            || 'The payment lifecycle action requires administrator review.'
+                            || 'The order was rejected, but the automatic refund remains pending for payment reconciliation.'
                     };
                 if (!lifecycleResult.success) {
                     logger.error('[PosUseCases] Commerce payment lifecycle failed after order status commit', {
@@ -15352,3 +15474,249 @@ export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
         }
     };
 };
+
+// Phase 527 (#2667): the direct-delivery button is a single financial and lifecycle
+// mutation. The older cash, balance, job and status routes remain for native clients.
+const buildDirectDeliveryActionUseCase = ({
+    posRepository,
+    inventoryCommandService,
+    inventoryReservationService,
+    commerceOrderLifecycleUseCase,
+    activityRecorder = recordDgfyOrderActivity,
+    dispatchOrderSmsAlert = dispatchDgfyOrderSmsAlert,
+    action
+}) => async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+    const orderId = parsePositiveInt(posTransactionId);
+    const actorId = parsePositiveInt(user?.user_id);
+    const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+    const terminalId = action === 'complete' ? sanitizeTerminalId(payload?.terminal_id) : null;
+    const reason = String(payload?.reason || '').trim();
+    const settlement = payload?.settlement || null;
+    if (!orderId || !actorId || !idempotencyKey || (action === 'complete' && !terminalId)) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED,
+            'Order, authenticated operator, idempotency key and terminal are required.', { statusCode: 422 }));
+    }
+    if (action === 'fail' && (reason.length < 3 || reason.length > 500)) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED,
+            'A failure reason of 3 to 500 characters is required.',
+            { statusCode: 422, details: { reason_code: 'DELIVERY_FAILURE_REASON_REQUIRED' } }));
+    }
+    const operationKey = action === 'complete'
+        ? POS_OPERATION_KEYS.DELIVERY_ORDER_COMPLETE : POS_OPERATION_KEYS.DELIVERY_ORDER_FAIL;
+    const requestHash = hashPayload({ order_id: orderId, terminal_id: terminalId, settlement, reason });
+    let transaction = null;
+    try {
+        const replay = await findOperationReplayEntry({ posRepository, operationKey, idempotencyKey, requestHash });
+        if (replay) return ok(replay);
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        transaction = await sequelize.transaction();
+        const lockedReplay = await findOperationReplayEntry({
+            posRepository, operationKey, idempotencyKey, requestHash, transaction
+        });
+        if (lockedReplay) {
+            await transaction.commit();
+            return ok(lockedReplay);
+        }
+        const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+        const job = order?.deliveryJob;
+        if (order?.order_source !== ONLINE_ORDER_SOURCE || order?.order_method !== 'delivery'
+            || job?.provider !== 'manual' || !isDirectDeliveryJob(job)) {
+            throw new DomainError(DomainErrorCode.CONFLICT,
+                'Direct delivery action requires a manual delivery order outside an active run.',
+                { statusCode: 409, details: { reason_code: 'DIRECT_DELIVERY_ORDER_REQUIRED' } });
+        }
+        const fromStatus = String(order.fulfillment_status || '').trim();
+        const jobStatus = String(job.status || '').trim();
+        if (action === 'complete'
+            ? (fromStatus !== 'out_for_delivery' || !['picked_up', 'delivered'].includes(jobStatus))
+            : (!['confirmed', 'preparing', 'packed', 'ready_for_rider', 'out_for_delivery'].includes(fromStatus)
+                || ['delivered', 'failed', 'cancelled'].includes(jobStatus))) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'Delivery action is not available at this stage.',
+                { statusCode: 409, details: { reason_code: 'DELIVERY_ACTION_STAGE_INVALID', fulfillment_status: fromStatus, delivery_job_status: jobStatus } });
+        }
+        const shift = await assertOpenShiftForPosMutation({
+            posRepository,
+            cashierId: actorId,
+            terminalId,
+            locationId: order.location_id || null,
+            shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+            authorizedOperatorUserId: user?.register_shift_owner_user_id ? actorId : null,
+            transaction,
+            lock: true
+        });
+        const now = new Date();
+        let nextJob = job;
+        let nextOrder = order;
+        if (action === 'complete') {
+            if (jobStatus === 'picked_up') {
+                nextJob = await posRepository.updateDeliveryJobByOrderId(orderId,
+                    { status: 'delivered', delivered_at: now }, { transaction, lock: true });
+                await posRepository.createAuditLog({
+                    user_id: actorId, entity_type: 'delivery_job', entity_id: job.delivery_job_id,
+                    action: 'UPDATE', changes: {
+                        event: 'delivery_job_status_changed', previous_status: 'picked_up', status: 'delivered',
+                        pos_transaction_id: orderId, shift_id: shift.pos_terminal_shift_id
+                    }, ip_address: auditContext.ipAddress || null, user_agent: auditContext.userAgent || null
+                }, { transaction });
+            }
+            let paymentPatch = {};
+            const paymentStatus = String(order.payment_status || '').toLowerCase();
+            const balance = round4(order.balance_due);
+            if (balance > 0 || paymentStatus === 'unpaid') {
+                if (!settlement) {
+                    throw new DomainError(DomainErrorCode.CONFLICT, 'Settle the balance before delivery completion.',
+                        { statusCode: 409, details: { reason_code: 'DELIVERY_BALANCE_DUE_OUTSTANDING', balance_due: balance } });
+                }
+                const method = String(settlement.method || '').trim().toLowerCase();
+                const amount = round4(settlement.amount);
+                const isCash = method === 'cash';
+                const amountDue = paymentStatus === 'partially_paid' ? balance : round4(order.total_amount);
+                if (paymentStatus === 'partially_paid'
+                    ? (!BALANCE_SETTLEMENT_METHODS.includes(method) || (isCash ? amount < amountDue : amount !== amountDue)
+                        || (!isCash && settlement.manual_payment_received !== true))
+                    : (paymentStatus !== 'unpaid' || !isCodDelivery({
+                        orderMethod: order.order_method,
+                        paymentType: order.payment_type,
+                        paymentTiming: order.payment_timing
+                    }) || !isCash || amount < amountDue)) {
+                    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Delivery settlement is invalid.',
+                        { statusCode: 422, details: { reason_code: 'DELIVERY_SETTLEMENT_INVALID', balance_due: amountDue } });
+                }
+                paymentPatch = {
+                    payment_status: 'paid', amount_paid: round4(order.total_amount), balance_due: 0,
+                    ...(isCash ? { cash_received: amount, change_amount: round4(amount - amountDue) } : {}),
+                    payment_collected_at: now, payment_collected_by: actorId,
+                    payment_collected_shift_id: shift.pos_terminal_shift_id,
+                    payment_collected_terminal_id: terminalId
+                };
+                if (paymentStatus === 'partially_paid') {
+                    const downpayment = await posRepository.findOrderPaymentEntryByKind(orderId, 'downpayment', { transaction });
+                    await posRepository.createOrderPaymentEntry({
+                        posTransactionId: orderId, kind: 'balance', status: 'successful', amount: amountDue,
+                        paymentMethod: method, paymentProvider: isCash ? null : 'merchant_owned',
+                        providerEventId: null, paymentReference: String(settlement.payment_reference || '').trim() || null,
+                        idempotencyKey, relatedPosOrderPaymentId: downpayment?.pos_order_payment_id || null,
+                        recordedBy: actorId
+                    }, { transaction });
+                }
+                await posRepository.createAuditLog({
+                    user_id: actorId, entity_type: 'pos_transaction', entity_id: orderId, action: 'UPDATE',
+                    changes: {
+                        event: paymentStatus === 'partially_paid' ? 'order_balance_settled' : 'delivery_cash_collected',
+                        payment_method: method, balance_settled: amountDue, cash_received: isCash ? amount : null,
+                        manual_payment_received: settlement.manual_payment_received === true,
+                        shift_id: shift.pos_terminal_shift_id, terminal_id: terminalId
+                    }, ip_address: auditContext.ipAddress || null, user_agent: auditContext.userAgent || null
+                }, { transaction });
+            } else if (settlement) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'This delivery has no balance to settle.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_SETTLEMENT_NOT_REQUIRED' } });
+            }
+            const readyOrder = { ...order, ...paymentPatch, deliveryJob: nextJob };
+            assertDeliveryCompletionReadiness(readyOrder);
+            validateOnlineOrderTransition({ currentStatus: fromStatus, nextStatus: 'completed', orderMethod: 'delivery' });
+            let inventoryIssuedAt = null;
+            if (!order.inventory_issued_at) {
+                await issueOnlineOrderStockForFulfillment({
+                    order, posRepository, stockCommands: inventoryCommandService,
+                    actingUserId: actorId, transaction, inventoryReservationService
+                });
+                inventoryIssuedAt = now;
+            }
+            nextOrder = await posRepository.updateOrderById(orderId, {
+                ...paymentPatch, fulfillment_status: 'completed',
+                ...buildOnlineOrderShiftAttributionPayload({ order, activeShift: shift }),
+                ...(inventoryIssuedAt ? { inventory_issued_at: inventoryIssuedAt } : {}),
+                cashier_id: parsePositiveInt(order.cashier_id) || actorId
+            }, { transaction, lock: true });
+        } else {
+            if (inventoryReservationService?.releaseOnlineOrderInventory) {
+                await inventoryReservationService.releaseOnlineOrderInventory({
+                    sourceId: orderId, transaction, reason: 'cancelled'
+                });
+            }
+            nextJob = await posRepository.updateDeliveryJobByOrderId(orderId,
+                { status: 'failed', failure_reason: reason }, { transaction, lock: true });
+            nextOrder = await posRepository.updateOrderById(orderId, {
+                fulfillment_status: 'cancelled',
+                ...buildOnlineOrderShiftAttributionPayload({ order, activeShift: shift }),
+                cashier_id: parsePositiveInt(order.cashier_id) || actorId
+            }, { transaction, lock: true });
+            await posRepository.createAuditLog({
+                user_id: actorId, entity_type: 'delivery_job', entity_id: job.delivery_job_id,
+                action: 'UPDATE', changes: {
+                    event: 'delivery_failed', pos_transaction_id: orderId,
+                    previous_status: jobStatus, status: 'failed', reason
+                }, ip_address: auditContext.ipAddress || null, user_agent: auditContext.userAgent || null
+            }, { transaction });
+        }
+        await posRepository.createAuditLog({
+            user_id: actorId, entity_type: 'pos_transaction', entity_id: orderId,
+            action: 'UPDATE', changes: {
+                event: action === 'complete' ? 'delivery_order_completed' : 'delivery_order_failed',
+                previous_status: fromStatus, fulfillment_status: action === 'complete' ? 'completed' : 'cancelled',
+                previous_delivery_job_status: jobStatus, delivery_job_status: nextJob.status,
+                reason: action === 'fail' ? reason : null,
+                shift_id: shift.pos_terminal_shift_id, terminal_id: terminalId
+            }, ip_address: auditContext.ipAddress || null, user_agent: auditContext.userAgent || null
+        }, { transaction });
+        const responsePayload = {
+            order: toPublicPosTransaction({ ...nextOrder, deliveryJob: nextJob }),
+            delivery_job: toSerializable(nextJob),
+            idempotency: { key: idempotencyKey, request_fingerprint: requestHash, outcome: 'processed', idempotent_replay: false }
+        };
+        await persistOperationReplay({
+            posRepository, operationKey, idempotencyKey, requestHash,
+            replayStatus: OPERATION_REPLAY_STATUS.PROCESSED, responsePayload,
+            createdBy: actorId, transaction
+        });
+        await transaction.commit();
+        const tenantId = dbStore.getStore()?.tenantId || null;
+        await activityRecorder({
+            tenantId, order: { ...nextOrder, deliveryJob: nextJob },
+            storeCustomer: order.storeCustomer || order.store_customer || null
+        }).catch((error) => logger.warn('Failed to sync delivery activity', { orderId, error: error?.message }));
+        if (commerceOrderLifecycleUseCase && tenantId) {
+            try {
+                const lifecycle = await commerceOrderLifecycleUseCase({
+                    tenantId, posTransactionId: orderId,
+                    fulfillmentStatus: action === 'complete' ? 'completed' : 'cancelled',
+                    actor: `pos_user:${actorId}`, rejectionReason: action === 'fail' ? reason : null
+                });
+                if (!lifecycle.success) logger.error('Delivery commerce lifecycle failed after commit', { orderId, error: lifecycle.error?.message });
+            } catch (error) {
+                logger.error('Delivery commerce lifecycle failed after commit', { orderId, error: error?.message });
+            }
+        }
+        try {
+            await settleAffiliateCommissionForOrder({
+                tenantId, orderReference: String(orderId), outcome: action === 'complete' ? 'earned' : 'reversed'
+            });
+        } catch (error) {
+            logger.warn('Failed to settle delivery affiliate commission', { orderId, error: error?.message });
+        }
+        if (action === 'complete' && jobStatus === 'picked_up') {
+            await Promise.resolve().then(() => dispatchOrderSmsAlert({
+                tenantId, order: { ...nextOrder, deliveryJob: nextJob },
+                storeCustomer: order.storeCustomer || order.store_customer || null, event: 'delivered'
+            })).catch(() => null);
+        }
+        return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+    } catch (error) {
+        if (transaction && !transaction.finished) await transaction.rollback();
+        if (error instanceof DomainError && idempotencyKey) {
+            await persistOperationReplay({
+                posRepository, operationKey, idempotencyKey, requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                responsePayload: serializeReplayFailure(error), createdBy: actorId
+            });
+        }
+        return fail(mapPosUseCaseError(error, `Failed to ${action} direct delivery`));
+    }
+};
+
+export const buildCompleteDirectDeliveryOrderUseCase = (dependencies) =>
+    buildDirectDeliveryActionUseCase({ ...dependencies, action: 'complete' });
+
+export const buildFailDirectDeliveryOrderUseCase = (dependencies) =>
+    buildDirectDeliveryActionUseCase({ ...dependencies, action: 'fail' });

@@ -360,7 +360,7 @@ describe('POS transaction void route transport contract', () => {
     });
 
     it('protects cash refunds with cash-drawer permission and validates the cashier shift payload', async () => {
-        permissionSet = new Set(['pos:cash_drawer_adjust']);
+        permissionSet = new Set(['pos:refund', 'pos:cash_drawer_adjust']);
 
         const response = await request(app)
             .post('/api/v1/pos/transactions/178/cash-refund')
@@ -384,7 +384,7 @@ describe('POS transaction void route transport contract', () => {
         });
         expect(mockCashRefundTransaction).toHaveBeenCalledTimes(1);
 
-        permissionSet = new Set(['pos:void']);
+        permissionSet = new Set(['pos:refund', 'pos:void']);
         const unauthorized = await request(app)
             .post('/api/v1/pos/transactions/178/cash-refund')
             .set('x-pos-terminal-id', 'COUNTER-01')
@@ -398,7 +398,7 @@ describe('POS transaction void route transport contract', () => {
     });
 
     it('protects external reversal evidence with pos:void and validates the reference', async () => {
-        permissionSet = new Set(['pos:void']);
+        permissionSet = new Set(['pos:refund', 'pos:void']);
 
         const response = await request(app)
             .post('/api/v1/pos/transactions/178/external-refund')
@@ -434,6 +434,7 @@ describe('POS transaction void route transport contract', () => {
     });
 
     it('protects provider refunds with pos:void and validates only the client refund contract', async () => {
+        permissionSet = new Set(['pos:refund', 'pos:void']);
         const response = await request(app)
             .post('/api/v1/pos/transactions/178/provider-refund')
             .set('x-pos-terminal-id', 'COUNTER-01')
@@ -472,7 +473,7 @@ describe('POS transaction void route transport contract', () => {
     });
 
     it('allows either void authority or cash-drawer authority to dispatch split allocation reversal', async () => {
-        permissionSet = new Set(['pos:void']);
+        permissionSet = new Set(['pos:refund', 'pos:void']);
         const external = await request(app)
             .post('/api/v1/pos/transactions/178/split-allocations/12/reversal')
             .set('x-pos-terminal-id', 'COUNTER-01')
@@ -492,7 +493,7 @@ describe('POS transaction void route transport contract', () => {
         });
         expect(mockSplitAllocationReversal).toHaveBeenCalledTimes(1);
 
-        permissionSet = new Set(['pos:cash_drawer_adjust']);
+        permissionSet = new Set(['pos:refund', 'pos:cash_drawer_adjust']);
         const cash = await request(app)
             .post('/api/v1/pos/transactions/178/split-allocations/13/reversal')
             .set('x-pos-terminal-id', 'COUNTER-01')

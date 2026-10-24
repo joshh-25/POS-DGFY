@@ -1,9 +1,12 @@
 import { PERMISSIONS } from '../../../config/permissions.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 
 const isAdminLikeUser = (user = {}) => (
     user?.is_master_admin === true
     || String(user?.role || '').trim().toLowerCase() === 'admin'
 );
+
+export const canEditBusinessIdentity = (user = {}) => isAdminLikeUser(user);
 
 const canUsePermission = (user, permission) => (
     isAdminLikeUser(user) || userHasBusinessAdminPermission(user, permission)
@@ -76,19 +79,8 @@ export const BUSINESS_ADMIN_SETTINGS_SECTIONS = Object.freeze({
     })
 });
 
-const normalizePermissions = (permissions) => {
-    if (Array.isArray(permissions)) return permissions;
-    if (typeof permissions !== 'string') return [];
-    try {
-        const parsed = JSON.parse(permissions);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-};
-
 export const userHasBusinessAdminPermission = (user, permission) => (
-    normalizePermissions(user?.permissions).includes(permission)
+    hasEffectivePermission(user, permission)
 );
 
 export const resolveBusinessAdminAccess = (user = {}) => {
@@ -176,6 +168,17 @@ export const buildBusinessAdminCapabilities = (user = {}) => ({
         user?.is_master_admin
         || userHasBusinessAdminPermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.APPROVE_HIGH_RISK)
     ),
+    // This is the exact authorization projection used by the Business Admin
+    // approval list/decision use cases: Back Office access, tenant-wide scope,
+    // and high-risk approval authority are all required. Keep this separate
+    // from approve_high_risk so the UI cannot expose a decision control to a
+    // user who may hold the approval grant but not the required scope.
+    can_decide_high_risk: (() => {
+        const access = resolveBusinessAdminAccess(user);
+        const canReview = user?.is_master_admin === true
+            || userHasBusinessAdminPermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.APPROVE_HIGH_RISK);
+        return Boolean(access.allowed && access.scope === 'all' && canReview);
+    })(),
     manage_branches: Boolean(
         user?.is_master_admin
         || String(user?.role || '').trim().toLowerCase() === 'admin'

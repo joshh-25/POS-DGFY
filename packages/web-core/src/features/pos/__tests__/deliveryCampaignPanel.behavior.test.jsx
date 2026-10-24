@@ -46,19 +46,9 @@ vi.mock('@/src/utils/iminRuntimeFeedback.js', () => ({
 
 const emptyList = { vouchers: [], pagination: { page: 1, limit: 20, total: 0, total_pages: 0 } };
 
-// Not wrapped by their <Label> (no htmlFor/id pairing in this file) -- the Label and its field are
-// siblings under one wrapping div. Finds the field the same way a sighted user would: by the text
-// immediately next to it.
-const getFieldByLabel = (labelText) => {
-    const label = Array.from(document.querySelectorAll('label')).find((el) => el.textContent.trim().startsWith(labelText));
-    if (!label) throw new Error(`No label starting with "${labelText}" found`);
-    const field = label.parentElement.querySelector('input, select, textarea');
-    if (!field) throw new Error(`Label "${labelText}" found but has no sibling field`);
-    return field;
-};
-
 const openCreateForm = async (user) => {
-    await user.click(await screen.findByRole('button', { name: /New Voucher/i }));
+    const createButtons = await screen.findAllByRole('button', { name: /New Voucher/i });
+    await user.click(createButtons.at(-1));
 };
 
 const pickDeliveryCampaign = async (user) => {
@@ -142,9 +132,9 @@ describe('VoucherManagementPanel delivery-campaign authoring (#1334, Phase 245)'
         await openCreateForm(user);
         await pickDeliveryCampaign(user);
 
-        await user.type(getFieldByLabel('Campaign name'), 'Free delivery over 500');
-        await user.type(getFieldByLabel('Code'), 'freedel500');
-        await user.click(screen.getByRole('checkbox', { name: /Apply automatically/i }));
+        await user.type(screen.getByPlaceholderText('e.g. Free delivery over ₱500'), 'Free delivery over 500');
+        await user.type(screen.getByPlaceholderText('e.g. SUMMER15'), 'freedel500');
+        await user.click(screen.getByTestId('voucher-auto-apply-toggle'));
 
         await user.click(screen.getByRole('button', { name: /Create voucher/i }));
 
@@ -170,7 +160,9 @@ describe('VoucherManagementPanel delivery-campaign authoring (#1334, Phase 245)'
         render(<VoucherManagementPanel canManage sectionId="vouchers" />);
         await waitFor(() => expect(listVouchers).toHaveBeenCalledTimes(1));
 
-        await user.selectOptions(getFieldByLabel('Type'), 'delivery_campaign');
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        await user.click(screen.getByRole('button', { name: 'Type: Delivery campaigns' }));
+        await user.click(screen.getByRole('button', { name: 'Apply Filters' }));
 
         await waitFor(() => expect(listVouchers).toHaveBeenCalledWith(expect.objectContaining({
             voucher_kind: 'delivery_campaign',
@@ -221,8 +213,9 @@ describe('VoucherManagementPanel delivery-campaign authoring (#1334, Phase 245)'
         await openCreateForm(user);
         await pickDeliveryCampaign(user);
 
-        await user.type(getFieldByLabel('Campaign name'), 'Free delivery over 500');
-        await user.type(getFieldByLabel('Code'), 'FREEDEL500');
+        await user.type(screen.getByPlaceholderText('e.g. Free delivery over ₱500'), 'Free delivery over 500');
+        await user.type(screen.getByPlaceholderText('e.g. SUMMER15'), 'FREEDEL500');
+        await user.click(screen.getByTestId('voucher-auto-apply-toggle'));
         await user.click(screen.getByRole('button', { name: /Create voucher/i }));
 
         expect(await screen.findByText('auto_apply vouchers must target the delivery fee (benefit_target: "delivery").')).toBeTruthy();
@@ -243,10 +236,10 @@ describe('VoucherManagementPanel delivery-campaign authoring (#1334, Phase 245)'
         await openCreateForm(user);
         await pickDeliveryCampaign(user);
 
-        await user.type(getFieldByLabel('Campaign name'), 'Free delivery over 500');
-        await user.type(getFieldByLabel('Code'), 'FREEDEL500');
-        await user.click(screen.getByRole('radio', { name: 'Waive up to a set amount' }));
-        await user.type(getFieldByLabel('Waive up to (₱)'), '50');
+        await user.type(screen.getByPlaceholderText('e.g. Free delivery over ₱500'), 'Free delivery over 500');
+        await user.type(screen.getByPlaceholderText('e.g. SUMMER15'), 'FREEDEL500');
+        await user.click(screen.getByTestId('voucher-delivery-waiver-partial'));
+        await user.type(screen.getByPlaceholderText('e.g. 50.00'), '50');
         await user.click(screen.getByRole('button', { name: /Create voucher/i }));
 
         expect(await screen.findByText('Enter an amount greater than 0.')).toBeTruthy();

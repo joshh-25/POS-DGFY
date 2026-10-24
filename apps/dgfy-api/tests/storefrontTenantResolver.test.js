@@ -59,6 +59,18 @@ describe('storefrontTenantResolver', () => {
         expect(reconcileStorefrontDiscoveryIndexMock).not.toHaveBeenCalled();
     });
 
+    it('resolves primary and affiliate aliases only from visible discovery rows', async () => {
+        findAllMock.mockResolvedValue([{ tenant_id: 'tenant-1', tenant_name: 'Acme', tenant_company_token: 'token', slug: 'acme', affiliate_slug: 'acme-partner' }]);
+        expect(await resolveTenantByStoreSlug('acme')).toMatchObject({ id: 'tenant-1' });
+        expect(await resolveTenantByStoreSlug('acme-partner')).toMatchObject({ id: 'tenant-1' });
+        expect(findAllMock).toHaveBeenCalledWith(expect.objectContaining({ where: { is_visible: true, entity_type: 'dgfy_native' } }));
+        clearStorefrontTenantResolverCache();
+        findAllMock.mockResolvedValue([]);
+        reconcileStorefrontDiscoveryIndexMock.mockResolvedValue({ status: 'healthy' });
+        expect(await resolveTenantByStoreSlug('acme')).toBeNull();
+        expect(await resolveTenantByStoreSlug('acme-partner')).toBeNull();
+    });
+
     it('runs one-time repair reconcile when index is empty', async () => {
         findAllMock
             .mockResolvedValueOnce([])

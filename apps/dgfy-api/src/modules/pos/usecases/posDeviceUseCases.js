@@ -183,6 +183,8 @@ const buildUnavailableZReadingReconciliation = ({ businessDate, locationId }) =>
     report_net_sales: 0,
     report_refunds_voids: 0,
     report_adjustment_amount: 0,
+    report_cash_refunds_voids: null,
+    report_voided_refunded_transactions: null,
     z_void_transaction_count: null,
     z_void_amount: null,
     message: 'Report reconciliation was unavailable at print time.'

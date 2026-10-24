@@ -16,6 +16,12 @@ export const isDineInOrder = (order = {}) => (
   String(order?.order_method || '').trim().toLowerCase() === 'dine_in'
 );
 
+export const getOnlineOrderCashIdempotencyPrefix = (order = {}) => (
+  isDineInOrder(order)
+    ? 'pos-dine-in-cash'
+    : order?.order_method === 'delivery' ? 'pos-delivery-cash' : 'pos-pickup-cash'
+);
+
 export const isScheduledDineInOrder = (order = {}) => (
   isDineInOrder(order)
   && parseScheduledTimestamp(order?.scheduled_for) !== null

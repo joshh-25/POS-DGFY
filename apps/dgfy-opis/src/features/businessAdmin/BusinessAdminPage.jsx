@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
     AlertTriangle,
@@ -86,6 +87,8 @@ import PosActivityAnalyticsPage from './PosActivityAnalyticsPage.jsx';
 import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
 import BusinessAdminAccountActions from './BusinessAdminAccountActions.jsx';
 import ProcessingFeePolicyEditor from './ProcessingFeePolicyEditor.jsx';
+import CanonicalBusinessNameEditor from './CanonicalBusinessNameEditor.jsx';
+import StaffRolesPanel from './StaffRolesPanel.jsx';
 import {
     BACKOFFICE_NAV_GROUPS,
     BACKOFFICE_SECTION_META,
@@ -98,6 +101,11 @@ import {
     getBusinessAdminWorkflowPageName,
     isBusinessAdminWorkflowSectionVisible
 } from './businessAdminWorkflowVisibility.js';
+import {
+    BUSINESS_ADMIN_UI_VISIBILITY,
+    isBusinessAdminDestinationAccessible,
+    isBusinessAdminNavigationVisible
+} from './businessAdminUiVisibility.js';
 import { buildPosTerminalUrl } from '../../../../../packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js';
 import {
     DATE_RANGE_PRESETS,
@@ -1362,6 +1370,131 @@ const AttendanceSessionCard = ({ row, branchLabel }) => (
     </article>
 );
 
+const CashierDutyActionButton = ({ row, canEndShift, onEndShift, actionLoading }) => canEndShift ? (
+    <button
+        type="button"
+        className="business-admin-button danger business-admin-attendance-table-action"
+        onClick={() => onEndShift?.(row)}
+        disabled={actionLoading === 'attendance-end-shift'}
+        aria-label={`End shift for ${row.cashier_name || 'cashier'}`}
+    >
+        <X size={13} aria-hidden="true" />
+        {actionLoading === 'attendance-end-shift' ? 'Ending…' : 'End shift'}
+    </button>
+) : <span className="business-admin-attendance-read-only">View only</span>;
+
+const CashierDutyMobileCard = ({ row, branchLabel, canEndShift, onEndShift, actionLoading }) => (
+    <article className="business-admin-attendance-duty-card" data-testid={`attendance-duty-mobile-${row.shift_id}`}>
+        <div className="business-admin-attendance-record-heading">
+            <div className="business-admin-attendance-table-identity">
+                <div className="business-admin-attendance-record-icon duty"><Wallet size={15} aria-hidden="true" /></div>
+                <strong>{row.cashier_name || 'Unknown cashier'}</strong>
+            </div>
+            <StatusPill value="open" />
+        </div>
+        <div className="business-admin-attendance-duty-card-facts">
+            <div><span>Branch / terminal</span><strong>{branchLabel(row)} · {row.terminal_id || 'Register not recorded'}</strong></div>
+            <div><span>Shift</span><strong>#{row.shift_id || '—'}</strong></div>
+            <div><span>Started</span><strong>{dateTime(row.opened_at)}</strong></div>
+            <div><span>Expected cash</span><strong>{money(row.expected_cash_amount)}</strong></div>
+        </div>
+        <div className="business-admin-attendance-duty-card-action">
+            <CashierDutyActionButton row={row} canEndShift={canEndShift} onEndShift={onEndShift} actionLoading={actionLoading} />
+        </div>
+    </article>
+);
+
+const CashierDutyTable = ({ rows = [], branchLabel, canEndShift, onEndShift, actionLoading }) => (
+    <div className="business-admin-attendance-duty-table" data-testid="attendance-duty-table">
+        <DataTable
+            rows={rows}
+            rowKey={(row) => row.shift_id}
+            emptyMessage="No cashiers currently have an open POS shift in this scope."
+            columns={[
+                {
+                    key: 'cashier',
+                    label: 'Cashier',
+                    render: (row) => (
+                        <div className="business-admin-attendance-table-identity">
+                            <div className="business-admin-attendance-record-icon duty"><Wallet size={15} aria-hidden="true" /></div>
+                            <strong>{row.cashier_name || 'Unknown cashier'}</strong>
+                        </div>
+                    )
+                },
+                {
+                    key: 'branch_terminal',
+                    label: 'Branch / terminal',
+                    render: (row) => (
+                        <div className="business-admin-attendance-table-stack">
+                            <strong>{branchLabel(row)}</strong>
+                            <span>{row.terminal_id || 'Register not recorded'}</span>
+                        </div>
+                    )
+                },
+                {
+                    key: 'shift',
+                    label: 'Shift',
+                    render: (row) => <strong>#{row.shift_id || '—'}</strong>
+                },
+                {
+                    key: 'started_at',
+                    label: 'Started',
+                    render: (row) => dateTime(row.opened_at)
+                },
+                {
+                    key: 'expected_cash_amount',
+                    label: 'Expected cash',
+                    render: (row) => <strong>{money(row.expected_cash_amount)}</strong>
+                },
+                {
+                    key: 'status',
+                    label: 'Status',
+                    render: () => <StatusPill value="open" />
+                },
+                {
+                    key: 'actions',
+                    label: 'Action',
+                    render: (row) => <CashierDutyActionButton row={row} canEndShift={canEndShift} onEndShift={onEndShift} actionLoading={actionLoading} />
+                }
+            ]}
+        />
+        <div className="business-admin-attendance-duty-mobile">
+            {rows.length ? rows.map((row) => (
+                <CashierDutyMobileCard
+                    key={row.shift_id}
+                    row={row}
+                    branchLabel={branchLabel}
+                    canEndShift={canEndShift}
+                    onEndShift={onEndShift}
+                    actionLoading={actionLoading}
+                />
+            )) : <Empty message="No cashiers currently have an open POS shift in this scope." />}
+        </div>
+    </div>
+);
+
+const AttendanceCashReconciliation = ({ row }) => (
+    <section className="business-admin-attendance-cash-reconciliation" data-testid="attendance-cash-reconciliation" aria-label="POS cash reconciliation">
+        <div className="business-admin-attendance-cash-reconciliation-heading">
+            <div>
+                <strong>POS drawer calculation</strong>
+                <span>Live expected cash from this cashier shift</span>
+            </div>
+            <Wallet size={17} aria-hidden="true" />
+        </div>
+        <div className="business-admin-attendance-cash-reconciliation-grid">
+            <div><span>Opening / petty cash</span><strong>{money(row?.opening_cash_amount)}</strong></div>
+            <div><span>Cash sales</span><strong>{money(row?.cash_sales_amount)}</strong></div>
+            <div><span>Cash in</span><strong>{money(row?.cash_in_amount)}</strong></div>
+            <div><span>Cash out</span><strong>{money(row?.cash_out_amount)}</strong></div>
+        </div>
+        <div className="business-admin-attendance-cash-reconciliation-total">
+            <span>Expected cash in drawer</span>
+            <strong>{money(row?.expected_cash_amount)}</strong>
+        </div>
+    </section>
+);
+
 const OperatorSessionCard = ({ row, branchLabel }) => (
     <article className="business-admin-attendance-record">
         <div className="business-admin-attendance-record-heading">
@@ -1385,32 +1518,85 @@ const OperatorSessionCard = ({ row, branchLabel }) => (
     </article>
 );
 
-function AttendanceWorkspace({ data, branches = [] }) {
+function AttendanceWorkspace({ data, branches = [], capabilities = {}, onEndShift, actionLoading = null }) {
     const attendanceRows = data?.attendance?.rows || [];
     const operatorRows = data?.operators?.rows || [];
+    const activeShifts = data?.active_shifts || [];
     const activeAttendance = attendanceRows.filter((row) => !row.ended_at).length;
+    const [endingShift, setEndingShift] = useState(null);
+    const [closingCashAmount, setClosingCashAmount] = useState('');
+    const [endReason, setEndReason] = useState('');
+    const canEndShift = capabilities?.force_close_shifts === true;
     const branchNames = new Map((Array.isArray(branches) ? branches : []).map((branch) => [
         String(branch.branch_id ?? branch.location_id),
         branch.name
     ]));
-    const branchLabel = (row) => row?.location_id
-        ? (branchNames.get(String(row.location_id)) || `Branch #${row.location_id}`)
-        : 'Branch not recorded';
+    const branchLabel = (row) => {
+        const branchId = row?.location_id ?? row?.branch_id;
+        return row?.branch_name
+            || (branchId != null ? branchNames.get(String(branchId)) || `Branch #${branchId}` : 'Branch not recorded');
+    };
+
+    const openEndShift = (row) => {
+        setEndingShift(row);
+        setClosingCashAmount(row?.expected_cash_amount != null ? String(row.expected_cash_amount) : '');
+        setEndReason('');
+    };
+
+    const closeEndShift = () => {
+        setEndingShift(null);
+        setClosingCashAmount('');
+        setEndReason('');
+    };
+
+    const submitEndShift = async (event) => {
+        event.preventDefault();
+        if (!endingShift || !onEndShift) return;
+        await onEndShift(endingShift.shift_id, {
+            closing_cash_amount: Number(closingCashAmount),
+            reason: endReason,
+            idempotency_key: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `opis-attendance-${endingShift.shift_id}-${Date.now()}`
+        });
+        closeEndShift();
+    };
+
+    const expectedClosingCash = Number(endingShift?.expected_cash_amount || 0);
+    const countedClosingCash = closingCashAmount.trim() === '' ? null : Number(closingCashAmount);
+    const closingCashVariance = countedClosingCash == null || !Number.isFinite(countedClosingCash)
+        ? null
+        : countedClosingCash - expectedClosingCash;
 
     return (
         <div className="business-admin-attendance-workspace">
             <div className="business-admin-attendance-contract" role="note">
                 <ShieldCheck size={17} />
                 <div className="business-admin-attendance-contract-copy">
-                    <strong>Read-only POS attendance</strong>
-                    <span>Canonical POS records only. Biometric capture, payroll, and schedule management are not part of this workspace.</span>
+                    <strong>POS attendance and shift supervision</strong>
+                    <span>Canonical POS records only. Authorized admins can end an active cashier shift here; no cashier PIN is required.</span>
                 </div>
             </div>
             <div className="business-admin-attendance-summary" aria-label="Attendance summary">
                 <AttendanceSummaryMetric icon={CalendarDays} label="Attendance sessions" value={number(data?.attendance?.pagination?.total)} detail="POS duty records" />
                 <AttendanceSummaryMetric icon={Clock3} label="Active attendance" value={number(activeAttendance)} detail="No recorded time-out" />
                 <AttendanceSummaryMetric icon={Monitor} label="Operator sessions" value={number(data?.operators?.pagination?.total)} detail="Terminal activity records" />
+                <AttendanceSummaryMetric icon={Wallet} label="Cashiers on duty" value={number(activeShifts.length)} detail="Open POS shifts" />
             </div>
+            <SectionCard
+                className="business-admin-attendance-section-card"
+                title="Cashiers on duty"
+                subtitle="Cashiers with an active POS shift in the selected branch scope"
+                action={<span className="business-admin-attendance-count">{number(activeShifts.length)} active</span>}
+            >
+                <CashierDutyTable
+                    rows={activeShifts}
+                    branchLabel={branchLabel}
+                    canEndShift={canEndShift}
+                    onEndShift={openEndShift}
+                    actionLoading={actionLoading}
+                />
+            </SectionCard>
             <div className="business-admin-attendance-grid">
                 <SectionCard
                     className="business-admin-attendance-section-card"
@@ -1437,6 +1623,55 @@ function AttendanceWorkspace({ data, branches = [] }) {
                     </div>
                 </SectionCard>
             </div>
+            {endingShift && typeof document !== 'undefined' ? createPortal(
+                <div className="business-admin-expense-modal-backdrop business-admin-attendance-modal-backdrop" role="presentation">
+                    <form className="business-admin-expense-modal business-admin-attendance-modal" onSubmit={submitEndShift} role="dialog" aria-modal="true" aria-labelledby="end-attendance-shift-title" aria-describedby="end-attendance-shift-description">
+                        <div className="business-admin-attendance-modal-heading">
+                            <div>
+                                <span className="business-admin-attendance-modal-kicker">Admin shift control</span>
+                                <h2 id="end-attendance-shift-title">End cashier shift</h2>
+                            </div>
+                            <button type="button" className="business-admin-attendance-modal-close" onClick={closeEndShift} disabled={actionLoading === 'attendance-end-shift'} aria-label="Cancel ending this shift">
+                                <X size={17} aria-hidden="true" />
+                            </button>
+                        </div>
+                        <p id="end-attendance-shift-description" className="business-admin-attendance-modal-copy">This closes the canonical POS shift, ends the linked attendance duty, and records an X-reading. Z-reading remains a separate day-close action.</p>
+                        <div className="business-admin-expense-modal-record business-admin-attendance-modal-record">
+                            <div className="business-admin-attendance-modal-record-copy">
+                                <strong>{endingShift.cashier_name || 'Unknown cashier'}</strong>
+                                <span>{branchLabel(endingShift)} · {endingShift.terminal_id || 'Register not recorded'} · Shift #{endingShift.shift_id}</span>
+                            </div>
+                            <StatusPill value="open" />
+                        </div>
+                        <AttendanceCashReconciliation row={endingShift} />
+                        <div className="business-admin-form-grid business-admin-attendance-modal-fields">
+                            <label className="business-admin-field">
+                                <span>Counted closing cash (physical)</span>
+                                <input className="business-admin-attendance-cash-input" type="number" inputMode="decimal" min="0" step="0.01" value={closingCashAmount} onChange={(event) => setClosingCashAmount(event.target.value)} required />
+                                <small className="business-admin-attendance-cash-helper">Prefilled from the POS expected amount. Edit it if the physical count is different.</small>
+                            </label>
+                            <div className="business-admin-attendance-cash-variance" aria-live="polite">
+                                <span>Variance after count</span>
+                                <strong className={closingCashVariance == null ? '' : closingCashVariance === 0 ? 'balanced' : 'unbalanced'}>
+                                    {closingCashVariance == null ? 'Enter a count' : money(closingCashVariance)}
+                                </strong>
+                            </div>
+                            <label className="business-admin-field business-admin-form-field-full">
+                                <span>Reason for ending shift</span>
+                                <textarea value={endReason} onChange={(event) => setEndReason(event.target.value)} minLength={8} maxLength={255} rows={3} placeholder="Enter at least 8 characters" required />
+                            </label>
+                        </div>
+                        <div className="business-admin-attendance-modal-footer">
+                            <span>Server recalculates the drawer total before saving. No cashier PIN required · X-reading is recorded automatically.</span>
+                            <div className="business-admin-attendance-modal-footer-actions">
+                                <button type="button" className="business-admin-button" onClick={closeEndShift} disabled={actionLoading === 'attendance-end-shift'}>Cancel</button>
+                                <button type="submit" className="business-admin-button primary" disabled={actionLoading === 'attendance-end-shift'}>{actionLoading === 'attendance-end-shift' ? 'Ending…' : 'End shift'}</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>,
+                document.body
+            ) : null}
         </div>
     );
 }
@@ -1782,7 +2017,7 @@ const VoidHistoryPagination = ({ page, totalPages, total, onPageChange, refreshi
     );
 };
 
-function ApprovalsWorkspace({ data, onDecision, actionLoading, voidHistoryOpen, voidHistoryRows, voidHistoryLoading, voidHistoryError, onToggleVoidHistory, onRefreshVoidHistory }) {
+function ApprovalsWorkspace({ data, capabilities = {}, onDecision, actionLoading, voidHistoryOpen, voidHistoryRows, voidHistoryLoading, voidHistoryError, onToggleVoidHistory, onRefreshVoidHistory }) {
     const [voidHistoryPage, setVoidHistoryPage] = useState(1);
     const rows = data?.approvals || [];
     const historyRows = Array.isArray(voidHistoryRows) ? voidHistoryRows : [];
@@ -1801,6 +2036,7 @@ function ApprovalsWorkspace({ data, onDecision, actionLoading, voidHistoryOpen, 
         setVoidHistoryPage(1);
         onRefreshVoidHistory();
     };
+    const canDecideHighRisk = capabilities?.can_decide_high_risk === true;
     const targetLabel = (row) => {
         const payload = row.payload || {};
         const reference = payload.invoice_number || payload.park_reference
@@ -1820,7 +2056,9 @@ function ApprovalsWorkspace({ data, onDecision, actionLoading, voidHistoryOpen, 
             key: 'actions',
             label: 'Decision',
             render: (row) => row.status === 'pending'
-                ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div>
+                ? (canDecideHighRisk
+                    ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div>
+                    : <span className="business-admin-muted">Decision access restricted</span>)
                 : <span className="business-admin-muted">No action</span>
         }
     ];
@@ -2077,26 +2315,20 @@ function BusinessAdminSettingsEditor({
     definition,
     sectionCapability,
     settingsBranchId,
+    rootPath = '/business-admin',
+    settingsDirty = false,
+    onLeaveSettings = () => {},
     onDirtyChange,
     onReload,
     onSettingsSaved,
     onOpenActivity = () => {},
     settingsRefreshKey = 0
 }) {
-    const [userManagementOpen, setUserManagementOpen] = useState(false);
     const rawCapabilities = bootstrap?.access?.settings_sections || bootstrap?.access?.capabilities?.settings_sections;
     const branchLocations = (Array.isArray(bootstrap?.business?.branches) ? bootstrap.business.branches : []).map((branch) => ({
         location_id: Number(branch?.branch_id),
         name: branch?.name || `Branch ${branch?.branch_id}`
     }));
-    const invitationLocations = (() => {
-        const normalizedBranchId = Number(settingsBranchId);
-        if (Number.isInteger(normalizedBranchId) && normalizedBranchId > 0) {
-            const scopedLocations = branchLocations.filter((branch) => Number(branch.location_id) === normalizedBranchId);
-            if (scopedLocations.length) return scopedLocations;
-        }
-        return branchLocations;
-    })();
     const editorUser = useMemo(() => buildBusinessAdminSettingsEditorUser({
         baseUser: bootstrap?.user || {},
         sectionKey: definition?.key,
@@ -2113,11 +2345,12 @@ function BusinessAdminSettingsEditor({
         : baseAllowedTabIds;
     const canViewUsers = isMasterAdmin || sectionCapability?.user_view === true || sectionCapability?.user_edit === true;
     const canEditUsers = isMasterAdmin || sectionCapability?.user_edit === true;
+    const canManageStaffRoles = isMasterAdmin || String(bootstrap?.user?.role || '').toLowerCase() === 'admin';
     const hasEmployeeEditor = sectionCapability?.employee_edit === true
         || sectionCapability?.employee_credit_edit === true;
     const canViewActivity = bootstrap?.access?.capabilities?.view_audit === true;
-    const handleReload = useCallback(async () => {
-        await onReload?.();
+    const handleReload = useCallback(async (options = {}) => {
+        await onReload?.(options);
     }, [onReload]);
     const notifySettingsSaved = useCallback((details = {}) => {
         onSettingsSaved?.({
@@ -2126,6 +2359,12 @@ function BusinessAdminSettingsEditor({
             ...details
         });
     }, [definition?.key, definition?.scope, onSettingsSaved, settingsBranchId]);
+    const canEditCanonicalBusinessName = isMasterAdmin
+        || String(bootstrap?.user?.role || '').trim().toLowerCase() === 'admin';
+    const handleCanonicalBusinessNameSaved = useCallback(async (details) => {
+        await handleReload({ optimisticBusinessName: details?.name });
+        notifySettingsSaved({ action: 'updated', setting: 'canonical_business_name', details });
+    }, [handleReload, notifySettingsSaved]);
 
     if (definition?.key === 'processing_fees') {
         return (
@@ -2154,13 +2393,14 @@ function BusinessAdminSettingsEditor({
                         </div>
                         {canViewUsers ? (
                             <div className="business-admin-team-actions">
-                                <button
-                                    type="button"
+                                <GuardedLink
+                                    to={buildBackOfficeModulePath(rootPath, 'users-roles')}
+                                    isDirty={settingsDirty}
+                                    onLeave={onLeaveSettings}
                                     className="business-admin-button primary"
-                                    onClick={() => setUserManagementOpen(true)}
                                 >
                                     <Users size={14} /> Manage users &amp; roles
-                                </button>
+                                </GuardedLink>
                                 {canViewActivity ? (
                                     <button
                                         type="button"
@@ -2206,17 +2446,7 @@ function BusinessAdminSettingsEditor({
                         onDirtyChange={onDirtyChange}
                     />
                 ) : null}
-                {canViewUsers ? (
-                    <UserManagementModal
-                        open={userManagementOpen}
-                        onOpenChange={setUserManagementOpen}
-                        readOnly={!canEditUsers}
-                        onSettingsSaved={notifySettingsSaved}
-                        locationOptions={invitationLocations}
-                        invitationTitle="Add team member"
-                        invitationSubmitLabel="Send invitation"
-                    />
-                ) : null}
+                {canManageStaffRoles ? <StaffRolesPanel canManage onSaved={notifySettingsSaved} /> : null}
             </div>
         );
     }
@@ -2237,6 +2467,13 @@ function BusinessAdminSettingsEditor({
                 showTerminalOnlyControls={false}
                 settingsSurface="business-admin"
                 editorSection={definition?.key}
+                profileSettingsHeader={definition?.key === 'profile' ? (
+                    <CanonicalBusinessNameEditor
+                        currentName={bootstrap?.business?.name || ''}
+                        canEdit={canEditCanonicalBusinessName}
+                        onSaved={handleCanonicalBusinessNameSaved}
+                    />
+                ) : null}
                 onRefreshTerminalUser={handleReload}
                 onRefreshTerminalMeta={async () => {}}
                 onPosSetupSaved={handleReload}
@@ -2259,6 +2496,7 @@ function BusinessAdminSettingsEditor({
 
 function BusinessAdminSettingsWorkspace({
     bootstrap,
+    rootPath = '/business-admin',
     settingsSection,
     settingsBranchId,
     onBranchChange,
@@ -2454,6 +2692,9 @@ function BusinessAdminSettingsWorkspace({
                                         definition={definition}
                                         sectionCapability={sectionCapability}
                                         settingsBranchId={settingsBranchId}
+                                        rootPath={rootPath}
+                                        settingsDirty={settingsDirty}
+                                        onLeaveSettings={onLeaveSettings}
                                         onDirtyChange={onDirtyChange}
                                         onReload={onReload}
                                         onSettingsSaved={onSettingsSaved}
@@ -2477,6 +2718,65 @@ function BusinessAdminSettingsWorkspace({
                 </section>
             </div>
         </>
+    );
+}
+
+function BusinessAdminUsersRolesWorkspace({
+    bootstrap,
+    canViewUsers,
+    canEditUsers,
+    onSettingsSaved = () => {},
+    onBack = () => {}
+}) {
+    const locationOptions = useMemo(() => (
+        (Array.isArray(bootstrap?.business?.branches) ? bootstrap.business.branches : []).map((branch) => ({
+            location_id: Number(branch?.branch_id),
+            name: branch?.name || `Branch ${branch?.branch_id}`
+        }))
+    ), [bootstrap]);
+
+    if (!canViewUsers) {
+        return (
+            <div className="business-admin-card" data-testid="business-admin-users-roles-denied">
+                <div className="business-admin-card-body">
+                    <div className="business-admin-alert error mb-0">
+                        <Lock size={17} />
+                        <div>
+                            <strong>Users &amp; Roles access is not assigned.</strong>
+                            <div>Your Back Office permissions do not include user-account access.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-3" data-testid="business-admin-users-roles-workspace">
+            <section className="business-admin-card">
+                <div className="business-admin-card-header">
+                    <div>
+                        <div className="business-admin-card-title">Users &amp; Roles</div>
+                        <div className="business-admin-card-subtitle">Manage user accounts, invitations, roles, permissions, and branch access.</div>
+                    </div>
+                    <button type="button" className="business-admin-button" onClick={onBack}>
+                        <ChevronLeft size={14} /> Team &amp; access
+                    </button>
+                </div>
+            </section>
+            <UserManagementModal
+                open
+                embedded
+                onOpenChange={(isOpen) => {
+                    if (!isOpen) onBack();
+                }}
+                readOnly={!canEditUsers}
+                onSettingsSaved={onSettingsSaved}
+                locationOptions={locationOptions}
+                invitationTitle="Add team member"
+                invitationSubmitLabel="Send invitation"
+            />
+        </div>
     );
 }
 
@@ -2536,7 +2836,7 @@ function ExpensesWorkspace({ data, branches, capabilities, accessScope, onCreate
     const summary = data?.summary || {};
     const categories = Array.isArray(data?.categories) && data.categories.length ? data.categories : expenseCategories;
     const paymentMethods = Array.isArray(data?.payment_methods) && data.payment_methods.length ? data.payment_methods : expensePaymentMethods;
-    const canView = capabilities?.view_expenses !== false;
+    const canView = capabilities?.view_expenses === true;
     const canCreate = Boolean(capabilities?.create_expenses);
     const canVoid = Boolean(capabilities?.void_expenses);
     const expensesRecordsRef = useBusinessAdminPaginatedPanelTransition({ page: data?.pagination?.page, refreshing });
@@ -2763,6 +3063,7 @@ export default function BusinessAdminPage() {
     const knownSections = useMemo(() => new Set(Object.keys(BACKOFFICE_SECTION_META)), []);
     const activeSection = knownSections.has(pathSegment) ? pathSegment : 'overview';
     const settingsSection = activeSection === 'settings' ? pathInfo.settingsSection : '';
+    const usersRolesShortcut = pathInfo.usersRolesShortcut === true;
     const locationView = activeSection === 'locations' ? pathInfo.locationView : '';
     const [bootstrap, setBootstrap] = useState(null);
     const [bootstrapLoading, setBootstrapLoading] = useState(true);
@@ -2908,11 +3209,17 @@ export default function BusinessAdminPage() {
         bootstrap?.access?.settings_sections || bootstrap?.access?.capabilities?.settings_sections
     ), [bootstrap]);
     const visibleSettingsSections = useMemo(() => getVisibleBusinessAdminSettingsSections(settingsCapabilities), [settingsCapabilities]);
+    const canViewUsers = bootstrap?.user?.is_master_admin === true
+        || settingsCapabilities.team?.user_view === true
+        || settingsCapabilities.team?.user_edit === true;
+    const canEditUsers = bootstrap?.user?.is_master_admin === true
+        || settingsCapabilities.team?.user_edit === true;
     const settingsDefinition = useMemo(
         () => getBusinessAdminSettingsSectionDefinition(settingsSection),
         [settingsSection]
     );
     const branches = useMemo(() => bootstrap?.business?.branches || [], [bootstrap]);
+    const catalogOnlyAccess = bootstrap?.access?.tenant_capabilities?.pos_enabled === false;
 
     useEffect(() => {
         const requestedBranchId = String(new URLSearchParams(location.search).get('branch_id') || '').trim();
@@ -2948,6 +3255,11 @@ export default function BusinessAdminPage() {
         navigate(target, options);
         return true;
     }, [navigate, settingsDirty]);
+
+    useEffect(() => {
+        if (!bootstrap || !catalogOnlyAccess || activeSection === 'catalog') return;
+        navigateBusinessAdmin(buildBackOfficeModulePath(rootPath, 'catalog'), { replace: true });
+    }, [activeSection, bootstrap, catalogOnlyAccess, navigateBusinessAdmin, rootPath]);
 
     const handleOrderDetailClose = useCallback(() => {
         setSelectedOrder(null);
@@ -3022,7 +3334,19 @@ export default function BusinessAdminPage() {
 
     const bootstrapRequestRef = useRef(0);
 
-    const loadBootstrap = useCallback(async () => {
+    const loadBootstrap = useCallback(async ({ optimisticBusinessName = '' } = {}) => {
+        const normalizedOptimisticBusinessName = String(optimisticBusinessName || '').trim();
+        if (normalizedOptimisticBusinessName) {
+            setBootstrap((previous) => previous?.business
+                ? {
+                    ...previous,
+                    business: {
+                        ...previous.business,
+                        name: normalizedOptimisticBusinessName
+                    }
+                }
+                : previous);
+        }
         const requestId = bootstrapRequestRef.current + 1;
         bootstrapRequestRef.current = requestId;
         setBootstrapLoading(true);
@@ -3032,7 +3356,15 @@ export default function BusinessAdminPage() {
         try {
             const nextBootstrap = await businessAdminApi.bootstrap();
             if (bootstrapRequestRef.current !== requestId) return;
-            setBootstrap(nextBootstrap);
+            setBootstrap(normalizedOptimisticBusinessName && nextBootstrap?.business
+                ? {
+                    ...nextBootstrap,
+                    business: {
+                        ...nextBootstrap.business,
+                        name: normalizedOptimisticBusinessName
+                    }
+                }
+                : nextBootstrap);
         } catch (error) {
             const status = Number(error?.response?.status || 0);
             if (bootstrapRequestRef.current !== requestId) return;
@@ -3159,6 +3491,13 @@ export default function BusinessAdminPage() {
         if (!bootstrap) return;
         const requestId = requestRef.current + 1;
         requestRef.current = requestId;
+        if (catalogOnlyAccess && activeSection !== 'catalog') {
+            setSectionData(null);
+            setLoadedSection(activeSection);
+            setSectionError('');
+            setSectionLoading(false);
+            return;
+        }
         if (MIGRATED_BACKOFFICE_MODULE_KEYS.has(activeSection)) {
             setSectionData(null);
             setLoadedSection(activeSection);
@@ -3247,7 +3586,7 @@ export default function BusinessAdminPage() {
         } finally {
             if (requestRef.current === requestId) setSectionLoading(false);
         }
-    }, [activeSection, bootstrap, cashSummaryPage, expensesPage, inventoryPage, ordersPage, params, branchId]);
+    }, [activeSection, bootstrap, cashSummaryPage, catalogOnlyAccess, expensesPage, inventoryPage, ordersPage, params, branchId]);
 
     useEffect(() => {
         setSelectedOrder(null);
@@ -3403,6 +3742,21 @@ export default function BusinessAdminPage() {
         }
     }, []);
 
+    const handleEndAttendanceShift = useCallback(async (shiftId, payload) => {
+        setActionLoading('attendance-end-shift');
+        setActionError('');
+        try {
+            const result = await businessAdminApi.endAttendanceShift(shiftId, payload);
+            setReloadNonce((value) => value + 1);
+            return result;
+        } catch (error) {
+            setActionError(getBusinessAdminErrorMessage(error));
+            throw error;
+        } finally {
+            setActionLoading(null);
+        }
+    }, []);
+
     const handleCustomerCreate = useCallback(async (payload) => {
         setActionLoading('customer-create');
         setActionError('');
@@ -3425,6 +3779,7 @@ export default function BusinessAdminPage() {
     ].includes(activeSection);
     const showHistoricalRangePreset = isHistoricalBusinessAdminSection(activeSection);
     const showBranchFilter = activeSection !== 'audit';
+    const hasInlineBranchFilter = showDateFilters && showBranchFilter;
 
     if (bootstrapLoading) return <Loading />;
     if (bootstrapError || !bootstrap) {
@@ -3441,9 +3796,22 @@ export default function BusinessAdminPage() {
         return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center" data-testid={bootstrapAuthRequired ? 'business-admin-session-required' : (bootstrapAccessDenied ? 'business-admin-access-denied' : 'business-admin-unavailable')}><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? 'Back Office sign-in required' : (bootstrapAccessDenied ? 'Back Office access denied' : 'Back Office unavailable')}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? (bootstrapError || BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE) : (bootstrapAccessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : (bootstrapError || 'Your account does not have Back Office access.'))}</p>{recoveryAction}</section></main>;
     }
 
-    const meta = activeSection === 'settings' && settingsDefinition
-        ? { title: settingsDefinition.label, description: settingsDefinition.description }
+    const activeDestinationDefinition = usersRolesShortcut
+        ? BACKOFFICE_SECTION_META['users-roles']
+        : activeSection === 'settings' && settingsSection === 'team'
+            ? BACKOFFICE_SECTION_META.team
+            : (BACKOFFICE_SECTION_META[activeSection] || BACKOFFICE_SECTION_META.overview);
+    const destinationAccessGranted = isBusinessAdminDestinationAccessible(activeDestinationDefinition, {
+        usersRolesVisible: canViewUsers,
+        capabilities: bootstrap.access?.capabilities || {},
+        settingsCapabilities
+    });
+    const meta = usersRolesShortcut
+        ? BACKOFFICE_SECTION_META['users-roles']
+        : activeSection === 'settings' && settingsDefinition
+            ? { title: settingsDefinition.label, description: settingsDefinition.description }
         : (BACKOFFICE_SECTION_META[activeSection] || BACKOFFICE_SECTION_META.overview);
+    const activeNavigationKey = usersRolesShortcut ? 'users-roles' : activeSection;
     const overviewData = sectionData?.overview || (activeSection === 'overview' ? sectionData : null);
     const workflowPageName = getBusinessAdminWorkflowPageName(activeSection);
     const workflowVisibilityReady = workflowModeResolved && !workflowModeLoading;
@@ -3456,7 +3824,7 @@ export default function BusinessAdminPage() {
     const notificationWorkspaceHasData = activeSection === 'notifications'
         && Array.isArray(sectionData?.notifications);
     const workspaceTransitionKey = activeSection === 'settings'
-        ? `${activeSection}:${settingsSection || 'profile'}`
+        ? (usersRolesShortcut ? 'users-roles' : `${activeSection}:${settingsSection || 'profile'}`)
         : activeSection === 'locations'
             ? `${activeSection}:${locationView || 'branches'}`
         : activeSection;
@@ -3466,6 +3834,17 @@ export default function BusinessAdminPage() {
         || loadedSection !== activeSection
     );
     const renderWorkspace = () => {
+        if (!destinationAccessGranted) {
+            return (
+                <div className="business-admin-alert error" data-testid="business-admin-destination-access-denied">
+                    <Lock size={17} />
+                    <div>
+                        <strong>{meta.title} access is not assigned.</strong>
+                        <div>This destination is hidden unless the server-projected read capability is present.</div>
+                    </div>
+                </div>
+            );
+        }
         const canKeepPaginatedWorkspace = ['orders', 'expenses', 'shifts', 'inventory'].includes(activeSection)
             && Boolean(sectionData)
             && loadedSection === activeSection;
@@ -3520,10 +3899,22 @@ export default function BusinessAdminPage() {
         }
         if (sectionLoading) return <WorkspaceLoading label={`Refreshing ${meta.title}…`} />;
         if (sectionError) return <div className="business-admin-alert error" data-testid={sectionAccessDenied ? 'business-admin-section-access-denied' : 'business-admin-section-error'}><AlertTriangle size={17} /><div><strong>{sectionAccessDenied ? 'Back Office access denied.' : 'Back Office data unavailable.'}</strong><div>{sectionError}</div></div></div>;
+        if (usersRolesShortcut) {
+            return (
+                <BusinessAdminUsersRolesWorkspace
+                    bootstrap={bootstrap}
+                    canViewUsers={canViewUsers}
+                    canEditUsers={canEditUsers}
+                    onSettingsSaved={handleSettingsSaved}
+                    onBack={() => navigateBusinessAdmin(buildBackOfficeModulePath(rootPath, 'team'))}
+                />
+            );
+        }
         if (activeSection === 'settings') {
             return (
                 <BusinessAdminSettingsWorkspace
                     bootstrap={bootstrap}
+                    rootPath={rootPath}
                     settingsSection={settingsSection}
                     settingsBranchId={settingsBranchId}
                     onBranchChange={handleSettingsBranchChange}
@@ -3560,14 +3951,14 @@ export default function BusinessAdminPage() {
         if (activeSection === 'orders') return <OrdersWorkspace data={sectionData} selected={selectedOrder} onSelect={handleOrderSelect} onClose={handleOrderDetailClose} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} page={ordersPage} onPageChange={setOrdersPage} />;
         if (activeSection === 'expenses') return <ExpensesWorkspace data={sectionData} branches={branches} capabilities={bootstrap.access?.capabilities || {}} accessScope={bootstrap.access?.scope} onCreate={handleExpenseCreate} onVoid={handleExpenseVoid} actionLoading={actionLoading} onPageChange={setExpensesPage} />;
         if (activeSection === 'customers') return <CustomersWorkspace data={sectionData} selected={selectedCustomer} onSelect={handleCustomerSelect} onClose={() => setSelectedCustomer(null)} onOrderSelect={handleOrderSelect} selectedOrder={selectedOrder} onOrderClose={handleOrderDetailClose} onCreate={handleCustomerCreate} creating={actionLoading === 'customer-create'} />;
-        if (activeSection === 'team') return <WorkforceWorkspace data={sectionData} bootstrap={bootstrap} teamCapability={settingsCapabilities.team} onManageTeam={() => navigateBusinessAdmin(buildBusinessAdminSettingsPath(rootPath, 'team'))} />;
-        if (activeSection === 'attendance') return <AttendanceWorkspace data={sectionData} branches={branches} />;
+        if (activeSection === 'team') return <WorkforceWorkspace data={sectionData} bootstrap={bootstrap} teamCapability={settingsCapabilities.team} onManageTeam={() => navigateBusinessAdmin(buildBackOfficeModulePath(rootPath, 'users-roles'))} />;
+        if (activeSection === 'attendance') return <AttendanceWorkspace data={sectionData} branches={branches} capabilities={bootstrap.access?.capabilities || {}} onEndShift={handleEndAttendanceShift} actionLoading={actionLoading} />;
         if (activeSection === 'shifts') return <ShiftsWorkspace data={sectionData} onCashSummaryPageChange={setCashSummaryPage} onExportCashSummary={handleCashSummaryExport} exportingCashSummary={cashSummaryExporting} />;
         if (activeSection === 'inventory') return <InventoryWorkspace data={sectionData} onPageChange={setInventoryPage} rootPath={rootPath} settingsDirty={settingsDirty} onLeaveSettings={() => setSettingsDirty(false)} />;
         if (activeSection === 'recipes') return <RecipesWorkspace data={sectionData} />;
         if (activeSection === 'fiscal') return <FiscalWorkspace data={sectionData} />;
         if (activeSection === 'notifications') return <NotificationsWorkspace data={sectionData} onAction={handleNotificationAction} actionLoading={actionLoading} />;
-        if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} onDecision={handleApprovalDecision} actionLoading={actionLoading} voidHistoryOpen={voidHistoryOpen} voidHistoryRows={voidHistoryRows} voidHistoryLoading={voidHistoryLoading} voidHistoryError={voidHistoryError} onToggleVoidHistory={handleVoidHistoryToggle} onRefreshVoidHistory={loadVoidHistory} />;
+        if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} capabilities={bootstrap.access?.capabilities || {}} onDecision={handleApprovalDecision} actionLoading={actionLoading} voidHistoryOpen={voidHistoryOpen} voidHistoryRows={voidHistoryRows} voidHistoryLoading={voidHistoryLoading} voidHistoryError={voidHistoryError} onToggleVoidHistory={handleVoidHistoryToggle} onRefreshVoidHistory={loadVoidHistory} />;
         if (activeSection === 'audit') return <AuditWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} />;
         if (activeSection === 'payments') return <PaymentsWorkspace data={sectionData} />;
         if (activeSection === 'company') return <CompanyWorkspace data={sectionData} />;
@@ -3606,6 +3997,12 @@ export default function BusinessAdminPage() {
                 {mobileNavOpen ? <button type="button" className="business-admin-mobile-sidebar-close" data-testid="business-admin-mobile-sidebar-close" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}><X size={16} /> Close menu</button> : null}
                 {BACKOFFICE_NAV_GROUPS.map((group) => {
                     const items = group.items.filter((item) => {
+                        if (!isBusinessAdminNavigationVisible(item, {
+                            catalogOnlyAccess,
+                            usersRolesVisible: canViewUsers,
+                            capabilities: bootstrap.access?.capabilities || {},
+                            settingsCapabilities
+                        })) return false;
                         if (item.key === 'settings' && visibleSettingsSections.length === 0) return false;
                         if (!getBusinessAdminWorkflowPageName(item.key)) return true;
                         if (!workflowVisibilityReady) return false;
@@ -3617,9 +4014,36 @@ export default function BusinessAdminPage() {
                         );
                     });
                     if (!items.length) return null;
-                    return <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>{group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}{items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={`business-admin-nav-item ${activeSection === item.key ? 'active' : ''}`} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} aria-current={activeSection === item.key ? 'page' : undefined} onClick={() => navigateBusinessAdmin(item.key === 'settings' ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile') : (item.key === 'overview' ? buildBackOfficeOverviewPath(rootPath) : buildBackOfficeModulePath(rootPath, item.key)))}><Icon size={16} /> <span className="business-admin-nav-item-label">{item.label}</span>{item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}</button>; })}</div>;
+                    return (
+                        <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>
+                            {group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}
+                            {items.map((item) => {
+                                const Icon = item.icon;
+                                const isActive = activeNavigationKey === item.key;
+                                return (
+                                    <button
+                                        type="button"
+                                        key={item.key}
+                                        className={`business-admin-nav-item ${isActive ? 'active' : ''}`}
+                                        aria-label={item.label}
+                                        title={sidebarCollapsed ? item.label : undefined}
+                                        aria-current={isActive ? 'page' : undefined}
+                                        onClick={() => navigateBusinessAdmin(item.key === 'settings'
+                                            ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile')
+                                            : (item.key === 'overview'
+                                                ? buildBackOfficeOverviewPath(rootPath)
+                                                : buildBackOfficeModulePath(rootPath, item.key)))}
+                                    >
+                                        <Icon size={16} />
+                                        <span className="business-admin-nav-item-label">{item.label}</span>
+                                        {item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    );
                 })}
-                <div className="business-admin-terminal-link mt-6 border-t border-white/15 pt-4"><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-nav-item" aria-label="Open POS terminal" title={sidebarCollapsed ? 'Open POS terminal' : undefined}><ExternalLink size={16} /> <span className="business-admin-nav-item-label">Open POS terminal</span></GuardedLink></div>
+                {BUSINESS_ADMIN_UI_VISIBILITY.showSidebarPosTerminal ? <div className="business-admin-terminal-link mt-6 border-t border-white/15 pt-4"><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-nav-item" aria-label="Open POS terminal" title={sidebarCollapsed ? 'Open POS terminal' : undefined}><ExternalLink size={16} /> <span className="business-admin-nav-item-label">Open POS terminal</span></GuardedLink></div> : null}
                 <BusinessAdminAccountActions sidebarCollapsed={sidebarCollapsed} />
             </aside>
             {mobileNavOpen ? <button type="button" className="business-admin-mobile-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} /> : null}
@@ -3651,7 +4075,7 @@ export default function BusinessAdminPage() {
                         </div>
                     </div>
                     <div className="business-admin-top-actions">
-                        {branches.length > 0 ? (
+                        {!hasInlineBranchFilter && branches.length > 0 ? (
                             <div className="business-admin-field business-admin-location-switcher" data-testid="business-admin-location-scope">
                                 <label htmlFor="business-admin-location-scope"><MapPin size={12} className="inline mr-1" /> Location scope</label>
                                 <select
@@ -3667,10 +4091,6 @@ export default function BusinessAdminPage() {
                                 </select>
                             </div>
                         ) : null}
-                        <span className="business-admin-chip"><UserRound size={13} /> {bootstrap.user?.username || bootstrap.user?.email || 'User'}</span>
-                        <button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button>
-                        <GuardedLink href={buildPosTerminalUrl({ path: '/terminal', search: '?view=shift_controls' })} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button"><MapPin size={14} /> Switch location</GuardedLink>
-                        <GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink>
                     </div>
                 </div>
                 {showDateFilters ? (
@@ -3694,7 +4114,7 @@ export default function BusinessAdminPage() {
                         {showBranchFilter ? (
                             <div className="business-admin-field">
                                 <label htmlFor="ba-branch"><MapPin size={12} className="inline mr-1" /> Branch</label>
-                                <select id="ba-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
+                                <select id="ba-branch" value={branchId} onChange={(event) => handleGlobalLocationChange(event.target.value)}>
                                     <option value="">All visible branches</option>
                                     {branches.map((branch) => <option value={branch.branch_id} key={branch.branch_id}>{branch.name}</option>)}
                                 </select>

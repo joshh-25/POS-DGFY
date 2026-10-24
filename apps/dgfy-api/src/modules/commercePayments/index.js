@@ -10,6 +10,7 @@ import {
   buildGetCommercePaymentSessionUseCase,
   buildGetCommerceSettlementReportUseCase,
   buildListCommercePaymentSessionsUseCase,
+  buildListCommercePaymentRefundsUseCase,
   buildReconcileCommercePaymentSessionUseCase,
   buildListTenantPaymentAccountsUseCase,
   buildOperateTenantPayMongoChildAccountUseCase,
@@ -35,6 +36,10 @@ export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceW
 });
 
 export const listCommercePaymentSessionsUseCase = buildListCommercePaymentSessionsUseCase({
+  commercePaymentRepository
+});
+
+export const listCommercePaymentRefundsUseCase = buildListCommercePaymentRefundsUseCase({
   commercePaymentRepository
 });
 

@@ -65,6 +65,7 @@ describe('adminService admin operation contracts', () => {
     ['reactivateDgfyAccount', 'post', '/dgfy/admin/accounts/acct-1/reactivate', () => adminService.reactivateDgfyAccount('acct-1', { reason: 'resolved' })],
     ['deleteDgfyAccount', 'delete', '/dgfy/admin/accounts/acct-1', () => adminService.deleteDgfyAccount('acct-1', { reason: 'requested' })],
     ['listCommercePaymentSessions', 'get', '/commerce-payments/admin/payment-sessions', () => adminService.listCommercePaymentSessions({ status: 'paid' })],
+    ['listCommerceRefunds', 'get', '/commerce-payments/admin/refunds', () => adminService.listCommerceRefunds({ status: 'failed' })],
     ['getCommerceSettlementReport', 'get', '/commerce-payments/admin/settlement-report', () => adminService.getCommerceSettlementReport({ status: 'paid' })],
     ['getPayMongoSandboxCertification', 'get', '/commerce-payments/admin/certification/paymongo-sandbox', () => adminService.getPayMongoSandboxCertification()],
     ['listTenantPaymentAccounts', 'get', '/commerce-payments/admin/tenant-payment-accounts', () => adminService.listTenantPaymentAccounts()],
@@ -72,6 +73,7 @@ describe('adminService admin operation contracts', () => {
     ['createTenantPayMongoChildAccount', 'post', '/commerce-payments/admin/tenants/tenant-1/paymongo-child-account', () => adminService.createTenantPayMongoChildAccount('tenant-1', { trade_name: 'QA Store' })],
     ['operateTenantPayMongoChildAccount', 'post', '/commerce-payments/admin/tenants/tenant-1/paymongo-child-account/sync-readiness', () => adminService.operateTenantPayMongoChildAccount('tenant-1', 'sync-readiness')],
     ['createCommercePaymentRefund', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/refunds', () => adminService.createCommercePaymentRefund('PAY-123', { amount: 25 })],
+    ['retryCommercePaymentRefund', 'post', '/commerce-payments/admin/payment-sessions/CPS-ABC123DEF4/refunds/CRF-ABC123DEF4/retry', () => adminService.retryCommercePaymentRefund('CPS-ABC123DEF4', 'CRF-ABC123DEF4', { reason: 'Provider confirmed no refund exists' })],
     ['reconcileCommercePaymentSession', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/reconcile', () => adminService.reconcileCommercePaymentSession('PAY-123')],
     ['retryCommercePaymentFinalization', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/retry-finalization', () => adminService.retryCommercePaymentFinalization('PAY-123')]
   ])('%s sends %s %s over the cookie session with CSRF header for unsafe methods', async (_name, method, path, callService) => {
@@ -141,6 +143,17 @@ describe('adminService admin operation contracts', () => {
     });
     await expect(adminService.setExternalListingVisibility('job-1', false)).resolves.toEqual({
       slug: 'job-1', is_visible: false
+    });
+  });
+
+  it('sends only the operator reason when retrying a commerce refund', async () => {
+    mockAdminApi.onPost('/commerce-payments/admin/payment-sessions/CPS-ABC123DEF4/refunds/CRF-ABC123DEF4/retry').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ reason: 'Provider confirmed no refund exists' });
+      return [201, { success: true, data: { refund: { public_reference: 'CRF-RETRY0001' } } }];
+    });
+
+    await adminService.retryCommercePaymentRefund('CPS-ABC123DEF4', 'CRF-ABC123DEF4', {
+      reason: 'Provider confirmed no refund exists'
     });
   });
 });

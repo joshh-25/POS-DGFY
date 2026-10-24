@@ -1,88 +1,78 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import PosReportsKpiCards, { calculateKpiDelta, getProfitOnly } from '../components/PosReportsKpiCards.jsx';
+import PosReportsKpiCards from '../components/PosReportsKpiCards.jsx';
 
 describe('POS reports KPI cards', () => {
   afterEach(() => cleanup());
 
-  it('keeps two KPI columns on small screens and places each value below its label', () => {
-    render(
-      <PosReportsKpiCards
-        summaryCards={{ total_sales: 1000000 }}
-        dailySummary={{}}
-        comparison={{}}
-      />
-    );
-
-    const salesLabel = screen.getByText('Total Sales (₱)');
-    const salesCard = salesLabel.closest('article');
-    const grid = salesCard.parentElement;
-    const salesValue = screen.getByText('₱1,000,000.00');
-    const profitCard = screen.getByText('Profit (₱)').closest('article');
-
-    expect(grid.className).toContain('grid-cols-2');
-    expect(grid.className).toContain('xl:grid-cols-7');
-    expect(profitCard.className).toContain('col-span-2');
-    expect(profitCard.className).toContain('xl:col-span-1');
-    expect(profitCard.className).toContain('py-2.5');
-    expect(profitCard.className).toContain('sm:py-3');
-    expect(salesValue.parentElement).toBe(salesLabel.parentElement);
-    expect(salesLabel.nextElementSibling).toBe(salesValue);
-    expect(salesValue.className).toContain('break-words');
-    expect(salesValue.className.split(/\s+/)).not.toContain('truncate');
-  });
-
-  it('maps each KPI to the current report summary and omits comparison copy when no prior period exists', () => {
+  it('shows only the concise Overview KPI allocation in a responsive four-column grid', () => {
     render(
       <PosReportsKpiCards
         summaryCards={{ total_sales: 1000000, gross_sales: 1100000, total_transactions: 100000, pos_profit_loss: 123456 }}
         dailySummary={{ total_transactions: 100000, completed_transactions: 99999, voided_refunded_transactions: 1, discounts: 100000 }}
-        comparison={{ previous: { net_sales: 0, gross_sales: 0, total_transactions: 0, discounts: 0, pos_profit_loss: 0 } }}
       />
     );
 
-    expect(screen.getByText('Total Sales (₱)')).toBeTruthy();
-    expect(screen.getByText('₱1,000,000.00')).toBeTruthy();
-    expect(screen.getByText('₱1,100,000.00')).toBeTruthy();
-    expect(screen.getByText('Recorded Transactions')).toBeTruthy();
-    expect(screen.getByText('Completed Sales')).toBeTruthy();
-    expect(screen.getByText('Voided/Refunded')).toBeTruthy();
+    const netSalesLabel = screen.getByText('Net Sales (₱)');
+    const grid = netSalesLabel.closest('article').parentElement;
+    const netSalesValue = screen.getByText('₱1,000,000.00');
+    const voidedCard = screen.getByText('Voided/Refunded').closest('article');
+
+    expect(grid.className).toContain('grid-cols-2');
+    expect(grid.className).toContain('xl:grid-cols-4');
+    expect(grid.querySelectorAll('article')).toHaveLength(4);
+    expect(netSalesLabel.nextElementSibling).toBe(netSalesValue);
+    expect(netSalesValue.className).toContain('break-words');
+    expect(screen.getByText('Transactions')).toBeTruthy();
     expect(screen.getByText('100,000')).toBeTruthy();
-    expect(screen.getByText('99,999')).toBeTruthy();
-    expect(screen.getByText('1')).toBeTruthy();
-    expect(screen.getByText('₱100,000.00')).toBeTruthy();
-    expect(screen.getByText('Profit (₱)')).toBeTruthy();
-    expect(screen.getByText('₱123,456.00')).toBeTruthy();
-    expect(screen.queryByText('No prior period data')).toBeNull();
-    expect(screen.queryByText('+100.0% vs previous period')).toBeNull();
+    expect(screen.getByText('Discounts (₱)')).toBeTruthy();
+    expect(within(voidedCard).getByText('1')).toBeTruthy();
+    expect(screen.queryByText('Gross Sales (₱)')).toBeNull();
+    expect(screen.queryByText('Completed Sales')).toBeNull();
+    expect(screen.queryByText('Profit (₱)')).toBeNull();
   });
 
-  it('keeps explicit KPI context visible when period comparison is unavailable', () => {
+  it('shows only Gross Sales, Discounts, and Net Sales in the Sales report', () => {
     render(
       <PosReportsKpiCards
-        summaryCards={{}}
-        dailySummary={{}}
-        comparison={{}}
+        variant="sales"
+        summaryCards={{ total_sales: 1000000, gross_sales: 1100000, total_transactions: 100000 }}
+        dailySummary={{ net_sales: 1000000, gross_sales: 1100000, discounts: 100000 }}
         selectedTender={{ payment_label: 'Cash', amount: 125, transaction_count: 3 }}
       />
     );
 
-    expect(screen.getByText(/3 completed transactions; whole-transaction tender/)).toBeTruthy();
-    expect(screen.queryByText('No prior period data')).toBeNull();
+    const grid = screen.getByText('Gross Sales (₱)').closest('article').parentElement;
+    expect(grid.className).toContain('grid-cols-2');
+    expect(grid.className).toContain('xl:grid-cols-3');
+    expect(grid.querySelectorAll('article')).toHaveLength(3);
+    expect(screen.getByText('₱1,100,000.00')).toBeTruthy();
+    expect(screen.getByText('Discounts (₱)')).toBeTruthy();
+    expect(screen.getByText('Net Sales (₱)')).toBeTruthy();
+    expect(screen.queryByText('Cash Collected (₱)')).toBeNull();
+    expect(screen.queryByText('Transactions')).toBeNull();
   });
 
-  it('calculates a directional comparison only when a real prior-period base exists', () => {
-    expect(calculateKpiDelta(120, 100)).toBe(20);
-    expect(calculateKpiDelta(-50, -100)).toBe(50);
-    expect(calculateKpiDelta(120, 0)).toBeNull();
-    expect(calculateKpiDelta(120, undefined)).toBeNull();
-  });
+  it('shows the Profit/Loss measures and preserves a negative result', () => {
+    render(
+      <PosReportsKpiCards
+        variant="profit_loss"
+        summaryCards={{ total_sales: 100, pos_profit_loss: -50 }}
+        dailySummary={{ net_sales: 100, cogs: 150, pos_profit_loss: -50, profit_margin: -50 }}
+      />
+    );
 
-  it('does not present a negative signed result as profit', () => {
-    expect(getProfitOnly(-50)).toBe(0);
-    expect(getProfitOnly(50)).toBe(50);
-    expect(getProfitOnly('invalid')).toBe(0);
+    const grid = screen.getByText('Net Sales (₱)').closest('article').parentElement;
+    expect(grid.className).toContain('xl:grid-cols-4');
+    expect(grid.querySelectorAll('article')).toHaveLength(4);
+    expect(screen.getByText('Cost of Goods Sold (₱)')).toBeTruthy();
+    expect(screen.getByText('₱150.00')).toBeTruthy();
+    expect(screen.getByText('POS Profit/Loss (₱)')).toBeTruthy();
+    expect(screen.getByText('-₱50.00')).toBeTruthy();
+    expect(screen.getByText('Profit Margin')).toBeTruthy();
+    expect(screen.getByText('-50.00%')).toBeTruthy();
+    expect(screen.queryByText('Discounts (₱)')).toBeNull();
   });
 });

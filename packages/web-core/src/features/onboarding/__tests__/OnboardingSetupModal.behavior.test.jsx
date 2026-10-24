@@ -180,6 +180,20 @@ describe('OnboardingSetupModal behavior', () => {
     expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
   });
 
+  it('keeps storefront visibility read-only when Platform Admin locks merchant editing', async () => {
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValue({
+      store_is_visible: { value: false },
+      store_visibility_merchant_editable: { value: false }
+    });
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
+    const visibility = await screen.findByLabelText(/Make storefront searchable to customers/i);
+    await waitFor(() => expect(visibility.disabled).toBe(true));
+    expect(visibility.checked).toBe(false);
+    expect(screen.getByText(/Platform Admin controls storefront visibility/)).toBeTruthy();
+  });
+
   it('creates a primary storefront location and saves onboarding progress', async () => {
     const user = userEvent.setup();
     renderModal();

@@ -2,7 +2,7 @@
 
 Status: authoritative
 Owner: operations
-Last reviewed: 2026-10-18
+Last reviewed: 2026-10-20
 
 Use this runbook when production bugs, tenant reports, release regressions, or AI-agent investigations need traceable evidence.
 
@@ -47,6 +47,18 @@ connection acquire timeout also carries `db_pool_acquire_timeout=true` and a `db
 the request route, method, request ID, tenant-pool counters, and global tenant-connector counters.
 The per-tenant snapshot is `null` when that tenant has no cached pool (including landlord-pool
 timeouts); individual counters may be `null` if the installed pool does not expose a numeric value.
+`creating` is `size - using - available`, clamped at zero; it is `null` if any input is unavailable.
+An empty pool with `using=0`, `waiting=0`, and `creating=1` means a physical MySQL connection is
+still being created. That is a connect stall, not pool saturation. A saturated pool instead has
+its connections in use and callers waiting. `last_connect_ms` is the most recent physical connect
+duration for that cached tenant, and `slow_connects` counts successful connects taking at least
+1000 ms. The `global_pool` context adds since-boot `created_total` and `evicted_total` tenant
+instance counts. Fast growth in both while the cache stays near capacity suggests LRU churn.
+
+`TENANT_DB_POOL_IDLE_MS` defaults to 60000 ms. It keeps an unused tenant connection warm across
+the 12-second POS poll interval; tenant instances still close after 10 minutes without use.
+Search API logs for `[DbPool] Slow tenant DB connect` and `[DbPool] Tenant DB connect failed`.
+Both identify the tenant and connect duration. The failure log also includes the driver error code.
 
 Search API logs for this message:
 
@@ -59,6 +71,16 @@ host-configuration action for an operator; it is not changed by this repository 
 variable is set, `GET /api/v1/pos/incoming-orders` remains sampled at a fixed 1% by the API's poll
 route sampler, so traces for that route stay sparse. The tenant tag and acquire-timeout log do not
 depend on performance trace sampling.
+
+For a repeat episode, an authorized operator can use read-only host checks around the event time:
+
+- Inspect MySQL `skip_name_resolve`, `max_connections`, and `thread_cache_size` variables.
+- Inspect `Aborted_connects`, `Threads_created`, `Connection_errors%`, and
+  `Max_used_connections` global status, plus the slow log.
+- Inspect host CPU usage and steal time; compare active PROD tenant count with the 20-instance
+  `TENANT_MAX_CACHED_CONNECTIONS` default.
+- Set `SENTRY_TRACES_SAMPLE_RATE` through the normal PROD configuration process if traces are
+  needed; this is an operator action.
 
 ## Incident Bundle Workflow
 

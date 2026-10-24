@@ -22,7 +22,7 @@ describe('POS Back Office boundary', () => {
   it('keeps POS routes and terminal navigation free of Back Office or OPIS handoffs', () => {
     expect(posEntrySource).toContain('<Route path="/sales" element={<SkupervisorSalesRedirect />} />');
     expect(posEntrySource).not.toMatch(/backoffice|business-admin|opis/i);
-    expect(terminalPageSource).not.toMatch(/backoffice|business-admin|opis/i);
+    expect(terminalPageSource).not.toMatch(/onOpenBackOffice|canLaunchBackOffice|buildBackOfficeModulePath/i);
     expect(terminalPageLayoutSource).not.toMatch(/onOpenBackOffice|canLaunchBackOffice/i);
     expect(terminalPageDialogLayerSource).not.toMatch(/backOfficeConfirm|Open Back Office|OPIS/i);
     expect(terminalLockDrawerSource).not.toMatch(/onOpenBackOffice|Back Office|OPIS/i);

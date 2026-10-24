@@ -18,7 +18,10 @@ describe('staff capability contract', () => {
       PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS,
       PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_ORDERS,
       PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_DELIVERY_RUNS,
-      PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS
+      PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS,
+      PERMISSIONS.STAFF_FULFILLMENT.actions.LOAD_DELIVERY_RUNS,
+      PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_JOBS,
+      PERMISSIONS.STAFF_FULFILLMENT.actions.COLLECT_ASSIGNED_BALANCE
     ]));
   });
   test('deprecated catalog is intentionally empty', () => { expect(STAFF_CAPABILITY_DEPRECATED).toEqual({}); });
@@ -27,6 +30,22 @@ describe('staff capability contract', () => {
   });
   test('active staff role outranks legacy role defaults when explicit permissions are empty', () => {
     expect(resolveEffectivePermissions({ role: 'staff', permissions: [], staffRole: { is_active: true, capabilities: ['orders:pack'] } })).toEqual(['orders:pack']);
+  });
+  test('custom empty permissions remain authoritative even when a staff role is active', () => {
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      permission_mode: 'custom',
+      permissions: [],
+      staffRole: { is_active: true, capabilities: ['orders:pack'] }
+    })).toEqual([]);
+  });
+  test('inherit mode ignores stored custom selections and uses the active staff role', () => {
+    expect(resolveEffectivePermissions({
+      role: 'staff',
+      permission_mode: 'inherit',
+      permissions: ['items:view'],
+      staffRole: { is_active: true, capabilities: ['orders:pack'] }
+    })).toEqual(['orders:pack']);
   });
   test('inactive staff role falls back to legacy role defaults', () => {
     expect(resolveEffectivePermissions({ role: 'staff', permissions: [], staffRole: { is_active: false, capabilities: ['orders:pack'] } })).toEqual(expect.arrayContaining(['items:view']));
@@ -55,7 +74,7 @@ describe('staff capability contract', () => {
     expect(resolveEffectivePermissions({ role: 'cashier', permissions: [], staffRole: { is_active: true, capabilities: ['orders:pack'] } })).toEqual(['orders:pack']);
   });
   test('broad POS permission bypasses narrow assignment proof for compatibility', async () => {
-    await expect(assertStaffAssignment({ user: { permissions: ['pos:transact'] }, resourceType: 'order', resourceId: 1 })).resolves.toBeUndefined();
+    await expect(assertStaffAssignment({ user: { user_id: 1, permissions: ['pos:view', 'pos:transact'] }, resourceType: 'order', resourceId: 1 })).resolves.toBeUndefined();
   });
   test('narrow assignment guard returns stable denial reason without capability', async () => {
     await expect(assertStaffAssignment({ user: { user_id: 1, permissions: [] }, resourceType: 'order', resourceId: 1 })).rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', details: { reason_code: 'NOT_PERMITTED' } });

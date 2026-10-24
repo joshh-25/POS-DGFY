@@ -113,3 +113,27 @@ describe('downpaymentSettingsRepository', () => {
         });
     });
 });
+
+test('platform allowance creates a missing row with safe defaults and changes only its own column', async () => {
+    const stored = { tenant_id: TENANT_ID, payment_mode: 'full_payment', platform_downpayment_allowed: false };
+    const row = { update: jest.fn(async (patch) => Object.assign(stored, patch)), reload: jest.fn(async () => stored) };
+    mockTenantDownpaymentSettings.findOrCreate.mockResolvedValue([row, true]);
+    const result = await downpaymentSettingsRepository.setPlatformAllowance(TENANT_ID, true);
+    expect(mockTenantDownpaymentSettings.findOrCreate).toHaveBeenCalledWith(expect.objectContaining({ defaults: expect.objectContaining({ platform_downpayment_allowed: false }) }));
+    expect(row.update).toHaveBeenCalledWith({ platform_downpayment_allowed: true }, { transaction: undefined });
+    expect(result.platform_downpayment_allowed).toBe(true);
+});
+
+test('landlord migration backfills only unfinished rows and preserves revocations on rerun', async () => {
+    const { createRequire } = await import('node:module');
+    const require = createRequire(import.meta.url);
+    const migration = require('../../dgfy-migration-runner/migrations/20261021000001-add-platform-downpayment-allowed-to-tenant-downpayment-settings.cjs');
+    const queryInterface = { describeTable: jest.fn().mockResolvedValue({}), addColumn: jest.fn(), changeColumn: jest.fn(), sequelize: { query: jest.fn() } };
+    await migration.up(queryInterface, { BOOLEAN: 'BOOLEAN' });
+    expect(queryInterface.sequelize.query).toHaveBeenCalledWith(expect.stringContaining("WHERE platform_downpayment_allowed IS NULL"));
+    expect(queryInterface.changeColumn).toHaveBeenCalledWith('tenant_downpayment_settings', 'platform_downpayment_allowed', { type: 'BOOLEAN', allowNull: false, defaultValue: false });
+    queryInterface.describeTable.mockResolvedValue({ platform_downpayment_allowed: { allowNull: false } });
+    queryInterface.sequelize.query.mockClear();
+    await migration.up(queryInterface, { BOOLEAN: 'BOOLEAN' });
+    expect(queryInterface.sequelize.query).not.toHaveBeenCalled();
+});

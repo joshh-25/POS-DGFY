@@ -52,7 +52,7 @@ describe('POS reports registers table', () => {
     ['Register Shift', 'Opening Cashier', 'Expected (₱)', 'Counted (₱)', 'Variance (₱)', 'Status'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('RS-81').length).toBeGreaterThan(0);
     expect(screen.queryByText(/RS-\d+,\s*RS-\d+/)).toBeNull();
     expect(screen.getAllByText('₱2,980.00').length).toBeGreaterThan(0);

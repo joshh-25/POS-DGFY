@@ -66,6 +66,45 @@ describe('useStoreCatalogLoader branch refresh state', () => {
     expect(result.current.branchSwitchFeedback).toBeNull();
     unmount();
   });
+
+  it('revalidates the visible storefront profile without reloading catalog state', async () => {
+    const setSelectedStore = vi.fn();
+    requestJson.mockImplementation((url, options) => {
+      if (String(url).includes('/api/v1/storefront/discovery/')) {
+        expect(options).toMatchObject({
+          cache: 'no-store',
+          skipRequestFailureCapture: true
+        });
+        return Promise.resolve({ slug: 'storefront', tenant_name: 'Renamed Cafe' });
+      }
+      return new Promise(() => {});
+    });
+
+    const { unmount } = renderHook(
+      () => useStoreCatalogLoader({
+        ...buildLoaderProps(),
+        selectedStore: { slug: 'storefront', tenant_name: 'Original Cafe' },
+        setSelectedStore
+      })
+    );
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const profileCalls = requestJson.mock.calls.filter(([url]) => String(url).includes('/api/v1/storefront/discovery/'));
+    expect(profileCalls).toHaveLength(1);
+    const selectedStoreUpdater = setSelectedStore.mock.calls.find(([value]) => typeof value === 'function')?.[0];
+    expect(selectedStoreUpdater).toBeTypeOf('function');
+    expect(selectedStoreUpdater({ slug: 'storefront', tenant_name: 'Original Cafe' })).toMatchObject({
+      slug: 'storefront',
+      tenant_name: 'Renamed Cafe'
+    });
+
+    unmount();
+  });
 });
 
 describe('StoreCatalogEmptyStates branch refresh state', () => {

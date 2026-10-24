@@ -6,9 +6,10 @@
  * Supports both CI mode (default) and pre-commit staged mode (--staged).
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { RESERVED_HEAD_PREFIX_PATTERN } = require('./lib/integration-branch-policy');
 
 const args = new Set(process.argv.slice(2));
 const useStaged = args.has('--staged');
@@ -234,8 +235,8 @@ const COMPLIANCE_SENSITIVE_RULES = [
 // feature PRs, so validating each declaration against the *combined* surface/
 // classification of the whole bundle produces false positives -- every declaration
 // already passed this exact check on its own originating PR into `develop`. Scoped
-// narrowly to these (base, head) pairs so a hotfix PR opened directly against
-// staging/main (e.g. PR #83) still gets full per-declaration scrutiny.
+// to known aggregate shapes so a hotfix PR opened directly against staging/main
+// (e.g. PR #83) still gets full per-declaration scrutiny.
 const PROMOTION_HEAD_BY_BASE = Object.freeze({
   staging: new Set(['develop', 'to-staging']),
   main: new Set(['staging'])
@@ -250,20 +251,9 @@ const PROMOTION_HEAD_BY_BASE = Object.freeze({
 // branch name (e.g. PR #83) must still get full per-declaration scrutiny, so
 // this must not become "anything into staging/main".
 const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
+  develop: RESERVED_HEAD_PREFIX_PATTERN,
   staging: /^to-staging\//,
   main: /^release\//
-});
-
-// PR #2054 intentionally targets develop per operator direction, but its head
-// retains the earlier integration-line ancestry. Its comparison therefore
-// contains many already-authored declarations and is evaluated as one
-// aggregate declaration. Keep this exception bound to that exact base/head and
-// declaration ID; ordinary feature PRs still validate every changed declaration
-// against their own changed sensitive files.
-const AGGREGATE_COMPARE = Object.freeze({
-  base: 'develop',
-  head: 'feature/2052-opis-split-back-office',
-  declarationId: '2026-09-24-pr-2054-aggregate-compliance'
 });
 
 const isAggregatePromotionPr = () => {
@@ -279,11 +269,6 @@ const isAggregatePromotionPr = () => {
   const allowedPrefix = PROMOTION_HEAD_PREFIX_BY_BASE[baseRef];
   return Boolean(allowedPrefix && allowedPrefix.test(headRef));
 };
-
-const isPr2054AggregateCompare = () => (
-  String(process.env.GITHUB_BASE_REF || '').trim() === AGGREGATE_COMPARE.base
-  && String(process.env.GITHUB_HEAD_REF || '').trim() === AGGREGATE_COMPARE.head
-);
 
 const DECLARATION_FILE_PATTERN = /^docs\/compliance\/impact-declarations\/.+\.md$/;
 const REQUIRED_DECLARATION_SECTIONS = [
@@ -318,6 +303,15 @@ const runCommand = (command, { allowFail = false } = {}) => {
     if (allowFail) {
       return '';
     }
+    throw error;
+  }
+};
+
+const runGit = (args, { allowFail = false } = {}) => {
+  try {
+    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  } catch (error) {
+    if (allowFail) return '';
     throw error;
   }
 };
@@ -387,10 +381,10 @@ const resolveChangedFiles = () => {
   if (files.length === 0) {
     const baseRef = process.env.GITHUB_BASE_REF;
     if (baseRef) {
-      runCommand(`git fetch --no-tags --prune --depth=200 origin ${baseRef}`, { allowFail: true });
-      const mergeBase = runCommand(`git merge-base HEAD origin/${baseRef}`, { allowFail: true });
+      runGit(['fetch', '--no-tags', '--prune', '--depth=200', 'origin', `+refs/heads/${baseRef}:refs/remotes/origin/${baseRef}`], { allowFail: true });
+      const mergeBase = runGit(['merge-base', 'HEAD', `origin/${baseRef}`], { allowFail: true });
       if (mergeBase) {
-        files = splitLines(runCommand(`git diff --name-only ${mergeBase}...HEAD`, { allowFail: true }));
+        files = splitLines(runGit(['diff', '--name-only', `${mergeBase}...HEAD`, '--'], { allowFail: true }));
       }
     }
   }
@@ -398,7 +392,7 @@ const resolveChangedFiles = () => {
   if (files.length === 0) {
     const beforeSha = process.env.GITHUB_EVENT_BEFORE || process.env.CI_COMMIT_BEFORE_SHA;
     if (beforeSha && !/^0+$/.test(beforeSha)) {
-      files = splitLines(runCommand(`git diff --name-only ${beforeSha}...HEAD`, { allowFail: true }));
+      files = splitLines(runGit(['diff', '--name-only', `${beforeSha}...HEAD`, '--'], { allowFail: true }));
     }
   }
 
@@ -665,22 +659,7 @@ if (existingDeclarationFiles.length === 0) {
   process.exit(1);
 }
 
-const aggregateDeclarationFiles = existingDeclarationFiles.filter((filePath) => {
-  const frontMatter = parseFrontMatter(fs.readFileSync(path.join(REPO_ROOT, filePath), 'utf8'));
-  return frontMatter
-    && frontMatter.declaration_id === AGGREGATE_COMPARE.declarationId
-    && frontMatter.aggregate_scope === 'pr-2054-develop-compare';
-});
-const useAggregateDeclaration = isPr2054AggregateCompare() && aggregateDeclarationFiles.length === 1;
-const declarationsToValidate = useAggregateDeclaration ? aggregateDeclarationFiles : existingDeclarationFiles;
-
-if (useAggregateDeclaration) {
-  console.log(
-    `[check:compliance] Validating ${AGGREGATE_COMPARE.declarationId} as the aggregate declaration `
-    + `for ${AGGREGATE_COMPARE.head} -> ${AGGREGATE_COMPARE.base}; `
-    + 'historical per-phase declarations are not reclassified against this combined compare.'
-  );
-}
+const declarationsToValidate = existingDeclarationFiles;
 
 const declarationFailures = declarationsToValidate.flatMap(validateDeclarationFile);
 if (declarationFailures.length > 0) {

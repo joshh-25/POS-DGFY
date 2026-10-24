@@ -11,6 +11,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { resolveFrontendBuildTriggers } = require('./resolve-frontend-build-triggers');
 const { parseVersion } = require('./check-app-version-bump');
+const { RESERVED_HEAD_PREFIX_PATTERN } = require('./lib/integration-branch-policy');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const APP_DIR_BY_KEY = Object.freeze({
@@ -43,6 +44,7 @@ const PROMOTION_HEADS_BY_BASE = Object.freeze({
   main: new Set(['staging']),
 });
 const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
+  develop: RESERVED_HEAD_PREFIX_PATTERN,
   staging: /^to-staging\//,
   main: /^release\//,
 });

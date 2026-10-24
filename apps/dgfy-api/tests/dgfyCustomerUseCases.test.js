@@ -1,5 +1,9 @@
 import { jest } from '@jest/globals';
+import dbStore from '../src/utils/dbStore.js';
+import { buildCancelStoreOrderUseCase } from '../src/modules/store/usecases/storeUseCases.js';
+import { ok } from '../src/modules/shared/contracts/applicationResult.js';
 import {
+    buildCancelDgfyCustomerOrderUseCase,
     buildDgfyHistoricalBackfillUseCase,
     buildGetDgfyCustomerDashboardUseCase,
     buildGetDgfyCustomerOrderDetailsUseCase,
@@ -30,6 +34,114 @@ const account = {
 };
 
 describe('dgfyCustomerUseCases', () => {
+    it.each([
+        ['prepaid', 'refund_pending', true],
+        ['downpayment', 'forfeited', true],
+        ['cod', 'not_applicable', false]
+    ])('routes %s account cancellation through shared stock, job and payment handling', async (_paymentMode, paymentAction, issued) => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const activity = {
+            activity_id: 55,
+            activity_type: 'order',
+            reference: 'SK-ABC123',
+            tenant_id: tenantId,
+            store_customer_id: 55,
+            status: 'confirmed',
+            customer_email: account.email,
+            customer_phone: account.phone
+        };
+        const order = {
+            pos_transaction_id: 903,
+            tracking_pin: activity.reference,
+            store_customer_id: 55,
+            order_method: 'delivery',
+            fulfillment_status: 'confirmed',
+            location_id: 7,
+            inventory_issued_at: issued ? new Date('2026-10-22T01:00:00Z') : null
+        };
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async function commit() { this.finished = true; }),
+            rollback: jest.fn(async function rollback() { this.finished = true; })
+        };
+        const storeRepository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            getOrderByTrackingPin: jest.fn().mockResolvedValueOnce(order).mockResolvedValueOnce({ ...order, fulfillment_status: 'cancelled' }),
+            updateOrderByTrackingPin: jest.fn().mockResolvedValue({ ...order, fulfillment_status: 'cancelled' }),
+            createAuditLog: jest.fn().mockResolvedValue({})
+        };
+        const releaseOnlineOrderInventory = jest.fn().mockResolvedValue({ status: 'released' });
+        const reverseOnlineOrderGoodsIssue = jest.fn().mockResolvedValue([]);
+        const cancelOrderDeliveryJob = jest.fn().mockResolvedValue({ delivery_job_id: 77, from: 'pending_dispatch', to: 'cancelled' });
+        const commerceOrderLifecycleUseCase = jest.fn().mockResolvedValue(ok({ tracked: true, payment_action: paymentAction }));
+        const cancelStoreOrder = buildCancelStoreOrderUseCase({
+            storeRepository,
+            inventoryReservationService: { releaseOnlineOrderInventory },
+            inventoryCommandService: { reverseOnlineOrderGoodsIssue },
+            cancelOrderDeliveryJob,
+            commerceOrderLifecycleUseCase,
+            activityRecorder: jest.fn().mockResolvedValue(null)
+        });
+        const repository = {
+            findActivityForAccount: jest.fn()
+                .mockResolvedValueOnce(activity)
+                .mockResolvedValueOnce({ ...activity, status: 'cancelled' })
+        };
+        const PosTransaction = { findOne: jest.fn().mockResolvedValue(order) };
+        const withTenantContextFn = (_tenantId, callback) => dbStore.run({ PosTransaction }, callback);
+        const useCase = buildCancelDgfyCustomerOrderUseCase({ repository, withTenantContextFn, cancelStoreOrder });
+        const result = await useCase({ account, reference: activity.reference });
+        expect(result.success).toBe(true);
+        expect(result.data.activity.status).toBe('cancelled');
+        expect(result.data.payment_lifecycle.payment_action).toBe(paymentAction);
+        expect(releaseOnlineOrderInventory).toHaveBeenCalledTimes(1);
+        expect(reverseOnlineOrderGoodsIssue).toHaveBeenCalledTimes(issued ? 1 : 0);
+        expect(cancelOrderDeliveryJob).toHaveBeenCalledWith(903, { transaction });
+        expect(storeRepository.createAuditLog.mock.calls.map(([row]) => row.changes.event)).toEqual([
+            'delivery_job_cancelled_with_order', 'online_order_status_changed'
+        ]);
+        expect(storeRepository.createAuditLog.mock.calls[1][0].changes.channel).toBe('dgfy_account');
+        expect(commerceOrderLifecycleUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            initiatedBy: 'customer', actor: 'store_customer:55'
+        }));
+    });
+
+    it('keeps account ownership and pre-preparing cancellation guards', async () => {
+        const activity = {
+            activity_id: 55, activity_type: 'order', reference: 'SK-ABC123',
+            tenant_id: 'tenant-1', store_customer_id: 55
+        };
+        const repository = { findActivityForAccount: jest.fn().mockResolvedValue(activity) };
+        const cancelStoreOrder = jest.fn();
+        const PosTransaction = {
+            findOne: jest.fn().mockResolvedValue({
+                tracking_pin: activity.reference,
+                store_customer_id: 55,
+                fulfillment_status: 'preparing'
+            })
+        };
+        const useCase = buildCancelDgfyCustomerOrderUseCase({
+            repository,
+            cancelStoreOrder,
+            withTenantContextFn: (_tenantId, callback) => dbStore.run({ PosTransaction }, callback)
+        });
+        const preparing = await useCase({ account, reference: activity.reference });
+        expect(preparing.success).toBe(false);
+        expect(preparing.error.statusCode).toBe(409);
+        expect(cancelStoreOrder).not.toHaveBeenCalled();
+
+        PosTransaction.findOne.mockResolvedValue({
+            tracking_pin: activity.reference,
+            store_customer_id: 999,
+            fulfillment_status: 'placed'
+        });
+        const unlinked = await useCase({ account, reference: activity.reference });
+        expect(unlinked.success).toBe(false);
+        expect(unlinked.error.statusCode).toBe(403);
+        expect(cancelStoreOrder).not.toHaveBeenCalled();
+    });
+
     it('loads dashboard data with explicit deferred phone verification marker', async () => {
         const repository = {
             listActiveTenants: jest.fn(),

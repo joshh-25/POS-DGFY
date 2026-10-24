@@ -648,6 +648,35 @@ const attachSecondaryCategories = async (catalogRows, options = {}) => {
 };
 
 export const storeRepository = {
+    async cancelDeliveryJobForOrder(orderId, options = {}) {
+        const DeliveryJob = dbStore.get('DeliveryJob');
+        if (!DeliveryJob) throw new Error('DeliveryJob model is unavailable');
+        const row = await DeliveryJob.findOne({
+            where: { pos_transaction_id: orderId },
+            transaction: options.transaction,
+            lock: options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row || row.provider !== 'manual' || !['pending_dispatch', 'assigned'].includes(row.status)) return null;
+        const from = row.status;
+        await row.update({ status: 'cancelled' }, { transaction: options.transaction });
+        return { delivery_job_id: row.delivery_job_id, from, to: 'cancelled' };
+    },
+
+    async createAuditLog(payload = {}, options = {}) {
+        const AuditLog = dbStore.get('AuditLog');
+        if (!AuditLog) throw new Error('AuditLog model is unavailable');
+        const changes = payload.changes && typeof payload.changes === 'object' ? payload.changes : {};
+        const created = await AuditLog.create({
+            ...payload,
+            event_type: String(payload.event_type || changes.event || 'store.order_updated').slice(0, 100),
+            actor_username: payload.actor_username || changes.actor_username || null,
+            location_id: payload.location_id || changes.location_id || null,
+            reason: payload.reason || changes.reason || null,
+            request_id: payload.request_id || changes.request_id || null
+        }, { transaction: options.transaction });
+        return toPlain(created);
+    },
+
     async beginTransaction() {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         return sequelize.transaction();
@@ -1824,7 +1853,18 @@ export const storeRepository = {
         const PosTransaction = dbStore.get('PosTransaction');
         const row = await PosTransaction.findOne({
             where: { tracking_pin: trackingPin },
-            include: buildOrderInclude(),
+            include: [
+                ...buildOrderInclude(),
+                {
+                    model: dbStore.get('DeliveryJob'),
+                    as: 'deliveryJob',
+                    required: false,
+                    attributes: [
+                        'status', 'courier_service', 'courier_service_name', 'courier_reference',
+                        'tracking_url', 'delivery_personnel_name', 'failure_reason', 'assigned_at'
+                    ]
+                }
+            ],
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });

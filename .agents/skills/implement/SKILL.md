@@ -27,8 +27,8 @@ content. Reject unrecognized schemas, malformed content, `needs-decision`, ident
 materially stale/conflicting plans before editing.
 
 Validate routing after those identity and status checks, using the compatibility contract above.
-The route fields are `execution_route`, `target_branch`, and `hotfix`; the valid pairs are
-`develop`/`develop`, `hotfix`/`main`, and `hotfix`/`staging`.
+The route fields are `execution_route`, `target_branch`, `hotfix`, and `epic`; use the valid
+combinations in `docs/ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md`.
 If both `execution_route` and `target_branch` are absent, treat the artifact as legacy and use
 `develop`/`develop`. If only one is absent, either value is unknown, or the pair is not one of the
 contract's valid combinations, hard-stop before editing. A `develop`/`develop` artifact has no
@@ -47,6 +47,17 @@ review, and back-port requirements. Apply each under the incident-responder proc
 main/staging scope; release-note and back-port steps apply only to `main`. The existing
 first-live-run report-only policy still applies if this is Incident Responder's first live run; the
 artifact trigger grants no exemption. The Worker still does not merge or deploy.
+
+For `execution_route: epic`, accept only a valid ready Planner artifact; the route records that the
+Planner set it on explicit operator direction. Require the `epic` block from the compatibility
+contract. Verify that `parent_epic` is still open and labeled `epic`, that its issue
+comments contain the exact registered `marker`, that `target_branch` equals that marker's branch
+name, and that the branch exists on `origin`. If any check fails or the evidence is ambiguous, stop
+before editing. Branch from fresh `origin/<target_branch>`, open the child PR back to that branch,
+and use `Refs #<child-issue>`; never create the reserved branch yourself and never infer this route
+from an issue's parent. Do not add app version bumps for the child PR or its final integration PR.
+The child card stays `In progress` after this PR opens and after its merge into the integration
+branch. The Worker still does not merge or deploy.
 
 The handoff is a planning snapshot, not a replacement for the issue or authoritative repository
 documentation. Re-validate the issue and relevant docs at implementation time; those sources win
@@ -91,12 +102,17 @@ missing, malformed, or materially stale or conflicting handoff.
 
 ## Manual session handoff input
 
-An explicit `/handoff` may resume this role with `/implement @.tmp/handoff-<...>.md`. Validate the
-`dgfy-handoff/v1` schema, confirm `role: implementer`, and confirm any issue or PR identity matches
-the live task. Treat the artifact as a progress snapshot only: re-validate the issue and
-authoritative docs, surface conflicts before editing, and never force-add the ignored file. A
-missing, malformed, mismatched, or ambiguous handoff is a hard stop; without one, the existing
-Worker workflow is unchanged.
+An explicit `/handoff` may resume this role with `/implement @.tmp/handoff-<...>.md`. Follow the
+[manual session handoff compatibility contract](../../../docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md),
+including its supported `agent-handoff/v1` and `dgfy-handoff/v1` variants. Confirm
+`role: implementer` and any requested issue or PR against live GitHub state; infer omitted context
+only from reliable invocation, checkout, or live-source evidence. Revalidate the live issue/PR,
+checkout, and authoritative docs before editing. Surface actual identity/role conflicts and
+consequential unresolved ambiguity before editing; label, extra metadata, descriptive runtime/model,
+or stale branch/HEAD differences alone do not block. The snapshot is progress evidence, not
+implementation authorization; the explicit `/implement` invocation and all existing Worker gates
+remain required. Never force-add the ignored file. Without one, the existing Worker workflow is
+unchanged.
 
 ## Omitted target resolution
 
@@ -158,8 +174,9 @@ of these triggers actually firing (or correctly not firing) in practice.
    its `### Next eligible phase` text names a later phase; only an explicit dependency blocks work
    (see `AGENTS.md` and the ledger's "Phase Sequencing and Lifecycle Rules").
 2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
-   `feature/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, among others — matching the change's
-   actual kind. Name a planner-routed hotfix branch to show its target (for example,
+   `feat/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, among others — matching the change's
+   actual kind. Workers must not create `epic/` or `feature/` reserved integration names; only the
+   operator's `npm run epic:branch` helper creates those. Name a planner-routed hotfix branch to show its target (for example,
    `fix/hotfix-<issue>` for `main`, or `fix/staging-<issue>` for `staging`), while keeping the
    target branch itself out of the PR head. (`ci/` was previously missing from that file despite
    being in heavy real use for workflow-only changes; it has since been added — confirmed live in
@@ -200,7 +217,7 @@ of these triggers actually firing (or correctly not firing) in practice.
      (**never** `rm` the lockfile first — that regenerates unrelated version drift, not just the
      intended change; this happened for real earlier tonight and had to be undone), then confirm
      `git diff --exit-code -- <that lockfile>` is clean before including it in the commit.
-   - **The affected app's version floor follows ADR 0081's branch policy** — ordinary develop work and staging repairs keep the floor unchanged; promoter-generated `chore/release/bump-*` PRs and promotion to STAGING bump changed apps to the next minor floor; direct main hotfixes patch-bump. Run `node scripts/check-app-version-bump.js` locally before committing;
+   - **The affected app's version floor follows ADR 0081's branch policy** — ordinary develop work, registered integration-base PRs, and reserved integration heads into `develop` keep the floor unchanged; promoter-generated `chore/release/bump-*` PRs and promotion to STAGING bump changed apps to the next minor floor; direct main hotfixes patch-bump. Run `node scripts/check-app-version-bump.js` locally before committing;
      `check:app-versions` is currently advisory in CI, but running it locally catches the miss
      before a reviewer has to.
    - Post Tier 0's results in the PR body's `## Testing Evidence` section at creation — it's
@@ -228,7 +245,7 @@ of these triggers actually firing (or correctly not firing) in practice.
    `docs/process/ISSUE-TAXONOMY.md`'s linkage rule. For an artifact-backed PR, include the compact
    `## Plan Handoff` provenance section described above. It may include an `Assumptions:` sub-list
    for consequential routine gaps resolved during implementation. Then set the board card to
-   `For Review` — see "Board transitions" below.
+   `For Review` — see "Board transitions" below. Keep it `In progress` for an epic-route child PR.
    When the formatter validates the active session, put its `Opened by (..., worker)` output first
    under `## Summary`; otherwise omit the attribution line.
 6. **Picking up review findings**, if the `pr-reviewer` agent (#331/#366) has already run on this
@@ -256,6 +273,9 @@ this section to restate it.
   that work has actually started. Setting it explicitly at branch time is the point.
 - **`For Review`**, at PR-open time (Workflow step 5). Nothing else in the system sets this lane;
   without this write it stays permanently empty.
+- **Epic-route child PRs** are the exception: keep the child card `In progress` through its PR and
+  merge into the registered integration branch. The final integration PR into `develop` applies the
+  existing QA handoff to each listed child issue after that merge.
 - **A PR that doesn't finish the issue** (a partial/continuous ticket) stays `In progress` and uses
   `Refs #N` — do not advance it to `For Review` until a PR that actually completes the work opens.
   **An epic never moves at all** — epics don't enter iterations and close only when their children

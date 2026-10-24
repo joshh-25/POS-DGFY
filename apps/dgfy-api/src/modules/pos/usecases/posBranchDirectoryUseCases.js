@@ -219,7 +219,9 @@ export const buildGetPosBranchDirectoryUseCase = ({
                         can_open: canOpen,
                         can_resume: canResume,
                         reason_code: occupied
-                            ? (canResume ? null : (stale ? 'POS_TERMINAL_STALE_SHIFT' : 'POS_TERMINAL_SHIFT_OCCUPIED'))
+                            ? (canResume
+                                ? null
+                                : (stale ? 'POS_TERMINAL_STALE_SHIFT' : 'POS_TERMINAL_SHIFT_OCCUPIED'))
                             : buildReasonCode({ canTransact, activeElsewhere, terminals: [entry], canOpen, isOpen }),
                         shift: safeShift(shift, operator),
                         stale_recovery: staleRecovery,

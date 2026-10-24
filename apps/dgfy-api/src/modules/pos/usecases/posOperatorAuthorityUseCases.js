@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import dbStore from '../../../utils/dbStore.js';
-import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
+import { hasEffectivePermission, resolveEffectivePermissions } from '../../../utils/userPermissions.js';
 import { normalizePosOperatingConflict } from './posUserOperatingScope.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
@@ -110,12 +110,12 @@ const operatorUserSummary = (user) => user ? {
     email: String(user.email || '').trim().toLowerCase() || null,
     role: String(user.role || '').trim().toLowerCase() || null,
     is_master_admin: isMasterAdmin(user),
-    permissions: resolveEffectivePermissions(user)
+    permissions: resolveEffectivePermissions(user),
+    permissions_resolved: true
 } : null;
 const assertMutationPermissions = (user, requiredPermissions, alternatives = []) => {
-    const effective = resolveEffectivePermissions(user);
-    const missing = isMasterAdmin(user) ? null : requiredPermissions.find((permission) => !effective.includes(permission));
-    const missingAlternative = !isMasterAdmin(user) && alternatives.find((group) => !group.some((permission) => effective.includes(permission)));
+    const missing = isMasterAdmin(user) ? null : requiredPermissions.find((permission) => !hasEffectivePermission(user, permission));
+    const missingAlternative = !isMasterAdmin(user) && alternatives.find((group) => !group.some((permission) => hasEffectivePermission(user, permission)));
     if (missing || missingAlternative) {
         throw operatorError(DomainErrorCode.AUTHORIZATION_FAILED, 'The active cashier lacks permission for this operation.', 403, {
             reason_code: 'PERMISSION_DENIED', required_permission: missing || missingAlternative
@@ -124,20 +124,10 @@ const assertMutationPermissions = (user, requiredPermissions, alternatives = [])
 };
 const isManager = (user) => {
     const role = String(user?.role || '').trim().toLowerCase();
-    const permissions = Array.isArray(user?.permissions)
-        ? user.permissions
-        : (typeof user?.permissions === 'string' ? (() => {
-            try {
-                const parsed = JSON.parse(user.permissions);
-                return Array.isArray(parsed) ? parsed : [];
-            } catch {
-                return [];
-            }
-        })() : []);
     return user?.is_master_admin === true
         || ['admin', 'manager'].includes(role)
-        || permissions.includes('pos:attendance:manage')
-        || permissions.includes('users:manage');
+        || hasEffectivePermission(user, 'pos:attendance:manage')
+        || hasEffectivePermission(user, 'users:manage');
 };
 
 const audit = async ({ repository, actorUserId, actorUsername, eventType, action = 'UPDATE', row = null, locationId = null, terminalId = null, shiftId = null, requestId = null, changes = {}, transaction }) => {

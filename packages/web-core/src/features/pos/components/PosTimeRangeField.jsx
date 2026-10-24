@@ -304,6 +304,7 @@ export default function PosTimeRangeField({
         onClose={() => setOpen(false)}
         mode="calendar"
         mobile={isMobileDialog}
+        fitContentHeight
         id={dialogId}
         ariaLabelledBy={titleId}
         ariaDescribedBy={descriptionId}

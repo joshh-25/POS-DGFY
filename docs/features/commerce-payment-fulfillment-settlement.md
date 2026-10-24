@@ -55,8 +55,15 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 - Duplicate rejection calls reuse an existing succeeded or pending refund.
 - A refund API failure does not undo the POS rejection.
 - Definite refund failures stay excluded from settlement, raise an immediate
-  operator alert, and remain unchanged until an administrator explicitly retries
-  or resolves them.
+  operator alert, and remain excluded from settlement. Retryable provider failures are
+  automatically retried against the same local refund row with bounded backoff; permanent or
+  exhausted failures remain available for reconciliation.
+- Platform Admin Payment Operations lists attempts across sessions and offers Retry
+  only for an eligible latest attempt with no other active refund. The administrator
+  must provide a reason and confirm the session, order, amount, and original reference;
+  the server performs a fresh PayMongo read before creating a linked attempt. Retry
+  and blocked outcomes are audited with the authenticated actor, reason, references,
+  and provider outcome or block code. Earlier attempts remain unchanged.
 - Ambiguous submissions and orphaned pre-provider refund rows are reconciled from
   authenticated PayMongo reads. A unique matching provider refund is linked and
   applied through the same idempotent path as a webhook; zero or multiple matches
@@ -64,6 +71,9 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 - Public tracking exposes only the latest refund's customer-safe status, reference,
   amount, and update time. Provider IDs, failure details, and provider payloads
   remain private.
+- Ambiguous provider responses remain pending for webhook/reconciliation evidence and are never
+  blindly replayed. Permanent or exhausted failures stay excluded from settlement and are surfaced
+  as reconciliation exceptions rather than approval requests.
 - Already scheduled or paid settlements are held or corrected through immutable
   carry-forward entries; posted financial records are never deleted.
 

@@ -4,9 +4,8 @@
 // render branch, the preference persists across remount via per-terminal localStorage, it defaults
 // to 'card' when unset/invalid, selectedOrderIds selection survives a toggle, QueueRunAssignBar's
 // bulk-submit still works with table view active, the table renders every mapped column for a
-// fixture order (incl. the delivery/downpayment conditional columns), and the two intentionally
-// omitted interactive controls (DeliveryAssignmentControl/DeliveryAddressEditControl) are absent
-// from table rows without throwing.
+// fixture order (incl. the delivery/downpayment conditional columns), and direct delivery
+// assignment remains available when the table view is active.
 
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -119,6 +118,16 @@ beforeEach(() => {
 });
 
 describe('View-mode toggle', () => {
+  it('keeps online-order views in one horizontal mobile rail', () => {
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+
+    const orderViewTabs = screen.getByRole('tablist', { name: 'Online order views' });
+    expect(orderViewTabs.className).toContain('overflow-x-auto');
+    expect(orderViewTabs.className).not.toContain('flex-wrap');
+    expect(orderViewTabs.firstElementChild.className).toContain('flex min-w-max');
+    expect(screen.getByRole('tab', { name: /Active Queue/i }).getAttribute('aria-selected')).toBe('true');
+  });
+
   it('defaults to card view and renders per-order cards', () => {
     render(<IncomingQueueWorkspace {...baseProps()} />);
     expect(screen.getByRole('button', { name: /^Card$/i }).getAttribute('aria-pressed')).toBe('true');
@@ -197,7 +206,7 @@ describe('Table columns', () => {
     expect(screen.getByLabelText(/Open pin in map for order 9001/i)).toBeTruthy();
   });
 
-  it('omits the interactive DeliveryAssignmentControl/DeliveryAddressEditControl widgets without throwing', () => {
+  it('renders direct-delivery assignment and actions in the table without address-edit controls', () => {
     render(<IncomingQueueWorkspace {...baseProps({
       incomingOrdersState: {
         orders: [buildOrder({
@@ -220,12 +229,57 @@ describe('Table columns', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Table$/i }));
     const table = screen.getByRole('table');
-    // The current assignee is shown as read-only text...
+    // The current assignee is shown in the assignment control...
     expect(table.textContent).toContain('Juan Dela Cruz');
-    // ...but not as the interactive assign/reassign control (no combobox for personnel selection
-    // and no "Edit address" affordance inside the table).
-    expect(screen.queryByRole('combobox', { name: /delivery personnel/i })).toBeNull();
+    expect(screen.getByLabelText('Delivery personnel for order 9001')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Picked Up', exact: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Failed', exact: true })).toBeTruthy();
     expect(screen.queryByText(/Edit address/i)).toBeNull();
+  });
+
+  it.each([
+    ['desktop', 1440],
+    ['tablet', 900]
+  ])('keeps direct-delivery actions consistent across cards, table, and split queue at %s width', async (_label, width) => {
+    const originalWidth = window.innerWidth;
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    window.matchMedia = vi.fn(() => ({
+      matches: width >= 768,
+      media: '(min-width: 768px)',
+      addEventListener: vi.fn(), removeEventListener: vi.fn()
+    }));
+    const order = buildOrder({
+      fulfillment_status: 'out_for_delivery',
+      deliveryJob: {
+        provider: 'manual', status: 'assigned', courier_service: 'lalamove',
+        assigned_by: 12, assigned_shift_id: 9, assigned_at: '2026-08-31T09:00:00.000Z',
+        delivery_run_id: null
+      }
+    });
+    const directActionSnapshot = () => ({
+      pickup: screen.getAllByRole('button', { name: 'Picked Up', exact: true }).length,
+      changeRider: screen.getAllByRole('button', { name: 'Change rider', exact: true }).length,
+      failed: screen.getAllByRole('button', { name: 'Failed', exact: true }).length
+    });
+    const { unmount } = render(<IncomingQueueWorkspace {...baseProps({
+      incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
+    })} />);
+
+    try {
+      const cardActions = directActionSnapshot();
+      fireEvent.click(screen.getByRole('button', { name: /^Table$/i }));
+      const tableActions = directActionSnapshot();
+      fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
+      const splitActions = directActionSnapshot();
+
+      expect(tableActions).toEqual(cardActions);
+      expect(splitActions).toEqual(cardActions);
+    } finally {
+      unmount();
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+      window.matchMedia = originalMatchMedia;
+    }
   });
 
   it('renders a table with no data-loss crash for a non-delivery order', () => {

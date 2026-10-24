@@ -45,6 +45,7 @@ const path = require('path');
 const { resolveAppReachabilityVerdict } = require('./resolve-web-core-reachability');
 const { resolveNarrowingEnabled } = require('./lib/web-core-reachability-gate-toggle');
 const { parseFlatFrontmatter } = require('./lib/flat-frontmatter');
+const { isReservedName } = require('./lib/integration-branch-policy');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -81,6 +82,15 @@ const runCommand = (command, { allowFail = false, cwd = REPO_ROOT } = {}) => {
     }
 };
 
+const runGit = (args, { allowFail = false, cwd = REPO_ROOT } = {}) => {
+    try {
+        return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd }).trim();
+    } catch (error) {
+        if (allowFail) return '';
+        throw error;
+    }
+};
+
 const splitLines = (raw) => (
     String(raw || '')
         .split(/\r?\n/)
@@ -98,20 +108,20 @@ function resolveBaseGitRef(repoRoot, { baseBranchName, headBranchName } = {}) {
     const branch = baseBranchName !== undefined ? baseBranchName : process.env.GITHUB_BASE_REF;
     const head = headBranchName !== undefined ? headBranchName : process.env.GITHUB_HEAD_REF;
     if (branch) {
-        runCommand(`git fetch --no-tags --prune --depth=200 origin ${branch}`, { cwd: repoRoot, allowFail: true });
+        runGit(['fetch', '--no-tags', '--prune', '--depth=200', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], { cwd: repoRoot, allowFail: true });
         // For promotion into staging (to-staging/* -> staging) or main (release/* -> main), we want
         // to compare directly against the target branch tip (origin/staging or origin/main), matching
         // ADR 0081 Decision 6 ("at least one minor above staging's current version" / "increase vs main").
         // A merge-base against an older cut point would misread cherry-picked staging repairs as new candidate changes.
         if (branch === 'staging' && head && PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head)) {
-            const stagingRef = runCommand(`git rev-parse --verify origin/${branch}`, { cwd: repoRoot, allowFail: true });
+            const stagingRef = runGit(['rev-parse', '--verify', `origin/${branch}`], { cwd: repoRoot, allowFail: true });
             if (stagingRef) return stagingRef;
         }
         if (branch === 'main' && head && PROMOTION_HEAD_PREFIX_BY_BASE.main.test(head)) {
-            const mainRef = runCommand(`git rev-parse --verify origin/${branch}`, { cwd: repoRoot, allowFail: true });
+            const mainRef = runGit(['rev-parse', '--verify', `origin/${branch}`], { cwd: repoRoot, allowFail: true });
             if (mainRef) return mainRef;
         }
-        const mergeBase = runCommand(`git merge-base HEAD origin/${branch}`, { cwd: repoRoot, allowFail: true });
+        const mergeBase = runGit(['merge-base', 'HEAD', `origin/${branch}`], { cwd: repoRoot, allowFail: true });
         if (mergeBase) return mergeBase;
     }
 
@@ -180,6 +190,8 @@ function compareVersionTuples(a, b) {
 function resolveMode(baseBranchName, headBranchName) {
     const base = String(baseBranchName || '').trim();
     const head = String(headBranchName || '').trim();
+
+    if (isReservedName(base)) return 'unchanged';
 
     if (base === 'staging') {
         if (PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head)) return 'minor-floor';

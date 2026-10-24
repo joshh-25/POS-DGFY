@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-24
 applies_to: promotion_quality_gates
 topic: gate_release_local_ci_mapping
 ---
@@ -224,9 +224,8 @@ below is a new guardrail, only a confirmation with the exact evidence cited.
    (a brief 2026-08-29→2026-08-31 window where #1124/#1165 made this leg advisory-only was reverted
    by #1253 on Pat's call), not an accidental regression.
 3. **`.github/workflows/pr-checks.yml`** — which does trigger on `staging`/`main` pull requests too
-   (`branches: [develop, staging, main]`, plus the temporary
-   `feat/DGFY-459-pos-development-pr-ready` trigger for the #2052 integration line, removed once
-   PR #2026 merges) — only runs Docker build-check jobs
+   (`branches: [develop, staging, main, 'epic/**', 'feature/**']` after #2737 replaced the
+   one-off integration trigger with registered reserved-name base patterns) — only runs Docker build-check jobs
    (`dgfy-api-build-check`, `dgfy-migration-runner-build-check`, and the four
    `frontend-*-build-check` jobs) gated on changed paths. No lint/test/quality job exists in this
    file at all; `quality-checks`/`android-build-check` were removed outright 2026-08-14 (#416), per

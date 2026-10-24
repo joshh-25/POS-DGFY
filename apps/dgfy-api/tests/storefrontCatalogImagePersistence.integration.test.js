@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const API_ROOT = path.resolve(__dirname, '..');
 const UPLOADS_ROOT = path.join(API_ROOT, 'uploads');
-const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
+const editableUser = { is_master_admin: false, permissions: ['items:view', 'items:edit'] };
 
 const createStatefulStorefrontOverrideModel = () => {
     let record = null;

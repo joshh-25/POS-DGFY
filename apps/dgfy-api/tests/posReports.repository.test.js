@@ -1706,6 +1706,12 @@ describe('posRepository reports analytics', () => {
                 ]
             })
         });
+        mockAdjustmentFindAll.mockResolvedValue([{
+            adjustment_type: 'cash_refund',
+            tender_type: 'cash',
+            status: 'succeeded',
+            amount: 20
+        }]);
 
         const result = await posRepository.getReportsOverview({
             date_from: '2026-09-05',
@@ -1723,9 +1729,11 @@ describe('posRepository reports analytics', () => {
             report_recognized_sales: 90,
             z_total_amount: 90,
             variance: 0,
+            report_cash_refunds_voids: 20,
+            report_voided_refunded_transactions: 0,
             adjustment_reconciliation: expect.objectContaining({
                 status: 'included',
-                adjustment_count: 0,
+                adjustment_count: 1,
                 net_sales_impact: 0
             }),
             z_void_transaction_count: 1,

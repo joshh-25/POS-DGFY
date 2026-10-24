@@ -914,7 +914,8 @@ const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
       tenantId: req.user?.tenant_id,
       user: {
         ...req.user,
-        permissions: resolveEffectivePermissions(req.user)
+        permissions: resolveEffectivePermissions(req.user),
+        permissions_resolved: true
       },
       itemId,
       mode,

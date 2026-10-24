@@ -6,15 +6,17 @@ on:
       - develop
       - staging
       - main
-      # TEMPORARY (issue #2052, epic #1354): intermediate OPIS implementation PRs target the
-      # feat/DGFY-459-pos-development-pr-ready integration branch (PR #2026), not develop.
-      # Remove this line once #2026 merges and OPIS work targets develop directly.
-      - feat/DGFY-459-pos-development-pr-ready
+      - 'epic/**'
+      - 'feature/**'
     types:
       - opened
       - synchronize
       - reopened
       - ready_for_review
+
+permissions:
+  contents: read
+  issues: read
 
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}

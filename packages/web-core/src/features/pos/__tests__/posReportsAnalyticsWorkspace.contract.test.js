@@ -10,7 +10,6 @@ const workspaceSource = fs.readFileSync(workspacePath, 'utf8');
 const filterPanelSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsFilterPanel.jsx'), 'utf8');
 const dateFilterSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsDateFilterPanel.jsx'), 'utf8');
 const dateRangeFilterSource = fs.readFileSync(path.resolve(__dirname, '../components/PosDateRangeFilterPanel.jsx'), 'utf8');
-const kpiSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsKpiCards.jsx'), 'utf8');
 const adjustmentKpiSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsAdjustmentKpiCards.jsx'), 'utf8');
 const overviewTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsOverviewTable.jsx'), 'utf8');
 const zReadingHistorySource = fs.readFileSync(path.resolve(__dirname, '../components/PosZReadingHistoryTable.jsx'), 'utf8');
@@ -101,16 +100,43 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">');
     expect(workspaceSource).toContain('data-testid="pos-reports-sticky-tabs"');
     expect(workspaceSource).toContain('POS_MOBILE_STICKY_TAB_ROW_CLASS');
-    expect(pageSpacingSource).toContain('max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-4 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-4');
+    expect(pageSpacingSource).toContain('max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-2 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-2');
     expect(workspaceSource).toContain('POS_PAGE_CONTENT_STACK_CLASS');
     expect(workspaceSource).not.toContain('showIcons={false}');
-    expect(workspaceSource).toContain('className="flex min-w-0 flex-col gap-2"');
     expect(workspaceSource.indexOf('<PosLineTabNavigation')).toBeLessThan(workspaceSource.indexOf('<PosSubtabNavigation'));
     expect(workspaceSource.indexOf('<PosLineTabNavigation')).toBeLessThan(workspaceSource.indexOf('<PosReportsKpiCards'));
-    expect(workspaceSource.indexOf('<PosReportsKpiCards')).toBeLessThan(workspaceSource.indexOf('<PosSubtabNavigation'));
-    expect(workspaceSource.indexOf('<PosSubtabNavigation')).toBeLessThan(workspaceSource.indexOf('renderReportToolbar()'));
+    expect(workspaceSource.indexOf("activePrimaryTabId === 'sales_reports' ? (")).toBeLessThan(workspaceSource.indexOf('<PosReportsKpiCards'));
+    expect(workspaceSource.indexOf('{shouldShowOperationsSubtabs ? (')).toBeLessThan(workspaceSource.indexOf('<PosReportsKpiCards'));
+    expect(workspaceSource).not.toContain('comparison={comparisonReport.flexible_range}');
+    expect(workspaceSource.indexOf('<PosReportsKpiCards')).toBeLessThan(workspaceSource.indexOf('renderReportToolbar()'));
     expect(workspaceSource).toContain("const shouldShowOperationsSubtabs = activeTab === 'operations'");
     expect(lineTabSource).toMatch(/role="tablist"\s+aria-label=\{ariaLabel\}\s+aria-orientation="horizontal"/);
+  });
+
+  it('groups the four sales report views under a Sales Reports primary tab', () => {
+    expect(workspaceSource).toContain("const SALES_REPORT_TAB_IDS = ['sales', 'hourly', 'item_sales', 'category_sales'];");
+    expect(workspaceSource).toContain('const SALES_REPORT_TABS = REPORT_TABS.filter((tab) => SALES_REPORT_TAB_IDS.includes(tab.id));');
+    expect(workspaceSource).toContain("{ id: 'sales_reports', label: 'Sales Reports', icon: Receipt }");
+    expect(workspaceSource).toContain('tabs={REPORT_PRIMARY_TABS}');
+    expect(workspaceSource).toContain('tabs={SALES_REPORT_TABS}');
+    expect(workspaceSource).toContain('ariaLabel="Sales reports"');
+    expect(workspaceSource).toContain('desktopColumns={4}');
+    expect(workspaceSource).not.toContain('mobileGridColumns=');
+    expect(workspaceSource).toContain("const [lastSalesReportTab, setLastSalesReportTab] = useState('sales');");
+    expect(workspaceSource).toContain('handleTabChange(SALES_REPORT_TAB_IDS.includes(activeTab) ? activeTab : lastSalesReportTab)');
+    expect(workspaceSource).toContain('`${sectionId || \'pos-reports\'}-sales-reports-${renderedTab}`');
+    expect(workspaceSource).toContain("{ id: 'sales', label: 'Sales', icon: Receipt, granularity: 'daily', exportSection: 'sales' }");
+    expect(workspaceSource).toContain("{ id: 'hourly', label: 'Hourly Sales', icon: Clock3, granularity: 'daily', breakdown: 'hourly', exportSection: 'hourly' }");
+    expect(workspaceSource).toContain("{ id: 'item_sales', label: 'Item Sales', icon: ShoppingBag, granularity: 'daily', breakdown: 'items', exportSection: 'item_sales' }");
+    expect(workspaceSource).toContain("{ id: 'category_sales', label: 'Sales by Category', icon: Tags, granularity: 'daily', breakdown: 'categories', exportSection: 'category_sales' }");
+  });
+
+  it('allocates shared KPI cards only to Overview, Sales, and Profit/Loss', () => {
+    expect(workspaceSource).toContain("const REPORT_KPI_VARIANTS = {\n  overview: 'overview',\n  sales: 'sales',\n  profit_loss: 'profit_loss'\n};");
+    expect(workspaceSource).toContain('const reportKpiVariant = REPORT_KPI_VARIANTS[activeTab] || null;');
+    expect(workspaceSource).toContain('{reportKpiVariant ? (');
+    expect(workspaceSource).toContain('variant={reportKpiVariant}');
+    expect(workspaceSource).not.toContain("{activeTab !== 'z_readings' ? (");
   });
 
   it('hides only the Reports tab scrollbar while retaining horizontal overflow', () => {
@@ -235,8 +261,8 @@ describe('POS report category filter contract', () => {
   });
 
   it('shares the responsive subtab rail interaction contract with Operations', () => {
-    expect(subtabNavigationSource).toContain('min-[1024px]:grid min-[1024px]:min-w-0');
-    expect(subtabNavigationSource).toContain('min-[1024px]:grid-cols-5');
+    expect(subtabNavigationSource).toContain('min-[1200px]:grid min-[1200px]:min-w-0');
+    expect(subtabNavigationSource).toContain("5: 'min-[1200px]:grid-cols-5'");
     expect(subtabNavigationSource).toContain('min-w-36 w-max shrink-0');
     expect(subtabNavigationSource).toContain("compactMobile ? 'pt-2' : ''");
     expect(subtabNavigationSource).not.toContain('max-[767px]:pt-2');

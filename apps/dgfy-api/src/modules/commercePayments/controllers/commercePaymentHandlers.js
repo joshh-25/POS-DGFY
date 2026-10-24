@@ -8,6 +8,7 @@ import {
   getPayMongoSandboxCertificationUseCase,
   handlePayMongoCommerceWebhookUseCase,
   listCommercePaymentSessionsUseCase,
+  listCommercePaymentRefundsUseCase,
   listTenantPaymentAccountsUseCase,
   operateTenantPayMongoChildAccountUseCase,
   reconcileCommercePaymentSessionUseCase,
@@ -79,6 +80,15 @@ export const createDglaundryBookingPaymentSession = async (req, res, next) => {
 export const listPaymentSessions = async (req, res, next) => {
   try {
     const result = await listCommercePaymentSessionsUseCase({ query: req.validatedQuery || req.query || {} });
+    return sendResult(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listPaymentRefunds = async (req, res, next) => {
+  try {
+    const result = await listCommercePaymentRefundsUseCase({ query: req.validatedQuery || req.query || {} });
     return sendResult(res, result);
   } catch (error) {
     next(error);
@@ -168,7 +178,10 @@ export const retryPaymentSessionRefund = async (req, res, next) => {
     const result = await retryCommercePaymentRefundUseCase({
       paymentSessionId: params.payment_session_id,
       refundId: params.refund_id,
-      actor: req.admin?.username || req.user?.email || req.user?.username || null
+      actor: req.admin?.username || req.user?.email || req.user?.username || null,
+      actorAdminId: req.admin?.id || null,
+      reason: (req.validatedBody || req.body || {}).reason,
+      requestId: req.requestId || null
     });
     return sendResult(res, result, 201);
   } catch (error) {

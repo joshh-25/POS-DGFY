@@ -85,12 +85,11 @@ export function useFnbCheckoutQuote({
     isDeliveryOrder,
     orderMethod,
     paymentElection: paymentElection === 'downpayment' ? 'downpayment' : 'full',
-    paymentType: String(fnbPaymentType || 'cash').trim().toLowerCase(),
     promoCode: String(promoCode || '').trim().toUpperCase(),
     selectedLocationId: selectedLocationId ?? selectedStore?.location_id ?? null,
     storeSlug: selectedStore?.slug || '',
     voucherCode: String(voucherCode || '').trim().toUpperCase(),
-  }), [cartSignature, checkoutPromoCode, checkoutVoucherCode, customerPin, deliveryAddress, fnbPaymentType, isDeliveryOrder, orderMethod, paymentElection, selectedLocationId, selectedStore]);
+  }), [cartSignature, checkoutPromoCode, checkoutVoucherCode, customerPin, deliveryAddress, isDeliveryOrder, orderMethod, paymentElection, selectedLocationId, selectedStore]);
   useLayoutEffect(() => {
     latestQuoteContextRef.current = quoteContext();
   }, [quoteContext]);
@@ -144,6 +143,14 @@ export function useFnbCheckoutQuote({
     selectedStore,
   ]);
 
+  // Quote identity excludes the payment rail, but the server still validates and echoes the rail
+  // sent in the payload. Keep requestQuote stable when only that payload builder changes so the
+  // storefront's debounced auto-sync does not restart for an unchanged quote key.
+  const buildPayloadRef = useRef(buildPayload);
+  useLayoutEffect(() => {
+    buildPayloadRef.current = buildPayload;
+  }, [buildPayload]);
+
   const requestQuote = useCallback(async ({
     promoCodeOverride = checkoutPromoCode,
     voucherCodeOverride = checkoutVoucherCode,
@@ -171,7 +178,7 @@ export function useFnbCheckoutQuote({
       method: 'POST',
       storeSlug: selectedStore.slug,
       authToken: isDgfyCustomerSignedIn ? (readDgfyAuthToken() || readStoreAuthToken()) : readStoreAuthToken(),
-      body: buildPayload({ promoCode: promoCodeOverride, voucherCode: voucherCodeOverride }),
+      body: buildPayloadRef.current({ promoCode: promoCodeOverride, voucherCode: voucherCodeOverride }),
     });
     // A fast remove/re-apply sequence can leave more than one quote request in flight. Only the
     // latest mutation may publish a result; otherwise an older discounted response can resurrect
@@ -188,7 +195,6 @@ export function useFnbCheckoutQuote({
     }
     return data;
   }, [
-    buildPayload,
     cartSignature,
     checkoutPromoCode,
     checkoutVoucherCode,

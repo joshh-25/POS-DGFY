@@ -2,7 +2,7 @@ name: Security Scanning
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, 'epic/**', 'feature/**']
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:

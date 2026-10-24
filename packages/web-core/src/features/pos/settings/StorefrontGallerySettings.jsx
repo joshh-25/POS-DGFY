@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { STOREFRONT_TYPOGRAPHY, StorefrontEmptyState, StorefrontSectionHeader } from './StorefrontSectionPrimitives.jsx';
+import { POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 
 export const MAX_STOREFRONT_GALLERY_IMAGES = 8;
 export const MAX_STOREFRONT_GALLERY_FILE_BYTES = 5 * 1024 * 1024;
@@ -156,9 +157,9 @@ function GalleryModal({ title, children, onClose, labelledBy }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby={labelledBy} className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[1px]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby={labelledBy} className="w-full max-w-md overflow-hidden rounded-2xl border border-[#D9E5F3] bg-white shadow-2xl shadow-slate-950/15">
+        <div className={['flex items-center justify-between rounded-t-2xl px-4 py-3', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <h3 id={labelledBy} className="text-[14px] font-extrabold text-[#0F172A]">{title}</h3>
           <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label={`Close ${title}`} className="h-8 w-8 rounded-lg text-[#536B8C] hover:bg-slate-100"><X className="h-4 w-4" aria-hidden="true" /></Button>
         </div>

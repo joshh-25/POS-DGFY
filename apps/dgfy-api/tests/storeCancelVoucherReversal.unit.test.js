@@ -151,6 +151,7 @@ const build = ({ voucherRepository, order = baseOrder(), reverseImplOverride = n
     const transaction = makeTransaction();
     const storeRepository = {
         beginTransaction: jest.fn().mockResolvedValue(transaction),
+        createAuditLog: jest.fn().mockResolvedValue({}),
         getOrderByTrackingPin: jest.fn()
             .mockResolvedValueOnce(order)
             .mockResolvedValueOnce({ ...order, fulfillment_status: 'cancelled' }),
@@ -353,6 +354,7 @@ describe('storefront order cancellation reverses its voucher redemption(s) (#139
         const transaction = makeTransaction();
         const storeRepository = {
             beginTransaction: jest.fn().mockResolvedValue(transaction),
+            createAuditLog: jest.fn().mockResolvedValue({}),
             getOrderByTrackingPin: jest.fn().mockResolvedValueOnce(order),
             updateOrderByTrackingPin: jest.fn()
         };

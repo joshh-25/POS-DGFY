@@ -90,7 +90,10 @@ export const PERMISSIONS = {
             PACK_ASSIGNED_ORDERS: "orders:pack",
             VIEW_ASSIGNED_ORDERS: "orders:view_assigned",
             VIEW_ASSIGNED_DELIVERY_RUNS: "delivery_runs:view_assigned",
-            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act"
+            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act",
+            LOAD_DELIVERY_RUNS: "delivery_runs:load",
+            ACT_ASSIGNED_DELIVERY_JOBS: "delivery_jobs:act_assigned",
+            COLLECT_ASSIGNED_BALANCE: "orders:collect_assigned_balance"
         }
     },
 
@@ -106,6 +109,7 @@ export const PERMISSIONS = {
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
             RESOLVE_DELIVERY_RUN_VARIANCE: "pos:delivery_run_variance_resolve", // Resolve a courier remittance variance (supervisor/manager authority)
             CLOSE_SHIFT_POS: "pos:shift_close", // Close the cashier's current terminal shift
+            SHIFT_ACCESS: "pos:shift_access", // Parent access for shift, cash, and terminal operations
             CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
             REPRINT_POS_RECEIPT: "pos:reprint", // Reprint historical POS receipts
             VOID_POS_TRANSACTION: "pos:void", // Void completed POS transactions with governed fiscal evidence
@@ -346,6 +350,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.POS.actions.VIEW_ATTENDANCE,
         PERMISSIONS.POS.actions.OPERATE_ATTENDANCE,
         PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT,
+        PERMISSIONS.POS.actions.SHIFT_ACCESS,
         PERMISSIONS.POS.actions.CLOSE_SHIFT_POS,
         PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT,
     ],

@@ -26,7 +26,7 @@ describe('POS reports cashiers table', () => {
     ['Rank', 'Cashier', 'Transactions', 'Gross Sales (₱)', 'Net Sales (₱)'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('Maya S.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱4,820.00').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–2 of 2 cashiers')).toBeTruthy();

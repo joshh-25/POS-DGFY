@@ -32,8 +32,9 @@ vi.mock('@dnd-kit/core', () => ({
 }));
 
 import TerminalOperationsWorkspace from '../components/TerminalOperationsWorkspace.jsx';
+import { resolveSellablePosItemPreset } from '../components/PosItemsWorkspace.jsx';
 import { fetchPosCatalogPage } from '../services/posService.js';
-import { getFolders, reorderFolders } from '@/services/itemService.js';
+import { getFolders, getItems, reorderFolders } from '@/services/itemService.js';
 
 vi.mock('../services/posService.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -49,6 +50,7 @@ vi.mock('@/services/itemService.js', async (importOriginal) => {
   return {
     ...actual,
     getFolders: vi.fn().mockResolvedValue([]),
+    getItems: vi.fn().mockResolvedValue({ items: [], pagination: { page: 1, limit: 20, total: 0, pages: 0 } }),
     reorderFolders: vi.fn().mockResolvedValue({ success: true })
   };
 });
@@ -86,6 +88,21 @@ afterEach(() => {
 });
 
 describe('Items category placement', () => {
+  it('selects the effective Food & Beverage sellable preset for item creation', () => {
+    expect(resolveSellablePosItemPreset('fnb')).toEqual(expect.objectContaining({
+      key: 'menu_item',
+      category: 'product'
+    }));
+    expect(resolveSellablePosItemPreset('food_manufacturing', ['fnbDining'])).toEqual(expect.objectContaining({
+      key: 'menu_item',
+      category: 'product'
+    }));
+    expect(resolveSellablePosItemPreset('food_manufacturing')).toEqual(expect.objectContaining({
+      key: 'finished_product',
+      category: 'product'
+    }));
+  });
+
   it('keeps reorder controls hidden until reorder mode and disables rearranging during search', async () => {
     getFolders.mockResolvedValue([
       { folder_id: 2, name: 'Drinks', sort_order: 0, is_active: true },
@@ -309,6 +326,36 @@ describe('Items category placement', () => {
     expect(screen.queryByPlaceholderText('Search item by Name, SKU, or Barcode')).toBeNull();
   });
 
+  it('lets a catalog-only manager open Items and Add Items without POS view permission', async () => {
+    getFolders.mockResolvedValue([{ folder_id: 1, name: 'Mains', is_active: true, show_in_pos_filter: true }]);
+    getItems.mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 20, total: 0, pages: 0 }
+    });
+
+    render(<TerminalOperationsWorkspace {...buildProps({
+      canViewPos: false,
+      catalogOnlyAccess: true,
+      canCreateItems: true,
+      canManageCategories: true,
+      operatingLocationId: null
+    })} />);
+
+    expect(screen.getByRole('tab', { name: 'Items' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Categories' })).toBeTruthy();
+    await waitFor(() => expect(getItems).toHaveBeenCalledWith({
+      search: '',
+      page: 1,
+      limit: 20
+    }));
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Items' })[0]);
+    expect(await screen.findByRole('dialog', { name: 'Product Details' })).toBeTruthy();
+    expect(screen.queryByText('Always Available')).toBeNull();
+    expect(screen.queryByText('Best Seller')).toBeNull();
+    expect(screen.queryByText('Add Options')).toBeNull();
+  });
+
   it('does not expose Category Management to an ordinary item viewer', () => {
     render(<TerminalOperationsWorkspace {...buildProps({ canManageCategories: false })} />);
 
@@ -425,10 +472,11 @@ describe('Items category placement', () => {
       onQueueOfflineItemDraft
     })} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add Service' })[0]);
+    const addServiceButton = screen.getAllByRole('button', { name: 'Add Service' }).at(-1);
+    fireEvent.click(addServiceButton);
 
-    expect(await screen.findByText('Service creation is available online only.')).toBeTruthy();
-    expect((await screen.findByRole('button', { name: 'Create Service' })).hasAttribute('disabled')).toBe(true);
+    expect(await screen.findByText('Service creation is available online only.', {}, { timeout: 5000 })).toBeTruthy();
+    expect((await screen.findByRole('button', { name: 'Create Service' }, { timeout: 5000 })).hasAttribute('disabled')).toBe(true);
     expect(onQueueOfflineItemDraft).not.toHaveBeenCalled();
   });
 

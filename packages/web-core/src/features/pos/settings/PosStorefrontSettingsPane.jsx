@@ -5,9 +5,11 @@ import {
   Plus, Save, Settings2, Star, Store, Trash2, Type, Upload, Users
 } from 'lucide-react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { STORE_VISIBILITY_EDIT_LOCKED_MESSAGE } from '../../../utils/tenantCapabilityMessages.js';
 import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { POS_MODAL_FOOTER_SURFACE_CLASS, POS_MODAL_HEADER_SURFACE_CLASS } from '../components/posModalStyles.js';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -268,9 +270,9 @@ function StoreSetupSummary({
       <div className="grid gap-3 md:grid-cols-2">
         <StorefrontToggle
           label="Storefront visible"
-          description="Controls public storefront visibility from shared tenant settings."
+          description={storefrontForm.storeVisibilityMerchantEditable === false ? STORE_VISIBILITY_EDIT_LOCKED_MESSAGE : 'Controls public storefront visibility from shared tenant settings.'}
           checked={storefrontForm.storeIsVisible === true}
-          disabled={!canInteract}
+          disabled={!canInteract || storefrontForm.storeVisibilityMerchantEditable === false}
           saving={storefrontBooleanState.store_is_visible === 'saving'}
           status={storefrontBooleanState.store_is_visible}
           onChange={(value) => onToggle?.('storeIsVisible', 'store_is_visible', 'Storefront visibility', value)}
@@ -639,9 +641,9 @@ function BasicInformationEditor({ storefrontForm, disabled, onClose, onSave }) {
         id="store-basic-information-editor"
         aria-labelledby="store-basic-information-dialog-title"
         aria-describedby="store-basic-information-dialog-description"
-        className="w-[calc(100vw-1.5rem)] max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full"
+        className="w-[calc(100vw-1.5rem)] max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full"
       >
-        <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+        <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <DialogTitle id="store-basic-information-dialog-title" className="text-[16px] font-extrabold text-[#0F172A]">Edit Basic Information</DialogTitle>
           <DialogDescription id="store-basic-information-dialog-description" className="mt-1 text-[12px] leading-5 text-[#64748B]">Update the text customers see on your storefront.</DialogDescription>
         </DialogHeader>
@@ -681,7 +683,7 @@ function BasicInformationEditor({ storefrontForm, disabled, onClose, onSave }) {
             />
           </div>
         </div>
-        <DialogFooter className="flex-row items-center justify-end gap-2 border-t border-slate-100 px-5 py-4 sm:px-6">
+        <DialogFooter className={['flex-row items-center justify-end gap-2 px-5 py-4 sm:px-6', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button type="button" variant="outline" onClick={onClose} disabled={saving} className="min-h-9 min-w-0 flex-1 rounded-lg px-3 text-[13px] font-bold text-[#0F172A] sm:flex-none sm:text-[14px]">Cancel</Button>
           <Button type="button" onClick={() => void handleSave()} disabled={saving || disabled} className="min-h-9 min-w-0 flex-1 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white hover:bg-[#143F73] sm:flex-none sm:text-[14px]">{saving ? 'Saving…' : 'Save Changes'}</Button>
         </DialogFooter>
@@ -710,8 +712,8 @@ function StorefrontContactInformationModal({ storefrontForm, disabled = false, o
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose?.(); }}>
-      <DialogContent id="storefront-contact-information-editor" className="w-[calc(100vw-1.5rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
-        <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+      <DialogContent id="storefront-contact-information-editor" className="w-[calc(100vw-1.5rem)] max-w-md rounded-2xl border border-[#D9E5F3] bg-white p-0 shadow-2xl shadow-slate-950/15 sm:w-full">
+        <DialogHeader className={['rounded-t-2xl px-5 py-4 text-left sm:px-6', POS_MODAL_HEADER_SURFACE_CLASS].join(' ')}>
           <DialogTitle className="text-[16px] font-extrabold text-[#0F172A]">Edit Storefront Contact</DialogTitle>
           <DialogDescription className="mt-1 text-[12px] leading-5 text-[#64748B]">Update the mobile number and email customers see on your storefront.</DialogDescription>
         </DialogHeader>
@@ -725,7 +727,7 @@ function StorefrontContactInformationModal({ storefrontForm, disabled = false, o
             <Input id="storefront-contact-email" type="email" inputMode="email" value={draft.storefrontEmail} maxLength={160} onChange={(event) => update('storefrontEmail', event.target.value)} className="h-9 rounded-lg border-slate-200 text-[13px]" />
           </div>
         </div>
-        <DialogFooter className="flex-row items-center justify-end gap-2 border-t border-slate-100 px-5 py-4 sm:px-6">
+        <DialogFooter className={['flex-row items-center justify-end gap-2 px-5 py-4 sm:px-6', POS_MODAL_FOOTER_SURFACE_CLASS].join(' ')}>
           <Button type="button" variant="outline" onClick={onClose} disabled={saving} className="min-h-9 rounded-lg px-3 text-[12px] font-bold text-[#0F172A]">Cancel</Button>
           <Button type="button" onClick={() => void handleSave()} disabled={saving || disabled} className="min-h-9 rounded-lg bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white hover:bg-[#143F73]">{saving ? 'Saving…' : 'Save Changes'}</Button>
         </DialogFooter>
@@ -1479,6 +1481,7 @@ export default function PosStorefrontSettingsPane({
   };
 
   const handleToggle = (field, settingKey, label, value) => {
+    if (settingKey === 'store_is_visible' && storefrontForm.storeVisibilityMerchantEditable === false) return;
     const previousValue = storefrontForm?.[field] === true;
     setStorefrontForm((current) => ({ ...current, [field]: value === true }));
     if (field === 'storeHasNoLocation' && value !== true && !hasActivePrimaryStorefrontLocation) {
@@ -1610,9 +1613,9 @@ export default function PosStorefrontSettingsPane({
         <div className="grid gap-3 md:grid-cols-2">
           <StorefrontToggle
             label="Storefront visible"
-            description="Controls public storefront visibility from shared tenant settings."
+            description={storefrontForm.storeVisibilityMerchantEditable === false ? STORE_VISIBILITY_EDIT_LOCKED_MESSAGE : 'Controls public storefront visibility from shared tenant settings.'}
             checked={storefrontForm.storeIsVisible === true}
-            disabled={!canEdit}
+            disabled={!canEdit || storefrontForm.storeVisibilityMerchantEditable === false}
             saving={storefrontBooleanState.store_is_visible === 'saving'}
             status={storefrontBooleanState.store_is_visible}
             onChange={(value) => handleToggle('storeIsVisible', 'store_is_visible', 'Storefront visibility', value)}

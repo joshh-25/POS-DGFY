@@ -191,6 +191,39 @@ const orderSummary = (row) => ({
     void_reason: row.void_reason || null
 });
 
+export const buildOrderTimeline = (value, auditRows = []) => {
+    const mappedAuditRows = auditRows.map(toPlain).map((entry) => {
+        const changes = entry.changes || {};
+        const actorName = entry.user?.username || entry.actor_username || 'System';
+        if (changes.event === 'online_order_status_changed') {
+            return {
+                event: 'status_changed',
+                from: changes.from || null,
+                to: changes.to || null,
+                occurred_at: entry.timestamp,
+                actor_name: actorName,
+                note: changes.reason || entry.reason || null
+            };
+        }
+        return {
+            event: String(entry.action || 'updated').toLowerCase(),
+            occurred_at: entry.timestamp,
+            actor_name: actorName,
+            changes
+        };
+    });
+    const rejectedAt = value.rejected_at ? new Date(value.rejected_at).getTime() : null;
+    const acceptedAt = value.accepted_at ? new Date(value.accepted_at).getTime() : null;
+    return [
+        { event: 'order_created', occurred_at: value.created_at, actor_name: value.cashier?.username || 'System' },
+        value.accepted_at && acceptedAt !== rejectedAt ? { event: 'order_accepted', occurred_at: value.accepted_at, actor_name: value.acceptedByUser?.username || null } : null,
+        value.rejected_at ? { event: 'order_rejected', occurred_at: value.rejected_at, actor_name: value.rejectedByUser?.username || null, note: value.rejection_reason || null } : null,
+        value.payment_collected_at ? { event: 'payment_collected', occurred_at: value.payment_collected_at, actor_name: value.paymentCollectedByUser?.username || null } : null,
+        value.voided_at ? { event: 'transaction_voided', occurred_at: value.voided_at, actor_name: value.voidedByUser?.username || null, note: value.void_reason || null } : null,
+        ...mappedAuditRows
+    ].filter(Boolean).sort((left, right) => new Date(left.occurred_at) - new Date(right.occurred_at));
+};
+
 export const businessAdminOrderCenterRepository = {
     async listOrders({ filters = {}, allowedLocationIds = null } = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
@@ -271,13 +304,7 @@ export const businessAdminOrderCenterRepository = {
             include: [userInclude('user')],
             order: [['timestamp', 'ASC'], ['log_id', 'ASC']]
         }) : [];
-        const timeline = [
-            { event: 'order_created', occurred_at: value.created_at, actor_name: value.cashier?.username || 'System' },
-            value.accepted_at ? { event: 'order_accepted', occurred_at: value.accepted_at, actor_name: value.acceptedByUser?.username || null } : null,
-            value.payment_collected_at ? { event: 'payment_collected', occurred_at: value.payment_collected_at, actor_name: value.paymentCollectedByUser?.username || null } : null,
-            value.voided_at ? { event: 'transaction_voided', occurred_at: value.voided_at, actor_name: value.voidedByUser?.username || null, note: value.void_reason || null } : null,
-            ...auditRows.map(toPlain).map((entry) => ({ event: String(entry.action || 'updated').toLowerCase(), occurred_at: entry.timestamp, actor_name: entry.user?.username || 'System', changes: entry.changes || null }))
-        ].filter(Boolean).sort((left, right) => new Date(left.occurred_at) - new Date(right.occurred_at));
+        const timeline = buildOrderTimeline(value, auditRows);
 
         return {
             ...orderSummary(value),

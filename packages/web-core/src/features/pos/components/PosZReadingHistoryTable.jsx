@@ -1,5 +1,4 @@
 import { Eye } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
@@ -8,8 +7,10 @@ import PosTableSurface, {
   POS_TABLE_CELL_CLASS,
   POS_TABLE_HEADER_CELL_CLASS,
   POS_TABLE_HEADER_CLASS,
+  POS_TABLE_REPORT_SURFACE_CLASS,
   POS_TABLE_ROW_CLASS
 } from './PosTableSurface.jsx';
+import PosShiftStateNotice from './PosShiftStateNotice.jsx';
 
 const formatMoney = (value, currencySymbol) => value === null || value === undefined || value === ''
   ? '—'
@@ -312,19 +313,20 @@ export default function PosZReadingHistoryTable({
       </div>
 
       {loading ? (
-        <div role="status" className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm font-semibold text-slate-600">
-          Loading saved Z-readings…
-        </div>
+        <PosShiftStateNotice variant="loading" message="Loading saved Z-readings…" />
       ) : error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm font-semibold text-rose-800">
-          <span className="min-w-0">{error}</span>
-          {onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : null}
-        </div>
+        <PosShiftStateNotice
+          variant="error"
+          message={error}
+          actionLabel={onRetry ? 'Try again' : ''}
+          onAction={onRetry}
+        />
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-          <p className="text-sm font-bold text-slate-700">No saved Z-readings in this date range</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">A reading appears here after a branch day is successfully closed.</p>
-        </div>
+        <PosShiftStateNotice
+          variant="empty"
+          title="No saved Z-readings in this date range"
+          message="A reading appears here after a branch day is successfully closed."
+        />
       ) : (
         <>
           <div className="min-[768px]:hidden">
@@ -348,18 +350,21 @@ export default function PosZReadingHistoryTable({
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs text-slate-600">
                     <span>{row.summary?.transaction_count == null ? '—' : Number(row.summary.transaction_count)} transactions</span>
                     <span>{formatDateTime(row.generated_at)}</span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => onPreview?.(row)}>
-                      <Eye className="mr-1.5 h-4 w-4" aria-hidden="true" /> Preview
-                    </Button>
+                    <PosTableActionButton
+                      icon={Eye}
+                      onClick={() => onPreview?.(row)}
+                      aria-label={`View Z-reading ${row.reading_identifier || formatBusinessDate(row.business_date)}`}
+                      title="View Z-reading"
+                    />
                   </div>
                 </li>
               ))}
             </ul>
           </div>
 
-          <PosTableSurface className="hidden min-[768px]:block">
+          <PosTableSurface className={`${POS_TABLE_REPORT_SURFACE_CLASS} hidden min-[768px]:block`}>
             <div className="min-w-0 max-w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1A4E8D]" role="region" aria-label="Saved Z-readings table" tabIndex={0}>
-              <table className="w-full min-w-[900px] table-fixed text-[13px]">
+              <table className="pos-z-reading-history-table w-full min-w-[900px] table-fixed text-[13px]">
                 <caption className="sr-only">Persisted Z-readings for the selected branch and date range</caption>
                 <thead className={POS_TABLE_HEADER_CLASS}>
                   <tr>
@@ -369,12 +374,12 @@ export default function PosZReadingHistoryTable({
                     <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} h-12 w-[14%] text-right`}>Z-reading total</th>
                     <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} h-12 w-[10%] text-right`}>Transactions</th>
                     <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} h-12 w-[17%]`}>Generated</th>
-                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} h-12 w-[8%] text-center`}>Preview</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} h-12 w-[8%] text-center`}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.reading_identifier} className={POS_TABLE_ROW_CLASS}>
+                    <tr key={row.reading_identifier} className={`${POS_TABLE_ROW_CLASS} pos-table-row--report`}>
                       <td className={`${POS_TABLE_CELL_CLASS} font-medium`}>{formatBusinessDate(row.business_date)}</td>
                       <td className={`${POS_TABLE_CELL_CLASS} break-all font-semibold`}>{row.reading_identifier || '—'}</td>
                       <td className={`${POS_TABLE_CELL_CLASS} break-words text-slate-600`}>
@@ -389,8 +394,8 @@ export default function PosZReadingHistoryTable({
                           icon={Eye}
                           className="mx-auto"
                           onClick={() => onPreview?.(row)}
-                          aria-label={`Preview Z-reading ${row.reading_identifier || formatBusinessDate(row.business_date)}`}
-                          title="Preview Z-reading"
+                          aria-label={`View Z-reading ${row.reading_identifier || formatBusinessDate(row.business_date)}`}
+                          title="View Z-reading"
                         />
                       </td>
                     </tr>

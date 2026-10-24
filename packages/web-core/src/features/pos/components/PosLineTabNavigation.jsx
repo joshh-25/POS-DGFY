@@ -83,7 +83,7 @@ export default function PosLineTabNavigation({
         aria-orientation="horizontal"
         className={`${mobileGridClass
           ? `grid ${mobileGridClass} min-w-0 w-full items-stretch gap-2 px-1`
-          : 'flex min-w-max items-end gap-3 px-1'} -mb-px min-[1024px]:flex min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0`}
+          : 'flex min-w-full items-end gap-3 px-1'} -mb-px min-[1024px]:flex min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0`}
       >
         {availableTabs.map((tab) => {
           const Icon = tab.icon;
@@ -104,7 +104,7 @@ export default function PosLineTabNavigation({
               onKeyDown={(event) => handleKeyDown(event, tab.id)}
               className={[
                 'relative inline-flex min-h-12 items-center gap-1.5 border-b-2',
-                mobileGridClass ? 'w-full min-w-0 justify-center whitespace-normal px-2 text-center' : 'shrink-0 px-2 whitespace-nowrap',
+                mobileGridClass ? 'w-full min-w-0 justify-center whitespace-normal px-2 text-center' : 'min-w-max flex-1 justify-center px-2 whitespace-nowrap',
                 'py-3 text-[14px] font-bold text-[#0F172A] transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]',
                 'focus-visible:ring-offset-[-2px] sm:px-3 min-[1024px]:flex-1 min-[1024px]:justify-center min-[1024px]:px-2 xl:px-3',

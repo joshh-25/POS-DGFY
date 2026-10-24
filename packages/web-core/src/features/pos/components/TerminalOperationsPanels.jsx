@@ -1,5 +1,5 @@
 import React from 'react';
-import { toast } from 'sonner';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, CalendarClock, MapPin, Phone, Truck, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import {
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
   isManualDeliveryJob,
+  canAssignDirectDelivery,
+  isDirectDeliveryOrder,
   getFulfillmentStatusLabel
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
@@ -23,6 +25,7 @@ import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueRunFilterControl from './QueueRunFilterControl.jsx';
 import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
+import usePosCenteredTabScroll from '../hooks/usePosCenteredTabScroll.js';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
 import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
@@ -149,6 +152,7 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
 }
 
 function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDineInSchedule = false, dineInScheduleCount = null, showDeliveryRuns = false, runCount = null, showSplitView = false }) {
+  const tabsViewportRef = React.useRef(null);
   const tabs = [
     {
       key: 'active',
@@ -194,32 +198,46 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
       icon: Columns
     });
   }
+  const centerActiveOrderView = usePosCenteredTabScroll(tabsViewportRef, activeView ? `pos-online-order-view-tab-${activeView}` : '');
 
   return (
-    <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3" role="tablist" aria-label="Online order views">
-      {tabs.map(({ key, label, count, icon: Icon }) => {
-        const selected = activeView === key;
-        return (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            onClick={() => onChange?.(key)}
-            className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-extrabold transition ${selected
-              ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm'
-              : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-[#1A4E8D]'}`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-            {Number.isFinite(Number(count)) ? (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] ${selected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                {count}
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
+    <div
+      ref={tabsViewportRef}
+      className="-mx-1 min-w-0 overflow-x-auto overflow-y-hidden border-b border-slate-200 min-[1024px]:mx-0"
+      role="tablist"
+      aria-label="Online order views"
+    >
+      <div
+        className="-mb-px flex min-w-max items-stretch gap-2 px-1 min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0"
+      >
+        {tabs.map(({ key, label, count, icon: Icon }) => {
+          const selected = activeView === key;
+          return (
+            <button
+              key={key}
+              id={`pos-online-order-view-tab-${key}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => {
+                if (selected) centerActiveOrderView();
+                onChange?.(key);
+              }}
+              className={`relative inline-flex min-h-12 shrink-0 items-center justify-center gap-1.5 border-b-2 px-2 py-3 text-center text-[14px] font-bold text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-[-2px] sm:px-3 min-[1024px]:flex-1 min-[1024px]:justify-center min-[1024px]:px-2 xl:px-3 ${selected
+                ? 'border-[#1A4E8D] text-[#1A4E8D]'
+                : 'border-transparent hover:border-slate-300'}`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+              {Number.isFinite(Number(count)) ? (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] ${selected ? 'bg-blue-50 text-[#1A4E8D]' : 'bg-slate-100 text-slate-600'}`}>
+                  {count}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -635,7 +653,7 @@ function IncomingQueueWorkspace({
   // QueueRunAssignBar's target picker via useDeliveryRunOptions, so the two can never disagree
   // about which runs exist.
   const [runFilter, setRunFilter] = React.useState(QUEUE_RUN_FILTER_ALL);
-  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isDeliveryRunMode });
+  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError, reload: reloadDeliveryRuns } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isDeliveryRunMode });
   const runFilterOptions = React.useMemo(
     () => getQueueRunFilterOptions(deliveryRuns, { locationId: queueLocationScopeId }).map((run) => ({
       ...run,
@@ -707,6 +725,10 @@ function IncomingQueueWorkspace({
   // DeliveryRunDropPanel's own picked-run detail refetches when its shown run may have just
   // gained members.
   const [runDropRefreshTick, setRunDropRefreshTick] = React.useState(0);
+
+  React.useEffect(() => {
+    if (activeView === 'active' || activeView === 'split') reloadDeliveryRuns();
+  }, [activeView, reloadDeliveryRuns]);
 
   // Phase 231 (#1290) correctness crux: re-derived against visibleIncomingOrders (the FILTERED
   // list), not sortedIncomingOrders. Without this, an order selected before the run filter was
@@ -879,6 +901,8 @@ function IncomingQueueWorkspace({
     ? null
     : sortedIncomingOrders.find((order) => Number(order?.pos_transaction_id) === pendingRejectionOrderId) || null;
   const pendingRejectionSplit = resolveOrderDownpaymentSplit(pendingRejectionOrder);
+  const pendingDirectFailure = isDirectDeliveryOrder(pendingRejectionOrder)
+    && pendingRejectionOrder?.fulfillment_status !== 'placed';
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
@@ -1033,9 +1057,14 @@ function IncomingQueueWorkspace({
           hasActiveShift={hasActiveShift}
           isRetailMode={isRetailMode}
           queueLocationScopeId={queueLocationScopeId}
+          activeShiftLocationId={activeShiftLocationId}
           deliveryPersonnelState={deliveryPersonnelState}
           ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
           onRunCountChange={setDeliveryRunCount}
+          onRunsChanged={() => {
+            reloadDeliveryRuns();
+            setRunDropRefreshTick((tick) => tick + 1);
+          }}
         />
       </div>
     );
@@ -1171,21 +1200,21 @@ function IncomingQueueWorkspace({
           onOpenChange={(open) => {
             if (!open) setPendingRejectionOrderId(null);
           }}
-          title="Reject and refund this order?"
-          description={pendingRejectionSplit
+          title={pendingDirectFailure ? 'Mark delivery Failed?' : 'Reject and refund this order?'}
+          description={pendingDirectFailure ? 'This cancels the order. Prepaid orders are refunded.' : pendingRejectionSplit
             ? `The order will be rejected. DGFY will request a refund of the ${formatOrderAmount(pendingRejectionSplit.amountPaid)} downpayment collected online, and keep the transaction out of tenant settlement. The ${formatOrderAmount(pendingRejectionSplit.balanceDue)} balance was never charged.`
             : 'The order will be rejected. If PayMongo already collected payment, DGFY will request a full refund and keep the transaction out of tenant settlement.'}
-          confirmLabel="Reject and request refund"
+          confirmLabel={pendingDirectFailure ? 'Fail delivery' : 'Reject and request refund'}
           cancelLabel="Keep order"
           variant="destructive"
-          reasonLabel="Rejection reason"
+          reasonLabel={pendingDirectFailure ? 'Failure reason' : 'Rejection reason'}
           reasonPlaceholder="Explain why this paid order is being rejected."
           reasonRequired
           reasonMinLength={3}
           onConfirm={async (reason) => {
             const succeeded = await handleIncomingOrderStatusChange?.(
               pendingRejectionOrderId,
-              'rejected',
+              pendingDirectFailure ? 'delivery_fail' : 'rejected',
               reason
             );
             if (succeeded !== false) setPendingRejectionOrderId(null);
@@ -1400,6 +1429,8 @@ function IncomingQueueWorkspace({
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           onRequestRejection={setPendingRejectionOrderId}
+          deliveryPersonnelState={deliveryPersonnelState}
+          handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           scheduleNow={scheduleNow}
         />
       ) : (
@@ -1627,7 +1658,8 @@ function IncomingQueueWorkspace({
                         <DeliveryAssignmentControl
                           orderId={order.pos_transaction_id}
                           deliveryJob={deliveryJob}
-                          canAssignOrder={order.fulfillment_status === 'out_for_delivery'}
+                          directDelivery={isDirectDeliveryOrder(order)}
+                          canAssignOrder={order.fulfillment_status === 'out_for_delivery' || canAssignDirectDelivery(order)}
                           deliveryPersonnelState={deliveryPersonnelState}
                           actionLoading={actionLoading}
                           canTransactPos={canTransactPos}
@@ -1731,25 +1763,25 @@ function IncomingQueueWorkspace({
         onOpenChange={(open) => {
           if (!open) setPendingRejectionOrderId(null);
         }}
-        title="Reject and refund this order?"
-        description={pendingRejectionSplit
+        title={pendingDirectFailure ? 'Mark delivery Failed?' : 'Reject and refund this order?'}
+        description={pendingDirectFailure ? 'This cancels the order. Prepaid orders are refunded.' : pendingRejectionSplit
           // A store-side reject ALWAYS refunds, even at a store whose downpayment is configured
           // non-refundable -- the store's inability to fulfil is not the customer's forfeiture
           // (Phase 144 / #824, ADR 0069 clause 8). So there is deliberately no forfeiture wording
           // here: this dialog only ever describes a refund.
           ? `The order will be rejected. DGFY will request a refund of the ${formatOrderAmount(pendingRejectionSplit.amountPaid)} downpayment collected online, and keep the transaction out of tenant settlement. The ${formatOrderAmount(pendingRejectionSplit.balanceDue)} balance was never charged.`
           : 'The order will be rejected. If PayMongo already collected payment, DGFY will request a full refund and keep the transaction out of tenant settlement.'}
-        confirmLabel="Reject and request refund"
+        confirmLabel={pendingDirectFailure ? 'Fail delivery' : 'Reject and request refund'}
         cancelLabel="Keep order"
         variant="destructive"
-        reasonLabel="Rejection reason"
+        reasonLabel={pendingDirectFailure ? 'Failure reason' : 'Rejection reason'}
         reasonPlaceholder="Explain why this paid order is being rejected."
         reasonRequired
         reasonMinLength={3}
         onConfirm={async (reason) => {
           const succeeded = await handleIncomingOrderStatusChange?.(
             pendingRejectionOrderId,
-            'rejected',
+            pendingDirectFailure ? 'delivery_fail' : 'rejected',
             reason
           );
           if (succeeded !== false) setPendingRejectionOrderId(null);
