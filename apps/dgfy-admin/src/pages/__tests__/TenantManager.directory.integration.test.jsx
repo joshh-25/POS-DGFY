@@ -1,9 +1,9 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import TenantManager from '../../../Pages/TenantManager.jsx';
 
 const mocks = vi.hoisted(() => {
@@ -114,12 +114,16 @@ const HistoryForwardButton = () => {
   return <button type="button" onClick={() => navigate(1)}>Navigate forward</button>;
 };
 
-const renderDirectory = (initialEntry = '/admin/tenants') => render(
+const renderDirectory = (initialEntry = '/admin/tenants', adminProfile = null) => render(
   <MemoryRouter initialEntries={[initialEntry]}>
     <LocationProbe />
     <HistoryBackButton />
     <HistoryForwardButton />
-    <TenantManager />
+    <Routes>
+      <Route element={<Outlet context={{ adminProfile }} />}>
+        <Route path="/admin/tenants" element={<TenantManager />} />
+      </Route>
+    </Routes>
   </MemoryRouter>
 );
 
@@ -169,6 +173,26 @@ describe('TenantManager searchable directory', () => {
     expect(screen.getByTestId('location-search').textContent).toContain('q=kate');
     expect(screen.getByTestId('location-search').textContent).toContain('status=active');
     expect(screen.getByTestId('location-search').textContent).toContain('storefront=on');
+  });
+
+  it('preselects Revenue only for Platform Master and guards its data requests from delegates', async () => {
+    const tenantId = directoryTenants[0].id;
+    renderDirectory(`/admin/tenants?tenant_id=${tenantId}#revenue-settlement`, { is_master: true, permissions: ['admin.tenants'] });
+    expect(await screen.findByRole('heading', { name: 'Revenue & Settlement' })).toBeTruthy();
+    expect(await screen.findByText(/Showing revenue and settlement for Kate Market/)).toBeTruthy();
+    expect(screen.getByLabelText('Tenant').value).toBe(tenantId);
+    await waitFor(() => expect(mocks.adminServiceMock.getTenantRevenueDashboard).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: tenantId })));
+    Object.values(mocks.writeMocks).forEach((mock) => expect(mock).not.toHaveBeenCalled());
+
+    cleanup();
+    vi.clearAllMocks();
+    mocks.adminServiceMock.getTenants.mockResolvedValue({ data: directoryTenants });
+    mocks.adminServiceMock.listCompanyRegistrationDrafts.mockResolvedValue({ data: [] });
+    renderDirectory(`/admin/tenants?tenant_id=${tenantId}#revenue-settlement`, { is_master: false, permissions: ['admin.tenants'] });
+    await waitForDirectory();
+    expect(screen.queryByRole('heading', { name: 'Revenue & Settlement' })).toBeNull();
+    expect(mocks.adminServiceMock.getTenantRevenueDashboard).not.toHaveBeenCalled();
+    expect(mocks.adminServiceMock.listTenantRevenueTransactions).not.toHaveBeenCalled();
   });
 
   it('keeps provisioning off the directory and preserves query context on Add tenant and Overview links', async () => {
@@ -317,7 +341,7 @@ describe('TenantManager searchable directory', () => {
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeTruthy();
   }, 15000);
 
-  it('keeps search state through refresh and silent provisioning polling', async () => {
+  it('keeps search state through refresh without polling provisioning on the directory', async () => {
     vi.useFakeTimers();
     const inProgress = {
       ...directoryTenants[0],
@@ -347,7 +371,7 @@ describe('TenantManager searchable directory', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(3);
+    expect(mocks.adminServiceMock.getTenants).toHaveBeenCalledTimes(2);
     expect(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID').value).toBe('kate');
     expect(screen.getByTestId('location-search').textContent).toContain('status=active');
     expect(screen.queryByText('Loading tenants...')).toBeNull();

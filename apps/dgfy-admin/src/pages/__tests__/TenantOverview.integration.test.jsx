@@ -3,8 +3,9 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import TenantOverview from '../../../Pages/TenantOverview.jsx';
+import TenantDetailLayout from '../../../Pages/TenantDetailLayout.jsx';
 
 const mocks = vi.hoisted(() => ({ getTenant: vi.fn() }));
 vi.mock('@/services/adminService', () => ({ getTenant: mocks.getTenant }));
@@ -30,11 +31,17 @@ const IdSwitcher = () => {
   return <button type="button" onClick={() => navigate('/admin/tenants/tenant-2?status=active')}>Open second tenant</button>;
 };
 
+const AdminContext = () => <Outlet context={{ adminProfile: { permissions: ['admin.tenants'] } }} />;
+
 const renderOverview = (initialEntry = '/admin/tenants/tenant-1?status=active') => render(
   <MemoryRouter initialEntries={[initialEntry]}>
     <IdSwitcher />
     <Routes>
-      <Route path="/admin/tenants/:id" element={<TenantOverview />} />
+      <Route path="/admin" element={<AdminContext />}>
+        <Route path="tenants/:id" element={<TenantDetailLayout />}>
+          <Route index element={<TenantOverview />} />
+        </Route>
+      </Route>
     </Routes>
   </MemoryRouter>
 );
@@ -57,8 +64,8 @@ describe('TenantOverview', () => {
     expect(screen.getByText('premium')).toBeTruthy();
     expect(screen.getByText('Claimed')).toBeTruthy();
     expect(screen.getByText('Compliant active')).toBeTruthy();
-    expect(screen.getAllByText('Enabled').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Disabled').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Access & storefront section' }).getAttribute('href'))
+      .toBe('/admin/tenants/tenant-1/access?status=active&extra=keep');
     expect(screen.getByRole('link', { name: /Back to tenants/ }).getAttribute('href'))
       .toBe('/admin/tenants?status=active&extra=keep');
     expect(screen.queryByRole('link', { name: /compliance history|capability controls|ownership changes/i })).toBeNull();
@@ -99,8 +106,8 @@ describe('TenantOverview', () => {
       capabilities: { ims_enabled: true }
     }) });
     renderOverview('/admin/tenants/tenant-1');
-    expect(await screen.findByText(/archived\. The overview is read-only/)).toBeTruthy();
-    expect(screen.getAllByText('Not reported').length).toBeGreaterThan(0);
+    expect(await screen.findByText(/This tenant is archived\. Details and audit history are read-only/)).toBeTruthy();
+    expect(screen.getByText('Billing navigation is hidden for archived tenants.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /enable|disable|archive|restore/i })).toBeNull();
   });
 });

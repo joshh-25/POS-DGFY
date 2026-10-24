@@ -42,6 +42,7 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     createAdminProvisionedAccountAndTenant: noopHandler,
     createAdminProvisionedTenant: noopHandler,
     assignTenantOwnerByAdmin: noopHandler,
+    getTenant: noopHandler,
     getPricingSettings: noopHandler,
     updatePricingSettings: noopHandler,
     updateTenant: noopHandler,

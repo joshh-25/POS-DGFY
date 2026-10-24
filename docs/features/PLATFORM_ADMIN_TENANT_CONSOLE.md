@@ -10,10 +10,14 @@ topic: platform_admin_tenant_console
 # Platform Admin Tenant Console Inventory and Decisions
 
 This document records the landlord Platform Admin tenant console's current actions and the agreed
-contracts for the next slices of epic #2696. It is a reference for product and implementation work;
+contracts for epic #2696. It is a reference for product and implementation work;
 the route permission matrix and accepted ADRs remain authoritative when a statement here differs.
-The inventory was checked against code at base SHA
-`e1a0b9f26fffd90753b8d61affa684dfe4098219` on 2026-10-24.
+Current placement notes were updated for Phase 544 (#2756), implemented on the #2696 epic branch
+from base SHA `48e1cadf513304eed607ee517b8b8c4cd46266ab`. Access & storefront now owns the existing
+capability controls and audit entry point. Unavailable capability reads remain explicitly unknown
+and disable writes. #1923's STAGING persistence/publication checks and the PROD read failure remain
+external verification; they do not block integrating this route into the epic branch. The optional
+combined Activity page remains deferred.
 
 ## Scope and authority
 
@@ -38,36 +42,36 @@ checks authority on direct requests; hiding a control is only a navigation aid.
 ## Tenant-specific action inventory
 
 `T` below means `admin.tenants`. All tenant routes in this table are mounted below
-`/api/v1/admin/tenants` unless a different prefix is shown. UI entry points describe the current
-`TenantManager` surface, before the planned section moves. Audit names describe current writes;
+`/api/v1/admin/tenants` unless a different prefix is shown. UI entry points describe current
+placement after Phase 544. Audit names describe existing writes;
 read-only actions have no write audit. “None” means no audit write was found for that action in the
 current route/use-case path.
 
 | # | UI entry point | Endpoint | Page grant | Reason / confirmation today | Audit record today | Related issue | Destination or reason to stay |
 |---:|---|---|---|---|---|---|---|
-| 1 | Pending tenant card: Approve | `POST /:id/approve` | T | `confirm()` for approval, then a second `confirm()` offers invoice creation | `company_registration_events` | #1824 | Lifecycle. Invoice creation remains a separate `admin.invoices` action. |
-| 2 | Pending tenant card: Reject | `POST /:id/reject` | T | `prompt()` reason required (at least 3 characters); reason is shown to the applicant | `company_registration_events` and `tenants.rejection_reason` | — | Lifecycle. |
-| 3 | Pending tenant card: Retry setup | `POST /:id/retry-provisioning` | T | `confirm()` | `company_registration_events` | #1824 | Lifecycle. |
-| 4 | Inactive tenant card: Reactivate | `POST /:id/reactivate` | T | `confirm()` | None | — | Lifecycle. The endpoint currently has no tenant-status guard. |
-| 5 | Tenant card: Edit status | `PUT /:id` | T | No reason or confirmation | None | — | Lifecycle. |
-| 6 | Tenant card: Delete | `DELETE /:id` | T | Type the company name. Registration history requires the force option; outstanding platform invoices block deletion. | `tenant_admin_audit_logs` only on the force-registration-history path; tenant audit rows cascade on tenant deletion | #2005 | Lifecycle danger zone. Preserve the invoice/history guards and resolve audit-retention policy separately. |
-| 7 | Tenant card: View registration | `GET /:id/registration` | T | None | None | — | Registration. |
-| 8 | Tenant card: Registration files / download | `GET /:id/registration-uploads`, `GET /:id/registration-uploads/download-all`, and `GET /:id/registration-uploads/:uploadId/download` | T | None | `tenant_admin_audit_logs` (`registration_upload_download`) for tenant file downloads | — | Registration. |
-| 9 | Registration review: Revoke upload | `POST /:id/registration/uploads/:uploadId/revoke` | T | `prompt()` reason; optional in the API | `company_registration_events` (`upload_revoked`) | — | Registration. |
+| 1 | Tenant detail → Lifecycle: Approve | `POST /:id/approve` | T | Confirmation dialog; invoice creation is a separate action | `company_registration_events` | #1824 | Lifecycle. The invoice link is shown only to admins with `admin.invoices`. |
+| 2 | Tenant detail → Lifecycle: Reject | `POST /:id/reject` | T | Confirmation dialog; reason required (at least 3 characters) and shown to the applicant | `company_registration_events` and `tenants.rejection_reason` | — | Lifecycle. |
+| 3 | Tenant detail → Lifecycle: Retry setup | `POST /:id/retry-provisioning` | T | Confirmation dialog | `company_registration_events` | #1824 | Lifecycle. |
+| 4 | Tenant detail → Lifecycle: Reactivate | `POST /:id/reactivate` | T | Confirmation dialog | None | — | Lifecycle. The endpoint currently has no tenant-status guard. |
+| 5 | Tenant detail → Lifecycle: Edit status | `PUT /:id` | T | Confirmation dialog; no reason required | None | — | Lifecycle. |
+| 6 | Tenant detail → Lifecycle: Delete | `DELETE /:id` | T | Type the company name. Registration history requires the existing force option; outstanding platform invoices block deletion. UI never escalates with force. | `tenant_admin_audit_logs` only on the force-registration-history path; tenant audit rows cascade on tenant deletion | #2005 | Lifecycle danger zone. Preserve the invoice/history guards and resolve audit-retention policy separately. |
+| 7 | Tenant detail → Registration: View evidence | `GET /:id/registration` | T | None | None | — | Registration. |
+| 8 | Tenant detail → Registration: Files / download | `GET /:id/registration-uploads`, `GET /:id/registration-uploads/download-all`, and `GET /:id/registration-uploads/:uploadId/download` | T | None | `tenant_admin_audit_logs` (`registration_upload_download`) for tenant file downloads | — | Registration. Private previews use authenticated download responses and clean up object URLs. |
+| 9 | Tenant detail → Registration: Revoke upload | `POST /:id/registration/uploads/:uploadId/revoke` | T | Confirmation dialog; optional reason | `company_registration_events` (`upload_revoked`) | — | Registration. |
 | 10 | Submitted registration-draft queue | `GET /registration-drafts`; `GET /registration-drafts/:draftId/uploads`, `/registration-drafts/:draftId/uploads/download-all`, and `/registration-drafts/:draftId/uploads/:uploadId/download`; `POST /registration-drafts/:draftId/approve`; `POST /registration-drafts/:draftId/retry-materialization` | T | `window.confirm()` for approve/retry | Company registration events | — | Stays on the directory: a draft has no tenant row until it is materialized. |
-| 11 | Tenant card: Capability controls | `PATCH /:id/capabilities` | T | Confirmation modal, reason 3–500 characters, and impact preview. `downpayment_allowed` must be sent alone; active tenants only. | `tenant_admin_audit_logs` (`capability_update`) | #1923, #2633, #2639 | Access and storefront. |
-| 12 | Tenant card: Capability audit | `GET /:id/capabilities/audit-logs` | T | None | Reads `tenant_admin_audit_logs` | — | Activity. |
-| 13 | Tenant card: Compliance mode control | `POST /:id/compliance/mode/select`, `POST /:id/compliance/mode/upgrade`, `POST /:id/force-non-compliant` | T | Confirmation modal and required reason (3–255 characters); force action follows server eligibility | `tenant_compliance_audit_logs` | — | Compliance. |
-| 14 | Tenant card: Compliance review reads | `GET /:id/compliance/artifacts`, `/peripherals`, `/checklist`, `/audit-logs`, and `/security-incidents` | T | None | Reads compliance records and audit logs | — | Compliance. |
-| 15 | Tenant card: Verify/reject/revoke artifact or peripheral | `POST /:id/compliance/artifacts/:artifact_id/verification`; `POST /:id/compliance/peripherals/:peripheral_id/verification` | T | Optional verification note and evidence reference | `tenant_compliance_audit_logs` (`preflight_evaluation`, operation `compliance.artifacts.verification` or `compliance.peripherals.verification`) | — | Compliance. The code read confirms these audit writes; the seed's “not verified” note was stale. |
-| 16 | Tenant card: Acknowledge/resolve security incident | `POST /:id/compliance/security-incidents/:incident_id/acknowledge` or `/resolve` | T | Optional note and evidence reference | `tenant_compliance_audit_logs` security-signal event | — | Compliance. |
-| 17 | Tenant card: Apply store template | `POST /:id/apply-template` | T; template catalog `GET /api/v1/admin/templates` is Platform Master-only | Confirmation modal and reason 3–500 characters; active tenants only | `tenant_admin_audit_logs` (`apply_template`) | #2719 | Store setup. Applying a tenant-specific template is distinct from platform-wide template curation. |
-| 18 | Tenant card: POS metadata | `GET /:id/pos-metadata`, `PATCH /:id/pos-metadata`, and `GET /:id/pos-metadata/audit-logs` | T | In-modal reason, 3–500 characters | `tenant_admin_audit_logs` (`pos_metadata_update`) | — | Store setup; its audit view also belongs in Activity. |
-| 19 | Tenant card: Custom domains | `GET/POST /:id/storefront-domains`; `POST /:id/storefront-domains/:domainId/{verify,make-canonical,retry,check-dns,suspend}`; `DELETE /:id/storefront-domains/:domainId`; `POST /:id/storefront-domains/reconcile-eligibility` | T; creation requires active Premium eligibility; other operations use their per-domain guards | Required reason; form field and `prompt()` are both used by current flows | `storefront_custom_domain_audit_logs` | — | Store setup. |
-| 20 | Revenue & Settlement panel embedded in Tenant Manager | `/api/v1/tenant-revenue/admin/*` | Platform Master-only through fallback; no explicit route classification | Varies by operation; mutating panel actions collect a reason | Revenue ledger/reconciliation audit records, depending on operation | #2536, #2531, #2534 | Stays a cross-tenant global tool. The Billing link may carry a tenant once a target route supports preselection. |
-| 21 | Payment account readiness / PayMongo child-account tools | `GET /api/v1/commerce-payments/admin/tenant-payment-accounts`; `PUT /api/v1/commerce-payments/admin/tenants/:tenant_id/payment-account`; `POST /api/v1/commerce-payments/admin/tenants/:tenant_id/paymongo-child-account` and `POST .../paymongo-child-account/:action` | `admin.payments` | Readiness upsert has no reason field; provider operations use their own controls | `AuditLog` | — | Stays in Payment Operations (`/admin/payments`) under its own grant. Current page requires manual tenant selection; it does not read a tenant URL parameter. |
-| 22 | Platform invoice after tenant approval | `/api/v1/admin/invoices/*` | `admin.invoices` | Separate invoice flow; the approval follow-up uses a second confirmation | `platform_invoice_events` (for example, `draft_created` and `issued`) | — | Stays in Invoices (`/admin/invoices`) under its own grant. The page selects an eligible registration application; it does not preselect from a tenant URL parameter. |
-| 23 | No current page caller; `assignTenantOwner` service wrapper | `POST /:id/owner` | T and `admin.dgfy_accounts` | Required reason | `tenant_admin_audit_logs` (`admin_assign_owner` or `admin_force_assign_owner`) | #2742 | Add to the tenant detail page to close the Company-only ownership dead end; the detail slice assigns its section. Hide or explain it unless both grants are present. |
+| 11 | Tenant detail → Access & storefront: capability controls | `PATCH /:id/capabilities` | T | Confirmation modal, reason 3–500 characters, and impact preview. `downpayment_allowed` must be sent alone; active tenants only. | `tenant_admin_audit_logs` (`capability_update`) | #1923, #2633, #2639 | Access section. Unknown/unavailable reads are shown as such and disable capability writes. STAGING persistence/publication and PROD read-recovery evidence remain external verification. |
+| 12 | Tenant detail → Access & storefront: capability audit | `GET /:id/capabilities/audit-logs` | T | None | Reads `tenant_admin_audit_logs` | — | Remains beside the controls; combined Activity is deferred. |
+| 13 | Tenant detail → Compliance: Mode control | `POST /:id/compliance/mode/select`, `POST /:id/compliance/mode/upgrade`, `POST /:id/force-non-compliant` | T | Confirmation dialog and required reason (3–255 characters); force action follows server eligibility | `tenant_compliance_audit_logs` | — | Compliance. |
+| 14 | Tenant detail → Compliance: Review reads | `GET /:id/compliance/artifacts`, `/peripherals`, `/checklist`, `/audit-logs`, and `/security-incidents` | T | None | Reads compliance records and audit logs | — | Compliance. Lazy loads retain panel-specific errors and successful panels. |
+| 15 | Tenant detail → Compliance: Verify/reject/revoke artifact or peripheral | `POST /:id/compliance/artifacts/:artifact_id/verification`; `POST /:id/compliance/peripherals/:peripheral_id/verification` | T | Optional verification note and evidence reference | `tenant_compliance_audit_logs` (`preflight_evaluation`, operation `compliance.artifacts.verification` or `compliance.peripherals.verification`) | — | Compliance. The code read confirms these audit writes; the seed's “not verified” note was stale. |
+| 16 | Tenant detail → Compliance: Acknowledge/resolve security incident | `POST /:id/compliance/security-incidents/:incident_id/acknowledge` or `/resolve` | T | Optional note and evidence reference | `tenant_compliance_audit_logs` security-signal event | — | Compliance. |
+| 17 | Tenant detail → Store setup: Apply store template | `POST /:id/apply-template` | T; template catalog `GET /api/v1/admin/templates` is Platform Master-only | Confirmation dialog and reason 3–500 characters; active tenants only | `tenant_admin_audit_logs` (`apply_template`) | #2719 | Store setup. Delegates receive an explanation and no catalog request. Tenant apply remains distinct from global template curation. |
+| 18 | Tenant detail → Store setup: POS metadata | `GET /:id/pos-metadata`, `PATCH /:id/pos-metadata`, and `GET /:id/pos-metadata/audit-logs` | T | Required reason, 3–500 characters | `tenant_admin_audit_logs` (`pos_metadata_update`) | — | Store setup; the audit view remains here while Activity is deferred. |
+| 19 | Tenant detail → Store setup: Custom domains | `GET/POST /:id/storefront-domains`; `POST /:id/storefront-domains/:domainId/{verify,make-canonical,retry,check-dns,suspend}`; `DELETE /:id/storefront-domains/:domainId`; `POST /:id/storefront-domains/reconcile-eligibility` | T; creation requires active Premium eligibility; other operations use their per-domain guards | Existing domain modal reasons and per-action guards | `storefront_custom_domain_audit_logs` | — | Store setup. |
+| 20 | Revenue & Settlement panel on the Tenant Manager directory | `/api/v1/tenant-revenue/admin/*` | Platform Master-only through fallback; no explicit route classification | Varies by operation; mutating panel actions collect a reason | Revenue ledger/reconciliation audit records, depending on operation | #2536, #2531, #2534 | Stays a cross-tenant global tool. Overview links to the directory's stable `#revenue-settlement` anchor with `tenant_id`; authorized tenant data validates preselection. |
+| 21 | Payment account readiness / PayMongo child-account tools | `GET /api/v1/commerce-payments/admin/tenant-payment-accounts`; `PUT /api/v1/commerce-payments/admin/tenants/:tenant_id/payment-account`; `POST /api/v1/commerce-payments/admin/tenants/:tenant_id/paymongo-child-account` and `POST .../paymongo-child-account/:action` | `admin.payments` | Readiness upsert has no reason field; provider operations use their own controls | `AuditLog` | — | Stays in Payment Operations (`/admin/payments`) under its own grant. A URL tenant is selected only after matching the loaded authorized tenant list; a failed list leaves it unset and can be retried. Preselection never fills a mutation form. |
+| 22 | Platform invoice after tenant approval | `/api/v1/admin/invoices/*` | `admin.invoices` | Separate invoice flow; approval never creates an invoice | `platform_invoice_events` (for example, `draft_created` and `issued`) | — | Stays in Invoices (`/admin/invoices`) under its own grant. Application preselection requires current eligibility and tenant match; tenant-only context selects only one unique eligible application. |
+| 23 | Tenant detail → Overview: Assign owner | `POST /:id/owner` | T and `admin.dgfy_accounts` | Existing active account, required reason, explicit force acknowledgement, and preview | `tenant_admin_audit_logs` (`admin_assign_owner` or `admin_force_assign_owner`) | #2742 | Available for active tenants only; Platform Master or both page grants are required. The endpoint payload deliberately sends `force: true`; this does not imply a stronger backend concurrency guarantee. |
 | 24 | No current page caller | `GET/PATCH /:id/affiliate-slots` and `GET /:id/affiliate-slots/audit-logs` | T | Required reason, 3–500 characters; audit and cap write share a transaction | `tenant_admin_audit_logs` (`affiliate_slots_update`) | #1190 | API-only for now; no detail-page UI is approved in this decision. |
 | 25 | No current page caller | `POST /:id/compliance/final-review/documents/:document_id/review` | T | Review note is optional in the API | `tenant_compliance_audit_logs` (`compliance.final_review.review_document`) | — | API-only for now; keep the existing review API outside this UI migration. |
 | 26 | No active page control; legacy service wrappers/routes remain | `POST /:id/change-plan`, `POST /:id/setup-paypal-recurring`, and `POST /api/v1/admin/tenants/provision` | T | Legacy billing actions are disabled under current billing policy; no current reason/confirmation flow | No tenant-admin audit write found in these legacy paths | — | Out of UI scope. Route API removal to PM rather than reviving deprecated controls. |
@@ -111,16 +115,21 @@ The detail page uses one bookmarkable route per section:
 | Access & storefront | `/admin/tenants/:id/access` |
 | Compliance | `/admin/tenants/:id/compliance` |
 | Store setup | `/admin/tenants/:id/store-setup` |
-| Activity | `/admin/tenants/:id/activity` |
+| Activity | Deferred; no route is mounted. Audit access stays with the section that owns each action. |
 | Billing | Link group to global billing tools; no detail route |
 
 Add tenant uses `/admin/tenants/new`, declared before `/admin/tenants/:id`. Admin route access and
 sidebar highlighting resolve exact paths and slash-delimited descendants through the same policy;
-denied child pages do not mount during the redirect. Only Overview is available in Wave 2. Other
-sections remain unavailable and have no links yet. A section the current admin cannot use is hidden
-or has its permission explained; the page must not show an action and then rely on a 403 to explain
-the missing grant. Owner assignment requires both `admin.tenants` and `admin.dgfy_accounts`.
-Billing links keep their target pages' independent grants.
+denied child pages do not mount during the redirect. The detail shell links Overview, Lifecycle,
+Registration, Compliance, Store setup, and Access & storefront. That section owns the existing
+capability controls and audit history. An unavailable capability read is never shown as On or Off
+and all related writes stay disabled until a fresh read succeeds. The #1923 STAGING
+persistence/publication checks and PROD capability-read recovery remain external verification
+before release qualification. Activity is deferred, with audit history kept in the section that
+owns each action.
+A section the current admin cannot use is hidden or has its permission explained; the page must not
+show an action and then rely on a 403 to explain the missing grant. Owner assignment requires both
+`admin.tenants` and `admin.dgfy_accounts`. Billing links keep their target pages' independent grants.
 
 Directory Add tenant and tenant-name links carry the complete current query string, including
 unrecognized parameters. Overview/Add tenant return links use the fixed local directory path with
@@ -138,11 +147,12 @@ and is required before the final DEV soak.
 | 2 | Keep capability filters derived client-side from the list payload, with `unavailable` and `n/a` states. | Provisional until a healthy-path measurement exists. |
 | 3 | Do not add API search or pagination now. The 67-row, 91.5 KB sample does not justify it by itself; investigate per-tenant DB-read decoupling if healthy PROD p95 exceeds 1 second or the 3-second poll is visible in tenant-pool pressure (#2560). The p95 threshold is a Worker proposal, not an accepted service-level objective. | Provisional. |
 | 4 | Use one URL per section with the slugs in the detail-page map above. | Settled by Pat on 2026-10-24. |
-| 5 | Detail sections are Overview, Lifecycle, Registration, Access & storefront, Compliance, Store setup, Billing links, and Activity. | Decided; issue recommendation adopted. |
+| 5 | Tenant details include Overview, Lifecycle, Registration, Access & storefront, Compliance, Store setup, and links to global Billing tools. The combined Activity page is deferred; audit entry points stay in their owning sections. | Decided; Activity deferral recorded for Phase 544. |
 | 6 | Owner assignment belongs on the detail page to close the Company-only ownership dead end and requires both tenant and DGFY-account grants. Affiliate slots (#1190) and final-review document review remain API-only. Legacy change-plan, PayPal, and provision controls stay out of UI scope; route API removal to PM. | Decided. |
 | 7 | Assisted provisioning gets `/admin/tenants/new` and an Add tenant directory button; retain its required reason and the dual grant for the with-account path. | Decided; issue recommendation adopted. |
-| 8 | Registration-draft review stays on the directory; pricing, template curation, Revenue & Settlement, Payment Operations, and Invoices remain global tools with their own authority. Billing links may target a tenant, but current pages do not support URL-based tenant preselection; the Billing-links slice owns any support needed. | Decided. |
+| 8 | Registration-draft review stays on the directory; pricing, template curation, Revenue & Settlement, Payment Operations, and Invoices remain global tools with their own authority. Tenant overview links may preselect authorized tenant/application data after validating it; opening a global tool never submits a mutation. | Decided. |
 | 9 | Hide archived tenants by default and expose them under an Archived filter. Count all statuses in the summary tiles. Keep archived details directly addressable and present the page read-only, while documenting the API's existing status-specific write behavior. | Decided by Pat on 2026-10-24. |
+| 10 | Move existing capability/readiness controls and their audit entry point into Access & storefront on the epic branch. Unknown/unavailable values stay distinct and disable writes; #1923 STAGING checks and PROD read recovery remain external verification, not a child-PR deployment gate. | Wave 3 implementation sequencing recorded 2026-10-24. |
 
 ## What stays outside the detail page
 
@@ -151,9 +161,9 @@ and is required before the final DEV soak.
 | Submitted registration-draft queue | A draft has no tenant row before materialization, so it remains part of the directory workflow. | Not applicable. |
 | Pricing | Platform-wide policy, protected by `admin.pricing`; it is not a tenant-specific setting. | Not applicable. |
 | Store-template curation | Published templates shape future provisioning platform-wide and are Platform Master-only. Applying a published template to one active tenant is in Store setup. | Not applicable. |
-| Revenue & Settlement | Cross-tenant ledger, reconciliation, and payout tooling with master-only fallback authority. | No URL-based preselection found; current panel is embedded in Tenant Manager and has its own tenant selector. |
-| Payment Operations | Cross-tenant payment account and provider operations with `admin.payments`. | No URL-based preselection found; the page requires manual tenant selection. |
-| Invoices | Cross-tenant invoice workflow with `admin.invoices`; issuance is tied to eligible registration applications. | No URL-based tenant preselection found; the page selects an eligible application. |
+| Revenue & Settlement | Cross-tenant ledger, reconciliation, and payout tooling with master-only fallback authority. | Tenant overview links to `/admin/tenants?tenant_id=<id>#revenue-settlement`; authorized directory data validates the selection. |
+| Payment Operations | Cross-tenant payment account and provider operations with `admin.payments`. | `/admin/payments?tenant_id=<id>` selects only after matching the authorized tenant list; a failed read leaves selection unset and can be retried. |
+| Invoices | Cross-tenant invoice workflow with `admin.invoices`; issuance is tied to eligible registration applications. | `/admin/invoices?tenant_id=<id>&registration_application_id=<id>` validates tenant match and current eligibility. Tenant-only context selects only one unique eligible application. |
 | Affiliate slots | Decision 6 leaves the API available but does not approve a new tenant-console UI. | Not applicable. |
 | Final-review document review | Decision 6 leaves the existing compliance review API available but does not approve a new tenant-console UI. | Not applicable. |
 | Legacy plan, PayPal, and provision routes | Billing policy disables these controls and provisioning is legacy. Their API lifecycle is a separate PM decision. | Not applicable. |
@@ -161,9 +171,9 @@ and is required before the final DEV soak.
 ## Slice order and dependencies
 
 Wave 1 delivered the inventory/decision record (#2742) and searchable directory (#2743). Wave 2
-delivers the targeted single-tenant read, Overview route, nested authorization, query restoration,
-Add tenant page, and ID-free route labels. The remaining candidate work follows the 2026-10-24 slate
-on #2696, with the decisions above applied:
+delivered the targeted single-tenant read, Overview route, nested authorization, query restoration,
+Add tenant page, and ID-free route labels. Wave 3 is in progress on the registered epic branch;
+Phase 544 implements the required detail sections, including Access & storefront:
 
 1. **Wave 2 — detail foundation:** `GET /admin/tenants/:id` uses the list-item shape, enrichment,
    and `admin.tenants` grant. Overview loads that endpoint directly and is independent of directory
@@ -171,18 +181,18 @@ on #2696, with the decisions above applied:
    `admin.dgfy_accounts` grant. Preserve the full directory query through navigation and return
    links. API list-payload decoupling remains deferred until a healthy active-capability-read sample
    establishes that it is warranted.
-2. **Wave 3 — section moves:** move Lifecycle and Registration controls from cards and keep the
-   global registration-draft queue on the directory. Move Access & storefront only after #1923,
-   #2633, and #2639 settle and the PROD capability-read failure is resolved. Move Compliance
-   controls after the detail foundation. Move Store setup after #2719 and after template curation
-   remains Platform Master-only. Add the owner-assignment detail slice with both required grants;
-   affiliate slots and final-review remain API-only. Billing links are deep links to the global
-   tools, with URL-based preselection added only by that slice where a target supports it. Activity
-   is optional and read-only.
-3. **Wave 4 — integration and cleanup:** remove displaced inline controls only after their detail
-   destinations are verified; remove unused page residue, obsolete service wrappers, the commented
-   PayPal block, and the stale IMS test import identified in the seed; then verify the find → open →
-   manage journey across desktop and mobile.
+2. **Wave 3 — section moves:** Lifecycle and Registration actions are on their detail routes, while
+   the registration-draft queue stays on the directory. Compliance controls and history are on the
+   Compliance route. Template application, POS metadata, and custom domains are on Store setup;
+   template curation remains Platform Master-only. Overview owns owner assignment and validated
+global billing links. Affiliate slots and final-review remain API-only. Access & storefront owns
+the existing capability/readiness controls and audit. Failed or incomplete reads show unknown and
+disable writes; #1923's STAGING persistence/publication checks and PROD capability-read recovery
+remain external release verification. Activity is deferred, with audit access preserved in each
+section.
+3. **Wave 4 — integration and cleanup:** continue with integration cleanup and verify the complete
+   find → open → manage journey across desktop and mobile. Complete the shared URL/query privacy
+   remediation in #2748 before final DEV soak.
 
 ## Measurements
 
