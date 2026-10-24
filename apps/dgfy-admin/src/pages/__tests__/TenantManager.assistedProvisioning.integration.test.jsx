@@ -46,7 +46,7 @@ describe('TenantManager assisted provisioning', () => {
     // button, so scope to the page header card that owns this one.
     const header = screen.getByRole('heading', { name: 'Tenant Management' }).closest('div.bg-white');
     expect(within(header).getByRole('button', { name: 'Refresh' })).toBeTruthy();
-    expect(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Company only' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'DGFY + Company' })).toBeTruthy();
     expect(screen.getByText(/DGFY login, company switching, owner actions, and POS access require owner assignment/)).toBeTruthy();
