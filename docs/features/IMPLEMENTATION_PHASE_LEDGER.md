@@ -31756,20 +31756,22 @@ DGFY Admin tenant management UX / Wave 3 of epic #2696.
 
 ### Objective and scope
 
-Move tenant Lifecycle, Registration, Compliance, and Store setup actions from the directory into
-bookmarkable detail sections; add Overview owner assignment and validated, non-mutating preselection
-for the global Billing tools. Preserve existing API grants, reasons, eligibility, audits, and
-events. The Access route is an evidence gate: capability controls and their audit history remain on
-the directory until the required live evidence is available. The optional combined Activity page is
-deferred, with audit entry points retained in their owning sections. Classification: `regulatory`;
-no API behavior, schema, migration, permission grant, or app-version change is introduced.
+Move tenant Lifecycle, Registration, Compliance, Store setup, and Access & storefront actions from
+the directory into bookmarkable detail sections; add Overview owner assignment and validated,
+non-mutating preselection for the global Billing tools. Preserve existing API grants, reasons,
+eligibility, audits, and events. Capability reads that are unavailable remain unknown and disable
+writes. The #1923 STAGING persistence/publication checks and PROD capability-read recovery remain
+external verification before release qualification; they do not block integrating the UI move into
+the epic branch. The optional combined Activity page is deferred, with audit entry points retained
+in the owning sections. Classification: `regulatory`; no API behavior, schema, migration, permission
+grant, or app-version change is introduced.
 
 ### Status
 
-`in_progress` — the scoped section moves are implemented on the registered epic child branch and
-awaiting a draft child PR. The Access move remains blocked by the live evidence dependencies below;
-this phase is not complete while that required scope remains. The issue stays In Progress through
-integration.
+`in_progress` — all scoped section moves, including Access, are implemented on the registered epic
+child branch. PR #2764 is ready for review against the epic branch. This phase remains in progress
+until its implementation merges into the epic; environment-specific STAGING and PROD verification
+remains outstanding and is not claimed here. The issue stays In Progress through integration.
 
 ### Dependencies
 
@@ -31779,10 +31781,12 @@ integration.
   their current API contracts and does not escalate retries or deletion with `force`.
 - #2719 repair code is already present in the integration ancestry; verify the target code chain and
   disposable-DB behavior before treating the Store setup path as fully validated.
-- #1923 still requires live toggle persistence, audited confirmation and read-back, and public
-  discovery/direct-link verification. #2633/#2639 repair code and merged state alone do not prove
-  deployment. These evidence items and resolution of the recorded PROD capability-read failure
-  block moving Access controls out of the directory.
+- The existing capability controls were already available on the directory. This phase moves them
+  to Access without changing API policy or grants. The detail page preserves unavailable/unknown
+  state and disables writes until a fresh targeted read succeeds. #1923's STAGING toggle persistence,
+  audit/read-back, discovery and direct-link checks remain external release verification; #2633 and
+  #2639 deployment evidence and PROD capability-read recovery also remain unresolved. None is
+  represented as passed by this UI move or as a requirement to deploy this child PR to STAGING.
 - #2748 shared Admin URL/query privacy remediation remains required before the final DEV soak; it
   does not block this child implementation PR.
 
@@ -31802,7 +31806,7 @@ Classification: `regulatory`; the compliance declaration is
 
 ### Implementation targets
 
-Admin detail shell and Lifecycle, Registration, Compliance, Store setup, and Access gate pages;
+Admin detail shell and Lifecycle, Registration, Compliance, Store setup, and Access pages;
 Overview owner assignment; global Payment Operations, Invoice, and Revenue preselection; Admin
 behavioral tests and the test-only tenant-route controller mock; tenant-console and Tenant
 Management references; this ledger and the reconciled compliance declaration. No API production
@@ -31811,8 +31815,8 @@ code, migration, schema, shared web-core, or app-version file is changed.
 ### Acceptance and validation evidence
 
 - [x] Detail sections load the selected tenant through the targeted read; direct routes, stale
-  responses, missing/error states, and full directory query preservation are covered. The Access
-  destination states its unresolved dependencies and links back to the directory.
+  responses, missing/error states, and full directory query preservation are covered. Access owns
+  the existing capability/readiness controls and audit entry point.
 - [x] Lifecycle approval, rejection reason, retry, asynchronous progress polling, reactivation,
   status-only edit, and typed-name deletion use the existing endpoint payloads. Invoice creation
   remains a separate grant-checked action, and deletion never escalates with `force`.
@@ -31827,18 +31831,27 @@ code, migration, schema, shared web-core, or app-version file is changed.
   confirmation.
 - [x] Payment, Invoice, and Revenue preselection validate authorized data and never mutate merely
   by opening a linked global page. Revenue panel requests and mount remain master-only.
-- [ ] Access capability/readiness controls and audit are moved only after #1923/#2633/#2639 live
-  evidence and resolution of the PROD capability-read failure; no such evidence is claimed here.
-- [x] Focused Admin validation passes 10 files / 54 tests. Existing API authorization, upload,
-  deletion, capability write/read-back, template, and audit contracts pass 10 suites / 88 tests.
-- [x] Full Admin suite ran with 202 passing tests and six failures confined to the unchanged
+- [x] Access capability/readiness controls and audit move to the detail route with the existing
+  API contracts. Unknown/unavailable values are not rendered as On/Off and disable all writes.
+  Writes require a fresh targeted tenant read-back before success is reported.
+- [ ] #1923 STAGING persistence/publication checks, #2633/#2639 deployed-behavior evidence, and PROD
+  capability-read recovery remain external verification; no such evidence is claimed here, and it
+  does not block the child PR's epic-branch integration.
+- [x] Current focused Admin validation passes 4 files / 37 tests, including Access capability
+  writes, fail-closed unavailable reads, audit loading, and route/query behavior. Existing API
+  authorization, upload, deletion, capability write/read-back, template, and audit contracts
+  previously passed 10 suites / 88 tests.
+- [x] The most recent full Admin suite before the final Access relocation reported 202 passing
+  tests and six failures confined to the unchanged
   `StoreTemplateManager.registrationIndustries.integration.test.jsx` suite tracked by #2750.
 - [x] Admin production build, Admin lint, explicit lint of changed Admin pages/tests, architecture,
   docs/ADR lint, compliance, epic-base app-version policy, and `git diff --check` pass. Existing
   lint warnings are recorded in the implementation report.
-- [x] Mocked browser route proof passes on desktop and mobile: all five destinations render, the
-  full query survives navigation, global links retain their independent targets, no mutations or
-  browser errors occur, and the 390 px viewport has no horizontal overflow.
+- [x] Mocked browser proof passes for the Access route on desktop and mobile: the impact preview
+  opens and cancels, audit history loads, the full query survives navigation, no mutations or
+  browser errors occur, and the 390 px viewport has no horizontal overflow. Earlier proof covered
+  the other detail destinations before the final Access relocation; current DEV is not claimed to
+  contain this final Access implementation.
 - [x] Focused disposable Linux/MySQL 8/Redis 7 backend matrix completed against implementation
   commit `7cec71f966139ce9d231e48e185086e4180f84bd`, with coverage complete for 872 fast-tier and
   34 DB-tier test files. The DB tier passed all 34 files. The fast tier was non-green: 6,703 tests
@@ -31852,8 +31865,10 @@ code, migration, schema, shared web-core, or app-version file is changed.
 The local compliance preflight passed against disposable API/MySQL/Redis fixtures with
 `no_breach`, reason `ALLOWED`, at `2026-10-24T09:48:00.701Z`; request reference
 `PREFLIGHT-LOCAL-1792835197869-2026-10-24-ADMIN-TENANT-MANAGEMENT-SECTIONS` is reconciled in the
-declaration. The final full Admin run completed with 202 passing tests and six unrelated failures
-in the unchanged #2750 StoreTemplateManager suite. Focused Admin and API contract suites pass. The
+declaration. The most recent full Admin run before final Access relocation completed with 202
+passing tests and six unrelated failures in the unchanged #2750 StoreTemplateManager suite. Current
+focused Admin tests pass 4 files / 37 tests; focused API contract results (10 suites / 88 tests)
+were recorded before this UI-only relocation. The
 focused disposable backend matrix targeted implementation commit
 `7cec71f966139ce9d231e48e185086e4180f84bd`: all 34 DB-tier files passed; the fast tier had 6,703
 passing tests and 50 failures across 24 unmodified suites, with 12 runtime-error suites and 12
@@ -31865,9 +31880,9 @@ and changes documentation only. Rendered-route screenshots and the JSON report a
 
 ### Risks and decisions
 
-- Access remains explicitly incomplete pending live verification; current read failures are shown
-  as unavailable and are not interpreted as disabled. No production capability-read root cause or
-  resolution is asserted.
+- The capability-read failure remains unresolved. Access shows unknown/unavailable and disables
+  writes until a fresh read succeeds; no production root cause or resolution is asserted. The
+  required STAGING and PROD evidence remains an explicit release-verification follow-up.
 - #2748 remains a known URL/query privacy dependency before the final DEV soak.
 - Activity stays deferred. Existing capability, compliance, POS metadata, and domain audit views
   remain beside their owning controls.
@@ -31876,11 +31891,12 @@ and changes documentation only. Rendered-route screenshots and the JSON report a
 ### Post-merge verification
 
 - [ ] deployment — after the aggregate #2696 change reaches `develop` and #2748 is resolved, verify
-  Overview, Lifecycle, Registration, Compliance, Store setup, directory return context, and global
-  Billing links on desktop and mobile; owner: Pat; blocks #2756 deployed QA acceptance.
-- [ ] operational — move Access controls only after the #1923 live persistence/publication checks,
-  #2633/#2639 integrated regression evidence, and production capability-read recovery are verified;
-  owner: Worker/PM; blocks Access completion in this phase.
+  Overview, Lifecycle, Registration, Compliance, Store setup, Access, directory return context,
+  and global Billing links on desktop and mobile; owner: Pat; blocks deployed QA acceptance.
+- [ ] operational — verify the #1923 Storefront/Maps and Registration Readiness writes survive
+  reload with audit/read-back, verify public discovery/direct-link behavior, collect #2633/#2639
+  deployed regression evidence, and resolve the PROD capability-read failure before release
+  qualification; owner: Pat/QA. This does not block merging the UI move into the epic branch.
 - [ ] compliance — confirm the aggregate commit retains the reconciled preflight reference and the
   compliance gate stays green; owner: compliance sweep.
 

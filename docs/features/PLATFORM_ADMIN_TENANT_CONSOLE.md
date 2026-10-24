@@ -13,8 +13,11 @@ This document records the landlord Platform Admin tenant console's current actio
 contracts for epic #2696. It is a reference for product and implementation work;
 the route permission matrix and accepted ADRs remain authoritative when a statement here differs.
 Current placement notes were updated for Phase 544 (#2756), implemented on the #2696 epic branch
-from base SHA `48e1cadf513304eed607ee517b8b8c4cd46266ab`. Access remains gated pending live
-dependency evidence; the optional combined Activity page remains deferred.
+from base SHA `48e1cadf513304eed607ee517b8b8c4cd46266ab`. Access & storefront now owns the existing
+capability controls and audit entry point. Unavailable capability reads remain explicitly unknown
+and disable writes. #1923's STAGING persistence/publication checks and the PROD read failure remain
+external verification; they do not block integrating this route into the epic branch. The optional
+combined Activity page remains deferred.
 
 ## Scope and authority
 
@@ -56,8 +59,8 @@ current route/use-case path.
 | 8 | Tenant detail → Registration: Files / download | `GET /:id/registration-uploads`, `GET /:id/registration-uploads/download-all`, and `GET /:id/registration-uploads/:uploadId/download` | T | None | `tenant_admin_audit_logs` (`registration_upload_download`) for tenant file downloads | — | Registration. Private previews use authenticated download responses and clean up object URLs. |
 | 9 | Tenant detail → Registration: Revoke upload | `POST /:id/registration/uploads/:uploadId/revoke` | T | Confirmation dialog; optional reason | `company_registration_events` (`upload_revoked`) | — | Registration. |
 | 10 | Submitted registration-draft queue | `GET /registration-drafts`; `GET /registration-drafts/:draftId/uploads`, `/registration-drafts/:draftId/uploads/download-all`, and `/registration-drafts/:draftId/uploads/:uploadId/download`; `POST /registration-drafts/:draftId/approve`; `POST /registration-drafts/:draftId/retry-materialization` | T | `window.confirm()` for approve/retry | Company registration events | — | Stays on the directory: a draft has no tenant row until it is materialized. |
-| 11 | Tenant directory: Access controls (move is evidence-gated) | `PATCH /:id/capabilities` | T | Confirmation modal, reason 3–500 characters, and impact preview. `downpayment_allowed` must be sent alone; active tenants only. | `tenant_admin_audit_logs` (`capability_update`) | #1923, #2633, #2639 | Controls and audit remain on the directory until required live persistence/publication evidence and the production read-failure resolution are available. `/access` explains the gate and links back. |
-| 12 | Tenant directory: Capability audit | `GET /:id/capabilities/audit-logs` | T | None | Reads `tenant_admin_audit_logs` | — | Remains beside the controls while Access is gated; combined Activity is deferred. |
+| 11 | Tenant detail → Access & storefront: capability controls | `PATCH /:id/capabilities` | T | Confirmation modal, reason 3–500 characters, and impact preview. `downpayment_allowed` must be sent alone; active tenants only. | `tenant_admin_audit_logs` (`capability_update`) | #1923, #2633, #2639 | Access section. Unknown/unavailable reads are shown as such and disable capability writes. STAGING persistence/publication and PROD read-recovery evidence remain external verification. |
+| 12 | Tenant detail → Access & storefront: capability audit | `GET /:id/capabilities/audit-logs` | T | None | Reads `tenant_admin_audit_logs` | — | Remains beside the controls; combined Activity is deferred. |
 | 13 | Tenant detail → Compliance: Mode control | `POST /:id/compliance/mode/select`, `POST /:id/compliance/mode/upgrade`, `POST /:id/force-non-compliant` | T | Confirmation dialog and required reason (3–255 characters); force action follows server eligibility | `tenant_compliance_audit_logs` | — | Compliance. |
 | 14 | Tenant detail → Compliance: Review reads | `GET /:id/compliance/artifacts`, `/peripherals`, `/checklist`, `/audit-logs`, and `/security-incidents` | T | None | Reads compliance records and audit logs | — | Compliance. Lazy loads retain panel-specific errors and successful panels. |
 | 15 | Tenant detail → Compliance: Verify/reject/revoke artifact or peripheral | `POST /:id/compliance/artifacts/:artifact_id/verification`; `POST /:id/compliance/peripherals/:peripheral_id/verification` | T | Optional verification note and evidence reference | `tenant_compliance_audit_logs` (`preflight_evaluation`, operation `compliance.artifacts.verification` or `compliance.peripherals.verification`) | — | Compliance. The code read confirms these audit writes; the seed's “not verified” note was stale. |
@@ -118,9 +121,12 @@ The detail page uses one bookmarkable route per section:
 Add tenant uses `/admin/tenants/new`, declared before `/admin/tenants/:id`. Admin route access and
 sidebar highlighting resolve exact paths and slash-delimited descendants through the same policy;
 denied child pages do not mount during the redirect. The detail shell links Overview, Lifecycle,
-Registration, Compliance, Store setup, and an Access page that explains its verification gate.
-Capability controls and their audit history remain on the directory until the required live evidence
-is available. Activity is deferred, with audit history kept in the section that owns each action.
+Registration, Compliance, Store setup, and Access & storefront. That section owns the existing
+capability controls and audit history. An unavailable capability read is never shown as On or Off
+and all related writes stay disabled until a fresh read succeeds. The #1923 STAGING
+persistence/publication checks and PROD capability-read recovery remain external verification
+before release qualification. Activity is deferred, with audit history kept in the section that
+owns each action.
 A section the current admin cannot use is hidden or has its permission explained; the page must not
 show an action and then rely on a 403 to explain the missing grant. Owner assignment requires both
 `admin.tenants` and `admin.dgfy_accounts`. Billing links keep their target pages' independent grants.
@@ -146,6 +152,7 @@ and is required before the final DEV soak.
 | 7 | Assisted provisioning gets `/admin/tenants/new` and an Add tenant directory button; retain its required reason and the dual grant for the with-account path. | Decided; issue recommendation adopted. |
 | 8 | Registration-draft review stays on the directory; pricing, template curation, Revenue & Settlement, Payment Operations, and Invoices remain global tools with their own authority. Tenant overview links may preselect authorized tenant/application data after validating it; opening a global tool never submits a mutation. | Decided. |
 | 9 | Hide archived tenants by default and expose them under an Archived filter. Count all statuses in the summary tiles. Keep archived details directly addressable and present the page read-only, while documenting the API's existing status-specific write behavior. | Decided by Pat on 2026-10-24. |
+| 10 | Move existing capability/readiness controls and their audit entry point into Access & storefront on the epic branch. Unknown/unavailable values stay distinct and disable writes; #1923 STAGING checks and PROD read recovery remain external verification, not a child-PR deployment gate. | Wave 3 implementation sequencing recorded 2026-10-24. |
 
 ## What stays outside the detail page
 
@@ -166,8 +173,7 @@ and is required before the final DEV soak.
 Wave 1 delivered the inventory/decision record (#2742) and searchable directory (#2743). Wave 2
 delivered the targeted single-tenant read, Overview route, nested authorization, query restoration,
 Add tenant page, and ID-free route labels. Wave 3 is in progress on the registered epic branch;
-Phase 544 implements its required sections except Access, which remains gated by live dependency
-evidence:
+Phase 544 implements the required detail sections, including Access & storefront:
 
 1. **Wave 2 — detail foundation:** `GET /admin/tenants/:id` uses the list-item shape, enrichment,
    and `admin.tenants` grant. Overview loads that endpoint directly and is independent of directory
@@ -179,9 +185,11 @@ evidence:
    the registration-draft queue stays on the directory. Compliance controls and history are on the
    Compliance route. Template application, POS metadata, and custom domains are on Store setup;
    template curation remains Platform Master-only. Overview owns owner assignment and validated
-   global billing links. Affiliate slots and final-review remain API-only. Access & storefront stays
-   on the directory until #1923, #2633, and #2639 evidence settles and the PROD capability-read
-   failure is shown resolved. Activity is deferred, with audit access preserved in each section.
+global billing links. Affiliate slots and final-review remain API-only. Access & storefront owns
+the existing capability/readiness controls and audit. Failed or incomplete reads show unknown and
+disable writes; #1923's STAGING persistence/publication checks and PROD capability-read recovery
+remain external release verification. Activity is deferred, with audit access preserved in each
+section.
 3. **Wave 4 — integration and cleanup:** continue with integration cleanup and verify the complete
    find → open → manage journey across desktop and mobile. Complete the shared URL/query privacy
    remediation in #2748 before final DEV soak.
