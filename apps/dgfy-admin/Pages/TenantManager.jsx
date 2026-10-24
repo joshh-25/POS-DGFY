@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     Building2,
     Building,
@@ -10,7 +10,7 @@ import {
     AlertCircle,
     CheckCircle,
     XCircle,
-    Filter,
+    Archive,
     Mail,
     Calendar,
     Edit2,
@@ -22,7 +22,6 @@ import {
     Eye,
     Download,
     HardDrive,
-    Search,
     Monitor,
     ShoppingCart,
     MapPin,
@@ -44,6 +43,13 @@ import { WORKFLOW_MODE_LABELS } from '../../../packages/web-core/src/features/se
 import IndustryPicker from '../../../packages/web-core/src/features/registration/IndustryPicker.jsx';
 import StorefrontCustomDomainsModal from '../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
 import TenantRevenueSettlementPanel from '../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
+import TenantDirectoryToolbar from '../src/features/admin/tenantDirectory/TenantDirectoryToolbar.jsx';
+import {
+    DEFAULT_DIRECTORY_STATE,
+    filterTenants,
+    parseDirectoryParams,
+    serializeDirectoryParams
+} from '../src/features/admin/tenantDirectory/tenantDirectory.js';
 import RegistrationUploadsModal from './RegistrationUploadsModal.jsx';
 
 const STATUS_CONFIG = {
@@ -51,6 +57,7 @@ const STATUS_CONFIG = {
     active: { label: 'Active', color: 'text-green-600 bg-green-50 border-green-200', icon: CheckCircle },
     rejected: { label: 'Rejected', color: 'text-red-600 bg-red-50 border-red-200', icon: XCircle },
     inactive: { label: 'Inactive', color: 'text-slate-600 bg-slate-50 border-slate-200', icon: AlertCircle },
+    archived: { label: 'Archived', color: 'text-slate-600 bg-slate-100 border-slate-200', icon: Archive },
     failed: { label: 'Failed', color: 'text-red-600 bg-red-50 border-red-200', icon: XCircle },
 };
 
@@ -749,6 +756,10 @@ const categorizeAuditEvent = (eventType) => {
 
 export default function TenantManager() {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const directoryState = useMemo(() => parseDirectoryParams(searchParams), [searchParams]);
+    const [searchDraft, setSearchDraft] = useState(directoryState.q);
+    const [previousDirectoryQuery, setPreviousDirectoryQuery] = useState(directoryState.q);
     const [tenants, setTenants] = useState([]);
     const [registrationReview, setRegistrationReview] = useState(null);
     const [registrationReviewLoading, setRegistrationReviewLoading] = useState(false);
@@ -757,9 +768,8 @@ export default function TenantManager() {
     const [registrationDraftLoading, setRegistrationDraftLoading] = useState(true);
     const [selectedRegistrationReview, setSelectedRegistrationReview] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [hasLoaded, setHasLoaded] = useState(false);
     const [error, setError] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [searchQuery, setSearchQuery] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // tenant id being processed
     const [capabilityLoading, setCapabilityLoading] = useState('');
     const [pendingCapabilityChange, setPendingCapabilityChange] = useState(null);
@@ -847,6 +857,11 @@ export default function TenantManager() {
     const [complianceModeChoice, setComplianceModeChoice] = useState('non_compliant');
     const [complianceModeActionLoading, setComplianceModeActionLoading] = useState(false);
 
+    if (directoryState.q !== previousDirectoryQuery) {
+        setPreviousDirectoryQuery(directoryState.q);
+        setSearchDraft(directoryState.q);
+    }
+
     const openCustomDomainsModal = (tenant) => {
         setSelectedCustomDomainsTenant(tenant);
         setShowCustomDomainsModal(true);
@@ -857,31 +872,44 @@ export default function TenantManager() {
         setSelectedCustomDomainsTenant(null);
     };
 
+    const updateDirectoryState = (changes, replace = false) => {
+        const nextState = { ...directoryState, ...changes };
+        setSearchParams(serializeDirectoryParams(nextState, searchParams), { replace });
+    };
+
+    const handleDirectorySearchChange = (value) => {
+        setSearchDraft(value);
+        updateDirectoryState({ q: value }, true);
+    };
+
+    const handleDirectoryFilterChange = (key, value) => {
+        updateDirectoryState({ [key]: value });
+    };
+
+    const handleRemoveDirectoryFilter = (key) => {
+        if (key === 'q') setSearchDraft('');
+        updateDirectoryState({ [key]: '' }, key === 'q');
+    };
+
+    const handleClearDirectoryFilters = () => {
+        setSearchDraft('');
+        updateDirectoryState(DEFAULT_DIRECTORY_STATE);
+    };
+
     useEffect(() => {
-        loadTenants();
-    }, [statusFilter]);
+        void loadTenants();
+    }, []);
 
     // Issue #1825: approve/retry now return as soon as provisioning is durably claimed, not once
     // it finishes - the UI has to poll for the outcome instead of learning it from the original
     // request's response. Poll only while at least one currently-loaded tenant is actually
     // in_progress, and refresh silently so the poll itself never causes a loading flicker. A ref
-    // (not `tenants` as an effect dependency) keeps this to one interval per statusFilter instead
-    // of tearing down and recreating the timer on every tenants-state update.
+    // (not `tenants` as an effect dependency) keeps this to one interval for the page lifetime,
+    // without tearing it down and recreating it on every tenants-state update.
     const tenantsRef = useRef(tenants);
     tenantsRef.current = tenants;
-    // RF-4/RF-6 (PR #1830 review, rounds 1 and 2): a slow response could otherwise still be in
-    // flight when the next 3s tick fires (RF-4), and a single shared "cancelled" boolean doesn't
-    // survive a statusFilter change cleanly (RF-6) - the next effect run resets it to false, so
-    // a response from the *previous* filter's poll that resolves after that reset would pass a
-    // naive "not cancelled" check and get applied against the new filter's tenant list.
-    //
-    // pollGenerationRef is a monotonically increasing counter, bumped every time this effect is
-    // cleaned up (statusFilter changed, or unmount) - never reset. Each effect run captures the
-    // generation value current *at that moment* as its own; a response is only applied if that
-    // captured generation still matches the ref's current value when the response arrives,
-    // which is false both after this same effect's own cleanup and after any subsequent effect's
-    // cleanup, so it never depends on which effect run bumped it. pollInFlightRef still skips
-    // starting a new tick while one is already pending.
+    // A slow response cannot overlap the next 3s tick, and a response that resolves after
+    // unmount is ignored. The generation remains monotonic for the whole page lifetime.
     const pollInFlightRef = useRef(false);
     const pollGenerationRef = useRef(0);
     useEffect(() => {
@@ -903,7 +931,7 @@ export default function TenantManager() {
             pollGenerationRef.current += 1;
             clearInterval(intervalId);
         };
-    }, [statusFilter]);
+    }, []);
 
     // Store Template application (issue #178 Phase 17): loaded once, not
     // per-status-filter change - the published template catalog doesn't
@@ -937,14 +965,11 @@ export default function TenantManager() {
             setError('');
         }
         try {
-            const response = await adminService.getTenants(statusFilter);
-            // RF-4/RF-6 (PR #1830 review): a silent poll response that resolves after its own
-            // effect was cleaned up (statusFilter changed, or unmount) is stale - never apply
-            // it. Compared against the current generation, not a boolean, so this is correct
-            // regardless of which later effect run did the bumping.
+            const response = await adminService.getTenants('all');
             if (silent && pollGeneration !== undefined && pollGeneration !== pollGenerationRef.current) return null;
             const freshTenants = response.data || [];
             setTenants(freshTenants);
+            setHasLoaded(true);
             return freshTenants;
         } catch (err) {
             if (silent) {
@@ -1774,34 +1799,10 @@ export default function TenantManager() {
         ].join(' / ');
     };
 
-    const pendingCount = tenants.filter(t => t.status === 'pending').length;
-    const visibleTenants = useMemo(() => {
-        const query = searchQuery.trim().toLowerCase();
-        if (!query) return tenants;
-        return tenants.filter((tenant) => {
-            const capabilities = getTenantCapabilities(tenant);
-            const modeLabel = getCustomerAccessModeLabel(capabilities.customer_access_mode);
-            const effectiveModeLabel = getCustomerAccessModeLabel(capabilities.effective_customer_access_mode);
-            return [
-                tenant.name,
-                tenant.admin_email,
-                tenant.status,
-                getTenantEffectivePlan(tenant),
-                modeLabel,
-                effectiveModeLabel,
-                capabilities.registration_stage,
-                capabilities.customer_access_limitation_reason,
-                capabilities.ims_enabled ? 'ims enabled' : 'ims disabled',
-                capabilities.pos_enabled ? 'pos enabled' : 'pos disabled',
-                capabilities.storefront_visible ? 'storefront visible maps' : 'storefront hidden',
-                capabilities.downpayment_allowed === true ? 'downpayment allowed premium' : 'downpayment unavailable',
-                capabilities.store_visibility_merchant_editable !== false ? 'merchant visibility editing allowed' : 'merchant visibility editing locked'
-            ]
-                .join(' ')
-                .toLowerCase()
-                .includes(query);
-        });
-    }, [searchQuery, tenants]);
+    const visibleTenants = useMemo(
+        () => filterTenants(tenants, directoryState),
+        [directoryState, tenants]
+    );
     const filterByComplianceStatus = (records = []) => {
         if (complianceFilter === 'all') return records;
         if (complianceFilter === 'needs_review') {
@@ -1909,36 +1910,13 @@ export default function TenantManager() {
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <Button onClick={loadTenants} variant="outline" disabled={loading}>
+                        <Button onClick={() => loadTenants()} variant="outline" disabled={loading}>
                             <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
                             Refresh
                         </Button>
                     </div>
                 </div>
 
-                {/* Stats */}
-                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-                    <div className="bg-slate-50 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-slate-900">{tenants.length}</div>
-                        <div className="text-sm text-slate-600">Total</div>
-                    </div>
-                    <div className="bg-amber-50 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-amber-600">{pendingCount}</div>
-                        <div className="text-sm text-amber-700">Pending</div>
-                    </div>
-                    <div className="bg-green-50 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                            {tenants.filter(t => t.status === 'active').length}
-                        </div>
-                        <div className="text-sm text-green-700">Active</div>
-                    </div>
-                    <div className="bg-red-50 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-red-600">
-                            {tenants.filter(t => t.status === 'rejected').length}
-                        </div>
-                        <div className="text-sm text-red-700">Rejected</div>
-                    </div>
-                </div>
                 <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     Subscription plan-change and billing setup actions are disabled in the admin portal.
                 </div>
@@ -2003,67 +1981,36 @@ export default function TenantManager() {
                 ) : null}
             </form>
 
-            {/* Filters */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                    <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                            <div>
-                                <div className="text-sm font-semibold text-slate-900">Tenant search</div>
-                                <div className="text-xs text-slate-500">
-                                    Search by company, admin email, token, status, plan, or capability state.
-                                </div>
-                            </div>
-                            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                                {visibleTenants.length} of {tenants.length}
-                            </span>
-                        </div>
-                        <label className="relative block w-full">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="search"
-                                value={searchQuery}
-                                onChange={(event) => setSearchQuery(event.target.value)}
-                                placeholder="Search tenants, tokens, plans, or capabilities"
-                                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-3 pl-10 pr-24 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-                            />
-                            {searchQuery.trim() ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setSearchQuery('')}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                                >
-                                    Clear
-                                </button>
-                            ) : null}
-                        </label>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                        <div className="mr-1 flex items-center gap-2 text-sm text-slate-600">
-                            <Filter className="w-4 h-4 text-slate-400" />
-                            Status
-                        </div>
-                        {['all', 'pending', 'active', 'rejected'].map(status => (
-                            <Button
-                                key={status}
-                                variant={statusFilter === status ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => setStatusFilter(status)}
-                            >
-                                {status.charAt(0).toUpperCase() + status.slice(1)}
-                            </Button>
-                        ))}
-                    </div>
-                </div>
-            </div>
+            <TenantDirectoryToolbar
+                tenants={tenants}
+                state={directoryState}
+                searchDraft={searchDraft}
+                visibleCount={visibleTenants.length}
+                onSearchChange={handleDirectorySearchChange}
+                onFilterChange={handleDirectoryFilterChange}
+                onRemoveFilter={handleRemoveDirectoryFilter}
+                onClearAll={handleClearDirectoryFilters}
+            />
 
-            {/* Error */}
-            {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center gap-2 text-red-800">
-                    <AlertCircle className="w-5 h-5 shrink-0" />
-                    {error}
+            {!hasLoaded && error ? (
+                <div role="alert" className="mb-6 flex w-full items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
+                    <div className="flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+                        <span>{error}</span>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => loadTenants()}>Retry</Button>
                 </div>
-            )}
+            ) : null}
+
+            {hasLoaded && error ? (
+                <div role="alert" className="mb-6 flex w-full items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                    <div className="flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+                        <span>Couldn't refresh tenants. Showing the last loaded list.</span>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => loadTenants()}>Retry</Button>
+                </div>
+            ) : null}
 
             {registrationDraftLoading ? (
                 <div className="mb-6 flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-800">
@@ -2101,18 +2048,21 @@ export default function TenantManager() {
 
             {/* Tenant List */}
             <div className="space-y-4">
-                {loading ? (
+                {!hasLoaded && loading ? (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                         <RefreshCw className="w-8 h-8 text-slate-400 animate-spin mx-auto mb-3" />
                         <p className="text-slate-600">Loading tenants...</p>
                     </div>
-                ) : visibleTenants.length === 0 ? (
+                ) : !hasLoaded && error ? null : hasLoaded && tenants.length === 0 ? (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                         <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <p className="text-slate-600 text-lg font-medium">No tenants found</p>
-                        <p className="text-slate-500 text-sm">
-                            {searchQuery.trim() ? 'No tenants match your search' : (statusFilter !== 'all' ? `No ${statusFilter} tenants` : 'No company registrations yet')}
-                        </p>
+                        <p className="text-slate-600 text-lg font-medium">No tenants exist yet</p>
+                    </div>
+                ) : hasLoaded && visibleTenants.length === 0 ? (
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
+                        <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                        <p className="text-slate-600 text-lg font-medium">No tenants match these filters</p>
+                        <Button type="button" variant="outline" className="mt-3" onClick={handleClearDirectoryFilters}>Clear filters</Button>
                     </div>
                 ) : (
                     visibleTenants.map(tenant => {

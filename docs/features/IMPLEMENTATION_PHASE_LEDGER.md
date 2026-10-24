@@ -31533,3 +31533,108 @@ gated blocking flip.
 ### Next phase number
 
 Phase 542. No explicit dependency.
+
+## Phase 542 - Searchable Platform Admin tenant directory (#2743)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 1 of epic #2696.
+
+### Objective and scope
+
+Make the Platform Admin tenant directory searchable by tenant identity fields, filterable by
+status, effective plan, compliance mode, ownership, and capability state, and bookmarkable through
+URL query state. Load the full tenant list once and keep status tiles independent of active filters.
+Distinguish initial loading/failure, stale-data refresh failure, empty data, and no matches. Keep
+per-tenant controls and the existing API contract unchanged. Classification: `regulatory` because
+`TenantManager.jsx` is a `settings,compliance` compliance-sensitive surface.
+
+### Status
+
+`in_progress` — scoped implementation and local validation are complete on the registered epic
+branch; the child PR targets that branch and references #2743. The issue remains In Progress
+through the child PR and its merge into the integration branch.
+
+### Dependencies
+
+No explicit dependency. Uses the tenant search/filter contract recorded by #2742 and the registered
+integration branch for epic #2696. Phase 541 is in progress but declares no dependency on this work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md),
+[Tenant Management](TENANT_MANAGEMENT.md), and the #2743 issue. Classification: `regulatory`; no
+architecture boundary or permission grant changes.
+
+### Implementation targets
+
+`apps/dgfy-admin/src/features/admin/tenantDirectory/tenantDirectory.js` and its unit tests,
+`TenantDirectoryToolbar.jsx`, the directory list region of `apps/dgfy-admin/Pages/TenantManager.jsx`,
+directory integration tests and updated placeholder assertions, the Search/Filter bullet in
+`docs/features/TENANT_MANAGEMENT.md`, this ledger entry, and
+`docs/compliance/impact-declarations/2026-10-24-admin-tenant-directory.md`. No backend, service,
+migration, shared observability, or app-version changes.
+
+### Acceptance and validation evidence
+
+- [x] Search is identity-only; the pure module tests cover name, admin email, domain, ID prefix,
+  case/trim behavior, token exclusion, and terms that must not match.
+- [x] Structured facets AND with search; the pure tests cover effective-plan fallback, compliance,
+  ownership, capability `on`/`off`/`unavailable`/`na`, unknown statuses, archived defaults, URL
+  serialization, status counts, and options.
+- [x] The component test verifies one initial `getTenants('all')` call and no extra request or
+  mutation when search and every facet change.
+- [x] Component tests cover archived visibility/badge, whole-set tiles, chips, Clear all, URL
+  history, identity search, and distinct loading/error/empty/no-match states.
+- [x] Focused directory tests pass; the full Admin suite ran with 167 passing tests and six
+  unrelated existing StoreTemplateManager failures, tracked by #2750. Admin production build and
+  lint pass; mocked desktop/mobile rendered route proof has clean console and one primary
+  interaction without mobile horizontal overflow.
+- [x] `TENANT_MANAGEMENT.md` Search/Filter bullet matches shipped behavior; docs, architecture,
+  compliance, app-version, diff, and changed-file marker checks pass.
+
+### Evidence
+
+Focused directory validation passed 18 Vitest tests across two files. The full Admin suite passed
+167 tests; six unrelated failures in the unchanged
+`StoreTemplateManager.registrationIndustries.integration.test.jsx` file are tracked by #2750.
+The Admin production build passed; Admin lint passed with zero errors and two existing warnings.
+Mocked desktop/mobile browser proof passed with no console/page errors, no filter-triggered API or
+mutation calls, URL state surviving reload, and no horizontal overflow at 390 px. `npm run
+lint:docs`, `npm run check:architecture`, `npm run check:compliance`, `node
+scripts/check-app-version-bump.js`, and `git diff --check` passed; the changed-file temporary-marker
+scan found no matches. The local request-time preflight passed against disposable API/MySQL/Redis
+fixtures and reconciled the declaration to `PREFLIGHT-LOCAL-1792811289372-2026-10-24-ADMIN-TENANT-DIRECTORY`.
+
+### Risks and decisions
+
+- Query-string search may expose the `q` value to PostHog and Sentry URL capture; remediation is
+  tracked separately in [#2748](https://github.com/Sieitzz/dgfy-platform/issues/2748), since the
+  shared observability clients are outside this child PR's scope.
+- The `TENANT_MANAGEMENT.md` List View bullet remains stale by #2743's scope boundary; #2742 owns
+  the follow-up documentation reconciliation, recorded in its issue comments.
+- On PROD, capability reads were unavailable for every active tenant in the 2026-10-24 sample;
+  the UI preserves `Unavailable` and never treats it as Off. The underlying read failure remains
+  with #1923/#2633/#2639/#2560.
+- The list remains in `TenantManager.jsx`'s list region. No capability, compliance, or modal region
+  is changed, reducing conflict risk with #1923/#2633/#2639.
+
+### Post-merge verification
+
+- [ ] deployment — after the final integration PR reaches `develop` and the app is deployed to
+  DEV, verify search, each filter, chip dismissal, Clear all, refresh, browser history, and archived
+  labeling with desktop and mobile viewports; owner: Pat; blocks #2743's deployed QA acceptance.
+- [ ] compliance — confirm the final integration commit retains this declaration's reconciled
+  local preflight reference and the compliance gate remains green; owner: compliance sweep; blocks
+  claiming the integrated declaration is verified.
+- [ ] privacy — complete the shared Admin URL-scrubbing follow-up in #2748; owner: PM/Worker; this
+  does not block #2743's child PR acceptance but remains a known residual risk until delivered.
+
+### Next phase number
+
+Phase 543. No explicit dependency.

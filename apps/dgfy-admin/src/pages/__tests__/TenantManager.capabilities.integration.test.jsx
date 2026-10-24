@@ -149,7 +149,7 @@ describe('TenantManager capability controls', () => {
     await screen.findByRole('heading', { name: 'Kusina & Cafe' });
     expect(screen.getByText('Tenant search')).toBeTruthy();
     expect(screen.getByText('2 of 2')).toBeTruthy();
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kusina');
 
     expect(screen.getByRole('heading', { name: 'Kusina & Cafe' })).toBeTruthy();
     // Kate Store's own detail card is filtered out. The tenant-revenue
@@ -203,7 +203,7 @@ describe('TenantManager capability controls', () => {
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Kusina & Cafe' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kusina');
 
     const platformPanel = screen.getByText('Platform max allowed').closest('.rounded-lg');
     expect(platformPanel).toBeTruthy();
@@ -230,7 +230,7 @@ describe('TenantManager capability controls', () => {
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Kusina & Cafe' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kusina');
     await user.click(screen.getByRole('button', { name: /Online ordering mode/i }));
 
     await screen.findByText('Confirm capability change');
@@ -242,7 +242,7 @@ describe('TenantManager capability controls', () => {
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Kusina & Cafe' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kusina');
 
     const readinessPanel = screen.getByText('Registration readiness').closest('.rounded-lg');
     expect(readinessPanel).toBeTruthy();
@@ -277,7 +277,7 @@ describe('TenantManager capability controls', () => {
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Kate Store' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kate');
 
     expect(screen.getByText('Hidden from maps')).toBeTruthy();
     expect(screen.getByText('Turn on Storefront / Maps before changing the customer-facing sub-mode.')).toBeTruthy();
@@ -290,7 +290,7 @@ describe('TenantManager capability controls', () => {
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Kate Store' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kate');
 
     // Issue #1923 symptom 1: this button was reported as completely inert
     // (no modal, no request). It must open the audited confirmation flow.
@@ -323,7 +323,7 @@ describe('TenantManager capability controls', () => {
     const user = userEvent.setup();
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
     await screen.findByRole('heading', { name: 'Kate Store' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kate');
     await user.click(screen.getByRole('button', { name: /Merchant can edit storefront visibility On/i }));
     await screen.findByText('Confirm capability change');
     mocks.adminServiceMock.getTenants.mockResolvedValue({
@@ -351,7 +351,7 @@ describe('TenantManager capability controls', () => {
     const user = userEvent.setup();
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
     await screen.findByRole('heading', { name: 'Kate Store' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kate');
     await user.click(screen.getByRole('button', { name: /Downpayment \(premium\) Off/i }));
     await screen.findByText('Confirm capability change');
     mocks.adminServiceMock.getTenants.mockResolvedValue({ data: [withCapabilities(kateTenant, { downpayment_allowed: true })] });
@@ -366,7 +366,7 @@ describe('TenantManager capability controls', () => {
     render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
     await screen.findByRole('heading', { name: 'Kusina & Cafe' });
-    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+    await user.type(screen.getByPlaceholderText('Search by name, admin email, domain, or tenant ID'), 'kusina');
 
     await user.click(screen.getByRole('button', { name: /POS Off/i }));
     await screen.findByText('Confirm capability change');
