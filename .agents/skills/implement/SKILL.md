@@ -102,12 +102,17 @@ missing, malformed, or materially stale or conflicting handoff.
 
 ## Manual session handoff input
 
-An explicit `/handoff` may resume this role with `/implement @.tmp/handoff-<...>.md`. Validate the
-`dgfy-handoff/v1` schema, confirm `role: implementer`, and confirm any issue or PR identity matches
-the live task. Treat the artifact as a progress snapshot only: re-validate the issue and
-authoritative docs, surface conflicts before editing, and never force-add the ignored file. A
-missing, malformed, mismatched, or ambiguous handoff is a hard stop; without one, the existing
-Worker workflow is unchanged.
+An explicit `/handoff` may resume this role with `/implement @.tmp/handoff-<...>.md`. Follow the
+[manual session handoff compatibility contract](../../../docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md),
+including its supported `agent-handoff/v1` and `dgfy-handoff/v1` variants. Confirm
+`role: implementer` and any requested issue or PR against live GitHub state; infer omitted context
+only from reliable invocation, checkout, or live-source evidence. Revalidate the live issue/PR,
+checkout, and authoritative docs before editing. Surface actual identity/role conflicts and
+consequential unresolved ambiguity before editing; label, extra metadata, descriptive runtime/model,
+or stale branch/HEAD differences alone do not block. The snapshot is progress evidence, not
+implementation authorization; the explicit `/implement` invocation and all existing Worker gates
+remain required. Never force-add the ignored file. Without one, the existing Worker workflow is
+unchanged.
 
 ## Omitted target resolution
 

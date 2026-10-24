@@ -31533,3 +31533,84 @@ gated blocking flip.
 ### Next phase number
 
 Phase 542. No explicit dependency.
+
+## Phase 545 - Resume-compatible AI session handoffs (#2753)
+
+### Initiative and release
+
+Agent workflow reliability / manual session handoff compatibility.
+
+### Objective and scope
+
+Allow Planner, Implementer, and Reviewer sessions to resume from the generic `agent-handoff/v1`
+and repository `dgfy-handoff/v1` snapshot variants. Centralize the compatibility contract, align
+the canonical producer and three receivers, preserve live-source and identity checks, and keep
+session snapshots distinct from Planner-to-Worker implementation plans. No application runtime,
+API, database, merge, or deployment behavior changes.
+
+### Status
+
+`in_progress` — implementation and documentation validation are underway on the #2753 Worker
+branch.
+
+### Dependencies
+
+None. Phases 542–544 are active integration-branch sequencing claims, not technical prerequisites
+for this documentation work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[Manual Session Handoff Compatibility](../ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md),
+[Planner/Worker Handoff Compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md), and issue
+[#2753](https://github.com/Sieitzz/dgfy-platform/issues/2753). Classification:
+`no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+`.agents/skills/handoff/SKILL.md`, the manual-session sections of the Planner, Implementer, and
+Reviewer skills, `docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md`, and this ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] The producer continues emitting `dgfy-handoff/v1`; all three receivers accept exactly
+  `agent-handoff/v1` and `dgfy-handoff/v1` under the same shared compatibility contract.
+- [x] Additional metadata, descriptive runtime/model values, and recoverable missing context do not
+  cause a hard stop; real repository/issue/PR/role conflicts still pause.
+- [x] Walkthroughs cover Planner, Implementer, and Reviewer, the #2696 reproduction and live docs,
+  changed live state, recoverable metadata, and a genuine unresolved conflict.
+- [x] Planner-to-Worker `ready` content and route checks, plus existing implementation/review action
+  boundaries, remain unchanged.
+- [x] `npm run lint:docs` and `npm run check:agent-surfaces` pass; walkthrough results are recorded
+  in PR Testing Evidence.
+
+### Evidence
+
+`npm run lint:docs` passed (36 governed docs); `npm run check:adr` passed (105 ADRs);
+`npm run check:agent-surfaces` passed (14 canonical roles, 10 shims); and
+`npm run check:compliance` reported no compliance-sensitive changes and passed API-contract checks.
+Manual walkthrough results are recorded in the PR's `## Testing Evidence`: the #2696 generic
+snapshot matched its live issue/role and continued after rereading the newer live candidate-slate
+comment and the feature doc on its registered branch; the DGFY variant followed the same path;
+matching Implementer/#2753 and Reviewer/#2758 variants resumed through live-source checks; harmless
+metadata and omitted checkout fields were recovered; wrong repository/issue/role and unresolved
+role cases stopped. No review or other external action was taken during walkthroughs. No
+application runtime tests apply to this instructions-only change.
+
+### Risks and decisions
+
+Phase 545 follows the highest active integration-branch claim (Phase 544) to avoid adding another
+branch-local collision. The current `develop` ledger lists Phase 542 next; Phase 542–544 are
+represented on active integration branches. This numbering choice creates no technical dependency
+on those phases. Their existing branch-local numbering must be reconciled before those branches
+converge. No unresolved product or scope decision remains.
+
+### Post-merge verification
+
+- [x] No deployment, provider, or operational verification is required for this documentation-only
+  change; the shared contract and walkthrough evidence close the scoped work.
+
+### Next phase number
+
+Phase 546. No explicit dependency.
