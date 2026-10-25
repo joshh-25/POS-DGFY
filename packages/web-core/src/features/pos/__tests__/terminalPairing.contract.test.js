@@ -62,7 +62,7 @@ describe('POS terminal pairing contract', () => {
     expect(resumeStart).toBeGreaterThan(-1);
     expect(resumeSource).toContain('const normalizedShiftId = Number.parseInt(shiftId, 10);');
     expect(resumeSource).toContain("cashierUnlockSession?.source === 'dgfy_pos'");
-    const signedInResumeStart = resumeSource.indexOf('const signedInCashierResume =');
+    const signedInResumeStart = resumeSource.indexOf('const signedInPosOperatorResume =');
     const signedInResumeEnd = resumeSource.indexOf(
       'if (\n      activeShiftId',
       signedInResumeStart
@@ -77,6 +77,9 @@ describe('POS terminal pairing contract', () => {
     expect(signedInResumeSource).toContain('setTerminalUnlockModalOpen(false);');
     expect(signedInResumeSource).toContain('setSubmitting(true);');
     expect(signedInResumeSource).toContain('fetchCurrentTerminalShift({');
+    expect(signedInResumeSource).toContain('currentShiftId !== normalizedShiftId');
+    expect(signedInResumeSource).not.toContain('openPosTerminalShift(');
+    expect(signedInResumeSource).toContain("openingFloatAmount: ''");
     expect(signedInResumeSource).toContain('await completeUnlock(normalizedTerminalId');
     expect(directResumeAttemptSource).not.toContain('setTerminalUnlockModalOpen(true);');
     expect(resumeSource).toContain('const confirmedShiftId = Number(');
@@ -89,6 +92,43 @@ describe('POS terminal pairing contract', () => {
     expect(normalResumeStart).toBeGreaterThan(-1);
     expect(stateChangesBeforeExplicitRefresh).not.toContain('setLocked(false);');
     expect(stateChangesBeforeExplicitRefresh).not.toContain('setActiveTerminalId(normalizedTerminalId);');
+    expect(signedInResumeSource).toContain('No new shift or opening cash is needed — try again.');
+    expect(signedInResumeSource).toContain("setStoredTerminalLockReason('shift_start_required');");
+    expect(signedInResumeSource).toContain('setTerminalUnlockModalOpen(true);');
+  });
+
+  it('authorizes branch cards against the selected user and current action permissions', () => {
+    const directoryStart = terminalPageSource.indexOf('const refreshCashierBranchDirectory = useCallback');
+    const directoryEnd = terminalPageSource.indexOf('useEffect(() => {\n    refreshBranchDirectory', directoryStart);
+    const directorySource = terminalPageSource.slice(directoryStart, directoryEnd);
+    const selectorStart = terminalPageSource.indexOf('const openBranchSelector = useCallback');
+    const selectorEnd = terminalPageSource.indexOf('const continueFromBranchSelector', selectorStart);
+    const selectorSource = terminalPageSource.slice(selectorStart, selectorEnd);
+    const openStart = terminalPageSource.indexOf('const handleBranchSelectorOpenShift = useCallback');
+    const resumeStart = terminalPageSource.indexOf('const handleBranchSelectorResumeShift = useCallback');
+    const resumeEnd = terminalPageSource.indexOf('const handleSelectAdminTerminal', resumeStart);
+    const openSource = terminalPageSource.slice(openStart, resumeStart);
+    const resumeSource = terminalPageSource.slice(resumeStart, resumeEnd);
+
+    expect(directorySource).toContain('const branchOperator = userOverride || terminalUser;');
+    expect(directorySource).toContain('action: \'open\'');
+    expect(directorySource).toContain('action: \'resume\'');
+    expect(directorySource).toContain('location?.is_active === false');
+    expect(directorySource).toContain('entry?.is_active !== false');
+    expect(directorySource).toContain('isShiftOwnedByUser(ownedShift, branchOperator)');
+    expect(selectorSource).toContain('const branchOperator = cashierData?.user || terminalUser;');
+    expect(selectorSource).toContain('cashierBranchOperatorRef.current = branchOperator;');
+    expect(openSource).toContain('cashierBranchOperatorRef.current || terminalUser');
+    expect(openSource).toContain('action: \'open\'');
+    expect(openSource).toContain('|| !canOpenShift');
+    expect(openSource).toContain('if (!isOnline)');
+    expect(openSource).toContain('Number(registryEntry.location_id || 0) !== normalizedLocationId');
+    expect(openSource).not.toContain('canViewBranchLocations');
+    expect(resumeSource).toContain('cashierBranchOperatorRef.current || terminalUser');
+    expect(resumeSource).toContain('action: \'resume\'');
+    expect(resumeSource).toContain('|| !canResumeShift');
+    expect(resumeSource).toContain('Number(registryEntry.location_id || 0) !== normalizedLocationId');
+    expect(resumeSource).not.toContain('canViewBranchLocations');
   });
 
   it('keeps existing shift resume independent from Sell button access', () => {
