@@ -32367,3 +32367,131 @@ Not complete. Record after merge and implementation validation.
 ### Next phase number
 
 Phase 554. No explicit dependency.
+
+## Phase 554 - Custom staff-role invitations for Warehouse and Delivery (#2812)
+
+### Initiative and release
+
+OPIS back-office team access and DGFY company membership. Feature branch: `feat/2812-custom-staff-role-invites`.
+
+### Objective and scope
+
+Allow an OPIS owner or legacy admin to invite an already registered DGFY account into an active
+tenant custom staff role. Persist the tenant role assignment and active location grants, accept the
+invitation only after revalidating the tenant user, role, membership, and locations, and immediately
+cancel pending invitations when a role is deactivated. Preserve the role name and cancellation
+reason in the landlord invitation registry for display and reconciliation. Show active custom roles
+in the shared invitation UI only through the OPIS surface, and report cancellation counts and
+registry-sync retries.
+
+Email-first account registration remains deferred to #2805. The shared modal preserves selected
+account and assigned-location choices across role changes; #2810 still owns the remaining compatible
+standard-role catalog behavior and must land before final integrated validation and merge.
+
+### Status
+
+`in_progress` — implementation and validation are underway; no commit or PR has been created.
+
+### Dependencies
+
+No dependency on Phase 553 is recorded. #2810 is required before final integrated validation/merge;
+its compatible standard-role changes remain separate. #2805's email-first flow is explicitly
+deferred and is not a dependency for existing-account invitations.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0015](../architecture/adr/0015-tenant-user-invitation-registry.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0028](../architecture/adr/0028-dgfy-account-company-switching.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[POS Manual Delivery Workflow](POS_MANUAL_DELIVERY_WORKFLOW.md),
+[Issue #2812](https://github.com/Sieitzz/dgfy-platform/issues/2812). Classification:
+within-existing-boundary; tenant roles and grants remain authoritative, landlord metadata is a
+non-authoritative lifecycle descriptor, and invitation behavior is exposed from OPIS.
+
+### Implementation targets
+
+[dgfyAuthUseCases.js](../../apps/dgfy-api/src/modules/dgfy/usecases/dgfyAuthUseCases.js),
+[dgfyAccountRepository.js](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyAccountRepository.js),
+[staffRoleUseCases.js](../../apps/dgfy-api/src/modules/staff/usecases/staffRoleUseCases.js),
+[staffRoleRepository.js](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[transaction-aware assignment helper](../../apps/dgfy-api/src/modules/staff/repositories/staffRoleRepository.js),
+[landlordService.js](../../apps/dgfy-api/src/services/landlordService.js),
+[userService.js](../../apps/dgfy-api/src/services/userService.js),
+[UserInvitation.js](../../apps/dgfy-api/src/models/Landlord/UserInvitation.js),
+[migration](../../apps/dgfy-migration-runner/migrations/20261026000001-add-custom-staff-role-invitation-metadata.cjs),
+[UserInvitationModal.jsx](../../packages/web-core/Components/users/UserInvitationModal.jsx),
+[UserManagementModal.jsx](../../packages/web-core/Components/users/UserManagementModal.jsx),
+[StaffRolesPanel.jsx](../../apps/dgfy-opis/src/features/businessAdmin/StaffRolesPanel.jsx),
+[DGFY invitation role tests](../../apps/dgfy-api/tests/dgfyInvitationCompanyRole.test.js),
+[staff-role tests](../../apps/dgfy-api/tests/staffRoleFoundation.usecase.test.js),
+[disposable database integration test](../../apps/dgfy-api/tests/staffRoleInvitationPersistence.phase554.db.integration.test.js),
+and [invitation modal tests](../../packages/web-core/Components/users/__tests__/UserInvitationModal.dgfy.test.jsx).
+
+### Acceptance and validation evidence
+
+- [ ] Owner/admin authorization, strict role ID validation, active role/location validation, and
+  conflicting preset/permission rejection pass before durable writes.
+- [ ] Custom invitations persist `role='staff'`, the selected tenant role, empty permissions,
+  inherited permission mode, inactive pending state, active location grants, and a landlord name
+  snapshot; accepted users receive only current role capabilities and invited active grants.
+- [ ] Acceptance rejects wrong account, expired/cancelled invitation, unavailable/mismatched role,
+  and inactive/missing grants; accepted replay does not reassign the user.
+- [ ] Deactivation cancels only pending invitations in the active tenant, syncs registry and invite
+  membership state, preserves accepted memberships, and retries partial landlord synchronization.
+- [ ] Reinvitation resets cancellation metadata, while role reactivation does not revive old
+  invitations. Reused tenant rows and landlord registry/membership writes are compensated on
+  creation failure.
+- [ ] The shared modal shows active custom roles to OPIS owners/admins, keeps account/location
+  choices across assigned-role switches, blocks missing locations, and retains fixed-cashier
+  behavior. Invitation lists show the role snapshot and cancellation reason.
+- [ ] Focused API and UI tests, migration idempotence/rollback evidence, architecture/schema/compliance
+  checks, affected OPIS/POS/IMS builds, and rendered OPIS desktop/mobile checks are recorded below
+  before the implementation checkpoint.
+
+### Validation evidence (2026-10-26)
+
+- Focused API Jest tests: 3 suites / 22 tests passed (`dgfyInvitationCompanyRole`,
+  `staffRoleFoundation.usecase`, `dgfyAccountRepository.invitationSchema`).
+- Disposable MySQL integration: 1 suite / 4 tests passed against a uniquely named migrated `test_*`
+  database, dropped during teardown. It verifies assignment/audit rollback and commit, pending-only
+  invitation cancellation with accepted users preserved, actual InnoDB role-row lock blocking,
+  and migration repeated-up/down behavior that leaves the pre-feature invitation columns intact
+  and removes the newly added index on rollback.
+  This does not prove cross-database landlord synchronization or full DGFY acceptance end to end.
+- OPIS invitation contract: 1 suite / 4 tests passed. Shared invitation modal: 1 suite / 9 tests
+  passed through the IMS runner. A local Playwright preview with isolated API fixtures rendered at
+  1440×900 and 390×844, submitted `staff_role_id=17` with role `staff` and location `[11]`, and
+  reported no browser console errors. Screenshots: [desktop](../../apps/dgfy-opis/.tmp/2812-opis-invitation-desktop.png),
+  [mobile](../../apps/dgfy-opis/.tmp/2812-opis-invitation-mobile.png).
+- OPIS, POS, and Skupervisor builds passed. OPIS lint passed with one existing max-lines warning in
+  `BusinessAdminPage.jsx`. `check:architecture`, `lint:docs`, `check:compliance`, `check:app-versions`,
+  `check:tenant-schema-coverage`, JavaScript syntax checks, and `git diff --check` passed. The tenant
+  schema coverage command reported that no tenant migration files changed; the landlord migration
+  was exercised by the disposable database integration test.
+- Compliance declaration is present as a draft with `NOT-EXECUTED` reference; no live compliance
+  preflight was run. #2810 remains an open prerequisite for final integrated validation/merge; #2805
+  email-first registration remains deferred. The phase remains `in_progress`, and no commit or PR
+  has been created pending human review of the migration and declaration.
+
+### Completion date
+
+Not complete. Record only after merge and implementation validation pass.
+
+### Post-merge verification
+
+- [ ] **migration** — apply the additive landlord migration on an existing tenant registry and a
+  fresh registry; verify nullable metadata and the role/status index, and confirm old invitations
+  remain readable. Owner: release operator; blocks deployed acceptance.
+- [ ] **deployment** — verify one new custom-role invitation and one immediate role-deactivation
+  cancellation in a deployed tenant; confirm registry name/reason and the pending DGFY membership
+  state. Owner: operator/release verifier; blocks deployed acceptance.
+- [ ] **end-to-end** — accept an active custom-role invitation and confirm current role capabilities
+  and location grants; confirm a cancelled/deactivated invitation cannot be accepted. Owner: verifier;
+  blocks deployed acceptance.
+
+### Next phase number
+
+Phase 555. No explicit dependency.

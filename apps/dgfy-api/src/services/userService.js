@@ -814,8 +814,14 @@ export const getAllUsers = async (options = {}) => {
 
   const workflowMode = await readCurrentWorkflowMode();
   const tenantId = dbStore.getStore()?.tenantId;
+  const invitationMetadata = await landlordService.listInvitationRegistryMetadataByTenantUsers({
+    tenantId,
+    tenantUserIds: users.map((user) => user.user_id)
+  });
+  const invitationMetadataByUserId = new Map(invitationMetadata.map((invitation) => [Number(invitation.tenant_user_id), invitation]));
   return Promise.all(users.map(async (user) => {
     const dgfyLinkStatus = await buildLegacyDgfyLinkStatus({ tenantId, user });
+    const registryMetadata = invitationMetadataByUserId.get(Number(user.user_id));
     return buildUserPayload(user, workflowMode, {
       is_active: user.is_active,
       last_login: user.last_login,
@@ -832,6 +838,8 @@ export const getAllUsers = async (options = {}) => {
       invitation_delivery_error: user.invitation_delivery_error || null,
       invitation_last_sent_at: user.invitation_last_sent_at || null,
       invited_by: user.invited_by || null,
+      staff_role_name: user.staffRole?.name || registryMetadata?.staff_role_name || null,
+      invitation_cancellation_reason: registryMetadata?.cancellation_reason || null,
       ...dgfyLinkStatus
     });
   }));

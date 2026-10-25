@@ -76,6 +76,12 @@ const DGFY_LINK_CLASSES = {
 
 const isInvitationRow = (user) => INVITATION_STATUSES.has(String(user?.invitation_status || '').toLowerCase());
 const isPendingInvitation = (user) => String(user?.invitation_status || '').toLowerCase() === 'pending';
+const getInvitationStatusLabel = (user) => (
+  String(user?.invitation_status || '').toLowerCase() === 'cancelled'
+  && user?.invitation_cancellation_reason === 'staff_role_unavailable'
+    ? 'Cancelled — role no longer available'
+    : INVITATION_STATUS_LABELS[String(user?.invitation_status || '').toLowerCase()] || user?.invitation_status
+);
 const parsePermissions = (permissions) => {
   if (Array.isArray(permissions)) return normalizePermissionSelections(permissions);
   if (typeof permissions === 'string') {
@@ -160,6 +166,7 @@ export default function UserManagementModal({
   locationOptions = null,
   invitationTitle = 'Invite DGFY Account',
   invitationSubmitLabel = 'Send DGFY Invitation',
+  allowCustomStaffRoles = false,
   embedded = false,
   embeddedCloseLabel = 'Back to Team & Access'
 }) {
@@ -232,7 +239,7 @@ export default function UserManagementModal({
     }));
   }, [rolePresets]);
 
-  const getRoleDisplay = (user) => user?.role_preset_label || ROLE_LABELS[user?.role] || user?.role || 'Role';
+  const getRoleDisplay = (user) => user?.staff_role_name || user?.role_preset_label || ROLE_LABELS[user?.role] || user?.role || 'Role';
   const getRoleSelectValue = (user) => (
     user?.role_preset_key ? `preset:${user.role_preset_key}` : `legacy:${user?.role || 'staff'}`
   );
@@ -1086,7 +1093,7 @@ export default function UserManagementModal({
                             {getRoleDisplay(user)}
                           </span>
                           <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                            {INVITATION_STATUS_LABELS[user.invitation_status] || user.invitation_status}
+                            {getInvitationStatusLabel(user)}
                           </span>
                         </div>
                       ) : (
@@ -1213,7 +1220,7 @@ export default function UserManagementModal({
                           )}
                           {!isPendingInvitation(user) && (
                             <span className="text-xs text-slate-400">
-                              {INVITATION_STATUS_LABELS[String(user?.invitation_status || '').toLowerCase()] || 'Closed'}
+                              {getInvitationStatusLabel(user) || 'Closed'}
                             </span>
                           )}
                         </div>
@@ -1299,6 +1306,7 @@ export default function UserManagementModal({
         }}
         roleCatalog={roleCatalog}
         locationOptions={locationOptions}
+        canManageCustomStaffRoles={allowCustomStaffRoles && (currentUser?.is_master_admin === true || String(currentUser?.role || '').trim().toLowerCase() === 'admin')}
         title={invitationTitle}
         submitLabel={invitationSubmitLabel}
       />
