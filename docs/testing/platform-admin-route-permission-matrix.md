@@ -36,3 +36,20 @@ The backend resolves current session and database permissions on every Platform 
 `/api/v1/admin/me`, `/logout`, and `/change-password` require an active Platform Admin session but no page grant. The bootstrap master has all grants implicitly; permissions are never trusted from a JWT claim.
 
 The mounted registration-draft approval routes are `/api/v1/admin/tenants/registration-drafts/:draftId/approve` and `/retry-materialization`; they are covered by the generic `admin.tenants` rule. `auth.js` also contains a rule for `/api/v1/registration/drafts/:id/(approve|retry-materialization)`, but no route is mounted at that path. The `registration-industries` and tenant-revenue admin paths are master-only only because they reach the fallback above; the middleware has no explicit rule for them.
+
+## Frontend route policy
+
+`apps/dgfy-admin` applies a user-facing route boundary before mounting a page. This is a usability
+guard; backend authorization above remains authoritative for direct requests.
+
+| Browser route | Frontend authority |
+| --- | --- |
+| `/admin/tenants` and `/admin/tenants/:id` sections other than Billing | `admin.tenants` or Platform Master Admin |
+| `/admin/tenants/billing` | Platform Master Admin only |
+| `/admin/tenants/:id/billing` | Platform Master Admin only |
+
+The static `/admin/tenants/billing` route is resolved before the dynamic tenant-detail route and is
+preserved as its own analytics label. Delegates cannot mount either Billing page by entering its
+URL directly; the global Billing link and tenant-detail Billing section are hidden from them. The
+tenant-revenue APIs remain master-only through the existing backend fallback until an authoritative
+API classification change is made separately.

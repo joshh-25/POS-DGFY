@@ -12,13 +12,13 @@ topic: platform_admin_tenant_console
 This document records the landlord Platform Admin tenant console's current actions and the agreed
 contracts for epic #2696. It is a reference for product and implementation work;
 the route permission matrix and accepted ADRs remain authoritative when a statement here differs.
-Current placement notes and the 27-action destination map were updated for Phase 545 (Wave 4,
-#2757/#2748/#2750) on the child branch, based on epic SHA
-`8fc6861dc56c374abdd110a700b8c2c427d247db`. Access & storefront owns the existing capability
-controls and audit entry point. Unavailable capability reads remain explicitly unknown and disable
-writes. #1923's STAGING persistence/publication checks and the PROD read failure remain external
-verification; they do not block integrating this route into the epic branch. The optional combined
-Activity page remains deferred.
+Current placement notes and the 27-action destination map were reconciled for Phase 545 (Wave 4,
+#2757/#2748/#2750). Phase 547 (Wave 5, #2776) adds a separate global Billing route and tenant-scoped
+Billing section, plus lighter default directory reads and browser-side paging. Access & storefront
+owns the existing capability controls and audit entry point. Unavailable capability reads remain
+explicitly unknown and disable writes. #1923's STAGING persistence/publication checks and the PROD
+read failure remain external verification; they do not block integrating this route into the epic
+branch. The optional combined Activity page remains deferred.
 
 ## Scope and authority
 
@@ -69,7 +69,7 @@ current route/use-case path.
 | 17 | Tenant detail → Store setup: Apply store template | `POST /:id/apply-template` | T; template catalog `GET /api/v1/admin/templates` is Platform Master-only | Confirmation dialog and reason 3–500 characters; active tenants only | `tenant_admin_audit_logs` (`apply_template`) | #2719 | Store setup. Delegates receive an explanation and no catalog request. Tenant apply remains distinct from global template curation. |
 | 18 | Tenant detail → Store setup: POS metadata | `GET /:id/pos-metadata`, `PATCH /:id/pos-metadata`, and `GET /:id/pos-metadata/audit-logs` | T | Required reason, 3–500 characters | `tenant_admin_audit_logs` (`pos_metadata_update`) | — | Store setup; the audit view remains here while Activity is deferred. |
 | 19 | Tenant detail → Store setup: Custom domains | `GET/POST /:id/storefront-domains`; `POST /:id/storefront-domains/:domainId/{verify,make-canonical,retry,check-dns,suspend}`; `DELETE /:id/storefront-domains/:domainId`; `POST /:id/storefront-domains/reconcile-eligibility` | T; creation requires active Premium eligibility; other operations use their per-domain guards | Existing domain modal reasons and per-action guards | `storefront_custom_domain_audit_logs` | — | Store setup. |
-| 20 | Revenue & Settlement panel on the Tenant Manager directory | `/api/v1/tenant-revenue/admin/*` | Platform Master-only through fallback; no explicit route classification | Varies by operation; mutating panel actions collect a reason | Revenue ledger/reconciliation audit records, depending on operation | #2536, #2531, #2534 | Stays a cross-tenant global tool. Overview links to the directory's stable `#revenue-settlement` anchor with `tenant_id`; authorized tenant data validates preselection. |
+| 20 | Global Billing workspace and Tenant detail → Billing | `/api/v1/tenant-revenue/admin/*` | Platform Master-only through fallback; no explicit API route classification; browser Billing routes are master-only | Existing panel actions and reasons are preserved; archived detail is read-only | Revenue ledger/reconciliation audit records, depending on operation | #2536, #2531, #2534, #2776 | Global Billing remains cross-tenant; active tenant detail locks the existing workspace to one tenant. Archived detail exposes tenant-scoped reads only. Legacy `#revenue-settlement` links redirect to global Billing and validate preselection against the authorized tenant list. |
 | 21 | Payment account readiness / PayMongo child-account tools | `GET /api/v1/commerce-payments/admin/tenant-payment-accounts`; `PUT /api/v1/commerce-payments/admin/tenants/:tenant_id/payment-account`; `POST /api/v1/commerce-payments/admin/tenants/:tenant_id/paymongo-child-account` and `POST .../paymongo-child-account/:action` | `admin.payments` | Readiness upsert has no reason field; provider operations use their own controls | `AuditLog` | — | Stays in Payment Operations (`/admin/payments`) under its own grant. A URL tenant is selected only after matching the loaded authorized tenant list; a failed list leaves it unset and can be retried. Preselection never fills a mutation form. |
 | 22 | Platform invoice after tenant approval | `/api/v1/admin/invoices/*` | `admin.invoices` | Separate invoice flow; approval never creates an invoice | `platform_invoice_events` (for example, `draft_created` and `issued`) | — | Stays in Invoices (`/admin/invoices`) under its own grant. Application preselection requires current eligibility and tenant match; tenant-only context selects only one unique eligible application. |
 | 23 | Tenant detail → Overview: Assign owner | `POST /:id/owner` | T and `admin.dgfy_accounts` | Existing active account, required reason, explicit force acknowledgement, and preview | `tenant_admin_audit_logs` (`admin_assign_owner` or `admin_force_assign_owner`) | #2742 | Available for active tenants only; Platform Master or both page grants are required. The endpoint payload deliberately sends `force: true`; this does not imply a stronger backend concurrency guarantee. |
@@ -80,12 +80,14 @@ current route/use-case path.
 
 ### Final integrated destination map
 
-The 27 rows above are the reconciled Wave 4 map; earlier phase entries preserve the placement and
-open findings recorded at their own implementation points. Actions 1–6 live in Lifecycle; 7–9 in
+The 27 rows above retain the reconciled Wave 4 action inventory and include the Wave 5 Billing
+placement; earlier phase entries preserve findings recorded at their own implementation points.
+Actions 1–6 live in Lifecycle; 7–9 in
 Registration; 11–12 in Access & storefront; 13–16 in Compliance; 17–19 in Store setup; and 23 in
-Overview. The submitted registration-draft queue (10) and Revenue & Settlement (20) remain global
-directory tools. Payment Operations (21) and Invoices (22) remain separate grant-protected global
-pages. Add tenant (27) stays at `/admin/tenants/new`. Affiliate slots (24) and final-review document
+Overview. The submitted registration-draft queue (10) remains on the directory. Revenue &
+Settlement (20) has a master-only global Billing route and a master-only tenant detail route;
+Payment Operations (21) and Invoices (22) remain separate grant-protected global pages. Add tenant
+(27) stays at `/admin/tenants/new`. Affiliate slots (24) and final-review document
 review (25) remain API-only under the recorded decisions. Legacy actions (26) remain outside the
 UI, with only unused Admin frontend wrappers removed; their backend routes are unchanged. The
 combined Activity page remains deferred, with audit views beside their owning controls.
@@ -100,13 +102,16 @@ historical metadata.
 
 Capability facets have four display states: enabled, disabled, `unavailable`, and `n/a`.
 `capabilities.unavailable` means the active tenant capability read failed. A `null` capabilities
-object for a non-active tenant means `n/a`. Unknown or unavailable values must never count as off.
+object for a non-active tenant means `n/a`. Active-tenant capabilities are not read for the normal
+directory request; capability filters show a loading state while requesting enriched values. Unknown
+or unavailable values must never count as off.
 
-Only the free-text URL parameter name `q` is fixed by this decision. #2743 owns the names and
-serialization of the other filter parameters. Filters may combine, and the directory must keep
-search/filter context when returning from a detail page.
-If the UI displays a result count as “N of M”, it must define what `M` counts (the full tenant set,
-the filtered match set, or the visible non-archived set); do not leave the denominator ambiguous.
+The directory URL preserves `q`, status, plan, compliance, ownership, and capability parameters,
+plus validated `sort`, `page`, and `page_size`. Sorting supports newest/oldest and name A–Z/Z–A,
+with tenant ID as a deterministic tie-breaker. Page sizes are 10, 20, or 50; the default is 20.
+Filtering runs before sorting and paging. The range denominator is the number of filtered matches,
+not the full tenant set; status counts continue to describe the full tenant set. Unrelated query
+parameters remain intact through directory and detail navigation.
 
 The directory hides archived tenants from the default view and shows them when the Archived status
 filter is selected. Summary tiles count the whole tenant set, including archived rows, rather than
@@ -129,12 +134,12 @@ The detail page uses one bookmarkable route per section:
 | Compliance | `/admin/tenants/:id/compliance` |
 | Store setup | `/admin/tenants/:id/store-setup` |
 | Activity | Deferred; no route is mounted. Audit access stays with the section that owns each action. |
-| Billing | Link group to global billing tools; no detail route |
+| Billing | `/admin/tenants/billing` global workspace and `/admin/tenants/:id/billing` tenant-scoped workspace; both master-only |
 
 Add tenant uses `/admin/tenants/new`, declared before `/admin/tenants/:id`. Admin route access and
 sidebar highlighting resolve exact paths and slash-delimited descendants through the same policy;
 denied child pages do not mount during the redirect. The detail shell links Overview, Lifecycle,
-Registration, Compliance, Store setup, and Access & storefront. That section owns the existing
+Registration, Compliance, Store setup, Access & storefront, and master-only Billing. That section owns the existing
 capability controls and audit history. An unavailable capability read is never shown as On or Off
 and all related writes stay disabled until a fresh read succeeds. The #1923 STAGING
 persistence/publication checks and PROD capability-read recovery remain external verification
@@ -142,7 +147,11 @@ before release qualification. Activity is deferred, with audit history kept in t
 owns each action.
 A section the current admin cannot use is hidden or has its permission explained; the page must not
 show an action and then rely on a 403 to explain the missing grant. Owner assignment requires both
-`admin.tenants` and `admin.dgfy_accounts`. Billing links keep their target pages' independent grants.
+`admin.tenants` and `admin.dgfy_accounts`. The default directory request skips tenant-database
+capability reads; other callers keep the existing enriched response by default, and capability
+filters explicitly request enrichment. Tenant rows live only in authenticated in-memory state,
+survive directory/detail navigation, and are invalidated on logout, session expiry, or successful
+tenant mutations. Finance data is not cached with the tenant list.
 
 Directory Add tenant and tenant-name links carry the complete current query string, including
 unrecognized parameters. Overview/Add tenant return links use the fixed local directory path with
@@ -163,9 +172,10 @@ and is required before the final DEV soak.
 | 5 | Tenant details include Overview, Lifecycle, Registration, Access & storefront, Compliance, Store setup, and links to global Billing tools. The combined Activity page is deferred; audit entry points stay in their owning sections. | Decided; Activity deferral recorded for Phase 544. |
 | 6 | Owner assignment belongs on the detail page to close the Company-only ownership dead end and requires both tenant and DGFY-account grants. Affiliate slots (#1190) and final-review document review remain API-only. Legacy change-plan, PayPal, and provision controls stay out of UI scope; route API removal to PM. | Decided. |
 | 7 | Assisted provisioning gets `/admin/tenants/new` and an Add tenant directory button; retain its required reason and the dual grant for the with-account path. | Decided; issue recommendation adopted. |
-| 8 | Registration-draft review stays on the directory; pricing, template curation, Revenue & Settlement, Payment Operations, and Invoices remain global tools with their own authority. Tenant overview links may preselect authorized tenant/application data after validating it; opening a global tool never submits a mutation. | Decided. |
+| 8 | Registration-draft review stays on the directory; pricing, template curation, Revenue & Settlement, Payment Operations, and Invoices remain global tools with their own authority. Tenant overview links may preselect authorized tenant/application data after validating it; opening a global tool never submits a mutation. | Updated by Phase 547: Revenue & Settlement also has a master-only, tenant-scoped detail view; archived records are read-only. |
 | 9 | Hide archived tenants by default and expose them under an Archived filter. Count all statuses in the summary tiles. Keep archived details directly addressable and present the page read-only, while documenting the API's existing status-specific write behavior. | Decided by Pat on 2026-10-24. |
 | 10 | Move existing capability/readiness controls and their audit entry point into Access & storefront on the epic branch. Unknown/unavailable values stay distinct and disable writes; #1923 STAGING checks and PROD read recovery remain external verification, not a child-PR deployment gate. | Wave 3 implementation sequencing recorded 2026-10-24. |
+| 11 | Keep the first directory request lightweight, retain the existing enriched API behavior for other callers, reuse directory rows only in authenticated memory, and add validated client-side sorting and paging. | Phase 547 / #2776. |
 
 ## What stays outside the detail page
 
@@ -174,7 +184,7 @@ and is required before the final DEV soak.
 | Submitted registration-draft queue | A draft has no tenant row before materialization, so it remains part of the directory workflow. | Not applicable. |
 | Pricing | Platform-wide policy, protected by `admin.pricing`; it is not a tenant-specific setting. | Not applicable. |
 | Store-template curation | Published templates shape future provisioning platform-wide and are Platform Master-only. Applying a published template to one active tenant is in Store setup. | Not applicable. |
-| Revenue & Settlement | Cross-tenant ledger, reconciliation, and payout tooling with master-only fallback authority. | Tenant overview links to `/admin/tenants?tenant_id=<id>#revenue-settlement`; authorized directory data validates the selection. |
+| Revenue & Settlement | Cross-tenant ledger, reconciliation, and payout tooling with master-only fallback authority; the existing workspace also serves as a tenant-detail view. | Global `/admin/tenants/billing` preselection requires a match in the loaded authorized tenant list. Tenant detail uses `/admin/tenants/:id/billing`; archived tenants receive read-only, tenant-scoped reads. Legacy `#revenue-settlement` links redirect to the global route. |
 | Payment Operations | Cross-tenant payment account and provider operations with `admin.payments`. | `/admin/payments?tenant_id=<id>` selects only after matching the authorized tenant list; a failed read leaves selection unset and can be retried. |
 | Invoices | Cross-tenant invoice workflow with `admin.invoices`; issuance is tied to eligible registration applications. | `/admin/invoices?tenant_id=<id>&registration_application_id=<id>` validates tenant match and current eligibility. Tenant-only context selects only one unique eligible application. |
 | Affiliate slots | Decision 6 leaves the API available but does not approve a new tenant-console UI. | Not applicable. |
@@ -183,10 +193,9 @@ and is required before the final DEV soak.
 
 ## Slice order and dependencies
 
-Wave 1 delivered the inventory/decision record (#2742) and searchable directory (#2743). Wave 2
-delivered the targeted single-tenant read, Overview route, nested authorization, query restoration,
-Add tenant page, and ID-free route labels. Wave 3 is in progress on the registered epic branch;
-Phase 544 implements the required detail sections, including Access & storefront:
+Wave 1 delivered the inventory/decision record (#2742) and searchable directory (#2743). Waves 2–4
+are present on the registered epic branch: the detail foundation, required detail sections, and
+integration cleanup/URL privacy. Phase 547 is Wave 5 (#2776):
 
 1. **Wave 2 — detail foundation:** `GET /admin/tenants/:id` uses the list-item shape, enrichment,
    and `admin.tenants` grant. Overview loads that endpoint directly and is independent of directory
@@ -206,6 +215,10 @@ section.
 3. **Wave 4 — integration and cleanup:** continue with integration cleanup and verify the complete
    find → open → manage journey across desktop and mobile. Complete the shared URL/query privacy
    remediation in #2748 before final DEV soak.
+4. **Wave 5 — efficient directory and Billing:** keep Revenue & Settlement off the default list,
+   add the master-only global and tenant-detail routes, use lightweight list reads with opt-in
+   enrichment, retain directory rows in memory, and add client-side sorting/paging. Verify scoped
+   and archived read-only journeys without changing API grants or financial actions.
 
 ## Measurements
 
@@ -225,6 +238,21 @@ fast when capability reads succeed. The suspected first failing call is a landlo
 until the API warning `[ListTenants] Failed to load tenant capability settings` is checked. The
 91,563-byte payload and row counts are valid for this sample. The #2560 tenant-pool-pressure
 cross-check remains unanswered while reads fail before reaching tenant databases.
+
+### Synthetic local browser journey — 2026-10-25
+
+The local Chromium journey used 67 synthetic tenant rows, with all API responses fulfilled by
+Playwright route fixtures. The initial directory made one `GET /admin/tenants` request with
+`include_capabilities=false`, returned a 19,586-byte uncompressed JSON fixture, and issued zero
+finance requests. Returning from global Billing reused the same directory request. Entering global
+Billing issued ten fixture-backed finance reads in Vite development (five endpoint types repeated
+by React StrictMode's development effect replay); the tenant-detail view issued six scoped reads,
+each carrying the selected fixture tenant ID in its query or path. The route-fixture fulfill handler
+spanned 1.55 ms for the initial list response; this measures the local Playwright harness, not API
+or server latency. Desktop and 390 px mobile list, global Billing, and tenant Billing views had no
+page errors or horizontal overflow. Screenshots are retained locally under
+`apps/dgfy-admin/.tmp/qa-2776/` and are ignored; no screenshot or synthetic result represents a
+deployed DEV/PROD measurement or p95.
 
 ## Archived tenant API behavior
 

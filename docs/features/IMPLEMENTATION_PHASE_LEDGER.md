@@ -32052,3 +32052,137 @@ Failure origin was not baseline-compared. Full logs and `local_readiness.json` a
 
 Phase 546. Phase 545 depends on integrated Phases 543 and 544; no other explicit dependency blocks
 implementation.
+
+## Phase 547 - Efficient tenant directory and Billing workspace (#2776)
+
+### Initiative and release
+
+DGFY Admin tenant management UX / Wave 5 of epic #2696.
+
+### Objective and scope
+
+Make `/admin/tenants` a lightweight, reusable directory view and move Revenue & Settlement into a
+master-only global Billing page and tenant-scoped detail section. Preserve current financial
+actions, reasons, audit behavior, and backend authority. Add validated browser sorting and paging,
+collapsible filters, a single keyboard-accessible tenant card link, and authenticated in-memory
+directory reuse. Archived tenant Billing is read-only. Classification: within existing Admin/API
+boundaries; no ADR change, tenant schema change, migration, or new financial action.
+
+### Status
+
+`in_progress` — the implementation and local validation are complete and the child PR is being
+prepared on
+`feat/2776-tenant-directory-billing`, created from fresh
+`origin/epic/2696-admin-tenant-management-ux` at
+`14a9fbb0a0a79dc9e339213cfd694375339e3360`. The child PR targets that registered epic branch and
+references #2776; this phase is not complete until the child implementation is integrated there.
+
+### Dependencies
+
+- Phases 543–545 / Waves 2–4 are present on the registered epic base; the route foundation,
+  sections, and integration cleanup are available to this wave.
+- Phase 546 (#2769) is already recorded on `origin/develop`; it is unrelated and does not block this
+  issue. Phase numbering therefore advances globally to 547 even though the epic branch ledger
+  previously ended at 545.
+- No explicit dependency on #2769 exists. #1923 STAGING persistence/publication checks, #2633/#2639
+  deployed capability evidence, and PROD capability-read recovery remain release-verification work.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+[ADR Index](../architecture/adr/INDEX.md), [ADR 0047](../architecture/adr/0047-platform-admin-identity-and-page-rbac.md),
+[ADR 0052](../architecture/adr/0052-tenant-revenue-ledger-and-settlement.md),
+[ADR 0089](../architecture/adr/0089-platform-admin-fifth-frontend-app-cross-host-admin-routing.md),
+[Platform Admin route permission matrix](../testing/platform-admin-route-permission-matrix.md),
+[Platform Admin Tenant Console](PLATFORM_ADMIN_TENANT_CONSOLE.md), and live issue #2776. The live
+tenant-revenue API fallback remains Platform Master-only; frontend route checks are usability
+guards, not a substitute for API authorization.
+
+### Implementation targets
+
+Admin: `Pages/TenantManager.jsx`, `Pages/TenantDetailLayout.jsx`, `Pages/TenantOverview.jsx`, the new
+global and detail Billing pages, `src/main.jsx`, `src/components/AdminLayout.jsx`,
+`src/features/admin/tenantDirectory/*`, `src/features/admin/tenantRevenue/*`, route policy/label
+tests, and affected integration tests. API: the tenant list transport/use case and focused tests.
+Docs: this entry, the tenant-console reference, and route permission matrix. No tenant migration,
+schema, API grant, or app-version change is in scope.
+
+### Acceptance and validation evidence
+
+- [x] API lightweight transport skips all tenant capability connector calls, preserves safe list
+  shape/redaction, and leaves existing enriched behavior as the default; controller parses the
+  opt-in query correctly.
+- [x] Admin directory starts with one lightweight list request and no finance requests; the global
+  Billing route loads finance only when entered; master preselection begins with tenant-scoped
+  requests; delegates cannot mount Billing pages or trigger finance reads.
+- [x] Active detail Billing is locked to the route tenant; archived detail renders scoped read-only
+  records with no mutation actions.
+- [x] Directory filters stay collapsed by default; 10/20/50 page sizes, sorting, stable ties,
+  capability enrichment/loading/error states, archived behavior, URL/back/forward, card keyboard
+  navigation, and page → detail → back cache reuse are covered.
+- [x] Focused API/Admin tests, Admin build, changed API `node --check`, architecture, route-policy,
+  docs, compliance, app-version, and whitespace checks pass.
+- [x] Desktop and mobile rendered local journeys pass with request counts/timing recorded as
+  synthetic or local evidence; no deployed DEV or p95 claim is made before an authorized deployment
+  and Verifier observation.
+
+### Risks and decisions
+
+- Client-side paging remains appropriate for the current 67-row reference sample, but is not a
+  server-side search/pagination contract. The default list avoids per-active-tenant database reads;
+  requesting a capability facet still fetches enriched values and can remain costly.
+- In-memory list reuse may be stale after changes made by another admin. Manual Refresh, logout,
+  session-expiry, and successful tenant-mutation invalidation provide the refresh paths; finance
+  responses are not retained in the directory context or persistent browser storage.
+- Archived detail read-only presentation is not an API-level write prohibition. Existing
+  status-specific backend behavior and the separately tracked archived-state API question remain
+  unchanged.
+- The live issue and explicit operator direction choose one child PR into the registered epic
+  branch. The issue REST parent field was absent, while the open #2696 issue has the exact registered
+  branch marker and #2776's live body directs the epic route; implementation follows that explicit
+  route evidence.
+
+### Evidence
+
+The local request-time compliance preflight passed against disposable MySQL/Redis/API fixtures:
+`no_breach`, reason `ALLOWED`, at `2026-10-25T08:26:04.800Z`, reference
+`PREFLIGHT-LOCAL-1792916646344-2026-10-25-ADMIN-TENANT-DIRECTORY-BILLING-PHASE-547`; the
+declaration check passed for all three sensitive source files. The full Admin Vitest suite passed
+30 files/229 tests, including the updated archived Billing
+presentation assertion. Focused API Jest suites passed 2 suites/21 tests, and both changed API
+source files passed `node --check`. The Admin production build, architecture guardrails and
+controller-boundary checks, strict docs/ADR lint, compliance declaration check, app-version check,
+Admin lint (zero errors; one existing unused-helper warning in `src/main.jsx`), and `git diff
+--check` passed. The full API Jest suite was also attempted but its database-backed suites could not
+connect to local MySQL; the focused changed-surface suites passed independently.
+
+The local Chromium journey used 67 synthetic rows: one initial light-list request (`19,586`
+uncompressed JSON bytes, `include_capabilities=false`), zero finance reads on the directory, no
+repeat list request after returning from Billing, and six tenant-detail finance reads all scoped to
+the selected fixture ID. Global Billing produced ten fixture reads in Vite development because
+React StrictMode replays its five read effects. The route-fixture fulfill handler took 1.55 ms for
+the initial list, which is harness timing rather than API latency. Desktop and 390 px mobile views
+had no page errors or horizontal overflow; screenshots are retained in the ignored local
+`apps/dgfy-admin/.tmp/qa-2776/` directory. No DEV/PROD performance or p95 claim is made. No merge,
+deployment, production data access, or financial mutation occurred in this Worker session.
+
+### Post-merge verification
+
+- [ ] `deployment` — after the child PR integrates into the epic, the authorized deployment role
+  verifies the tested epic SHA in DEV and records the workflow and running Admin build identity;
+  owner: deployment role.
+- [ ] `verification` — verify master and delegate route access, one scoped active Billing view, and
+  archived read-only presentation against the deployed epic candidate; owner: Verifier; blocks
+  tenant-console aggregate acceptance.
+- [ ] `performance` — capture default list request count, response bytes, and timing in the deployed
+  DEV environment and compare with the pre-change healthy baseline when available; owner: Verifier
+  with API owner; no local synthetic result substitutes for this evidence.
+- [ ] `operational` — retain #1923 STAGING persistence/publication checks, #2633/#2639 deployed
+  capability evidence, and PROD capability-read recovery as outstanding release verification;
+  owner: existing issue owners.
+
+### Next phase number
+
+Phase 548. Phase 547 depends on the Wave 2–4 routes integrated on the epic branch; Phase 546 on
+`origin/develop` is unrelated and creates no additional dependency.
