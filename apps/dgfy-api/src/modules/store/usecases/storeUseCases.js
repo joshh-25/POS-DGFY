@@ -4174,6 +4174,8 @@ export const buildExchangeStoreGuestCheckoutGrantUseCase = ({ dgfyCustomerReposi
     };
 };
 
+const ORDER_CONFIRMATION_IMAGE_LOOKUP_TIMEOUT_MS = 3_000;
+
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
     recordOrderActivity = recordDgfyOrderActivity,
@@ -4728,14 +4730,48 @@ export const buildStoreCheckoutUseCase = ({
                 storeCustomer: normalizedStoreCustomer,
                 event: 'placed'
             })).catch(() => null);
-            void Promise.resolve().then(() => dispatchOrderConfirmationEmail({
-                tenantId: normalizedTenantId,
-                order: {
+            void Promise.resolve().then(async () => {
+                const serializedOrder = {
                     ...serializeOrderForCustomer(created),
                     vat_amount: created.vat_amount ?? null
-                },
-                storeCustomer: normalizedStoreCustomer
-            })).catch(() => null);
+                };
+                const itemIds = [...new Set((serializedOrder.items || [])
+                    .map((item) => Number(item?.item_id))
+                    .filter((itemId) => Number.isSafeInteger(itemId) && itemId > 0))];
+                let images = {};
+                if (itemIds.length > 0 && typeof storeRepository.listStorefrontItemImages === 'function') {
+                    let lookupTimeoutId;
+                    try {
+                        images = await Promise.race([
+                            Promise.resolve()
+                                .then(() => storeRepository.listStorefrontItemImages(itemIds))
+                                .catch(() => ({})),
+                            new Promise((resolve) => {
+                                lookupTimeoutId = setTimeout(
+                                    () => resolve({}),
+                                    ORDER_CONFIRMATION_IMAGE_LOOKUP_TIMEOUT_MS
+                                );
+                            })
+                        ]) || {};
+                    } catch {
+                        images = {};
+                    } finally {
+                        clearTimeout(lookupTimeoutId);
+                    }
+                }
+
+                await dispatchOrderConfirmationEmail({
+                    tenantId: normalizedTenantId,
+                    order: {
+                        ...serializedOrder,
+                        items: (serializedOrder.items || []).map((item) => ({
+                            ...item,
+                            image_url: images?.[item.item_id] || null
+                        }))
+                    },
+                    storeCustomer: normalizedStoreCustomer
+                });
+            }).catch(() => null);
 
             // Best-effort, post-commit: was dormant until a storefront visit set the attribution
             // cookie, now live via the Phase 1 affiliate pricing rule engine (see
