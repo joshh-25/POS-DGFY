@@ -139,6 +139,37 @@ export const savePin4msProviderApiKey = async (apiKey) => (
     )
 ).data?.data;
 
+export const getStorefrontSupportEmailStatus = async () => (
+    await adminApi.get('/admin/contact-inquiries/support-email', {
+        ...requireAdminAuthConfig(),
+        skipGlobalErrorToast: true
+    })
+).data?.data;
+
+export const saveStorefrontSupportEmail = async (email) => (
+    await adminApi.put(
+        '/admin/contact-inquiries/support-email',
+        { email },
+        { ...requireAdminAuthConfig(), skipGlobalErrorToast: true }
+    )
+).data?.data;
+
+export const requestStorefrontSupportEmailVerification = async (email) => (
+    await adminApi.post(
+        '/admin/contact-inquiries/support-email/verification/request',
+        { email },
+        { ...requireAdminAuthConfig(), skipGlobalErrorToast: true }
+    )
+).data?.data;
+
+export const verifyStorefrontSupportEmail = async ({ email, code, monitoringConfirmed }) => (
+    await adminApi.post(
+        '/admin/contact-inquiries/support-email/verification/confirm',
+        { email, code, monitoring_confirmed: monitoringConfirmed },
+        { ...requireAdminAuthConfig(), skipGlobalErrorToast: true }
+    )
+).data?.data;
+
 export const listPlatformInvoices = async () => (await adminApi.get('/admin/invoices', requireAdminAuthConfig())).data;
 export const listEligiblePlatformInvoiceApplications = async () => (await adminApi.get('/admin/invoices/eligible-applications', requireAdminAuthConfig())).data;
 export const createPlatformInvoiceDraft = async (payload) => (await adminApi.post('/admin/invoices/drafts', payload, requireAdminAuthConfig())).data;
