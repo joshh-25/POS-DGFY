@@ -18,7 +18,7 @@ const mapWithConcurrency = async (items = [], limit = 5, mapper) => {
 };
 
 export const buildListTenantsUseCase = ({ tenantAdminRepository, tenantConnector, readTenantCapabilities, logger }) => {
-    return async ({ status }) => {
+    return async ({ status, includeCapabilities = true }) => {
         try {
             const where = {};
             if (status && status !== 'all') {
@@ -26,30 +26,32 @@ export const buildListTenantsUseCase = ({ tenantAdminRepository, tenantConnector
             }
 
             const tenants = await tenantAdminRepository.listTenants(where);
-            const enrichedTenants = Array.isArray(tenants)
-                ? await mapWithConcurrency(tenants, 5, async (tenant) => {
-                    let capabilities = null;
-                    const plainTenant = toPlainAdminTenant(tenant);
-                    if (plainTenant.status === 'active' && tenantConnector && readTenantCapabilities) {
-                        try {
-                            capabilities = await readTenantCapabilities({ tenant: plainTenant, tenantConnector });
-                        } catch (capabilityError) {
-                            logger?.warn?.('[ListTenants] Failed to load tenant capability settings', {
-                                tenantId: plainTenant.id || null,
-                                error: capabilityError.message
-                            });
-                            capabilities = { unavailable: true };
+            const presentedTenants = Array.isArray(tenants)
+                ? includeCapabilities
+                    ? await mapWithConcurrency(tenants, 5, async (tenant) => {
+                        let capabilities = null;
+                        const plainTenant = toPlainAdminTenant(tenant);
+                        if (plainTenant.status === 'active' && tenantConnector && readTenantCapabilities) {
+                            try {
+                                capabilities = await readTenantCapabilities({ tenant: plainTenant, tenantConnector });
+                            } catch (capabilityError) {
+                                logger?.warn?.('[ListTenants] Failed to load tenant capability settings', {
+                                    tenantId: plainTenant.id || null,
+                                    error: capabilityError.message
+                                });
+                                capabilities = { unavailable: true };
+                            }
                         }
-                    }
-                    return presentAdminTenant(plainTenant, capabilities);
-                })
+                        return presentAdminTenant(plainTenant, capabilities);
+                    })
+                    : tenants.map((tenant) => presentAdminTenant(tenant, null))
                 : [];
 
             return ok({
                 statusCode: 200,
                 payload: {
                     success: true,
-                    data: enrichedTenants
+                    data: presentedTenants
                 }
             });
         } catch (error) {

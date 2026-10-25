@@ -79,9 +79,9 @@ const SummaryCard = ({ label, value, tone = 'slate' }) => {
     );
 };
 
-export default function TenantRevenueSettlementPanel({ tenants = [], preselectTenantId = '', preselectionReady = false }) {
+export default function TenantRevenueSettlementPanel({ tenants = [], preselectTenantId = '', preselectionReady = false, lockedTenantId = '' }) {
     const [activeTab, setActiveTab] = useState('overview');
-    const [tenantId, setTenantId] = useState('');
+    const [tenantId, setTenantId] = useState(lockedTenantId ? String(lockedTenantId) : '');
     const [periodStart, setPeriodStart] = useState(monthStart());
     const [periodEnd, setPeriodEnd] = useState(today());
     const [transactionFilters, setTransactionFilters] = useState({
@@ -117,6 +117,8 @@ export default function TenantRevenueSettlementPanel({ tenants = [], preselectTe
     const [policyForm, setPolicyForm] = useState(() => createDefaultTenantRevenuePolicyForm(today()));
     const [preselectionMessage, setPreselectionMessage] = useState('');
     const preselectionHandled = useRef(false);
+    const lastPreselectTenantId = useRef(preselectTenantId);
+    const [preselectionResolved, setPreselectionResolved] = useState(() => !preselectTenantId);
     const latestPolicy = policies[0] || null;
 
     const filters = useMemo(() => ({
@@ -164,8 +166,9 @@ export default function TenantRevenueSettlementPanel({ tenants = [], preselectTe
     }, [filters, tenantId]);
 
     useEffect(() => {
+        if (!preselectionResolved) return;
         loadRevenue();
-    }, [loadRevenue]);
+    }, [loadRevenue, preselectionResolved]);
 
     useEffect(() => {
         if (!tenantId) {
@@ -178,18 +181,34 @@ export default function TenantRevenueSettlementPanel({ tenants = [], preselectTe
     }, [latestPolicy, tenantId]);
 
     useEffect(() => {
-        if (preselectionHandled.current || !preselectionReady || !preselectTenantId) return;
+        if (lastPreselectTenantId.current !== preselectTenantId) {
+            lastPreselectTenantId.current = preselectTenantId;
+            preselectionHandled.current = false;
+            setPreselectionResolved(!preselectTenantId);
+            setPreselectionMessage('');
+            setTenantId(lockedTenantId ? String(lockedTenantId) : '');
+            return;
+        }
+        if (!preselectTenantId) {
+            setPreselectionResolved(true);
+            return;
+        }
+        if (preselectionHandled.current || !preselectionReady) return;
         preselectionHandled.current = true;
         const match = tenants.find((tenant) => String(tenant.id) === String(preselectTenantId));
         if (!match) {
             setPreselectionMessage('The tenant in this link is not available in the authorized tenant list. No tenant was selected.');
+            setTenantId(lockedTenantId ? String(lockedTenantId) : '');
+            setPreselectionResolved(true);
             return;
         }
-        setTenantId((current) => current || String(match.id));
+        setTenantId(lockedTenantId ? String(lockedTenantId) : String(match.id));
         setPreselectionMessage(`Showing revenue and settlement for ${match.name}.`);
-    }, [preselectTenantId, preselectionReady, tenants]);
+        setPreselectionResolved(true);
+    }, [lockedTenantId, preselectTenantId, preselectionReady, tenants]);
 
     const handleTenantChange = (event) => {
+        if (lockedTenantId) return;
         setPreselectionMessage('');
         setPolicies([]);
         setPolicyForm(createDefaultTenantRevenuePolicyForm(today()));
@@ -381,10 +400,19 @@ export default function TenantRevenueSettlementPanel({ tenants = [], preselectTe
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
                     <label className="text-sm font-medium text-slate-700">
                         Tenant
-                        <select value={tenantId} onChange={handleTenantChange} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                            <option value="">All tenants (read-only summary)</option>
-                            {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
-                        </select>
+                        {lockedTenantId ? (
+                            <input
+                                type="text"
+                                readOnly
+                                value={tenants.find((tenant) => String(tenant.id) === String(lockedTenantId))?.name || tenantId}
+                                className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                            />
+                        ) : (
+                            <select value={tenantId} onChange={handleTenantChange} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                                <option value="">All tenants</option>
+                                {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+                            </select>
+                        )}
                     </label>
                     <label className="text-sm font-medium text-slate-700">
                         From

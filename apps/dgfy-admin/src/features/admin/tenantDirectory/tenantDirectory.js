@@ -1,11 +1,10 @@
 /**
  * Pure tenant-directory search, facets, and URL state.
  *
- * URL keys are ordered as q, status, plan, compliance, ownership, ims, pos,
- * storefront. An empty status is the default view (all statuses except
- * archived); status=all includes archived, and status=archived selects only
- * archived tenants. The module preserves query parameters owned by other
- * routes/features when it serializes directory state.
+ * An empty status is the default view (all statuses except archived);
+ * status=all includes archived, and status=archived selects only archived
+ * tenants. Sort, page, and page size are validated and serialized alongside
+ * the filters. Unrelated query parameters are preserved.
  */
 
 export const DIRECTORY_PARAMETER_KEYS = Object.freeze([
@@ -16,8 +15,16 @@ export const DIRECTORY_PARAMETER_KEYS = Object.freeze([
     'ownership',
     'ims',
     'pos',
-    'storefront'
+    'storefront',
+    'sort',
+    'page',
+    'page_size'
 ]);
+
+export const DIRECTORY_SORTS = Object.freeze(['newest', 'oldest', 'name_asc', 'name_desc']);
+export const DIRECTORY_PAGE_SIZES = Object.freeze([10, 20, 50]);
+export const DEFAULT_DIRECTORY_SORT = 'newest';
+export const DEFAULT_DIRECTORY_PAGE_SIZE = 20;
 
 export const DEFAULT_DIRECTORY_STATE = Object.freeze({
     q: '',
@@ -27,7 +34,10 @@ export const DEFAULT_DIRECTORY_STATE = Object.freeze({
     ownership: '',
     ims: '',
     pos: '',
-    storefront: ''
+    storefront: '',
+    sort: DEFAULT_DIRECTORY_SORT,
+    page: 1,
+    page_size: DEFAULT_DIRECTORY_PAGE_SIZE
 });
 
 const CAPABILITY_KEYS = Object.freeze({
@@ -62,6 +72,13 @@ const normalizeParams = (params) => {
     return new URLSearchParams(params || '');
 };
 
+const parsePositiveInteger = (value, fallback) => {
+    const normalized = String(value || '');
+    if (!/^[1-9]\d*$/.test(normalized)) return fallback;
+    const parsed = Number(normalized);
+    return Number.isSafeInteger(parsed) ? parsed : fallback;
+};
+
 export function parseDirectoryParams(params) {
     const searchParams = normalizeParams(params);
     const state = { ...DEFAULT_DIRECTORY_STATE };
@@ -71,6 +88,11 @@ export function parseDirectoryParams(params) {
     state.plan = searchParams.get('plan') || '';
     state.compliance = searchParams.get('compliance') || '';
     state.ownership = searchParams.get('ownership') || '';
+    const sort = searchParams.get('sort') || '';
+    state.sort = DIRECTORY_SORTS.includes(sort) ? sort : DEFAULT_DIRECTORY_SORT;
+    state.page = parsePositiveInteger(searchParams.get('page'), 1);
+    const pageSize = parsePositiveInteger(searchParams.get('page_size'), DEFAULT_DIRECTORY_PAGE_SIZE);
+    state.page_size = DIRECTORY_PAGE_SIZES.includes(pageSize) ? pageSize : DEFAULT_DIRECTORY_PAGE_SIZE;
 
     Object.keys(CAPABILITY_KEYS).forEach((key) => {
         const value = searchParams.get(key) || '';
@@ -91,6 +113,20 @@ export function serializeDirectoryParams(state = DEFAULT_DIRECTORY_STATE, basePa
 
     DIRECTORY_PARAMETER_KEYS.forEach((key) => {
         const rawValue = state[key];
+        if (key === 'sort') {
+            if (DIRECTORY_SORTS.includes(rawValue) && rawValue !== DEFAULT_DIRECTORY_SORT) output.append(key, rawValue);
+            return;
+        }
+        if (key === 'page') {
+            const page = parsePositiveInteger(rawValue, 1);
+            if (page > 1) output.append(key, String(page));
+            return;
+        }
+        if (key === 'page_size') {
+            const pageSize = parsePositiveInteger(rawValue, DEFAULT_DIRECTORY_PAGE_SIZE);
+            if (DIRECTORY_PAGE_SIZES.includes(pageSize) && pageSize !== DEFAULT_DIRECTORY_PAGE_SIZE) output.append(key, String(pageSize));
+            return;
+        }
         const value = String(rawValue || '');
         if (key === 'q' && !value.trim()) return;
         if (!value) return;
@@ -101,18 +137,20 @@ export function serializeDirectoryParams(state = DEFAULT_DIRECTORY_STATE, basePa
     return output;
 }
 
-const capabilityState = (capabilities, key) => {
-    if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities)) return 'na';
+const capabilityState = (tenant, capabilitiesLoaded, key) => {
+    if (tenant.status !== 'active') return 'na';
+    const capabilities = tenant.capabilities;
+    if (!capabilitiesLoaded) return 'loading';
+    if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities)) return 'unavailable';
     if (capabilities.unavailable === true) return 'unavailable';
     if (capabilities[key] === true) return 'on';
     if (capabilities[key] === false) return 'off';
     return 'unavailable';
 };
 
-export function deriveTenantFacets(tenant = {}) {
+export function deriveTenantFacets(tenant = {}, { capabilitiesLoaded = true } = {}) {
     const status = tenant.status || '';
     const complianceState = String(tenant.compliance_mode_state || '').trim();
-    const capabilities = tenant.capabilities;
 
     return {
         status,
@@ -124,9 +162,9 @@ export function deriveTenantFacets(tenant = {}) {
             ? 'not_selected'
             : complianceState,
         ownership: tenant.ownership_status || '',
-        ims: capabilityState(capabilities, CAPABILITY_KEYS.ims),
-        pos: capabilityState(capabilities, CAPABILITY_KEYS.pos),
-        storefront: capabilityState(capabilities, CAPABILITY_KEYS.storefront)
+        ims: capabilityState(tenant, capabilitiesLoaded, CAPABILITY_KEYS.ims),
+        pos: capabilityState(tenant, capabilitiesLoaded, CAPABILITY_KEYS.pos),
+        storefront: capabilityState(tenant, capabilitiesLoaded, CAPABILITY_KEYS.storefront)
     };
 }
 
@@ -141,14 +179,14 @@ export function matchesSearch(tenant = {}, query = '') {
     return normalizedText(tenant.id).startsWith(normalizedQuery);
 }
 
-export function filterTenants(tenants = [], state = DEFAULT_DIRECTORY_STATE) {
+export function filterTenants(tenants = [], state = DEFAULT_DIRECTORY_STATE, options = {}) {
     const rows = Array.isArray(tenants) ? tenants : [];
     const filters = { ...DEFAULT_DIRECTORY_STATE, ...state };
 
     return rows.filter((tenant) => {
         if (!matchesSearch(tenant, filters.q)) return false;
 
-        const facets = deriveTenantFacets(tenant);
+        const facets = deriveTenantFacets(tenant, options);
         if (!filters.status && facets.status === 'archived') return false;
         if (filters.status && filters.status !== 'all' && facets.status !== filters.status) return false;
         if (filters.plan && facets.plan !== filters.plan) return false;
@@ -159,6 +197,49 @@ export function filterTenants(tenants = [], state = DEFAULT_DIRECTORY_STATE) {
         if (filters.storefront && facets.storefront !== filters.storefront) return false;
         return true;
     });
+}
+
+const compareName = (left, right) => String(left?.name || '').localeCompare(
+    String(right?.name || ''),
+    undefined,
+    { sensitivity: 'base', numeric: true }
+);
+const compareId = (left, right) => String(left?.id || '').localeCompare(String(right?.id || ''), undefined, { numeric: true });
+
+export function sortTenants(tenants = [], sort = DEFAULT_DIRECTORY_SORT) {
+    const rows = Array.isArray(tenants) ? tenants : [];
+    const direction = DIRECTORY_SORTS.includes(sort) ? sort : DEFAULT_DIRECTORY_SORT;
+    return rows.slice().sort((left, right) => {
+        let primary = 0;
+        if (direction === 'name_asc' || direction === 'name_desc') {
+            primary = compareName(left, right) * (direction === 'name_desc' ? -1 : 1);
+        } else {
+            const leftDate = Date.parse(left?.createdAt || left?.created_at || '');
+            const rightDate = Date.parse(right?.createdAt || right?.created_at || '');
+            const leftValid = Number.isFinite(leftDate);
+            const rightValid = Number.isFinite(rightDate);
+            if (leftValid !== rightValid) return leftValid ? -1 : 1;
+            if (leftValid && rightValid) primary = (leftDate - rightDate) * (direction === 'newest' ? -1 : 1);
+        }
+        return primary || compareId(left, right) || compareName(left, right);
+    });
+}
+
+export function paginateTenants(tenants = [], page = 1, pageSize = DEFAULT_DIRECTORY_PAGE_SIZE) {
+    const rows = Array.isArray(tenants) ? tenants : [];
+    const safePageSize = DIRECTORY_PAGE_SIZES.includes(Number(pageSize)) ? Number(pageSize) : DEFAULT_DIRECTORY_PAGE_SIZE;
+    const totalPages = Math.max(1, Math.ceil(rows.length / safePageSize));
+    const safePage = Math.min(parsePositiveInteger(page, 1), totalPages);
+    const startIndex = (safePage - 1) * safePageSize;
+    const pageRows = rows.slice(startIndex, startIndex + safePageSize);
+    return {
+        rows: pageRows,
+        page: safePage,
+        pageSize: safePageSize,
+        totalPages,
+        rangeStart: pageRows.length ? startIndex + 1 : 0,
+        rangeEnd: startIndex + pageRows.length
+    };
 }
 
 export function getStatusCounts(tenants = []) {
@@ -239,7 +320,7 @@ export function getActiveFilterChips(state = DEFAULT_DIRECTORY_STATE) {
 }
 
 export function hasActiveFilters(state = DEFAULT_DIRECTORY_STATE) {
-    return DIRECTORY_PARAMETER_KEYS.some((key) => {
+    return ['q', 'status', 'plan', 'compliance', 'ownership', 'ims', 'pos', 'storefront'].some((key) => {
         if (key === 'q') return Boolean(String(state.q || '').trim());
         return Boolean(state[key]);
     });

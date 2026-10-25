@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Archive, Building2, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -64,11 +64,18 @@ export default function TenantDirectoryToolbar({
     state,
     searchDraft,
     visibleCount,
+    rangeLabel,
+    capabilitiesLoading = false,
+    capabilityError = '',
     onSearchChange,
     onFilterChange,
+    onSortChange,
+    onPageSizeChange,
     onRemoveFilter,
-    onClearAll
+    onClearAll,
+    onRetryCapabilities
 }) {
+    const [filtersOpen, setFiltersOpen] = useState(false);
     const counts = getStatusCounts(tenants);
     const options = getFacetOptions(tenants);
     const chips = getActiveFilterChips(state);
@@ -78,37 +85,20 @@ export default function TenantDirectoryToolbar({
 
     return (
         <section className="mb-6 space-y-4" aria-label="Tenant directory search and filters">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" aria-label="Tenant counts">
-                {STATUS_TILES.map(({ key, label, countKey, color, Icon }) => {
-                    const selected = state.status === key;
-                    return (
-                        <button
-                            key={key}
-                            type="button"
-                            aria-pressed={selected}
-                            aria-label={`${label} tenants: ${counts[countKey] || 0}`}
-                            onClick={() => onFilterChange('status', key)}
-                            className={`flex min-h-20 items-center justify-between gap-2 rounded-xl border p-4 text-left shadow-sm transition hover:shadow ${TILE_COLORS[color]} ${selected ? 'ring-2 ring-slate-400 ring-offset-1' : ''}`}
-                        >
-                            <span className="flex items-center gap-2 text-sm font-semibold">
-                                {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
-                                {label}
-                            </span>
-                            <span className="text-2xl font-bold">{counts[countKey] || 0}</span>
-                        </button>
-                    );
-                })}
-            </div>
-
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <h2 className="text-sm font-semibold text-slate-900">Tenant search</h2>
                         <p className="mt-1 text-xs text-slate-500">Matches company name, admin email, domain, or tenant ID.</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600" aria-live="polite">
-                        {visibleCount} of {tenants.length}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600" aria-live="polite">
+                            {rangeLabel || `${visibleCount} of ${tenants.length}`}
+                        </span>
+                        <Button type="button" variant="outline" size="sm" aria-expanded={filtersOpen} aria-controls={filtersOpen ? 'tenant-directory-filters' : undefined} onClick={() => setFiltersOpen((open) => !open)}>
+                            {filtersOpen ? 'Hide filters' : 'Filters'}{hasActiveFilters(state) ? ' · active' : ''}
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="relative">
@@ -132,7 +122,30 @@ export default function TenantDirectoryToolbar({
                     ) : null}
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {filtersOpen ? <div id="tenant-directory-filters" className="mt-4 space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" aria-label="Tenant counts">
+                    {STATUS_TILES.map(({ key, label, countKey, color, Icon }) => {
+                        const selected = state.status === key;
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                aria-pressed={selected}
+                                aria-label={`${label} tenants: ${counts[countKey] || 0}`}
+                                onClick={() => onFilterChange('status', key)}
+                                className={`flex min-h-16 items-center justify-between gap-2 rounded-xl border p-3 text-left shadow-sm transition hover:shadow ${TILE_COLORS[color]} ${selected ? 'ring-2 ring-slate-400 ring-offset-1' : ''}`}
+                            >
+                                <span className="flex items-center gap-2 text-sm font-semibold">
+                                    {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+                                    {label}
+                                </span>
+                                <span className="text-xl font-bold">{counts[countKey] || 0}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <FacetSelect label="Status" value={state.status} options={options.status} onChange={(value) => onFilterChange('status', value)} />
                     <FacetSelect label="Plan" value={state.plan} options={options.plan} onChange={(value) => onFilterChange('plan', value)} />
                     <FacetSelect
@@ -156,9 +169,33 @@ export default function TenantDirectoryToolbar({
                     <FacetSelect label="IMS capability" value={state.ims} options={CAPABILITY_STATES} onChange={(value) => onFilterChange('ims', value)} />
                     <FacetSelect label="POS capability" value={state.pos} options={CAPABILITY_STATES} onChange={(value) => onFilterChange('pos', value)} />
                     <FacetSelect label="Storefront capability" value={state.storefront} options={CAPABILITY_STATES} onChange={(value) => onFilterChange('storefront', value)} />
+                    <FacetSelect
+                        label="Sort"
+                        value={state.sort}
+                        options={[
+                            { value: 'newest', label: 'Newest first' },
+                            { value: 'oldest', label: 'Oldest first' },
+                            { value: 'name_asc', label: 'Name A–Z' },
+                            { value: 'name_desc', label: 'Name Z–A' }
+                        ]}
+                        onChange={onSortChange}
+                    />
+                    <FacetSelect
+                        label="Page size"
+                        value={String(state.page_size)}
+                        options={[10, 20, 50].map((size) => ({ value: String(size), label: String(size) }))}
+                        onChange={onPageSizeChange}
+                    />
                 </div>
 
-                <p className="mt-3 text-xs text-slate-500">Capability state is read for active tenants only; &quot;Unavailable&quot; means the read failed.</p>
+                <p className="text-xs text-slate-500">Capability state is read for active tenants only; &quot;Unavailable&quot; means the read failed.</p>
+                {capabilitiesLoading ? <p role="status" className="text-sm text-blue-800">Loading capability data for active tenants…</p> : null}
+                {capabilityError ? (
+                    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                        <span>{capabilityError}</span>
+                        <Button type="button" size="sm" variant="outline" onClick={onRetryCapabilities}>Retry capability read</Button>
+                    </div>
+                ) : null}
 
                 {archivedHidden > 0 ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
@@ -193,6 +230,7 @@ export default function TenantDirectoryToolbar({
                         ) : null}
                     </div>
                 ) : null}
+                </div> : null}
             </div>
         </section>
     );

@@ -10,7 +10,8 @@ const SECTIONS = [
     { path: 'registration', label: 'Registration' },
     { path: 'compliance', label: 'Compliance' },
     { path: 'store-setup', label: 'Store setup' },
-    { path: 'access', label: 'Access & storefront' }
+    { path: 'access', label: 'Access & storefront' },
+    { path: 'billing', label: 'Billing', masterOnly: true }
 ];
 
 const isTenantNotFound = (error) => error?.response?.status === 404
@@ -120,7 +121,7 @@ export default function TenantDetailLayout() {
                         </div>
                     ) : null}
                     <nav aria-label="Tenant detail sections" className="flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-                        {SECTIONS.map((section) => {
+                        {SECTIONS.filter((section) => !section.masterOnly || adminContext.adminProfile?.is_master).map((section) => {
                             const to = section.path ? `${tenantPath}/${section.path}` : tenantPath;
                             return (
                                 <NavLink
