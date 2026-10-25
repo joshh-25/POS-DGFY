@@ -31614,3 +31614,97 @@ converge. No unresolved product or scope decision remains.
 ### Next phase number
 
 Phase 546. No explicit dependency.
+
+## Phase 546 - Drain API requests before dependency shutdown (#2769)
+
+### Initiative and release
+
+API lifecycle reliability / graceful shutdown.
+
+### Objective and scope
+
+Stop accepting HTTP requests and await in-flight request draining before closing Redis and tenant
+database connections. Keep the 10-second forced-exit watchdog active through HTTP draining and
+dependency cleanup, and preserve the existing authentication failure policy and worker-stop order.
+No API response, schema, migration, configuration, scheduler, or worker lifecycle changes.
+
+### Status
+
+`in_progress` — implementation and validation are underway on the #2769 Worker branch.
+
+### Dependencies
+
+None. Phase 546 follows the current ledger high-water mark, Phase 545. No earlier phase is an
+explicit technical or operational dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0001](../architecture/adr/0001-modular-monolith-boundaries.md),
+[ADR 0004](../architecture/adr/0004-architecture-compliance-automation.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[Test Cost Inventory](../testing/test-cost-inventory.md), and issue
+[#2769](https://github.com/Sieitzz/dgfy-platform/issues/2769). Classification:
+`within-existing-boundary`; this work does not change an architecture decision or clause.
+
+### Implementation targets
+
+[`server.js`](../../apps/dgfy-api/src/server.js),
+[`gracefulShutdown.js`](../../apps/dgfy-api/src/utils/gracefulShutdown.js),
+[`gracefulShutdown.unit.test.js`](../../apps/dgfy-api/tests/gracefulShutdown.unit.test.js),
+[`authFailClosed.test.js`](../../apps/dgfy-api/tests/authFailClosed.test.js), generated backend test
+inventories, and this ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] Production shutdown calls `server.close()` and optional `closeIdleConnections()` before
+  Redis or tenant cleanup, and the cleanup order is covered by an isolated utility test.
+- [x] The 10-second watchdog bounds HTTP draining, Redis cleanup, and tenant cleanup; terminal
+  shutdown exits only once and success clears the watchdog.
+- [x] HTTP-close failures and Redis cleanup rejection log and exit 1; tenant cleanup rejection
+  retains its existing log-and-continue behavior.
+- [x] Fail-closed token blacklist validation still rejects with the existing 503 and message, and
+  the auth-failure suite restores the environment it changes.
+- [x] Focused tests, architecture/compliance checks, backend inventory checks, docs validation,
+  syntax checks, and `git diff --check` pass.
+- [ ] The generated test-cost inventory check passes. Its current failure is the unrelated set of
+  seven unmatched `#378` basenames under `apps/dgfy-admin`; this phase refreshes the generated
+  manifest but does not change the inventory scanner or its historical baseline list. PM tracked
+  that follow-up separately as [#2774](https://github.com/Sieitzz/dgfy-platform/issues/2774).
+
+### Evidence
+
+`gracefulShutdown.unit.test.js` passed 9 tests with `--detectOpenHandles`; `authFailClosed.test.js`
+passed 3 tests against the repository's disposable MySQL 8 test container. `npm run
+check:architecture` passed (63 modules/797 code files and 115 controller files); `npm run
+check:compliance`, `npm run lint:docs` (36 governed docs / 105 ADRs), `npm run
+audit:backend-tests:check`, `node scripts/check-app-version-bump.js`, syntax checks, and
+`git diff --check` passed. The backend inventory was regenerated and its check passed. The test-cost
+manifest was regenerated with 1706 records; `npm run audit:test-cost:check` remains non-green because
+the scanner reports seven unmatched `#378` basenames under `apps/dgfy-admin`, which its configured
+frontend roots do not scan; PM filed the separate follow-up as
+[#2774](https://github.com/Sieitzz/dgfy-platform/issues/2774). Unit mocks prove shutdown ordering
+and bounded cleanup behavior only; they do not prove production restart causality or deployed
+behavior.
+
+### Risks and decisions
+
+The issue's production causality remains inferred from event timing; Redis restart is a separate
+plausible cause. Requests still in flight at the 10-second deadline can be terminated. Existing
+worker stop awaits occur before this watchdog, outside this phase's scope.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] operational — observe an authorized PROD restart that demonstrably recreates the API
+  container under authenticated traffic; compare `DGFY-BACKEND-2` timestamps with the deploy's
+  `Pull and restart platform containers` step and record API container identity and whether Redis
+  restarted; owner: #2769 operator/release verifier; blocks production acceptance of #2769.
+
+### Next phase number
+
+Phase 547. No explicit dependency.
