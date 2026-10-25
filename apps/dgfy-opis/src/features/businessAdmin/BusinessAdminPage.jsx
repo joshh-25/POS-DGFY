@@ -2775,6 +2775,7 @@ function BusinessAdminUsersRolesWorkspace({
                 locationOptions={locationOptions}
                 invitationTitle="Add team member"
                 invitationSubmitLabel="Send invitation"
+                allowCustomStaffRoles
             />
         </div>
     );

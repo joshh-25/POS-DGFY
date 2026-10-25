@@ -179,17 +179,32 @@ export const searchDgfyBusinessAccounts = async (query) => {
   return response.data.data;
 };
 
+export const listActiveStaffRoles = async () => {
+  const response = await api.get('/staff-roles');
+  const roles = response?.data?.data?.roles;
+  return Array.isArray(roles) ? roles.filter((role) => role?.is_active !== false) : [];
+};
+
 export const inviteDgfyAccountToCompany = async ({
   dgfyAccountId,
   role,
   rolePresetKey = null,
+  staffRoleId = null,
   locationIds = []
 } = {}) => {
-  const response = await api.post('/dgfy/invitations', {
+  const customRoleSelected = staffRoleId !== null && staffRoleId !== undefined;
+  const payload = {
     dgfy_account_id: dgfyAccountId,
-    role: role || undefined,
-    role_preset_key: rolePresetKey || undefined,
+    role: customRoleSelected ? 'staff' : (role || undefined),
     location_ids: Array.isArray(locationIds) ? locationIds : []
+  };
+  if (customRoleSelected) {
+    payload.staff_role_id = Number(staffRoleId);
+  } else {
+    payload.role_preset_key = rolePresetKey || undefined;
+  }
+  const response = await api.post('/dgfy/invitations', {
+    ...payload
   });
   return response.data.data;
 };
