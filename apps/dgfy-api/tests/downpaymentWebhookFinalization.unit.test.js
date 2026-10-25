@@ -320,9 +320,12 @@ describe('buildStoreCheckoutUseCase — downpayment webhook finalization (#822)'
   // actually reach the client. serializeOrderBase previously omitted both fields entirely.
   test('returns amount_paid/balance_due on the serialized order (client-facing response)', async () => {
     const storeRepository = buildFakeCheckoutStoreRepository();
+    const dispatchOrderConfirmationEmail = jest.fn().mockResolvedValue({ sent: true });
     const useCase = buildStoreCheckoutUseCase({
       storeRepository,
-      downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings())
+      downpaymentSettingsRepository: fakeDownpaymentSettingsRepository(downpaymentRequiredSettings()),
+      dispatchOrderSmsAlert: jest.fn().mockResolvedValue(null),
+      dispatchOrderConfirmationEmail
     });
 
     const payload = checkoutPayload();
@@ -332,11 +335,18 @@ describe('buildStoreCheckoutUseCase — downpayment webhook finalization (#822)'
       allowExpiredGuestCheckoutProof: true,
       capturedPayment: capturedPaymentFor()
     });
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(result.success).toBe(true);
     expect(result.data.order.amount_paid).toBe(101);
     expect(result.data.order.balance_due).toBe(404);
     expect(result.data.order.payment_status).toBe('partially_paid');
+    expect(dispatchOrderConfirmationEmail).toHaveBeenCalledTimes(1);
+    expect(dispatchOrderConfirmationEmail.mock.calls[0][0].order).toMatchObject({
+      payment_status: 'partially_paid',
+      amount_paid: 101,
+      balance_due: 404
+    });
   });
 
   // Additive-only pin: a full_payment order (no capturedPayment, plain cash checkout) must keep

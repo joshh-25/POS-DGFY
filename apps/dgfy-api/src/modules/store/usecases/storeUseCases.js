@@ -95,7 +95,10 @@ import {
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryEffects.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
-import { dispatchDgfyOrderSmsAlert } from '../../dgfy/index.js';
+import {
+    dispatchDgfyOrderConfirmationEmail,
+    dispatchDgfyOrderSmsAlert
+} from '../../dgfy/index.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
     isDateWithinStorefrontBusinessHours,
@@ -4175,6 +4178,7 @@ export const buildStoreCheckoutUseCase = ({
     storeRepository,
     recordOrderActivity = recordDgfyOrderActivity,
     dispatchOrderSmsAlert = dispatchDgfyOrderSmsAlert,
+    dispatchOrderConfirmationEmail = dispatchDgfyOrderConfirmationEmail,
     dispatchStaffNewOnlineOrderPush = () => Promise.resolve(null),
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
@@ -4723,6 +4727,11 @@ export const buildStoreCheckoutUseCase = ({
                 order: created,
                 storeCustomer: normalizedStoreCustomer,
                 event: 'placed'
+            })).catch(() => null);
+            void Promise.resolve().then(() => dispatchOrderConfirmationEmail({
+                tenantId: normalizedTenantId,
+                order: serializeOrderForCustomer(created),
+                storeCustomer: normalizedStoreCustomer
             })).catch(() => null);
 
             // Best-effort, post-commit: was dormant until a storefront visit set the attribution
