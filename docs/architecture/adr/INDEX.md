@@ -120,6 +120,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0095 | [Offline POS Sync Contract Convergence](0095-offline-pos-sync-contract-convergence.md) | `proposed` | pos_offline_sync_contract | 2027-04-10 | 4 |
 | 0096 | [Contact Inquiry Provider Configuration](0096-contact-inquiry-provider-configuration.md) | `proposed` | contact_inquiry_provider_configuration | 2027-04-14 | 0 |
 | 0097 | [Outbound push-notification delivery contract](0097-outbound-push-notification-delivery-contract.md) | `amended` | outbound_push_notification_delivery_contract | 2027-04-17 | 3 |
+| 0098 | [Storefront Support Contact Publication](0098-storefront-support-contact-publication.md) | `accepted` | storefront_support_contact_publication | 2027-04-25 | 0 |
 
 ## Renumbered (collision stubs)
 
