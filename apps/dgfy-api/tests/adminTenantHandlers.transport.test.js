@@ -135,13 +135,15 @@ describe('adminTenantHandlers transport contracts', () => {
     });
 
     const req = {
-      query: { status: 'pending' },
+      query: { status: 'pending', include_capabilities: 'false' },
       user: { user_id: 1, tenant_id: 'landlord', is_master_admin: true },
       requestId: 'req-admin-tenants'
     };
     const res = createRes();
 
     await listTenants(req, res);
+
+    expect(mockListTenantsUseCase).toHaveBeenCalledWith({ status: 'pending', includeCapabilities: false });
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ success: true });

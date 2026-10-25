@@ -12,6 +12,7 @@ import TenantRegistration from '../../../Pages/TenantRegistration.jsx';
 import TenantCompliance from '../../../Pages/TenantCompliance.jsx';
 import TenantStoreSetup from '../../../Pages/TenantStoreSetup.jsx';
 import TenantAccess from '../../../Pages/TenantAccess.jsx';
+import { TenantDirectoryProvider } from '../../features/admin/tenantDirectory/TenantDirectoryContext.jsx';
 
 const mocks = vi.hoisted(() => ({
     adminService: {
@@ -66,21 +67,23 @@ function AdminContext({ adminProfile }) {
 
 function renderAdminRoute(path, adminProfile = profile()) {
     return render(
-        <MemoryRouter initialEntries={[path]}>
-            <Routes>
-                <Route path="/admin" element={<AdminContext adminProfile={adminProfile} />}>
-                    <Route path="tenants" element={<TenantManager />} />
-                    <Route path="tenants/:id" element={<TenantDetailLayout />}>
-                        <Route index element={<TenantOverview />} />
-                        <Route path="lifecycle" element={<TenantLifecycle />} />
-                        <Route path="registration" element={<TenantRegistration />} />
-                        <Route path="compliance" element={<TenantCompliance />} />
-                        <Route path="store-setup" element={<TenantStoreSetup />} />
-                        <Route path="access" element={<TenantAccess />} />
+        <TenantDirectoryProvider>
+            <MemoryRouter initialEntries={[path]}>
+                <Routes>
+                    <Route path="/admin" element={<AdminContext adminProfile={adminProfile} />}>
+                        <Route path="tenants" element={<TenantManager />} />
+                        <Route path="tenants/:id" element={<TenantDetailLayout />}>
+                            <Route index element={<TenantOverview />} />
+                            <Route path="lifecycle" element={<TenantLifecycle />} />
+                            <Route path="registration" element={<TenantRegistration />} />
+                            <Route path="compliance" element={<TenantCompliance />} />
+                            <Route path="store-setup" element={<TenantStoreSetup />} />
+                            <Route path="access" element={<TenantAccess />} />
+                        </Route>
                     </Route>
-                </Route>
-            </Routes>
-        </MemoryRouter>
+                </Routes>
+            </MemoryRouter>
+        </TenantDirectoryProvider>
     );
 }
 
@@ -149,7 +152,8 @@ describe('Platform Admin tenant detail sections', () => {
         const cardHeading = await screen.findByRole('heading', { name: 'North Market' });
         const card = cardHeading.closest('[id^="tenant-"]');
         expect(within(card).queryByRole('button', { name: /^Approve$/i })).toBeNull();
-        expect(within(card).getByRole('link', { name: 'Lifecycle' })).toBeTruthy();
+        expect(card.tagName).toBe('A');
+        expect(card.getAttribute('href')).toBe('/admin/tenants/tenant-1');
     });
 
     it('requires an applicant-visible reason for rejection and sends the trimmed value', async () => {

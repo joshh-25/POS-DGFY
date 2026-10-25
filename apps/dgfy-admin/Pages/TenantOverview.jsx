@@ -167,12 +167,12 @@ export default function TenantOverview() {
             </section>
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="tenant-billing-heading">
                 <h3 id="tenant-billing-heading" className="text-lg font-semibold text-slate-900">Billing tools</h3>
-                <p className="mt-1 text-sm text-slate-600">These links open the existing global tools with this tenant preselected. Opening a tool does not create or change a billing record.</p>
+                <p className="mt-1 text-sm text-slate-600">Revenue &amp; settlement opens this tenant&apos;s finance workspace. Payment operations and invoices remain in their existing global tools.</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                     {!isArchived && paymentAllowed ? <Link className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" to={`/admin/payments?tenant_id=${encodeURIComponent(tenant.id)}`}>Payment operations</Link> : null}
                     {!isArchived && invoicesAllowed ? <Link className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" to={`/admin/invoices?tenant_id=${encodeURIComponent(tenant.id)}${registrationApplicationId ? `&registration_application_id=${encodeURIComponent(registrationApplicationId)}` : ''}`}>Invoices</Link> : null}
-                    {!isArchived && revenueAllowed ? <Link className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" to={{ pathname: '/admin/tenants', search: `?tenant_id=${encodeURIComponent(tenant.id)}`, hash: '#revenue-settlement' }}>Revenue &amp; settlement</Link> : null}
-                    {isArchived ? <span className="text-sm text-slate-500">Billing navigation is hidden for archived tenants.</span> : null}
+                    {revenueAllowed ? <Link className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/billing`, search: directoryTarget.search }}>Revenue &amp; settlement</Link> : null}
+                    {isArchived ? <span className="text-sm text-slate-500">Revenue &amp; settlement remains available read-only.</span> : null}
                 </div>
             </section>
             <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Manage tenant capabilities and storefront readiness in the <Link className="font-medium underline" to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/access`, search: directoryTarget.search }}>Access &amp; storefront section</Link>. The optional combined Activity page is deferred; audit history remains in each owning section.</p>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useLocation, useOutletContext, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import {
     Building2,
     RefreshCw,
@@ -15,13 +15,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
-import TenantRevenueSettlementPanel from '../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
 import TenantDirectoryToolbar from '../src/features/admin/tenantDirectory/TenantDirectoryToolbar.jsx';
+import TenantConsoleTabs from '../src/features/admin/tenantDirectory/TenantConsoleTabs.jsx';
+import { useTenantDirectory } from '../src/features/admin/tenantDirectory/TenantDirectoryContext.jsx';
 import {
     DEFAULT_DIRECTORY_STATE,
     filterTenants,
+    paginateTenants,
     parseDirectoryParams,
-    serializeDirectoryParams
+    serializeDirectoryParams,
+    sortTenants
 } from '../src/features/admin/tenantDirectory/tenantDirectory.js';
 import RegistrationUploadsModal from './RegistrationUploadsModal.jsx';
 
@@ -60,27 +63,32 @@ const formatTenantPlanLabel = (plan) => {
 export default function TenantManager() {
     const { adminProfile } = useOutletContext() || {};
     const location = useLocation();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const directoryState = useMemo(() => parseDirectoryParams(searchParams), [searchParams]);
+    const directory = useTenantDirectory();
+    const capabilityReadKey = `${directoryState.ims}|${directoryState.pos}|${directoryState.storefront}`;
+    const lastCapabilityReadKey = useRef(null);
     const [searchDraft, setSearchDraft] = useState(directoryState.q);
     const [previousDirectoryQuery, setPreviousDirectoryQuery] = useState(directoryState.q);
-    const [tenants, setTenants] = useState([]);
     const [registrationDrafts, setRegistrationDrafts] = useState([]);
     const [registrationDraftLoading, setRegistrationDraftLoading] = useState(true);
     const [selectedRegistrationReview, setSelectedRegistrationReview] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [hasLoaded, setHasLoaded] = useState(false);
-    const [error, setError] = useState('');
+    const tenants = directory.tenants;
+    const hasLoaded = directory.hasLoaded;
+    const loading = directory.status === 'loading' || directory.status === 'refreshing';
+    const error = directory.error;
+    const needsCapabilityRead = Boolean(directoryState.ims || directoryState.pos || directoryState.storefront);
 
     if (directoryState.q !== previousDirectoryQuery) {
         setPreviousDirectoryQuery(directoryState.q);
         setSearchDraft(directoryState.q);
     }
 
-    const updateDirectoryState = (changes, replace = false) => {
-        const nextState = { ...directoryState, ...changes };
+    const updateDirectoryState = useCallback((changes, replace = false, resetPage = true) => {
+        const nextState = { ...directoryState, ...changes, ...(resetPage ? { page: 1 } : {}) };
         setSearchParams(serializeDirectoryParams(nextState, searchParams), { replace });
-    };
+    }, [directoryState, searchParams, setSearchParams]);
 
     const handleDirectorySearchChange = (value) => {
         setSearchDraft(value);
@@ -91,6 +99,9 @@ export default function TenantManager() {
         updateDirectoryState({ [key]: value });
     };
 
+    const handleSortChange = (value) => updateDirectoryState({ sort: value });
+    const handlePageSizeChange = (value) => updateDirectoryState({ page_size: Number(value) });
+
     const handleRemoveDirectoryFilter = (key) => {
         if (key === 'q') setSearchDraft('');
         updateDirectoryState({ [key]: '' }, key === 'q');
@@ -98,41 +109,36 @@ export default function TenantManager() {
 
     const handleClearDirectoryFilters = () => {
         setSearchDraft('');
-        updateDirectoryState(DEFAULT_DIRECTORY_STATE);
+        updateDirectoryState({
+            ...DEFAULT_DIRECTORY_STATE,
+            sort: directoryState.sort,
+            page_size: directoryState.page_size
+        });
     };
 
     useEffect(() => {
-        void loadTenants();
-    }, []);
-
-    useEffect(() => {
-        if (!hasLoaded) return undefined;
-        const targetId = location.hash === '#revenue-settlement'
-            ? 'revenue-settlement'
-            : location.hash.startsWith('#tenant-') ? location.hash.slice(1) : '';
-        if (!targetId) return undefined;
-        const timer = window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 0);
-        return () => window.clearTimeout(timer);
-    }, [hasLoaded, location.hash]);
-
-    async function loadTenants({ silent = false } = {}) {
-        if (!silent) {
-            setLoading(true);
-            setError('');
+        const legacyBillingLink = location.hash === '#revenue-settlement' && adminProfile?.is_master;
+        if (legacyBillingLink) {
+            navigate({ pathname: '/admin/tenants/billing', search: location.search }, { replace: true });
+            return;
         }
-        try {
-            const response = await adminService.getTenants('all');
-            const freshTenants = response.data || [];
-            setTenants(freshTenants);
-            setHasLoaded(true);
-            return freshTenants;
-        } catch (err) {
-            if (!silent) setError('Failed to load tenants');
-            console.error('[TenantManager] Failed to load tenants', err);
-            return null;
-        } finally {
-            if (!silent) setLoading(false);
+        if (!needsCapabilityRead) lastCapabilityReadKey.current = null;
+        if (!directory.hasLoaded && directory.status === 'idle') {
+            void directory.loadTenants({ includeCapabilities: needsCapabilityRead });
+        } else if (
+            directory.hasLoaded
+            && needsCapabilityRead
+            && !directory.capabilitiesLoaded
+            && !directory.capabilityLoading
+            && lastCapabilityReadKey.current !== capabilityReadKey
+        ) {
+            lastCapabilityReadKey.current = capabilityReadKey;
+            void directory.loadTenants({ includeCapabilities: true });
         }
+    }, [adminProfile?.is_master, capabilityReadKey, directory, location.hash, location.search, navigate, needsCapabilityRead]);
+
+    async function loadTenants() {
+        return directory.refreshTenants({ includeCapabilities: needsCapabilityRead });
     }
 
     async function loadRegistrationDrafts() {
@@ -152,7 +158,7 @@ export default function TenantManager() {
     }, []);
 
     const refreshRegistrationReview = async () => {
-        await Promise.all([loadRegistrationDrafts(), loadTenants({ silent: true })]);
+        await Promise.all([loadRegistrationDrafts(), loadTenants()]);
     };
 
     const formatDate = (timestamp) => {
@@ -165,17 +171,51 @@ export default function TenantManager() {
         });
     };
 
-    const visibleTenants = useMemo(
-        () => filterTenants(tenants, directoryState),
-        [directoryState, tenants]
+    const filteredTenants = useMemo(
+        () => filterTenants(tenants, directoryState, { capabilitiesLoaded: directory.capabilitiesLoaded }),
+        [directory.capabilitiesLoaded, directoryState, tenants]
     );
+    const sortedTenants = useMemo(() => sortTenants(filteredTenants, directoryState.sort), [directoryState.sort, filteredTenants]);
+    const page = useMemo(() => paginateTenants(sortedTenants, directoryState.page, directoryState.page_size), [directoryState.page, directoryState.page_size, sortedTenants]);
+    const visibleTenants = page.rows;
+    const capabilityError = needsCapabilityRead && !directory.capabilitiesLoaded ? directory.error : '';
+
+    let hashTenantId = '';
+    if (location.hash.startsWith('#tenant-')) {
+        try {
+            hashTenantId = decodeURIComponent(location.hash.slice('#tenant-'.length));
+        } catch {
+            hashTenantId = location.hash.slice('#tenant-'.length);
+        }
+    }
+
+    useEffect(() => {
+        if (directory.hasLoaded && page.page !== directoryState.page) {
+            updateDirectoryState({ page: page.page }, true, false);
+        }
+    }, [directory.hasLoaded, directoryState.page, page.page, searchParams, updateDirectoryState]);
+
+    useEffect(() => {
+        if (!hasLoaded || !hashTenantId) return undefined;
+        const tenantIndex = sortedTenants.findIndex((tenant) => String(tenant.id) === hashTenantId);
+        if (tenantIndex < 0) return undefined;
+        const targetPage = Math.floor(tenantIndex / page.pageSize) + 1;
+        if (targetPage !== page.page) {
+            setSearchParams(serializeDirectoryParams({ ...directoryState, page: targetPage }, searchParams), { replace: true });
+            return undefined;
+        }
+        const timer = window.setTimeout(() => {
+            document.getElementById(`tenant-${encodeURIComponent(hashTenantId)}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+        }, 0);
+        return () => window.clearTimeout(timer);
+    }, [directoryState, hashTenantId, hasLoaded, page.page, page.pageSize, searchParams, setSearchParams, sortedTenants]);
 
     return (
         <div className="mx-auto max-w-7xl">
             {/* Header */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+                    <div>
                         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
                             <Building2 className="w-8 h-8" />
                             Tenant Management
@@ -203,21 +243,23 @@ export default function TenantManager() {
                 </div>
             </div>
 
-            {adminProfile?.is_master ? (
-                <div id="revenue-settlement" className="scroll-mt-6">
-                    <TenantRevenueSettlementPanel tenants={tenants} preselectTenantId={searchParams.get('tenant_id') || ''} preselectionReady={hasLoaded} />
-                </div>
-            ) : null}
+            <TenantConsoleTabs adminProfile={adminProfile} location={location} />
 
             <TenantDirectoryToolbar
                 tenants={tenants}
                 state={directoryState}
                 searchDraft={searchDraft}
                 visibleCount={visibleTenants.length}
+                rangeLabel={`Showing ${page.rangeStart}${page.rangeEnd !== page.rangeStart ? `–${page.rangeEnd}` : ''} of ${filteredTenants.length}`}
+                capabilitiesLoading={directory.capabilityLoading}
+                capabilityError={capabilityError}
                 onSearchChange={handleDirectorySearchChange}
                 onFilterChange={handleDirectoryFilterChange}
+                onSortChange={handleSortChange}
+                onPageSizeChange={handlePageSizeChange}
                 onRemoveFilter={handleRemoveDirectoryFilter}
                 onClearAll={handleClearDirectoryFilters}
+                onRetryCapabilities={() => void directory.refreshTenants({ includeCapabilities: true })}
             />
 
             {!hasLoaded && error ? (
@@ -230,7 +272,7 @@ export default function TenantManager() {
                 </div>
             ) : null}
 
-            {hasLoaded && error ? (
+            {hasLoaded && error && !needsCapabilityRead ? (
                 <div role="alert" className="mb-6 flex w-full items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
                     <div className="flex items-center gap-2">
                         <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
@@ -286,7 +328,7 @@ export default function TenantManager() {
                         <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                         <p className="text-slate-600 text-lg font-medium">No tenants exist yet</p>
                     </div>
-                ) : hasLoaded && visibleTenants.length === 0 ? (
+                ) : hasLoaded && needsCapabilityRead && !directory.capabilitiesLoaded ? null : hasLoaded && visibleTenants.length === 0 ? (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                         <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                         <p className="text-slate-600 text-lg font-medium">No tenants match these filters</p>
@@ -298,22 +340,18 @@ export default function TenantManager() {
                         const StatusIcon = statusConfig.icon;
 
                         return (
-                            <div
+                            <Link
                                 key={tenant.id}
                                 id={`tenant-${encodeURIComponent(tenant.id)}`}
-                                className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow"
+                                aria-label={`Open ${tenant.name} tenant overview`}
+                                to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}`, search: location.search }}
+                                className="block rounded-xl border border-slate-200 bg-white p-6 text-inherit shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
                             >
                                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex min-w-0 flex-wrap items-center gap-3 mb-2">
                                             <h3 className="min-w-0 max-w-full truncate text-xl font-semibold text-slate-900" title={tenant.name}>
-                                                <Link
-                                                    to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}`, search: location.search }}
-                                                    className="hover:underline"
-                                                    title={`View ${tenant.name}`}
-                                                >
-                                                    {tenant.name}
-                                                </Link>
+                                                {tenant.name}
                                             </h3>
                                             <span className={cn(
                                                 "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",
@@ -375,24 +413,22 @@ export default function TenantManager() {
 
                                     </div>
 
-                                    <div className="w-full xl:w-auto xl:min-w-[320px] xl:max-w-[380px]">
-                                        <div className="text-sm font-semibold text-slate-900">Tenant detail sections</div>
-                                        <p className="mt-1 text-xs text-slate-500">Open the tenant to manage its lifecycle, registration, compliance, store setup, and access.</p>
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            <Link to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}`, search: location.search }} className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">Open overview</Link>
-                                            <Link to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/lifecycle`, search: location.search }} className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Lifecycle</Link>
-                                            <Link to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/registration`, search: location.search }} className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Registration</Link>
-                                            <Link to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/compliance`, search: location.search }} className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Compliance</Link>
-                                            <Link to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/store-setup`, search: location.search }} className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Store setup</Link>
-                                            <Link to={{ pathname: `/admin/tenants/${encodeURIComponent(tenant.id)}/access`, search: location.search }} className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Access</Link>
-                                        </div>
-                                    </div>
                                 </div>
-                            </div>
+                            </Link>
                         );
                     })
                 )}
             </div>
+
+            {hasLoaded && filteredTenants.length > 0 ? (
+                <nav aria-label="Tenant directory pages" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+                    <span className="text-sm text-slate-600">Page {page.page} of {page.totalPages}</span>
+                    <div className="flex gap-2">
+                        <Button type="button" variant="outline" disabled={page.page <= 1} onClick={() => updateDirectoryState({ page: page.page - 1 }, false, false)}>Previous</Button>
+                        <Button type="button" variant="outline" disabled={page.page >= page.totalPages} onClick={() => updateDirectoryState({ page: page.page + 1 }, false, false)}>Next</Button>
+                    </div>
+                </nav>
+            ) : null}
 
             <RegistrationUploadsModal
                 subject={selectedRegistrationReview}

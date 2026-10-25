@@ -112,6 +112,17 @@ describe('adminService admin operation contracts', () => {
     expect(mockAdminApi.history.get[0].url).toBe('/admin/tenants/a%2Fb');
   });
 
+  it('can request a lightweight tenant directory without capability reads', async () => {
+    mockAdminApi.onGet('/admin/tenants').reply((config) => {
+      expect(config.params.toString()).toBe('include_capabilities=false');
+      return [200, { success: true, data: [] }];
+    });
+
+    await expect(adminService.getTenants('all', { includeCapabilities: false })).resolves.toMatchObject({ data: [] });
+    expect(mockAdminApi.history.get[0].url).toBe('/admin/tenants');
+    expect(mockAdminApi.history.get[0].params.get('include_capabilities')).toBe('false');
+  });
+
   it('sends diagnostic test notifications to an enrolled device without a request body', async () => {
     mockAdminApi.onPost('/admin/push-diagnostics/diagnostic-devices/device-1/test-send').reply((config) => {
       expect(config.data).toBeUndefined();

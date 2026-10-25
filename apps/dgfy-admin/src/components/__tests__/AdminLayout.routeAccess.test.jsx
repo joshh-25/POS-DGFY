@@ -35,8 +35,10 @@ const renderAdmin = (initialEntry) => render(
       <Route path="/admin" element={<AdminLayout />}>
         <Route path="feedback" element={<PageProbe name="Feedback" />} />
         <Route path="tenants" element={<PageProbe name="Tenant directory" />} />
+        <Route path="tenants/billing" element={<PageProbe name="Global tenant Billing" />} />
         <Route path="tenants/new" element={<AddTenant />} />
         <Route path="tenants/:id" element={<PageProbe name="Tenant overview" />} />
+        <Route path="tenants/:id/billing" element={<PageProbe name="Tenant Billing" />} />
         <Route path="dgfy-accounts" element={<PageProbe name="DGFY accounts" />} />
         <Route path="payments" element={<PageProbe name="Payments" />} />
         <Route path="pricing" element={<PageProbe name="Pricing" />} />
@@ -78,6 +80,24 @@ describe('AdminLayout nested route authorization', () => {
     mocks.profile = { is_master: false, permissions: ['admin.tenants'] };
     renderAdmin('/admin/tenants/tenant-1');
     expect(await screen.findByText('Tenant overview destination')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tenants' }).className).toContain('bg-slate-700');
+  });
+
+  it.each([
+    ['/admin/tenants/billing', 'Global tenant Billing'],
+    ['/admin/tenants/tenant-1/billing', 'Tenant Billing']
+  ])('blocks Billing routes for delegates before the child mounts (%s)', async (path, pageName) => {
+    mocks.profile = { is_master: false, permissions: ['admin.tenants'] };
+    renderAdmin(path);
+    expect(await screen.findByText('Tenant directory destination')).toBeTruthy();
+    expect(mocks.childMounted).not.toHaveBeenCalledWith(pageName);
+  });
+
+  it('allows Platform Master Billing routes and highlights Tenants in the sidebar', async () => {
+    mocks.profile = { is_master: true, permissions: [] };
+    renderAdmin('/admin/tenants/tenant-1/billing');
+    expect(await screen.findByText('Tenant Billing destination')).toBeTruthy();
+    expect(mocks.childMounted).toHaveBeenCalledWith('Tenant Billing');
     expect(screen.getByRole('button', { name: 'Tenants' }).className).toContain('bg-slate-700');
   });
 

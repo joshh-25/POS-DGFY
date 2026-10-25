@@ -173,4 +173,37 @@ describe('listTenants usecase eligibility enrichment', () => {
         expect(tenant).not.toHaveProperty('db_name');
         expect(tenant.capabilities).toEqual(expect.objectContaining({ pos_enabled: false }));
     });
+
+    it('skips every tenant capability read for an explicitly lightweight list while preserving safe item fields', async () => {
+        const tenantAdminRepository = {
+            listTenants: jest.fn().mockResolvedValue([{
+                id: 'active-lightweight',
+                name: 'Lightweight Tenant',
+                status: 'active',
+                db_name: 'sku_private_db',
+                company_token: 'private-token',
+                password_hash: 'private-password-hash'
+            }])
+        };
+        const readTenantCapabilities = jest.fn();
+        const useCase = buildListTenantsUseCase({
+            tenantAdminRepository,
+            tenantConnector: { connect: jest.fn() },
+            readTenantCapabilities,
+            logger: { error: jest.fn() }
+        });
+
+        const result = await useCase({ status: 'all', includeCapabilities: false });
+        const payload = result.data.payload;
+
+        expect(tenantAdminRepository.listTenants).toHaveBeenCalledWith({});
+        expect(readTenantCapabilities).not.toHaveBeenCalled();
+        expect(payload).toEqual({ success: true, data: [expect.objectContaining({
+            id: 'active-lightweight',
+            capabilities: null
+        })] });
+        expect(payload.data[0]).not.toHaveProperty('db_name');
+        expect(payload.data[0]).not.toHaveProperty('company_token');
+        expect(payload.data[0]).not.toHaveProperty('password_hash');
+    });
 });

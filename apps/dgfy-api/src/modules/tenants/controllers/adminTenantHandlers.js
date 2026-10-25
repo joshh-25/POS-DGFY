@@ -108,7 +108,8 @@ export const registerCompanyRequest = async (req, res) => {
  */
 export const listTenants = async (req, res) => {
     const result = await listTenantsUseCase({
-        status: req.query?.status
+        status: req.query?.status,
+        includeCapabilities: req.query?.include_capabilities !== 'false'
     });
     await trackProductUsageFromResult({
         req,
