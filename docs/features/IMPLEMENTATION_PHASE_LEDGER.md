@@ -31709,7 +31709,288 @@ Not complete. Record after merge and implementation validation.
 
 Phase 547. No explicit dependency.
 
-## Phase 547 - Storefront iOS Support URL readiness (#2772)
+## Phase 547 - Self-hosted runner disk cleanup safety (#2619)
+
+### Initiative and release
+
+CI runner workspace safety / operator-managed maintenance.
+
+### Objective and scope
+
+Record the confirmed disk-timer failure that deleted runner files during a live job, establish the
+policy against automatic deletion of runner workspaces and caches, and document stopped-runner
+maintenance requirements. Keep this failure mode separate from sparse-checkout poisoning, and
+record the second job symptom as accepted unless it recurs. This phase changes repository
+documentation only; host script installation and gate verification remain operator-owned. No
+workflow, application, API, schema, or host behavior is changed by this PR.
+
+### Status
+
+`in_progress` — documentation updates and validation are underway in the #2619 Worker PR.
+
+### Dependencies
+
+None. Phase 547 follows the current ledger high-water mark, Phase 546. No earlier phase is an
+explicit technical or operational dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[CI Runner Workspace Hygiene](../ops/CI_RUNNER_WORKSPACE_HYGIENE.md),
+[CI Runner Policy](../ops/CI_RUNNER_POLICY.md), [Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md),
+and issue [#2619](https://github.com/Sieitzz/dgfy-platform/issues/2619). Classification:
+`no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+[`CI_RUNNER_WORKSPACE_HYGIENE.md`](../ops/CI_RUNNER_WORKSPACE_HYGIENE.md) and this ledger entry.
+The host script and external operations runbook are outside this repository task.
+
+### Acceptance and validation evidence
+
+- [x] The confirmed journal-window race and deleted runner files are documented separately from
+  sparse-checkout poisoning.
+- [x] The documentation states that runner workspaces, diagnostics, action/tool files, and runner
+  caches are not automatically removed, and that manual cleanup requires stopped-runner
+  maintenance.
+- [x] The Storefront job is recorded as completed/success and accepted unless it recurs; no code
+  fix is claimed for that symptom.
+- [x] Host installation and follow-up gate evidence remain explicitly outstanding and operator-owned.
+- [x] `npm run lint:docs`, `npm run check:architecture`, `npm run check:workspace-hygiene`,
+  `npm run check:runner-routing`, the develop-context app-version check, and `git diff --check`
+  pass on the implementation branch.
+
+### Evidence
+
+`npm run lint:docs` passed (36 governed docs; 105 ADRs); `npm run check:architecture` passed
+(63 modules/797 code files and 115 controller files); `npm run check:workspace-hygiene` and
+`npm run check:runner-routing` passed. The app-version check passed with PR context
+(`GITHUB_BASE_REF=develop`, `GITHUB_HEAD_REF=docs/issue-2619-runner-workspace-cleanup`) and found
+no changed apps or fan-out packages. Its bare local form has no PR target context and initially
+reported an inherited app-code diff from the preceding #2769 merge; no app files are changed by
+this phase. `git diff --check` passed. No host was accessed or changed, and no Promotion Quality
+Gate was dispatched in this implementation session.
+
+### Risks and decisions
+
+Disabling automatic runner-cache cleanup can leave disk usage high when unrelated cleanup is
+insufficient. The persistent-high-usage warning must continue to prompt operator-managed
+maintenance. A process-presence check alone is not a safe deletion guard because a job can start
+after the check. The live host remediation and gate result are not represented as complete by this
+documentation phase.
+
+### Completion date
+
+Not complete. Record after the documentation PR is merged and implementation validation passes.
+
+### Post-merge verification
+
+- [ ] operational — apply the reviewed replacement to both runner VMs; verify matching content and
+  checksum, preserved owner and mode, restored prior timer state, and runner health; owner: #2619
+  operator; blocks host-remediation acceptance.
+- [ ] operational — after host application, dispatch one full `promotion-quality-gate.yml` run on a
+  recorded SHA, inspect per-job and per-step outcomes and evidence artifacts, and record the run
+  link/SHA on #2619; owner: #2619 operator; blocks closing #2619.
+
+### Next phase number
+
+Phase 548. No explicit dependency.
+
+## Phase 548 - Staging quality triage: POS branch entry and shared contracts (#2767)
+
+### Initiative and release
+
+Staging run 40086857329 quality repair / ordinary `develop` branch.
+
+### Objective and scope
+
+Repair the eight shared POS frontend contract failures and the POS sales journey's fixture,
+authenticated branch-entry flow, and assigned-location authorization. Preserve checkout, stock,
+receipt history, export, shift ownership and server authority. Record a disposition for every raw
+failed run step; API matrix and dependency findings stay with their existing owners. No API or
+schema behavior, dependency, workflow policy, merge, deployment, or production verification is in
+scope. Classification: `within-existing-boundary`.
+
+### Status
+
+`in_progress` — scoped implementation, local validation, and the approved compliance declaration
+are complete on the #2767 Worker branch; PR review and merge remain outstanding.
+
+### Dependencies
+
+None. Phase 548 follows the current ledger high-water mark, Phase 547. The in-progress Phase
+547 entry for #2619 is not an explicit technical dependency. The separate API and dependency repair issues are not
+prerequisites for this frontend repair.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+[ADR 0031](../architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md),
+[POS Cashier Location Access Phase 354](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md),
+[POS Cashier Location Access Phase 355](POS_CASHIER_LOCATION_ACCESS_PHASE_355.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), and issue
+[#2767](https://github.com/Sieitzz/dgfy-platform/issues/2767). Classification:
+`within-existing-boundary`; no ADR change is needed.
+
+### Implementation targets
+
+`packages/web-core/src/features/pos/pages/TerminalPage.jsx`, its assigned-branch access helper and
+tests, the five affected shared contract suites and nearby rendered tests; the POS E2E login helper,
+sales journey and sign-in callers; `apps/dgfy-api/tests/fixtures/prepare-pos-sales-e2e-user.mjs`;
+the Phase 354 behavior amendment; and this ledger entry.
+
+### Acceptance and validation evidence
+
+- [x] All eight original contract failures pass with equivalent rendered or structural behavior
+  coverage; read-only branch review and manual-lock resume behavior remain covered.
+- [x] A restricted non-master admin with effective action permissions and a matching location grant
+  can enter the assigned branch. Missing permissions/grants, read-only branch viewing, inactive or
+  mismatched terminals, occupancy by another operator, and another user's shift remain denied.
+- [x] The POS sales journey reaches authenticated branch selection, opens a real shift through the
+  UI, completes checkout, verifies stock decrement, receipt detail, CSV content, and shift cleanup.
+- [x] POS and IMS builds, scoped frontend suites/E2E, architecture, docs, version, syntax, marker,
+  and whitespace checks pass; raw failures and their existing owners are recorded.
+- [ ] The full `npm run test:frontend` aggregate completes. The IMS workspace run was interrupted
+  after five minutes in one continuously CPU-bound Vitest worker. It reported multiple unrelated
+  suite failures and one category-placement behavior failure; that changed suite passed in
+  isolation immediately afterward (21/21 tests), and the focused POS/shared set passed (255/255).
+- [x] `npm run check:compliance` passes after Pat approved and recorded the major POS/terminal
+  declaration in `docs/compliance/impact-declarations/2026-10-25-pos-assigned-branch-entry.md`.
+- [x] No merge, deployment, or deployed-environment claim is made. Ordinary develop app version
+  floors remain unchanged.
+
+### Evidence
+
+`npm run test:frontend:contracts` passed (132 files, 837 tests); the focused POS/shared set passed
+(15 files, 255 tests). `npm run test:pos-sales-e2e` passed against local MySQL/Redis with one
+Playwright worker, including branch-entry and Shift desktop/mobile screenshots, shift opening,
+checkout, stock decrement, receipt detail, CSV filename/content, and shift cleanup. Its
+non-secret response disposition attachment classifies pre-auth bootstrap 401s, the restricted
+admin's master-admin-only onboarding 403, and the optional disabled cashier-attendance endpoint.
+`npm run test:frontend:storefront` passed (252 files, 1,418 tests). `npm run build:pos` and
+`npm run build:skupervisor` passed. `npm run check:architecture`, `npm run lint:docs`,
+`npm run check:app-versions`, `node --check` for the fixture, and `git diff --check` passed.
+`npm run test:frontend` did not complete: its IMS run reported multiple unrelated-suite failures
+and remained in one CPU-bound worker for five minutes before interruption. The aggregate also
+reported one failure in the changed category-placement behavior suite, but that suite passed in
+isolation immediately afterward (21/21 tests); the focused 15-file POS/shared set also passed
+(255/255). `npm run check:compliance` passed after Pat approved the major POS/terminal declaration
+in the implementation session; its `NOT-EXECUTED-*` reference records that no live request-time
+preflight ran and remains subject to the normal reconciliation sweep. The issue's existing run
+inventory and trace comments are SHA-bound; API matrix findings remain routed to #2577, dependency
+audit findings remain with #2199/#2170 and #1786/#2211 as applicable, and S3 fallback evidence is
+recorded without any presigned URL.
+
+### Risks and decisions
+
+Role-independent branch entry must continue to require effective action permissions and location
+grants at both directory generation and action time. The selected tenant user used during DGFY
+login must be the same identity used for those checks. The frontend remains advisory; API
+revalidation and existing terminal, occupancy, ownership, audit and financial invariants remain
+authoritative. No unresolved product or architecture decision remains.
+
+### Post-merge verification
+
+- [ ] operational — after relevant fixes land, dispatch the existing quality workflow only when
+  appropriate, inspect raw outcomes, and link remaining failures to their existing owner issues;
+  owner: Pat/operator; blocks closing #2767. No baseline-only run is dispatched by the Worker.
+
+### Next phase number
+
+Phase 549. No explicit dependency.
+
+## Phase 549 - Retain promotion quality evidence in workflow summaries (#1165)
+
+### Initiative and release
+
+Promotion quality evidence durability / advisory reporting.
+
+### Objective and scope
+
+Append the promotion quality reporter's existing SHA-bound advisory evidence to the GitHub Actions
+run summary for both matching-PR and no-PR runs. Preserve the PR comment and candidate-recording
+paths, keep the suite optional and advisory, and leave promotion eligibility unchanged.
+
+### Status
+
+`in_progress` — implementation and focused validation are underway on the #1165 Worker branch.
+
+### Dependencies
+
+Phase 547 (#2619)'s host application and follow-up full quality-gate pass are required before this
+phase's post-merge no-PR dispatch can serve as operational verification, because the reporter job
+must complete on the self-hosted runner. This dependency gates operational verification only; code
+implementation is independent.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR Index](../architecture/adr/INDEX.md),
+[ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[Release Candidate Policy](../ops/RELEASE_CANDIDATE_POLICY.md), [Planner/Worker Handoff Compatibility](../ai/PLANNER_WORKER_HANDOFF_COMPATIBILITY.md),
+and issue [#1165](https://github.com/Sieitzz/dgfy-platform/issues/1165), especially its
+[no-PR summary gap update](https://github.com/Sieitzz/dgfy-platform/issues/1165#issuecomment-6252784606).
+Classification: `no-architecture-impact`; no ADR change is needed.
+
+### Implementation targets
+
+[`post-quality-suite-evidence.js`](../../scripts/post-quality-suite-evidence.js),
+[`post-quality-suite-evidence.test.js`](../../scripts/post-quality-suite-evidence.test.js), and this
+ledger entry. The existing `report-quality-evidence` workflow job already invokes the reporter after
+the advisory jobs; no workflow wiring change is in scope.
+
+### Acceptance and validation evidence
+
+- [x] The same rendered, SHA-bound advisory report is appended to `GITHUB_STEP_SUMMARY` for runs
+  with and without a matching open PR, after freshness resolution and before any PR comment post.
+- [x] Existing summary content is preserved; an unset summary path is a no-op; append errors are
+  diagnosed while comment and candidate recording continue; later comment failures preserve the
+  summary already written.
+- [x] Step failures, missing jobs, and skipped jobs remain visible as advisory outcomes, with no
+  change to promotion eligibility.
+- [x] `npm run test:quality-evidence`, `npm run test:pr-quality-workflow`,
+  `node scripts/check-pr-quality-workflow.js`, `npm run check:architecture`, `npm run lint:docs`,
+  and `git diff --check` pass.
+
+### Evidence
+
+`npm run test:quality-evidence` passed 9 tests, including no-PR summary output, matching-PR
+freshness parity, append-error continuation through PR/candidate recording, and summary retention
+when comment posting fails. `npm run test:pr-quality-workflow` passed 11 tests;
+`node scripts/check-pr-quality-workflow.js` passed; `npm run check:architecture` passed (63 modules,
+797 code files, and 115 controller files); `npm run lint:docs` passed (36 governed docs / 105 ADRs);
+`node --check` passed for both changed JavaScript files; `npm run check:compliance` detected no
+compliance-sensitive changes and passed API-contract checks. The app-version check passed with PR
+context (`GITHUB_BASE_REF=develop`, `GITHUB_HEAD_REF=fix/1165-quality-summary`); no app or fan-out
+package changes apply. `git diff --check` passed. The operational workflow-dispatch check remains
+outstanding for post-merge verification after Phase 547's runner validation.
+
+### Risks and decisions
+
+The workflow summary is informational and uses the existing bounded quality-job report. Summary
+write failure is non-fatal by design, so the existing PR comment and candidate evidence paths remain
+available. Phase 547 for #2619 and Phase 548 for #2767 are retained as preceding ledger entries;
+this #1165 scope is Phase 549, with its operational dispatch sequenced after Phase 547's runner
+validation.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] operational — after Phase 547's runner validation, dispatch the promotion quality workflow on
+  a branch with no open PR and verify the run summary contains the expected SHA-bound advisory table
+  and classifications; owner: #1165 operator; blocks closing #1165.
+
+### Next phase number
+
+Phase 550. No explicit dependency.
+
+## Phase 550 - Storefront iOS Support URL readiness (#2772)
 
 ### Initiative and release
 
@@ -31732,9 +32013,9 @@ compliance declaration were approved by the operator. The change is not merged.
 
 ### Dependencies
 
-None. The existing Platform Admin Contact Inquiries page and `admin.contact_inquiries` grant own
-the configuration surface. The schema migration must be applied before the new configuration can
-be used in a deployed environment.
+None. Phase 550 follows the current ledger high-water mark, Phase 549. No earlier phase is an
+explicit technical or operational dependency. The schema migration must be applied before the new
+configuration can be used in a deployed environment.
 
 ### Contract and authority
 
@@ -31786,12 +32067,12 @@ address or production delivery path.
 For the expanded implementation, `npm run check:architecture` passed (63 modules, 800 code files,
 and 116 controller files); `npm run build:admin` and `npm run build:store` passed (Storefront reports
 its existing large-chunk advisory); `npm run lint:docs` passed (36 governed docs and 106 ADRs),
-`node scripts/check-adr.js` passed, `npm run check:app-versions` passed, and `npm run
-check:compliance` passed the declaration's structural and API-contract checks. Changed API
-JavaScript/CommonJS syntax checks and `git diff --check` passed. Focused tests and updated rendered
-desktop/mobile checks were not run in this session. The declaration's
-`NOT-EXECUTED-2772-2026-10-25` value is the expected develop-PR placeholder, not live preflight
-evidence.
+`node scripts/check-adr.js` passed, `npm run check:app-versions` passed in develop-PR context, and
+`npm run check:compliance` passed the declaration's structural and API-contract checks. The staged
+tenant-schema coverage check passed for the one new migration. Changed API JavaScript/CommonJS syntax
+checks and `git diff --check` passed. Focused tests and updated rendered desktop/mobile checks were
+not run in this session. The declaration's `NOT-EXECUTED-2772-2026-10-25` value is the expected
+develop-PR placeholder, not live preflight evidence.
 
 ### Risks and decisions
 
@@ -31825,4 +32106,4 @@ address remains public until the migration/configuration change is rolled back o
 
 ### Next phase number
 
-Phase 548. No explicit dependency.
+Phase 551. No explicit dependency.

@@ -68,7 +68,7 @@ delivery proof.
 ## References
 
 - [Issue #2772](https://github.com/Sieitzz/dgfy-platform/issues/2772)
-- [Implementation Phase 547](../../features/IMPLEMENTATION_PHASE_LEDGER.md#phase-547---storefront-ios-support-url-readiness-2772)
+- [Implementation Phase 550](../../features/IMPLEMENTATION_PHASE_LEDGER.md#phase-550---storefront-ios-support-url-readiness-2772)
 - [Contact inquiries API module](../../../apps/dgfy-api/src/modules/contactInquiries/README.md)
 - [Platform Admin route permission matrix](../../testing/platform-admin-route-permission-matrix.md)
 

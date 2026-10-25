@@ -71,7 +71,8 @@ const prepareTerminalCheckout = async (page) => {
     window.localStorage.setItem('pos_terminal_identity_v1', terminalId);
   }, { terminalId: user.terminalId });
   await signIn(page, { email: user.email, password: user.password }, {
-    companyName: process.env.E2E_TEST_COMPANY_NAME || 'Original Legacy Data'
+    companyName: process.env.E2E_TEST_COMPANY_NAME || 'Original Legacy Data',
+    expectedPostcondition: 'pos-catalog'
   });
   await expect.poll(() => Boolean(authHeaders.authorization), { timeout: 15_000 }).toBe(true);
 

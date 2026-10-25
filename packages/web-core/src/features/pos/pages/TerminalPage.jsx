@@ -97,6 +97,10 @@ import {
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import { isPermissionEffective } from '@sieitzz/shared-constants/permissionDependencies';
+import {
+  canOperateAssignedPosBranch,
+  hasPosBranchActionPermission
+} from '../utils/assignedPosBranchAccess.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog.jsx';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
@@ -1039,6 +1043,7 @@ export default function TerminalPage() {
   const [branchSelectorOpen, setBranchSelectorOpen] = useState(false);
   const [branchSelectorMode, setBranchSelectorMode] = useState('directory');
   const branchSelectorContinuationRef = useRef(null);
+  const cashierBranchOperatorRef = useRef(null);
   const [cashierBranchSelectionReady, setCashierBranchSelectionReady] = useState(false);
   const cashierBranchOperationSelectedRef = useRef(false);
   const [branchViewLocationId, setBranchViewLocationId] = useState(null);
@@ -1423,11 +1428,6 @@ export default function TerminalPage() {
   // permission and may intentionally be disabled for a read-only operator.
   const canResumeShift = canViewPos && canViewAttendance && canOperateAttendance;
   const canSwitchPosLocation = hasPermission('pos:switch_location');
-  const assignedCashierLocationIds = useMemo(() => new Set(
-    (Array.isArray(terminalUser?.location_ids) ? terminalUser.location_ids : [])
-      .map((locationId) => Number(locationId))
-      .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
-  ), [terminalUser?.location_ids]);
   // Branch viewing is intentionally separate from the governed cash/shift switch. A user must
   // receive the dedicated read-only capability; pos:switch_location only authorizes the
   // privileged shift relocation flow.
@@ -2412,22 +2412,36 @@ export default function TerminalPage() {
     terminalRegistryOverride = null,
     resumeShiftOverride = null
   } = {}) => {
-    const cashierUser = userOverride || terminalUser;
-    const cashierRole = String(cashierUser?.role || '').trim().toLowerCase();
-    if ((cashierRole !== 'cashier' && !isCashierRole) || !isOnline) {
+    const branchOperator = userOverride || terminalUser;
+    const branchOperatorPermissions = parseUserPermissions(branchOperator);
+    const isMasterAdmin = branchOperator?.is_master_admin === true;
+    const canOpenAssignedBranch = hasPosBranchActionPermission({
+      permissions: branchOperatorPermissions,
+      isMasterAdmin,
+      action: 'open'
+    });
+    const canResumeAssignedBranch = hasPosBranchActionPermission({
+      permissions: branchOperatorPermissions,
+      isMasterAdmin,
+      action: 'resume'
+    });
+    if (!canOpenAssignedBranch && !canResumeAssignedBranch) {
       setCashierBranchDirectoryState((previous) => ({
         ...previous,
         loading: false,
-        ...(cashierRole === 'cashier' || isCashierRole ? {} : { locations: [], errorMessage: '' })
+        locations: [],
+        errorMessage: ''
       }));
       return null;
     }
+    if (!isOnline) {
+      setCashierBranchDirectoryState((previous) => ({ ...previous, loading: false }));
+      return null;
+    }
 
-    const assignedLocationIds = new Set(
-      (Array.isArray(cashierUser?.location_ids) ? cashierUser.location_ids : [])
-        .map((locationId) => Number(locationId))
-        .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
-    );
+    const assignedLocationIds = Array.isArray(branchOperator?.location_ids)
+      ? branchOperator.location_ids
+      : [];
     const availableLocations = Array.isArray(locationsOverride)
       ? locationsOverride
       : (Array.isArray(locationsState?.locations) ? locationsState.locations : []);
@@ -2435,7 +2449,23 @@ export default function TerminalPage() {
       ? terminalRegistryOverride
       : activeTerminalRegistry;
     const assignedLocations = availableLocations
-      .filter((location) => assignedLocationIds.has(Number(location?.location_id || 0)));
+      .filter((location) => {
+        if (location?.is_active === false) return false;
+        const locationId = Number(location?.location_id || 0);
+        return canOperateAssignedPosBranch({
+          permissions: branchOperatorPermissions,
+          isMasterAdmin,
+          locationIds: assignedLocationIds,
+          locationId,
+          action: 'open'
+        }) || canOperateAssignedPosBranch({
+          permissions: branchOperatorPermissions,
+          isMasterAdmin,
+          locationIds: assignedLocationIds,
+          locationId,
+          action: 'resume'
+        });
+      });
 
     setCashierBranchDirectoryState((previous) => ({
       ...previous,
@@ -2447,8 +2477,22 @@ export default function TerminalPage() {
       const nextLocations = await Promise.all(assignedLocations.map(async (location) => {
         const locationId = Number(location?.location_id || 0);
         const registeredTerminals = availableTerminalRegistry.filter(
-          (entry) => Number(entry?.location_id || 0) === locationId
+          (entry) => entry?.is_active !== false && Number(entry?.location_id || 0) === locationId
         );
+        const locationCanOpenShift = canOperateAssignedPosBranch({
+          permissions: branchOperatorPermissions,
+          isMasterAdmin,
+          locationIds: assignedLocationIds,
+          locationId,
+          action: 'open'
+        });
+        const locationCanResumeShift = canOperateAssignedPosBranch({
+          permissions: branchOperatorPermissions,
+          isMasterAdmin,
+          locationIds: assignedLocationIds,
+          locationId,
+          action: 'resume'
+        });
         const terminals = await Promise.all(registeredTerminals.map(async (entry) => {
           const terminalId = sanitizeTerminalId(entry?.terminal_id);
           if (!terminalId || !locationId) {
@@ -2462,9 +2506,9 @@ export default function TerminalPage() {
           }
 
           const cashierLabel = String(
-            cashierUser?.display_name
-            || cashierUser?.username
-            || cashierUser?.email
+            branchOperator?.display_name
+            || branchOperator?.username
+            || branchOperator?.email
             || ''
           ).trim() || 'Signed-in cashier';
           const fallbackShiftTerminalId = sanitizeTerminalId(
@@ -2476,7 +2520,8 @@ export default function TerminalPage() {
           const fallbackOwnedShift = resumeShiftOverride
             && fallbackShiftTerminalId === terminalId
             && fallbackShiftLocationId === locationId
-            && isShiftOwnedByUser(resumeShiftOverride, cashierUser)
+            && locationCanResumeShift
+            && isShiftOwnedByUser(resumeShiftOverride, branchOperator)
             ? resumeShiftOverride
             : null;
 
@@ -2487,7 +2532,7 @@ export default function TerminalPage() {
             );
             const ownedShift = currentShift?.shift || null;
             const occupancyStatus = String(currentShift?.terminal_occupancy?.status || '').trim();
-            const ownedByCurrentUser = isShiftOwnedByUser(ownedShift, cashierUser)
+            const ownedByCurrentUser = isShiftOwnedByUser(ownedShift, branchOperator)
               && occupancyStatus !== 'occupied_by_other';
             const occupiedByOther = occupancyStatus === 'occupied_by_other'
               || Boolean(ownedShift && !ownedByCurrentUser);
@@ -2495,8 +2540,8 @@ export default function TerminalPage() {
             return {
               ...entry,
               status: ownedByCurrentUser ? 'occupied' : (occupiedByOther ? 'occupied' : 'available'),
-              can_open: !ownedByCurrentUser && !occupiedByOther,
-              can_resume: ownedByCurrentUser,
+              can_open: locationCanOpenShift && !ownedByCurrentUser && !occupiedByOther,
+              can_resume: locationCanResumeShift && ownedByCurrentUser,
               reason_code: occupiedByOther ? 'POS_TERMINAL_SHIFT_OCCUPIED' : '',
               shift: ownedByCurrentUser && ownedShift
                 ? {
@@ -2561,7 +2606,7 @@ export default function TerminalPage() {
       if (!silent) toast.error(message);
       return null;
     }
-  }, [activeTerminalRegistry, isCashierRole, isOnline, locationsState?.locations, terminalUser?.display_name, terminalUser?.email, terminalUser?.location_ids, terminalUser?.role, terminalUser?.username]);
+  }, [activeTerminalRegistry, isOnline, locationsState?.locations, terminalUser?.display_name, terminalUser?.email, terminalUser?.is_master_admin, terminalUser?.location_ids, terminalUser?.permissions, terminalUser?.username]);
 
   useEffect(() => {
     refreshBranchDirectory({ silent: true });
@@ -2606,7 +2651,9 @@ export default function TerminalPage() {
     continuation = null,
     cashierData = null
   } = {}) => {
+    const branchOperator = cashierData?.user || terminalUser;
     branchSelectorContinuationRef.current = continuation;
+    cashierBranchOperatorRef.current = branchOperator;
     setBranchSelectorMode(mode);
     // Branch selection is its own entry surface. Never leave the terminal
     // login/shift dialog stacked underneath it during a company handoff.
@@ -2618,13 +2665,13 @@ export default function TerminalPage() {
       setCashierBranchSelectionReady(false);
       void refreshCashierBranchDirectory({
         silent: true,
-        userOverride: cashierData?.user,
+        userOverride: branchOperator,
         locationsOverride: cashierData?.locations,
         terminalRegistryOverride: cashierData?.terminalRegistry,
         resumeShiftOverride: cashierData?.resumeShift
       });
     }
-  }, [refreshCashierBranchDirectory]);
+  }, [refreshCashierBranchDirectory, terminalUser]);
 
   const continueFromBranchSelector = useCallback(() => {
     const continuation = branchSelectorContinuationRef.current;
@@ -5126,11 +5173,17 @@ export default function TerminalPage() {
   };
 
   const handleBranchSelectorOpenShift = useCallback(({ locationId, terminalId } = {}) => {
-    const normalizedLocationId = Number.parseInt(locationId, 10);
+    const normalizedLocationId = Number(locationId);
     const normalizedTerminalId = sanitizeTerminalId(terminalId);
-    const canOperateAssignedCashierBranch = isCashierRole
-      && assignedCashierLocationIds.has(normalizedLocationId);
-    if ((!canViewBranchLocations && !canOperateAssignedCashierBranch) || !canOpenShift) {
+    const branchOperator = cashierBranchOperatorRef.current || terminalUser;
+    const canOperateAssignedBranch = canOperateAssignedPosBranch({
+      permissions: parseUserPermissions(branchOperator),
+      isMasterAdmin: branchOperator?.is_master_admin === true,
+      locationIds: branchOperator?.location_ids,
+      locationId: normalizedLocationId,
+      action: 'open'
+    });
+    if (!canOperateAssignedBranch || !canOpenShift) {
       toast.error('Your account is not permitted to open a shift from the branch directory.');
       return false;
     }
@@ -5177,22 +5230,26 @@ export default function TerminalPage() {
     return true;
   }, [
     activeShiftId,
-    assignedCashierLocationIds,
     canOpenShift,
-    canViewBranchLocations,
     commitViewModeSelection,
-    isCashierRole,
     isOnline,
+    terminalUser,
     terminalRegistryLookup
   ]);
 
   const handleBranchSelectorResumeShift = useCallback(async ({ locationId, terminalId, shiftId } = {}) => {
-    const normalizedLocationId = Number.parseInt(locationId, 10);
+    const normalizedLocationId = Number(locationId);
     const normalizedTerminalId = sanitizeTerminalId(terminalId);
     const normalizedShiftId = Number.parseInt(shiftId, 10);
-    const canOperateAssignedCashierBranch = isCashierRole
-      && assignedCashierLocationIds.has(normalizedLocationId);
-    if ((!canViewBranchLocations && !canOperateAssignedCashierBranch) || !canResumeShift) {
+    const branchOperator = cashierBranchOperatorRef.current || terminalUser;
+    const canOperateAssignedBranch = canOperateAssignedPosBranch({
+      permissions: parseUserPermissions(branchOperator),
+      isMasterAdmin: branchOperator?.is_master_admin === true,
+      locationIds: branchOperator?.location_ids,
+      locationId: normalizedLocationId,
+      action: 'resume'
+    });
+    if (!canOperateAssignedBranch || !canResumeShift) {
       toast.error('Your account is not permitted to resume a POS shift.');
       return false;
     }
@@ -5260,11 +5317,10 @@ export default function TerminalPage() {
     // has a verified tenant session. The branch card has already supplied the
     // branch, terminal, and shift identity, so resume it directly instead of
     // opening a second dialog with the same "Resume Shift" action.
-    const signedInCashierResume = isCashierRole
-      && cashierUnlockSession?.source === 'dgfy_pos'
+    const signedInPosOperatorResume = cashierUnlockSession?.source === 'dgfy_pos'
       && Number.isInteger(normalizedShiftId)
       && normalizedShiftId > 0;
-    if (signedInCashierResume) {
+    if (signedInPosOperatorResume) {
       cashierBranchOperationSelectedRef.current = true;
       setCashierBranchSelectionReady(true);
       setActiveTerminalId(normalizedTerminalId);
@@ -5438,21 +5494,19 @@ export default function TerminalPage() {
   }, [
     activeShiftId,
     activeTerminalId,
-    assignedCashierLocationIds,
     canResumeShift,
-    canViewBranchLocations,
     cashierUnlockSession?.source,
     cashierResumeContext?.locationId,
     cashierResumeContext?.shiftId,
     cashierResumeContext?.terminalId,
     commitViewModeSelection,
-    isCashierRole,
     isOnline,
     operatingLocationId,
     refreshOperationalContext,
     terminalRegistry,
     refreshBranchDirectory,
-    terminalRegistryLookup
+    terminalRegistryLookup,
+    terminalUser
   ]);
 
   const handleSelectAdminTerminal = async (selectedTerminalId) => {

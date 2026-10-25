@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+/** @vitest-environment jsdom */
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DISCOVERY_CLUSTER_MAX_ZOOM,
   DISCOVERY_CLUSTER_MIN_POINTS,
@@ -17,6 +18,7 @@ import {
   buildRouteLineGeoJson,
   buildUserLocationSourceData,
   ensureDiscoveryMapLayers,
+  ensureMapImage,
   ensureRouteLineLayer,
   getDistanceMeters,
   getDiscoveryPinIconId,
@@ -24,6 +26,127 @@ import {
   setGeoJsonSourceData,
   setRouteLineData
 } from '../discovery/model/discoveryMapLayers.js';
+
+describe('ensureMapImage', () => {
+  let image;
+
+  const installImageMock = (ImageClass = class MockImage {
+    constructor(width, height) {
+      this.width = width;
+      this.height = height;
+      image = this;
+    }
+
+    set src(value) {
+      this._src = value;
+    }
+
+    get src() {
+      return this._src;
+    }
+  }) => {
+    vi.stubGlobal('Image', ImageClass);
+    window.Image = ImageClass;
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves false when the initial hasImage check throws', async () => {
+    const map = {
+      hasImage: vi.fn(() => { throw new TypeError('map style was removed'); }),
+      addImage: vi.fn()
+    };
+
+    await expect(ensureMapImage(map, 'pin', '<svg />')).resolves.toBe(false);
+    expect(map.addImage).not.toHaveBeenCalled();
+  });
+
+  it('resolves false when creating the browser Image throws', async () => {
+    installImageMock(class BrokenImage {
+      constructor() {
+        throw new TypeError('image creation is unavailable');
+      }
+    });
+    const map = {
+      hasImage: vi.fn(() => false),
+      addImage: vi.fn()
+    };
+
+    await expect(ensureMapImage(map, 'pin', '<svg />')).resolves.toBe(false);
+    expect(map.addImage).not.toHaveBeenCalled();
+  });
+
+  it('resolves false when an asynchronous onload hasImage check throws', async () => {
+    installImageMock();
+    const map = {
+      hasImage: vi.fn()
+        .mockReturnValueOnce(false)
+        .mockImplementationOnce(() => { throw new TypeError('map style was removed'); }),
+      addImage: vi.fn()
+    };
+
+    const result = ensureMapImage(map, 'pin', '<svg />');
+    image.onload();
+
+    await expect(result).resolves.toBe(false);
+    expect(map.hasImage).toHaveBeenCalledTimes(2);
+    expect(map.addImage).not.toHaveBeenCalled();
+  });
+
+  it('resolves false when an asynchronous addImage call throws', async () => {
+    installImageMock();
+    const map = {
+      hasImage: vi.fn().mockReturnValue(false),
+      addImage: vi.fn(() => { throw new TypeError('map style was removed'); })
+    };
+
+    const result = ensureMapImage(map, 'pin', '<svg />');
+    image.onload();
+
+    await expect(result).resolves.toBe(false);
+    expect(map.addImage).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves true for an existing image without creating an Image', async () => {
+    const map = {
+      hasImage: vi.fn(() => true),
+      addImage: vi.fn()
+    };
+
+    await expect(ensureMapImage(map, 'pin', '<svg />')).resolves.toBe(true);
+    expect(map.addImage).not.toHaveBeenCalled();
+  });
+
+  it('resolves true after loading and registering an image', async () => {
+    installImageMock();
+    const map = {
+      hasImage: vi.fn().mockReturnValue(false),
+      addImage: vi.fn()
+    };
+
+    const result = ensureMapImage(map, 'pin', '<svg />');
+    image.onload();
+
+    await expect(result).resolves.toBe(true);
+    expect(map.addImage).toHaveBeenCalledWith('pin', image, { pixelRatio: 1 });
+  });
+
+  it('resolves false when image loading reports an error', async () => {
+    installImageMock();
+    const map = {
+      hasImage: vi.fn(() => false),
+      addImage: vi.fn()
+    };
+
+    const result = ensureMapImage(map, 'pin', '<svg />');
+    image.onerror();
+
+    await expect(result).resolves.toBe(false);
+    expect(map.addImage).not.toHaveBeenCalled();
+  });
+});
 
 describe('discovery map layer helpers', () => {
   it('excludes stores with missing or null-island coordinates from the map source', () => {

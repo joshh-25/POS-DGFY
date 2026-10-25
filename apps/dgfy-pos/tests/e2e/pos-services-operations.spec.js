@@ -25,7 +25,10 @@ test('Services business template is available inside standalone POS @services @s
   });
 
   try {
-    await signIn(page, testCredentials, { companyName: serviceCompanyName });
+    await signIn(page, testCredentials, {
+      companyName: serviceCompanyName,
+      expectedPostcondition: 'pos-catalog'
+    });
   } catch (error) {
     const companySelect = page.getByLabel('Company');
     if (!await companySelect.isVisible()) throw error;
