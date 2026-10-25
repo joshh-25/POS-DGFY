@@ -233,7 +233,8 @@ describe('POS terminal view-mode contracts', () => {
 
   it('returns a signed-in cashier to terminal selection before opening a shift', () => {
     expect(terminalPageContent).toContain('Cashier signed in:');
-    expect(terminalPageContent).toContain("cashierAlreadyAuthenticated && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageContent).toContain("!adminReauthUnlock && !cashierResumeUnlock && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageContent).toContain('cashierAlreadyAuthenticated ? (');
     expect(terminalPageContent).toContain('const terminalSelectionLocked = isCashierRole');
     expect(terminalPageContent).toContain('const handleCancelTerminalUnlock = useCallback(() => {');
     expect(terminalPageContent).toContain('cashierResumeUnlock');

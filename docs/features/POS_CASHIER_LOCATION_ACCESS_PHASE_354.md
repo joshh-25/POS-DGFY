@@ -3,8 +3,8 @@ status: authoritative
 authority_level: authoritative
 owner: architecture
 date: 2026-09-14
-last_reviewed: 2026-09-14
-review_by: 2027-03-14
+last_reviewed: 2026-10-25
+review_by: 2027-04-25
 applies_to: pos, tenant_authorization, catalog_permissions
 topic: pos_cashier_location_access
 ---
@@ -183,3 +183,19 @@ ADR, architecture and changed-file whitespace checks pass. No runtime test is
 new-policy acceptance in this phase. Record gate results in the
 [phase ledger](IMPLEMENTATION_PHASE_LEDGER.md); next eligible phase for this
 initiative is 355, requiring its own implementation approval.
+
+## Amendments
+
+### 2026-10-25 — Assigned POS branch entry uses effective permissions (#2767)
+
+The branch selector may offer operating actions to any authenticated tenant user whose effective
+permissions authorize the requested action and whose account has a grant for the selected location.
+For an ordinary assigned-scope user, opening a shift still requires effective POS view/transaction
+permissions and the existing shift-opening checks; resuming an existing shift still requires POS
+view plus attendance view/operate permissions and the existing ownership and resume checks. A role
+label such as `cashier` or `admin` does not grant or remove those actions. Explicit master-admin
+authority remains tenant-wide. The separate `pos:branch_view` permission continues to grant
+read-only branch review and does not grant shift operation. Active terminal/location binding,
+occupancy, shift ownership, server revalidation, and audit behavior remain governed by the existing
+runtime contracts. This records the Phase 548 POS entry behavior; it does not change the API,
+schema, permission catalog, or Phase 355 server authority.

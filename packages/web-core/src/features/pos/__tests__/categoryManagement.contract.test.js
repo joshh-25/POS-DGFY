@@ -59,7 +59,7 @@ describe('POS category management contract', () => {
     const categorySource = fs.readFileSync(categoryWorkspacePath, 'utf8');
 
     expect(catalogSource).toContain('canManageCategories={canManageCategories}');
-    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', mobileLabel: 'Category', icon: Tags }");
+    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(source).toContain('itemsWorkspaceComponent={ItemsWorkspace}');
     expect(categorySource).toContain('Move assigned items to');
     expect(categorySource).toContain('replacementFolderId');
@@ -75,7 +75,7 @@ describe('POS category management contract', () => {
     expect(catalogSource).toContain('ariaLabel="Items workspace navigation"');
     expect(catalogSource).toContain("import PosLineTabNavigation from './PosLineTabNavigation.jsx';");
     expect(catalogSource).toContain("import { POS_MOBILE_STICKY_TAB_ROW_CLASS } from './PosPageSpacing.js';");
-    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', mobileLabel: 'Category', icon: Tags }");
+    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(catalogSource).toContain("const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);");
     expect(catalogSource).toContain("transition: 'transform 150ms ease, opacity 150ms ease'");
     expect(catalogSource).toContain('<PosLineTabNavigation');
@@ -149,15 +149,18 @@ describe('POS category management contract', () => {
     const catalogSource = fs.readFileSync(catalogWorkspacePath, 'utf8');
     const sidebarSource = fs.readFileSync(sidebarPath, 'utf8');
     const layoutSource = fs.readFileSync(layoutPath, 'utf8');
+    const settingsWorkspaceSource = fs.readFileSync(path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx'), 'utf8');
     const terminalPageSource = fs.readFileSync(terminalPagePath, 'utf8');
-    const historyBlock = sidebarSource.slice(
-      sidebarSource.indexOf('label="History"'),
-      sidebarSource.indexOf('{!isCashierRole')
-    );
-    const itemsBlock = sidebarSource.slice(
-      sidebarSource.indexOf('label="Items"'),
-      sidebarSource.indexOf('{showIncomingQueue')
-    );
+    const navButtonBlock = (testId) => {
+      const markerIndex = sidebarSource.indexOf(`testId="${testId}"`);
+      const startIndex = sidebarSource.lastIndexOf('<NavButton', markerIndex);
+      const endIndex = sidebarSource.indexOf('/>', markerIndex);
+      return startIndex >= 0 && endIndex > markerIndex
+        ? sidebarSource.slice(startIndex, endIndex + 2)
+        : '';
+    };
+    const historyBlock = navButtonBlock('pos-nav-history');
+    const itemsBlock = navButtonBlock('pos-nav-items');
 
     expect(terminalPageSource).toContain("const canManageCategories = hasPermission('categories:manage');");
     expect(terminalPageSource).toContain("normalizedView === 'items' && !canViewItems && !canManageCategories");
@@ -169,6 +172,7 @@ describe('POS category management contract', () => {
     expect(sidebarSource).toContain('canViewPos && (');
     expect(sidebarSource).toContain('{canAccessItemsWorkspace && (');
     expect(catalogSource).toContain('Category management is available online only.');
+    expect(settingsWorkspaceSource).not.toContain('CategoryManagementWorkspace');
   });
 
   it('maps the saved category ID back into the edit-item category control', () => {
