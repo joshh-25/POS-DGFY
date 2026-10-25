@@ -32125,7 +32125,9 @@ retry/outbox, formal receipt, or separate bookings flow changes.
 
 ### Status
 
-`in_progress` — implementation and validation are underway on the #532 Worker branch.
+`completed` — the initial post-commit confirmation-email implementation merged to `develop` in PR
+[#2779](https://github.com/Sieitzz/dgfy-platform/pull/2779) on 2026-10-25. Implementation validation
+passed; STAGING delivery verification remains in the post-merge checklist.
 
 ### Dependencies
 
@@ -32152,19 +32154,19 @@ notifications.
 
 ### Acceptance and validation evidence
 
-- [ ] A new order dispatches after commit; replay dispatches nothing; checkout remains successful
+- [x] A new order dispatches after commit; replay dispatches nothing; checkout remains successful
   when the dispatcher fails, for COD and captured-payment checkout paths.
-- [ ] The HTML and plain-text email include itemization, totals, payment method/status, order
+- [x] The HTML and plain-text email include itemization, totals, payment method/status, order
   references, fulfillment details, and downpayment/balance for `partially_paid` orders.
-- [ ] Slug and custom-domain tracking URLs resolve correctly; an unavailable URL omits only the
+- [x] Slug and custom-domain tracking URLs resolve correctly; an unavailable URL omits only the
   CTA.
-- [ ] Blank/invalid email, unconfigured SMTP, and the kill switch skip cleanly; timeout and
+- [x] Blank/invalid email, unconfigured SMTP, and the kill switch skip cleanly; timeout and
   pre-send failures are bounded and reported without PII.
-- [ ] Delivery log purpose and tenant id are set; no email body is persisted.
-- [ ] Focused tests, syntax checks, architecture/compliance/docs checks, and app-version floor
+- [x] Delivery log purpose and tenant id are set; no email body is persisted.
+- [x] Focused tests, syntax checks, architecture/compliance/docs checks, and app-version floor
   validation pass.
-- [ ] Manual template rendering/visual inspection for delivery, pickup, and partially-paid samples
-  is recorded as completed or explicitly deferred.
+- [x] Manual template rendering/visual inspection for delivery, pickup, and partially-paid samples
+  is recorded as explicitly deferred in the PR #2779 compliance declaration.
 
 ### Risks and decisions
 
@@ -32176,7 +32178,9 @@ under #243.
 
 ### Completion date
 
-Not complete. Record after merge and implementation validation.
+Completed 2026-10-25; PR #2779 merged as `454101ae463dbf83a3b09185f9f9cdb5356965e9`. The PR's
+focused confirmation-email suites reported 82 passing tests; architecture, docs, compliance,
+app-version, and changed-file syntax checks passed.
 
 ### Post-merge verification
 
@@ -32189,3 +32193,85 @@ Not complete. Record after merge and implementation validation.
 ### Next phase number
 
 Phase 552. No explicit dependency.
+
+## Phase 552 - Storefront order confirmation email presentation parity (#532)
+
+### Initiative and release
+
+Storefront customer commerce / transactional messaging.
+
+### Objective and scope
+
+Redesign only the storefront order-confirmation HTML and plain-text presentation to use DGFY
+branding and align quantities, money formatting, and breakdown rows with the storefront order
+page. Present stored amounts without recomputation, include the persisted VAT amount on the email
+payload only, omit the legacy service-fee row, and resolve store branding/support URLs best-effort.
+No other email template, customer API response, database schema, migration, frontend, or checkout
+behavior changes.
+
+### Status
+
+`in_progress` — implementation and validation are underway on the #532 follow-up Worker branch.
+
+### Dependencies
+
+Phase 551 (#532 initial implementation) is merged in PR #2779 and is the baseline for this
+presentation update. No remaining technical dependency.
+
+### Contract and authority
+
+[Start Here](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0039](../architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md),
+[ADR 0054](../architecture/adr/0054-outbound-email-delivery-log-and-bounce-capture.md),
+[Food and Beverage Mode](FOOD_AND_BEVERAGE_MODE.md), [Issue #532](https://github.com/Sieitzz/dgfy-platform/issues/532).
+Classification: `within-existing-boundary`; this phase keeps the existing store-to-DGFY post-commit
+email seam and changes only email presentation data and rendering.
+
+### Implementation targets
+
+[`storefrontOrderConfirmationPresentation.js`](../../apps/dgfy-api/src/templates/storefrontOrderConfirmationPresentation.js),
+[`emailTemplates.js`](../../apps/dgfy-api/src/templates/emailTemplates.js),
+[`emailService.js`](../../apps/dgfy-api/src/services/emailService.js),
+[`dgfyOrderConfirmationEmail.js`](../../apps/dgfy-api/src/modules/dgfy/services/dgfyOrderConfirmationEmail.js),
+[`dgfyAffiliateRepository.js`](../../apps/dgfy-api/src/modules/dgfy/repositories/dgfyAffiliateRepository.js),
+[`storeUseCases.js`](../../apps/dgfy-api/src/modules/store/usecases/storeUseCases.js), and focused API tests.
+
+### Acceptance and validation evidence
+
+- [x] Shared breakdown and formatter tests cover quantities, grouped money, persisted values,
+  delivery-only fees, informational VAT, and Manila time.
+- [x] Template tests cover DGFY branding, legacy-fee omission, VAT copy, discount/processing fee
+  rows, fulfillment variants, fractional quantities, unsafe branding URLs, and escaping.
+- [x] Dispatcher, checkout, and delivery-log suites pass with branding lookup failure, missing
+  tracking URL, email-only VAT parity, replay behavior, and existing delivery purpose covered.
+- [x] Tier 0 syntax, architecture, docs, compliance, and app-version checks pass before PR open.
+- [x] Delivery, pickup/discount/fractional, and partial-payment samples were rendered and visually
+  inspected locally at a 390px viewport; Gmail and dark-mode client inspection is deferred to
+  STAGING verification.
+
+### Risks and decisions
+
+The optional logo is remote and can be blocked by an email client; adjacent store-name text and
+image alt text remain available, while a monogram is rendered when the stored logo URL is absent or
+unsafe. Relative store-asset paths and the support link use the already-required
+`STOREFRONT_PUBLIC_ORIGIN`; no new deployment setting is introduced. No recipient identifier or
+tracking pixel is included in the image URL. The email displays persisted amounts and does not
+expose VAT in the customer API response.
+
+### Completion date
+
+Not complete. Record after merge and implementation validation.
+
+### Post-merge verification
+
+- [ ] **deployment** — after promotion, send one delivery and one pickup order to a real mailbox;
+  inspect DGFY branding, logo/monogram, quantity and VAT/totals parity, and open the tracking link
+  against the correct order. Owner: #532 operator/release verifier; blocks deployed acceptance.
+- [ ] **operational** — verify each sent message has an `email_delivery_logs` row with
+  `purpose='storefront_order_confirmation'` and `status='sent'`, and that an idempotent replay does
+  not create a second confirmation row. Owner: #532 operator/release verifier; blocks deployed
+  acceptance.
+
+### Next phase number
+
+Phase 553. No explicit dependency.
