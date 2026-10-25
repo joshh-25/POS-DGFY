@@ -11,8 +11,8 @@ verification_evidence: focused storefront confirmation Jest suites passed (75 te
 rollback_note: Revert the confirmation email thumbnail lookup, URL resolution, HTML/plain-text refinements, focused tests, ADR amendment, Phase 553 ledger entry, and this declaration together. Already sent emails cannot be recalled. Checkout/payment state, customer API fields, database schema, and delivery-log behavior remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-25T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-532-2026-10-25-CONFIRMATION-EMAIL-REFINEMENTS
+preflight_run_at: 2026-10-25T14:34:08.275Z
+preflight_request_ref: PREFLIGHT-40202403369-2026-10-25-STOREFRONT-ORDER-CONFIRMATION-EMAIL-REFINEMENTS
 ---
 
 # Storefront order confirmation email customer-facing refinements
