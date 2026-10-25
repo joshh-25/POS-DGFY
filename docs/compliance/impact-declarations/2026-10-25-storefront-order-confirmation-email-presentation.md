@@ -11,8 +11,8 @@ verification_evidence: focused storefront confirmation Jest suites (74 tests pas
 rollback_note: Revert the confirmation email presentation, email-only VAT field, branding lookup, focused tests, ADR amendment, ledger entry, and this declaration together. No order/payment state, schema, migration, or delivery-log behavior changes are introduced; already sent emails cannot be recalled.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-10-25T12:27:13.000Z
-preflight_request_ref: NOT-EXECUTED-532-2026-10-25-CONFIRMATION-EMAIL-REDESIGN
+preflight_run_at: 2026-10-25T12:51:01.814Z
+preflight_request_ref: PREFLIGHT-40194481331-2026-10-25-STOREFRONT-ORDER-CONFIRMATION-EMAIL-PRESENTATION
 ---
 
 # Storefront order confirmation email presentation parity
