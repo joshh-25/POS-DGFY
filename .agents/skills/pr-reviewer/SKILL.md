@@ -148,12 +148,16 @@ moment that doc changes). This file names *where* each rule lives; go read it th
 
 ## Manual session handoff input
 
-An explicit `/handoff` may resume this role with `/pr-reviewer <PR> @.tmp/handoff-<...>.md`. Validate
-the `dgfy-handoff/v1` schema, confirm `role: reviewer`, and confirm the PR identity matches the
-live PR. Use the artifact only to recover prior review context; the live PR, issue, diff, and
-authoritative docs remain the source of truth. A missing, malformed, mismatched, or ambiguous
-handoff is a hard stop when supplied. Without one, the existing reviewer workflow and fallback
-behavior are unchanged.
+An explicit `/handoff` may resume this role with `/pr-reviewer <PR> @.tmp/handoff-<...>.md`. Follow
+the [manual session handoff compatibility contract](../../../docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md),
+including its supported `agent-handoff/v1` and `dgfy-handoff/v1` variants. Confirm `role: reviewer`
+and the requested PR against live GitHub state; infer omitted context only when the explicit
+invocation, checkout, or live sources settle it. Use the artifact only to recover prior review
+context, then re-read the live PR, issue, diff, checkout, and authoritative docs; they are the source
+of truth. Actual identity/role conflicts and consequential unresolved ambiguity remain hard stops;
+label, extra metadata, descriptive runtime/model, or stale branch/HEAD differences alone do not.
+A snapshot grants no permission to post a review, comment, merge, or take other action outside the
+Reviewer workflow. Without one, the existing reviewer workflow and fallback behavior are unchanged.
 
 ## Omitted PR resolution
 

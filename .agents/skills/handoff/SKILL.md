@@ -42,7 +42,9 @@ This skill never:
 
 ## Artifact format
 
-The artifact is local, ignored, and versioned as `dgfy-handoff/v1`:
+The artifact is local, ignored, and versioned as `dgfy-handoff/v1`. This producer keeps that
+repository label; all canonical receivers also accept compatible `agent-handoff/v1` snapshots
+under the [shared manual-session contract](../../../docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md):
 
 ```yaml
 schema: dgfy-handoff/v1
@@ -92,17 +94,24 @@ For Gemini, or when no target runtime was supplied, print:
 Read `.tmp/handoff-<file>.md` and resume the captured <role> workflow for issue/PR <identifier>.
 ```
 
-The receiving workflow must validate `dgfy-handoff/v1`, confirm its issue/PR and role match the
-requested continuation, and treat the live issue and authoritative docs as the source of truth.
-Missing or mismatched handoffs stop that workflow with a recovery instruction.
+The receiving workflow follows the [manual session handoff compatibility
+contract](../../../docs/ai/MANUAL_SESSION_HANDOFF_COMPATIBILITY.md). Accept exactly
+`agent-handoff/v1` and `dgfy-handoff/v1`; a supported label difference, extra metadata, or a
+descriptive runtime/model value alone is not a reason to stop. Receivers confirm the requested
+identity and role, re-read the live issue/PR, checkout, and governing docs, and let those sources
+override snapshot state. Recover missing context only when reliable current context settles it;
+stop for an actual identity/role conflict or consequential ambiguity. A snapshot is progress
+evidence and grants no action authorization.
 
 ## Manual verification checklist
 
 Before considering this skill complete, verify its instructions against dirty and clean/committed
 worktrees, an active PR, an interrupted tool call, each explicit target runtime, and two repeated
-handoffs. Confirm every artifact is distinct, state is captured without secrets, and no verification
-case commits, pushes, cleans up, mutates GitHub state, launches another agent, or enters an
-orchestration loop.
+handoffs. Also complete the shared contract's walkthrough matrix across both supported schema
+labels and all three canonical receivers, including recoverable metadata, live-state changes, real
+identity conflicts, and the no-authorization boundary. Confirm every artifact is distinct, state is
+captured without secrets, and no verification case commits, pushes, cleans up, mutates GitHub state,
+launches another agent, or enters an orchestration loop.
 
 The canonical role contracts that consume this artifact are:
 

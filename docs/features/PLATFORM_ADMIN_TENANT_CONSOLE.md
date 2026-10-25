@@ -12,8 +12,8 @@ topic: platform_admin_tenant_console
 This document records the landlord Platform Admin tenant console's current actions and the agreed
 contracts for epic #2696. It is a reference for product and implementation work;
 the route permission matrix and accepted ADRs remain authoritative when a statement here differs.
-Current placement notes and the 27-action destination map were reconciled for Phase 545 (Wave 4,
-#2757/#2748/#2750). Phase 547 (Wave 5, #2776) adds a separate global Billing route and tenant-scoped
+Current placement notes and the 27-action destination map were reconciled for Phase 552 (Wave 4,
+#2757/#2748/#2750). Phase 553 (Wave 5, #2776) adds a separate global Billing route and tenant-scoped
 Billing section, plus lighter default directory reads and browser-side paging. Access & storefront
 owns the existing capability controls and audit entry point. Unavailable capability reads remain
 explicitly unknown and disable writes. #1923's STAGING persistence/publication checks and the PROD
@@ -44,7 +44,7 @@ checks authority on direct requests; hiding a control is only a navigation aid.
 
 `T` below means `admin.tenants`. All tenant routes in this table are mounted below
 `/api/v1/admin/tenants` unless a different prefix is shown. UI entry points describe current
-placement after Phase 545 (Wave 4). Audit names describe existing writes;
+placement after Phase 552 (Wave 4). Audit names describe existing writes;
 read-only actions have no write audit. “None” means no audit write was found for that action in the
 current route/use-case path.
 
@@ -172,10 +172,10 @@ and is required before the final DEV soak.
 | 5 | Tenant details include Overview, Lifecycle, Registration, Access & storefront, Compliance, Store setup, and links to global Billing tools. The combined Activity page is deferred; audit entry points stay in their owning sections. | Decided; Activity deferral recorded for Phase 544. |
 | 6 | Owner assignment belongs on the detail page to close the Company-only ownership dead end and requires both tenant and DGFY-account grants. Affiliate slots (#1190) and final-review document review remain API-only. Legacy change-plan, PayPal, and provision controls stay out of UI scope; route API removal to PM. | Decided. |
 | 7 | Assisted provisioning gets `/admin/tenants/new` and an Add tenant directory button; retain its required reason and the dual grant for the with-account path. | Decided; issue recommendation adopted. |
-| 8 | Registration-draft review stays on the directory; pricing, template curation, Revenue & Settlement, Payment Operations, and Invoices remain global tools with their own authority. Tenant overview links may preselect authorized tenant/application data after validating it; opening a global tool never submits a mutation. | Updated by Phase 547: Revenue & Settlement also has a master-only, tenant-scoped detail view; archived records are read-only. |
+| 8 | Registration-draft review stays on the directory; pricing, template curation, Revenue & Settlement, Payment Operations, and Invoices remain global tools with their own authority. Tenant overview links may preselect authorized tenant/application data after validating it; opening a global tool never submits a mutation. | Updated by Phase 553: Revenue & Settlement also has a master-only, tenant-scoped detail view; archived records are read-only. |
 | 9 | Hide archived tenants by default and expose them under an Archived filter. Count all statuses in the summary tiles. Keep archived details directly addressable and present the page read-only, while documenting the API's existing status-specific write behavior. | Decided by Pat on 2026-10-24. |
 | 10 | Move existing capability/readiness controls and their audit entry point into Access & storefront on the epic branch. Unknown/unavailable values stay distinct and disable writes; #1923 STAGING checks and PROD read recovery remain external verification, not a child-PR deployment gate. | Wave 3 implementation sequencing recorded 2026-10-24. |
-| 11 | Keep the first directory request lightweight, retain the existing enriched API behavior for other callers, reuse directory rows only in authenticated memory, and add validated client-side sorting and paging. | Phase 547 / #2776. |
+| 11 | Keep the first directory request lightweight, retain the existing enriched API behavior for other callers, reuse directory rows only in authenticated memory, and add validated client-side sorting and paging. | Phase 553 / #2776. |
 
 ## What stays outside the detail page
 
@@ -195,7 +195,7 @@ and is required before the final DEV soak.
 
 Wave 1 delivered the inventory/decision record (#2742) and searchable directory (#2743). Waves 2–4
 are present on the registered epic branch: the detail foundation, required detail sections, and
-integration cleanup/URL privacy. Phase 547 is Wave 5 (#2776):
+integration cleanup/URL privacy. Phase 553 is Wave 5 (#2776):
 
 1. **Wave 2 — detail foundation:** `GET /admin/tenants/:id` uses the list-item shape, enrichment,
    and `admin.tenants` grant. Overview loads that endpoint directly and is independent of directory

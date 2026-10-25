@@ -19,6 +19,7 @@ jest.unstable_mockModule('../src/services/operationalAlertService.js', () => ({
 
 const {
   sendEmail,
+  sendStorefrontOrderConfirmationEmail,
   setEmailDeliveryLogRepository,
   resetTransporter
 } = await import('../src/services/emailService.js');
@@ -164,5 +165,53 @@ describe('emailService.sendEmail delivery logging (issue #279)', () => {
     expect(payload).not.toHaveProperty('text');
     expect(payload).not.toHaveProperty('body');
     expect(JSON.stringify(payload)).not.toContain('hunter2');
+  });
+
+  it('sends a structured storefront order confirmation and logs its purpose without storing the body', async () => {
+    sendMailMock.mockResolvedValue({ accepted: ['buyer@example.com'], rejected: [], response: '250 OK' });
+
+    const result = await sendStorefrontOrderConfirmationEmail({
+      email: 'buyer@example.com',
+      storeName: 'Main Cafe\r\nBcc: attacker@example.com',
+      tenantId: 'tenant-1',
+      trackingUrl: 'https://shop.example.test/track?pin=SK-ABC123',
+      order: {
+        tracking_pin: 'SK-ABC123',
+        invoice_number: 'INV-000123',
+        items: [{ item_name: 'Burger', quantity: 2, sale_price: 100, line_subtotal: 200 }],
+        subtotal_amount: 200,
+        total_amount: 200,
+        payment_type: 'cash',
+        payment_status: 'partially_paid',
+        amount_paid: 100,
+        balance_due: 100,
+        order_method: 'pickup',
+        location: { name: 'Main branch', address_line: '42 Market Road' },
+        special_instructions: 'Do not include this private note'
+      }
+    });
+
+    expect(result.provider).toBe('smtp');
+    const [mailOptions] = sendMailMock.mock.calls[0];
+    expect(mailOptions.from).toBe('"DGFY" <noreply@dgfy.ph>');
+    expect(mailOptions.subject).toContain('Order confirmation SK-ABC123');
+    expect(mailOptions.subject).not.toMatch(/[\r\n]/);
+    expect(mailOptions.html).toContain('Track your order');
+    expect(mailOptions.text).toContain('2 x Burger');
+    expect(mailOptions.text).toContain('Downpayment paid: ₱100.00');
+    expect(mailOptions.text).toContain('Balance due: ₱100.00');
+    expect(mailOptions.text).toContain('42 Market Road');
+    expect(mailOptions.text).not.toContain('Do not include this private note');
+
+    expect(deliveryLogRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: 'storefront_order_confirmation',
+      tenant_id: 'tenant-1',
+      status: 'sent'
+    }));
+    const [logPayload] = deliveryLogRepository.create.mock.calls[0];
+    expect(logPayload).not.toHaveProperty('html');
+    expect(logPayload).not.toHaveProperty('text');
+    expect(logPayload).not.toHaveProperty('body');
+    expect(JSON.stringify(logPayload)).not.toContain('Burger');
   });
 });

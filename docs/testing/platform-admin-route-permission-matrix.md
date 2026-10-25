@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: platform-security
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-25
 applies_to: platform_admin_routes
 topic: platform_admin_page_authorization
 ---
@@ -13,7 +13,7 @@ The backend resolves current session and database permissions on every Platform 
 
 | Route family | Required authority |
 | --- | --- |
-| `/api/v1/admin/contact-inquiries*` | `admin.contact_inquiries` |
+| `/api/v1/admin/contact-inquiries*` (Pin4MS and Storefront support-email configuration) | `admin.contact_inquiries` |
 | `/api/v1/admin/feedback*` | `admin.feedback` |
 | `/api/v1/admin/push-diagnostics*` | `admin.push_diagnostics` |
 | `/api/v1/admin/partner-integrations*` | `admin.partner_integrations` |

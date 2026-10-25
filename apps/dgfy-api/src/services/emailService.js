@@ -26,6 +26,7 @@ import {
   getCashierCredentialTemplate,
   getCompanyApprovedTemplate,
   getCompanyRejectedTemplate,
+  getStorefrontOrderConfirmationTemplate,
   getSubscriptionExpiringTemplate,
   getSubscriptionCancelledTemplate,
   getPaymentFailedTemplate,
@@ -451,6 +452,134 @@ export const sendCashierCredentialEmail = async ({
   });
 };
 
+const normalizeOrderConfirmationStoreName = (value) => {
+  const safe = String(value || '').replace(/[^A-Za-z0-9 &'.-]/g, '').trim().slice(0, 40);
+  return safe || 'DGFY';
+};
+
+const formatOrderConfirmationMoney = (value) => {
+  const amount = Number(value);
+  return `₱${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`;
+};
+
+const normalizeOrderConfirmationUrl = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+const formatOrderConfirmationPaymentMethod = (order = {}) => {
+  const paymentType = String(order.payment_type || '').trim().toLowerCase();
+  if (paymentType === 'qrph') return 'QRPh';
+  if (paymentType === 'cash') {
+    return ({ delivery: 'Cash on delivery', pickup: 'Cash on pickup', dine_in: 'Pay at store' }[order.order_method] || 'Cash');
+  }
+  return paymentType.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Not provided';
+};
+
+const buildStorefrontOrderConfirmationText = ({ storeName, order = {}, trackingUrl = null }) => {
+  const lines = [
+    'Order confirmation',
+    `Store: ${storeName}`,
+    `Order reference: ${order.tracking_pin || 'Not available'}`
+  ];
+  if (order.invoice_number) lines.push(`Invoice number: ${order.invoice_number}`);
+  if (order.payment_reference) lines.push(`Payment reference: ${order.payment_reference}`);
+  lines.push('', 'Items:');
+  for (const item of Array.isArray(order.items) ? order.items : []) {
+    lines.push(`${item?.quantity ?? 0} x ${item?.item_name || 'Item'} — ${formatOrderConfirmationMoney(item?.sale_price)} each — ${formatOrderConfirmationMoney(item?.line_subtotal)}`);
+  }
+  lines.push('', `Subtotal: ${formatOrderConfirmationMoney(order.subtotal_amount)}`);
+  if (Number(order.discount_amount || 0) > 0 || order.discount_label_snapshot) {
+    lines.push(`${order.discount_label_snapshot ? `Discount — ${order.discount_label_snapshot}` : 'Discount'}: ${formatOrderConfirmationMoney(order.discount_amount)}`);
+  }
+  if (Number(order.service_fee_amount || 0) !== 0 || order.service_fee_label_snapshot) {
+    lines.push(`${order.service_fee_label_snapshot || 'Service fee'}: ${formatOrderConfirmationMoney(order.service_fee_amount)}`);
+  }
+  if (Number(order.customer_processing_fee_amount || 0) !== 0 || order.customer_processing_fee_label_snapshot) {
+    lines.push(`${order.customer_processing_fee_label_snapshot || 'Customer processing fee'}: ${formatOrderConfirmationMoney(order.customer_processing_fee_amount)}`);
+  }
+  const deliveryWaiverLabel = String(order.delivery_fee_waiver_label_snapshot || '').trim();
+  if (order.order_method === 'delivery' || Number(order.delivery_fee || 0) !== 0 || deliveryWaiverLabel) {
+    lines.push(`${deliveryWaiverLabel ? `Delivery fee — ${deliveryWaiverLabel}` : 'Delivery fee'}: ${formatOrderConfirmationMoney(order.delivery_fee)}`);
+  }
+  lines.push(`Total: ${formatOrderConfirmationMoney(order.total_amount)}`);
+  lines.push('', 'Payment:', `Method: ${formatOrderConfirmationPaymentMethod(order)}`, `Status: ${String(order.payment_status || 'Not provided').replace(/[_-]+/g, ' ')}`);
+  if (order.payment_status === 'partially_paid') {
+    lines.push(`Downpayment paid: ${formatOrderConfirmationMoney(order.amount_paid)}`);
+    lines.push(`Balance due: ${formatOrderConfirmationMoney(order.balance_due)}`);
+  }
+  lines.push('', 'Fulfillment:');
+  const locationName = String(order.location?.name || '').trim();
+  const locationAddress = String(order.location?.address_line || '').trim();
+  if (order.order_method === 'delivery') {
+    lines.push(`Delivery address: ${order.delivery_address || 'Not provided'}`);
+  } else if (order.order_method === 'pickup') {
+    lines.push(`Pickup location: ${locationName || 'Store location'}`);
+    if (locationAddress) lines.push(locationAddress);
+  } else if (order.order_method === 'dine_in') {
+    lines.push(`Dine-in location: ${locationName || 'Store location'}`);
+  } else if (locationName) {
+    lines.push(`Location: ${locationName}`);
+  }
+  if (order.scheduled_for) {
+    const date = new Date(order.scheduled_for);
+    const formattedDate = Number.isFinite(date.getTime())
+      ? date.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
+      : String(order.scheduled_for);
+    lines.push(`Scheduled for: ${formattedDate} (Asia/Manila)`);
+  }
+  const safeTrackingUrl = normalizeOrderConfirmationUrl(trackingUrl);
+  if (safeTrackingUrl) lines.push('', `Track your order: ${safeTrackingUrl}`);
+  lines.push('', 'This message confirms your order and is not an official receipt.');
+  return lines.join('\n');
+};
+
+/** Send a receipt-style confirmation after a storefront order has committed. */
+export const sendStorefrontOrderConfirmationEmail = async ({
+  email,
+  storeName,
+  order = {},
+  trackingUrl = null,
+  tenantId = null
+}) => {
+  const safeStoreName = normalizeOrderConfirmationStoreName(storeName);
+  const safeTrackingPin = String(order.tracking_pin || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 32) || 'order';
+  const htmlStoreName = String(storeName || 'DGFY');
+  let html;
+  let text;
+  try {
+    html = getStorefrontOrderConfirmationTemplate({
+      storeName: htmlStoreName,
+      order,
+      trackingUrl: normalizeOrderConfirmationUrl(trackingUrl)
+    });
+    text = buildStorefrontOrderConfirmationText({
+      storeName: htmlStoreName,
+      order,
+      trackingUrl
+    });
+  } catch (cause) {
+    const error = new Error('Failed to build storefront order confirmation email');
+    error.code = 'STOREFRONT_ORDER_CONFIRMATION_TEMPLATE_FAILED';
+    error.orderConfirmationTemplateFailed = true;
+    error.cause = cause;
+    throw error;
+  }
+
+  return sendEmail({
+    to: email,
+    subject: `Order confirmation ${safeTrackingPin} — ${safeStoreName}`,
+    html,
+    text,
+    fromName: 'DGFY',
+    meta: { purpose: 'storefront_order_confirmation', tenantId: tenantId || null }
+  });
+};
+
 /**
  * Send company approval notification email
  * @param {Object} params - Email parameters
@@ -733,6 +862,7 @@ export default {
   sendAffiliateInviteEmail,
   sendWelcomeEmail,
   sendCashierCredentialEmail,
+  sendStorefrontOrderConfirmationEmail,
   sendCompanySubmissionReceivedEmail,
   sendCompanyApprovedEmail,
   sendCompanyOnboardingEmail,
