@@ -1,10 +1,10 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-30
-last_reviewed: 2026-04-30
-review_by: 2026-10-28
+last_reviewed: 2026-10-26
+review_by: 2027-04-26
 applies_to: tenant_user_invitations
 topic: tenant_user_invitation_registry
 ---
@@ -38,3 +38,20 @@ Add a landlord-level `user_invitations` registry for tenant user invitations.
 ## Rollback Notes
 1. Existing `?company=` links continue to work through the tenant-local compatibility path.
 2. If the registry is unavailable, new token-only links cannot be accepted, but tenant-local invite records are not destructive.
+
+## Amendments
+
+### 2026-10-26 — Custom staff-role invitations (#2812)
+
+- Clause amended: Decision 5 (`default`).
+- Change: The landlord registry may retain a tenant-scoped staff-role ID, role-name snapshot,
+  and cancellation reason as invitation lifecycle metadata. These fields do not authorize access;
+  the tenant user and tenant's active staff-role record remain authoritative. There is no
+  cross-database foreign key.
+- Change: Deactivating a custom staff role cancels its pending tenant invitations and clears
+  their tenant tokens before landlord synchronization. The registry records the cancellation,
+  and matching pending invite memberships become `removed`. Retries reconcile incomplete
+  synchronization; accepted memberships are not cancelled.
+- Reason: Custom staff-role invitations need a durable descriptor when the tenant role is
+  deactivated or deleted, while preserving tenant-local authorization and fail-closed acceptance.
+- Issue: #2812. Implementation PR: pending.

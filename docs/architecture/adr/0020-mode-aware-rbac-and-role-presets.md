@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-06
-last_reviewed: 2026-10-21
-review_by: 2026-11-06
+last_reviewed: 2026-10-26
+review_by: 2027-04-26
 applies_to: architecture_decision
 topic: mode_aware_rbac_and_role_presets
 ---
@@ -50,6 +50,23 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 - No architecture allowlist exception is introduced.
 
 ## Amendments
+
+### 2026-10-26 — Custom staff-role invitations (#2812)
+
+- Clause amended: the tenant staff-role assignment contract (`default`).
+- Change: An owner or legacy admin may invite a registered DGFY account into an active tenant
+  custom staff role. The pending tenant user has base role `staff`, the selected tenant
+  `staff_role_id`, empty `permissions`, and `permission_mode='inherit'`; selected active location
+  grants are required. Acceptance revalidates the pending, unexpired tenant invitation, account
+  membership, active matching role, and active grants before applying the shared audited
+  assignment and invalidating the user's permission cache after commit.
+- Change: Deactivation immediately cancels pending invitations for that role. Accepted members
+  remain members and follow the existing inactive-role permission behavior. Reactivation does not
+  revive cancelled invitations.
+- Reason: Custom role invitations must resolve to the same tenant-owned capability source as
+  manual assignment without snapshotting permission overrides or granting access from landlord
+  metadata.
+- Issue: #2812. Implementation PR: pending.
 
 ### 2026-10-21 — Tenant staff-role foundation for scoped fulfillment (#1182, Phase 524)
 
