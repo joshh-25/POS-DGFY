@@ -32108,6 +32108,26 @@ tests, and affected integration tests. API: the tenant list transport/use case a
 Docs: this entry, the tenant-console reference, and route permission matrix. No tenant migration,
 schema, API grant, or app-version change is in scope.
 
+### Implementation and test links
+
+- Admin directory and cache: [TenantManager](../../apps/dgfy-admin/Pages/TenantManager.jsx),
+  [directory context](../../apps/dgfy-admin/src/features/admin/tenantDirectory/TenantDirectoryContext.jsx),
+  [directory state](../../apps/dgfy-admin/src/features/admin/tenantDirectory/tenantDirectory.js),
+  and [toolbar](../../apps/dgfy-admin/src/features/admin/tenantDirectory/TenantDirectoryToolbar.jsx).
+- Billing and routing: [global Billing page](../../apps/dgfy-admin/Pages/TenantBilling.jsx),
+  [tenant Billing page](../../apps/dgfy-admin/Pages/TenantBillingDetail.jsx),
+  [read-only archived view](../../apps/dgfy-admin/src/features/admin/tenantRevenue/TenantRevenueReadOnlyPanel.jsx),
+  [route policy](../../apps/dgfy-admin/src/features/admin/adminRoutePolicy.js), and
+  [API list handler](../../apps/dgfy-api/src/modules/tenants/controllers/adminTenantHandlers.js)
+  with [list use case](../../apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js).
+- Admin tests: [directory journey](../../apps/dgfy-admin/src/pages/__tests__/TenantManager.directory.integration.test.jsx),
+  [Billing journey](../../apps/dgfy-admin/src/pages/__tests__/TenantBilling.integration.test.jsx),
+  [route policy](../../apps/dgfy-admin/src/features/admin/adminRoutePolicy.test.js), and
+  [directory state](../../apps/dgfy-admin/src/features/admin/tenantDirectory/__tests__/tenantDirectory.test.js).
+- API tests: [list use case](../../apps/dgfy-api/tests/listTenants.usecase.test.js) and
+  [transport handler](../../apps/dgfy-api/tests/adminTenantHandlers.transport.test.js).
+- Child implementation PR: [#2783](https://github.com/Sieitzz/dgfy-platform/pull/2783).
+
 ### Acceptance and validation evidence
 
 - [x] API lightweight transport skips all tenant capability connector calls, preserves safe list
